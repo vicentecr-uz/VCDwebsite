@@ -1,0 +1,180 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+const projects = [
+  {
+    slug: 'tapico',
+    title: 'Tapico Typer',
+    year: "'24",
+    image: '/images/IMG_5523-2.jpg',
+    bg: '#f2f0ed',
+    dark: false,
+    full: true,
+  },
+  {
+    slug: 'the-rams',
+    title: 'The Rams',
+    year: "'21",
+    image: '/images/Exploded%20View.png',
+    bg: '#080808',
+    dark: true,
+    full: false,
+  },
+  {
+    slug: 'conic-collection',
+    title: 'Conic Collection',
+    year: "'23",
+    image: '/images/Conic%20Collection%20Thumbnail%20edited.png',
+    bg: '#111111',
+    dark: true,
+    full: false,
+  },
+  {
+    slug: 'parentpal',
+    title: 'ParentPal',
+    year: "'22",
+    image: '/images/Homepage%20Thumbnail%20w%20bkgd.png',
+    bg: '#0a0a0a',
+    dark: true,
+    full: true,
+  },
+];
+---
+
+<Layout title="Vicente Cruz — Industrial Designer">
+  <div class="flex flex-col min-h-dvh">
+    <Header linkHref="/about" />
+
+    <main class="project-main" style="flex: 1;">
+      <ul class="project-grid">
+        {projects.map((project) => (
+          <li class={project.full ? 'project-item project-item--full' : 'project-item'}>
+            <a href={`/projects/${project.slug}`} class="project-card block">
+              <div
+                class="project-cover relative overflow-hidden"
+                style={`background-color: ${project.bg}`}
+              >
+                <img
+                  src={project.image}
+                  alt={project.title}
+                  class="project-img w-full h-full object-cover"
+                  loading="lazy"
+                />
+                <div class="project-meta absolute bottom-0 left-0 right-0">
+                  <div class="flex items-baseline gap-2">
+                    <h2
+                      class="project-title font-bold"
+                      style={`color: ${project.dark ? '#f7f7f7' : '#6d6d6d'}`}
+                    >
+                      {project.title}
+                    </h2>
+                    <span
+                      class="project-title font-bold"
+                      style={`color: ${project.dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)'}`}
+                    >
+                      {project.year}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </a>
+          </li>
+        ))}
+      </ul>
+    </main>
+
+    <Footer />
+  </div>
+</Layout>
+
+<style>
+  /* ── Layout ─────────────────────────────────────────────── */
+  .project-main {
+    padding: 0 1em 0 1em;
+  }
+
+  .project-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1em;
+  }
+
+  .project-item--full {
+    grid-column: span 2;
+  }
+
+  .project-item--full .project-cover {
+    max-height: calc(100dvh - 7em);
+  }
+
+  .project-item--full .project-img {
+    object-position: center center;
+  }
+
+  /* ── Cover image container ──────────────────────────────── */
+  .project-cover {
+    aspect-ratio: 4 / 3;
+  }
+
+  /* ── Title typography (global) ──────────────────────────── */
+  .project-title {
+    font-size: 1.25rem;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+  }
+
+  /* ── Image & overlay (desktop default) ─────────────────── */
+  .project-img {
+    filter: blur(4px);
+    transform: scale(1.04);
+    transition: filter 0.5s ease, transform 0.5s ease;
+  }
+
+  .project-card:hover .project-img {
+    filter: blur(0px);
+    transform: scale(1.07);
+  }
+
+  .project-meta {
+    opacity: 0;
+    padding: 1em;
+    transition: opacity 0.3s ease;
+  }
+
+  .project-card:hover .project-meta {
+    opacity: 1;
+  }
+
+  /* ── Tablet and below (≤768px):
+       disable blur, always show titles ──────────────────── */
+  @media (max-width: 768px) {
+    .project-img {
+      filter: none !important;
+      transform: scale(1) !important;
+      transition: transform 0.4s ease !important;
+    }
+
+    .project-card:hover .project-img {
+      transform: scale(1.03) !important;
+    }
+
+    .project-meta {
+      opacity: 1 !important;
+      transition: none !important;
+    }
+  }
+
+  /* ── Mobile landscape and below (≤667px):
+       collapse to 2×2, switch to 1:1 aspect ratio ────────── */
+  @media (max-width: 667px) {
+    .project-item--full {
+      grid-column: span 1;
+    }
+
+    .project-cover {
+      aspect-ratio: 1 / 1;
+    }
+  }
+</style>

@@ -1,0 +1,74 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'Portfolio of Vicente Cruz — London-based industrial designer.' } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <!-- Page transition overlay (GSAP fades this in/out) -->
+    <div id="transition-overlay"></div>
+
+    <slot />
+
+    <script>
+      import gsap from 'gsap';
+
+      // ── Intro: pause then fade overlay out to reveal page ──
+      gsap.to('#transition-overlay', {
+        opacity: 0,
+        duration: 0.5,
+        delay: 0.5,
+        ease: 'power2.in',
+      });
+
+      // ── Exit: fade overlay in, then navigate ───────────────
+      document.querySelectorAll('a[href]').forEach((link) => {
+        const href = (link as HTMLAnchorElement).href;
+        const isSameOrigin = href.startsWith(window.location.origin);
+        const isHash = href.includes('#');
+
+        if (!isSameOrigin || isHash) return;
+
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          const target = (link as HTMLAnchorElement).href;
+
+          gsap.to('#transition-overlay', {
+            opacity: 1,
+            duration: 0.5,
+            ease: 'power2.in',
+            onComplete: () => {
+              window.location.href = target;
+            },
+          });
+        });
+      });
+
+      // ── Back/forward: reset overlay then fade out ──────────
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) {
+          gsap.to('#transition-overlay', {
+            opacity: 0,
+            duration: 0.5,
+            delay: 0.5,
+            ease: 'power2.in',
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
