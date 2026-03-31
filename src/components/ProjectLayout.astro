@@ -1,0 +1,54 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+
+interface Props {
+  title: string;
+  year: string;
+  description: string;
+  tags?: string[];
+}
+
+const { title, year, description, tags = [] } = Astro.props;
+---
+
+<Layout title={`${title} — Vicente Cruz`} description={description}>
+  <div class="flex flex-col min-h-dvh">
+    <Header title={title} linkHref="/" />
+
+    <main class="flex-1 px-6 md:px-10 py-8">
+      <!-- Project header -->
+      <header class="max-w-2xl mb-12">
+        <div class="flex items-baseline gap-3 mb-3">
+          <h1 class="text-2xl font-medium" style="font-family: var(--font-serif)">{title}</h1>
+          <span class="text-sm" style="color: var(--color-text-muted)">{year}</span>
+        </div>
+        <p class="text-base leading-relaxed" style="color: var(--color-text-muted)">{description}</p>
+        {tags.length > 0 && (
+          <div class="flex flex-wrap gap-2 mt-4">
+            {tags.map((tag) => (
+              <span class="text-xs px-2 py-1 rounded-sm" style="background: var(--color-border); color: var(--color-text-muted)">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <!-- Case study content injected here -->
+      <article class="max-w-3xl space-y-16">
+        <slot />
+      </article>
+    </main>
+
+    <!-- Back nav -->
+    <div class="px-6 md:px-10 py-6">
+      <a href="/" class="text-sm hover:opacity-60 transition-opacity duration-200" style="color: var(--color-text-muted)">
+        ← All projects
+      </a>
+    </div>
+
+    <Footer />
+  </div>
+</Layout>
