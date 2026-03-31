@@ -1,5 +1,7 @@
 # VCDwebsite — Claude Instructions
 
+> This file is the single source of truth for project context. All memory is kept here, in the repo.
+
 ## Project
 Astro + Bun + Tailwind CSS v4 + GSAP portfolio site for Vicente Cruz (industrial designer, London). Rebuilding vcruzdesigns.com as an independent site.
 
