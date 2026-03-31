@@ -14,7 +14,7 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
 - Dev server: port 4321
 - Page transitions: GSAP fades `#transition-overlay` (starts opaque, fades out on load with 0.5s delay; fades in on navigation)
-- Max page width: `width: 75vw; max-width: 60em` on `body`, centered, applied at `min-width: 1024px`
+- Max page width: fluid gutter via `#site-wrapper { padding-inline: max(1em, calc((100% - 60em) / 2)) }` — gutter holds at 1em until viewport exceeds 62em, then grows to keep content at 60em max
 
 ## Pending tasks (as of 2026-03-31)
 
@@ -25,7 +25,8 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 
 ### Roadmap
 1. Header polish (above)
-2. **About page** — rebuild to match vcruzdesigns.com Webflow about page (layout, copy, experience list, styling)
+2. ~~**Fluid max-width layout** — replace hard `1024px` breakpoint + `75vw` snap with `padding-inline: max(1em, calc((100% - 60em) / 2))` on `#site-wrapper`; gutters grow smoothly into the 60em cap~~
+3. **About page** — rebuild to match vcruzdesigns.com Webflow about page (layout, copy, experience list, styling)
 3. **Project pages** — rebuild each to match Webflow equivalents (image layouts, captions, sections, typography)
 4. **Style guide page** — `/styles` or `/debug` page previewing all site-wide components: h1–h3, body text, hover titles, captions, grids, footer, buttons — for QA and design consistency
 5. **Hosting & domain** — deploy to vcruzdesigns.com (likely Cloudflare Pages, Netlify, or Vercel; DNS switch from Webflow)
