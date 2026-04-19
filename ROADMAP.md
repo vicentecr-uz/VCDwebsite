@@ -4,6 +4,8 @@
 
 **Local checkout:** `$HOME/Documents/Projects/VCDwebsite/`
 
+**Scope (what belongs here):** Work that is **the site itself** — IA, global layout, deploy, nav, and **integration** of other work (routes, embeds, links, how a tool **sits inside** vcruzdesigns.com). **What does *not* belong here:** tasks that live inside another repo’s product (calculator logic, chart bugs, responsiveness of the **standalone** Stoozing HTML, AutoSpeedTest features, etc.) — those stay in **that project’s** roadmap (or in-file notes). **Gray line:** if the issue is the **site shell** (iframe sizing, Astro page grid, site chrome breaking mobile), it’s here; if it’s **Stoozing’s own** layout/CSS in `stoozing-playground.html`, it’s **Stoozing Playground**.
+
 ---
 
 ## v1 — ship a cohesive site
