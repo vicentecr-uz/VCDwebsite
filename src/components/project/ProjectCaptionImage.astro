@@ -1,0 +1,25 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Props {
+  src: string;
+  alt?: string;
+  caption: string;
+  variant?: 'light' | 'dark' | 'black';
+  square?: boolean;
+  loading?: 'eager' | 'lazy';
+}
+
+const { src, alt = '', caption, variant = 'light', square = false, loading = 'lazy' } = Astro.props;
+
+const captionClass = {
+  light: '',
+  dark: 'project-caption--dark',
+  black: 'project-caption--black',
+}[variant];
+---
+
+<figure class:list={['project-cell', square && 'project-cell--square']}>
+  <span class:list={['project-caption', captionClass]}>{caption}</span>
+  <img src={projectImage(src)} alt={alt} class="project-cell__img" loading={loading} />
+</figure>
