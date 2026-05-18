@@ -1,29 +1,360 @@
 ---
 interface Props {
   title?: string;
+  /** @deprecated Use nav menu on all pages; kept for non–nav-menu fallback only. */
   linkHref?: string;
+  navMenu?: boolean;
 }
-const { title = 'Vicente Cruz', linkHref = '/' } = Astro.props;
----
-<header class="flex items-center justify-between" style="padding: 0.85em 0; position: sticky; top: 0; background-color: #ffffff; z-index: 10;">
-  <a
-    href={linkHref}
-    class="hover:opacity-60 transition-opacity duration-200"
-    style="font-family: var(--font-sans); font-size: 2.0em; line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
-  >
-    {title}
-  </a>
 
-  <nav>
-    <a
-      href={linkHref}
-      class="block transition-opacity duration-200 opacity-100 hover:opacity-70"
-    >
-      <img
-        src="/images/LG%20Square.svg"
-        alt="Logo"
-        style="height: 2.0rem; width: 2.0rem; display: block;"
-      />
-    </a>
-  </nav>
-</header>
+const { title = 'Vicente Cruz', linkHref = '/', navMenu = true } = Astro.props;
+const wordmark = title.replace(' ', '\u00a0');
+const isHome = Astro.url.pathname === '/';
+const brandHref = isHome ? null : '/';
+
+const menuLinks = [
+  { label: 'About', href: '/about' },
+  { label: 'Extras', href: '/extras' },
+];
+---
+
+{navMenu ? (
+  <header class="site-header site-header--nav-menu">
+    <div class="header-menu-backdrop" aria-hidden="true"></div>
+    <div class="site-header__row">
+      <div class="header-trigger header-trigger--start">
+        <span class="header-trigger__sizer" aria-hidden="true">{wordmark}</span>
+        <div class="header-trigger__panel">
+          <div class="header-trigger__brand">
+            {brandHref ? (
+              <a href={brandHref} class="header-trigger__brand-link">
+                <span class="header-trigger__wordmark">{wordmark}</span>
+              </a>
+            ) : (
+              <span class="header-trigger__wordmark">{wordmark}</span>
+            )}
+          </div>
+          <ul class="header-menu" role="list">
+            {menuLinks.map((link) => (
+              <li>
+                <a href={link.href} class="header-menu__link">{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div class="header-trigger header-trigger--end">
+        <span class="header-trigger__sizer header-trigger__sizer--logo" aria-hidden="true">
+          <img src="/images/LG%20Square.svg" alt="" class="header-trigger__logo" />
+        </span>
+        <div class="header-trigger__panel">
+          <div class="header-trigger__brand">
+            {brandHref ? (
+              <a href={brandHref} class="header-trigger__brand-link">
+                <img
+                  src="/images/LG%20Square.svg"
+                  alt="Home"
+                  class="header-trigger__logo"
+                />
+              </a>
+            ) : (
+              <img
+                src="/images/LG%20Square.svg"
+                alt="Logo"
+                class="header-trigger__logo"
+              />
+            )}
+          </div>
+          <ul class="header-menu" role="list">
+            {menuLinks.map((link) => (
+              <li>
+                <a href={link.href} class="header-menu__link">{link.label}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </header>
+) : (
+  <header class="site-header">
+    <div class="site-header__row">
+      <a
+        href={linkHref}
+        class="header-link hover:opacity-60 transition-opacity duration-200"
+        style="font-family: var(--font-sans); font-size: 2.0em; line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
+      >
+        {title}
+      </a>
+
+      <nav>
+        <a
+          href={linkHref}
+          class="header-link block transition-opacity duration-200 opacity-100 hover:opacity-70"
+        >
+          <img
+            src="/images/LG%20Square.svg"
+            alt="Logo"
+            style="height: 2.0rem; width: 2.0rem; display: block;"
+          />
+        </a>
+      </nav>
+    </div>
+  </header>
+)}
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 0.85em 0;
+    background-color: #ffffff;
+  }
+
+  .site-header__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* ── Homepage nav menu ── */
+
+  .site-header--nav-menu {
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    background-color: transparent;
+  }
+
+  .header-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.9);
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .site-header--nav-menu:has(.header-trigger:hover) .header-menu-backdrop,
+  .site-header--nav-menu:has(.header-trigger:focus-within) .header-menu-backdrop {
+    opacity: 1;
+  }
+
+  .site-header--nav-menu .site-header__row {
+    z-index: 1;
+  }
+
+  .header-trigger {
+    --hitbox-pad: 0.85em;
+    --menu-hide-duration: 0.35s;
+    --menu-layout-delay: 0.35s;
+    --trigger-pad-y: 0.4em;
+    --trigger-pad-x: 0.55em;
+    position: relative;
+    z-index: 2;
+    flex-shrink: 0;
+    display: grid;
+  }
+
+  .header-trigger--end {
+    --trigger-pad: 0.4em;
+    --trigger-pad-x: var(--trigger-pad);
+    --trigger-pad-y: var(--trigger-pad);
+  }
+
+  .header-trigger__sizer {
+    grid-area: 1 / 1;
+    visibility: hidden;
+    pointer-events: none;
+    margin: calc(-1 * var(--trigger-pad-y)) calc(-1 * var(--trigger-pad-x));
+    padding: var(--trigger-pad-y) var(--trigger-pad-x);
+  }
+
+  .header-trigger__sizer:not(.header-trigger__sizer--logo) {
+    font-family: var(--font-sans);
+    font-size: 2em;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.05ch;
+  }
+
+  .header-trigger__sizer--logo {
+    display: block;
+    line-height: 0;
+  }
+
+  .header-trigger__panel {
+    position: absolute;
+    top: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    background-color: transparent;
+    box-sizing: border-box;
+    margin: calc(-1 * var(--trigger-pad-y)) calc(-1 * var(--trigger-pad-x));
+    padding: var(--trigger-pad-y) var(--trigger-pad-x);
+    transition:
+      padding 0.35s ease,
+      margin 0.35s ease;
+  }
+
+  .header-trigger--start .header-trigger__panel {
+    left: 0;
+    align-items: flex-start;
+    width: max-content;
+  }
+
+  .header-trigger--end .header-trigger__panel {
+    right: 0;
+    align-items: flex-end;
+    width: max-content;
+  }
+
+  .header-trigger--start:hover .header-trigger__panel,
+  .header-trigger--start:focus-within .header-trigger__panel {
+    width: max-content;
+    min-width: 100%;
+    margin: calc(-1 * (var(--trigger-pad-y) + var(--hitbox-pad)))
+      calc(-1 * (var(--trigger-pad-x) + var(--hitbox-pad)));
+    padding: calc(var(--trigger-pad-y) + var(--hitbox-pad))
+      calc(var(--trigger-pad-x) + var(--hitbox-pad));
+  }
+
+  .header-trigger--end:hover .header-trigger__panel,
+  .header-trigger--end:focus-within .header-trigger__panel {
+    width: max-content;
+    min-width: 100%;
+    margin: calc(-1 * (var(--trigger-pad) + var(--hitbox-pad)));
+    padding: calc(var(--trigger-pad) + var(--hitbox-pad));
+  }
+
+  .header-trigger__brand {
+    flex-shrink: 0;
+  }
+
+  .header-trigger__brand-link {
+    display: block;
+    color: inherit;
+    text-decoration: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .header-trigger__brand-link:hover {
+    opacity: 0.6;
+  }
+
+  .header-trigger--end .header-trigger__brand-link {
+    line-height: 0;
+  }
+
+  .header-trigger__wordmark,
+  .header-menu__link {
+    font-family: var(--font-sans);
+    font-size: 2em;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.05ch;
+  }
+
+  .header-trigger__wordmark {
+    display: block;
+    color: var(--color-text);
+  }
+
+  .header-trigger__logo {
+    height: 2rem;
+    width: 2rem;
+    display: block;
+  }
+
+  .header-menu {
+    list-style: none;
+    position: static;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      max-height var(--menu-hide-duration) ease,
+      opacity 0.25s ease,
+      margin-top var(--menu-hide-duration) ease,
+      width 0s linear var(--menu-layout-delay),
+      height 0s linear var(--menu-layout-delay),
+      position 0s step-end var(--menu-layout-delay);
+  }
+
+  .header-trigger:not(:hover):not(:focus-within) .header-menu {
+    position: absolute;
+    width: 0;
+    height: 0;
+  }
+
+  .header-trigger--start .header-menu {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .header-trigger--end .header-menu {
+    align-items: flex-end;
+    text-align: right;
+  }
+
+  .header-trigger:hover .header-menu,
+  .header-trigger:focus-within .header-menu {
+    position: static;
+    width: 100%;
+    height: auto;
+    max-height: 8em;
+    margin-top: 0.65em;
+    opacity: 1;
+    pointer-events: auto;
+    transition:
+      max-height var(--menu-hide-duration) ease,
+      opacity 0.25s ease,
+      margin-top var(--menu-hide-duration) ease,
+      width 0s linear 0s,
+      height 0s linear 0s,
+      position 0s step-end 0s;
+  }
+
+  .header-menu__link {
+    display: block;
+    color: #5a5a5a;
+    opacity: 0;
+    transition: opacity 0.3s ease 0s;
+  }
+
+  .header-trigger:hover .header-menu__link,
+  .header-trigger:focus-within .header-menu__link {
+    opacity: 1;
+  }
+
+  .header-trigger:hover .header-menu li:nth-child(1) .header-menu__link,
+  .header-trigger:focus-within .header-menu li:nth-child(1) .header-menu__link {
+    transition-delay: 0.06s;
+  }
+
+  .header-trigger:hover .header-menu li:nth-child(2) .header-menu__link,
+  .header-trigger:focus-within .header-menu li:nth-child(2) .header-menu__link {
+    transition-delay: 0.14s;
+  }
+
+  .header-trigger:hover .header-menu li:nth-child(3) .header-menu__link,
+  .header-trigger:focus-within .header-menu li:nth-child(3) .header-menu__link {
+    transition-delay: 0.22s;
+  }
+
+  .header-trigger:hover .header-menu__link:hover,
+  .header-trigger:focus-within .header-menu__link:hover {
+    color: #3d3d3d;
+  }
+</style>
