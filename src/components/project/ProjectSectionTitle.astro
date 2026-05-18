@@ -2,11 +2,13 @@
 interface Props {
   title: string;
   tightBottom?: boolean;
+  level?: 2 | 3;
 }
 
-const { title, tightBottom = true } = Astro.props;
+const { title, tightBottom = true, level = 2 } = Astro.props;
+const Tag = level === 3 ? 'h3' : 'h2';
 ---
 
 <div class:list={['project-block', 'project-block--heading-only', tightBottom && 'project-block--tight-bottom']}>
-  <h2 class="project-section-title">{title}</h2>
+  <Tag class="project-section-title">{title}</Tag>
 </div>
