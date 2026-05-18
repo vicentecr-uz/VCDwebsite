@@ -1,0 +1,28 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Props {
+  src: string;
+  alt?: string;
+  constrained?: boolean;
+  mobileHeight?: '35' | '40' | '50' | '60';
+  loading?: 'eager' | 'lazy';
+  /** Minimal vertical padding when stacked in a gallery sequence */
+  flush?: boolean;
+}
+
+const { src, alt = '', constrained = false, mobileHeight, loading = 'lazy', flush = false } = Astro.props;
+
+const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
+---
+
+<div class:list={['project-block', 'project-block--before-image', flush && 'project-block--flush']}>
+  <figure class:list={['project-media', constrained && 'project-media--constrained']}>
+    <img
+      src={projectImage(src)}
+      alt={alt}
+      class:list={['project-media__img', heightClass]}
+      loading={loading}
+    />
+  </figure>
+</div>

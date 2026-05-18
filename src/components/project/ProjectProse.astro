@@ -1,0 +1,18 @@
+---
+interface Props {
+  tightTop?: boolean;
+  tightBottom?: boolean;
+}
+
+const { tightTop = false, tightBottom = false } = Astro.props;
+const classes = [
+  'project-block',
+  'project-prose',
+  tightTop && 'project-block--after-text',
+  tightBottom && 'project-block--tight-bottom',
+].filter(Boolean).join(' ');
+---
+
+<section class={classes}>
+  <slot />
+</section>
