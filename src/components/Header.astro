@@ -7,7 +7,11 @@ interface Props {
 }
 
 const { title = 'Vicente Cruz', linkHref = '/', navMenu = true } = Astro.props;
+const homeWordmark = 'Vicente\u00a0Cruz';
 const wordmark = title.replace(' ', '\u00a0');
+const showWordmarkSwap = title !== 'Vicente Cruz';
+const pageChars = [...wordmark];
+const homeChars = [...homeWordmark];
 const isHome = Astro.url.pathname === '/';
 const brandHref = isHome ? null : '/';
 
@@ -15,26 +19,61 @@ const menuLinks = [
   { label: 'About', href: '/about' },
   { label: 'Extras', href: '/extras' },
 ];
+
+const normalizePath = (path: string) => path.replace(/\/$/, '') || '/';
+const currentPath = normalizePath(Astro.url.pathname);
+const visibleMenuLinks = menuLinks.filter(
+  (link) => normalizePath(link.href) !== currentPath,
+);
 ---
 
 {navMenu ? (
   <header class="site-header site-header--nav-menu">
+    <div class="site-header__bg" aria-hidden="true"></div>
     <div class="header-menu-backdrop" aria-hidden="true"></div>
     <div class="site-header__row">
-      <div class="header-trigger header-trigger--start">
-        <span class="header-trigger__sizer" aria-hidden="true">{wordmark}</span>
+      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
+        <span class="header-trigger__sizer" aria-hidden="true">
+          {showWordmarkSwap ? (
+            <span class="header-trigger__sizer-track">
+              <span>{wordmark}</span>
+              <span>{homeWordmark}</span>
+            </span>
+          ) : (
+            wordmark
+          )}
+        </span>
         <div class="header-trigger__panel">
+          <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand">
             {brandHref ? (
-              <a href={brandHref} class="header-trigger__brand-link">
-                <span class="header-trigger__wordmark">{wordmark}</span>
+              <a
+                href={brandHref}
+                class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
+              >
+                {showWordmarkSwap ? (
+                  <span class="header-trigger__wordmark-stack">
+                    <span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                      {pageChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      ))}
+                    </span>
+                    <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                      {homeChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      ))}
+                    </span>
+                  </span>
+                ) : (
+                  <span class="header-trigger__wordmark">{wordmark}</span>
+                )}
               </a>
             ) : (
               <span class="header-trigger__wordmark">{wordmark}</span>
             )}
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
+            {visibleMenuLinks.map((link) => (
               <li>
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
@@ -47,6 +86,7 @@ const menuLinks = [
           <img src="/images/LG%20Square.svg" alt="" class="header-trigger__logo" />
         </span>
         <div class="header-trigger__panel">
+          <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand">
             {brandHref ? (
               <a href={brandHref} class="header-trigger__brand-link">
@@ -65,7 +105,7 @@ const menuLinks = [
             )}
           </div>
           <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
+            {visibleMenuLinks.map((link) => (
               <li>
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
@@ -77,6 +117,7 @@ const menuLinks = [
   </header>
 ) : (
   <header class="site-header">
+    <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
       <a
         href={linkHref}
@@ -102,13 +143,325 @@ const menuLinks = [
   </header>
 )}
 
+<script>
+  const header = document.querySelector('.site-header');
+  if (header) {
+    let lastY = window.scrollY;
+    let ticking = false;
+
+    const isMenuOpen = () =>
+      header.matches(
+        ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
+      );
+
+    const update = () => {
+      const y = window.scrollY;
+
+      if (isMenuOpen() || y <= 8) {
+        header.classList.remove('is-scrolled-hidden');
+      } else if (y > lastY + 4) {
+        header.classList.add('is-scrolled-hidden');
+      } else if (y < lastY - 4) {
+        header.classList.remove('is-scrolled-hidden');
+      }
+
+      lastY = y;
+      ticking = false;
+    };
+
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (!ticking) {
+          requestAnimationFrame(update);
+          ticking = true;
+        }
+      },
+      { passive: true },
+    );
+  }
+
+  const setMenuBackdropVisible = (visible: boolean) => {
+    document
+      .querySelector('.site-header--nav-menu')
+      ?.classList.toggle('is-menu-backdrop-visible', visible);
+  };
+
+  document.querySelectorAll('.header-trigger').forEach((trigger) => {
+    const links = [...trigger.querySelectorAll('.header-menu__link')];
+    if (!links.length) return;
+
+    const panelBg = trigger.querySelector('.header-trigger__panel-bg') as HTMLElement | null;
+    const closeLayoutMs =
+      Math.ceil(Math.max(0.38, (links.length - 1) * 0.04 + 0.15) * 1000) + 32;
+    let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const setPanelReveal = (open: boolean) => {
+      if (!panelBg) return;
+
+      if (open) {
+        trigger.style.setProperty('--panel-bg-duration', '0.48s');
+        trigger.style.setProperty('--panel-bg-delay', '0s');
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            trigger.style.setProperty('--menu-reveal', '1');
+          });
+        });
+      } else {
+        trigger.style.setProperty('--panel-bg-duration', '0.38s');
+        trigger.style.setProperty('--panel-bg-delay', '0s');
+        trigger.style.setProperty('--menu-reveal', '0');
+      }
+    };
+
+    const setOpenStagger = () => {
+      links.forEach((link, i) => {
+        link.style.setProperty('--menu-link-delay', `${0.06 + i * 0.08}s`);
+        link.style.setProperty('--menu-link-duration', '0.3s');
+        link.style.opacity = '1';
+      });
+    };
+
+    const setCloseStagger = () => {
+      links.forEach((link, i) => {
+        const reverseIndex = links.length - 1 - i;
+        link.style.setProperty('--menu-link-delay', `${reverseIndex * 0.04}s`);
+        link.style.setProperty('--menu-link-duration', '0.15s');
+        link.style.opacity = '0';
+      });
+    };
+
+    const openMenu = () => {
+      if (closeTimer) clearTimeout(closeTimer);
+      trigger.style.setProperty('--menu-reveal', '0');
+      trigger.classList.add('is-menu-open');
+      setMenuBackdropVisible(true);
+      setOpenStagger();
+      setPanelReveal(true);
+    };
+
+    const closeMenu = () => {
+      setMenuBackdropVisible(false);
+      setCloseStagger();
+      setPanelReveal(false);
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = setTimeout(() => {
+        if (!trigger.matches(':hover') && !trigger.contains(document.activeElement)) {
+          trigger.classList.remove('is-menu-open');
+        }
+      }, closeLayoutMs);
+    };
+
+    trigger.addEventListener('mouseenter', openMenu);
+    trigger.addEventListener('focusin', openMenu);
+    trigger.addEventListener('mouseleave', closeMenu);
+    trigger.addEventListener('focusout', (event) => {
+      if (!trigger.contains(event.relatedTarget as Node | null)) {
+        closeMenu();
+      }
+    });
+  });
+
+  const startTrigger = document.querySelector('.header-trigger--start');
+  const wordmarkStack = startTrigger?.querySelector('.header-trigger__wordmark-stack');
+
+  if (startTrigger && wordmarkStack) {
+    const pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page');
+    const homeWordmarkEl = wordmarkStack.querySelector('.header-trigger__wordmark--home');
+    const pageChars = [...wordmarkStack.querySelectorAll('.header-trigger__wordmark--page .header-trigger__char')];
+    const homeChars = [...wordmarkStack.querySelectorAll('.header-trigger__wordmark--home .header-trigger__char')];
+    const brandLink = startTrigger.querySelector('.header-trigger__brand-link');
+
+    const FADE_OUT_STAGGER = 0.03;
+    const FADE_OUT_DURATION = 0.15;
+    const FADE_IN_DURATION = 0.25;
+    const FADE_IN_STAGGER_START = 0.04;
+    const FADE_IN_STAGGER_END = 0.09;
+    const CLOSE_IN_BASE_DELAY = FADE_OUT_DURATION * 0.45;
+
+    let wordmarkIsOpen = false;
+    let wordmarkAnimating = false;
+
+    const setCharTransition = (
+      chars: HTMLElement[],
+      opacity: number,
+      stagger: number,
+      duration: number,
+      reverse = false,
+      easing = 'ease',
+      baseDelay = 0,
+    ) => {
+      chars.forEach((char, i) => {
+        const index = reverse ? chars.length - 1 - i : i;
+        char.style.setProperty('--char-delay', `${baseDelay + index * stagger}s`);
+        char.style.setProperty('--char-duration', `${duration}s`);
+        char.style.setProperty('--char-easing', easing);
+        char.style.opacity = String(opacity);
+      });
+    };
+
+    const progressiveStaggerDelay = (
+      index: number,
+      total: number,
+      staggerStart: number,
+      staggerEnd: number,
+    ) => {
+      let delay = 0;
+
+      for (let j = 0; j < index; j++) {
+        const progress = total > 1 ? j / (total - 1) : 0;
+        delay += staggerStart + progress * (staggerEnd - staggerStart);
+      }
+
+      return delay;
+    };
+
+    const applyWordmarkFadeIn = (chars: HTMLElement[], baseDelay = 0) => {
+      chars.forEach((char, i) => {
+        const delay =
+          baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
+
+        char.style.setProperty('--char-delay', `${delay}s`);
+        char.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
+        char.style.setProperty('--char-easing', 'ease');
+        char.style.opacity = '1';
+      });
+    };
+
+    const getFadeOutEnd = (count: number) =>
+      Math.max(0, (count - 1) * FADE_OUT_STAGGER + FADE_OUT_DURATION);
+
+    const getFadeInEnd = (count: number, baseDelay: number) =>
+      baseDelay +
+      progressiveStaggerDelay(
+        Math.max(0, count - 1),
+        count,
+        FADE_IN_STAGGER_START,
+        FADE_IN_STAGGER_END,
+      ) +
+      FADE_IN_DURATION;
+
+    const waitForWordmarkTransition = (durationSec: number) =>
+      new Promise<void>((resolve) => {
+        window.setTimeout(resolve, durationSec * 1000 + 32);
+      });
+
+    const applyWordmarkOpen = () => {
+      setCharTransition(pageChars, 0, FADE_OUT_STAGGER, FADE_OUT_DURATION, false, 'ease');
+      applyWordmarkFadeIn(homeChars);
+
+      pageWordmark?.setAttribute('aria-hidden', 'true');
+      homeWordmarkEl?.setAttribute('aria-hidden', 'false');
+      brandLink?.setAttribute('aria-label', 'Vicente Cruz');
+    };
+
+    const applyWordmarkClose = () => {
+      homeChars.forEach((char, i) => {
+        char.style.setProperty('--char-delay', `${i * FADE_OUT_STAGGER}s`);
+        char.style.setProperty('--char-duration', `${FADE_OUT_DURATION}s`);
+        char.style.setProperty('--char-easing', 'ease');
+        char.style.opacity = '0';
+      });
+
+      applyWordmarkFadeIn(pageChars, CLOSE_IN_BASE_DELAY);
+
+      pageWordmark?.setAttribute('aria-hidden', 'false');
+      homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      brandLink?.removeAttribute('aria-label');
+    };
+
+    const isWordmarkHoverActive = () =>
+      startTrigger.matches(':hover') || startTrigger.contains(document.activeElement);
+
+    const syncWordmarkHover = () => {
+      if (wordmarkAnimating) return;
+
+      const hoverActive = isWordmarkHoverActive();
+
+      if (hoverActive && !wordmarkIsOpen) {
+        void runWordmarkOpen();
+      } else if (!hoverActive && wordmarkIsOpen) {
+        void runWordmarkClose();
+      }
+    };
+
+    const runWordmarkOpen = async () => {
+      if (wordmarkAnimating) return;
+
+      wordmarkAnimating = true;
+      applyWordmarkOpen();
+
+      const duration = Math.max(
+        getFadeOutEnd(pageChars.length),
+        getFadeInEnd(homeChars.length, 0),
+      );
+
+      await waitForWordmarkTransition(duration);
+
+      wordmarkIsOpen = true;
+      wordmarkAnimating = false;
+      syncWordmarkHover();
+    };
+
+    const runWordmarkClose = async () => {
+      if (wordmarkAnimating) return;
+
+      wordmarkAnimating = true;
+      applyWordmarkClose();
+
+      const duration = Math.max(
+        getFadeOutEnd(homeChars.length),
+        getFadeInEnd(pageChars.length, CLOSE_IN_BASE_DELAY),
+      );
+
+      await waitForWordmarkTransition(duration);
+
+      wordmarkIsOpen = false;
+      wordmarkAnimating = false;
+      syncWordmarkHover();
+    };
+
+    const onWordmarkPointerActive = () => {
+      if (wordmarkAnimating) return;
+      if (!wordmarkIsOpen) void runWordmarkOpen();
+    };
+
+    const onWordmarkPointerInactive = () => {
+      if (wordmarkAnimating) return;
+      if (wordmarkIsOpen) void runWordmarkClose();
+    };
+
+    startTrigger.addEventListener('mouseenter', onWordmarkPointerActive);
+    startTrigger.addEventListener('focusin', onWordmarkPointerActive);
+    startTrigger.addEventListener('mouseleave', onWordmarkPointerInactive);
+    startTrigger.addEventListener('focusout', (event) => {
+      if (!startTrigger.contains(event.relatedTarget as Node | null)) {
+        onWordmarkPointerInactive();
+      }
+    });
+  }
+</script>
+
 <style>
   .site-header {
     position: sticky;
     top: 0;
-    z-index: 10;
-    padding: 0.85em 0;
+    z-index: 15;
+    padding: 1em 0;
+    transition: opacity 0.35s ease;
+  }
+
+  .site-header.is-scrolled-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .site-header__bg {
+    position: absolute;
+    inset: 0;
     background-color: #ffffff;
+    z-index: 0;
+    pointer-events: none;
   }
 
   .site-header__row {
@@ -122,10 +475,7 @@ const menuLinks = [
   /* ── Homepage nav menu ── */
 
   .site-header--nav-menu {
-    position: sticky;
-    top: 0;
     z-index: 15;
-    background-color: transparent;
   }
 
   .header-menu-backdrop {
@@ -133,13 +483,12 @@ const menuLinks = [
     inset: 0;
     background-color: rgba(255, 255, 255, 0.9);
     opacity: 0;
-    transition: opacity 0.35s ease;
+    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
     pointer-events: none;
     z-index: 0;
   }
 
-  .site-header--nav-menu:has(.header-trigger:hover) .header-menu-backdrop,
-  .site-header--nav-menu:has(.header-trigger:focus-within) .header-menu-backdrop {
+  .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
     opacity: 1;
   }
 
@@ -148,29 +497,21 @@ const menuLinks = [
   }
 
   .header-trigger {
-    --hitbox-pad: 0.85em;
-    --menu-hide-duration: 0.35s;
-    --menu-layout-delay: 0.35s;
-    --trigger-pad-y: 0.4em;
-    --trigger-pad-x: 0.55em;
+    --hitbox-pad: 1em;
+    --menu-gap: 0.7em;
+    --menu-reveal: 0;
+    --panel-bg-duration: 0.48s;
+    --panel-bg-delay: 0s;
     position: relative;
     z-index: 2;
     flex-shrink: 0;
     display: grid;
   }
 
-  .header-trigger--end {
-    --trigger-pad: 0.4em;
-    --trigger-pad-x: var(--trigger-pad);
-    --trigger-pad-y: var(--trigger-pad);
-  }
-
   .header-trigger__sizer {
     grid-area: 1 / 1;
     visibility: hidden;
     pointer-events: none;
-    margin: calc(-1 * var(--trigger-pad-y)) calc(-1 * var(--trigger-pad-x));
-    padding: var(--trigger-pad-y) var(--trigger-pad-x);
   }
 
   .header-trigger__sizer:not(.header-trigger__sizer--logo) {
@@ -186,19 +527,167 @@ const menuLinks = [
     line-height: 0;
   }
 
+  .header-trigger__sizer-track {
+    display: inline-grid;
+  }
+
+  .header-trigger__sizer-track > span {
+    grid-area: 1 / 1;
+  }
+
   .header-trigger__panel {
     position: absolute;
     top: 0;
     z-index: 3;
     display: flex;
     flex-direction: column;
-    background-color: transparent;
     box-sizing: border-box;
-    margin: calc(-1 * var(--trigger-pad-y)) calc(-1 * var(--trigger-pad-x));
-    padding: var(--trigger-pad-y) var(--trigger-pad-x);
-    transition:
-      padding 0.35s ease,
-      margin 0.35s ease;
+    margin: calc(-1 * var(--hitbox-pad));
+    padding: var(--hitbox-pad);
+    overflow: visible;
+  }
+
+  .header-trigger__panel-bg {
+    --feather: 5em;
+    position: absolute;
+    z-index: 1;
+    opacity: 0;
+    pointer-events: none;
+    transition: height var(--panel-bg-duration) cubic-bezier(0.22, 1, 0.36, 1) var(--panel-bg-delay);
+  }
+
+  .header-trigger__panel-bg::before {
+    content: '';
+    position: absolute;
+    background: #ffffff;
+    -webkit-mask-composite: source-in;
+    mask-composite: intersect;
+  }
+
+  .header-trigger.is-menu-open .header-trigger__panel-bg,
+  .header-trigger:focus-within .header-trigger__panel-bg {
+    opacity: 1;
+  }
+
+  .header-trigger--home .header-trigger__panel {
+    cursor: default;
+  }
+
+  .header-trigger--home .header-trigger__brand,
+  .header-trigger--home .header-trigger__wordmark {
+    cursor: default;
+  }
+
+  .header-trigger--home .header-menu__link {
+    cursor: pointer;
+  }
+
+  .header-trigger--start .header-trigger__panel-bg {
+    top: 0;
+    left: 0;
+    right: calc(-0.75 * var(--feather));
+    bottom: auto;
+    height: calc(var(--menu-reveal) * (100% + var(--feather)));
+  }
+
+  .header-trigger--start .header-trigger__panel-bg::before {
+    inset: 0;
+    right: calc(-0.75 * var(--feather));
+    -webkit-mask-image:
+      linear-gradient(
+        to bottom,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      ),
+      linear-gradient(
+        to right,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      );
+    mask-image:
+      linear-gradient(
+        to bottom,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      ),
+      linear-gradient(
+        to right,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      );
+  }
+
+  .header-trigger--end .header-trigger__panel-bg {
+    top: 0;
+    left: calc(-0.75 * var(--feather));
+    right: 0;
+    bottom: auto;
+    height: calc(var(--menu-reveal) * (100% + var(--feather)));
+  }
+
+  .header-trigger--end .header-trigger__panel-bg::before {
+    inset: 0;
+    left: calc(-0.75 * var(--feather));
+    -webkit-mask-image:
+      linear-gradient(
+        to bottom,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      ),
+      linear-gradient(
+        to left,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      );
+    mask-image:
+      linear-gradient(
+        to bottom,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      ),
+      linear-gradient(
+        to left,
+        #000 0%,
+        #000 calc(100% - var(--feather)),
+        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
+        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
+        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
+        transparent 100%
+      );
+  }
+
+  .header-trigger__brand,
+  .header-menu {
+    position: relative;
+    z-index: 2;
   }
 
   .header-trigger--start .header-trigger__panel {
@@ -211,24 +700,6 @@ const menuLinks = [
     right: 0;
     align-items: flex-end;
     width: max-content;
-  }
-
-  .header-trigger--start:hover .header-trigger__panel,
-  .header-trigger--start:focus-within .header-trigger__panel {
-    width: max-content;
-    min-width: 100%;
-    margin: calc(-1 * (var(--trigger-pad-y) + var(--hitbox-pad)))
-      calc(-1 * (var(--trigger-pad-x) + var(--hitbox-pad)));
-    padding: calc(var(--trigger-pad-y) + var(--hitbox-pad))
-      calc(var(--trigger-pad-x) + var(--hitbox-pad));
-  }
-
-  .header-trigger--end:hover .header-trigger__panel,
-  .header-trigger--end:focus-within .header-trigger__panel {
-    width: max-content;
-    min-width: 100%;
-    margin: calc(-1 * (var(--trigger-pad) + var(--hitbox-pad)));
-    padding: calc(var(--trigger-pad) + var(--hitbox-pad));
   }
 
   .header-trigger__brand {
@@ -246,6 +717,11 @@ const menuLinks = [
     opacity: 0.6;
   }
 
+  .header-trigger__brand-link--swap,
+  .header-trigger__brand-link--swap:hover {
+    opacity: 1;
+  }
+
   .header-trigger--end .header-trigger__brand-link {
     line-height: 0;
   }
@@ -259,9 +735,40 @@ const menuLinks = [
     letter-spacing: -0.05ch;
   }
 
+  .header-menu__link {
+    display: block;
+    color: #5a5a5a;
+    opacity: 0;
+    transition: opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s);
+  }
+
   .header-trigger__wordmark {
     display: block;
     color: var(--color-text);
+  }
+
+  .header-trigger__wordmark-stack {
+    display: inline-grid;
+  }
+
+  .header-trigger__wordmark--page,
+  .header-trigger__wordmark--home {
+    grid-area: 1 / 1;
+    white-space: nowrap;
+  }
+
+  .header-trigger__wordmark--home {
+    position: relative;
+  }
+
+  .header-trigger__char {
+    display: inline-block;
+    opacity: 1;
+    transition: opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
+  }
+
+  .header-trigger__wordmark--home .header-trigger__char {
+    opacity: 0;
   }
 
   .header-trigger__logo {
@@ -271,31 +778,16 @@ const menuLinks = [
   }
 
   .header-menu {
+    position: absolute;
+    top: calc(100% - var(--hitbox-pad));
+    left: var(--hitbox-pad);
     list-style: none;
-    position: static;
-    width: 100%;
     margin: 0;
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.35em;
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
+    gap: var(--menu-gap);
     pointer-events: none;
-    transition:
-      max-height var(--menu-hide-duration) ease,
-      opacity 0.25s ease,
-      margin-top var(--menu-hide-duration) ease,
-      width 0s linear var(--menu-layout-delay),
-      height 0s linear var(--menu-layout-delay),
-      position 0s step-end var(--menu-layout-delay);
-  }
-
-  .header-trigger:not(:hover):not(:focus-within) .header-menu {
-    position: absolute;
-    width: 0;
-    height: 0;
   }
 
   .header-trigger--start .header-menu {
@@ -304,57 +796,53 @@ const menuLinks = [
   }
 
   .header-trigger--end .header-menu {
+    right: var(--hitbox-pad);
+    left: auto;
     align-items: flex-end;
     text-align: right;
   }
 
-  .header-trigger:hover .header-menu,
+  .header-trigger.is-menu-open .header-menu,
   .header-trigger:focus-within .header-menu {
     position: static;
-    width: 100%;
-    height: auto;
-    max-height: 8em;
-    margin-top: 0.65em;
-    opacity: 1;
+    margin-top: var(--menu-gap);
     pointer-events: auto;
-    transition:
-      max-height var(--menu-hide-duration) ease,
-      opacity 0.25s ease,
-      margin-top var(--menu-hide-duration) ease,
-      width 0s linear 0s,
-      height 0s linear 0s,
-      position 0s step-end 0s;
   }
 
-  .header-menu__link {
-    display: block;
-    color: #5a5a5a;
-    opacity: 0;
-    transition: opacity 0.3s ease 0s;
+  .header-trigger--end.is-menu-open .header-menu,
+  .header-trigger--end:focus-within .header-menu {
+    align-self: flex-end;
   }
 
-  .header-trigger:hover .header-menu__link,
+  .header-trigger.is-menu-open .header-menu__link,
   .header-trigger:focus-within .header-menu__link {
     opacity: 1;
   }
 
-  .header-trigger:hover .header-menu li:nth-child(1) .header-menu__link,
-  .header-trigger:focus-within .header-menu li:nth-child(1) .header-menu__link {
-    transition-delay: 0.06s;
-  }
-
-  .header-trigger:hover .header-menu li:nth-child(2) .header-menu__link,
-  .header-trigger:focus-within .header-menu li:nth-child(2) .header-menu__link {
-    transition-delay: 0.14s;
-  }
-
-  .header-trigger:hover .header-menu li:nth-child(3) .header-menu__link,
-  .header-trigger:focus-within .header-menu li:nth-child(3) .header-menu__link {
-    transition-delay: 0.22s;
-  }
-
-  .header-trigger:hover .header-menu__link:hover,
+  .header-trigger.is-menu-open .header-menu__link:hover,
   .header-trigger:focus-within .header-menu__link:hover {
     color: #3d3d3d;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .site-header {
+      transition: none;
+    }
+
+    .header-menu__link {
+      transition: none;
+    }
+
+    .header-trigger__char {
+      transition: none;
+    }
+
+    .header-trigger {
+      transition: none;
+    }
+
+    .header-trigger__panel-bg {
+      transition: none;
+    }
   }
 </style>
