@@ -18,10 +18,14 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 
 ## Pending tasks (as of 2026-03-31)
 
-### About page (next up)
-1. **Responsive layout reflow** — on narrow viewports the "About" section sits below the Contact column; above a breakpoint it animates/transitions to sit below the photo (left column), matching the two-panel desktop layout. Use GSAP or CSS transition for the reflow animation.
-2. **Photo aspect ratio** — change from `3/4` portrait to `1:1` square crop.
-3. **Bio text max-width** — research optimal characters-per-line for reading comprehension (target ~60–75 chars / ~10–12 words per line is the common finding); apply as a `max-width` on the bio `<p>`. Currently `38em` — may need tuning.
+### About page — ✓ done
+Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
+- **Wide (≥50em):** photo 3/4 (17em col) left, Contact+About+Experience stacked in right col
+- **Medium (40–50em):** photo 1:1 (17em) + Contact top row; About+Experience span full width below
+- **Narrow (<40em):** single column, photo 1:1 full-width → Contact → About → Experience
+- Photo `object-position: 50% 35%` in square crop for headroom; `50% 50%` in portrait
+- GSAP Flip animates element repositioning; photo height wipe + object-position animated separately
+- Bio `max-width: 38em`; noscript CSS media query fallback for all states
 
 ### Footer
 4. **Centered footer at breakpoint** — dynamically animate/transition footer text to `text-align: center` (and possibly `justify-content: center`) below a certain viewport width (width TBD). Consider GSAP ScrollTrigger or a CSS media query transition.
