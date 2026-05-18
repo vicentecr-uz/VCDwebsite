@@ -389,6 +389,7 @@ const visibleMenuLinks = menuLinks.filter(
       if (wordmarkAnimating) return;
 
       wordmarkAnimating = true;
+      startTrigger.classList.add('is-wordmark-swapped');
       applyWordmarkOpen();
 
       const duration = Math.max(
@@ -418,6 +419,7 @@ const visibleMenuLinks = menuLinks.filter(
 
       wordmarkIsOpen = false;
       wordmarkAnimating = false;
+      startTrigger.classList.remove('is-wordmark-swapped');
       syncWordmarkHover();
     };
 
@@ -722,6 +724,7 @@ const visibleMenuLinks = menuLinks.filter(
   .header-trigger__brand-link--swap,
   .header-trigger__brand-link--swap:hover {
     opacity: 1;
+    width: fit-content;
   }
 
   /* Opacity hover breaks char fade animations; use color instead */
@@ -761,17 +764,32 @@ const visibleMenuLinks = menuLinks.filter(
   }
 
   .header-trigger__wordmark-stack {
-    display: inline-grid;
+    position: relative;
+    display: inline-block;
   }
 
   .header-trigger__wordmark--page,
   .header-trigger__wordmark--home {
-    grid-area: 1 / 1;
     white-space: nowrap;
   }
 
   .header-trigger__wordmark--home {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+
+  .header-trigger--start.is-wordmark-swapped .header-trigger__wordmark--page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+  }
+
+  .header-trigger--start.is-wordmark-swapped .header-trigger__wordmark--home {
     position: relative;
+    pointer-events: auto;
   }
 
   .header-trigger__char {
