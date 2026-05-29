@@ -8,6 +8,11 @@ export default defineConfig({
   // TODO: Re-enable Astro dev toolbar after investigating dev-mode layout jump.
   devToolbar: { enabled: false },
   vite: {
-    plugins: [tailwindcss()]
+    plugins: [tailwindcss()],
+    server: {
+      watch: {
+        ignored: ['**/ROADMAP.md']
+      }
+    }
   }
 });
