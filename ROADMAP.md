@@ -10,10 +10,23 @@
 
 ## v1 — ship a cohesive site
 
-- [ ] Recreate core pages with AI-assisted workflow.
-- [ ] Clear IA: home, work/projects pointer, contact or link-out as needed.
-- [ ] Match **vcruzdesigns.com** branding.
-- [ ] **Done-for-now bar:** site live; no blocking placeholders on primary pages; Stoozing Playground reachable from the site; **`/tools`** stub or first real entry (see below).
+- [ ] Work on desktop site
+    - [x] Change Extras page to Play
+        - [x] Play page will be like Work (gallery of projects and stuff)
+    - [ ] Design system page with all the components in use across the site → so that I can build new project pages just by saying something like 'create a new project page with the following components: hero, text, inline image, 2x2 grid image, text, hover detail image, quote, text'
+        - [ ] Figure out how to add a little example pop-up to show the component used in context in other pages
+    - [ ] Change homepage project gallery images to something more representative of each project's design, something more eye-catching
+	- [ ] 404 page
+	- [ ] Change site to use off-white/black background colour and have it roll-out site-wide
+		- [ ] Have light/dark theme react to local time of browser
+		- [ ] Add toggle in menu
+	- [ ] Add a Work link to the header menu above → when on homepage, have it shake like in an 'interaction denied' type of way when clicked, then if clicked again, have the text appear in a slightly lighter gray to the left/right of it saying "you're already on this page", then if you click it again, have the text darken. Click it one more time and the menu option gradient from below upwards as the rest of the links shift up by one
+- [ ] Work on mobile site
+	- [ ] Review it on mobile to fix issues
+
+## v2+
+- [ ] Make some objects 3D rotatable (using gaussian splats or however it's done on chaz.fun/phonemuseum)
+- [ ] Add a short RSVP/Spritz-style opening micro-intro (name + one-liner) that informs while assets load, with strict non-blocking/skip behavior
 
 ---
 
