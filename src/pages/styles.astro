@@ -2,6 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import SectionSidebarNav from '../components/SectionSidebarNav.astro';
 import '../styles/project.css';
 
 const colorTokens = [
@@ -123,15 +124,11 @@ const sectionLinks = [
     <Header title="Styles" />
 
     <div class="styles-layout">
-      <aside class="styles-nav" aria-label="Styles page sections">
-        <ul class="styles-nav__list">
-          {sectionLinks.map((link) => (
-            <li>
-              <a href={`#${link.id}`}>{link.label}</a>
-            </li>
-          ))}
-        </ul>
-      </aside>
+      <SectionSidebarNav
+        sectionLinks={sectionLinks}
+        ariaLabel="Styles page sections"
+        enableEasingDevPanel={false}
+      />
 
       <main class="styles-main">
       <section id="styles-intro" class="styles-intro section-block">
@@ -325,33 +322,8 @@ const sectionLinks = [
     position: relative;
   }
 
-  .styles-nav {
-    border: 1px solid var(--color-border);
-    padding: 1em;
-    background: #ffffff;
-  }
-
-  .styles-nav__list {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5em;
-    margin: 0;
-    padding: 0;
-  }
-
-  .styles-nav a {
-    color: color-mix(in srgb, var(--color-text) 85%, transparent);
-    text-decoration: none;
-    transition: color 0.2s ease;
-  }
-
-  .styles-nav a:hover {
-    color: var(--color-text);
-  }
-
   .section-block[id] {
-    scroll-margin-top: 5em;
+    scroll-margin-top: 9.5em;
   }
 
   .section-block {
@@ -612,37 +584,7 @@ const sectionLinks = [
     line-height: 1.45;
   }
 
-  @media (min-width: 64em) {
-    .styles-nav {
-      position: fixed;
-      top: 6.75em;
-      left: max(0.5em, calc((100vw - 60em) / 2 - 12.5em));
-      width: 11.5em;
-      max-height: calc(100dvh - 8em);
-      overflow-y: auto;
-      z-index: 2;
-    }
-  }
-
   @media (max-width: 63.9375em) {
-    .styles-nav {
-      position: sticky;
-      top: 0.75em;
-      z-index: 3;
-      overflow-x: auto;
-    }
-
-    .styles-nav__list {
-      flex-direction: row;
-      gap: 0.9em;
-      min-width: max-content;
-      padding-bottom: 0.1em;
-    }
-
-    .styles-nav a {
-      white-space: nowrap;
-    }
-
     .token-grid,
     .layout-preview-grid,
     .component-meta-grid,
