@@ -21,6 +21,7 @@
 		- [ ] Have light/dark theme react to local time of browser
 		- [ ] Add toggle in menu
 	- [ ] Add a Work link to the header menu above → when on homepage, have it shake like in an 'interaction denied' type of way when clicked, then if clicked again, have the text appear in a slightly lighter gray to the left/right of it saying "you're already on this page", then if you click it again, have the text darken. Click it one more time and the menu option gradient from below upwards as the rest of the links shift up by one
+	- [ ] Add a way for scrolls to slow down (like the browser is hitting literal honey or something) if the user scrolls to the top with a quick swipe. That way, instead of the browser scroll taking the momentum impact (or not), it's built-right in.
 - [ ] Work on mobile site
 	- [ ] Review it on mobile to fix issues
 
