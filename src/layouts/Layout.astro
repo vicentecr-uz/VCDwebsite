@@ -45,15 +45,29 @@ const { title, description = 'Portfolio of Vicente Cruz — London-based industr
 
       // ── Exit: fade overlay in, then navigate ───────────────
       document.querySelectorAll('a[href]').forEach((link) => {
-        const href = (link as HTMLAnchorElement).href;
+        const anchor = link as HTMLAnchorElement;
+        const href = anchor.href;
         const isSameOrigin = href.startsWith(window.location.origin);
         const isHash = href.includes('#');
+        const opensInNewTab = anchor.target === '_blank';
+        const isDownload = anchor.hasAttribute('download');
 
-        if (!isSameOrigin || isHash) return;
+        if (!isSameOrigin || isHash || opensInNewTab || isDownload) return;
 
         link.addEventListener('click', (e) => {
+          if (
+            e.defaultPrevented ||
+            e.button !== 0 ||
+            e.metaKey ||
+            e.ctrlKey ||
+            e.shiftKey ||
+            e.altKey
+          ) {
+            return;
+          }
+
           e.preventDefault();
-          const target = (link as HTMLAnchorElement).href;
+          const target = anchor.href;
 
           gsap.to('#transition-overlay', {
             opacity: 1,

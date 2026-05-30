@@ -11,20 +11,27 @@ const homeWordmark = 'Vicente\u00a0Cruz';
 const wordmark = title.replace(' ', '\u00a0');
 const showWordmarkSwap = title !== 'Vicente Cruz';
 const pageChars = [...wordmark];
+const pagePairKerningAdjustmentsEm: Record<string, number> = {
+  Wo: -0.06,
+};
+let runningPageKerningOffsetEm = 0;
+const pageCharKerningOffsetsEm = pageChars.map((char, i) => {
+  if (i > 0) {
+    const pair = `${pageChars[i - 1]}${char}`;
+    runningPageKerningOffsetEm += pagePairKerningAdjustmentsEm[pair] ?? 0;
+  }
+
+  return runningPageKerningOffsetEm;
+});
 const homeChars = [...homeWordmark];
 const isHome = Astro.url.pathname === '/';
 const brandHref = isHome ? null : '/';
 
 const menuLinks = [
+  { label: 'Work', href: '/work' },
+  { label: 'Play', href: '/play' },
   { label: 'About', href: '/about' },
-  { label: 'Extras', href: '/extras' },
 ];
-
-const normalizePath = (path: string) => path.replace(/\/$/, '') || '/';
-const currentPath = normalizePath(Astro.url.pathname);
-const visibleMenuLinks = menuLinks.filter(
-  (link) => normalizePath(link.href) !== currentPath,
-);
 ---
 
 {navMenu ? (
@@ -54,8 +61,10 @@ const visibleMenuLinks = menuLinks.filter(
                 {showWordmarkSwap ? (
                   <span class="header-trigger__wordmark-stack">
                     <span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                      {pageChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      {pageChars.map((char, i) => (
+                        <span class="header-trigger__char" style={`--char-kern: ${pageCharKerningOffsetsEm[i]}em;`}>
+                          {char === ' ' ? '\u00a0' : char}
+                        </span>
                       ))}
                     </span>
                     <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
@@ -73,7 +82,7 @@ const visibleMenuLinks = menuLinks.filter(
             )}
           </div>
           <ul class="header-menu" role="list">
-            {visibleMenuLinks.map((link) => (
+            {menuLinks.map((link) => (
               <li>
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
@@ -105,7 +114,7 @@ const visibleMenuLinks = menuLinks.filter(
             )}
           </div>
           <ul class="header-menu" role="list">
-            {visibleMenuLinks.map((link) => (
+            {menuLinks.map((link) => (
               <li>
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
@@ -266,10 +275,14 @@ const visibleMenuLinks = menuLinks.filter(
   const wordmarkStack = startTrigger?.querySelector('.header-trigger__wordmark-stack');
 
   if (startTrigger && wordmarkStack) {
-    const pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page');
+    const pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page') as HTMLElement | null;
+    const pageChars = [
+      ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--page .header-trigger__char'),
+    ];
     const homeWordmarkEl = wordmarkStack.querySelector('.header-trigger__wordmark--home');
-    const pageChars = [...wordmarkStack.querySelectorAll('.header-trigger__wordmark--page .header-trigger__char')];
-    const homeChars = [...wordmarkStack.querySelectorAll('.header-trigger__wordmark--home .header-trigger__char')];
+    const homeChars = [
+      ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char'),
+    ];
     const brandLink = startTrigger.querySelector('.header-trigger__brand-link');
 
     const FADE_OUT_STAGGER = 0.03;
@@ -282,6 +295,62 @@ const visibleMenuLinks = menuLinks.filter(
     let wordmarkIsOpen = false;
     let wordmarkAnimating = false;
 
+    const applyWordmarkKerning = (wordmarkEl: HTMLElement | null, chars: HTMLElement[]) => {
+      if (!wordmarkEl || chars.length < 2) return;
+
+      chars.forEach((char) => {
+        char.style.setProperty('--char-x', '0px');
+      });
+
+      const computedStyle = getComputedStyle(wordmarkEl);
+      const measurer = document.createElement('span');
+      const measureProbe = document.createElement('span');
+      const text = chars.map((char) => char.textContent ?? '').join('');
+
+      measurer.style.position = 'fixed';
+      measurer.style.left = '-9999px';
+      measurer.style.top = '0';
+      measurer.style.visibility = 'hidden';
+      measurer.style.pointerEvents = 'none';
+      measurer.style.whiteSpace = 'pre';
+      measurer.style.font = computedStyle.font;
+      measurer.style.letterSpacing = computedStyle.letterSpacing;
+      measurer.style.fontKerning = computedStyle.fontKerning;
+      measurer.style.fontVariantLigatures = computedStyle.fontVariantLigatures;
+      measurer.style.textTransform = computedStyle.textTransform;
+      measurer.style.textRendering = computedStyle.textRendering;
+      measurer.appendChild(measureProbe);
+      document.body.appendChild(measurer);
+
+      const targetPositions = [0];
+      for (let i = 1; i < text.length; i++) {
+        measureProbe.textContent = text.slice(0, i);
+        targetPositions.push(measureProbe.getBoundingClientRect().width);
+      }
+
+      measurer.remove();
+
+      const baseLeft = chars[0]?.getBoundingClientRect().left ?? 0;
+      chars.forEach((char, i) => {
+        const current = char.getBoundingClientRect().left - baseLeft;
+        const target = targetPositions[i] ?? current;
+        const correction = target - current;
+        char.style.setProperty('--char-x', `${correction}px`);
+      });
+    };
+
+    const syncWordmarkKerning = () => {
+      applyWordmarkKerning(pageWordmark, pageChars);
+      applyWordmarkKerning(homeWordmarkEl as HTMLElement | null, homeChars);
+    };
+
+    requestAnimationFrame(syncWordmarkKerning);
+    if ('fonts' in document) {
+      void (document as Document & { fonts?: FontFaceSet }).fonts?.ready.then(() => {
+        requestAnimationFrame(syncWordmarkKerning);
+      });
+    }
+
     const setCharTransition = (
       chars: HTMLElement[],
       opacity: number,
@@ -290,12 +359,16 @@ const visibleMenuLinks = menuLinks.filter(
       reverse = false,
       easing = 'ease',
       baseDelay = 0,
+      blurPx = 0,
+      yOffsetEm = 0,
     ) => {
       chars.forEach((char, i) => {
         const index = reverse ? chars.length - 1 - i : i;
         char.style.setProperty('--char-delay', `${baseDelay + index * stagger}s`);
         char.style.setProperty('--char-duration', `${duration}s`);
         char.style.setProperty('--char-easing', easing);
+        char.style.setProperty('--char-blur', `${blurPx}px`);
+        char.style.setProperty('--char-y', `${yOffsetEm}em`);
         char.style.opacity = String(opacity);
       });
     };
@@ -324,6 +397,8 @@ const visibleMenuLinks = menuLinks.filter(
         char.style.setProperty('--char-delay', `${delay}s`);
         char.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
         char.style.setProperty('--char-easing', 'ease');
+        char.style.setProperty('--char-blur', '0px');
+        char.style.setProperty('--char-y', '0em');
         char.style.opacity = '1';
       });
     };
@@ -347,7 +422,7 @@ const visibleMenuLinks = menuLinks.filter(
       });
 
     const applyWordmarkOpen = () => {
-      setCharTransition(pageChars, 0, FADE_OUT_STAGGER, FADE_OUT_DURATION, false, 'ease');
+      setCharTransition(pageChars, 0, FADE_OUT_STAGGER, FADE_OUT_DURATION, false, 'ease', 0, 2, -0.02);
       applyWordmarkFadeIn(homeChars);
 
       pageWordmark?.setAttribute('aria-hidden', 'true');
@@ -360,6 +435,8 @@ const visibleMenuLinks = menuLinks.filter(
         char.style.setProperty('--char-delay', `${i * FADE_OUT_STAGGER}s`);
         char.style.setProperty('--char-duration', `${FADE_OUT_DURATION}s`);
         char.style.setProperty('--char-easing', 'ease');
+        char.style.setProperty('--char-blur', '2px');
+        char.style.setProperty('--char-y', '-0.02em');
         char.style.opacity = '0';
       });
 
@@ -393,7 +470,7 @@ const visibleMenuLinks = menuLinks.filter(
       applyWordmarkOpen();
 
       const duration = Math.max(
-        getFadeOutEnd(pageChars.length),
+        FADE_OUT_DURATION,
         getFadeInEnd(homeChars.length, 0),
       );
 
@@ -794,8 +871,13 @@ const visibleMenuLinks = menuLinks.filter(
 
   .header-trigger__char {
     display: inline-block;
+    transform: translate(calc(var(--char-x, 0px) + var(--char-kern, 0em)), var(--char-y, 0em));
+    filter: blur(var(--char-blur, 0px));
     opacity: 1;
-    transition: opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
+    transition:
+      opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
+      transform var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
+      filter var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
   }
 
   .header-trigger__wordmark--home .header-trigger__char {
