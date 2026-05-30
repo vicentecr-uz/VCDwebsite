@@ -1,0 +1,178 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+type PlayItem = {
+  order?: number;
+  title: string;
+  meta?: string;
+  image: string;
+  bg: string;
+  dark: boolean;
+  href?: string;
+};
+
+const playEntries = Object.values(
+  import.meta.glob('../content/play/*.json', { eager: true }),
+) as { default: PlayItem }[];
+
+const playItems = playEntries
+  .map((entry) => entry.default)
+  .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+---
+
+<Layout title="Play — Vicente Cruz">
+  <div class="flex flex-col min-h-dvh">
+    <Header title="Play" navMenu />
+
+    <main class="play-main" style="flex: 1;">
+      <ul class="play-grid">
+        {playItems.map((item) => (
+          <li class="play-item">
+            {item.href ? (
+              <a href={item.href} class="play-card block">
+                <div class="play-cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    class="play-img w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div class="play-meta absolute bottom-0 left-0 right-0">
+                    <div class="flex items-baseline gap-2">
+                      <h2 class="play-title font-bold" style={`color: ${item.dark ? '#f7f7f7' : '#6d6d6d'}`}>
+                        {item.title}
+                      </h2>
+                      {item.meta && (
+                        <span
+                          class="play-title font-bold"
+                          style={`color: ${item.dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)'}`}
+                        >
+                          {item.meta}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </a>
+            ) : (
+              <div class="play-card play-card--placeholder block" aria-disabled="true">
+                <div class="play-cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    class="play-img w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div class="play-meta absolute bottom-0 left-0 right-0">
+                    <div class="flex items-baseline gap-2">
+                      <h2 class="play-title font-bold" style={`color: ${item.dark ? '#f7f7f7' : '#6d6d6d'}`}>
+                        {item.title}
+                      </h2>
+                      {item.meta && (
+                        <span
+                          class="play-title font-bold"
+                          style={`color: ${item.dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)'}`}
+                        >
+                          {item.meta}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </main>
+
+    <Footer />
+  </div>
+</Layout>
+
+<style>
+  .play-main {
+    padding: 0;
+  }
+
+  .play-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1em;
+  }
+
+  .play-cover {
+    aspect-ratio: 4 / 3;
+    transform: translateZ(0);
+  }
+
+  .play-title {
+    font-size: 1.25rem;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+  }
+
+  .play-img {
+    filter: blur(4px);
+    transform: scale(1.04);
+    transition: filter 0.5s ease, transform 0.5s ease;
+  }
+
+  .play-card:hover .play-img {
+    filter: blur(0);
+    transform: scale(1.07);
+  }
+
+  .play-meta {
+    opacity: 0;
+    padding: 1em;
+    transition: opacity 0.3s ease;
+  }
+
+  .play-card:hover .play-meta {
+    opacity: 1;
+  }
+
+  .play-card--placeholder {
+    cursor: not-allowed;
+  }
+
+  .play-card--placeholder .play-img {
+    filter: blur(2px) grayscale(1);
+    transform: scale(1.02);
+  }
+
+  @media (max-width: 768px) {
+    .play-img {
+      filter: none !important;
+      transform: scale(1) !important;
+      transition: transform 0.4s ease !important;
+    }
+
+    .play-card:hover .play-img {
+      transform: scale(1.03) !important;
+    }
+
+    .play-meta {
+      opacity: 1 !important;
+      transition: none !important;
+    }
+  }
+
+  @media (max-width: 667px) {
+    .play-cover {
+      aspect-ratio: 1 / 1;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .play-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .play-cover {
+      aspect-ratio: 4 / 3;
+    }
+  }
+</style>

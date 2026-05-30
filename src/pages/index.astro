@@ -2,45 +2,24 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+type HomeProject = {
+  order?: number;
+  slug: string;
+  title: string;
+  year: string;
+  image: string;
+  bg: string;
+  dark: boolean;
+  full: boolean;
+};
 
-const projects = [
-  {
-    slug: 'tapico',
-    title: 'Tapico Typer',
-    year: "'24",
-    image: '/images/IMG_5523-2.jpg',
-    bg: '#f2f0ed',
-    dark: false,
-    full: true,
-  },
-  {
-    slug: 'the-rams',
-    title: 'The Rams',
-    year: "'21",
-    image: '/images/Exploded%20View.png',
-    bg: '#080808',
-    dark: true,
-    full: false,
-  },
-  {
-    slug: 'conic-collection',
-    title: 'Conic Collection',
-    year: "'23",
-    image: '/images/Conic%20Collection%20Thumbnail%20edited.png',
-    bg: '#111111',
-    dark: true,
-    full: false,
-  },
-  {
-    slug: 'parentpal',
-    title: 'ParentPal',
-    year: "'22",
-    image: '/images/Homepage%20Thumbnail%20w%20bkgd.png',
-    bg: '#0a0a0a',
-    dark: true,
-    full: true,
-  },
-];
+const homeEntries = Object.values(
+  import.meta.glob('../content/home/*.json', { eager: true }),
+) as { default: HomeProject }[];
+
+const projects = homeEntries
+  .map((entry) => entry.default)
+  .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
 ---
 
 <Layout title="Vicente Cruz — Industrial Designer">
@@ -106,7 +85,7 @@ const projects = [
   }
 
   .project-item--full .project-cover {
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 16 / 12;
   }
 
   .project-item--full .project-img {
@@ -128,14 +107,13 @@ const projects = [
 
   /* ── Image & overlay (desktop default) ─────────────────── */
   .project-img {
-    filter: blur(4px);
-    transform: scale(1.04);
-    transition: filter 0.5s ease, transform 0.5s ease;
+    filter: none;
+    transform: scale(1.18);
+    transition: transform 0.5s ease;
   }
 
   .project-card:hover .project-img {
-    filter: blur(0px);
-    transform: scale(1.07);
+    transform: scale(1.22);
   }
 
   .project-meta {

@@ -1,0 +1,566 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/project.css';
+
+const colorTokens = [
+  { name: '--color-bg', value: '#ffffff', role: 'Primary page background' },
+  { name: '--color-text', value: '#1a1a1a', role: 'Main reading text' },
+  { name: '--color-text-muted', value: '#888888', role: 'Secondary labels and UI hints' },
+  { name: '--color-border', value: '#e0ddd8', role: 'Cards, separators, subtle outlines' },
+];
+
+const typographyScale = [
+  {
+    token: 'Display / h1',
+    value: 'clamp(1.95rem, 2.5vw, 2.85rem)',
+    sample: 'Industrial design, made tactile.',
+    note: 'Page-level title and hero intro',
+  },
+  {
+    token: 'Section heading / h2',
+    value: 'clamp(1.35rem, 1.8vw, 2rem)',
+    sample: 'Process and outputs',
+    note: 'Top-level section breaks',
+  },
+  {
+    token: 'Subheading / h3',
+    value: '1.1rem',
+    sample: 'Materials and ergonomics',
+    note: 'Nested sections and card titles',
+  },
+  {
+    token: 'Body copy',
+    value: '1rem / 1.55',
+    sample:
+      'Used for narrative sections. Keep width around 52-62ch so dense process writing remains easy to scan.',
+    note: 'Long-form description text',
+  },
+  {
+    token: 'Caption',
+    value: '1.2em / 1.1',
+    sample: 'Foam model before final chamfer direction',
+    note: 'Image overlays in case-study grids',
+  },
+];
+
+const spacingScale = [
+  { token: '0.5em', value: '0.5em', use: 'Tight micro gaps' },
+  { token: '1em', value: '1em', use: 'Default gutter + grid gap' },
+  { token: '2.5em', value: '2.5em', use: 'Tight section transitions' },
+  { token: '3em', value: '3em', use: 'Tablet section rhythm' },
+  { token: '5em', value: '5em', use: 'Desktop section rhythm' },
+];
+
+const layoutRules = [
+  {
+    name: 'Fluid site gutter',
+    value: 'max(1em, calc((100% - 60em) / 2))',
+    why: 'Keeps content comfortable at every size while preserving edge breathing room.',
+  },
+  {
+    name: 'Core unit',
+    value: '1em',
+    why: 'Use 1em steps before introducing custom values so pages feel related.',
+  },
+  {
+    name: 'Page transition',
+    value: '0.5s overlay fade',
+    why: 'Shared entry/exit timing from `Layout.astro` keeps navigation calm.',
+  },
+];
+
+const componentCatalog = [
+  {
+    name: 'ProjectHero',
+    purpose: 'Lead image at top of each project story.',
+    classRef: '.project-hero / .project-hero__img',
+    checklist: 'Confirm crop focal point and min-height feel on desktop.',
+  },
+  {
+    name: 'ProjectProse',
+    purpose: 'Main narrative body for case-study explanations.',
+    classRef: '.project-prose',
+    checklist: 'Stay around 80% width desktop, 100% tablet and below.',
+  },
+  {
+    name: 'ProjectGrid',
+    purpose: 'Two/three/five column media clusters.',
+    classRef: '.project-grid--2/3/5',
+    checklist: 'Validate collapse path at 991px and 767px breakpoints.',
+  },
+  {
+    name: 'ProjectCaptionImage',
+    purpose: 'Image overlays with short framing captions.',
+    classRef: '.project-caption',
+    checklist: 'Caption should remain short and avoid collision with important image detail.',
+  },
+];
+
+const qaFlow = [
+  'Check typography hierarchy first (h1/h2/h3/body/caption) before spacing tweaks.',
+  'Verify 1em rhythm and section spacing (5em desktop, 3em tablet) before fine polish.',
+  'Validate grid collapse at 991px and 767px; captions should never overlap critical content.',
+  'Hover pass: links, image scale, and muted color transitions should feel subtle and intentional.',
+];
+---
+
+<Layout title="Styles — Vicente Cruz">
+  <div class="styles-page">
+    <Header title="Styles" />
+
+    <main class="styles-main">
+      <section class="styles-intro section-block">
+        <p class="eyebrow">Design System</p>
+        <h1>Live foundations and component QA</h1>
+        <p class="intro-copy">
+          This page is the visual source of truth for spacing, typography, color, and project-page patterns.
+          Use it as a single pass QA surface before shipping updates to `work`, `play`, and individual projects.
+        </p>
+      </section>
+
+      <section class="section-block">
+        <h2>Quick QA flow</h2>
+        <ol class="qa-list">
+          {qaFlow.map((step) => (
+            <li>{step}</li>
+          ))}
+        </ol>
+      </section>
+
+      <section class="section-block">
+        <h2>Color tokens</h2>
+        <div class="token-grid">
+          {colorTokens.map((token) => (
+            <article class="token-card">
+              <div class="token-card__swatch" style={`background:${token.value};`}></div>
+              <p class="meta-label">{token.name}</p>
+              <p class="meta-values">{token.value}</p>
+              <p class="token-note">{token.role}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Typography scale</h2>
+        <div class="stack">
+          {typographyScale.map((item) => (
+            <article class="type-card">
+              <div class="type-card__meta">
+                <div>
+                  <p class="meta-label">{item.token}</p>
+                  <p class="meta-values">{item.value}</p>
+                </div>
+                <p class="token-note">{item.note}</p>
+              </div>
+
+              {item.token === 'Display / h1' && <h1 class="preview-h1">{item.sample}</h1>}
+              {item.token === 'Section heading / h2' && <h2 class="preview-h2">{item.sample}</h2>}
+              {item.token === 'Subheading / h3' && <h3 class="preview-h3">{item.sample}</h3>}
+              {item.token === 'Body copy' && <p class="preview-body">{item.sample}</p>}
+              {item.token === 'Caption' && (
+                <div class="caption-preview">
+                  <img src="/images/tapico/DSC08720.jpg" alt="Caption style preview" />
+                  <span class="project-caption">{item.sample}</span>
+                </div>
+              )}
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Spacing scale</h2>
+        <div class="stack">
+          {spacingScale.map((item) => (
+            <article class="spacing-row">
+              <div class="spacing-row__meta">
+                <p class="meta-label">{item.token}</p>
+                <p class="token-note">{item.use}</p>
+              </div>
+              <div class="spacing-row__bar-wrap">
+                <div class="spacing-row__bar" style={`height:${item.value};`}></div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Layout rules</h2>
+        <div class="stack">
+          {layoutRules.map((rule) => (
+            <article class="rule-card">
+              <div class="token-row__top">
+                <span class="token-name">{rule.name}</span>
+                <span class="token-value">{rule.value}</span>
+              </div>
+              <p class="token-note">{rule.why}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Project layout previews</h2>
+        <div class="layout-preview-grid">
+          <article class="preview-card">
+            <p class="meta-label">Constrained prose + image</p>
+            <section class="project-prose" style="margin-top: 1em;">
+              <p>
+                Designed for narrative flow between media modules. Keep this block comfortable and readable, then
+                let images carry detail.
+              </p>
+            </section>
+            <div class="project-media project-media--constrained" style="margin-top: 1em;">
+              <img src="/images/tapico/DSC08720.jpg" alt="Constrained media preview" class="project-media__img" />
+            </div>
+          </article>
+
+          <article class="preview-card">
+            <p class="meta-label">Grid behavior (2 / 3 / 5)</p>
+            <div class="stack" style="margin-top: 1em;">
+              <div class="project-grid project-grid--2">
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+              </div>
+              <div class="project-grid project-grid--3">
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+              </div>
+              <div class="project-grid project-grid--5">
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+                <div class="demo-tile"></div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Component catalog</h2>
+        <div class="stack">
+          {componentCatalog.map((component) => (
+            <article class="component-card">
+              <div class="component-card__head">
+                <h3>{component.name}</h3>
+                <p>{component.purpose}</p>
+              </div>
+              <div class="component-meta-grid">
+                <div>
+                  <p class="meta-label">Class reference</p>
+                  <p class="meta-values">{component.classRef}</p>
+                </div>
+                <div>
+                  <p class="meta-label">QA checklist</p>
+                  <p class="meta-values">{component.checklist}</p>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Interaction sample</h2>
+        <article class="rule-card">
+          <p class="section-note">
+            Hover tone should stay subtle. This link uses the same transition behavior as inline project links:
+            <a href="#" class="project-inline-link"> read case-study details</a>.
+          </p>
+        </article>
+      </section>
+    </main>
+
+    <Footer />
+  </div>
+</Layout>
+
+<style>
+  .styles-page {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .styles-main {
+    flex: 1;
+    padding-block: 2em 3em;
+    display: flex;
+    flex-direction: column;
+    gap: 2.5em;
+  }
+
+  .section-block {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+  }
+
+  .eyebrow {
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  h1 {
+    font-size: clamp(1.9rem, 2.4vw, 2.6rem);
+  }
+
+  h2 {
+    font-size: clamp(1.3rem, 1.7vw, 1.8rem);
+  }
+
+  h3 {
+    font-size: 1.1rem;
+  }
+
+  .intro-copy,
+  .section-note {
+    max-width: 62ch;
+    line-height: 1.55;
+    color: color-mix(in srgb, var(--color-text) 85%, transparent);
+  }
+
+  .qa-list {
+    list-style: decimal;
+    margin: 0;
+    padding-left: 1.1em;
+    max-width: 62ch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+  }
+
+  .qa-list li {
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--color-text) 88%, transparent);
+  }
+
+  .stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+  }
+
+  .token-card,
+  .type-card,
+  .rule-card,
+  .preview-card,
+  .spacing-row,
+  .component-card,
+  .token-group {
+    border: 1px solid var(--color-border);
+    padding: 1em;
+    background-color: #ffffff;
+  }
+
+  .token-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.85em;
+  }
+
+  .token-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
+  }
+
+  .token-card__swatch {
+    width: 100%;
+    aspect-ratio: 4 / 2.5;
+    border: 1px solid var(--color-border);
+  }
+
+  .type-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+  }
+
+  .type-card__meta {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1em;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 0.8em;
+  }
+
+  .preview-h1 {
+    font-size: clamp(1.95rem, 2.5vw, 2.85rem);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+
+  .preview-h2 {
+    font-size: clamp(1.35rem, 1.8vw, 2rem);
+    letter-spacing: -0.03em;
+  }
+
+  .preview-h3 {
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
+  }
+
+  .preview-body {
+    max-width: 62ch;
+    line-height: 1.55;
+  }
+
+  .caption-preview {
+    position: relative;
+    width: 100%;
+    max-width: 34em;
+    overflow: hidden;
+  }
+
+  .caption-preview img {
+    width: 100%;
+    object-fit: cover;
+    max-height: 20em;
+  }
+
+  .spacing-row {
+    display: grid;
+    grid-template-columns: 14em 1fr;
+    align-items: center;
+    gap: 1em;
+  }
+
+  .spacing-row__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+  }
+
+  .spacing-row__bar-wrap {
+    border: 1px solid var(--color-border);
+    padding: 0.75em;
+    display: flex;
+    align-items: flex-end;
+    min-height: 6em;
+  }
+
+  .spacing-row__bar {
+    width: 100%;
+    background: linear-gradient(180deg, #d7d7d7, #b9b9b9);
+  }
+
+  .token-list {
+    list-style: none;
+    margin-top: 0.75em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.7em;
+  }
+
+  .token-row {
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.7em;
+  }
+
+  .token-row:first-child {
+    border-top: 0;
+    padding-top: 0;
+  }
+
+  .token-row__top {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75em;
+    flex-wrap: wrap;
+    align-items: baseline;
+  }
+
+  .token-name {
+    font-weight: 700;
+  }
+
+  .token-value {
+    font-family: var(--font-serif);
+    color: color-mix(in srgb, var(--color-text) 70%, transparent);
+  }
+
+  .token-note {
+    margin-top: 0.2em;
+    color: var(--color-text-muted);
+    line-height: 1.45;
+  }
+
+  .component-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8em;
+  }
+
+  .component-card__head p {
+    margin-top: 0.35em;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--color-text) 82%, transparent);
+    max-width: 56ch;
+  }
+
+  .component-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8em;
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.8em;
+  }
+
+  .layout-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8em;
+  }
+
+  .preview-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75em;
+  }
+
+  .demo-tile {
+    aspect-ratio: 1;
+    border: 1px solid #d7d7d7;
+    background: linear-gradient(135deg, #f4f4f4, #ececec);
+  }
+
+  .meta-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.35em;
+  }
+
+  .meta-values {
+    line-height: 1.45;
+  }
+
+  @media (max-width: 56em) {
+    .token-grid,
+    .layout-preview-grid,
+    .component-meta-grid,
+    .spacing-row {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
