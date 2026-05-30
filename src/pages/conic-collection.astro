@@ -1,0 +1,249 @@
+---
+import ProjectLayout from '../components/ProjectLayout.astro';
+import ProjectHero from '../components/project/ProjectHero.astro';
+import ProjectProse from '../components/project/ProjectProse.astro';
+import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
+import ProjectReferenceImage from '../components/project/ProjectReferenceImage.astro';
+import { projectImage } from '../lib/images';
+import projectCopy from '../content/projects/conic-collection.json';
+
+const moodboardImages = [
+  'Screenshot 2023-07-28 124129.png',
+  '20230516_104148698_iOS.jpg',
+  '20230406_164840648_iOS.jpg',
+  '20230503_233605644_iOS.jpg',
+  '20230228_171926723_iOS.jpg',
+  '20230517_160109693_iOS.jpg',
+  { src: '20230503_233604901_iOS.jpg', caption: projectCopy.captions.moodboardSingleCaption, hideMobileCaption: true },
+  '20230130_155515646_iOS.jpg',
+  'Screenshot 2023-10-02 172720.png',
+  '20230516_161230729_iOS.jpg',
+];
+---
+
+<ProjectLayout
+  title={projectCopy.title}
+  description={projectCopy.description}
+>
+  <ProjectHero src="Stacking Mugs with Saucers 2.png" alt="Conic Collection" variant="conic" />
+
+  <div class="project-block project-block--tight-bottom">
+    <h1 class="project-tagline">
+      {projectCopy.taglinePrefix}{' '}
+      <a href={projectCopy.taglineLinkHref} target="_blank" rel="noopener noreferrer" class="project-inline-link">
+        {projectCopy.taglineLinkLabel}
+      </a>.
+    </h1>
+  </div>
+
+  <ProjectProse tightTop>
+    <p set:html={projectCopy.copyBlocks.intro[0]} />
+  </ProjectProse>
+
+  <div class="project-block project-block--before-image">
+    <div class="project-reference-grid">
+      <ProjectReferenceImage
+        src="Stacking Mugs reference.jpg"
+        alt="Stacking mugs reference"
+        caption="Stacking mugs"
+        href="https://www.billylloyd.co.uk/design/w6ush4rj64n48e5g49hjlf0llson1z"
+      />
+      <ProjectReferenceImage
+        src="Porcelain Jugs reference.jpeg"
+        alt="Porcelain jugs reference"
+        caption="Porcelain jugs"
+        href="https://www.billylloyd.co.uk/design/xppqnypus82w9ba48h5m98m1hyow5h"
+      />
+    </div>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <figure class="project-media project-media--constrained">
+      <img
+        src={projectImage('20230503_233607245_iOS.jpg')}
+        alt="Conic process photo"
+        class="project-media__img"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <div class="project-process-grid">
+      <img src={projectImage('20230130_164110069_iOS.jpg')} alt="Conic process photo" loading="lazy" />
+      <img src={projectImage('20230131_100555680_iOS.jpg')} alt="Conic process photo" loading="lazy" />
+      <img src={projectImage('20230228_172034937_iOS.jpg')} alt="Conic process photo" loading="lazy" />
+    </div>
+  </div>
+
+  <ProjectProse tightTop>
+    <p set:html={projectCopy.copyBlocks.prototyping[0]} />
+  </ProjectProse>
+
+  <div class="project-block project-block--before-image">
+    <div class="project-moodboard-grid">
+      {moodboardImages.map((item) => {
+        const src = typeof item === 'string' ? item : item.src;
+        const caption = typeof item === 'string' ? undefined : item.caption;
+        const hideMobileCaption = typeof item === 'string' ? false : item.hideMobileCaption;
+        return (
+          <figure class="project-moodboard-cell">
+            {caption && (
+              <span class:list={['project-caption', hideMobileCaption && 'project-hide-mobile']}>{caption}</span>
+            )}
+            <img src={projectImage(src)} alt="Conic development process" loading="lazy" />
+          </figure>
+        );
+      })}
+    </div>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <figure class="project-media">
+      <img
+        src={projectImage('20230517_154547845_iOS.jpg')}
+        alt="Conic stacked mugs process photo"
+        class="project-media__img"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <div class="project-detail-grid">
+      <img
+        src={projectImage('Stacked Mugs original cropped.png')}
+        alt="Stacked mugs"
+        class="project-media__img--full-height project-hide-mobile"
+        loading="lazy"
+      />
+      <img
+        src={projectImage('Stacked Mugs portrait cropped.png')}
+        alt="Stacked mugs portrait"
+        class="project-media__img--full-height"
+        loading="lazy"
+      />
+    </div>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <figure class="project-media">
+      <img
+        src={projectImage('20230503_233607187_iOS.jpg')}
+        alt="Conic mugs process photo"
+        class="project-media__img project-media__img--max80"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <figure class="project-media">
+      <img
+        src={projectImage('Mugs Separate 2.png')}
+        alt="Conic mugs separate"
+        class="project-media__img project-media__img--max80"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <ProjectProse tightTop>
+    <p set:html={projectCopy.copyBlocks.workflow[0]} />
+  </ProjectProse>
+
+  <ProjectSectionTitle title={projectCopy.sectionTitles.stackingJugs} level={3} />
+
+  <div class="project-block project-block--before-image project-hide-mobile">
+    <figure class="project-media project-media--constrained">
+      <img
+        src={projectImage('Stacked Jugs (new) angled.png')}
+        alt="Stacked jugs angled view"
+        class="project-media__img"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <div class="project-detail-grid">
+      <img src={projectImage('Stacked Jugs portrait.png')} alt="Stacked jugs portrait" loading="lazy" />
+      <img src={projectImage('Stacked jugs portrait closeup.png')} alt="Stacked jugs close-up" loading="lazy" />
+    </div>
+  </div>
+
+  <ProjectProse tightTop>
+    <p set:html={projectCopy.copyBlocks.spout[0]} />
+  </ProjectProse>
+
+  <ProjectSectionTitle title={projectCopy.sectionTitles.saltPepper} level={3} />
+
+  <div class="project-block project-block--before-image">
+    <div class="project-detail-grid project-detail-grid--square">
+      <img src={projectImage('Salt n Pepper separate.png')} alt="Salt and pepper shakers separate" loading="lazy" />
+      <img
+        src={projectImage('Salt and Pepper both configs same shot.png')}
+        alt="Salt and pepper shakers"
+        loading="lazy"
+      />
+    </div>
+  </div>
+
+  <div class="project-block project-block--before-image project-hide-mobile">
+    <figure class="project-captioned-image">
+      <span class="project-caption">{projectCopy.captions.largeSmallCircularTeapots}</span>
+      <img
+        src={projectImage('Large and Small Circular Teapots.png')}
+        alt="Large and small circular teapots"
+        class="project-media__img"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <ProjectSectionTitle title={projectCopy.sectionTitles.largeSmallTeapots} level={3} />
+
+  <div class="project-block project-block--before-image project-show-mobile-only">
+    <div class="project-detail-grid project-detail-grid--square">
+      <img src={projectImage('L CTeapot Centred.png')} alt="Large teapot" loading="lazy" />
+      <img src={projectImage('S CTeapot Centred.png')} alt="Small teapot" loading="lazy" />
+    </div>
+  </div>
+
+  <ProjectSectionTitle title={projectCopy.sectionTitles.soloTeapot} level={3} />
+
+  <div class="project-block project-block--before-image">
+    <figure class="project-hover-swap">
+      <img
+        src={projectImage('Solo Teapot and Mug.png')}
+        alt="Solo teapot and mug"
+        class="project-hover-swap__base"
+        loading="lazy"
+      />
+      <img
+        src={projectImage('Solo Teapot and Mug Side View.png')}
+        alt="Solo teapot and mug side view"
+        class="project-hover-swap__top"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+
+  <div class="project-block project-block--before-image">
+    <div class="project-detail-grid project-detail-grid--square">
+      <img src={projectImage('Solo Teapot and Mug side by side.png')} alt="Solo teapot and mug side by side" loading="lazy" />
+      <img src={projectImage('Solo Teapot Lid Close-up.png')} alt="Solo teapot lid close-up" loading="lazy" />
+    </div>
+  </div>
+
+  <div class="project-block project-block--flush">
+    <figure class="project-media">
+      <img
+        src={projectImage('Everything 2.png')}
+        alt="Full Conic Collection"
+        class="project-media__img project-media__img--full-height"
+        loading="lazy"
+      />
+    </figure>
+  </div>
+</ProjectLayout>
