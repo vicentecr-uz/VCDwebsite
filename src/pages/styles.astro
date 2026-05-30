@@ -104,14 +104,37 @@ const qaFlow = [
   'Validate grid collapse at 991px and 767px; captions should never overlap critical content.',
   'Hover pass: links, image scale, and muted color transitions should feel subtle and intentional.',
 ];
+
+const sectionLinks = [
+  { id: 'styles-intro', label: 'Intro' },
+  { id: 'styles-qa', label: 'Quick QA flow' },
+  { id: 'styles-colors', label: 'Color tokens' },
+  { id: 'styles-typography', label: 'Typography scale' },
+  { id: 'styles-spacing', label: 'Spacing scale' },
+  { id: 'styles-layout-rules', label: 'Layout rules' },
+  { id: 'styles-layout-previews', label: 'Layout previews' },
+  { id: 'styles-catalog', label: 'Component catalog' },
+  { id: 'styles-interaction', label: 'Interaction sample' },
+];
 ---
 
 <Layout title="Styles — Vicente Cruz">
   <div class="styles-page">
     <Header title="Styles" />
 
-    <main class="styles-main">
-      <section class="styles-intro section-block">
+    <div class="styles-layout">
+      <aside class="styles-nav" aria-label="Styles page sections">
+        <ul class="styles-nav__list">
+          {sectionLinks.map((link) => (
+            <li>
+              <a href={`#${link.id}`}>{link.label}</a>
+            </li>
+          ))}
+        </ul>
+      </aside>
+
+      <main class="styles-main">
+      <section id="styles-intro" class="styles-intro section-block">
         <p class="eyebrow">Design System</p>
         <h1>Live foundations and component QA</h1>
         <p class="intro-copy">
@@ -120,7 +143,7 @@ const qaFlow = [
         </p>
       </section>
 
-      <section class="section-block">
+      <section id="styles-qa" class="section-block">
         <h2>Quick QA flow</h2>
         <ol class="qa-list">
           {qaFlow.map((step) => (
@@ -129,7 +152,7 @@ const qaFlow = [
         </ol>
       </section>
 
-      <section class="section-block">
+      <section id="styles-colors" class="section-block">
         <h2>Color tokens</h2>
         <div class="token-grid">
           {colorTokens.map((token) => (
@@ -143,7 +166,7 @@ const qaFlow = [
         </div>
       </section>
 
-      <section class="section-block">
+      <section id="styles-typography" class="section-block">
         <h2>Typography scale</h2>
         <div class="stack">
           {typographyScale.map((item) => (
@@ -171,7 +194,7 @@ const qaFlow = [
         </div>
       </section>
 
-      <section class="section-block">
+      <section id="styles-spacing" class="section-block">
         <h2>Spacing scale</h2>
         <div class="stack">
           {spacingScale.map((item) => (
@@ -188,7 +211,7 @@ const qaFlow = [
         </div>
       </section>
 
-      <section class="section-block">
+      <section id="styles-layout-rules" class="section-block">
         <h2>Layout rules</h2>
         <div class="stack">
           {layoutRules.map((rule) => (
@@ -203,7 +226,7 @@ const qaFlow = [
         </div>
       </section>
 
-      <section class="section-block">
+      <section id="styles-layout-previews" class="section-block">
         <h2>Project layout previews</h2>
         <div class="layout-preview-grid">
           <article class="preview-card">
@@ -243,7 +266,7 @@ const qaFlow = [
         </div>
       </section>
 
-      <section class="section-block">
+      <section id="styles-catalog" class="section-block">
         <h2>Component catalog</h2>
         <div class="stack">
           {componentCatalog.map((component) => (
@@ -267,7 +290,7 @@ const qaFlow = [
         </div>
       </section>
 
-      <section class="section-block">
+      <section id="styles-interaction" class="section-block">
         <h2>Interaction sample</h2>
         <article class="rule-card">
           <p class="section-note">
@@ -276,7 +299,8 @@ const qaFlow = [
           </p>
         </article>
       </section>
-    </main>
+      </main>
+    </div>
 
     <Footer />
   </div>
@@ -295,6 +319,39 @@ const qaFlow = [
     display: flex;
     flex-direction: column;
     gap: 2.5em;
+  }
+
+  .styles-layout {
+    position: relative;
+  }
+
+  .styles-nav {
+    border: 1px solid var(--color-border);
+    padding: 1em;
+    background: #ffffff;
+  }
+
+  .styles-nav__list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5em;
+    margin: 0;
+    padding: 0;
+  }
+
+  .styles-nav a {
+    color: color-mix(in srgb, var(--color-text) 85%, transparent);
+    text-decoration: none;
+    transition: color 0.2s ease;
+  }
+
+  .styles-nav a:hover {
+    color: var(--color-text);
+  }
+
+  .section-block[id] {
+    scroll-margin-top: 5em;
   }
 
   .section-block {
@@ -555,7 +612,37 @@ const qaFlow = [
     line-height: 1.45;
   }
 
-  @media (max-width: 56em) {
+  @media (min-width: 64em) {
+    .styles-nav {
+      position: fixed;
+      top: 6.75em;
+      left: max(0.5em, calc((100vw - 60em) / 2 - 12.5em));
+      width: 11.5em;
+      max-height: calc(100dvh - 8em);
+      overflow-y: auto;
+      z-index: 2;
+    }
+  }
+
+  @media (max-width: 63.9375em) {
+    .styles-nav {
+      position: sticky;
+      top: 0.75em;
+      z-index: 3;
+      overflow-x: auto;
+    }
+
+    .styles-nav__list {
+      flex-direction: row;
+      gap: 0.9em;
+      min-width: max-content;
+      padding-bottom: 0.1em;
+    }
+
+    .styles-nav a {
+      white-space: nowrap;
+    }
+
     .token-grid,
     .layout-preview-grid,
     .component-meta-grid,
