@@ -1,0 +1,246 @@
+---
+interface Props {
+  title: string;
+  storageKey?: string;
+  defaultMinimized?: boolean;
+  showMinimize?: boolean;
+}
+
+const {
+  title,
+  storageKey = 'default',
+  defaultMinimized = false,
+  showMinimize = true,
+} = Astro.props;
+---
+
+<aside
+  class="dev-overlay"
+  data-dev-overlay
+  data-storage-key={storageKey}
+  data-default-minimized={defaultMinimized ? 'true' : 'false'}
+>
+  <div class="dev-overlay__head" data-drag-handle>
+    <p class="dev-overlay__title">{title}</p>
+    {
+      showMinimize && (
+        <button
+          type="button"
+          class="dev-overlay__minimize-btn"
+          data-drag-ignore
+          data-minimize-toggle
+          aria-expanded="true"
+        >
+          Minimize
+        </button>
+      )
+    }
+  </div>
+  <div class="dev-overlay__body" data-overlay-body>
+    <slot />
+  </div>
+</aside>
+
+<script>
+  const initDevOverlay = (overlay: HTMLElement) => {
+    if (overlay.dataset.initialized === 'true') return;
+    overlay.dataset.initialized = 'true';
+
+    const storageKeyRaw = overlay.dataset.storageKey?.trim() || 'default';
+    const storageKey = `devOverlay:${storageKeyRaw}`;
+    const positionStorageKey = `${storageKey}:position`;
+    const minimizedStorageKey = `${storageKey}:minimized`;
+    const defaultMinimized = overlay.dataset.defaultMinimized === 'true';
+    const dragHandle = overlay.querySelector<HTMLElement>('[data-drag-handle]');
+    const minimizeBtn = overlay.querySelector<HTMLButtonElement>('[data-minimize-toggle]');
+    const body = overlay.querySelector<HTMLElement>('[data-overlay-body]');
+    if (!dragHandle || !body) return;
+
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+    const savePosition = (left: number, top: number) => {
+      try {
+        window.localStorage.setItem(positionStorageKey, JSON.stringify({ left, top }));
+      } catch {
+        // Ignore storage failures.
+      }
+    };
+
+    const readPosition = () => {
+      try {
+        const raw = window.localStorage.getItem(positionStorageKey);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { left?: unknown; top?: unknown };
+        const left = Number(parsed.left);
+        const top = Number(parsed.top);
+        if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
+        return { left, top };
+      } catch {
+        return null;
+      }
+    };
+
+    const setPosition = (left: number, top: number) => {
+      const maxLeft = Math.max(0, window.innerWidth - overlay.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - overlay.offsetHeight);
+      const nextLeft = clamp(left, 0, maxLeft);
+      const nextTop = clamp(top, 0, maxTop);
+      overlay.style.left = `${nextLeft}px`;
+      overlay.style.top = `${nextTop}px`;
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+      savePosition(nextLeft, nextTop);
+    };
+
+    const setMinimized = (minimized: boolean) => {
+      overlay.classList.toggle('is-minimized', minimized);
+      body.hidden = minimized;
+      if (minimizeBtn) {
+        minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
+        minimizeBtn.textContent = minimized ? 'Expand' : 'Minimize';
+      }
+      try {
+        window.localStorage.setItem(minimizedStorageKey, minimized ? 'true' : 'false');
+      } catch {
+        // Ignore storage failures.
+      }
+    };
+
+    const readMinimized = () => {
+      try {
+        const raw = window.localStorage.getItem(minimizedStorageKey);
+        if (raw === 'true') return true;
+        if (raw === 'false') return false;
+      } catch {
+        // Ignore storage failures.
+      }
+      return defaultMinimized;
+    };
+
+    setMinimized(readMinimized());
+
+    const storedPosition = readPosition();
+    if (storedPosition) {
+      setPosition(storedPosition.left, storedPosition.top);
+    }
+
+    let dragPointerId: number | null = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragOriginLeft = 0;
+    let dragOriginTop = 0;
+
+    dragHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-drag-ignore]')) return;
+      event.preventDefault();
+
+      const bounds = overlay.getBoundingClientRect();
+      overlay.style.left = `${bounds.left}px`;
+      overlay.style.top = `${bounds.top}px`;
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+
+      dragPointerId = event.pointerId;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      dragOriginLeft = bounds.left;
+      dragOriginTop = bounds.top;
+
+      overlay.classList.add('is-dragging');
+      dragHandle.setPointerCapture(event.pointerId);
+    });
+
+    dragHandle.addEventListener('pointermove', (event) => {
+      if (dragPointerId !== event.pointerId) return;
+      const dx = event.clientX - dragStartX;
+      const dy = event.clientY - dragStartY;
+      setPosition(dragOriginLeft + dx, dragOriginTop + dy);
+    });
+
+    const endDrag = (event: PointerEvent) => {
+      if (dragPointerId !== event.pointerId) return;
+      dragPointerId = null;
+      overlay.classList.remove('is-dragging');
+      if (dragHandle.hasPointerCapture(event.pointerId)) {
+        dragHandle.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    dragHandle.addEventListener('pointerup', endDrag);
+    dragHandle.addEventListener('pointercancel', endDrag);
+
+    minimizeBtn?.addEventListener('click', () => {
+      setMinimized(!overlay.classList.contains('is-minimized'));
+    });
+
+    window.addEventListener('resize', () => {
+      const left = Number.parseFloat(overlay.style.left);
+      const top = Number.parseFloat(overlay.style.top);
+      if (!Number.isFinite(left) || !Number.isFinite(top)) return;
+      setPosition(left, top);
+    });
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-dev-overlay]').forEach(initDevOverlay);
+</script>
+
+<style>
+  .dev-overlay {
+    position: fixed;
+    right: 1em;
+    bottom: 1em;
+    z-index: 40;
+    width: min(22em, calc(100vw - 2em));
+    border: 1px solid var(--color-border);
+    background: rgb(255 255 255 / 0.96);
+    backdrop-filter: blur(8px);
+    padding: 0.75em;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+  }
+
+  .dev-overlay__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6em;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .dev-overlay.is-dragging .dev-overlay__head {
+    cursor: grabbing;
+  }
+
+  .dev-overlay__title {
+    margin: 0;
+    font-size: 0.75rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .dev-overlay__minimize-btn {
+    border: 1px solid var(--color-border);
+    background: #ffffff;
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    padding: 0.25em 0.5em;
+    color: var(--color-text-muted);
+    cursor: pointer;
+  }
+
+  .dev-overlay__body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
+  }
+</style>

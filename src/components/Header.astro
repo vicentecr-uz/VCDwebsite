@@ -94,25 +94,29 @@ const menuLinks = headerSettings.menuLinks;
       </div>
       <div class="header-trigger header-trigger--end">
         <span class="header-trigger__sizer header-trigger__sizer--logo" aria-hidden="true">
-          <img src={headerSettings.logoPath} alt="" class="header-trigger__logo" />
+          <span
+            class="header-trigger__logo"
+            style={`--logo-src: url("${headerSettings.logoPath}")`}
+          ></span>
         </span>
         <div class="header-trigger__panel">
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand">
             {brandHref ? (
-              <a href={brandHref} class="header-trigger__brand-link">
-                <img
-                  src={headerSettings.logoPath}
-                  alt="Home"
+              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
+                <span
                   class="header-trigger__logo"
-                />
+                  style={`--logo-src: url("${headerSettings.logoPath}")`}
+                  aria-hidden="true"
+                ></span>
               </a>
             ) : (
-              <img
-                src={headerSettings.logoPath}
-                alt="Logo"
+              <span
                 class="header-trigger__logo"
-              />
+                style={`--logo-src: url("${headerSettings.logoPath}")`}
+                role="img"
+                aria-label="Logo"
+              ></span>
             )}
           </div>
           <ul class="header-menu" role="list">
@@ -133,7 +137,7 @@ const menuLinks = headerSettings.menuLinks;
       <a
         href={linkHref}
         class="header-link hover:opacity-60 transition-opacity duration-200"
-        style="font-family: var(--font-sans); font-size: 2.0em; line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
+        style="font-family: var(--font-sans); font-size: 2.4em; line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
       >
         {title}
       </a>
@@ -142,12 +146,13 @@ const menuLinks = headerSettings.menuLinks;
         <a
           href={linkHref}
           class="header-link block transition-opacity duration-200 opacity-100 hover:opacity-70"
+          aria-label="Logo"
         >
-          <img
-            src={headerSettings.logoPath}
-            alt="Logo"
-            style="height: 2.0rem; width: 2.0rem; display: block;"
-          />
+          <span
+            class="header-trigger__logo"
+            style={`--logo-src: url("${headerSettings.logoPath}")`}
+            aria-hidden="true"
+          ></span>
         </a>
       </nav>
     </div>
@@ -198,7 +203,7 @@ const menuLinks = headerSettings.menuLinks;
       ?.classList.toggle('is-menu-backdrop-visible', visible);
   };
 
-  document.querySelectorAll('.header-trigger').forEach((trigger) => {
+  document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
     const links = [...trigger.querySelectorAll('.header-menu__link')];
     if (!links.length) return;
 
@@ -525,6 +530,7 @@ const menuLinks = headerSettings.menuLinks;
 
 <style>
   .site-header {
+    --header-menu-link-size: 1.2em;
     position: sticky;
     top: 0;
     z-index: 15;
@@ -599,7 +605,7 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger__sizer:not(.header-trigger__sizer--logo) {
     font-family: var(--font-sans);
-    font-size: 2em;
+    font-size: 2.4em;
     line-height: 1;
     font-weight: 700;
     letter-spacing: -0.05ch;
@@ -812,25 +818,29 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   .header-trigger__brand-link--swap:hover .header-trigger__wordmark {
-    color: #5a5a5a;
+    color: var(--color-link-strong-hover);
   }
 
   .header-trigger--end .header-trigger__brand-link {
     line-height: 0;
   }
 
-  .header-trigger__wordmark,
-  .header-menu__link {
+  .header-trigger__wordmark {
     font-family: var(--font-sans);
-    font-size: 2em;
+    font-size: 2.4em;
     line-height: 1;
     font-weight: 700;
     letter-spacing: -0.05ch;
   }
 
   .header-menu__link {
+    font-family: var(--font-sans);
+    font-size: var(--header-menu-link-size, 1.2em);
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: -0.05ch;
     display: block;
-    color: #5a5a5a;
+    color: var(--color-link-soft);
     opacity: 0;
     transition:
       opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s),
@@ -890,6 +900,9 @@ const menuLinks = headerSettings.menuLinks;
     height: 2rem;
     width: 2rem;
     display: block;
+    background-color: var(--color-text);
+    -webkit-mask: var(--logo-src) center / contain no-repeat;
+    mask: var(--logo-src) center / contain no-repeat;
   }
 
   .header-menu {
@@ -936,7 +949,7 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger.is-menu-open .header-menu__link:hover,
   .header-trigger:focus-within .header-menu__link:hover {
-    color: color-mix(in srgb, var(--color-text) 60%, transparent);
+    color: var(--color-link-soft-hover);
     transition:
       opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s),
       color var(--menu-link-color-hover-duration, 0.15s) ease;
