@@ -4,26 +4,28 @@
 
 **Local checkout:** `$HOME/Documents/Projects/VCDwebsite/`
 
-**Scope (what belongs here):** Work that is **the site itself** — IA, global layout, deploy, nav, and **integration** of other work (routes, embeds, links, how a tool **sits inside** vcruzdesigns.com). **What does *not* belong here:** tasks that live inside another repo’s product (calculator logic, chart bugs, responsiveness of the **standalone** Stoozing HTML, AutoSpeedTest features, etc.) — those stay in **that project’s** roadmap (or in-file notes). **Gray line:** if the issue is the **site shell** (iframe sizing, Astro page grid, site chrome breaking mobile), it’s here; if it’s **Stoozing’s own** layout/CSS in `stoozing-playground.html`, it’s **Stoozing Playground**.
+**Scope (what belongs here):** Work that is **the site itself** — IA, global layout, deploy, nav, and **integration** of other work (routes, embeds, links, how a tool **sits inside** vcruzdesigns.com). **What does *not* belong here:** tasks that live inside another repo’s product (calculator logic, chart bugs, responsiveness of the **standalone** Stoozing HTML, AutoSpeedTest **features**, etc.) — those stay in **that project’s** roadmap (or in-file notes). **Gray line:** if the issue is the **site shell** (iframe sizing, Astro page grid, site chrome breaking mobile), it’s here; if it’s **Stoozing’s own** layout/CSS in `stoozing-playground.html`, it’s **Stoozing Playground**.
 
 ---
 
 ## v1 — ship a cohesive site
 
-- [ ] Work on desktop site
-    - [x] Change Extras page to Play
-        - [x] Play page will be like Work (gallery of projects and stuff)
-    - [ ] Design system page with all the components in use across the site → so that I can build new project pages just by saying something like 'create a new project page with the following components: hero, text, inline image, 2x2 grid image, text, hover detail image, quote, text'
-        - [ ] Figure out how to add a little example pop-up to show the component used in context in other pages
-    - [ ] Change homepage project gallery images to something more representative of each project's design, something more eye-catching
-	- [ ] 404 page
-	- [ ] Change site to use off-white/black background colour and have it roll-out site-wide
-		- [ ] Have light/dark theme react to local time of browser
-		- [ ] Add toggle in menu
-	- [ ] Add a Work link to the header menu above → when on homepage, have it shake like in an 'interaction denied' type of way when clicked, then if clicked again, have the text appear in a slightly lighter gray to the left/right of it saying "you're already on this page", then if you click it again, have the text darken. Click it one more time and the menu option gradient from below upwards as the rest of the links shift up by one
+- [x] Change Extras page to Play
+	- [x] Play page will be like Work (gallery of projects and stuff)
+- [x] Add Work link to header
+- [x] Fix nav header wordmark kerning bug on project/page titles (seen on Tapico: "Tapico Typer") caused by per-character kerning transforms; ensure consistent spacing across all non-home headers
+- [ ] Design System page
+	- have all the components in use across the site → so that I can build new project pages just by saying something like 'create a new project page with the following components: hero, text, inline image, 2x2 grid image, text, hover detail image, quote, text'
+	- [ ] Figure out how to add a little example pop-up to show the component used in context in other pages
+- [ ] Change homepage project gallery images to something more representative of each project's design, something more eye-catching
+- [ ] Add 404 page
+- [ ] Change site to use off-white/black background colour and have it roll-out site-wide
+	- [ ] Have light/dark theme react to local time of browser
+	- [ ] Add toggle in menu
+- [ ] Add detail animations
+	- [ ] When on homepage, have it shake like in an 'interaction denied' type of way when clicked, then if clicked again, have the text appear in a slightly lighter gray to the left/right of it saying "you're already on this page", then if you click it again, have the text darken. Click it one more time and the menu option gradient from below upwards as the rest of the links shift up by one
 	- [ ] Add a way for scrolls to slow down (like the browser is hitting literal honey or something) if the user scrolls to the top with a quick swipe. That way, instead of the browser scroll taking the momentum impact (or not), it's built-right in.
-- [ ] Work on mobile site
-	- [ ] Review it on mobile to fix issues
+- [ ] Clean up mobile version
 
 ## v2+
 - [ ] Make some objects 3D rotatable (using gaussian splats or however it's done on chaz.fun/phonemuseum)
