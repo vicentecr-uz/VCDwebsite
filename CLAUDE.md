@@ -13,6 +13,7 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - Background: `#ffffff`
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
 - Dev server: port 4321
+- **Dev session:** `bun run dev:session` starts Astro + Decap proxy together; `dev:session:stop` / `dev:session:status`. One Cursor chat owns the session — reuse servers, don't duplicate. See `.cursor/rules/dev-session.mdc`.
 - Page transitions: GSAP fades `#transition-overlay` (starts opaque, fades out on load with 0.5s delay; fades in on navigation)
 - Max page width: fluid gutter via `#site-wrapper { padding-inline: max(1em, calc((100% - 60em) / 2)) }` — gutter holds at 1em until viewport exceeds 62em, then grows to keep content at 60em max
 
