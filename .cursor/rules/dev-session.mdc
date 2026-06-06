@@ -1,0 +1,40 @@
+---
+description: Start/stop the local Astro + Decap dev session for VCDwebsite
+alwaysApply: true
+---
+
+# VCDwebsite dev session
+
+This repo uses a **persistent dev session** so one chat can own the local servers. Other agents in the same chat should reuse them — do not start duplicates.
+
+## When the user starts a session
+
+Phrases like: *"I'm going to work on the site"*, *"start dev session"*, *"spin up the servers"*.
+
+1. Run `bun run dev:session:status` first.
+2. If already running → report URLs and continue work. Do **not** start again.
+3. If stopped → run `bun run dev:session` (uses `$HOME/.bun/bin/bun` via the script).
+4. Tell the user:
+   - Site: `http://localhost:4321`
+   - CMS: `http://localhost:4321/admin`
+   - Decap proxy: `http://localhost:8081`
+
+For preview/testing in this chat, assume these URLs are available. Prefer browser checks against localhost rather than starting new dev servers.
+
+## When the user ends a session
+
+Phrases like: *"I'm done"*, *"shut down the dev session"*, *"stop the servers"*, *"wrap up the site session"*.
+
+1. Run `bun run dev:session:stop`.
+2. Confirm both Astro and Decap are stopped (`bun run dev:session:status` should show both stopped).
+3. Briefly confirm the user can archive this chat.
+
+## Manual commands
+
+```bash
+bun run dev:session          # start
+bun run dev:session:status   # check
+bun run dev:session:stop     # stop
+```
+
+Logs: `.dev-session/astro.log`, `.dev-session/decap.log`
