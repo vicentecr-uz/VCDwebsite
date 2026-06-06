@@ -1,0 +1,22 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Item {
+  src: string;
+  alt?: string;
+}
+
+interface Props {
+  items: Item[];
+}
+
+const { items } = Astro.props;
+---
+
+<div class="project-block project-block--before-image">
+  <div class="project-process-grid">
+    {items.map((item) => (
+      <img src={projectImage(item.src)} alt={item.alt ?? ''} loading="lazy" />
+    ))}
+  </div>
+</div>

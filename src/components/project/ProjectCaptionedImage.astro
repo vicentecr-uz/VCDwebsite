@@ -1,0 +1,19 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Props {
+  src: string;
+  alt?: string;
+  caption: string;
+  hideMobile?: boolean;
+}
+
+const { src, alt = '', caption, hideMobile = false } = Astro.props;
+---
+
+<div class:list={['project-block', 'project-block--before-image', hideMobile && 'project-hide-mobile']}>
+  <figure class="project-captioned-image">
+    <span class="project-caption">{caption}</span>
+    <img src={projectImage(src)} alt={alt} class="project-media__img" loading="lazy" />
+  </figure>
+</div>
