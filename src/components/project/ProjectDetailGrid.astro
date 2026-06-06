@@ -1,0 +1,32 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Item {
+  src: string;
+  alt?: string;
+  fullHeight?: boolean;
+  hideOnMobile?: boolean;
+}
+
+interface Props {
+  items: Item[];
+  wide?: boolean;
+  square?: boolean;
+  showMobileOnly?: boolean;
+}
+
+const { items, wide = false, square = false, showMobileOnly = false } = Astro.props;
+---
+
+<div class:list={['project-block', 'project-block--before-image', showMobileOnly && 'project-show-mobile-only']}>
+  <div class:list={['project-detail-grid', wide && 'project-detail-grid--wide', square && 'project-detail-grid--square']}>
+    {items.map((item) => (
+      <img
+        src={projectImage(item.src)}
+        alt={item.alt ?? ''}
+        class:list={[item.fullHeight && 'project-media__img--full-height', item.hideOnMobile && 'project-hide-mobile']}
+        loading="lazy"
+      />
+    ))}
+  </div>
+</div>

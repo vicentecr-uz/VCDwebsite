@@ -1,0 +1,31 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Item {
+  src: string;
+  alt?: string;
+  caption?: string;
+  hideMobileCaption?: boolean;
+  hideOnMobile?: boolean;
+  hideOnTablet?: boolean;
+}
+
+interface Props {
+  items: Item[];
+}
+
+const { items } = Astro.props;
+---
+
+<div class="project-block project-block--before-image">
+  <div class="project-moodboard-grid">
+    {items.map((item) => (
+      <figure class:list={['project-moodboard-cell', item.hideOnMobile && 'project-hide-mobile', item.hideOnTablet && 'project-hide-tablet']}>
+        {item.caption && (
+          <span class:list={['project-caption', item.hideMobileCaption && 'project-hide-mobile']}>{item.caption}</span>
+        )}
+        <img src={projectImage(item.src)} alt={item.alt ?? 'Conic development process'} loading="lazy" />
+      </figure>
+    ))}
+  </div>
+</div>

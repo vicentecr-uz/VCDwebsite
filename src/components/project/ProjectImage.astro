@@ -9,19 +9,48 @@ interface Props {
   loading?: 'eager' | 'lazy';
   /** Minimal vertical padding when stacked in a gallery sequence */
   flush?: boolean;
+  /** Caps height to 30svh on mobile (object-fit: cover) */
+  mobileShort?: boolean;
+  /** Caps height to 80svh (object-fit: cover) */
+  max80?: boolean;
+  /** Fills available height (object-fit: cover) */
+  fullHeight?: boolean;
+  /** Hides the block on mobile */
+  hideMobile?: boolean;
+  /** Appends an arbitrary project-media__img--{modifier} class */
+  imgModifier?: string;
 }
 
-const { src, alt = '', constrained = false, mobileHeight, loading = 'lazy', flush = false } = Astro.props;
+const {
+  src,
+  alt = '',
+  constrained = false,
+  mobileHeight,
+  loading = 'lazy',
+  flush = false,
+  mobileShort = false,
+  max80 = false,
+  fullHeight = false,
+  hideMobile = false,
+  imgModifier,
+} = Astro.props;
 
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
 ---
 
-<div class:list={['project-block', 'project-block--before-image', flush && 'project-block--flush']}>
+<div class:list={['project-block', 'project-block--before-image', flush && 'project-block--flush', hideMobile && 'project-hide-mobile']}>
   <figure class:list={['project-media', constrained && 'project-media--constrained']}>
     <img
       src={projectImage(src)}
       alt={alt}
-      class:list={['project-media__img', heightClass]}
+      class:list={[
+        'project-media__img',
+        heightClass,
+        mobileShort && 'project-media__img--mobile-short',
+        max80 && 'project-media__img--max80',
+        fullHeight && 'project-media__img--full-height',
+        imgModifier && `project-media__img--${imgModifier}`,
+      ]}
       loading={loading}
     />
   </figure>

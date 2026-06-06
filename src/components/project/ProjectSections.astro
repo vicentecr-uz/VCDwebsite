@@ -1,0 +1,212 @@
+---
+import ProjectHero from './ProjectHero.astro';
+import ProjectTagline from './ProjectTagline.astro';
+import ProjectProse from './ProjectProse.astro';
+import ProjectSectionTitle from './ProjectSectionTitle.astro';
+import ProjectImage from './ProjectImage.astro';
+import ProjectGrid from './ProjectGrid.astro';
+import ProjectCaptionImage from './ProjectCaptionImage.astro';
+import ProjectDetailImage from './ProjectDetailImage.astro';
+import ProjectSystemGrid from './ProjectSystemGrid.astro';
+import ProjectResearchGrid from './ProjectResearchGrid.astro';
+import ProjectTripleGrid from './ProjectTripleGrid.astro';
+import ProjectDetailGrid from './ProjectDetailGrid.astro';
+import ProjectReferenceGrid from './ProjectReferenceGrid.astro';
+import ProjectProcessGrid from './ProjectProcessGrid.astro';
+import ProjectMoodboard from './ProjectMoodboard.astro';
+import ProjectCaptionedImage from './ProjectCaptionedImage.astro';
+import ProjectHoverSwap from './ProjectHoverSwap.astro';
+import ProjectContextGrid from './ProjectContextGrid.astro';
+import ProjectLayoutSplit from './ProjectLayoutSplit.astro';
+import ProjectSketchModels from './ProjectSketchModels.astro';
+import ProjectVideo from './ProjectVideo.astro';
+import ProjectFinalHero from './ProjectFinalHero.astro';
+import { projectImage } from '../../lib/images';
+
+interface Props {
+  sections: any[];
+}
+
+const { sections } = Astro.props;
+---
+
+{sections.map((section) => (
+  <>
+    {section.type === 'heroImage' && (
+      <ProjectHero src={section.src} alt={section.alt} variant={section.variant ?? 'default'} />
+    )}
+
+    {section.type === 'tagline' && (
+      <ProjectTagline
+        text={section.text}
+        prefix={section.prefix}
+        linkLabel={section.linkLabel}
+        linkHref={section.linkHref}
+      />
+    )}
+
+    {section.type === 'sectionTitle' && (
+      <ProjectSectionTitle title={section.title} level={section.level ?? 2} />
+    )}
+
+    {section.type === 'prose' && (
+      <ProjectProse tightTop={section.tightTop ?? false} tightBottom={section.tightBottom ?? false}>
+        {section.heading && <h4 class="project-section-title">{section.heading}</h4>}
+        {section.paragraphs.map((paragraph) => (
+          <p set:html={paragraph} />
+        ))}
+      </ProjectProse>
+    )}
+
+    {section.type === 'image' && (
+      section.showMobileOnly ? (
+        <div class="project-show-mobile-only">
+          <ProjectImage
+            src={section.src}
+            alt={section.alt}
+            constrained={section.constrained ?? false}
+            mobileHeight={section.mobileHeight}
+            flush={section.flush ?? false}
+            mobileShort={section.mobileShort ?? false}
+            max80={section.max80 ?? false}
+            fullHeight={section.fullHeight ?? false}
+            hideMobile={section.hideMobile ?? false}
+          />
+        </div>
+      ) : (
+        <ProjectImage
+          src={section.src}
+          alt={section.alt}
+          constrained={section.constrained ?? false}
+          mobileHeight={section.mobileHeight}
+          flush={section.flush ?? false}
+          mobileShort={section.mobileShort ?? false}
+          max80={section.max80 ?? false}
+          fullHeight={section.fullHeight ?? false}
+          hideMobile={section.hideMobile ?? false}
+          imgModifier={section.imgModifier}
+        />
+      )
+    )}
+
+    {section.type === 'mediaGrid' && (
+      <ProjectGrid cols={section.cols}>
+        {section.items.map((item) => (
+          <>
+            {item.style === 'caption' && (
+              <ProjectCaptionImage
+                src={item.src}
+                alt={item.alt}
+                caption={item.caption}
+                square={item.square ?? false}
+                variant={item.captionVariant ?? 'light'}
+              />
+            )}
+
+            {item.style === 'detail' && (
+              <ProjectDetailImage
+                src={item.src}
+                alt={item.alt}
+                caption={item.caption}
+                captionVariant={item.captionVariant ?? 'light'}
+              />
+            )}
+
+            {item.style === 'cell' && (
+              <figure class:list={['project-cell', item.stack && 'project-cell--stack', item.hideOnMobile && 'project-hide-mobile']}>
+                <img src={projectImage(item.src)} alt={item.alt} class="project-cell__img" loading="lazy" />
+              </figure>
+            )}
+          </>
+        ))}
+      </ProjectGrid>
+    )}
+
+    {section.type === 'constrainedCaptionImage' && (
+      <div class="project-block project-block--before-image">
+        <figure class="project-media project-media--constrained">
+          <span class:list={['project-caption', section.captionVariant === 'dark' && 'project-caption--dark', section.captionVariant === 'black' && 'project-caption--black']}>
+            {section.caption}
+          </span>
+          <img
+            src={projectImage(section.src)}
+            alt={section.alt}
+            class:list={['project-media__img', section.mobileHeight && `project-media__img--h${section.mobileHeight}`]}
+            loading="lazy"
+          />
+        </figure>
+      </div>
+    )}
+
+    {section.type === 'systemGrid' && (
+      <ProjectSystemGrid items={section.items} />
+    )}
+
+    {section.type === 'researchGrid' && (
+      <ProjectResearchGrid columns={section.columns} />
+    )}
+
+    {section.type === 'tripleGrid' && (
+      <ProjectTripleGrid items={section.items} />
+    )}
+
+    {section.type === 'detailGrid' && (
+      <ProjectDetailGrid
+        items={section.items}
+        wide={section.wide ?? false}
+        square={section.square ?? false}
+        showMobileOnly={section.showMobileOnly ?? false}
+      />
+    )}
+
+    {section.type === 'referenceGrid' && (
+      <ProjectReferenceGrid items={section.items} />
+    )}
+
+    {section.type === 'processGrid' && (
+      <ProjectProcessGrid items={section.items} />
+    )}
+
+    {section.type === 'moodboard' && (
+      <ProjectMoodboard items={section.items} />
+    )}
+
+    {section.type === 'captionedImage' && (
+      <ProjectCaptionedImage
+        src={section.src}
+        alt={section.alt}
+        caption={section.caption}
+        hideMobile={section.hideMobile ?? false}
+      />
+    )}
+
+    {section.type === 'hoverSwap' && (
+      <ProjectHoverSwap
+        baseSrc={section.baseSrc}
+        baseAlt={section.baseAlt}
+        topSrc={section.topSrc}
+        topAlt={section.topAlt}
+      />
+    )}
+
+    {section.type === 'contextGrid' && (
+      <ProjectContextGrid items={section.items} />
+    )}
+
+    {section.type === 'layoutSplit' && (
+      <ProjectLayoutSplit leftSrc={section.leftSrc} leftAlt={section.leftAlt} items={section.items} />
+    )}
+
+    {section.type === 'sketchModels' && (
+      <ProjectSketchModels setupSrc={section.setupSrc} setupAlt={section.setupAlt} items={section.items} />
+    )}
+
+    {section.type === 'video' && (
+      <ProjectVideo src={section.src} title={section.title} />
+    )}
+
+    {section.type === 'finalHero' && (
+      <ProjectFinalHero src={section.src} alt={section.alt} />
+    )}
+  </>
+))}
