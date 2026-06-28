@@ -4,9 +4,15 @@ import '../styles/global.css';
 interface Props {
   title: string;
   description?: string;
+  /** Load EB Garamond (serif). Only pages that use --font-serif need this. */
+  serif?: boolean;
 }
 
-const { title, description = 'Portfolio of Vicente Cruz — London-based industrial designer.' } = Astro.props;
+const {
+  title,
+  description = 'Portfolio of Vicente Cruz — London-based industrial designer.',
+  serif = false,
+} = Astro.props;
 ---
 
 <!doctype html>
@@ -17,7 +23,10 @@ const { title, description = 'Portfolio of Vicente Cruz — London-based industr
     <meta name="description" content={description} />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Hanken+Grotesk:wght@300;400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800;900&display=swap" />
+    {serif && (
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" />
+    )}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{title}</title>
   </head>
