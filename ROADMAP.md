@@ -19,6 +19,7 @@
 	- [ ] Figure out how to add a little example pop-up to show the component used in context in other pages
 - [ ] Change homepage project gallery images to something more representative of each project's design, something more eye-catching
 - [ ] Add 404 page
+- [ ] Add links to the business names on the About page
 - [ ] Change site to use off-white/black background colour and have it roll-out site-wide
 	- [ ] Have light/dark theme react to local time of browser
 	- [ ] Add toggle in menu
