@@ -24,6 +24,8 @@ What belongs in this repo: work that is **the site itself** — IA, global layou
 
 Open tasks are tracked in [GitHub Issues](https://github.com/vcruzdesigns/VCDwebsite/issues).
 
+**When opening a GitHub issue:** always assign a relevant label and milestone. If it's unclear which label or milestone applies, ask Anto before filing.
+
 ## Implementation notes
 
 ### About page
