@@ -19,9 +19,14 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - Page transitions: GSAP fades `#transition-overlay` (starts opaque, fades out on load with 0.5s delay; fades in on navigation)
 - Max page width: fluid gutter via `#site-wrapper { padding-inline: max(1em, calc((100% - 60em) / 2)) }` — gutter holds at 1em until viewport exceeds 62em, then grows to keep content at 60em max
 
-## Pending tasks (as of 2026-03-31)
+## Scope
+What belongs in this repo: work that is **the site itself** — IA, global layout, deploy, nav, and integration of other work (routes, embeds, links, how a tool sits inside vcruzdesigns.com). What does **not** belong here: tasks inside another repo's product (calculator logic, chart bugs, Stoozing HTML layout, AutoSpeedTest features) — those stay in that project's own notes. Gray line: if the issue is the site shell (iframe sizing, Astro page grid, site chrome breaking mobile), it's here; if it's Stoozing's own layout/CSS in `stoozing-playground.html`, it's Stoozing Playground.
 
-### About page — ✓ done
+Open tasks are tracked in [GitHub Issues](https://github.com/vcruzdesigns/VCDwebsite/issues).
+
+## Implementation notes
+
+### About page
 Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
 - **Wide (≥50em):** photo 3/4 (17em col) left, Contact+About+Experience stacked in right col
 - **Medium (40–50em):** photo 1:1 (17em) + Contact top row; About+Experience span full width below
@@ -29,15 +34,3 @@ Three-state responsive layout with GSAP Flip animations on breakpoint transition
 - Photo `object-position: 50% 35%` in square crop for headroom; `50% 50%` in portrait
 - GSAP Flip animates element repositioning; photo height wipe + object-position animated separately
 - Bio `max-width: 38em`; noscript CSS media query fallback for all states
-
-### Footer
-4. **Centered footer at breakpoint** — dynamically animate/transition footer text to `text-align: center` (and possibly `justify-content: center`) below a certain viewport width (width TBD). Consider GSAP ScrollTrigger or a CSS media query transition.
-
-### Roadmap
-1. ~~Header polish~~ ✓
-2. ~~**Fluid max-width layout**~~ ✓
-3. ~~**About page** — initial rebuild~~ ✓ (polish tasks above remain)
-4. **Project pages** — rebuild each to match Webflow equivalents (image layouts, captions, sections, typography)
-5. **Style guide page** — `/styles` or `/debug` page previewing all site-wide components: h1–h3, body text, hover titles, captions, grids, footer, buttons — for QA and design consistency
-6. **Hosting & domain** — deploy to vcruzdesigns.com (likely Cloudflare Pages, Netlify, or Vercel; DNS switch from Webflow)
-7. **Progressive image loading** — LQIP strategy: blurred placeholder → full-res swap; use Astro `@astrojs/image` / `sharp` or blur-hash + `loading="lazy"` + srcset
