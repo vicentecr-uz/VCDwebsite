@@ -3,7 +3,254 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
+import ProjectHero from '../components/project/ProjectHero.astro';
+import ProjectTagline from '../components/project/ProjectTagline.astro';
+import ProjectProse from '../components/project/ProjectProse.astro';
+import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
+import ProjectImage from '../components/project/ProjectImage.astro';
+import ProjectGrid from '../components/project/ProjectGrid.astro';
+import ProjectCaptionImage from '../components/project/ProjectCaptionImage.astro';
+import ProjectDetailImage from '../components/project/ProjectDetailImage.astro';
+import ProjectContextImage from '../components/project/ProjectContextImage.astro';
+import ProjectReferenceImage from '../components/project/ProjectReferenceImage.astro';
 import '../styles/project.css';
+
+/** Shared preview assets (Tapico) */
+const previewHero = 'Tapico White Hero Center Crop.jpg';
+const previewWide = 'IMG_5776.jpg';
+const previewDetail = 'IMG_5609.jpg';
+const previewSquare = 'Remarkable Tablet.jpg';
+
+type ComponentCategory = 'site' | 'project-shell' | 'project-content' | 'project-media';
+
+type PreviewKey =
+  | 'header'
+  | 'footer'
+  | 'sidebar-nav'
+  | 'project-layout'
+  | 'hero'
+  | 'tagline'
+  | 'prose'
+  | 'section-title'
+  | 'image'
+  | 'image-constrained'
+  | 'grid'
+  | 'caption-image'
+  | 'detail-image'
+  | 'context-image'
+  | 'reference-image';
+
+type ComponentEntry = {
+  id: string;
+  name: string;
+  category: ComponentCategory;
+  purpose: string;
+  classRef: string;
+  source: string;
+  props: string;
+  usedOn: string[];
+  checklist: string;
+  preview: PreviewKey;
+};
+
+const categoryLabels: Record<ComponentCategory, string> = {
+  site: 'Site chrome',
+  'project-shell': 'Project shell',
+  'project-content': 'Project content',
+  'project-media': 'Project media',
+};
+
+const componentCatalog: ComponentEntry[] = [
+  {
+    id: 'component-header',
+    name: 'Header',
+    category: 'site',
+    purpose: 'Global nav, wordmark swap on inner pages, menu overlay.',
+    classRef: '.site-header / .site-header--nav-menu',
+    source: 'src/components/Header.astro',
+    props: 'title?, navMenu? (default true)',
+    usedOn: ['All pages'],
+    checklist: 'Wordmark kerning pairs, menu open/close, active route state.',
+    preview: 'header',
+  },
+  {
+    id: 'component-footer',
+    name: 'Footer',
+    category: 'site',
+    purpose: 'Copyright line anchored to page bottom.',
+    classRef: '.footer-text',
+    source: 'src/components/Footer.astro',
+    props: '(none)',
+    usedOn: ['All pages'],
+    checklist: 'Hover tone stays subtle; year updates automatically.',
+    preview: 'footer',
+  },
+  {
+    id: 'component-section-sidebar-nav',
+    name: 'SectionSidebarNav',
+    category: 'site',
+    purpose: 'Scroll-spy section nav for long single-column pages.',
+    classRef: '.section-sidebar-nav',
+    source: 'src/components/SectionSidebarNav.astro',
+    props: 'sectionLinks, ariaLabel?, enableEasingDevPanel?',
+    usedOn: ['/styles', '/about'],
+    checklist: 'Click scroll offset, active section highlight, mobile hide.',
+    preview: 'sidebar-nav',
+  },
+  {
+    id: 'component-project-layout',
+    name: 'ProjectLayout',
+    category: 'project-shell',
+    purpose: 'Case-study page shell: Layout + Header + main slot + Footer + project.css.',
+    classRef: '.project-page / .project-page__main',
+    source: 'src/components/ProjectLayout.astro',
+    props: 'title, description',
+    usedOn: ['Tapico', 'The Rams', 'Conic Collection', 'ParentPal'],
+    checklist: 'Title prop matches header wordmark; description feeds meta.',
+    preview: 'project-layout',
+  },
+  {
+    id: 'component-project-hero',
+    name: 'ProjectHero',
+    category: 'project-media',
+    purpose: 'Lead image at top of each project story.',
+    classRef: '.project-hero / .project-hero__img',
+    source: 'src/components/project/ProjectHero.astro',
+    props: 'src, alt, variant? (default | conic)',
+    usedOn: ['All project pages'],
+    checklist: 'Confirm crop focal point and min-height feel on desktop.',
+    preview: 'hero',
+  },
+  {
+    id: 'component-project-tagline',
+    name: 'ProjectTagline',
+    category: 'project-content',
+    purpose: 'Large display headline under the hero.',
+    classRef: '.project-tagline',
+    source: 'src/components/project/ProjectTagline.astro',
+    props: 'text',
+    usedOn: ['Tapico', 'The Rams', 'ParentPal'],
+    checklist: '80% width desktop; scales to 2em at tablet.',
+    preview: 'tagline',
+  },
+  {
+    id: 'component-project-prose',
+    name: 'ProjectProse',
+    category: 'project-content',
+    purpose: 'Main narrative body for case-study explanations.',
+    classRef: '.project-prose / .project-block',
+    source: 'src/components/project/ProjectProse.astro',
+    props: 'tightTop?, tightBottom? + default slot',
+    usedOn: ['All project pages'],
+    checklist: 'Stay around 80% width desktop, 100% tablet and below.',
+    preview: 'prose',
+  },
+  {
+    id: 'component-project-section-title',
+    name: 'ProjectSectionTitle',
+    category: 'project-content',
+    purpose: 'In-page section break heading (Research, Process, etc.).',
+    classRef: '.project-section-title',
+    source: 'src/components/project/ProjectSectionTitle.astro',
+    props: 'title, tightBottom?, level? (2 | 3)',
+    usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
+    checklist: 'Heading-only block spacing; level 3 for nested sections.',
+    preview: 'section-title',
+  },
+  {
+    id: 'component-project-image',
+    name: 'ProjectImage',
+    category: 'project-media',
+    purpose: 'Full-width or constrained standalone image between prose blocks.',
+    classRef: '.project-media / .project-media__img',
+    source: 'src/components/project/ProjectImage.astro',
+    props: 'src, alt?, constrained?, mobileHeight?, flush?',
+    usedOn: ['Tapico', 'The Rams', 'ParentPal', 'Conic Collection'],
+    checklist: 'mobileHeight svh values at 767px; flush for gallery stacks.',
+    preview: 'image',
+  },
+  {
+    id: 'component-project-grid',
+    name: 'ProjectGrid',
+    category: 'project-media',
+    purpose: 'Two-, three-, or five-column media clusters.',
+    classRef: '.project-grid--2/3/5',
+    source: 'src/components/project/ProjectGrid.astro',
+    props: 'cols (2 | 3 | 5) + default slot',
+    usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
+    checklist: 'Validate collapse path at 991px and 767px breakpoints.',
+    preview: 'grid',
+  },
+  {
+    id: 'component-project-caption-image',
+    name: 'ProjectCaptionImage',
+    category: 'project-media',
+    purpose: 'Grid cell with overlay caption (competitor refs, labeled shots).',
+    classRef: '.project-cell / .project-caption',
+    source: 'src/components/project/ProjectCaptionImage.astro',
+    props: 'src, alt?, caption, variant?, square?',
+    usedOn: ['Tapico'],
+    checklist: 'Caption short; hidden on mobile per project.css.',
+    preview: 'caption-image',
+  },
+  {
+    id: 'component-project-detail-image',
+    name: 'ProjectDetailImage',
+    category: 'project-media',
+    purpose: 'Grid detail shot with optional caption variants.',
+    classRef: '.project-detail / .project-detail__img',
+    source: 'src/components/project/ProjectDetailImage.astro',
+    props: 'src, alt?, caption?, captionVariant? (light | dark | black)',
+    usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
+    checklist: 'Min-height 16em; caption variant matches image tone.',
+    preview: 'detail-image',
+  },
+  {
+    id: 'component-project-context-image',
+    name: 'ProjectContextImage',
+    category: 'project-media',
+    purpose: 'Moodboard/context cell with caption above image.',
+    classRef: '.project-context-cell / .project-context-caption',
+    source: 'src/components/project/ProjectContextImage.astro',
+    props: 'src, alt?, caption',
+    usedOn: ['The Rams'],
+    checklist: 'Caption above image; used inside context grids.',
+    preview: 'context-image',
+  },
+  {
+    id: 'component-project-reference-image',
+    name: 'ProjectReferenceImage',
+    category: 'project-media',
+    purpose: 'Linked reference tile with overlay caption.',
+    classRef: '.project-reference-cell / .project-reference-cell__link',
+    source: 'src/components/project/ProjectReferenceImage.astro',
+    props: 'src, alt?, caption, href',
+    usedOn: ['Conic Collection'],
+    checklist: 'External link opens new tab; caption readable on image.',
+    preview: 'reference-image',
+  },
+];
+
+const pendingPatterns = [
+  {
+    name: 'Captioned constrained image',
+    classRef: '.project-media--constrained + .project-caption--black/dark',
+    usedOn: ['Tapico'],
+    note: 'Full-width image with caption above (V2 exploded view, keyboard). Candidate: extend ProjectImage with caption prop.',
+  },
+  {
+    name: 'Stacked grid cell',
+    classRef: '.project-cell--stack',
+    usedOn: ['Tapico'],
+    note: 'Tall two-image stack inside a 5-column grid. Candidate: ProjectDetailImage stack variant or ProjectStackedCell.',
+  },
+  {
+    name: 'Responsive hide / show pair',
+    classRef: '.project-hide-mobile + .project-show-mobile-only',
+    usedOn: ['Tapico', 'Conic Collection'],
+    note: 'Desktop grid cell hidden on mobile, alternate full image shown instead.',
+  },
+];
 
 const colorTokens = [
   { name: '--color-bg', value: '#ffffff', role: 'Primary page background' },
@@ -77,230 +324,324 @@ const layoutRules = [
   },
 ];
 
-const componentCatalog = [
-  {
-    name: 'ProjectHero',
-    purpose: 'Lead image at top of each project story.',
-    classRef: '.project-hero / .project-hero__img',
-    checklist: 'Confirm crop focal point and min-height feel on desktop.',
-  },
-  {
-    name: 'ProjectProse',
-    purpose: 'Main narrative body for case-study explanations.',
-    classRef: '.project-prose',
-    checklist: 'Stay around 80% width desktop, 100% tablet and below.',
-  },
-  {
-    name: 'ProjectGrid',
-    purpose: 'Two/three/five column media clusters.',
-    classRef: '.project-grid--2/3/5',
-    checklist: 'Validate collapse path at 991px and 767px breakpoints.',
-  },
-  {
-    name: 'ProjectCaptionImage',
-    purpose: 'Image overlays with short framing captions.',
-    classRef: '.project-caption',
-    checklist: 'Caption should remain short and avoid collision with important image detail.',
-  },
+const foundationLinks = [
+  { id: 'styles-intro', label: 'Intro' },
+  { id: 'styles-colors', label: 'Color tokens' },
+  { id: 'styles-typography', label: 'Typography' },
+  { id: 'styles-spacing', label: 'Spacing' },
+  { id: 'styles-layout-rules', label: 'Layout rules' },
 ];
 
-const qaFlow = [
-  'Check typography hierarchy first (h1/h2/h3/body/caption) before spacing tweaks.',
-  'Verify 1em rhythm and section spacing (5em desktop, 3em tablet) before fine polish.',
-  'Validate grid collapse at 991px and 767px; captions should never overlap critical content.',
-  'Hover pass: links, image scale, and muted color transitions should feel subtle and intentional.',
-];
+const componentLinks = componentCatalog.map((component) => ({
+  id: component.id,
+  label: component.name,
+}));
 
 const sectionLinks = [
-  { id: 'styles-intro', label: 'Intro' },
-  { id: 'styles-qa', label: 'Quick QA flow' },
-  { id: 'styles-colors', label: 'Color tokens' },
-  { id: 'styles-typography', label: 'Typography scale' },
-  { id: 'styles-spacing', label: 'Spacing scale' },
-  { id: 'styles-layout-rules', label: 'Layout rules' },
-  { id: 'styles-layout-previews', label: 'Layout previews' },
-  { id: 'styles-catalog', label: 'Component catalog' },
+  ...foundationLinks,
+  { id: 'styles-components', label: 'Component library' },
+  ...componentLinks,
+  { id: 'styles-pending', label: 'Pending patterns' },
   { id: 'styles-interaction', label: 'Interaction sample' },
 ];
+
+const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).map((category) => ({
+  category,
+  label: categoryLabels[category],
+  items: componentCatalog.filter((entry) => entry.category === category),
+}));
 ---
 
-<Layout title="Styles — Vicente Cruz">
+<Layout title="Design System — Vicente Cruz">
   <div class="styles-page">
-    <Header title="Styles" />
+    <Header title="Design System" />
 
     <div class="styles-layout">
       <SectionSidebarNav
         sectionLinks={sectionLinks}
-        ariaLabel="Styles page sections"
+        ariaLabel="Design System page sections"
         enableEasingDevPanel={false}
       />
 
       <main class="styles-main">
-      <section id="styles-intro" class="styles-intro section-block">
-        <p class="eyebrow">Design System</p>
-        <h1>Live foundations and component QA</h1>
-        <p class="intro-copy">
-          This page is the visual source of truth for spacing, typography, color, and project-page patterns.
-          Use it as a single pass QA surface before shipping updates to `work`, `play`, and individual projects.
-        </p>
-      </section>
-
-      <section id="styles-qa" class="section-block">
-        <h2>Quick QA flow</h2>
-        <ol class="qa-list">
-          {qaFlow.map((step) => (
-            <li>{step}</li>
-          ))}
-        </ol>
-      </section>
-
-      <section id="styles-colors" class="section-block">
-        <h2>Color tokens</h2>
-        <div class="token-grid">
-          {colorTokens.map((token) => (
-            <article class="token-card">
-              <div class="token-card__swatch" style={`background:${token.value};`}></div>
-              <p class="meta-label">{token.name}</p>
-              <p class="meta-values">{token.value}</p>
-              <p class="token-note">{token.role}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="styles-typography" class="section-block">
-        <h2>Typography scale</h2>
-        <div class="stack">
-          {typographyScale.map((item) => (
-            <article class="type-card">
-              <div class="type-card__meta">
-                <div>
-                  <p class="meta-label">{item.token}</p>
-                  <p class="meta-values">{item.value}</p>
-                </div>
-                <p class="token-note">{item.note}</p>
-              </div>
-
-              {item.token === 'Display / h1' && <h1 class="preview-h1">{item.sample}</h1>}
-              {item.token === 'Section heading / h2' && <h2 class="preview-h2">{item.sample}</h2>}
-              {item.token === 'Subheading / h3' && <h3 class="preview-h3">{item.sample}</h3>}
-              {item.token === 'Body copy' && <p class="preview-body">{item.sample}</p>}
-              {item.token === 'Caption' && (
-                <div class="caption-preview">
-                  <img src="/images/tapico/DSC08720.jpg" alt="Caption style preview" />
-                  <span class="project-caption">{item.sample}</span>
-                </div>
-              )}
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="styles-spacing" class="section-block">
-        <h2>Spacing scale</h2>
-        <div class="stack">
-          {spacingScale.map((item) => (
-            <article class="spacing-row">
-              <div class="spacing-row__meta">
-                <p class="meta-label">{item.token}</p>
-                <p class="token-note">{item.use}</p>
-              </div>
-              <div class="spacing-row__bar-wrap">
-                <div class="spacing-row__bar" style={`height:${item.value};`}></div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="styles-layout-rules" class="section-block">
-        <h2>Layout rules</h2>
-        <div class="stack">
-          {layoutRules.map((rule) => (
-            <article class="rule-card">
-              <div class="token-row__top">
-                <span class="token-name">{rule.name}</span>
-                <span class="token-value">{rule.value}</span>
-              </div>
-              <p class="token-note">{rule.why}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="styles-layout-previews" class="section-block">
-        <h2>Project layout previews</h2>
-        <div class="layout-preview-grid">
-          <article class="preview-card">
-            <p class="meta-label">Constrained prose + image</p>
-            <section class="project-prose" style="margin-top: 1em;">
-              <p>
-                Designed for narrative flow between media modules. Keep this block comfortable and readable, then
-                let images carry detail.
-              </p>
-            </section>
-            <div class="project-media project-media--constrained" style="margin-top: 1em;">
-              <img src="/images/tapico/DSC08720.jpg" alt="Constrained media preview" class="project-media__img" />
-            </div>
-          </article>
-
-          <article class="preview-card">
-            <p class="meta-label">Grid behavior (2 / 3 / 5)</p>
-            <div class="stack" style="margin-top: 1em;">
-              <div class="project-grid project-grid--2">
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-              </div>
-              <div class="project-grid project-grid--3">
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-              </div>
-              <div class="project-grid project-grid--5">
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-                <div class="demo-tile"></div>
-              </div>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section id="styles-catalog" class="section-block">
-        <h2>Component catalog</h2>
-        <div class="stack">
-          {componentCatalog.map((component) => (
-            <article class="component-card">
-              <div class="component-card__head">
-                <h3>{component.name}</h3>
-                <p>{component.purpose}</p>
-              </div>
-              <div class="component-meta-grid">
-                <div>
-                  <p class="meta-label">Class reference</p>
-                  <p class="meta-values">{component.classRef}</p>
-                </div>
-                <div>
-                  <p class="meta-label">QA checklist</p>
-                  <p class="meta-values">{component.checklist}</p>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section id="styles-interaction" class="section-block">
-        <h2>Interaction sample</h2>
-        <article class="rule-card">
-          <p class="section-note">
-            Hover tone should stay subtle. This link uses the same transition behavior as inline project links:
-            <a href="#" class="project-inline-link"> read case-study details</a>.
+        <section id="styles-intro" class="styles-intro section-block">
+          <p class="intro-copy">
+            This page is the single source of truth for site components, tokens, and project-page patterns.
+            Edit a component in <code>src/components/</code> — every project page imports from here. Use the live
+            previews below to QA before shipping updates to Work, Play, and case studies.
           </p>
-        </article>
-      </section>
+        </section>
+
+        <section id="styles-colors" class="section-block">
+          <h2>Color tokens</h2>
+          <div class="token-grid">
+            {colorTokens.map((token) => (
+              <article class="token-card">
+                <div class="token-card__swatch" style={`background:${token.value};`}></div>
+                <p class="meta-label">{token.name}</p>
+                <p class="meta-values">{token.value}</p>
+                <p class="token-note">{token.role}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="styles-typography" class="section-block">
+          <h2>Typography</h2>
+          <div class="stack">
+            {typographyScale.map((item) => (
+              <article class="type-card">
+                <div class="type-card__meta">
+                  <div>
+                    <p class="meta-label">{item.token}</p>
+                    <p class="meta-values">{item.value}</p>
+                  </div>
+                  <p class="token-note">{item.note}</p>
+                </div>
+
+                {item.token === 'Display / h1' && <h1 class="preview-h1">{item.sample}</h1>}
+                {item.token === 'Section heading / h2' && <h2 class="preview-h2">{item.sample}</h2>}
+                {item.token === 'Subheading / h3' && <h3 class="preview-h3">{item.sample}</h3>}
+                {item.token === 'Body copy' && <p class="preview-body">{item.sample}</p>}
+                {item.token === 'Caption' && (
+                  <div class="caption-preview">
+                    <img src={`/images/${previewDetail}`} alt="Caption style preview" />
+                    <span class="project-caption">{item.sample}</span>
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="styles-spacing" class="section-block">
+          <h2>Spacing</h2>
+          <div class="stack">
+            {spacingScale.map((item) => (
+              <article class="spacing-row">
+                <div class="spacing-row__meta">
+                  <p class="meta-label">{item.token}</p>
+                  <p class="token-note">{item.use}</p>
+                </div>
+                <div class="spacing-row__samples">
+                  <div class="spacing-row__sample">
+                    <p class="meta-label">Horizontal</p>
+                    <div class="spacing-row__sample-area">
+                      <div class="spacing-row__bar-h" style={`width:${item.value};`}></div>
+                    </div>
+                  </div>
+                  <div class="spacing-row__sample">
+                    <p class="meta-label">Vertical</p>
+                    <div class="spacing-row__sample-area spacing-row__sample-area--vertical">
+                      <div class="spacing-row__bar-v" style={`height:${item.value};`}></div>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="styles-layout-rules" class="section-block">
+          <h2>Layout rules</h2>
+          <div class="stack">
+            {layoutRules.map((rule) => (
+              <article class="rule-card">
+                <div class="token-row__top">
+                  <span class="token-name">{rule.name}</span>
+                  <span class="token-value">{rule.value}</span>
+                </div>
+                <p class="token-note">{rule.why}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="styles-components" class="section-block">
+          <h2>Component library</h2>
+          <p class="section-note">
+            {componentCatalog.length} components across site chrome and project pages. Each card shows a live
+            preview, source file, props, and where it is used today.
+          </p>
+
+          {catalogByCategory.map(({ category, label, items }) => (
+            <div class="component-group">
+              <h3 class="component-group__title">{label}</h3>
+              <div class="stack">
+                {items.map((component) => (
+                  <article id={component.id} class="component-card section-block">
+                    <div class="component-card__head">
+                      <h4>{component.name}</h4>
+                      <p>{component.purpose}</p>
+                    </div>
+
+                    <div class="component-meta-grid">
+                      <div>
+                        <p class="meta-label">Source</p>
+                        <p class="meta-values"><code>{component.source}</code></p>
+                      </div>
+                      <div>
+                        <p class="meta-label">Props</p>
+                        <p class="meta-values"><code>{component.props}</code></p>
+                      </div>
+                      <div>
+                        <p class="meta-label">Class reference</p>
+                        <p class="meta-values">{component.classRef}</p>
+                      </div>
+                      <div>
+                        <p class="meta-label">Used on</p>
+                        <p class="meta-values">{component.usedOn.join(', ')}</p>
+                      </div>
+                      <div class="component-meta-grid__full">
+                        <p class="meta-label">QA checklist</p>
+                        <p class="meta-values">{component.checklist}</p>
+                      </div>
+                    </div>
+
+                    <div class="component-preview">
+                      {component.preview === 'header' && (
+                        <p class="preview-note">Rendered at the top of this page.</p>
+                      )}
+                      {component.preview === 'footer' && (
+                        <p class="preview-note">Rendered at the bottom of this page.</p>
+                      )}
+                      {component.preview === 'sidebar-nav' && (
+                        <p class="preview-note">Fixed nav on the left of this page (desktop).</p>
+                      )}
+                      {component.preview === 'project-layout' && (
+                        <p class="preview-note">
+                          Wraps project pages — see any case study (e.g.{' '}
+                          <a href="/tapico" class="project-inline-link">Tapico</a>).
+                        </p>
+                      )}
+                      {component.preview === 'hero' && (
+                        <ProjectHero src={previewHero} alt="ProjectHero preview" />
+                      )}
+                      {component.preview === 'tagline' && (
+                        <ProjectTagline text="A calculator, but for words." />
+                      )}
+                      {component.preview === 'prose' && (
+                        <ProjectProse>
+                          <p>
+                            Designed for narrative flow between media modules. Keep this block comfortable and
+                            readable, then let images carry detail.
+                          </p>
+                        </ProjectProse>
+                      )}
+                      {component.preview === 'section-title' && (
+                        <ProjectSectionTitle title="Research" />
+                      )}
+                      {component.preview === 'image' && (
+                        <ProjectImage src={previewWide} alt="ProjectImage preview" constrained mobileHeight="35" />
+                      )}
+                      {component.preview === 'grid' && (
+                        <ProjectGrid cols={3}>
+                          <ProjectDetailImage src={previewDetail} alt="Grid cell 1" />
+                          <ProjectDetailImage src="IMG_5695.jpg" alt="Grid cell 2" />
+                          <ProjectDetailImage src="IMG_5818.jpg" alt="Grid cell 3" />
+                        </ProjectGrid>
+                      )}
+                      {component.preview === 'caption-image' && (
+                        <ProjectGrid cols={3}>
+                          <ProjectCaptionImage
+                            src={previewSquare}
+                            alt="Caption preview"
+                            caption="reMarkable 2"
+                            square
+                          />
+                          <ProjectCaptionImage
+                            src="TextingUpdated.jpg"
+                            alt="Caption preview"
+                            caption="Light Phone II"
+                            square
+                          />
+                          <ProjectCaptionImage
+                            src="pomera dm30.png"
+                            alt="Caption preview"
+                            caption="Pomera DM30"
+                            square
+                          />
+                        </ProjectGrid>
+                      )}
+                      {component.preview === 'detail-image' && (
+                        <ProjectGrid cols={2}>
+                          <ProjectDetailImage
+                            src="first click snap.jpg"
+                            alt="Detail with caption"
+                            caption="First snap"
+                            captionVariant="dark"
+                          />
+                          <ProjectDetailImage src="IMG_5842.jpg" alt="Detail without caption" />
+                        </ProjectGrid>
+                      )}
+                      {component.preview === 'context-image' && (
+                        <div class="project-context-grid project-context-grid--preview">
+                          <ProjectContextImage
+                            src="Dieter Rams Radio Inspiration.png"
+                            alt="Context preview"
+                            caption="Dieter Rams BT 3 radio"
+                          />
+                          <ProjectContextImage
+                            src="205_2_dieter_rams_the_jf_chen_co.png"
+                            alt="Context preview"
+                            caption="Dieter Rams 606 shelving"
+                          />
+                        </div>
+                      )}
+                      {component.preview === 'reference-image' && (
+                        <div class="project-reference-grid project-reference-grid--preview">
+                          <ProjectReferenceImage
+                            src="Porcelain Jugs reference.jpeg"
+                            alt="Reference preview"
+                            caption="Stacking jugs reference"
+                            href="https://example.com"
+                          />
+                          <ProjectReferenceImage
+                            src="Stacking Mugs reference.jpg"
+                            alt="Reference preview"
+                            caption="Stacking mugs reference"
+                            href="https://example.com"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section id="styles-pending" class="section-block">
+          <h2>Pending patterns</h2>
+          <p class="section-note">
+            Raw markup still used on some project pages — not yet extracted into components. Promote these when
+            a second page needs the same pattern.
+          </p>
+          <div class="stack">
+            {pendingPatterns.map((pattern) => (
+              <article class="rule-card">
+                <div class="token-row__top">
+                  <span class="token-name">{pattern.name}</span>
+                  <span class="token-value">{pattern.classRef}</span>
+                </div>
+                <p class="token-note">
+                  <strong>Used on:</strong> {pattern.usedOn.join(', ')}. {pattern.note}
+                </p>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <section id="styles-interaction" class="section-block">
+          <h2>Interaction sample</h2>
+          <article class="rule-card">
+            <p class="section-note">
+              Hover tone should stay subtle. This link uses the same transition behavior as inline project links:
+              <a href="#" class="project-inline-link"> read case-study details</a>.
+            </p>
+          </article>
+        </section>
       </main>
     </div>
 
@@ -337,16 +678,10 @@ const sectionLinks = [
     gap: 1em;
   }
 
-  .eyebrow {
-    font-size: 0.85rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-  }
-
   h1,
   h2,
-  h3 {
+  h3,
+  h4 {
     letter-spacing: -0.02em;
     line-height: 1.1;
   }
@@ -359,7 +694,8 @@ const sectionLinks = [
     font-size: clamp(1.3rem, 1.7vw, 1.8rem);
   }
 
-  h3 {
+  h3,
+  h4 {
     font-size: 1.1rem;
   }
 
@@ -370,19 +706,10 @@ const sectionLinks = [
     color: color-mix(in srgb, var(--color-text) 85%, transparent);
   }
 
-  .qa-list {
-    list-style: decimal;
-    margin: 0;
-    padding-left: 1.1em;
-    max-width: 62ch;
-    display: flex;
-    flex-direction: column;
-    gap: 0.65em;
-  }
-
-  .qa-list li {
-    line-height: 1.5;
-    color: color-mix(in srgb, var(--color-text) 88%, transparent);
+  .intro-copy code,
+  .meta-values code {
+    font-size: 0.92em;
+    font-family: ui-monospace, monospace;
   }
 
   .stack {
@@ -394,7 +721,6 @@ const sectionLinks = [
   .token-card,
   .type-card,
   .rule-card,
-  .preview-card,
   .spacing-row,
   .component-card,
   .token-group {
@@ -484,35 +810,39 @@ const sectionLinks = [
     gap: 0.35em;
   }
 
-  .spacing-row__bar-wrap {
+  .spacing-row__samples {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75em;
+  }
+
+  .spacing-row__sample {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+  }
+
+  .spacing-row__sample-area {
     border: 1px solid var(--color-border);
     padding: 0.75em;
     display: flex;
+    align-items: center;
+    min-height: 3em;
+  }
+
+  .spacing-row__sample-area--vertical {
     align-items: flex-end;
     min-height: 6em;
   }
 
-  .spacing-row__bar {
-    width: 100%;
-    background: linear-gradient(180deg, #d7d7d7, #b9b9b9);
+  .spacing-row__bar-h {
+    height: 1em;
+    background: #c4c4c4;
   }
 
-  .token-list {
-    list-style: none;
-    margin-top: 0.75em;
-    display: flex;
-    flex-direction: column;
-    gap: 0.7em;
-  }
-
-  .token-row {
-    border-top: 1px solid var(--color-border);
-    padding-top: 0.7em;
-  }
-
-  .token-row:first-child {
-    border-top: 0;
-    padding-top: 0;
+  .spacing-row__bar-v {
+    width: 1em;
+    background: #c4c4c4;
   }
 
   .token-row__top {
@@ -538,10 +868,37 @@ const sectionLinks = [
     line-height: 1.45;
   }
 
+  .component-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85em;
+  }
+
+  .component-group__title {
+    margin-top: 0.5em;
+    padding-top: 0.5em;
+    border-top: 1px solid var(--color-border);
+    font-size: 0.85rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .component-group:first-of-type .component-group__title {
+    border-top: 0;
+    padding-top: 0;
+    margin-top: 0;
+  }
+
   .component-card {
     display: flex;
     flex-direction: column;
     gap: 0.8em;
+  }
+
+  .component-card__head h4 {
+    font-size: 1.05rem;
+    font-weight: 700;
   }
 
   .component-card__head p {
@@ -559,22 +916,42 @@ const sectionLinks = [
     padding-top: 0.8em;
   }
 
-  .layout-preview-grid {
+  .component-meta-grid__full {
+    grid-column: 1 / -1;
+  }
+
+  .component-preview {
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.8em;
+    overflow: hidden;
+  }
+
+  .component-preview :global(.project-block) {
+    padding-top: 1em;
+    padding-bottom: 1em;
+  }
+
+  .component-preview :global(.project-hero__img) {
+    min-height: 14em;
+  }
+
+  .component-preview :global(.project-detail__img) {
+    min-height: 10em;
+  }
+
+  .component-preview :global(.project-context-grid--preview),
+  .component-preview :global(.project-reference-grid--preview) {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.8em;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1em;
   }
 
-  .preview-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75em;
-  }
-
-  .demo-tile {
-    aspect-ratio: 1;
-    border: 1px solid #d7d7d7;
-    background: linear-gradient(135deg, #f4f4f4, #ececec);
+  .preview-note {
+    margin: 0;
+    padding: 0.75em 1em;
+    background: color-mix(in srgb, var(--color-border) 35%, transparent);
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--color-text) 80%, transparent);
   }
 
   .meta-label {
@@ -594,18 +971,23 @@ const sectionLinks = [
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .layout-preview-grid,
     .component-meta-grid,
-    .spacing-row {
+    .spacing-row,
+    .spacing-row__samples {
+      grid-template-columns: 1fr;
+    }
+
+    .component-preview :global(.project-context-grid--preview),
+    .component-preview :global(.project-reference-grid--preview) {
       grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 30em) {
     .token-grid,
-    .layout-preview-grid,
     .component-meta-grid,
-    .spacing-row {
+    .spacing-row,
+    .spacing-row__samples {
       grid-template-columns: 1fr;
     }
   }
