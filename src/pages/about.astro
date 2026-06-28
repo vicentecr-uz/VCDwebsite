@@ -9,13 +9,28 @@ const contactRows = aboutContent.contactRows;
 ---
 
 <style>
-  .contact-link { color: inherit; transition: color 0.2s; }
+  /* Contact links: grey, slowly darkening to black on hover (Webflow .contact-body.link) */
+  .contact-link { color: var(--color-text-muted); letter-spacing: -0.3px; transition: color 1s cubic-bezier(0, .206, .304, .995); }
   .contact-link:hover { color: #000000; }
+
+  /* Section headers (Webflow .contact-header) */
+  .section-header {
+    font-size: 2rem;
+    font-weight: 900;
+    letter-spacing: -0.5px;
+    line-height: 1;
+    color: #000000;
+  }
 
   .about-grid {
     display: grid;
     gap: 2em;
     align-items: start;
+    /* Body text (Webflow .contact-body + element-level p tracking) */
+    font-weight: 500;
+    font-size: 1.2rem;
+    line-height: 1.25;
+    letter-spacing: -0.4px;
     /* Default: narrow (mobile-first) */
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -23,6 +38,12 @@ const contactRows = aboutContent.contactRows;
       "contact"
       "about"
       "experience";
+  }
+
+  /* Mobile type step-down (Webflow ≤479px) */
+  @media (max-width: 30em) {
+    .about-grid { font-size: 1.1rem; }
+    .section-header { font-size: 1.7rem; }
   }
 
   /* ── noscript / pre-JS fallback via media queries ── */
@@ -99,19 +120,19 @@ const contactRows = aboutContent.contactRows;
         />
 
         <div class="area-contact">
-          <h2 style="font-size: 1.75rem; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 0.6em">{aboutContent.contactTitle}</h2>
+          <h2 class="section-header" style="margin-bottom: 0.6em">{aboutContent.contactTitle}</h2>
           {contactRows.map((row, i) => (
             <p style={`margin-bottom: ${i < contactRows.length - 1 ? '0.35em' : '0'}`}>
-              {row.label && <span style="color: var(--color-text-muted)">{row.label}: </span>}
-              {row.prefix && <span style="color: var(--color-text-muted)">{row.prefix}{' '}</span>}
-              <a href={row.href} target={row.href.startsWith('mailto:') ? undefined : '_blank'} rel={row.href.startsWith('mailto:') ? undefined : 'noopener'} class="contact-link" style="font-weight: 700">{row.text}</a>
+              {row.label && <span>{row.label}: </span>}
+              {row.prefix && <span>{row.prefix}{' '}</span>}
+              <a href={row.href} target={row.href.startsWith('mailto:') ? undefined : '_blank'} rel={row.href.startsWith('mailto:') ? undefined : 'noopener'} class="contact-link" style="font-weight: 800">{row.text}</a>
             </p>
           ))}
         </div>
 
         <div class="area-about">
-          <h2 style="font-size: 1.75rem; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 0.4em">{aboutContent.aboutTitle}</h2>
-          <p style="max-width: 38em; line-height: 1.55">
+          <h2 class="section-header" style="margin-bottom: 0.4em">{aboutContent.aboutTitle}</h2>
+          <p style="max-width: 38em">
             {aboutContent.aboutText}
           </p>
         </div>
@@ -119,7 +140,7 @@ const contactRows = aboutContent.contactRows;
         <ul class="area-experience" style="list-style: none; padding: 0; margin: 0">
           {experience.map((item) => (
             <li style="margin-bottom: 0.4em">
-              <span style="font-weight: 700">{item.years}:</span>{' '}{item.role}{' '}{item.prep}{' '}{item.company}
+              <span style="font-weight: 900; letter-spacing: -0.3px">{item.years}:</span>{' '}{item.role}{' '}{item.prep}{' '}{item.company}
             </li>
           ))}
         </ul>
