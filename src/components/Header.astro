@@ -17,18 +17,6 @@ const homeWordmark = headerSettings.siteTitle.replace(' ', '\u00a0');
 const wordmark = title.replace(' ', '\u00a0');
 const showWordmarkSwap = title !== headerSettings.siteTitle;
 const pageChars = [...wordmark];
-const pagePairKerningAdjustmentsEm: Record<string, number> = {
-  Wo: -0.06,
-};
-let runningPageKerningOffsetEm = 0;
-const pageCharKerningOffsetsEm = pageChars.map((char, i) => {
-  if (i > 0) {
-    const pair = `${pageChars[i - 1]}${char}`;
-    runningPageKerningOffsetEm += pagePairKerningAdjustmentsEm[pair] ?? 0;
-  }
-
-  return runningPageKerningOffsetEm;
-});
 const homeChars = [...homeWordmark];
 const isHome = Astro.url.pathname === '/';
 const brandHref = isHome ? null : '/';
@@ -63,10 +51,8 @@ const menuLinks = headerSettings.menuLinks;
                 {showWordmarkSwap ? (
                   <span class="header-trigger__wordmark-stack">
                     <span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                      {pageChars.map((char, i) => (
-                        <span class="header-trigger__char" style={`--char-kern: ${pageCharKerningOffsetsEm[i]}em;`}>
-                          {char === ' ' ? '\u00a0' : char}
-                        </span>
+                      {pageChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
                       ))}
                     </span>
                     <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
@@ -298,85 +284,18 @@ const menuLinks = headerSettings.menuLinks;
     const FADE_IN_STAGGER_START = 0.04;
     const FADE_IN_STAGGER_END = 0.09;
     const CLOSE_IN_BASE_DELAY = FADE_OUT_DURATION * 0.45;
+    const BLUR_PX = 4;
 
     let wordmarkIsOpen = false;
     let wordmarkAnimating = false;
 
-    const applyWordmarkKerning = (wordmarkEl: HTMLElement | null, chars: HTMLElement[]) => {
-      if (!wordmarkEl || chars.length < 2) return;
-
-      chars.forEach((char) => {
-        char.style.setProperty('--char-x', '0px');
-      });
-
-      const computedStyle = getComputedStyle(wordmarkEl);
-      const measurer = document.createElement('span');
-      const measureProbe = document.createElement('span');
-      const text = chars.map((char) => char.textContent ?? '').join('');
-
-      measurer.style.position = 'fixed';
-      measurer.style.left = '-9999px';
-      measurer.style.top = '0';
-      measurer.style.visibility = 'hidden';
-      measurer.style.pointerEvents = 'none';
-      measurer.style.whiteSpace = 'pre';
-      measurer.style.font = computedStyle.font;
-      measurer.style.letterSpacing = computedStyle.letterSpacing;
-      measurer.style.fontKerning = computedStyle.fontKerning;
-      measurer.style.fontVariantLigatures = computedStyle.fontVariantLigatures;
-      measurer.style.textTransform = computedStyle.textTransform;
-      measurer.style.textRendering = computedStyle.textRendering;
-      measurer.appendChild(measureProbe);
-      document.body.appendChild(measurer);
-
-      const targetPositions = [0];
-      for (let i = 1; i < text.length; i++) {
-        measureProbe.textContent = text.slice(0, i);
-        targetPositions.push(measureProbe.getBoundingClientRect().width);
-      }
-
-      measurer.remove();
-
-      const baseLeft = chars[0]?.getBoundingClientRect().left ?? 0;
+    const setCharFadeOut = (chars: HTMLElement[], stagger: number, duration: number, baseDelay = 0) => {
       chars.forEach((char, i) => {
-        const current = char.getBoundingClientRect().left - baseLeft;
-        const target = targetPositions[i] ?? current;
-        const correction = target - current;
-        char.style.setProperty('--char-x', `${correction}px`);
-      });
-    };
-
-    const syncWordmarkKerning = () => {
-      applyWordmarkKerning(pageWordmark, pageChars);
-      applyWordmarkKerning(homeWordmarkEl as HTMLElement | null, homeChars);
-    };
-
-    requestAnimationFrame(syncWordmarkKerning);
-    if ('fonts' in document) {
-      void (document as Document & { fonts?: FontFaceSet }).fonts?.ready.then(() => {
-        requestAnimationFrame(syncWordmarkKerning);
-      });
-    }
-
-    const setCharTransition = (
-      chars: HTMLElement[],
-      opacity: number,
-      stagger: number,
-      duration: number,
-      reverse = false,
-      easing = 'ease',
-      baseDelay = 0,
-      blurPx = 0,
-      yOffsetEm = 0,
-    ) => {
-      chars.forEach((char, i) => {
-        const index = reverse ? chars.length - 1 - i : i;
-        char.style.setProperty('--char-delay', `${baseDelay + index * stagger}s`);
+        char.style.setProperty('--char-delay', `${baseDelay + i * stagger}s`);
         char.style.setProperty('--char-duration', `${duration}s`);
-        char.style.setProperty('--char-easing', easing);
-        char.style.setProperty('--char-blur', `${blurPx}px`);
-        char.style.setProperty('--char-y', `${yOffsetEm}em`);
-        char.style.opacity = String(opacity);
+        char.style.setProperty('--char-easing', 'ease');
+        char.style.setProperty('--char-blur', `${BLUR_PX}px`);
+        char.style.opacity = '0';
       });
     };
 
@@ -397,16 +316,25 @@ const menuLinks = headerSettings.menuLinks;
     };
 
     const applyWordmarkFadeIn = (chars: HTMLElement[], baseDelay = 0) => {
-      chars.forEach((char, i) => {
-        const delay =
-          baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
+      // Snap to blurred/invisible, then fade + deblur into place (staggered)
+      chars.forEach((char) => {
+        char.style.setProperty('--char-duration', '0s');
+        char.style.setProperty('--char-delay', '0s');
+        char.style.setProperty('--char-blur', `${BLUR_PX}px`);
+        char.style.opacity = '0';
+      });
 
-        char.style.setProperty('--char-delay', `${delay}s`);
-        char.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
-        char.style.setProperty('--char-easing', 'ease');
-        char.style.setProperty('--char-blur', '0px');
-        char.style.setProperty('--char-y', '0em');
-        char.style.opacity = '1';
+      requestAnimationFrame(() => {
+        chars.forEach((char, i) => {
+          const delay =
+            baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
+
+          char.style.setProperty('--char-delay', `${delay}s`);
+          char.style.setProperty('--char-duration', `${FADE_IN_DURATION}s`);
+          char.style.setProperty('--char-easing', 'ease');
+          char.style.setProperty('--char-blur', '0px');
+          char.style.opacity = '1';
+        });
       });
     };
 
@@ -429,7 +357,7 @@ const menuLinks = headerSettings.menuLinks;
       });
 
     const applyWordmarkOpen = () => {
-      setCharTransition(pageChars, 0, FADE_OUT_STAGGER, FADE_OUT_DURATION, false, 'ease', 0, 2, -0.02);
+      setCharFadeOut(pageChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
       applyWordmarkFadeIn(homeChars);
 
       pageWordmark?.setAttribute('aria-hidden', 'true');
@@ -438,15 +366,7 @@ const menuLinks = headerSettings.menuLinks;
     };
 
     const applyWordmarkClose = () => {
-      homeChars.forEach((char, i) => {
-        char.style.setProperty('--char-delay', `${i * FADE_OUT_STAGGER}s`);
-        char.style.setProperty('--char-duration', `${FADE_OUT_DURATION}s`);
-        char.style.setProperty('--char-easing', 'ease');
-        char.style.setProperty('--char-blur', '2px');
-        char.style.setProperty('--char-y', '-0.02em');
-        char.style.opacity = '0';
-      });
-
+      setCharFadeOut(homeChars, FADE_OUT_STAGGER, FADE_OUT_DURATION);
       applyWordmarkFadeIn(pageChars, CLOSE_IN_BASE_DELAY);
 
       pageWordmark?.setAttribute('aria-hidden', 'false');
@@ -825,26 +745,12 @@ const menuLinks = headerSettings.menuLinks;
     display: block;
     color: inherit;
     text-decoration: none;
-    transition: opacity 0.2s ease;
-  }
-
-  .header-trigger__brand-link:hover {
-    opacity: 0.6;
   }
 
   .header-trigger__brand-link--swap,
   .header-trigger__brand-link--swap:hover {
     opacity: 1;
     width: fit-content;
-  }
-
-  /* Opacity hover breaks char fade animations; use color instead */
-  .header-trigger__brand-link--swap .header-trigger__wordmark {
-    transition: color 0.2s ease;
-  }
-
-  .header-trigger__brand-link--swap:hover .header-trigger__wordmark {
-    color: var(--color-link-strong-hover);
   }
 
   .header-trigger--end .header-trigger__brand-link {
@@ -908,13 +814,12 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   .header-trigger__char {
-    display: inline-block;
-    transform: translate(calc(var(--char-x, 0px) + var(--char-kern, 0em)), var(--char-y, 0em));
-    filter: blur(var(--char-blur, 0px));
+    /* inline (not inline-block) so the browser keeps native kerning between letters */
+    display: inline;
     opacity: 1;
+    filter: blur(var(--char-blur, 0px));
     transition:
       opacity var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
-      transform var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s),
       filter var(--char-duration, 0.15s) var(--char-easing, ease) var(--char-delay, 0s);
   }
 
