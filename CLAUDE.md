@@ -26,6 +26,8 @@ Open tasks are tracked in [GitHub Issues](https://github.com/vcruzdesigns/VCDweb
 
 **When opening a GitHub issue:** always assign a relevant label and milestone. If it's unclear which label or milestone applies, ask Anto before filing.
 
+**When committing and pushing:** only stage and commit changes made within the current chat session. Do not bundle in unrelated unstaged changes from other sessions — leave those untouched for Anto to handle separately.
+
 ## Implementation notes
 
 ### About page
