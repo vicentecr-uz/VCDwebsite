@@ -1,43 +1,85 @@
-# Astro Starter Kit: Minimal
+# VCDwebsite
+
+Portfolio site for **Vicente Cruz** — London-based industrial designer. Built with Astro, Tailwind CSS v4, and GSAP, deployed on Cloudflare Pages.
+
+Live (work-in-progress): [wip.vcruzdesigns.com](https://wip.vcruzdesigns.com)
+
+## Stack
+
+- **[Astro](https://astro.build)** — static site generation
+- **[Tailwind CSS v4](https://tailwindcss.com)** — utility styling (via `@tailwindcss/vite`)
+- **[GSAP](https://gsap.com)** — page transitions and animations
+- **[Bun](https://bun.sh)** — runtime and package manager
+- **Decap / Sveltia CMS** — content editing (see below)
+
+## Prerequisites
+
+- [Bun](https://bun.sh) ≥ 1.3
+- Node ≥ 22.12 (Astro toolchain)
+
+## Setup
 
 ```sh
-bun create astro@latest -- --template minimal
+bun install
 ```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Develop
 
-## 🚀 Project Structure
+```sh
+bun run dev          # Astro dev server at http://localhost:4321
+```
 
-Inside of your Astro project, you'll see the following folders and files:
+For the full local workflow with the CMS proxy, use the dev session helper:
+
+```sh
+bun run dev:session         # start Astro (4321) + Decap CMS proxy (8081)
+bun run dev:session:status  # check what's running
+bun run dev:session:stop    # stop both
+```
+
+### Content editing (CMS)
+
+- **Local:** open <http://localhost:4321/admin> in any browser. In dev this loads **Decap CMS** with `local_backend: true`, talking to the `decap-server` proxy that `dev:session` starts. "Publish" writes directly to the content files in `src/content/` on disk — no git commit, no push — and Astro HMR picks them up instantly. Changes only go live after you commit and push to `main`.
+- **Production:** <https://wip.vcruzdesigns.com/admin> loads **Sveltia CMS** with GitHub PKCE auth. Edits commit to the repo via GitHub.
+
+Content lives as JSON under `src/content/` (`home/`, `work/`, `play/`, `projects/`, `about.json`, `settings/`).
+
+## Build
+
+```sh
+bun run build        # outputs static site to ./dist/
+bun run preview      # preview the built site locally
+```
+
+The build is fully static (`output: "static"`). No environment variables are required to build or run the site. CMS auth in production is handled by a Cloudflare Worker (PKCE), separate from the site build.
+
+## Deploy
+
+Deployment is automatic. **Cloudflare Pages builds and deploys on every push to `main`** — the change is live at [wip.vcruzdesigns.com](https://wip.vcruzdesigns.com) within ~30 seconds. There is no manual deploy step.
+
+To publish changes:
+
+```sh
+git add -A
+git commit -m "…"
+git push origin main
+```
+
+## Project layout
 
 ```text
-/
-├── public/
-├── src/
-│   └── pages/
-│       └── index.astro
-└── package.json
+src/
+├── pages/        # routes (index, work, play, about, project pages, 404, admin)
+├── layouts/      # Layout.astro — <head>, fonts, page-transition overlay
+├── components/   # Header, Footer, and project/ content components
+├── content/      # JSON content consumed by pages and the CMS
+├── styles/       # global.css, project.css
+└── lib/          # helpers (image resolution)
+public/           # static assets (images, favicon, admin config)
 ```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+## Conventions
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
-
-Any static assets, like images, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+- **Spacing:** `1em` unit consistently (header, grid, footer, gaps), set via inline `style=` for guaranteed rendering rather than Tailwind arbitrary values.
+- **Max width:** fluid gutter — `#site-wrapper` holds content to `60em` max, gutter grows beyond `62em` viewport.
+- **Fonts:** Hanken Grotesk (300–900) site-wide; EB Garamond loaded only where needed via the `serif` prop on `Layout`.
