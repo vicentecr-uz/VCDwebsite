@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start/stop Astro dev server + Decap local proxy for a single local editing session.
+# Start/stop Astro dev server + Decap local proxy for a local editing session.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -37,7 +37,6 @@ print_urls() {
   echo ""
   echo "  Site:  http://localhost:${ASTRO_PORT}"
   echo "  Admin: http://localhost:${ASTRO_PORT}/admin"
-  echo "  Decap proxy: http://localhost:${DECAP_PORT}"
   echo ""
   echo "  Logs: tail -f .dev-session/astro.log .dev-session/decap.log"
 }
@@ -193,7 +192,7 @@ Usage: $0 {start|stop|status|restart}
 
   start    Start Astro (port $ASTRO_PORT) and Decap proxy (port $DECAP_PORT)
   stop     Stop tracked dev-session processes
-  status   Show whether servers are running
+  status   Show whether server is running
   restart  Stop then start
 EOF
 }
