@@ -78,6 +78,10 @@ src/
 public/           # static assets (images, favicon, admin config)
 ```
 
+## Hosted tools
+
+- **Stoozing Playground** — served at [`/stoozing-playground`](https://wip.vcruzdesigns.com/stoozing-playground) from `public/stoozing-playground/index.html`. This is a **vendored copy** of the single self-contained HTML file in the [`vcruzdesigns/stooze-page`](https://github.com/vcruzdesigns/stooze-page) repo (canonical source). It has no build step and loads Chart.js from a CDN. Mobile touch tweaks (16px inputs to stop iOS zoom-on-focus, floating Settings pill) are applied in this copy under a `@media (max-width: 640px)` block. To refresh, re-copy `stoozing-playground.html` from `stooze-page` over the vendored file and re-apply the mobile block if it was overwritten.
+
 ## Conventions
 
 - **Spacing:** `1em` unit consistently (header, grid, footer, gaps), set via inline `style=` for guaranteed rendering rather than Tailwind arbitrary values.
