@@ -1,0 +1,4579 @@
+<!DOCTYPE html>
+<!--
+  CONTEXT (for future agents)
+  ───────────────────────────
+  Purpose: Self-contained “stoozing” calculator UI — users tune 0%-period cards, minimum payments,
+  savings rate, optional extra cards, and the viewed month; the page shows balances, interest,
+  combined debt, credit utilisation, and a Chart.js time-series. Currency, card names, slider
+  ranges, and related prefs persist in localStorage.
+
+  Code structure: Single HTML file, no build step. After <head> meta/title: Chart.js 4.4 from CDN,
+  then one large embedded <style>. <body> is static layout (header → interest hero → month control
+  → card tiles → metric cards → chart canvas + custom HTML legend → per-parameter slider cards
+  with optional min/max/step “range” rows → settings dock). Behaviour lives in one trailing
+  <script> block: formatting helpers, load/save, slider/range wiring, recalc() as the central
+  update loop, chart build/update + dataset visibility fades, settings panel open/close and editors.
+  Reusable side explainer: `createSideExplainerPopover({ root, bodyEl, … })` + `#explain-popover` /
+  `.explain-popover__*` (combined debt uses `debtSideExplainer` + **i** trigger like other metrics).
+
+  MEMORY — handoff for new sessions (read first)
+  ───────────────────────────────────────────────
+  · **Novice-first TODO order** is the pending **Batch N → R** list below (**Batches I–K, L, M** shipped:
+    onboarding, explainers, tooltip tweak, stooze pot narrative + Card 2 starting balance + projected-interest hero;
+    **Batch M** = card balance lines line-only, stooze + cumulative interest gradient fills).
+    **Batch S**
+    (sticky interest hero while scrolling to sliders) is backlog polish after R, not in the I→R
+    sequence. Older
+    letters (e.g. pre-rename “Batch L onboarding”) are folded into this sequence; **DONE** items
+    stay A–H as shipped history only.
+  · **Explainers:** Hero, utilisation, combined debt, chart legend — compact **i** + `createSideExplainerPopover`
+    (`#explain-popover`, `#explain-popover-hero|util|chart`). First chart-legend open runs a one-time
+    legend-button “peek” demo (`LS_CHART_LEGEND_PEEK`) unless reduced-motion; closing onboarding opened
+    from **What’s going on?** or **Replay introduction** removes that key so the demo can run again.
+    Layered-word + invisible
+    hit control for ‘debt’ was retired here; pattern documented in Atlas `learnings.md`.
+  · **Onboarding (Batch I — shipped):** overlay + card fade; inner crossfade + height ease between
+    steps; hook = green figure line + repeated amount in body; `LS.onboardingSeen`.
+  · **Page story (Batch O):** Target flow = **one clear headline number → chart to explore → per-card
+    settings** for people matching real finances (cogs like today’s slider cards). Debt/util/chart
+    stack under the hero; card panels below the graph once settings migrate.
+  · **Stooze pot (Batch K — shipped):** Green series = stooze pot (cash float in savings); hero retitled
+    to projected interest; Card 2 starting balance slider; copy/explainers define the float.
+  · **Single file:** All behaviour in trailing `<script>`; Chart.js 4.4 from CDN; `recalc()` is the
+    central update loop.
+  · **Dev:** `chartLineTensionDev` **0.02** (tension UI commented out like layout dock; search `CHART optional UI` to restore).
+  · **Filler:** `plugins.filler.drawTime: 'beforeDatasetsDraw'` so fills render before line strokes (card lines above stooze/interest areas).
+  · **Chart line points:** Default **hover**; `LS.chartPoints` `always` overrides. Toolbar + Settings
+    controls **commented out** (search `CHART optional UI`). Hover mode: `pointRadius` 0 +
+    `pointHitRadius`, hover shows solid dot (`pointStyleRevealOnHover`). `linePointRadii(..., lineBorderW)` sets
+    `pointBorderWidth` / `pointHoverBorderWidth` to match line stroke so hover dots match always-mode size. 30% guide stays dotless.
+  · **Tooltip:** `Chart.Tooltip.positioners.stoozeNudge` — `nearest` anchor + **36px** gap from the
+    vertical month line; left half → open right (`xAlign` left); right half → open left (`xAlign` right).
+  · **Layout (slider cards):** `--stz-tune-*` on `:root` are **baked** (layout tuning dock commented out).
+    **TODO:** Remove dead commented HTML/CSS/JS for `#stz-layout-tuning`, `initStzLayoutTuning`, and
+    optional `localStorage` keys `stoozing-playground-layout-tuning` / `…-dock` if you want zero cruft.
+
+  STOOZING PLAYGROUND – agent roadmap (single file, Chart.js 4.4.x)
+
+  DONE
+  · Batch A: Page order = header → interest hero → month slider → tiles → metrics → chart →
+    parameter sliders → settings area (overall util bar later folded into credit utilisation
+    metric card). Chart uses fixed-height
+    .chart-canvas-wrap to prevent runaway vertical growth.
+  · Batch A+: Hero card for interest earned above month slider (subtitle later tied to selected
+    month; see Batch D); removed duplicate “Combined stooz gain” card; secondary metric for
+    named cards’ combined balance.
+  · Batch B: Settings control moved and restyled (text-like, bottom of page); currency setting
+    with persistence; applied elsewhere in another session.
+  · UX: Settings panel closes when clicking the dimmed backdrop; clicks on the panel or Settings
+    trigger do not close it.     Opening/closing fades backdrop opacity and panel opacity + slide;
+    panel is `position:absolute` in the dock so it does not reserve layout while transitioning;
+    `.settings-dock` keeps an explicit `width` so the panel’s `width:100%` is not tied to the narrow Settings link.
+  · Batch C: Light range cogs (larger gear, hover/active tint); per-card inline Min / Max / Step
+    using .num-input; removed range modal; “%” before APR and min-payment value inputs like £.
+  · Batch D: Month card – range cog left of the selected month; cog fades in on hover (not
+    focus-within) with :focus-visible on the cog; range inputs blurred when closing range mode.
+    Interest hero uses selected month in subtitle. Card tiles: auto-fit minmax grid so the row
+    fills page width. Metrics: “Combined debt” + “Credit utilisation as of …” with % on the right.
+    Range cogs sit left of any header value (e.g. min-payment %).
+  · Batch E: Checkbox / “Show on chart” strip removed; Chart.js legend hidden; custom HTML
+    legend toolbar with button toggles (muted off, hover border, stronger when on); swatch gap;
+    smaller point radii on series; 30% guide in same legend row.
+  · UI polish: Legend “on” state borderless until hover; press state darkens fill; range cogs
+    match legend hover (off-white) and fade out on all slider cards when not hovered; slider ↔
+    range crossfade via stacked opacity (Batch G: optional timing tweaks).
+  · Batch E+ / chart visibility: Legend toggles animate line + area fill + points together by
+    mutating dataset colours (border/background/point* alphas). Canvas globalAlpha was dropped
+    because the Filler plugin does not respect it reliably. Markers use solid point fill
+    matching the line at rest; on hover they enlarge with transparent fill (outline only).
+    Each fade frame clears that dataset controller’s _cachedDataOpts and _sharedOptions so
+    Chart.js re-resolves styles (LineController otherwise reuses one frozen shared point
+    options object forever).
+  · Range cogs: Top-right `.range-cog-reveal-zone` hit area; gears show on corner hover,
+    focus-within, cog focus-visible, or while `.is-range-edit`; reveal wrapper is not
+    aria-hidden (keeps ⚙ discoverable to assistive tech). Closing range mode blurs the ⚙ so
+    focus-within does not leave the gear stuck visible until click-away (same idea as month row).
+  · Batch G (partial): Opening a card slider’s range settings no longer auto-focuses the Min
+    input; focus stays on the ⚙ control until the user tabs or clicks elsewhere.
+  · Batch G (finish): Slider ↔ range Min/Max/Step crossfade uses slightly longer ease-out; reduced
+    motion shortens it. Coarse pointers (e.g. touch on hybrid devices) keep ⚙ always visible even
+    when `hover: hover` is true.
+  · Batch F: Tooltip — no caret (caretSize 0), extra padding, titleMarginBottom + bodySpacing for
+    clear separation from month title and between series rows; subtle vertical guide at hovered
+    index (afterDatasetsDraw). Min / Max / Step row horizontally centered in each slider card
+    (including month strip).
+  · Batch H: MONTHS + apostrophe years (Dec ’27). Combined ‘debt’ explainer via `createSideExplainerPopover`
+    (`#explain-popover`). (Older layered hit on the word ‘debt’ retired — see Atlas.) Range thumb: card →
+    track; near-thumb → light shadow; drag → stronger.
+
+  TODO — batched plan (order = priority for **novice comprehension** first; I→R; S = later polish;
+    deps noted inline)
+
+  · Batch I — DONE: Onboarding = spend + APR questions → illustrative hook + “How?” explainer;
+    `#onboarding-overlay` + `initOnboarding()` in script.
+
+  · Batch J — DONE (hero, utilisation, chart legend, combined debt **i**): `createSideExplainerPopover` +
+    **i** triggers; debt uses `#explain-popover` with `#metric-debt-*` stack. Chart-legend first-open peek demo.
+    Other dense spots (e.g. month slider) still optional follow-ups.
+
+  · Batch K — DONE: Stooze pot series + narrative — plain-language float (savings cash while 0%
+    balances run); **Card 2** starting balance slider (was hardcoded); hero **“Projected interest
+    (up to month …)”**; cumulative line labelled projected; settings + explainers updated.
+    **Batch O** may still merge month control into hero later.
+
+  · Batch L — DONE: Tooltip `position: 'nearest'` + `yAlign: 'bottom'` so the box sits above the
+    anchor and clears x-axis month ticks (tweak further if needed).
+
+  · Batch M — DONE: Chart visual simplification — **credit-card** balance lines are line-only (no area
+    fill); **stooze pot** + **cumulative projected interest** use vertical gradient fills (stronger
+    toward chart top, transparent at x-axis). Legend fade uses `dataset._fadeFillOpacity` for those
+    scriptable fills. **Refinements:** stooze = thicker line + modest points. **`order` (draw ascending):**
+    **`order` ascending = draw first → back:** stooze **0**, interest **1**, MS **2**, new card **3**,
+    Barclays **4**, util30 **5**, util **6** (guides on top). Earlier `2…6,0,1` put util **under** the
+    thick green line; Chart.js docs are right: **lower `order` = behind**. **`tension`:** shipped **0.02** (`chartLineTensionDev`);
+    **dev strip** adjusts live. Named-card
+    balances + util % share stroke + point sizing with cumulative interest; 30% guide same stroke (no markers).
+
+  · Batch N — Settings / chart cosmetics: Per–credit-card series colours in bottom-left Settings
+    (lines / markers / any remaining fills).
+
+  · Batch O — Card architecture + information architecture (major refactor): **Layout / hero:** merge
+    the **“card balances as of”** month slider **into** the interest hero card — e.g. to the **right**
+    of the big number on wide view, or **stacked below** on narrow / mobile (responsive behaviour
+    needs a proper pass); then **remove** the standalone month-slider card. **Copy:** hero title
+    **“Projected interest (up to month ’yr)”** shipped in **Batch K**; keep consistent if merged here.
+    **Reorder:** place **combined debt**, **credit utilisation**, and the **chart** **below** this
+    unified top block. Move **individual credit card** number + gauge panels **below the chart** as
+    part of uniting the parameter sliders/settings that currently sit under the graph — each card
+    gets a **⚙** (or equivalent) for settings, like today’s slider cards, for users who want to match
+    their real setup after engaging with the headline number and graph. **Optional visual:** subtle
+    **divet** on the **bottom-left** of per-card panels (nod to physical cards / ATM slot). **Data
+    model:** per-card settings (starting balance, limit, min payment; savings APR global vs
+    per-card TBD); rename identifiers away from issuer names (snapBarc, barclays keys, …) while
+    keeping user-editable display names. Touches `recalc()`, tiles, chart datasets, localStorage,
+    legend — one cohesive chunk.
+
+  · Batch P — Card behaviour: Per-card mode — pay min & stop using vs pay min & keep spending toward
+    limit; optional util cap. Depends on O.
+
+  · Batch Q — Dynamic cards: Add/remove simulated cards + “opened in month X” (or relative phase).
+    Depends on O (and P if spend timing interacts).
+
+  · Batch R — Ship & maintainability: Deploy to personal site; load pass (CDN cache, defer
+    non-critical work); split CSS/JS into linked files only if the single HTML becomes unwieldy —
+    not urgent until O/Q land. Echo **privacy / local-only** in footer or Settings if useful
+    alongside Batch I onboarding copy.
+
+  · Batch S — Sticky projected-interest hero (later / polish): When the user scrolls down to the credit-card
+    sliders below the chart, keep the **projected interest** hero card in view — e.g. `position: sticky`
+    with a sensible `top` (viewport “clamp” behaviour) — so updates to the headline number stay
+    visible while tuning sliders. Complements **Batch O** layout; can ship before or after O
+    depending on DOM order and stacking (z-index, shadows, reduced-motion).
+
+  RECENT (small fixes)
+  · Onboarding hook slide: `.onboarding-hook-copy` uses `min(100%, calc(0.8 * (520px − 54px)))` — horizontal slack to the right of copy only; no flex/vmin vertical slack.
+  · Batch T — Small fixes: responsive slack applied to APR question slide (slide 2) question text; all `alert()` calls replaced with `setCustomValidity()` + `reportValidity()` (onboarding steps + range inputs); `showUtil30Guide` removed — `datasetVisible.util30` is now the single source of truth (persisted via `saveVisibility()`); all localStorage saves wrapped in try-catch; `clamp()` + `isValidRange()` helpers added; `MONTHS` generation extracted into `generateTimeline(startYear, startMonth, count)` with `N_MONTHS` as single definition; `aria-label` added to all currency/percent number inputs with dynamic currency-aware labels via `CURRENCY_LABELS` + `updateCurrencyPrefixes()`.
+  · Batches J + L: Side explainers on interest hero, credit utilisation, chart legend (`metric-info-hit`); chart tooltip `nearest` + `yAlign: 'bottom'`.
+  · Batch K: Stooze pot copy + hero “Projected interest”; Card 2 starting balance slider (`sl-ms-start`); cumulative line + explainers aligned to “projected”.
+  · Combined debt explainer: **i** button (retired layered hit on ‘debt’; pattern in Atlas `learnings.md`). Tighter metric cards + slider cards (control-label min-height, cog zone padding, `.control-slider-slot` height, control padding/gaps). Chart-legend explainer: updated copy; tight chip padding/gaps; legend defaults to `flex-wrap` + `@container stoozing-chart (min-width: 1000px)` for single row (card width, not viewport); `@supports not (container-type)` → viewport fallback; first-open peek (`stoozing_chartLegendPeekV1`) only animates stooze + named card lines (`PEEK_DEMO_SERIES_KEYS`), not interest/util/util30; peek flag cleared when onboarding closes after **What’s going on?** or **Replay introduction**. Peek via `createSideExplainerPopover({ onOpen })`.
+
+  · Onboarding hook green amount: fluid `font-size` via `clamp(30px, 5cqi + 18px, 36px)` (card container), no hard 700px step.
+  · Chart legend: cannot hide the last remaining main series line (util30 guide excluded from that rule).
+  · Combined debt metric includes Barclays balance (was MS + new card only).
+  · Range thumbs: static off-white; pointer over the slider card → white (track); near thumb centre
+    on that card → white + light shadow (thumb); pointer down/drag → stronger shadow. Keyboard:
+    :focus-visible matches thumb shadow.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stoozing Playground</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f5f0;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-muted: #6b6b6b;
+    --border: #e0e0da;
+    --green: #2d9d5c;
+    --blue: #3b7dd8;
+    --amber: #d4930d;
+    --red: #d94040;
+    /* Slider-card layout (baked 2026-04; was live-tuned via dock, now fixed here) */
+    --stz-tune-range-pad-bottom: 0px;
+    /* Slider row nudge toward card bottom: negative margin pulls closer; positive adds space */
+    --stz-tune-slider-pad-bottom: -12px;
+    --stz-tune-cog-padding: 4px;
+    --stz-tune-card-pad-top: 12px;
+    /* Gap between control title row and slider/range stack */
+    --stz-tune-label-slot-gap: 0px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 24px;
+    padding-bottom: 56px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  /*
+   * LAYOUT TUNING PANEL (removed from UI, 2026-04). Values baked into :root --stz-tune-* above.
+   * TODO: delete this block, the commented HTML below, and initStzLayoutTuning + LS keys when sure.
+   *
+  body:has(.stz-layout-tuning) {
+    padding-bottom: 200px;
+  }
+  .stz-layout-tuning {
+    position: fixed;
+    right: 12px;
+    bottom: 12px;
+    z-index: 120;
+    width: min(300px, calc(100vw - 24px));
+    padding: 12px 14px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+    font-size: 12px;
+    line-height: 1.35;
+  }
+  .stz-layout-tuning__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin: -4px -6px 12px;
+    padding: 4px 6px;
+    border-radius: 8px;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .stz-layout-tuning__head .btn {
+    cursor: pointer;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .stz-layout-tuning__head strong {
+    font-size: 13px;
+  }
+  .stz-layout-tuning__row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+    margin-bottom: 12px;
+    align-items: baseline;
+  }
+  .stz-layout-tuning__row input[type='range'] {
+    grid-column: 1 / -1;
+    width: 100%;
+    margin-top: 2px;
+  }
+  .stz-layout-tuning__val {
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+  }
+  .stz-layout-tuning__hint {
+    margin: 0;
+    font-size: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+   */
+  .app-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+  .app-header > div:first-child {
+    padding-bottom: 4px;
+  }
+  h1 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin-bottom: 14px;
+  }
+  .subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    max-width: 640px;
+    line-height: 1.6;
+  }
+  .btn {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+  }
+  .btn:hover { background: var(--bg); }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--text); color: #fff; border-color: var(--text); }
+  .btn-primary:hover { opacity: 0.92; background: var(--text); }
+  .btn-primary:active { transform: scale(0.98); opacity: 0.88; }
+  .btn-icon {
+    width: 32px; height: 32px;
+    padding: 0;
+    justify-content: center;
+    flex-shrink: 0;
+    border-radius: 6px;
+    color: var(--text-muted);
+  }
+  .btn-icon:hover { color: var(--text); }
+  .btn-icon svg { width: 16px; height: 16px; }
+
+  button.range-cog {
+    font-family: inherit;
+    cursor: pointer;
+    background: transparent;
+    border: 1px solid transparent;
+    padding: var(--stz-tune-cog-padding, 4px);
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 20px;
+    line-height: 1;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Square hit target: icon em-box + equal padding on both axes */
+    width: calc(1em + 2 * (var(--stz-tune-cog-padding, 4px)));
+    height: calc(1em + 2 * (var(--stz-tune-cog-padding, 4px)));
+    flex-shrink: 0;
+    align-self: flex-start;
+    box-sizing: border-box;
+    transition: opacity 0.2s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  button.range-cog:hover {
+    color: var(--text);
+    border-color: var(--border);
+    background: var(--bg);
+  }
+  button.range-cog:active {
+    color: var(--text);
+    border-color: var(--border);
+    background: #e0e0d6;
+  }
+  button.range-cog:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .range-cog-reveal-zone {
+    display: inline-flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    flex-shrink: 0;
+    padding: 0 6px 0 44px;
+    margin: 0 -6px 0 0;
+    border-radius: 10px;
+  }
+
+  .control-slider-slot {
+    min-height: 0;
+    display: flex;
+    align-items: stretch;
+    position: relative;
+    margin-top: var(--stz-tune-label-slot-gap, 0px);
+  }
+  /*
+   * Active layer is position:absolute off-flow. Small shared min-height limits height jump
+   * between modes without the large centered band (76px) that mimicked extra bottom margin.
+   */
+  .slider-mode-stack {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    /* Explicit row height: only in-flow layer contributes to sizing today, but a fixed row keeps both modes aligned */
+    grid-template-rows: var(--cg-slider-stack-min-h);
+    align-items: center;
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+    margin-bottom: var(--stz-tune-slider-pad-bottom, 0px);
+  }
+  .slider-main-mode,
+  .slider-range-mode {
+    width: 100%;
+    transition: opacity 0.22s cubic-bezier(0.25, 0.85, 0.35, 1);
+  }
+  /* Keep layout identical while fading: if these only applied under :not(.is-range-edit), toggling ⚙ stripped flex/center and the slider jumped. */
+  .slider-main-mode {
+    display: flex;
+    align-items: center;
+    min-height: 0;
+    align-self: stretch;
+    grid-area: 1 / 1;
+    width: 100%;
+  }
+  .slider-main-mode > .slider-row {
+    flex: 1 1 auto;
+    width: 100%;
+    min-width: 0;
+  }
+  .slider-range-mode {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    align-self: stretch;
+    grid-area: 1 / 1;
+    padding-bottom: var(--stz-tune-range-pad-bottom, 0px);
+    box-sizing: border-box;
+  }
+  .control-group:not(.is-range-edit) .slider-main-mode {
+    position: relative;
+    z-index: 1;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .control-group:not(.is-range-edit) .slider-range-mode {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .control-group.is-range-edit .slider-main-mode {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .control-group.is-range-edit .slider-range-mode {
+    position: relative;
+    z-index: 1;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .slider-range-inline {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(104px, max-content));
+    justify-content: start;
+    align-items: center;
+    gap: 6px 8px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    box-sizing: border-box;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* Min / Max / Step: one row per control, label inside left strip, value right-aligned */
+  .slider-range-field {
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+    max-width: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    box-sizing: border-box;
+    /* Match border-box height of standalone .num-input (top+bottom border + vertical padding + line box) */
+    min-height: calc(2px + 8px + 1.25 * 13px);
+    /* Avoid clip: hidden — it truncated long values; radius still masks via inner alignment */
+    overflow: visible;
+  }
+  .slider-range-field label {
+    display: flex;
+    align-items: center;
+    margin: 0;
+    padding: 4px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    flex-shrink: 0;
+    white-space: nowrap;
+    cursor: default;
+  }
+  .slider-range-field .num-input {
+    width: auto;
+    min-width: 7ch;
+    flex: 1 1 auto;
+    border: none;
+    border-radius: 0;
+    text-align: right;
+    background: transparent;
+    box-shadow: none;
+  }
+  .slider-range-field .num-input:focus {
+    outline: none;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  .slider-range-field:focus-within {
+    outline: 2px solid var(--blue);
+    outline-offset: 0;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 14px;
+    margin-bottom: 20px;
+  }
+  .control-group {
+    --cg-pad-inline: 12px;
+    /* Fixed band for slider vs range mode: same row height avoids vertical jump when toggling ⚙ */
+    --cg-slider-stack-min-h: calc(2 * var(--cg-pad-inline) + 32px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    /* Top: --stz-tune-card-pad-top. Sides/bottom: --cg-pad-inline */
+    padding: var(--stz-tune-card-pad-top, var(--cg-pad-inline)) var(--cg-pad-inline) var(--cg-pad-inline);
+    position: relative;
+  }
+  .control-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    min-height: 0;
+  }
+  .control-label-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    line-height: 1.3;
+  }
+  .control-label-actions {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .control-label-value {
+    font-weight: 700;
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.25;
+    display: inline-flex;
+    align-items: center;
+  }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    /* Thumb uses border + soft shadow while dragging; avoid clipping the blur */
+    overflow: visible;
+  }
+  /* Thumb states: [data-thumb-state=track|thumb|drag] — track = card hover; thumb = card + near thumb centre; keyboard: :focus-visible */
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    /* 18px outer = 16px fill + 1px border each side (matches old 16px disc + outside ring) */
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    background-color: var(--bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
+    cursor: pointer;
+    transition: background-color 0.3s cubic-bezier(0.25, 0.85, 0.35, 1),
+      box-shadow 0.26s cubic-bezier(0.25, 0.85, 0.35, 1);
+  }
+  input[type="range"][data-thumb-state="track"]::-webkit-slider-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
+  }
+  input[type="range"][data-thumb-state="thumb"]::-webkit-slider-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  input[type="range"]:focus-visible::-webkit-slider-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  /* After :focus-visible so mouse drag keeps the stronger shadow even when the input is focused */
+  input[type="range"][data-thumb-state="drag"]::-webkit-slider-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    background-color: var(--bg);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
+    cursor: pointer;
+    transition: background-color 0.3s cubic-bezier(0.25, 0.85, 0.35, 1),
+      box-shadow 0.26s cubic-bezier(0.25, 0.85, 0.35, 1);
+  }
+  input[type="range"][data-thumb-state="track"]::-moz-range-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0);
+  }
+  input[type="range"][data-thumb-state="thumb"]::-moz-range-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  input[type="range"]:focus-visible::-moz-range-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  }
+  input[type="range"][data-thumb-state="drag"]::-moz-range-thumb {
+    background-color: #ffffff;
+    border: 1px solid var(--border);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+  }
+  .num-input {
+    width: 80px;
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.25;
+    text-align: right;
+    font-family: inherit;
+    background: var(--bg);
+  }
+  .num-input:focus { outline: 2px solid var(--blue); border-color: transparent; }
+
+  .card-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+    width: 100%;
+  }
+  .card-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .card-tile-name {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .card-tile-balance { font-size: 15px; font-weight: 700; margin-bottom: 2px; }
+  .card-tile-limit { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+  .progress-bar-track {
+    height: 6px;
+    background: var(--bg);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+  .progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .card-tile-pct { font-size: 12px; font-weight: 600; text-align: right; }
+
+  .metric-hero-wrap { margin-bottom: 24px; }
+  .metric-hero {
+    background: linear-gradient(135deg, rgba(45, 157, 92, 0.16) 0%, var(--surface) 52%);
+    border: 1px solid rgba(45, 157, 92, 0.4);
+    border-radius: 10px;
+    padding: 22px 24px;
+  }
+  .metric-hero-head {
+    margin-bottom: 10px;
+  }
+  .metric-hero-label-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .metric-hero .metric-label {
+    font-size: 12px;
+    margin-bottom: 0;
+    color: var(--text-muted);
+  }
+  .metric-info-stack {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    position: relative;
+  }
+  .metric-info-hit {
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.65);
+    color: var(--text-muted);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 12px;
+    font-weight: 700;
+    font-style: italic;
+    line-height: 1;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  .metric-info-hit:focus {
+    outline: none;
+  }
+  .metric-info-hit:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .metric-info-stack.is-hover .metric-info-hit {
+    border-color: rgba(59, 125, 216, 0.45);
+    color: var(--blue);
+    background: var(--surface);
+  }
+  .metric-card-head-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+  }
+  .metric-card-head-left .metric-card-head-label {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .metric-debt-plain {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .metric-hero .metric-value {
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    color: var(--green);
+    line-height: 1.1;
+  }
+
+  @media (hover: hover) {
+    .control-group:not(.is-range-edit) .range-cog-reveal-zone .range-cog {
+      opacity: 0;
+      pointer-events: none;
+    }
+    .control-group:not(.is-range-edit) .range-cog-reveal-zone:hover .range-cog,
+    .control-group:not(.is-range-edit) .range-cog-reveal-zone:focus-within .range-cog,
+    .control-group:not(.is-range-edit) .range-cog:focus-visible,
+    .control-group.is-range-edit .range-cog-reveal-zone .range-cog {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+  /* Coarse pointer + hover-capable (many tablets): don’t hide ⚙ behind hover — no hover lane */
+  @media (hover: hover) and (pointer: coarse) {
+    .control-group:not(.is-range-edit) .range-cog-reveal-zone .range-cog {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+    width: 100%;
+  }
+  .metric-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 11px 12px;
+    /* Used to align util track inset with money baseline → card edge on the debt card */
+    --metric-value-font-size: 22px;
+    --metric-value-line-height: 1.3;
+  }
+  .metric-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    min-height: 0;
+    margin-bottom: 5px;
+  }
+  /* Credit util row: grid often stretches this card to match the debt card — pin the track to the bottom. */
+  .metric-card:has(.metric-card-util-bar) {
+    display: flex;
+    flex-direction: column;
+  }
+  .metric-card:has(.metric-card-util-bar) .metric-card-head {
+    margin-bottom: 0;
+  }
+  .metric-card-util-bar {
+    margin-top: auto;
+    padding-top: 10px;
+    /* Match debt card: inset under track ≈ slack below .metric-value baseline (half extra line-height + descender band) */
+    padding-bottom: calc(
+      (var(--metric-value-line-height) * var(--metric-value-font-size) - var(--metric-value-font-size)) * 0.5 + 6px
+    );
+  }
+  .metric-card-util-bar .progress-bar-track {
+    margin-bottom: 0;
+  }
+  .metric-card-head-label {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+  /* Reusable side explainer: fade only, tail on left or right edge (see --place-*). */
+  .explain-popover {
+    position: fixed;
+    z-index: 38;
+    max-width: min(288px, calc(100vw - 24px));
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+    pointer-events: none;
+    /* Panel vertical nudge from JS (--explain-popover-y-nudge, e.g. -4px moves whole bubble up). */
+    transform: translateY(var(--explain-popover-y-nudge, 0px));
+  }
+  .explain-popover.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .explain-popover__inner {
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #e0e0da;
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
+    overflow: visible;
+  }
+  .explain-popover__callout {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    background: #ffffff;
+    box-sizing: border-box;
+    pointer-events: none;
+  }
+  .explain-popover--place-right .explain-popover__callout {
+    left: 0;
+    top: calc(var(--callout-y, 50%) + var(--explain-callout-y-nudge, 0px));
+    margin-left: -6px;
+    border-left: 1px solid #e0e0da;
+    border-bottom: 1px solid #e0e0da;
+    transform: translateY(-50%) rotate(45deg);
+  }
+  .explain-popover--place-left .explain-popover__callout {
+    right: 0;
+    left: auto;
+    top: calc(var(--callout-y, 50%) + var(--explain-callout-y-nudge, 0px));
+    margin-right: -6px;
+    border-right: 1px solid #e0e0da;
+    border-top: 1px solid #e0e0da;
+    transform: translateY(-50%) rotate(45deg);
+  }
+  .explain-popover__text {
+    margin: 0;
+    font-size: 11px;
+    line-height: 1.5;
+    font-weight: 400;
+    color: #4a4a4a;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .explain-popover {
+      transition-duration: 0.01ms;
+    }
+  }
+  .metric-card-head-value {
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+    line-height: 1.25;
+  }
+  .metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .metric-value {
+    font-size: var(--metric-value-font-size, 22px);
+    line-height: var(--metric-value-line-height, 1.3);
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .metric-value.green { color: var(--green); }
+  .metric-value.amber { color: var(--amber); }
+  .metric-value.blue { color: var(--blue); }
+
+  .chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 0;
+    container-type: inline-size;
+    container-name: stoozing-chart;
+  }
+  /* Fixed height stops Chart.js (maintainAspectRatio: false) from growing the parent on each resize */
+  .chart-canvas-wrap {
+    position: relative;
+    height: 340px;
+    width: 100%;
+  }
+  .chart-canvas-wrap canvas {
+    display: block;
+    max-width: 100%;
+  }
+  .chart-tools {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
+  .chart-dev-strip {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .chart-dev-strip__label {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+  .chart-dev-strip__hint {
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--amber);
+  }
+  .chart-dev-strip__row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .chart-dev-strip__row input[type="range"] {
+    flex: 1;
+    min-width: 0;
+    max-width: 320px;
+    accent-color: var(--blue);
+  }
+  .chart-dev-strip__value {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    min-width: 2.75em;
+  }
+  .chart-legend-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .chart-legend-row .chart-legend {
+    flex: 1;
+    min-width: 0;
+  }
+  /* Default wrap so chips never clip when the card is narrow (sidebar, split view, etc.). */
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px 5px;
+    align-items: center;
+    overflow: visible;
+  }
+  /* Single row only when this chart card is wide enough (container query, not viewport). */
+  @container stoozing-chart (min-width: 1000px) {
+    .chart-legend {
+      flex-wrap: nowrap;
+    }
+  }
+  .chart-legend-btn {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    gap: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.25;
+    color: var(--text);
+    background: var(--surface);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    padding: 4px 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+  }
+  .chart-legend-btn:hover {
+    border-color: var(--border);
+    background: var(--bg);
+  }
+  .chart-legend-btn:active {
+    background: #e0e0d6;
+    border-color: var(--border);
+  }
+  .chart-legend-btn:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+  }
+  .chart-legend-btn--on {
+    border-color: transparent;
+    background: var(--surface);
+    color: var(--text);
+  }
+  .chart-legend-btn--off {
+    color: var(--text-muted);
+    opacity: 0.52;
+    border-color: transparent;
+  }
+  .chart-legend-btn--off:hover {
+    opacity: 0.72;
+  }
+  .chart-legend-btn--off:active {
+    opacity: 0.88;
+  }
+  /* Scripted “peek” demo (first visit): mirror :hover while JS holds class */
+  #chart-legend .chart-legend-btn.chart-legend-btn--demo-hover {
+    border-color: var(--border);
+    background: var(--bg);
+  }
+  #chart-legend .chart-legend-btn.chart-legend-btn--off.chart-legend-btn--demo-hover {
+    opacity: 0.72;
+  }
+  /* Peek demo: mirror :active / :active:hover (must follow .demo-hover so it wins when both apply) */
+  #chart-legend .chart-legend-btn.chart-legend-btn--demo-press {
+    background: #e0e0d6;
+    border-color: var(--border);
+  }
+  #chart-legend .chart-legend-btn.chart-legend-btn--off.chart-legend-btn--demo-press {
+    opacity: 0.88;
+  }
+  .chart-line-points-ctrl {
+    display: inline-flex;
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .chart-line-points-ctrl__opt {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 5px 8px;
+    border: none;
+    margin: 0;
+    cursor: pointer;
+    color: var(--text-muted);
+    background: transparent;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .chart-line-points-ctrl__opt:hover {
+    color: var(--text);
+    background: var(--bg);
+  }
+  .chart-line-points-ctrl__opt:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: -2px;
+    z-index: 1;
+  }
+  .chart-line-points-ctrl__opt--active {
+    color: var(--text);
+    background: #e8e8e0;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+  }
+  .chart-line-points-ctrl__opt--active:hover {
+    background: #e0e0d8;
+  }
+  .chart-legend-swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+  }
+  .chart-legend-swatch--dash {
+    width: 16px;
+    height: 0;
+    border-radius: 0;
+    border: none;
+    border-top: 3px solid currentColor;
+    background: transparent !important;
+    color: rgb(45, 157, 92);
+    opacity: 0.9;
+  }
+  .chart-legend-swatch--dash-muted {
+    color: #888;
+    border-top-style: dashed;
+  }
+
+  /* No container queries: fall back to viewport (narrow phone = wrap). */
+  @supports not (container-type: inline-size) {
+    .chart-legend {
+      flex-wrap: nowrap;
+    }
+    @media (max-width: 720px) {
+      .chart-legend {
+        flex-wrap: wrap;
+      }
+    }
+  }
+
+  .settings-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: rgba(0, 0, 0, 0.14);
+    cursor: default;
+    opacity: 0;
+    transition: opacity 0.26s ease;
+    will-change: opacity;
+  }
+  .settings-backdrop.is-open {
+    opacity: 1;
+  }
+  .settings-backdrop[hidden] {
+    display: none !important;
+  }
+
+  /* Explicit width: panel is position:absolute (out of flow), so the dock would otherwise shrink to the Settings button only. */
+  .settings-dock {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: min(calc(100vw - 32px), 560px);
+    max-width: min(calc(100vw - 32px), 560px);
+  }
+  .settings-reveal-trigger {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: none;
+    border: none;
+    padding: 4px 0;
+    margin: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    text-align: left;
+  }
+  .settings-reveal-trigger:hover { color: var(--text); }
+  .settings-reveal-trigger:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  .settings-panel {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    bottom: 100%;
+    margin-bottom: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-top: 0;
+    max-height: min(70vh, 520px);
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.26s ease, transform 0.26s ease;
+    will-change: opacity, transform;
+  }
+  .settings-panel.is-open {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .settings-panel[hidden] {
+    display: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .settings-backdrop,
+    .settings-panel {
+      transition-duration: 0.01ms !important;
+    }
+    input[type="range"]::-webkit-slider-thumb,
+    input[type="range"]::-moz-range-thumb {
+      transition-duration: 0.01ms !important;
+    }
+    .slider-main-mode,
+    .slider-range-mode {
+      transition-duration: 0.01ms !important;
+    }
+  }
+  .settings-panel h2 {
+    font-size: 15px;
+    margin-bottom: 12px;
+    margin-top: 20px;
+  }
+  .settings-panel h2:first-child { margin-top: 0; }
+  .settings-hint { font-size: 12px; color: var(--text-muted); margin-bottom: 12px; max-width: 720px; }
+  .settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .settings-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+  }
+  .settings-field input[type="text"],
+  .settings-field select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    background: var(--surface);
+  }
+  .extra-card-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: flex-end;
+    margin-bottom: 10px;
+    padding: 10px;
+    background: var(--bg);
+    border-radius: 8px;
+  }
+  .extra-card-row .field { flex: 1; min-width: 120px; }
+  .extra-card-row .field label { font-size: 10px; margin-bottom: 4px; display: block; color: var(--text-muted); font-weight: 600; }
+  .extra-card-row input { width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; font: inherit; }
+
+  @media (max-width: 700px) {
+    .controls { grid-template-columns: 1fr; }
+    .metrics { max-width: none; }
+    .metric-hero .metric-value { font-size: 30px; }
+    body { padding: 14px; }
+  }
+
+  /* Batch I — first-run onboarding: overlay + card fade; inner crossfade + height ease between steps */
+  .onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    overflow: auto;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.34s ease;
+  }
+  .onboarding-overlay.is-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .onboarding-overlay[hidden] {
+    display: none !important;
+  }
+  .onboarding-card {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+    transition: opacity 0.34s cubic-bezier(0.25, 0.85, 0.35, 1), transform 0.34s cubic-bezier(0.25, 0.85, 0.35, 1);
+  }
+  .onboarding-overlay.is-open .onboarding-card {
+    opacity: 1;
+    transform: none;
+  }
+  .onboarding-card-inner {
+    padding: 28px 26px 22px;
+    transition: opacity 0.24s ease, transform 0.24s ease;
+    container-type: inline-size;
+    container-name: onboarding;
+  }
+  .onboarding-card h2 {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    margin-bottom: 14px;
+    line-height: 1.25;
+  }
+  .onboarding-card h2[hidden] {
+    display: none !important;
+  }
+  .onboarding-card .onboarding-body {
+    font-size: 14px;
+    color: var(--text);
+    line-height: 1.65;
+    margin-bottom: 20px;
+  }
+  .onboarding-card .onboarding-body p {
+    margin-bottom: 12px;
+  }
+  .onboarding-card .onboarding-body p:last-child { margin-bottom: 0; }
+  .onboarding-card .onboarding-body ul.onboarding-how-list {
+    margin: 0 0 14px 0;
+    padding-left: 1.25em;
+    list-style-type: disc;
+  }
+  .onboarding-card .onboarding-body ul.onboarding-how-list li {
+    margin-bottom: 8px;
+    padding-left: 0.15em;
+  }
+  .onboarding-card .onboarding-body ul.onboarding-how-list li:last-child {
+    margin-bottom: 0;
+  }
+  .onboarding-trust {
+    font-size: 13px;
+    color: var(--text-muted);
+    padding: 12px 14px;
+    background: var(--bg);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-top: 16px !important;
+  }
+  .onboarding-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .onboarding-actions .btn-wrap-secondary {
+    margin-right: auto;
+  }
+  .header-help-row {
+    margin-top: 10px;
+    font-size: 13px;
+  }
+  .header-help-link {
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 600;
+    color: var(--blue);
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .header-help-link:hover { color: #2a66b8; }
+  .header-help-link:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  .onboarding-field {
+    margin-top: 16px;
+    margin-bottom: 4px;
+  }
+  .onboarding-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+  .onboarding-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .onboarding-input-row .num-input {
+    flex: 1;
+    max-width: 200px;
+    text-align: left;
+    font-size: 15px;
+    padding: 8px 10px;
+  }
+  .onboarding-input-row .onboarding-suffix {
+    font-size: 14px;
+    color: var(--text-muted);
+    font-weight: 600;
+  }
+  .onboarding-hook-figure {
+    margin: 0 0 12px 0 !important;
+    text-align: left;
+  }
+  .onboarding-hook-value-block {
+    display: block;
+    /* Fluid type from card width (cqi) — avoids a hard step at a viewport breakpoint */
+    font-size: clamp(30px, 5cqi + 18px, 36px);
+    font-weight: 700;
+    letter-spacing: -1px;
+    color: var(--green);
+    line-height: 1.12;
+  }
+  .onboarding-hook-lead {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.55;
+    margin-bottom: 16px !important;
+    color: var(--text);
+    text-align: left;
+    max-width: 100%;
+  }
+  /*
+    APR slide (slide 2) + hook slide (slide 3): horizontal slack only (no extra vertical gap).
+    At max card width, copy is ~80% of the body column; max-width is a fixed cap so as the card
+    narrows, the empty band to the right shrinks until copy hits min(100%, cap) → full width.
+    520 = .onboarding-card max-width; 54 = card L+R borders + inner L+R padding (1+1+26+26).
+  */
+  .onboarding-hook-copy {
+    max-width: min(100%, calc(0.8 * (520px - 54px)));
+  }
+  .onboarding-actions .btn,
+  .onboarding-actions .btn-primary {
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, opacity 0.18s ease, transform 0.12s ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .onboarding-overlay,
+    .onboarding-card,
+    .onboarding-card-inner,
+    .onboarding-actions .btn,
+    .onboarding-actions .btn-primary {
+      transition: none !important;
+    }
+  }
+
+  /* ── Mobile touch polish (hosted on vcruzdesigns.com) ─────────────────────
+     Scoped to small screens so desktop layout is untouched. Two fixes:
+     1. Inputs ≥16px so iOS Safari doesn't zoom the page on field focus.
+     2. The fixed "Settings" trigger floats over page content — give it a
+        legible background pill so it reads as a button, not stray text. */
+  @media (max-width: 640px) {
+    .num-input,
+    .onboarding-input-row .num-input,
+    .settings-field input[type="text"],
+    .settings-field select {
+      font-size: 16px;
+    }
+
+    .settings-reveal-trigger {
+      padding: 8px 14px;
+      background: var(--surface, #ffffff);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      text-decoration: none;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="onboarding-overlay" class="onboarding-overlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+  <div class="onboarding-card" tabindex="-1">
+    <div class="onboarding-card-inner">
+      <h2 id="onboarding-title"></h2>
+      <div id="onboarding-body" class="onboarding-body"></div>
+      <div id="onboarding-actions" class="onboarding-actions"></div>
+    </div>
+  </div>
+</div>
+
+<main id="playground-shell" class="playground-shell">
+
+<div class="app-header">
+  <div>
+    <h1>Stoozing Playground</h1>
+    <p class="subtitle">Explore how 0% card balances, minimum payments, and total credit limits interact with your <strong>stooze pot</strong>—cash sitting in savings while those balances run (your float). Adjust sliders, rename cards, and show or hide chart lines. Extra cards you add only extend total credit for the utilisation % (they are not part of the stooze simulation).</p>
+    <p class="header-help-row"><button type="button" class="header-help-link" id="btn-whats-going-on">What’s going on?</button></p>
+  </div>
+</div>
+
+<div id="metric-hero" class="metric-hero-wrap" aria-live="polite"></div>
+
+<div class="control-group dashboard-top-month" style="margin-bottom: 14px;" data-slider-config="sl-view-month">
+  <div class="control-label">
+    <div class="control-label-text"><span>Card balances as of</span></div>
+    <div class="control-label-actions">
+      <div class="range-cog-reveal-zone">
+        <button type="button" class="range-cog" data-slider-id="sl-view-month" data-pair="" title="Show or hide range settings" aria-label="Toggle month slider range settings" aria-expanded="false" aria-controls="range-ui-sl-view-month">⚙</button>
+      </div>
+      <span id="lbl-view-month" class="control-label-value">Dec ’27</span>
+    </div>
+  </div>
+  <div class="control-slider-slot">
+    <div class="slider-mode-stack">
+    <div class="slider-main-mode" aria-hidden="false">
+      <div class="slider-row">
+        <input type="range" id="sl-view-month" min="0" max="21" step="1" value="21" aria-label="Month to show card balances">
+      </div>
+    </div>
+    <div class="slider-range-mode" id="range-ui-sl-view-month" role="group" aria-label="Month slider min, max, and step" aria-hidden="true">
+      <div class="slider-range-inline" data-range-for="sl-view-month">
+        <div class="slider-range-field"><label for="rp-sl-view-month-min">Min</label><input type="number" class="num-input" id="rp-sl-view-month-min" step="1" autocomplete="off"></div>
+        <div class="slider-range-field"><label for="rp-sl-view-month-max">Max</label><input type="number" class="num-input" id="rp-sl-view-month-max" step="1" autocomplete="off"></div>
+        <div class="slider-range-field"><label for="rp-sl-view-month-step">Step</label><input type="number" class="num-input" id="rp-sl-view-month-step" step="1" autocomplete="off"></div>
+      </div>
+    </div>
+    </div>
+  </div>
+</div>
+
+<div class="card-tiles" id="card-tiles"></div>
+<div class="metrics" id="metrics"></div>
+
+<div class="chart-wrap">
+  <div class="chart-canvas-wrap">
+    <canvas id="mainChart"></canvas>
+  </div>
+  <div class="chart-tools">
+    <div class="chart-legend-row">
+      <div class="chart-legend" id="chart-legend" role="toolbar" aria-label="Show or hide chart series"></div>
+<!--
+  CHART optional UI (commented out; same idea as layout-tuning dock below).
+  To restore for demos: remove this comment wrapper only (one continuous block).
+  Then in script: (1) uncomment `setting-chart-points` listeners + chart toolbar button listeners
+  (search `CHART optional UI wiring`). (2) Uncomment `initDevChartTensionSlider` and the two
+  `syncChartPointsControls()` calls (init + populateSettingsForm). (3) Uncomment Settings
+  “Line points” field + hint in the settings panel. (4) Add `.chart-line-points-ctrl` back to
+  chartLegendSideExplainer `outsideIgnoreSelector` if clicks should not dismiss the explainer.
+      <div class="chart-line-points-ctrl" role="group" aria-label="When to show line point markers">
+        <button type="button" class="chart-line-points-ctrl__opt" id="chart-points-mode-always" aria-pressed="false">Always</button>
+        <button type="button" class="chart-line-points-ctrl__opt chart-line-points-ctrl__opt--active" id="chart-points-mode-hover" aria-pressed="true">Hover</button>
+      </div>
+      <div class="chart-dev-strip">
+        <label class="chart-dev-strip__label" for="dev-sl-chart-tension">Line tension <span class="chart-dev-strip__hint">(dev)</span></label>
+        <div class="chart-dev-strip__row">
+          <input type="range" id="dev-sl-chart-tension" min="0" max="1" step="0.02" value="0.02" aria-label="Chart line tension for development preview" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0.02">
+          <span class="chart-dev-strip__value" id="dev-chart-tension-value" aria-live="polite">0.02</span>
+        </div>
+      </div>
+-->
+      <span class="metric-info-stack" id="chart-legend-help-stack">
+        <button type="button" class="metric-info-hit" id="chart-legend-trigger" aria-expanded="false" aria-controls="explain-popover-chart" aria-haspopup="dialog" aria-label="About chart lines">i</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="control-group" data-slider-config="sl-barclays">
+    <div class="control-label">
+      <div class="control-label-text"><span id="lbl-ctrl-barclays">Barclays balance</span></div>
+      <div class="control-label-actions">
+        <div class="range-cog-reveal-zone">
+          <button type="button" class="range-cog" data-slider-id="sl-barclays" data-pair="ni-barclays" title="Show or hide range settings" aria-label="Toggle Barclays balance slider range settings" aria-expanded="false" aria-controls="range-ui-sl-barclays">⚙</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-slider-slot">
+      <div class="slider-mode-stack">
+      <div class="slider-main-mode" aria-hidden="false">
+        <div class="slider-row">
+          <input type="range" id="sl-barclays" min="0" max="4000" step="10" value="3800">
+          <span class="js-currency-prefix" style="font-size:12px;color:var(--text-muted)" aria-hidden="true">£</span>
+          <input type="number" class="num-input" id="ni-barclays" min="0" max="4000" step="10" value="3800" aria-label="Balance in pounds">
+        </div>
+      </div>
+      <div class="slider-range-mode" id="range-ui-sl-barclays" role="group" aria-label="Barclays balance min, max, and step" aria-hidden="true">
+        <div class="slider-range-inline" data-range-for="sl-barclays">
+          <div class="slider-range-field"><label for="rp-sl-barclays-min">Min</label><input type="number" class="num-input" id="rp-sl-barclays-min" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-barclays-max">Max</label><input type="number" class="num-input" id="rp-sl-barclays-max" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-barclays-step">Step</label><input type="number" class="num-input" id="rp-sl-barclays-step" step="any" autocomplete="off"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <div class="control-group" data-slider-config="sl-ms-start">
+    <div class="control-label">
+      <div class="control-label-text"><span id="lbl-ctrl-msstart">M&amp;S Bank starting balance</span></div>
+      <div class="control-label-actions">
+        <div class="range-cog-reveal-zone">
+          <button type="button" class="range-cog" data-slider-id="sl-ms-start" data-pair="ni-ms-start" title="Show or hide range settings" aria-label="Toggle M&amp;S Bank starting balance slider range settings" aria-expanded="false" aria-controls="range-ui-sl-ms-start">⚙</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-slider-slot">
+      <div class="slider-mode-stack">
+      <div class="slider-main-mode" aria-hidden="false">
+        <div class="slider-row">
+          <input type="range" id="sl-ms-start" min="0" max="7000" step="10" value="850">
+          <span class="js-currency-prefix" style="font-size:12px;color:var(--text-muted)" aria-hidden="true">£</span>
+          <input type="number" class="num-input" id="ni-ms-start" min="0" max="7000" step="10" value="850" aria-label="Starting balance in pounds">
+        </div>
+      </div>
+      <div class="slider-range-mode" id="range-ui-sl-ms-start" role="group" aria-label="M&amp;S Bank starting balance min, max, and step" aria-hidden="true">
+        <div class="slider-range-inline" data-range-for="sl-ms-start">
+          <div class="slider-range-field"><label for="rp-sl-ms-start-min">Min</label><input type="number" class="num-input" id="rp-sl-ms-start-min" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-ms-start-max">Max</label><input type="number" class="num-input" id="rp-sl-ms-start-max" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-ms-start-step">Step</label><input type="number" class="num-input" id="rp-sl-ms-start-step" step="any" autocomplete="off"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <div class="control-group" data-slider-config="sl-newlimit">
+    <div class="control-label">
+      <div class="control-label-text"><span id="lbl-ctrl-newlimit">New card limit</span></div>
+      <div class="control-label-actions">
+        <div class="range-cog-reveal-zone">
+          <button type="button" class="range-cog" data-slider-id="sl-newlimit" data-pair="ni-newlimit" title="Show or hide range settings" aria-label="Toggle new card limit slider range settings" aria-expanded="false" aria-controls="range-ui-sl-newlimit">⚙</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-slider-slot">
+      <div class="slider-mode-stack">
+      <div class="slider-main-mode" aria-hidden="false">
+        <div class="slider-row">
+          <input type="range" id="sl-newlimit" min="0" max="20000" step="500" value="5000">
+          <span class="js-currency-prefix" style="font-size:12px;color:var(--text-muted)" aria-hidden="true">£</span>
+          <input type="number" class="num-input" id="ni-newlimit" min="0" max="20000" step="500" value="5000" aria-label="Credit limit in pounds">
+        </div>
+      </div>
+      <div class="slider-range-mode" id="range-ui-sl-newlimit" role="group" aria-label="New card limit min, max, and step" aria-hidden="true">
+        <div class="slider-range-inline" data-range-for="sl-newlimit">
+          <div class="slider-range-field"><label for="rp-sl-newlimit-min">Min</label><input type="number" class="num-input" id="rp-sl-newlimit-min" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-newlimit-max">Max</label><input type="number" class="num-input" id="rp-sl-newlimit-max" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-newlimit-step">Step</label><input type="number" class="num-input" id="rp-sl-newlimit-step" step="any" autocomplete="off"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <div class="control-group" data-slider-config="sl-spend">
+    <div class="control-label">
+      <div class="control-label-text"><span>Monthly spend</span></div>
+      <div class="control-label-actions">
+        <div class="range-cog-reveal-zone">
+          <button type="button" class="range-cog" data-slider-id="sl-spend" data-pair="ni-spend" title="Show or hide range settings" aria-label="Toggle monthly spend slider range settings" aria-expanded="false" aria-controls="range-ui-sl-spend">⚙</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-slider-slot">
+      <div class="slider-mode-stack">
+      <div class="slider-main-mode" aria-hidden="false">
+        <div class="slider-row">
+          <input type="range" id="sl-spend" min="100" max="3000" step="50" value="900">
+          <span class="js-currency-prefix" style="font-size:12px;color:var(--text-muted)" aria-hidden="true">£</span>
+          <input type="number" class="num-input" id="ni-spend" min="100" max="3000" step="50" value="900" aria-label="Monthly spend in pounds">
+        </div>
+      </div>
+      <div class="slider-range-mode" id="range-ui-sl-spend" role="group" aria-label="Monthly spend min, max, and step" aria-hidden="true">
+        <div class="slider-range-inline" data-range-for="sl-spend">
+          <div class="slider-range-field"><label for="rp-sl-spend-min">Min</label><input type="number" class="num-input" id="rp-sl-spend-min" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-spend-max">Max</label><input type="number" class="num-input" id="rp-sl-spend-max" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-spend-step">Step</label><input type="number" class="num-input" id="rp-sl-spend-step" step="any" autocomplete="off"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <div class="control-group" data-slider-config="sl-apr">
+    <div class="control-label">
+      <div class="control-label-text"><span>Savings APR</span></div>
+      <div class="control-label-actions">
+        <div class="range-cog-reveal-zone">
+          <button type="button" class="range-cog" data-slider-id="sl-apr" data-pair="ni-apr" title="Show or hide range settings" aria-label="Toggle savings APR slider range settings" aria-expanded="false" aria-controls="range-ui-sl-apr">⚙</button>
+        </div>
+      </div>
+    </div>
+    <div class="control-slider-slot">
+      <div class="slider-mode-stack">
+      <div class="slider-main-mode" aria-hidden="false">
+        <div class="slider-row">
+          <input type="range" id="sl-apr" min="1" max="6" step="0.01" value="3.51">
+          <span style="font-size:12px;color:var(--text-muted)" aria-hidden="true">%</span>
+          <input type="number" class="num-input" id="ni-apr" min="1" max="6" step="0.01" value="3.51" aria-label="Savings APR percent">
+        </div>
+      </div>
+      <div class="slider-range-mode" id="range-ui-sl-apr" role="group" aria-label="Savings APR min, max, and step" aria-hidden="true">
+        <div class="slider-range-inline" data-range-for="sl-apr">
+          <div class="slider-range-field"><label for="rp-sl-apr-min">Min</label><input type="number" class="num-input" id="rp-sl-apr-min" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-apr-max">Max</label><input type="number" class="num-input" id="rp-sl-apr-max" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-apr-step">Step</label><input type="number" class="num-input" id="rp-sl-apr-step" step="any" autocomplete="off"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+  <div class="control-group" data-slider-config="sl-newminpct">
+    <div class="control-label">
+      <div class="control-label-text"><span id="lbl-ctrl-newmin">New card min payment</span></div>
+      <div class="control-label-actions">
+        <div class="range-cog-reveal-zone">
+          <button type="button" class="range-cog" data-slider-id="sl-newminpct" data-pair="ni-newminpct" title="Show or hide range settings" aria-label="Toggle min payment slider range settings" aria-expanded="false" aria-controls="range-ui-sl-newminpct">⚙</button>
+        </div>
+        <span id="lbl-newminpct" class="control-label-value">2.50%</span>
+      </div>
+    </div>
+    <div class="control-slider-slot">
+      <div class="slider-mode-stack">
+      <div class="slider-main-mode" aria-hidden="false">
+        <div class="slider-row">
+          <input type="range" id="sl-newminpct" min="1" max="5" step="0.05" value="2.5">
+          <span style="font-size:12px;color:var(--text-muted)" aria-hidden="true">%</span>
+          <input type="number" class="num-input" id="ni-newminpct" min="1" max="5" step="0.05" value="2.5" aria-label="Minimum payment percent">
+        </div>
+      </div>
+      <div class="slider-range-mode" id="range-ui-sl-newminpct" role="group" aria-label="Min payment min, max, and step" aria-hidden="true">
+        <div class="slider-range-inline" data-range-for="sl-newminpct">
+          <div class="slider-range-field"><label for="rp-sl-newminpct-min">Min</label><input type="number" class="num-input" id="rp-sl-newminpct-min" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-newminpct-max">Max</label><input type="number" class="num-input" id="rp-sl-newminpct-max" step="any" autocomplete="off"></div>
+          <div class="slider-range-field"><label for="rp-sl-newminpct-step">Step</label><input type="number" class="num-input" id="rp-sl-newminpct-step" step="any" autocomplete="off"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<div class="settings-backdrop" id="settings-backdrop" hidden aria-hidden="true"></div>
+<div id="explain-popover" class="explain-popover" hidden aria-hidden="true" role="dialog" aria-modal="false" aria-label="">
+  <div class="explain-popover__inner">
+    <div class="explain-popover__callout" aria-hidden="true"></div>
+    <p id="explain-popover-body" class="explain-popover__text"></p>
+  </div>
+</div>
+<div id="explain-popover-hero" class="explain-popover" hidden aria-hidden="true" role="dialog" aria-modal="false" aria-label="">
+  <div class="explain-popover__inner">
+    <div class="explain-popover__callout" aria-hidden="true"></div>
+    <p id="explain-popover-body-hero" class="explain-popover__text"></p>
+  </div>
+</div>
+<div id="explain-popover-util" class="explain-popover" hidden aria-hidden="true" role="dialog" aria-modal="false" aria-label="">
+  <div class="explain-popover__inner">
+    <div class="explain-popover__callout" aria-hidden="true"></div>
+    <p id="explain-popover-body-util" class="explain-popover__text"></p>
+  </div>
+</div>
+<div id="explain-popover-chart" class="explain-popover" hidden aria-hidden="true" role="dialog" aria-modal="false" aria-label="">
+  <div class="explain-popover__inner">
+    <div class="explain-popover__callout" aria-hidden="true"></div>
+    <p id="explain-popover-body-chart" class="explain-popover__text"></p>
+  </div>
+</div>
+<div class="settings-dock" id="settings-dock">
+<div class="settings-panel" id="settings-panel" hidden aria-hidden="true">
+  <h2>Introduction</h2>
+  <p class="settings-hint">Replay the walkthrough: your spend and savings rate, a quick “what you could earn” hook, then how stoozing works (with caveats and privacy).</p>
+  <button type="button" class="btn" id="btn-replay-onboarding" style="margin-bottom: 20px;">Replay introduction</button>
+
+  <h2>Display</h2>
+  <p class="settings-hint">Currency is used for labels, tiles, and chart amounts only. The underlying model stays the same numeric values.</p>
+  <div class="settings-grid" style="margin-bottom: 8px;">
+    <div class="settings-field">
+      <label for="setting-currency">Currency</label>
+      <select id="setting-currency" autocomplete="off">
+        <option value="GBP">GBP (£)</option>
+        <option value="USD">USD ($)</option>
+        <option value="EUR">EUR (€)</option>
+      </select>
+    </div>
+<!--
+    Pair with CHART optional UI near legend.
+    <div class="settings-field">
+      <label for="setting-chart-points">Line points on chart</label>
+      <select id="setting-chart-points" autocomplete="off">
+        <option value="always">Always visible</option>
+        <option value="hover" selected>Only when hovering</option>
+      </select>
+    </div>
+  <p class="settings-hint" style="margin-top: -4px;">With <strong>Only when hovering</strong>, markers stay hidden until you hover the chart; each point then shows a solid dot matching the former “resting” style.</p>
+-->
+  </div>
+
+  <h2>Names (tiles &amp; chart)</h2>
+  <p class="settings-hint">These labels appear on card tiles and in the chart legend. They do not change how the maths works.</p>
+  <div class="settings-grid">
+    <div class="settings-field"><label for="name-stooze">Stooze pot (chart line)</label><input type="text" id="name-stooze" data-name-key="stoozePot" autocomplete="off"></div>
+    <div class="settings-field"><label for="name-barclays" id="label-name-barclays">Card 1</label><input type="text" id="name-barclays" data-name-key="barclays" autocomplete="off"></div>
+    <div class="settings-field"><label for="name-ms" id="label-name-ms">Card 2</label><input type="text" id="name-ms" data-name-key="ms" autocomplete="off"></div>
+    <div class="settings-field"><label for="name-amex" id="label-name-amex">Card 3</label><input type="text" id="name-amex" data-name-key="amex" autocomplete="off"></div>
+    <div class="settings-field"><label for="name-new" id="label-name-new">Card 4</label><input type="text" id="name-new" data-name-key="newCard" autocomplete="off"></div>
+  </div>
+
+  <h2>Extra cards (credit limit only)</h2>
+  <p class="settings-hint">Each entry adds a tile and increases the denominator for <strong>overall credit utilisation %</strong>. Tiles always show a zero balance — extra cards are not part of the stooze simulation (they serve only as utilisation context). Full multi-card stooze is not simulated here.</p>
+  <div id="extra-cards-list"></div>
+  <button type="button" class="btn" id="btn-add-extra-card">+ Add card</button>
+</div>
+<button type="button" class="settings-reveal-trigger" id="btn-settings" aria-expanded="false" aria-controls="settings-panel">Settings</button>
+</div>
+
+<!--
+  Layout tuning panel removed 2026-04 (values baked on :root as --stz-tune-*).
+  TODO: delete this comment and the commented initStzLayoutTuning block when dropping cruft.
+
+<div id="stz-layout-tuning" class="stz-layout-tuning" aria-label="Layout tuning sliders">
+  …
+</div>
+-->
+
+<script>
+/**
+ * Stoozing Playground — behaviour for sliders, persisted state, Chart.js, and settings UI.
+ * Roadmap lives in the HTML comment at the top of this file.
+ */
+
+const LS = {
+  names: 'stoozing-playground-names',
+  extra: 'stoozing-playground-extra-cards',
+  ranges: 'stoozing-playground-slider-ranges',
+  visibility: 'stoozing-playground-visibility',
+  util30: 'stoozing-playground-util30',
+  currency: 'stoozing-playground-currency',
+  chartPoints: 'stoozing-playground-chart-points',
+  onboardingSeen: 'stoozing-playground-onboarding-seen',
+};
+
+const CURRENCY_LOCALE = { GBP: 'en-GB', USD: 'en-US', EUR: 'en-IE' };
+const SLIDER_CURRENCY_GLYPH = { GBP: '£', USD: '$', EUR: '€' };
+const ALLOWED_CURRENCIES = Object.keys(CURRENCY_LOCALE);
+
+let currencyCode = 'GBP';
+
+/** BCP 47 locale tag used by Intl formatters for the active currency. */
+function localeForCurrency() {
+  return CURRENCY_LOCALE[currencyCode] || 'en-GB';
+}
+
+/** Currency amount with two decimal places (tiles, chart tooltips, metrics). */
+function formatMoney(amount) {
+  return new Intl.NumberFormat(localeForCurrency(), {
+    style: 'currency',
+    currency: currencyCode,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+/** Currency with no fraction digits (credit limits on tiles). */
+function formatMoneyWhole(amount) {
+  return new Intl.NumberFormat(localeForCurrency(), {
+    style: 'currency',
+    currency: currencyCode,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
+/** Compact currency for left Y-axis tick labels. */
+function formatChartAxisMoney(value) {
+  return new Intl.NumberFormat(localeForCurrency(), {
+    style: 'currency',
+    currency: currencyCode,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+/** Prefix character (£ / $ / €) shown beside paired number inputs next to sliders. */
+function getSliderCurrencyGlyph() {
+  return SLIDER_CURRENCY_GLYPH[currencyCode] || currencyCode;
+}
+
+/** Labels for screen readers on number inputs that use currency/percent glyphs as visual-only prefixes. */
+const CURRENCY_LABELS = { GBP: 'pounds', USD: 'dollars', EUR: 'euros' };
+const PERCENT_LABEL = 'percent';
+
+/** Sync all `.js-currency-prefix` glyphs and their paired number inputs' aria-labels after currency change. */
+function updateCurrencyPrefixes() {
+  const glyph = getSliderCurrencyGlyph();
+  const currencyWord = CURRENCY_LABELS[currencyCode] || currencyCode.toLowerCase();
+  document.querySelectorAll('.js-currency-prefix').forEach(el => {
+    el.textContent = glyph;
+  });
+  // Refresh aria-labels so screen readers say e.g. "Balance in pounds" not "Balance in euros" after a currency switch.
+  const labelled = [
+    { id: 'ni-barclays', template: v => 'Balance in ' + currencyWord },
+    { id: 'ni-ms-start', template: v => 'Starting balance in ' + currencyWord },
+    { id: 'ni-newlimit', template: v => 'Credit limit in ' + currencyWord },
+    { id: 'ni-spend', template: v => 'Monthly spend in ' + currencyWord },
+  ];
+  labelled.forEach(({ id, template }) => {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-label', template(el.value));
+  });
+}
+
+/**
+ * Generate an array of month label strings (e.g. ['Apr '26', 'May '26', …]) starting from
+ * `startMonth` (0=Jan) in `startYear`, for `count` months.
+ */
+function generateTimeline(startYear, startMonth, count) {
+  const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const result = [];
+  for (let i = 0; i < count; i++) {
+    const m = (startMonth + i) % 12;
+    const y = startYear + Math.floor((startMonth + i) / 12);
+    result.push(names[m] + ' \u2019' + String(y).slice(2));
+  }
+  return result;
+}
+
+const N_MONTHS = 22;
+const MONTHS = generateTimeline(2026, 2, N_MONTHS);
+
+const defaultNames = {
+  stoozePot: 'Stooze pot',
+  barclays: 'Barclays',
+  ms: 'M&S Bank',
+  amex: 'Amex',
+  newCard: 'New Card',
+};
+
+let displayNames = { ...defaultNames };
+let extraCards = []; // { id, name, limit }
+
+const defaultRanges = {
+  'sl-barclays': { min: 0, max: 4000, step: 10 },
+  'sl-ms-start': { min: 0, max: 7000, step: 10 },
+  'sl-newlimit': { min: 0, max: 20000, step: 500 },
+  'sl-spend': { min: 100, max: 3000, step: 50 },
+  'sl-apr': { min: 1, max: 6, step: 0.01 },
+  'sl-newminpct': { min: 1, max: 5, step: 0.05 },
+  'sl-view-month': { min: 0, max: N_MONTHS - 1, step: 1 },
+};
+let sliderRanges = JSON.parse(JSON.stringify(defaultRanges));
+
+/** Dataset visibility by stable key (persisted) */
+let datasetVisible = {
+  stooze: true, barclays: true, ms: true, newCard: true, interest: true, util: true, util30: false,
+};
+
+/** false = show line point markers always; true = hide until hover (solid dot = former resting look). */
+let chartPointsUntilHover = true;
+
+/** Dev preview: Chart.js line tension 0–1 (not persisted). 30% guide stays straight. Shipped default 0.02. */
+let chartLineTensionDev = 0.02;
+
+/** Main chart series (excludes util30 guide); at least one must stay visible via legend toggles. */
+const MAIN_CHART_SERIES_KEYS = ['stooze', 'barclays', 'ms', 'newCard', 'interest', 'util'];
+
+/** Card / stooze balance lines only — first-open legend peek must not toggle interest, util, or util30. */
+const PEEK_DEMO_SERIES_KEYS = ['stooze', 'barclays', 'ms', 'newCard'];
+
+function countVisibleMainChartSeries() {
+  return MAIN_CHART_SERIES_KEYS.filter(k => datasetVisible[k] !== false).length;
+}
+
+/** Hydrate display names, extra cards, slider ranges, chart visibility, currency from localStorage. */
+function loadState() {
+  try {
+    const n = localStorage.getItem(LS.names);
+    if (n) displayNames = { ...defaultNames, ...JSON.parse(n) };
+    const e = localStorage.getItem(LS.extra);
+    if (e) extraCards = JSON.parse(e);
+    const r = localStorage.getItem(LS.ranges);
+    if (r) sliderRanges = { ...sliderRanges, ...JSON.parse(r) };
+    const v = localStorage.getItem(LS.visibility);
+    if (v) datasetVisible = { ...datasetVisible, ...JSON.parse(v) };
+    const u = localStorage.getItem(LS.util30);
+    if (u !== null) datasetVisible.util30 = u === '1';
+    const cur = localStorage.getItem(LS.currency);
+    if (cur && ALLOWED_CURRENCIES.includes(cur)) currencyCode = cur;
+    const cp = localStorage.getItem(LS.chartPoints);
+    if (cp === 'always') chartPointsUntilHover = false;
+    else chartPointsUntilHover = true;
+  } catch (err) { console.warn('loadState', err); }
+}
+
+/** Persist renamed labels for tiles and chart. */
+function saveNames() {
+  try { localStorage.setItem(LS.names, JSON.stringify(displayNames)); } catch (e) { console.warn('saveNames', e); }
+}
+/** Persist “extra cards” used only for utilisation denominator. */
+function saveExtra() {
+  try { localStorage.setItem(LS.extra, JSON.stringify(extraCards)); } catch (e) { console.warn('saveExtra', e); }
+}
+/** Persist per-slider min / max / step overrides. */
+function saveRanges() {
+  try { localStorage.setItem(LS.ranges, JSON.stringify(sliderRanges)); } catch (e) { console.warn('saveRanges', e); }
+}
+/** Persist which chart series are visible (legend toggles). */
+function saveVisibility() {
+  try { localStorage.setItem(LS.visibility, JSON.stringify(datasetVisible)); } catch (e) { console.warn('saveVisibility', e); }
+}
+/** Persist GBP / USD / EUR choice. */
+function saveCurrency() {
+  try { localStorage.setItem(LS.currency, currencyCode); } catch (e) { console.warn('saveCurrency', e); }
+}
+/** Persist chart line point visibility mode (`always` | `hover`). */
+function saveChartPointsMode() {
+  try {
+    localStorage.setItem(LS.chartPoints, chartPointsUntilHover ? 'hover' : 'always');
+  } catch (e) { console.warn('saveChartPointsMode', e); }
+}
+
+/** Apply mode, persist, sync Settings + chart toolbar, redraw chart. */
+function setChartPointsMode(hoverOnly) {
+  const next = !!hoverOnly;
+  if (next === chartPointsUntilHover) return;
+  chartPointsUntilHover = next;
+  saveChartPointsMode();
+  syncChartPointsControls();
+  recalc();
+}
+
+/** Keep settings select and chart legend segment control in sync with `chartPointsUntilHover`. */
+function syncChartPointsControls() {
+  const sel = document.getElementById('setting-chart-points');
+  if (sel) sel.value = chartPointsUntilHover ? 'hover' : 'always';
+  const alwaysBtn = document.getElementById('chart-points-mode-always');
+  const hoverBtn = document.getElementById('chart-points-mode-hover');
+  if (alwaysBtn && hoverBtn) {
+    alwaysBtn.classList.toggle('chart-line-points-ctrl__opt--active', !chartPointsUntilHover);
+    hoverBtn.classList.toggle('chart-line-points-ctrl__opt--active', chartPointsUntilHover);
+    alwaysBtn.setAttribute('aria-pressed', !chartPointsUntilHover ? 'true' : 'false');
+    hoverBtn.setAttribute('aria-pressed', chartPointsUntilHover ? 'true' : 'false');
+  }
+}
+
+/** Apply stored range config to every slider that has an entry in `sliderRanges`. */
+function applyAllSliderRanges() {
+  for (const id of Object.keys(sliderRanges)) {
+    applySliderRange(id, false);
+  }
+}
+
+/** Push one slider’s min/max/step (and paired num input, if any) from `sliderRanges`. */
+function applySliderRange(sliderId, doSave) {
+  const cfg = sliderRanges[sliderId];
+  if (!cfg) return;
+  const sl = document.getElementById(sliderId);
+  if (!sl) return;
+  sl.min = cfg.min;
+  sl.max = cfg.max;
+  sl.step = cfg.step;
+  let v = parseFloat(sl.value);
+  if (isNaN(v)) v = cfg.min;
+  v = Math.min(cfg.max, Math.max(cfg.min, v));
+  sl.value = v;
+  const pairId = sl.closest('.control-group')?.querySelector('.range-cog')?.dataset.pair;
+  if (pairId) {
+    const ni = document.getElementById(pairId);
+    if (ni) {
+      ni.min = cfg.min;
+      ni.max = cfg.max;
+      ni.step = cfg.step;
+      ni.value = v;
+    }
+  }
+  syncRangeParamInputs(sliderId);
+  if (doSave !== false) saveRanges();
+}
+
+/** Reflect current range config into the Min/Max/Step number fields for one slider id. */
+function syncRangeParamInputs(sliderId) {
+  const cfg = sliderRanges[sliderId];
+  if (!cfg) return;
+  const minEl = document.getElementById('rp-' + sliderId + '-min');
+  const maxEl = document.getElementById('rp-' + sliderId + '-max');
+  const stepEl = document.getElementById('rp-' + sliderId + '-step');
+  if (!minEl || !maxEl || !stepEl) return;
+  minEl.value = cfg.min;
+  maxEl.value = cfg.max;
+  stepEl.value = cfg.step;
+}
+
+/** Read Min/Max/Step inputs, validate, write `sliderRanges`, re-apply and recalc. */
+function validateAndApplyRangeInputs(sliderId) {
+  const minEl = document.getElementById('rp-' + sliderId + '-min');
+  const maxEl = document.getElementById('rp-' + sliderId + '-max');
+  const stepEl = document.getElementById('rp-' + sliderId + '-step');
+  if (!minEl || !maxEl || !stepEl) return;
+  let min = parseFloat(minEl.value);
+  let max = parseFloat(maxEl.value);
+  let step = parseFloat(stepEl.value);
+  if (sliderId === 'sl-view-month') {
+    min = clamp(Math.floor(min), 0, N_MONTHS - 1);
+    max = clamp(Math.floor(max), 0, N_MONTHS - 1);
+    step = 1;
+    minEl.value = min;
+    maxEl.value = max;
+    stepEl.value = step;
+    if (max <= min) {
+      [minEl, maxEl, stepEl].forEach(el => el.setCustomValidity(''));
+      minEl.setCustomValidity('Month slider: min and max must be between 0 and ' + (N_MONTHS - 1) + ', with max > min.');
+      minEl.reportValidity();
+      return;
+    }
+  }
+  [minEl, maxEl, stepEl].forEach(el => el.setCustomValidity(''));
+  if (!isValidRange(min, max, step)) {
+    minEl.setCustomValidity('Please enter valid min, max (max > min), and positive step.');
+    minEl.reportValidity();
+    return;
+  }
+  sliderRanges[sliderId] = { min, max, step };
+  applySliderRange(sliderId);
+  recalc();
+}
+
+/** Clamp a value to [lo, hi]. */
+function clamp(val, lo, hi) {
+  return Math.min(hi, Math.max(lo, val));
+}
+
+/** True if min/max/step represent a valid non-empty range. */
+function isValidRange(min, max, step) {
+  return !isNaN(min) && !isNaN(max) && !isNaN(step) && max > min && step > 0;
+}
+
+/** Clamp slider + paired input to current native min/max after a range change. */
+function clampSliderValue(sliderId) {
+  const sl = document.getElementById(sliderId);
+  const cfg = sliderRanges[sliderId];
+  if (!sl || !cfg) return;
+  let v = parseFloat(sl.value);
+  const lo = parseFloat(sl.min), hi = parseFloat(sl.max);
+  if (isNaN(v)) v = lo;
+  v = clamp(v, lo, hi);
+  sl.value = v;
+  const cog = document.querySelector(`.range-cog[data-slider-id="${sliderId}"]`);
+  if (cog?.dataset.pair) {
+    const ni = document.getElementById(cog.dataset.pair);
+    if (ni) ni.value = v;
+  }
+}
+
+/** Keep range slider and adjacent number input in sync both ways; both trigger `recalc`. */
+function linkInputs(sliderId, numberId) {
+  const sl = document.getElementById(sliderId);
+  const ni = document.getElementById(numberId);
+  sl.addEventListener('input', () => { ni.value = sl.value; recalc(); });
+  ni.addEventListener('input', () => {
+    let v = parseFloat(ni.value);
+    const lo = parseFloat(ni.min), hi = parseFloat(ni.max);
+    if (isNaN(v)) return;
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
+    sl.value = v;
+    ni.value = v;
+    recalc();
+  });
+  ni.addEventListener('blur', () => {
+    let v = parseFloat(ni.value);
+    const lo = parseFloat(ni.min), hi = parseFloat(ni.max);
+    if (isNaN(v)) v = parseFloat(sl.value);
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
+    ni.value = v;
+    sl.value = v;
+    recalc();
+  });
+}
+
+/** Shorthand: numeric value of a slider/number input by element id. */
+function getVal(id) { return parseFloat(document.getElementById(id).value); }
+
+/** Selected month index (0..N_MONTHS-1) from the “Card balances as of” slider. */
+function getViewMonthIdx() {
+  const sl = document.getElementById('sl-view-month');
+  let v = parseInt(sl.value, 10);
+  if (isNaN(v)) v = N_MONTHS - 1;
+  v = Math.max(0, Math.min(N_MONTHS - 1, v));
+  return v;
+}
+
+/** Demo M&S-style minimum payment rule. */
+function minPaymentMs(balance) {
+  return Math.max(balance * 0.025, 5);
+}
+/** Minimum payment for the new card from balance × user-chosen %. */
+function minPaymentNew(balance, pctPercent) {
+  return Math.max(balance * (pctPercent / 100), 5);
+}
+/** CSS colour token for utilisation thresholds (green / amber / red). */
+function utilColor(pct) {
+  if (pct < 30) return 'var(--green)';
+  if (pct <= 50) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+/* --- Chart.js legend toggles: animate colours + bust per-dataset option caches --- */
+const datasetFadeRafByIndex = new Map();
+
+/** Easing used for legend-driven series fade (quadratic ease-out). */
+function easeOutQuad(t) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+/** Parse rgb/rgba/hex to {r,g,b,a} for fade math (Chart.js dataset colours). */
+function parseColorToRgbaParts(str) {
+  if (!str || str === 'transparent') return null;
+  const s = String(str).trim();
+  let m = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i);
+  if (m) {
+    return { r: +m[1], g: +m[2], b: +m[3], a: m[4] !== undefined ? +m[4] : 1 };
+  }
+  m = s.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (m) {
+    let h = m[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const n = parseInt(h, 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, a: 1 };
+  }
+  return null;
+}
+
+/** Multiply alpha in a parsed colour string; leaves unparseable values unchanged. */
+function applyOpacityToCssColor(color, opacityMultiplier) {
+  if (!color || color === 'transparent') return color;
+  const p = parseColorToRgbaParts(color);
+  if (!p) return color;
+  const a = Math.max(0, Math.min(1, p.a * opacityMultiplier));
+  return `rgba(${p.r},${p.g},${p.b},${a})`;
+}
+
+/** Vertical gradient for line area fills: stronger near chart top, transparent at x-axis (Batch M). */
+function verticalAreaFillGradient(chart, rgb, topAlpha, bottomAlpha) {
+  const { ctx, chartArea } = chart;
+  if (!ctx || !chartArea) {
+    const a = Math.max(0, Math.min(1, topAlpha));
+    return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+  }
+  const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  g.addColorStop(0, `rgba(${rgb.r},${rgb.g},${rgb.b},${Math.max(0, Math.min(1, topAlpha))})`);
+  g.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},${Math.max(0, Math.min(1, bottomAlpha))})`);
+  return g;
+}
+
+const STOOZE_AREA_RGB = { r: 45, g: 157, b: 92 };
+const INTEREST_AREA_RGB = { r: 212, g: 147, b: 13 };
+
+function scriptableStoozeAreaFill(context) {
+  const ds = context.dataset;
+  const t = ds._fadeFillOpacity != null ? ds._fadeFillOpacity : 1;
+  return verticalAreaFillGradient(context.chart, STOOZE_AREA_RGB, 0.2 * t, 0);
+}
+
+function scriptableInterestAreaFill(context) {
+  const ds = context.dataset;
+  const t = ds._fadeFillOpacity != null ? ds._fadeFillOpacity : 1;
+  return verticalAreaFillGradient(context.chart, INTEREST_AREA_RGB, 0.14 * t, 0);
+}
+
+/** Capture original line/fill/point colours once per fade so we multiply alpha from a stable base. */
+function snapshotDatasetFadeBases(ds) {
+  if (ds._fadeColorSnap) return;
+  ds._fadeColorSnap = {
+    borderColor: ds.borderColor,
+    backgroundColor: ds.backgroundColor,
+    pointBorderColor: ds.pointBorderColor,
+    pointBackgroundColor: ds.pointBackgroundColor,
+    pointHoverBorderColor: ds.pointHoverBorderColor,
+    pointHoverBackgroundColor: ds.pointHoverBackgroundColor,
+  };
+}
+
+/** Apply fade factor `t` (0..1) to snapped border, area, and point colours. */
+function applyDatasetFadeVisuals(ds, t) {
+  snapshotDatasetFadeBases(ds);
+  const snap = ds._fadeColorSnap;
+  ds.borderColor = applyOpacityToCssColor(snap.borderColor, t);
+  if (typeof snap.backgroundColor === 'function') {
+    ds._fadeFillOpacity = t;
+    ds.backgroundColor = snap.backgroundColor;
+  } else {
+    delete ds._fadeFillOpacity;
+    ds.backgroundColor = applyOpacityToCssColor(snap.backgroundColor, t);
+  }
+  if (snap.pointBorderColor !== undefined) {
+    ds.pointBorderColor = applyOpacityToCssColor(snap.pointBorderColor, t);
+  }
+  if (snap.pointBackgroundColor !== undefined) {
+    ds.pointBackgroundColor = applyOpacityToCssColor(snap.pointBackgroundColor, t);
+  }
+  if (snap.pointHoverBorderColor !== undefined) {
+    ds.pointHoverBorderColor = applyOpacityToCssColor(snap.pointHoverBorderColor, t);
+  }
+  if (snap.pointHoverBackgroundColor !== undefined) {
+    ds.pointHoverBackgroundColor = applyOpacityToCssColor(snap.pointHoverBackgroundColor, t);
+  }
+}
+
+/** Restore dataset colours after a fade completes or is cancelled. */
+function restoreDatasetFadeVisuals(ds) {
+  if (!ds || !ds._fadeColorSnap) return;
+  const s = ds._fadeColorSnap;
+  delete ds._fadeFillOpacity;
+  ds.borderColor = s.borderColor;
+  ds.backgroundColor = s.backgroundColor;
+  if (s.pointBorderColor !== undefined) ds.pointBorderColor = s.pointBorderColor;
+  if (s.pointBackgroundColor !== undefined) ds.pointBackgroundColor = s.pointBackgroundColor;
+  if (s.pointHoverBorderColor !== undefined) ds.pointHoverBorderColor = s.pointHoverBorderColor;
+  if (s.pointHoverBackgroundColor !== undefined) ds.pointHoverBackgroundColor = s.pointHoverBackgroundColor;
+  delete ds._fadeColorSnap;
+}
+
+/**
+ * Chart.js caches resolved line/point options on the dataset controller. Mutating dataset
+ * colours does not refresh those caches. Also, LineController keeps a single _sharedOptions
+ * copy for all points; getSharedOptions() reuses it forever once set, so clearing only
+ * _cachedDataOpts still leaves stale point colours until visibility flips.
+ */
+function invalidateDatasetElementOptionsCache(chartInstance, datasetIndex) {
+  const c = chartInstance.getDatasetMeta(datasetIndex)?.controller;
+  if (!c) return;
+  c._cachedDataOpts = {};
+  c._sharedOptions = undefined;
+}
+
+/** Stop all in-flight legend fades and revert any partially faded datasets (e.g. before chart data swap). */
+function cancelDatasetFadeAnimations() {
+  datasetFadeRafByIndex.forEach(({ rafId }, idx) => {
+    if (rafId != null) cancelAnimationFrame(rafId);
+    if (chart && chart.data.datasets[idx]) restoreDatasetFadeVisuals(chart.data.datasets[idx]);
+  });
+  datasetFadeRafByIndex.clear();
+}
+
+/** Fade line, area fill, and points by mutating dataset colour alphas (Filler ignores canvas globalAlpha). */
+function runDatasetVisibilityFade(chart, datasetIndex, targetVisible, duration = 220) {
+  const ds = chart.data.datasets[datasetIndex];
+  if (!ds) return;
+
+  const prev = datasetFadeRafByIndex.get(datasetIndex);
+  if (prev && prev.rafId != null) cancelAnimationFrame(prev.rafId);
+  if (datasetFadeRafByIndex.has(datasetIndex)) {
+    restoreDatasetFadeVisuals(ds);
+    datasetFadeRafByIndex.delete(datasetIndex);
+  }
+
+  const startOp = targetVisible ? 0 : 1;
+  const toOp = targetVisible ? 1 : 0;
+
+  chart.setDatasetVisibility(datasetIndex, true);
+  applyDatasetFadeVisuals(ds, startOp);
+  invalidateDatasetElementOptionsCache(chart, datasetIndex);
+  chart.update('none');
+
+  const start = performance.now();
+
+  // End of animation: restore colours, optionally hide dataset, refresh chart.
+  function finish() {
+    datasetFadeRafByIndex.delete(datasetIndex);
+    restoreDatasetFadeVisuals(ds);
+    if (!targetVisible) chart.setDatasetVisibility(datasetIndex, false);
+    invalidateDatasetElementOptionsCache(chart, datasetIndex);
+    chart.update('none');
+  }
+
+  function frame(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = easeOutQuad(t);
+    const op = startOp + (toOp - startOp) * eased;
+    applyDatasetFadeVisuals(ds, op);
+    invalidateDatasetElementOptionsCache(chart, datasetIndex);
+    chart.update('none');
+    if (t < 1) {
+      const rafId = requestAnimationFrame(frame);
+      datasetFadeRafByIndex.set(datasetIndex, { rafId });
+    } else {
+      finish();
+    }
+  }
+  const rafId = requestAnimationFrame(frame);
+  datasetFadeRafByIndex.set(datasetIndex, { rafId });
+}
+
+// Chart.js plugin: vertical line at the hovered category index (Batch F).
+(function registerHoverIndexGuidePlugin() {
+  if (typeof Chart === 'undefined' || window.__stoozingHoverIndexGuide) return;
+  window.__stoozingHoverIndexGuide = true;
+  Chart.register({
+    id: 'stoozingHoverIndexGuide',
+    afterDatasetsDraw(chart) {
+      const active = chart.getActiveElements();
+      if (!active.length) return;
+      const x = active[0].element?.x;
+      if (typeof x !== 'number' || Number.isNaN(x)) return;
+      const { top, bottom } = chart.chartArea;
+      const ctx = chart.ctx;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.strokeStyle = 'rgba(26, 26, 26, 0.14)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+    },
+  });
+})();
+
+/** Tooltip anchor offset from the vertical hover line (~matches page padding). */
+const TOOLTIP_GAP_FROM_HOVER_LINE = 36;
+
+/** `'stoozeNudge'` if custom positioner registered; else Chart.js `'nearest'`. */
+let chartTooltipPosition = 'nearest';
+
+(function registerStoozeTooltipPositioner() {
+  if (typeof Chart === 'undefined' || window.__stoozingTooltipPositioner) return;
+  const positioners = Chart.Tooltip && Chart.Tooltip.positioners;
+  if (!positioners || typeof positioners.nearest !== 'function') return;
+  window.__stoozingTooltipPositioner = true;
+  const nearest = positioners.nearest;
+  positioners.stoozeNudge = function (elements, eventPosition) {
+    const base = nearest.call(this, elements, eventPosition);
+    if (!base || typeof base.x !== 'number' || typeof base.y !== 'number') return base;
+    const chart = this.chart;
+    const ca = chart.chartArea;
+    const midX = ca ? (ca.left + ca.right) / 2 : base.x;
+    const g = TOOLTIP_GAP_FROM_HOVER_LINE;
+    if (base.x <= midX) {
+      return { x: base.x + g, y: base.y, xAlign: 'left', yAlign: 'bottom' };
+    }
+    return { x: base.x - g, y: base.y, xAlign: 'right', yAlign: 'bottom' };
+  };
+  chartTooltipPosition = 'stoozeNudge';
+})();
+
+let chart = null;
+
+/** Once per browser profile: chart-legend explainer has run the playful line-toggle demo. */
+const LS_CHART_LEGEND_PEEK = 'stoozing_chartLegendPeekV1';
+let chartLegendPeekRunning = false;
+
+/** Programmatically show/hide a main chart series (same rules as legend click). */
+function toggleChartSeriesByKey(key, targetVisible) {
+  if (!chart) return;
+  const idx = chart.data.datasets.findIndex(d => d._dsKey === key);
+  if (idx < 0) return;
+  const cur = datasetVisible[key] !== false;
+  if (cur === targetVisible) return;
+  if (cur && !targetVisible && countVisibleMainChartSeries() <= 1) return;
+  datasetVisible[key] = targetVisible;
+  saveVisibility();
+  syncCustomLegendFromChart();
+  runDatasetVisibilityFade(chart, idx, targetVisible);
+}
+
+/** Sum of credit limits from user-added “extra” cards (utilisation denominator only). */
+function extraCreditLimit() {
+  return extraCards.reduce((s, c) => s + Math.max(0, Number(c.limit) || 0), 0);
+}
+
+/** Run month-by-month simulation from current sliders; refresh tiles, metrics, and chart. */
+function recalc() {
+  const barclaysStart = getVal('sl-barclays');
+  const newLimit = getVal('sl-newlimit');
+  const monthlySpend = getVal('sl-spend');
+  const apr = getVal('sl-apr');
+  const newMinPct = getVal('sl-newminpct');
+  const monthlyRate = apr / 100 / 12;
+  const lblNewMin = document.getElementById('lbl-newminpct');
+  if (lblNewMin) lblNewMin.textContent = newMinPct.toFixed(2) + '%';
+
+  const BARCLAYS_LIMIT = 4000;
+  const MS_LIMIT = 7000;
+  const AMEX_LIMIT = 8900;
+  const IDX_BARC_PAYOFF = 8;
+  const IDX_MS_PAYOFF = 15;
+  const viewIdx = getViewMonthIdx();
+  const extraLimit = extraCreditLimit();
+
+  const msSavings = [];
+  const msBalance = [];
+  const newBalance = [];
+  const barclaysBalance = [];
+  const cumInterest = [];
+  const utilPct = [];
+
+  let savingsPot = 0;
+  let msbal = getVal('sl-ms-start');
+  let newbal = 0;
+  let barcBal = barclaysStart;
+  let totalInterest = 0;
+
+  const totalLimitBase = BARCLAYS_LIMIT + MS_LIMIT + AMEX_LIMIT + newLimit + extraLimit;
+
+  for (let i = 0; i < N_MONTHS; i++) {
+    let barcOut = 0;
+    let msOut = 0;
+
+    if (i < IDX_BARC_PAYOFF) {
+      const b0 = barcBal;
+      barcBal = barcBal * (1 - 0.01);
+      barcOut = Math.round((b0 - barcBal) * 100) / 100;
+    } else if (i === IDX_BARC_PAYOFF) {
+      barcOut = Math.round(barcBal * 100) / 100;
+      barcBal = 0;
+    }
+
+    if (i === IDX_MS_PAYOFF) {
+      msOut = Math.round(msbal * 100) / 100;
+      msbal = 0;
+    } else {
+      if (i < IDX_BARC_PAYOFF) {
+        msbal = Math.min(msbal + monthlySpend, MS_LIMIT);
+      }
+      if (i > IDX_MS_PAYOFF) msbal = 0;
+      if (msbal > 0) {
+        const msMinPay = minPaymentMs(msbal);
+        msbal = Math.max(msbal - msMinPay, 0);
+        msOut = msMinPay;
+      }
+    }
+
+    let ncMinPay = 0;
+    if (i >= IDX_BARC_PAYOFF) {
+      newbal = Math.min(newbal + monthlySpend, newLimit);
+      if (newbal > 0) {
+        ncMinPay = minPaymentNew(newbal, newMinPct);
+        newbal = Math.max(newbal - ncMinPay, 0);
+      }
+    }
+
+    savingsPot += monthlySpend;
+    const interest = savingsPot * monthlyRate;
+    savingsPot += interest;
+    totalInterest += interest;
+    savingsPot -= (barcOut + msOut + ncMinPay);
+    savingsPot = Math.round(savingsPot * 100) / 100;
+
+    barclaysBalance.push(Math.round(barcBal * 100) / 100);
+    msBalance.push(Math.round(msbal * 100) / 100);
+    newBalance.push(i >= IDX_BARC_PAYOFF ? Math.round(newbal * 100) / 100 : null);
+    msSavings.push(Math.round(savingsPot * 100) / 100);
+    cumInterest.push(Math.round(totalInterest * 100) / 100);
+
+    const totalBal = barcBal + msbal + (i >= IDX_BARC_PAYOFF ? newbal : 0);
+    utilPct.push(Math.round((totalBal / totalLimitBase) * 10000) / 100);
+  }
+
+  const snapMs = msBalance[viewIdx];
+  const snapNew = newBalance[viewIdx] != null ? newBalance[viewIdx] : 0;
+  const snapBarc = barclaysBalance[viewIdx];
+  const snapInterest = cumInterest[viewIdx];
+  const snapUtil = utilPct[viewIdx];
+
+  updateControlLabels();
+  renderCardTiles(snapBarc, snapMs, snapNew, newLimit, BARCLAYS_LIMIT, MS_LIMIT, AMEX_LIMIT);
+  renderMetricHero(snapInterest);
+  renderMetrics(snapBarc + snapMs + snapNew, snapUtil);
+
+  const util30Data = Array(N_MONTHS).fill(30);
+  updateChart(msSavings, msBalance, newBalance, barclaysBalance, cumInterest, utilPct, util30Data);
+}
+
+/** Dynamic sentences on parameter cards (e.g. “Barclays balance” uses display name). */
+function updateControlLabels() {
+  document.getElementById('lbl-ctrl-barclays').textContent = displayNames.barclays + ' balance';
+  const msStartLbl = document.getElementById('lbl-ctrl-msstart');
+  if (msStartLbl) msStartLbl.textContent = displayNames.ms + ' starting balance';
+  document.getElementById('lbl-ctrl-newlimit').textContent = displayNames.newCard + ' limit';
+  document.getElementById('lbl-ctrl-newmin').textContent = displayNames.newCard + ' min payment';
+  const cogMs = document.querySelector('.range-cog[data-slider-id="sl-ms-start"]');
+  if (cogMs) cogMs.setAttribute('aria-label', 'Toggle ' + displayNames.ms + ' starting balance slider range settings');
+  const rangeMs = document.getElementById('range-ui-sl-ms-start');
+  if (rangeMs) rangeMs.setAttribute('aria-label', displayNames.ms + ' starting balance min, max, and step');
+}
+
+/** Rebuild the card tile grid for the selected month snapshot + extra cards. */
+function renderCardTiles(snapBarc, snapMs, snapNew, newLimit, BARCLAYS_LIMIT, MS_LIMIT, AMEX_LIMIT) {
+  const tilesEl = document.getElementById('card-tiles');
+  const ncPct = newLimit > 0 ? ((snapNew / newLimit) * 100) : 0;
+
+  function tileHTML(name, balance, limit, pct) {
+    // One balance tile: name, amounts, util bar, percentage.
+    const col = utilColor(pct);
+    return `<div class="card-tile">
+      <div class="card-tile-name">${escapeHtml(name)}</div>
+      <div class="card-tile-balance">${formatMoney(balance)}</div>
+      <div class="card-tile-limit">of ${formatMoneyWhole(limit)} limit</div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${Math.min(pct,100)}%;background:${col}"></div></div>
+      <div class="card-tile-pct" style="color:${col}">${pct.toFixed(1)}%</div>
+    </div>`;
+  }
+
+  let html =
+    tileHTML(displayNames.barclays, snapBarc, BARCLAYS_LIMIT, (snapBarc / BARCLAYS_LIMIT) * 100) +
+    tileHTML(displayNames.ms, snapMs, MS_LIMIT, (snapMs / MS_LIMIT) * 100) +
+    tileHTML(displayNames.amex, 0, AMEX_LIMIT, 0) +
+    tileHTML(displayNames.newCard, snapNew, newLimit > 0 ? newLimit : 1, newLimit > 0 ? ncPct : 0);
+
+  for (const c of extraCards) {
+    const lim = Math.max(0, Number(c.limit) || 0);
+    html += tileHTML(c.name || 'Card', 0, lim || 1, 0);
+  }
+  tilesEl.innerHTML = html;
+}
+
+/** Escape text for safe insertion into `innerHTML` templates. */
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+/** Projected-interest hero for the month selected by the top slider. */
+function renderMetricHero(snapInterest) {
+  heroSideExplainer.hide(true);
+  const idx = getViewMonthIdx();
+  const monthPhrase = MONTHS[idx] || '';
+  const labelSuffix = monthPhrase ? ` (up to ${monthPhrase})` : '';
+  document.getElementById('metric-hero').innerHTML = `
+    <div class="metric-hero">
+      <div class="metric-hero-head">
+        <div class="metric-hero-label-row">
+          <span class="metric-label">Projected interest${escapeHtml(labelSuffix)}</span>
+          <span class="metric-info-stack" id="metric-hero-help-stack">
+            <button type="button" class="metric-info-hit" id="metric-hero-trigger" aria-expanded="false" aria-controls="explain-popover-hero" aria-haspopup="dialog" aria-label="About projected interest">i</button>
+          </span>
+        </div>
+      </div>
+      <div class="metric-value">${formatMoney(snapInterest)}</div>
+    </div>
+  `;
+  wireHeroExplainer();
+}
+
+/** “Combined debt” and credit utilisation cards under the tiles. */
+function renderMetrics(combinedDebt, snapUtil) {
+  debtSideExplainer.hide(true);
+  utilSideExplainer.hide(true);
+  const idx = getViewMonthIdx();
+  const monthPhrase = MONTHS[idx] || '';
+  const utilCol = utilColor(snapUtil);
+  const utilHead = monthPhrase
+    ? `Credit utilisation as of ${monthPhrase}`
+    : 'Credit utilisation';
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric-card">
+      <div class="metric-card-head">
+        <div class="metric-card-head-left">
+          <span class="metric-card-head-label">Combined <span class="metric-debt-plain">\u2018debt\u2019</span></span>
+          <span class="metric-info-stack" id="metric-debt-help-stack">
+            <button type="button" class="metric-info-hit" id="metric-debt-trigger" aria-expanded="false" aria-controls="explain-popover" aria-haspopup="dialog" aria-label="About combined debt">i</button>
+          </span>
+        </div>
+      </div>
+      <div class="metric-value blue">${formatMoney(combinedDebt)}</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-card-head">
+        <div class="metric-card-head-left">
+          <span class="metric-card-head-label">${escapeHtml(utilHead)}</span>
+          <span class="metric-info-stack" id="metric-util-help-stack">
+            <button type="button" class="metric-info-hit" id="metric-util-trigger" aria-expanded="false" aria-controls="explain-popover-util" aria-haspopup="dialog" aria-label="About credit utilisation">i</button>
+          </span>
+        </div>
+        <span class="metric-card-head-value" style="color:${utilCol}">${snapUtil.toFixed(1)}%</span>
+      </div>
+      <div class="metric-card-util-bar" aria-hidden="true">
+        <div class="progress-bar-track"><div class="progress-bar-fill" style="width:${Math.min(snapUtil, 100)}%;background:${utilCol}"></div></div>
+      </div>
+    </div>
+  `;
+  wireDebtExplainer();
+  wireUtilExplainer();
+}
+
+/**
+ * Reusable side explainer (fade-only, tail beside anchor). One global document listener; only the
+ * active instance handles outside click / Esc. Create another with createSideExplainerPopover({...})
+ * and a second #root in HTML if you need two different popovers visible in the same session.
+ *
+ * Options: root, bodyEl, bodyText, ariaLabel, hoverOpenMs, leaveDismissMs, margin, gap,
+ * popoverTopNudgePx / calloutAimNudgePx (numbers; positive moves panel or tail up via CSS vars),
+ * offScreenDismissMs (auto-close after anchor fully leaves viewport), outsideIgnoreSelector,
+ * onOpen (called when open completes; use instead of wrapping api.show — wireTrigger uses internal show).
+ */
+let sideExplainerGlobalsBound = false;
+let activeSideExplainer = null;
+
+function createSideExplainerPopover(options) {
+  const {
+    root,
+    bodyEl,
+    bodyText = '',
+    ariaLabel = 'Information',
+    hoverOpenMs = 1000,
+    leaveDismissMs = 140,
+    margin = 12,
+    gap = 10,
+    popoverTopNudgePx = 0,
+    calloutAimNudgePx = 0,
+    /** After anchor leaves the viewport entirely, close after this delay (hover or click). */
+    offScreenDismissMs = 1000,
+    outsideIgnoreSelector,
+    /** Fires once each time the popover successfully opens (after `is-open` + layout). Wired triggers call internal `show`, not `api.show`, so use this for side effects (e.g. chart-legend peek). */
+    onOpen,
+  } = options;
+
+  const topNudgePx = Number(popoverTopNudgePx) || 0;
+  const calloutNudgePx = Number(calloutAimNudgePx) || 0;
+
+  const state = {
+    open: false,
+    sticky: false,
+    anchor: null,
+    hoverTimer: null,
+    leaveTimer: null,
+    transEnd: null,
+    transFb: null,
+    wireAbort: null,
+    popHoverListeners: false,
+    offScreenTimerId: null,
+  };
+
+  function clearHoverTimer() {
+    if (state.hoverTimer != null) {
+      clearTimeout(state.hoverTimer);
+      state.hoverTimer = null;
+    }
+  }
+
+  function clearLeaveTimer() {
+    if (state.leaveTimer != null) {
+      clearTimeout(state.leaveTimer);
+      state.leaveTimer = null;
+    }
+  }
+
+  function clearOffScreenDismissTimer() {
+    if (state.offScreenTimerId != null) {
+      clearTimeout(state.offScreenTimerId);
+      state.offScreenTimerId = null;
+    }
+  }
+
+  function anchorFullyOutsideViewport(el) {
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const vw = window.innerWidth;
+    return r.bottom <= 0 || r.top >= vh || r.right <= 0 || r.left >= vw;
+  }
+
+  function bindRepositionListeners() {
+    window.addEventListener('scroll', onReposition, true);
+    window.addEventListener('resize', onReposition);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('scroll', onReposition);
+    }
+  }
+
+  function unbindRepositionListeners() {
+    window.removeEventListener('scroll', onReposition, true);
+    window.removeEventListener('resize', onReposition);
+    if (window.visualViewport) {
+      window.visualViewport.removeEventListener('scroll', onReposition);
+    }
+  }
+
+  function cancelCloseAnimation() {
+    if (state.transEnd && root) {
+      root.removeEventListener('transitionend', state.transEnd);
+      state.transEnd = null;
+    }
+    if (state.transFb != null) {
+      clearTimeout(state.transFb);
+      state.transFb = null;
+    }
+  }
+
+  function finishClose() {
+    root.hidden = true;
+    root.setAttribute('aria-hidden', 'true');
+    root.style.visibility = '';
+    root.style.removeProperty('--explain-popover-y-nudge');
+    root.style.removeProperty('--explain-callout-y-nudge');
+    root.classList.remove('explain-popover--place-right', 'explain-popover--place-left');
+  }
+
+  function layout() {
+    const anchor = state.anchor;
+    if (!root || root.hidden || !anchor || !document.body.contains(anchor)) return;
+    const hideForMeasure = !root.classList.contains('is-open');
+    if (hideForMeasure) root.style.visibility = 'hidden';
+
+    const btnRect = anchor.getBoundingClientRect();
+    const popW = root.offsetWidth;
+    const popH = root.offsetHeight;
+
+    let left = btnRect.right + gap;
+    let placeRight = true;
+    if (left + popW > window.innerWidth - margin) {
+      left = btnRect.left - gap - popW;
+      placeRight = false;
+    }
+    left = Math.max(margin, Math.min(left, window.innerWidth - popW - margin));
+
+    /* Follow the anchor vertically (no viewport clamp). Panel nudge via transform var so it always applies. */
+    const top = btnRect.top + (btnRect.height - popH) / 2;
+
+    root.style.left = `${Math.round(left)}px`;
+    root.style.top = `${Math.round(top)}px`;
+    root.style.setProperty('--explain-popover-y-nudge', `${-topNudgePx}px`);
+    root.style.setProperty('--explain-callout-y-nudge', `${-calloutNudgePx}px`);
+    root.classList.toggle('explain-popover--place-right', placeRight);
+    root.classList.toggle('explain-popover--place-left', !placeRight);
+
+    const inner = root.querySelector('.explain-popover__inner');
+    if (inner) {
+      const ir = inner.getBoundingClientRect();
+      const aimY = btnRect.top + btnRect.height / 2;
+      let calloutY = aimY - ir.top;
+      const pad = 16;
+      calloutY = Math.max(pad, Math.min(calloutY, ir.height - pad));
+      root.style.setProperty('--callout-y', `${Math.round(calloutY)}px`);
+    }
+
+    if (hideForMeasure) root.style.visibility = '';
+
+    if (state.open && state.anchor) {
+      if (anchorFullyOutsideViewport(state.anchor)) {
+        if (state.offScreenTimerId == null) {
+          state.offScreenTimerId = setTimeout(() => {
+            state.offScreenTimerId = null;
+            if (state.open && state.anchor && anchorFullyOutsideViewport(state.anchor)) {
+              hide();
+            }
+          }, offScreenDismissMs);
+        }
+      } else {
+        clearOffScreenDismissTimer();
+      }
+    }
+  }
+
+  function onReposition() {
+    if (state.open && state.anchor) layout();
+  }
+
+  function scheduleLeaveDismiss() {
+    if (state.sticky || !state.open) return;
+    clearLeaveTimer();
+    state.leaveTimer = setTimeout(() => {
+      state.leaveTimer = null;
+      if (state.sticky || !state.open) return;
+      if (root.matches(':hover') || state.anchor?.matches(':hover')) return;
+      hide();
+    }, leaveDismissMs);
+  }
+
+  function handleOutsideClick(e) {
+    if (!state.open) return;
+    if (outsideIgnoreSelector && e.target.closest(outsideIgnoreSelector)) return;
+    hide();
+  }
+
+  function handleEscape() {
+    if (state.open) hide();
+  }
+
+  /** @param {boolean} [immediate] */
+  function hide(immediate) {
+    if (state.anchor) state.anchor.setAttribute('aria-expanded', 'false');
+
+    clearHoverTimer();
+    clearLeaveTimer();
+    clearOffScreenDismissTimer();
+    cancelCloseAnimation();
+
+    const wasOpen = state.open;
+    state.open = false;
+    state.sticky = false;
+    state.anchor = null;
+    if (activeSideExplainer === api) activeSideExplainer = null;
+
+    unbindRepositionListeners();
+
+    if (!root || root.hidden) return;
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!wasOpen) {
+      finishClose();
+      return;
+    }
+
+    if (immediate || reducedMotion) {
+      root.classList.remove('is-open');
+      finishClose();
+      return;
+    }
+
+    if (!root.classList.contains('is-open')) {
+      finishClose();
+      return;
+    }
+
+    root.classList.remove('is-open');
+
+    state.transEnd = e => {
+      if (e.target !== root || e.propertyName !== 'opacity') return;
+      root.removeEventListener('transitionend', state.transEnd);
+      state.transEnd = null;
+      clearTimeout(state.transFb);
+      state.transFb = null;
+      finishClose();
+    };
+    root.addEventListener('transitionend', state.transEnd);
+    state.transFb = setTimeout(() => {
+      if (!state.transEnd) return;
+      root.removeEventListener('transitionend', state.transEnd);
+      state.transEnd = null;
+      state.transFb = null;
+      finishClose();
+    }, 320);
+  }
+
+  /** @param {boolean} sticky — click-open vs hover-timer open */
+  function show(anchor, sticky) {
+    if (state.open) return;
+    if (activeSideExplainer && activeSideExplainer !== api) {
+      activeSideExplainer.hide(true);
+    }
+    cancelCloseAnimation();
+    clearHoverTimer();
+    clearLeaveTimer();
+    clearOffScreenDismissTimer();
+
+    state.anchor = anchor;
+    state.sticky = !!sticky;
+    activeSideExplainer = api;
+    anchor.setAttribute('aria-expanded', 'true');
+
+    root.classList.remove('is-open');
+    root.hidden = false;
+    root.setAttribute('aria-hidden', 'false');
+    state.open = true;
+
+    bindRepositionListeners();
+    layout();
+    requestAnimationFrame(() => {
+      layout();
+      requestAnimationFrame(() => {
+        root.classList.add('is-open');
+        /* Measure again while visible so offsetHeight / inner rect match the open state. */
+        layout();
+        if (typeof onOpen === 'function') onOpen();
+      });
+    });
+  }
+
+  function init() {
+    if (!root) return;
+    if (bodyEl && bodyText) bodyEl.textContent = bodyText;
+    if (ariaLabel) root.setAttribute('aria-label', ariaLabel);
+
+    if (!sideExplainerGlobalsBound) {
+      sideExplainerGlobalsBound = true;
+      document.addEventListener('click', e => activeSideExplainer?.handleOutsideClick(e));
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') activeSideExplainer?.handleEscape();
+      });
+    }
+
+    if (!state.popHoverListeners) {
+      state.popHoverListeners = true;
+      root.addEventListener('mouseenter', clearLeaveTimer);
+      root.addEventListener('mouseleave', scheduleLeaveDismiss);
+    }
+  }
+
+  function wireTrigger(btn, stack) {
+    clearHoverTimer();
+    clearLeaveTimer();
+    if (state.wireAbort) state.wireAbort.abort();
+    const ac = new AbortController();
+    state.wireAbort = ac;
+    const { signal } = ac;
+
+    btn.addEventListener(
+      'mouseenter',
+      () => {
+        stack.classList.add('is-hover');
+        clearHoverTimer();
+        clearLeaveTimer();
+        state.hoverTimer = setTimeout(() => {
+          state.hoverTimer = null;
+          if (state.open || !btn.matches(':hover')) return;
+          show(btn, false);
+        }, hoverOpenMs);
+      },
+      { signal }
+    );
+    btn.addEventListener(
+      'mouseleave',
+      () => {
+        stack.classList.remove('is-hover');
+        clearHoverTimer();
+        scheduleLeaveDismiss();
+      },
+      { signal }
+    );
+    btn.addEventListener(
+      'click',
+      e => {
+        e.stopPropagation();
+        clearHoverTimer();
+        clearLeaveTimer();
+        if (state.open) hide();
+        else show(btn, true);
+      },
+      { signal }
+    );
+  }
+
+  const api = {
+    init,
+    show,
+    hide,
+    layout,
+    wireTrigger,
+    isOpen: () => state.open,
+    handleOutsideClick,
+    handleEscape,
+  };
+  return api;
+}
+
+const DEBT_EXPLAINER_COPY =
+  'Voluntary 0% balances you\u2019re carrying; cash may still be in savings.';
+
+const debtSideExplainer = createSideExplainerPopover({
+  root: document.getElementById('explain-popover'),
+  bodyEl: document.getElementById('explain-popover-body'),
+  bodyText: DEBT_EXPLAINER_COPY,
+  ariaLabel: 'About combined debt',
+  hoverOpenMs: 1000,
+  leaveDismissMs: 140,
+  margin: 12,
+  gap: 10,
+  /** Positive = move whole panel up (see --explain-popover-y-nudge on #explain-popover). */
+  popoverTopNudgePx: 0.5,
+  /** Positive = move speech-bubble tail up along the panel edge. */
+  calloutAimNudgePx: 0.5,
+  offScreenDismissMs: 1000,
+  outsideIgnoreSelector: '#explain-popover, #metric-debt-trigger, #metric-debt-help-stack',
+});
+
+const HERO_EXPLAINER_COPY =
+  'Projected interest is the running total this demo would credit to savings at your chosen rate, from simulated card balances and payments through the month you picked. The green stooze pot line on the chart is your float: cash in savings while you still carry those 0% balances. Illustrative only—not advice.';
+
+const UTIL_EXPLAINER_COPY =
+  'Lenders often watch your credit utilisation when assessing risk. This is your combined card balances as a percentage of your total credit limits (for all cards under your name).';
+
+const CHART_LEGEND_EXPLAINER_COPY =
+  'The stooze pot line is cash in savings while 0% card balances are running—your float. Toggle lines to focus on card balances, that pot, cumulative projected interest, or utilisation over time. The dashed green line is a 30% utilisation guide.';
+
+const heroSideExplainer = createSideExplainerPopover({
+  root: document.getElementById('explain-popover-hero'),
+  bodyEl: document.getElementById('explain-popover-body-hero'),
+  bodyText: HERO_EXPLAINER_COPY,
+  ariaLabel: 'About projected interest',
+  hoverOpenMs: 1000,
+  leaveDismissMs: 140,
+  margin: 12,
+  gap: 10,
+  popoverTopNudgePx: 2,
+  calloutAimNudgePx: 1,
+  offScreenDismissMs: 1000,
+  outsideIgnoreSelector: '#explain-popover-hero, #metric-hero-trigger, #metric-hero-help-stack',
+});
+
+const utilSideExplainer = createSideExplainerPopover({
+  root: document.getElementById('explain-popover-util'),
+  bodyEl: document.getElementById('explain-popover-body-util'),
+  bodyText: UTIL_EXPLAINER_COPY,
+  ariaLabel: 'About credit utilisation',
+  hoverOpenMs: 1000,
+  leaveDismissMs: 140,
+  margin: 12,
+  gap: 10,
+  popoverTopNudgePx: 2,
+  calloutAimNudgePx: 1,
+  offScreenDismissMs: 1000,
+  outsideIgnoreSelector: '#explain-popover-util, #metric-util-trigger, #metric-util-help-stack',
+});
+
+const chartLegendSideExplainer = createSideExplainerPopover({
+  root: document.getElementById('explain-popover-chart'),
+  bodyEl: document.getElementById('explain-popover-body-chart'),
+  bodyText: CHART_LEGEND_EXPLAINER_COPY,
+  ariaLabel: 'About chart lines',
+  hoverOpenMs: 1000,
+  leaveDismissMs: 140,
+  margin: 12,
+  gap: 10,
+  popoverTopNudgePx: 2,
+  calloutAimNudgePx: 1,
+  offScreenDismissMs: 1000,
+  outsideIgnoreSelector: '#explain-popover-chart, #chart-legend-trigger, #chart-legend-help-stack',
+  onOpen() {
+    void runChartLegendPeekDemoIfFirstTime();
+  },
+});
+
+function sleepMs(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function shuffleSeriesKeys(keys) {
+  const a = keys.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/** First time the chart-legend explainer opens: briefly pulse two random legend buttons (hover + toggle) as a hint. */
+async function runChartLegendPeekDemoIfFirstTime() {
+  if (chartLegendPeekRunning) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    try {
+      localStorage.setItem(LS_CHART_LEGEND_PEEK, '1');
+    } catch (e) {}
+    return;
+  }
+  try {
+    if (localStorage.getItem(LS_CHART_LEGEND_PEEK)) return;
+  } catch (e) {
+    return;
+  }
+  if (!chart) return;
+
+  chartLegendPeekRunning = true;
+  const HOVER_MS = 400;
+  /** “Mouse down” before programmatic toggle — reads as click after hover. */
+  const PRESS_MS = 170;
+  const POST_SHOW_MS = 300;
+  /** Extra dwell after hiding a line so the “off” state reads clearly (+1s vs show). */
+  const POST_HIDE_DWELL_MS = 1300;
+  const BETWEEN_KEYS_MS = 240;
+  const keys = shuffleSeriesKeys(PEEK_DEMO_SERIES_KEYS).slice(0, 2);
+
+  try {
+    for (const key of keys) {
+      const btn = document.querySelector(`#chart-legend .chart-legend-btn[data-ds-key="${key}"]`);
+      if (!btn) continue;
+
+      btn.classList.add('chart-legend-btn--demo-hover');
+      await sleepMs(HOVER_MS);
+      btn.classList.add('chart-legend-btn--demo-press');
+      await sleepMs(PRESS_MS);
+      let didHide = false;
+      if (datasetVisible[key] !== false && countVisibleMainChartSeries() > 1) {
+        toggleChartSeriesByKey(key, false);
+        didHide = true;
+      }
+      btn.classList.remove('chart-legend-btn--demo-press', 'chart-legend-btn--demo-hover');
+      if (didHide) await sleepMs(POST_HIDE_DWELL_MS);
+
+      btn.classList.add('chart-legend-btn--demo-hover');
+      await sleepMs(HOVER_MS);
+      btn.classList.add('chart-legend-btn--demo-press');
+      await sleepMs(PRESS_MS);
+      let didShow = false;
+      if (datasetVisible[key] === false) {
+        toggleChartSeriesByKey(key, true);
+        didShow = true;
+      }
+      btn.classList.remove('chart-legend-btn--demo-press', 'chart-legend-btn--demo-hover');
+      if (didShow) await sleepMs(POST_SHOW_MS);
+
+      await sleepMs(BETWEEN_KEYS_MS);
+    }
+    try {
+      localStorage.setItem(LS_CHART_LEGEND_PEEK, '1');
+    } catch (e) {}
+  } finally {
+    chartLegendPeekRunning = false;
+  }
+}
+
+function wireDebtExplainer() {
+  const btn = document.getElementById('metric-debt-trigger');
+  const stack = document.getElementById('metric-debt-help-stack');
+  if (!btn || !stack) return;
+  debtSideExplainer.wireTrigger(btn, stack);
+}
+
+function wireHeroExplainer() {
+  const btn = document.getElementById('metric-hero-trigger');
+  const stack = document.getElementById('metric-hero-help-stack');
+  if (!btn || !stack) return;
+  heroSideExplainer.wireTrigger(btn, stack);
+}
+
+function wireUtilExplainer() {
+  const btn = document.getElementById('metric-util-trigger');
+  const stack = document.getElementById('metric-util-help-stack');
+  if (!btn || !stack) return;
+  utilSideExplainer.wireTrigger(btn, stack);
+}
+
+function wireChartLegendExplainer() {
+  const btn = document.getElementById('chart-legend-trigger');
+  const stack = document.getElementById('chart-legend-help-stack');
+  if (!btn || !stack) return;
+  chartLegendSideExplainer.wireTrigger(btn, stack);
+}
+
+/** Build custom chart legend buttons and wire visibility + fade toggles. */
+function buildLegendToggles() {
+  const wrap = document.getElementById('chart-legend');
+  if (!wrap) return;
+  const items = [
+    { key: 'stooze', label: displayNames.stoozePot, swatch: 'dot', color: 'rgb(45,157,92)' },
+    { key: 'barclays', label: displayNames.barclays, swatch: 'dot', color: 'rgb(138,90,180)' },
+    { key: 'ms', label: displayNames.ms, swatch: 'dot', color: 'rgb(59,125,216)' },
+    { key: 'newCard', label: displayNames.newCard, swatch: 'dot', color: 'rgb(211,95,160)' },
+    { key: 'interest', label: 'Cumulative projected interest', swatch: 'dot', color: 'rgb(212,147,13)' },
+    { key: 'util', label: 'Credit utilisation %', swatch: 'dashGrey', color: '#888888' },
+    { key: 'util30', label: '30% util guide', swatch: 'dashGreen', color: 'rgb(45,157,92)' },
+  ];
+  wrap.innerHTML = items.map(({ key, label, swatch, color }) => {
+    const on = datasetVisible[key] !== false;
+    let swatchHtml = '';
+    if (swatch === 'dot') {
+      swatchHtml = `<span class="chart-legend-swatch" style="background-color:${color}"></span>`;
+    } else if (swatch === 'dashGrey') {
+      swatchHtml = `<span class="chart-legend-swatch chart-legend-swatch--dash chart-legend-swatch--dash-muted" style="color:${color}"></span>`;
+    } else {
+      swatchHtml = `<span class="chart-legend-swatch chart-legend-swatch--dash" style="color:${color}"></span>`;
+    }
+    return `<button type="button" class="chart-legend-btn ${on ? 'chart-legend-btn--on' : 'chart-legend-btn--off'}" data-ds-key="${key}" aria-pressed="${on ? 'true' : 'false'}" aria-label="Toggle ${escapeHtml(label)} on chart">
+      ${swatchHtml}<span class="chart-legend-text">${escapeHtml(label)}</span>
+    </button>`;
+  }).join('');
+
+  wrap.querySelectorAll('.chart-legend-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.dsKey;
+      if (!chart) return;
+      const idx = chart.data.datasets.findIndex(d => d._dsKey === k);
+      if (idx < 0) return;
+      const cur = datasetVisible[k] !== false;
+      const next = !cur;
+      if (cur && !next && countVisibleMainChartSeries() <= 1) return;
+      datasetVisible[k] = next;
+      saveVisibility();
+      syncCustomLegendFromChart();
+      runDatasetVisibilityFade(chart, idx, next);
+    });
+  });
+}
+
+/** Update legend button pressed styles from `datasetVisible`. */
+function syncCustomLegendFromChart() {
+  document.querySelectorAll('#chart-legend .chart-legend-btn[data-ds-key]').forEach(btn => {
+    const k = btn.dataset.dsKey;
+    const on = datasetVisible[k] !== false;
+    btn.classList.toggle('chart-legend-btn--on', on);
+    btn.classList.toggle('chart-legend-btn--off', !on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+}
+
+/** Solid point fill = line colour at rest; transparent fill when the point grows on hover. */
+function pointStyleFromBorder(borderColor) {
+  return {
+    pointBorderColor: borderColor,
+    pointBackgroundColor: borderColor,
+    pointHoverBorderColor: borderColor,
+    pointHoverBackgroundColor: 'transparent',
+  };
+}
+
+/** Markers hidden at rest (`pointRadius` 0); on hover show a solid dot (same look as non-hover in always mode). */
+function pointStyleRevealOnHover(borderColor) {
+  return {
+    pointBorderColor: borderColor,
+    pointBackgroundColor: borderColor,
+    pointHoverBorderColor: borderColor,
+    pointHoverBackgroundColor: borderColor,
+  };
+}
+
+/**
+ * Point radii + stroke. `lineBorderW` must match the dataset line `borderWidth` so markers match the
+ * line weight (Chart defaults pointBorderWidth to 1 otherwise — hover-only dots looked undersized).
+ * In hover-only mode, `pointHoverRadius` uses the same `restR` as always-mode `pointRadius`.
+ */
+function linePointRadii(restR, hoverR, lineBorderW) {
+  const stroke = {
+    pointBorderWidth: lineBorderW,
+    pointHoverBorderWidth: lineBorderW,
+  };
+  if (chartPointsUntilHover) {
+    return {
+      pointRadius: 0,
+      pointHoverRadius: restR,
+      pointHitRadius: Math.max(14, restR + 10),
+      ...stroke,
+    };
+  }
+  return {
+    pointRadius: restR,
+    pointHoverRadius: hoverR,
+    ...stroke,
+  };
+}
+
+/** Create or update the main Chart.js line chart from computed series arrays. */
+function updateChart(msSavings, msBalance, newBalance, barclaysBalance, cumInterest, utilPct, util30Data) {
+  const ctx = document.getElementById('mainChart').getContext('2d');
+
+  /* `order`: lower = drawn first = behind (Chart.js default). 0–6 back→front; util last so dashed lines sit on top. */
+  const datasets = [
+    {
+      _dsKey: 'stooze',
+      label: displayNames.stoozePot,
+      data: msSavings,
+      borderColor: 'rgb(45,157,92)',
+      backgroundColor: scriptableStoozeAreaFill,
+      fill: true,
+      tension: chartLineTensionDev,
+      borderWidth: 3.5,
+      ...linePointRadii(2.5, 5, 3.5),
+      ...(chartPointsUntilHover ? pointStyleRevealOnHover('rgb(45,157,92)') : pointStyleFromBorder('rgb(45,157,92)')),
+      yAxisID: 'y',
+      order: 0,
+      hidden: datasetVisible.stooze === false,
+    },
+    {
+      _dsKey: 'interest',
+      label: 'Cumulative projected interest',
+      data: cumInterest,
+      borderColor: 'rgb(212,147,13)',
+      backgroundColor: scriptableInterestAreaFill,
+      fill: true,
+      tension: chartLineTensionDev,
+      borderWidth: 2,
+      ...linePointRadii(1.5, 3, 2),
+      ...(chartPointsUntilHover ? pointStyleRevealOnHover('rgb(212,147,13)') : pointStyleFromBorder('rgb(212,147,13)')),
+      yAxisID: 'y',
+      order: 1,
+      hidden: datasetVisible.interest === false,
+    },
+    {
+      _dsKey: 'ms',
+      label: displayNames.ms,
+      data: msBalance,
+      borderColor: 'rgb(59,125,216)',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: chartLineTensionDev,
+      borderWidth: 2,
+      ...linePointRadii(1.5, 3, 2),
+      ...(chartPointsUntilHover ? pointStyleRevealOnHover('rgb(59,125,216)') : pointStyleFromBorder('rgb(59,125,216)')),
+      yAxisID: 'y',
+      order: 2,
+      hidden: datasetVisible.ms === false,
+    },
+    {
+      _dsKey: 'newCard',
+      label: displayNames.newCard,
+      data: newBalance,
+      borderColor: 'rgb(211,95,160)',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: chartLineTensionDev,
+      borderWidth: 2,
+      ...linePointRadii(1.5, 3, 2),
+      ...(chartPointsUntilHover ? pointStyleRevealOnHover('rgb(211,95,160)') : pointStyleFromBorder('rgb(211,95,160)')),
+      yAxisID: 'y',
+      order: 3,
+      spanGaps: false,
+      hidden: datasetVisible.newCard === false,
+    },
+    {
+      _dsKey: 'barclays',
+      label: displayNames.barclays,
+      data: barclaysBalance,
+      borderColor: 'rgb(138,90,180)',
+      backgroundColor: 'transparent',
+      fill: false,
+      tension: chartLineTensionDev,
+      borderWidth: 2,
+      ...linePointRadii(1.5, 3, 2),
+      ...(chartPointsUntilHover ? pointStyleRevealOnHover('rgb(138,90,180)') : pointStyleFromBorder('rgb(138,90,180)')),
+      yAxisID: 'y',
+      order: 4,
+      hidden: datasetVisible.barclays === false,
+    },
+    {
+      _dsKey: 'util30',
+      label: '30% utilisation (guide)',
+      data: util30Data,
+      borderColor: 'rgba(45,157,92,0.85)',
+      backgroundColor: 'transparent',
+      fill: false,
+      borderDash: [2, 4],
+      tension: 0,
+      pointRadius: 0,
+      pointHoverRadius: 0,
+      borderWidth: 2,
+      ...pointStyleFromBorder('rgba(45,157,92,0.85)'),
+      yAxisID: 'y1',
+      order: 5,
+      spanGaps: true,
+      hidden: datasetVisible.util30 === false,
+    },
+    {
+      _dsKey: 'util',
+      label: 'Credit Utilisation %',
+      data: utilPct,
+      borderColor: '#888',
+      backgroundColor: 'transparent',
+      fill: false,
+      borderDash: [6, 4],
+      tension: chartLineTensionDev,
+      borderWidth: 2,
+      ...linePointRadii(1.5, 3, 2),
+      ...(chartPointsUntilHover ? pointStyleRevealOnHover('#888') : pointStyleFromBorder('#888')),
+      yAxisID: 'y1',
+      order: 6,
+      hidden: datasetVisible.util === false,
+    },
+  ];
+
+  if (chart) {
+    cancelDatasetFadeAnimations();
+    chart.data.labels = MONTHS;
+    chart.data.datasets = datasets;
+    chart.options.scales.y.title.text = 'Amount (' + currencyCode + ')';
+    const plug = chart.options.plugins || (chart.options.plugins = {});
+    plug.filler = { ...(plug.filler || {}), drawTime: 'beforeDatasetsDraw' };
+    chart.update('none');
+    syncCustomLegendFromChart();
+    return;
+  }
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: { labels: MONTHS, datasets: datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        /* Draw filled areas before line strokes so amount-series lines stay visible above stooze/interest fills. */
+        filler: { drawTime: 'beforeDatasetsDraw' },
+        legend: { display: false },
+        tooltip: {
+          position: chartTooltipPosition,
+          yAlign: 'bottom',
+          backgroundColor: '#ffffff',
+          titleColor: '#1a1a1a',
+          bodyColor: '#4a4a4a',
+          titleFont: { size: 12, weight: '600' },
+          bodyFont: { size: 11 },
+          padding: { top: 12, right: 14, bottom: 12, left: 14 },
+          cornerRadius: 8,
+          caretSize: 0,
+          caretPadding: 28,
+          titleMarginBottom: 10,
+          titleSpacing: 4,
+          bodySpacing: 7,
+          boxPadding: 6,
+          boxWidth: 7,
+          boxHeight: 7,
+          usePointStyle: true,
+          borderColor: '#e0e0da',
+          borderWidth: 1,
+          callbacks: {
+            label(ctx) {
+              const label = ctx.dataset.label;
+              const val = ctx.parsed.y;
+              if (val === null) return null;
+              if (ctx.dataset.yAxisID === 'y1' || label.includes('utilisation') || label.includes('30%')) {
+                return label + ': ' + Number(val).toFixed(1) + '%';
+              }
+              return label + ': ' + formatMoney(val);
+            },
+            // Tooltip swatch: filled circle, no stroke (matches custom legend dots).
+            labelColor(ctx) {
+              const ds = ctx.dataset;
+              let col = ds.borderColor;
+              if (typeof col !== 'string') col = Array.isArray(col) ? (col[ctx.dataIndex] || col[0]) : '#888888';
+              return {
+                borderColor: col,
+                backgroundColor: col,
+                borderWidth: 0,
+              };
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 11 }, maxTicksLimit: 14 },
+        },
+        y: {
+          position: 'left',
+          beginAtZero: true,
+          grid: { color: 'rgba(0,0,0,0.05)' },
+          ticks: {
+            font: { size: 11 },
+            callback: v => formatChartAxisMoney(v),
+          },
+          title: {
+            display: true,
+            text: 'Amount (' + currencyCode + ')',
+            font: { size: 11, weight: '600' },
+            color: '#6b6b6b',
+          },
+        },
+        y1: {
+          position: 'right',
+          min: 0,
+          max: 100,
+          grid: { drawOnChartArea: false },
+          ticks: {
+            font: { size: 11 },
+            callback: v => v + '%',
+          },
+          title: {
+            display: true,
+            text: 'Utilisation %',
+            font: { size: 11, weight: '600' },
+            color: '#6b6b6b',
+          },
+        },
+      },
+    },
+  });
+  buildLegendToggles();
+}
+
+/* ——— Settings panel (dimmed backdrop + floating panel, CSS transitions) ——— */
+const settingsPanelEl = document.getElementById('settings-panel');
+const settingsBtnEl = document.getElementById('btn-settings');
+const settingsBackdropEl = document.getElementById('settings-backdrop');
+/** Bumps on each open/close so a late timeout from a previous close cannot hide a newly opened panel. */
+let settingsOverlayGen = 0;
+const SETTINGS_OVERLAY_MS = 260;
+
+/** True while the settings sheet is visibly open (not only between DOM and transition). */
+function isSettingsPanelOpen() {
+  return !settingsPanelEl.hidden && settingsPanelEl.classList.contains('is-open');
+}
+
+/** Fade out overlay and panel, then set [hidden] after transition (or timeout fallback). */
+function closeSettingsPanel() {
+  if (settingsPanelEl.hidden) return;
+  const gen = ++settingsOverlayGen;
+  settingsBackdropEl.classList.remove('is-open');
+  settingsPanelEl.classList.remove('is-open');
+  settingsBtnEl.setAttribute('aria-expanded', 'false');
+
+  let finalized = false;
+  const finalize = () => {
+    if (finalized || gen !== settingsOverlayGen) return;
+    finalized = true;
+    settingsPanelEl.hidden = true;
+    settingsBackdropEl.hidden = true;
+    settingsBackdropEl.setAttribute('aria-hidden', 'true');
+    settingsPanelEl.setAttribute('aria-hidden', 'true');
+  };
+
+  const onPanelTransitionEnd = (e) => {
+    if (e.target !== settingsPanelEl || e.propertyName !== 'opacity') return;
+    settingsPanelEl.removeEventListener('transitionend', onPanelTransitionEnd);
+    finalize();
+  };
+  settingsPanelEl.addEventListener('transitionend', onPanelTransitionEnd);
+  setTimeout(finalize, SETTINGS_OVERLAY_MS + 80);
+}
+
+/** Remove [hidden], fill form, then double-rAF add .is-open so opacity/transform animate from rest. */
+function openSettingsPanel() {
+  settingsOverlayGen++;
+  settingsPanelEl.hidden = false;
+  settingsBackdropEl.hidden = false;
+  settingsBackdropEl.setAttribute('aria-hidden', 'false');
+  settingsPanelEl.setAttribute('aria-hidden', 'false');
+  settingsBtnEl.setAttribute('aria-expanded', 'true');
+  populateSettingsForm();
+  settingsBackdropEl.classList.remove('is-open');
+  settingsPanelEl.classList.remove('is-open');
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      settingsBackdropEl.classList.add('is-open');
+      settingsPanelEl.classList.add('is-open');
+    });
+  });
+}
+
+settingsBtnEl.addEventListener('click', () => {
+  if (isSettingsPanelOpen()) closeSettingsPanel();
+  else openSettingsPanel();
+});
+
+settingsBackdropEl.addEventListener('click', () => {
+  closeSettingsPanel();
+});
+
+/* ——— First-run onboarding (Batch I) ——— */
+const onboardingOverlayEl = document.getElementById('onboarding-overlay');
+const onboardingTitleEl = document.getElementById('onboarding-title');
+const onboardingBodyEl = document.getElementById('onboarding-body');
+const onboardingActionsEl = document.getElementById('onboarding-actions');
+const playgroundShellEl = document.getElementById('playground-shell');
+const btnWhatsGoingOn = document.getElementById('btn-whats-going-on');
+const btnReplayOnboarding = document.getElementById('btn-replay-onboarding');
+let onboardingStepIndex = 0;
+let onboardingOpenGen = 0;
+let onboardingLastRenderedStep = -1;
+let onboardingStepTransitionTimer = null;
+let onboardingStepTransitionCleanup = null;
+/** True when onboarding was opened from “What’s going on?” or Settings replay — closing clears chart-legend peek demo. */
+let onboardingShouldResetChartLegendPeek = false;
+
+const ONBOARD_INNER_MS = 240;
+const ONBOARD_CARD_HEIGHT_MS = 400;
+const ONBOARD_OVERLAY_FADE_MS = 360;
+
+function onboardingPrefersReducedMotion() {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function isOnboardingSeen() {
+  return localStorage.getItem(LS.onboardingSeen) === '1';
+}
+
+function markOnboardingSeen() {
+  localStorage.setItem(LS.onboardingSeen, '1');
+}
+
+function setPlaygroundInert(on) {
+  if (playgroundShellEl) playgroundShellEl.inert = !!on;
+}
+
+function closeOnboardingOverlay(markComplete) {
+  const gen = ++onboardingOpenGen;
+  if (markComplete) markOnboardingSeen();
+  if (onboardingShouldResetChartLegendPeek) {
+    onboardingShouldResetChartLegendPeek = false;
+    try {
+      localStorage.removeItem(LS_CHART_LEGEND_PEEK);
+    } catch (e) {}
+  }
+  if (onboardingStepTransitionTimer) {
+    clearTimeout(onboardingStepTransitionTimer);
+    onboardingStepTransitionTimer = null;
+  }
+  if (onboardingStepTransitionCleanup) {
+    onboardingStepTransitionCleanup();
+    onboardingStepTransitionCleanup = null;
+  }
+  const inner = onboardingOverlayEl.querySelector('.onboarding-card-inner');
+  const card = onboardingOverlayEl.querySelector('.onboarding-card');
+  if (inner) {
+    inner.style.transition = '';
+    inner.style.opacity = '';
+    inner.style.transform = '';
+  }
+  if (card) {
+    card.style.height = '';
+    card.style.overflow = '';
+    card.style.transition = '';
+  }
+  onboardingOverlayEl.classList.remove('is-open');
+  onboardingOverlayEl.setAttribute('aria-hidden', 'true');
+  setPlaygroundInert(false);
+  let finalized = false;
+  const finalize = () => {
+    if (finalized || gen !== onboardingOpenGen) return;
+    finalized = true;
+    onboardingLastRenderedStep = -1;
+    onboardingOverlayEl.hidden = true;
+  };
+  const onEnd = e => {
+    if (e.target !== onboardingOverlayEl || e.propertyName !== 'opacity') return;
+    onboardingOverlayEl.removeEventListener('transitionend', onEnd);
+    finalize();
+  };
+  onboardingOverlayEl.addEventListener('transitionend', onEnd);
+  setTimeout(finalize, ONBOARD_OVERLAY_FADE_MS + 80);
+}
+
+/**
+ * Illustrative 12-month interest total: monthly spend moves to a 0% card; cash stays in savings at
+ * aprPercent AER; minimum payments (minPayPct of card balance) come from the pot each month.
+ * Simplified vs the full chart model — good enough for the onboarding hook.
+ */
+function estimateOnboardingStoozeInterest(monthlySpend, aprPercent, minPayPct, months) {
+  const n = months || 12;
+  const mr = aprPercent / 100 / 12;
+  let savingsPot = 0;
+  let cardBal = 0;
+  let totalInterest = 0;
+  const m = Math.max(0.5, Math.min(10, minPayPct)) / 100;
+  for (let i = 0; i < n; i++) {
+    cardBal += monthlySpend;
+    savingsPot += monthlySpend;
+    const interest = savingsPot * mr;
+    savingsPot += interest;
+    totalInterest += interest;
+    const minPay = cardBal * m;
+    cardBal = Math.max(0, cardBal - minPay);
+    savingsPot -= minPay;
+    savingsPot = Math.round(savingsPot * 100) / 100;
+    cardBal = Math.round(cardBal * 100) / 100;
+  }
+  return Math.round(totalInterest * 100) / 100;
+}
+
+/** Typical yearly subscription prices in the active display currency (rough UK/US/EU order-of-magnitude for analogies). */
+function subscriptionAnalogiesForCurrency(code) {
+  const g = [
+    { name: 'Deliveroo Plus', yearly: 48 },
+    { name: 'Amazon Prime', yearly: 95 },
+    { name: 'Disney+', yearly: 120 },
+    { name: 'Spotify Premium', yearly: 132 },
+    { name: 'Apple Music', yearly: 132 },
+    { name: 'YouTube Premium', yearly: 160 },
+    { name: 'Netflix', yearly: 168 },
+    { name: 'Revolut Metal', yearly: 180 },
+    { name: 'Pret a Manger–style coffee subscription', yearly: 300 },
+    { name: 'a Gail’s / specialty coffee & lunch habit (ballpark)', yearly: 450 },
+  ];
+  if (code === 'USD') {
+    return [
+      { name: 'Deliveroo Plus / DoorDash DashPass', yearly: 120 },
+      { name: 'Amazon Prime', yearly: 139 },
+      { name: 'Disney+', yearly: 140 },
+      { name: 'Spotify Premium', yearly: 132 },
+      { name: 'Apple Music', yearly: 120 },
+      { name: 'YouTube Premium', yearly: 144 },
+      { name: 'Netflix', yearly: 200 },
+      { name: 'Revolut Metal', yearly: 200 },
+      { name: 'a daily coffee-shop habit', yearly: 400 },
+    ];
+  }
+  if (code === 'EUR') {
+    return [
+      { name: 'Deliveroo Plus', yearly: 60 },
+      { name: 'Amazon Prime', yearly: 90 },
+      { name: 'Disney+', yearly: 120 },
+      { name: 'Spotify Premium', yearly: 132 },
+      { name: 'Apple Music', yearly: 132 },
+      { name: 'YouTube Premium', yearly: 150 },
+      { name: 'Netflix', yearly: 180 },
+      { name: 'Revolut Metal', yearly: 200 },
+      { name: 'a café subscription–style habit', yearly: 360 },
+    ];
+  }
+  return g;
+}
+
+/**
+ * Pick a subscription analogy if extra is large enough and a tier is a close fit; else return null.
+ */
+function pickSubscriptionAnalogy(extra, currencyCode) {
+  if (extra == null || extra < 25) return null;
+  const list = subscriptionAnalogiesForCurrency(currencyCode);
+  let best = null;
+  let bestErr = Infinity;
+  for (const s of list) {
+    const err = Math.abs(s.yearly - extra) / Math.max(extra, s.yearly, 1);
+    if (err < bestErr) {
+      bestErr = err;
+      best = s;
+    }
+  }
+  if (!best || bestErr > 0.42) return null;
+  return best;
+}
+
+function applyOnboardingAnswersToSliders() {
+  const slS = document.getElementById('sl-spend');
+  const niS = document.getElementById('ni-spend');
+  const slA = document.getElementById('sl-apr');
+  const niA = document.getElementById('ni-apr');
+  if (!slS || !niS || !slA || !niA) return;
+  const rS = sliderRanges['sl-spend'];
+  const rA = sliderRanges['sl-apr'];
+  let s = Number(obSpend);
+  let a = Number(obApr);
+  if (isNaN(s)) s = rS.min;
+  if (isNaN(a)) a = rA.min;
+  s = Math.min(rS.max, Math.max(rS.min, s));
+  a = Math.min(rA.max, Math.max(rA.min, a));
+  slS.value = s;
+  niS.value = s;
+  slA.value = a;
+  niA.value = a;
+  recalc();
+}
+
+const ONBOARDING_STEP_SPEND = 0;
+const ONBOARDING_STEP_APR = 1;
+const ONBOARDING_STEP_HOOK = 2;
+const ONBOARDING_STEP_HOW = 3;
+const ONBOARDING_LAST_STEP = ONBOARDING_STEP_HOW;
+
+/** Draft answers while the overlay is open (applied to sliders when user enters playground). */
+let obSpend = 900;
+let obApr = 3.51;
+
+function seedOnboardingFromSliders() {
+  try {
+    const s = getVal('sl-spend');
+    const a = getVal('sl-apr');
+    if (!isNaN(s) && s >= 1) obSpend = s;
+    if (!isNaN(a) && a >= 0.1) obApr = a;
+  } catch (_) { /* sliders not ready */ }
+}
+
+function renderOnboardingStepImmediate() {
+  onboardingActionsEl.textContent = '';
+  const wrapSecondary = document.createElement('div');
+  wrapSecondary.className = 'btn-wrap-secondary';
+  const card = onboardingOverlayEl.querySelector('.onboarding-card');
+
+  if (onboardingStepIndex === ONBOARDING_STEP_SPEND) {
+    onboardingTitleEl.hidden = false;
+    onboardingOverlayEl.setAttribute('aria-labelledby', 'onboarding-title');
+    onboardingTitleEl.textContent = 'Rough monthly spend';
+    const glyph = getSliderCurrencyGlyph();
+    onboardingBodyEl.innerHTML =
+      '<p>Bills aside — rent, mortgage, utilities, and other fixed costs — roughly how much goes on <strong>everyday card spending</strong> each month? (Shopping, food, transport, subscriptions, and so on.)</p>' +
+      '<p class="onboarding-trust"><strong>Privacy:</strong> This stays in your browser only. Nothing is uploaded.</p>' +
+      `<div class="onboarding-field"><label for="ob-inp-spend">Monthly spend</label><div class="onboarding-input-row"><span class="onboarding-suffix" aria-hidden="true">${escapeHtml(glyph)}</span><input type="number" class="num-input" id="ob-inp-spend" min="1" max="25000" step="50" inputmode="decimal" autocomplete="off" value=""></div></div>`;
+    const inp = document.getElementById('ob-inp-spend');
+    if (inp) inp.value = String(Math.round(obSpend));
+
+    const bSkip = document.createElement('button');
+    bSkip.type = 'button';
+    bSkip.className = 'btn';
+    bSkip.textContent = 'Been here before? Skip';
+    bSkip.addEventListener('click', () => {
+      const raw = parseFloat(inp?.value);
+      if (!isNaN(raw) && raw >= 1) obSpend = Math.min(25000, Math.max(1, raw));
+      applyOnboardingAnswersToSliders();
+      closeOnboardingOverlay(true);
+    });
+    wrapSecondary.appendChild(bSkip);
+
+    const bNext = document.createElement('button');
+    bNext.type = 'button';
+    bNext.className = 'btn btn-primary';
+    bNext.textContent = 'Next';
+    bNext.addEventListener('click', () => {
+      const v = parseFloat(inp?.value);
+      if (isNaN(v) || v < 1) {
+        inp?.setCustomValidity('Please enter a monthly spend of at least 1.');
+        inp?.reportValidity();
+        return;
+      }
+      inp?.setCustomValidity('');
+      obSpend = Math.min(25000, Math.max(1, v));
+      onboardingStepIndex = ONBOARDING_STEP_APR;
+      renderOnboardingStep();
+      card?.focus();
+    });
+    onboardingActionsEl.appendChild(bNext);
+    onboardingActionsEl.insertBefore(wrapSecondary, onboardingActionsEl.firstChild);
+    return;
+  }
+
+  if (onboardingStepIndex === ONBOARDING_STEP_APR) {
+    onboardingTitleEl.hidden = false;
+    onboardingOverlayEl.setAttribute('aria-labelledby', 'onboarding-title');
+    onboardingTitleEl.textContent = 'Savings interest';
+    onboardingBodyEl.innerHTML =
+      '<div class="onboarding-hook-copy"><p>What <strong>annual</strong> interest rate does your <strong>most accessible</strong> savings account pay? (AER is fine — a rough number is enough.)</p></div>' +
+      '<div class="onboarding-field"><label for="ob-inp-apr">Savings rate (AER)</label><div class="onboarding-input-row"><input type="number" class="num-input" id="ob-inp-apr" min="0.1" max="15" step="0.01" inputmode="decimal" autocomplete="off" value=""><span class="onboarding-suffix">% AER</span></div></div>';
+    const inp = document.getElementById('ob-inp-apr');
+    if (inp) inp.value = String(obApr);
+
+    const bBack = document.createElement('button');
+    bBack.type = 'button';
+    bBack.className = 'btn';
+    bBack.textContent = 'Back';
+    bBack.addEventListener('click', () => {
+      onboardingStepIndex = ONBOARDING_STEP_SPEND;
+      renderOnboardingStep();
+      card?.focus();
+    });
+    wrapSecondary.appendChild(bBack);
+
+    const bNext = document.createElement('button');
+    bNext.type = 'button';
+    bNext.className = 'btn btn-primary';
+    bNext.textContent = 'Next';
+    bNext.addEventListener('click', () => {
+      const v = parseFloat(inp?.value);
+      if (isNaN(v) || v < 0.1) {
+        inp?.setCustomValidity('Please enter a savings rate of at least 0.1%.');
+        inp?.reportValidity();
+        return;
+      }
+      inp?.setCustomValidity('');
+      obApr = Math.min(15, Math.max(0.1, v));
+      onboardingStepIndex = ONBOARDING_STEP_HOOK;
+      renderOnboardingStep();
+      card?.focus();
+    });
+    onboardingActionsEl.appendChild(bNext);
+    onboardingActionsEl.insertBefore(wrapSecondary, onboardingActionsEl.firstChild);
+    return;
+  }
+
+  if (onboardingStepIndex === ONBOARDING_STEP_HOOK) {
+    const minPct = 2.5;
+    const extra = estimateOnboardingStoozeInterest(obSpend, obApr, minPct, 12);
+    const monthlyAvg = Math.round((extra / 12) * 100) / 100;
+    const sub = pickSubscriptionAnalogy(extra, currencyCode);
+    onboardingTitleEl.textContent = '';
+    onboardingTitleEl.hidden = true;
+    onboardingOverlayEl.setAttribute('aria-labelledby', 'onboarding-step-heading');
+    const amtEsc = escapeHtml(formatMoneyWhole(extra));
+    let innerHook =
+      `<p class="onboarding-hook-figure" aria-hidden="true"><span class="onboarding-hook-value-block">${amtEsc}</span></p>` +
+      `<p class="onboarding-hook-lead" id="onboarding-step-heading">That\u2019s how much free money you could get over the next 12 months (around ${escapeHtml(formatMoney(monthlyAvg))} per month).</p>`;
+    if (sub) {
+      const subMo = Math.round((sub.yearly / 12) * 100) / 100;
+      const nm = sub.name.trim();
+      const useSubPhrase = nm.length <= 32 && !/habit|ballpark|subscription/i.test(nm);
+      if (useSubPhrase) {
+        innerHook += `<p class="onboarding-hook-lead">It\u2019s also roughly the same as a <strong>${escapeHtml(nm)}</strong> sub (${escapeHtml(formatMoneyWhole(sub.yearly))} / ${escapeHtml(formatMoney(subMo))}/mo).</p>`;
+      } else {
+        innerHook += `<p class="onboarding-hook-lead">It\u2019s also roughly the same as <strong>${escapeHtml(nm)}</strong> (${escapeHtml(formatMoneyWhole(sub.yearly))} / ${escapeHtml(formatMoney(subMo))}/mo).</p>`;
+      }
+    }
+    onboardingBodyEl.innerHTML = `<div class="onboarding-hook-copy">${innerHook}</div>`;
+
+    const bBack = document.createElement('button');
+    bBack.type = 'button';
+    bBack.className = 'btn';
+    bBack.textContent = 'Back';
+    bBack.addEventListener('click', () => {
+      onboardingStepIndex = ONBOARDING_STEP_APR;
+      renderOnboardingStep();
+      card?.focus();
+    });
+    wrapSecondary.appendChild(bBack);
+
+    const bHow = document.createElement('button');
+    bHow.type = 'button';
+    bHow.className = 'btn btn-primary';
+    bHow.textContent = 'How?';
+    bHow.addEventListener('click', () => {
+      onboardingStepIndex = ONBOARDING_STEP_HOW;
+      renderOnboardingStep();
+      card?.focus();
+    });
+    onboardingActionsEl.appendChild(bHow);
+    onboardingActionsEl.insertBefore(wrapSecondary, onboardingActionsEl.firstChild);
+    return;
+  }
+
+  if (onboardingStepIndex === ONBOARDING_STEP_HOW) {
+    onboardingTitleEl.hidden = false;
+    onboardingOverlayEl.setAttribute('aria-labelledby', 'onboarding-title');
+    onboardingTitleEl.textContent = 'How?';
+    onboardingBodyEl.innerHTML =
+      '<p>One way to get there:</p>' +
+      '<ul class="onboarding-how-list">' +
+      '<li>open a <strong>0% credit card</strong></li>' +
+      '<li><em>change your default card</em> in Apple Wallet / Google Pay to that card</li>' +
+      '<li><strong>leave the cash</strong> you would have spent <strong>in a savings account</strong> that pays interest</li>' +
+      '<li><strong>track your spending with a budget</strong> so you don’t spend what you don’t have</li>' +
+      '<li><strong>pay at least the minimum</strong> on the card from that pot each month</li>' +
+      '<li><strong>pay the balance off</strong> before the 0% offer ends (or whenever you’ve planned to)</li>' +
+      '</ul>' +
+      '<p>You can use this to explore how different savings rates and card offers could change that free cash.</p>' +
+      '<p>Obviously this isn’t financial advice — offers, fees, and rules can change, eligibility and credit limits apply. And a good dose of self-discipline to not overspend and to respect your credit cards is necessary as it can be pretty costly if you spend what you don’t have.</p>';
+
+    const bBack = document.createElement('button');
+    bBack.type = 'button';
+    bBack.className = 'btn';
+    bBack.textContent = 'Back';
+    bBack.addEventListener('click', () => {
+      onboardingStepIndex = ONBOARDING_STEP_HOOK;
+      renderOnboardingStep();
+      card?.focus();
+    });
+    wrapSecondary.appendChild(bBack);
+
+    const bDone = document.createElement('button');
+    bDone.type = 'button';
+    bDone.className = 'btn btn-primary';
+    bDone.textContent = 'Explore';
+    bDone.addEventListener('click', () => {
+      applyOnboardingAnswersToSliders();
+      closeOnboardingOverlay(true);
+    });
+    onboardingActionsEl.appendChild(bDone);
+    onboardingActionsEl.insertBefore(wrapSecondary, onboardingActionsEl.firstChild);
+    return;
+  }
+}
+
+function renderOnboardingStep() {
+  const card = onboardingOverlayEl.querySelector('.onboarding-card');
+  const inner = onboardingOverlayEl.querySelector('.onboarding-card-inner');
+  const overlayOpen = onboardingOverlayEl.classList.contains('is-open');
+  const shouldCrossfade =
+    inner &&
+    card &&
+    overlayOpen &&
+    onboardingLastRenderedStep >= 0 &&
+    onboardingLastRenderedStep !== onboardingStepIndex &&
+    !onboardingPrefersReducedMotion();
+
+  if (onboardingStepTransitionTimer) {
+    clearTimeout(onboardingStepTransitionTimer);
+    onboardingStepTransitionTimer = null;
+  }
+  if (onboardingStepTransitionCleanup) {
+    onboardingStepTransitionCleanup();
+    onboardingStepTransitionCleanup = null;
+  }
+
+  if (!shouldCrossfade) {
+    renderOnboardingStepImmediate();
+    onboardingLastRenderedStep = onboardingStepIndex;
+    return;
+  }
+
+  const startH = card.getBoundingClientRect().height;
+  inner.style.transition = `opacity ${ONBOARD_INNER_MS}ms ease, transform ${ONBOARD_INNER_MS}ms cubic-bezier(0.25, 0.85, 0.35, 1)`;
+  inner.style.opacity = '0';
+  inner.style.transform = 'translateY(8px) scale(0.99)';
+
+  onboardingStepTransitionTimer = setTimeout(() => {
+    onboardingStepTransitionTimer = null;
+    // Lock old height *before* swapping DOM so shorter slides don’t flash full size for a frame.
+    card.style.overflow = 'hidden';
+    card.style.height = startH + 'px';
+    renderOnboardingStepImmediate();
+    onboardingLastRenderedStep = onboardingStepIndex;
+
+    const cs = getComputedStyle(card);
+    const borderY =
+      (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0);
+    // scrollHeight while height is locked to startH stays ≥ startH — use inner + borders for true target.
+    const endH = Math.max(1, Math.ceil(inner.offsetHeight + borderY));
+
+    card.style.transition = `height ${ONBOARD_CARD_HEIGHT_MS}ms cubic-bezier(0.25, 0.85, 0.35, 1)`;
+    void card.offsetHeight;
+    requestAnimationFrame(() => {
+      card.style.height = endH + 'px';
+    });
+
+    inner.style.opacity = '0';
+    inner.style.transform = 'translateY(8px) scale(0.99)';
+    void inner.offsetWidth;
+    inner.style.transition = `opacity ${ONBOARD_INNER_MS}ms ease 0.06s, transform ${ONBOARD_INNER_MS}ms cubic-bezier(0.25, 0.85, 0.35, 1) 0.06s`;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        inner.style.opacity = '1';
+        inner.style.transform = 'none';
+      });
+    });
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      card.style.height = '';
+      card.style.overflow = '';
+      card.style.transition = '';
+      inner.style.transition = '';
+      inner.style.opacity = '';
+      inner.style.transform = '';
+    };
+
+    const onHeightEnd = e => {
+      if (e.target !== card || e.propertyName !== 'height') return;
+      card.removeEventListener('transitionend', onHeightEnd);
+      cleanup();
+      onboardingStepTransitionCleanup = null;
+    };
+    card.addEventListener('transitionend', onHeightEnd);
+    onboardingStepTransitionCleanup = () => {
+      card.removeEventListener('transitionend', onHeightEnd);
+      cleanup();
+    };
+    setTimeout(() => {
+      if (onboardingStepTransitionCleanup) {
+        onboardingStepTransitionCleanup();
+        onboardingStepTransitionCleanup = null;
+      }
+    }, ONBOARD_CARD_HEIGHT_MS + 150);
+  }, ONBOARD_INNER_MS);
+}
+
+function openOnboardingOverlay(startStep) {
+  onboardingOpenGen++;
+  const gen = onboardingOpenGen;
+  seedOnboardingFromSliders();
+  onboardingStepIndex = Math.max(0, Math.min(ONBOARDING_LAST_STEP, startStep));
+  onboardingLastRenderedStep = -1;
+  onboardingOverlayEl.hidden = false;
+  onboardingOverlayEl.setAttribute('aria-hidden', 'false');
+  setPlaygroundInert(true);
+  onboardingOverlayEl.classList.remove('is-open');
+  renderOnboardingStep();
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if (gen !== onboardingOpenGen) return;
+      onboardingOverlayEl.classList.add('is-open');
+      onboardingOverlayEl.querySelector('.onboarding-card')?.focus();
+    });
+  });
+}
+
+function initOnboarding() {
+  onboardingOverlayEl.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    closeOnboardingOverlay(true);
+  });
+
+  btnWhatsGoingOn.addEventListener('click', () => {
+    onboardingShouldResetChartLegendPeek = true;
+    openOnboardingOverlay(0);
+  });
+
+  btnReplayOnboarding.addEventListener('click', () => {
+    closeSettingsPanel();
+    onboardingShouldResetChartLegendPeek = true;
+    openOnboardingOverlay(0);
+  });
+
+  if (!isOnboardingSeen()) {
+    openOnboardingOverlay(0);
+  }
+}
+
+/** Push current currency, display names, and extra-cards list into the settings form. */
+function populateSettingsForm() {
+  const curSel = document.getElementById('setting-currency');
+  if (curSel) curSel.value = ALLOWED_CURRENCIES.includes(currencyCode) ? currencyCode : 'GBP';
+  // syncChartPointsControls(); // CHART optional UI
+  for (const key of Object.keys(defaultNames)) {
+    const el = document.querySelector(`[data-name-key="${key}"]`);
+    if (el) el.value = displayNames[key];
+  }
+  renderExtraCardsEditor();
+}
+
+/** Render rows for each extra card (name, limit, remove) inside the settings panel. */
+function renderExtraCardsEditor() {
+  const list = document.getElementById('extra-cards-list');
+  list.textContent = '';
+  extraCards.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'extra-card-row';
+    row.dataset.extraIdx = String(i);
+
+    const f1 = document.createElement('div');
+    f1.className = 'field';
+    const l1 = document.createElement('label');
+    l1.textContent = 'Display name';
+    const nameInp = document.createElement('input');
+    nameInp.type = 'text';
+    nameInp.className = 'extra-name';
+    nameInp.placeholder = 'e.g. Old Visa';
+    nameInp.value = c.name;
+    f1.append(l1, nameInp);
+
+    const f2 = document.createElement('div');
+    f2.className = 'field';
+    const l2 = document.createElement('label');
+    l2.textContent = 'Credit limit (' + currencyCode + ')';
+    const limInp = document.createElement('input');
+    limInp.type = 'number';
+    limInp.className = 'extra-limit';
+    limInp.min = '0';
+    limInp.step = '100';
+    limInp.value = String(c.limit);
+    f2.append(l2, limInp);
+
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'btn remove-extra';
+    rm.dataset.idx = String(i);
+    rm.textContent = 'Remove';
+
+    row.append(f1, f2, rm);
+    list.append(row);
+
+    nameInp.addEventListener('change', () => {
+      extraCards[i].name = nameInp.value.trim() || 'Card';
+      saveExtra();
+      recalc();
+    });
+    limInp.addEventListener('change', () => {
+      extraCards[i].limit = Math.max(0, parseFloat(limInp.value) || 0);
+      saveExtra();
+      recalc();
+    });
+    rm.addEventListener('click', () => {
+      extraCards.splice(i, 1);
+      saveExtra();
+      renderExtraCardsEditor();
+      recalc();
+    });
+  });
+}
+
+document.getElementById('btn-add-extra-card').addEventListener('click', () => {
+  extraCards.push({ id: 'x' + Date.now(), name: 'Extra card', limit: 2000 });
+  saveExtra();
+  renderExtraCardsEditor();
+  recalc();
+});
+
+document.querySelectorAll('[data-name-key]').forEach(inp => {
+  inp.addEventListener('change', () => {
+    const k = inp.dataset.nameKey;
+    displayNames[k] = inp.value.trim() || defaultNames[k];
+    saveNames();
+    buildLegendToggles();
+    recalc();
+  });
+});
+
+document.getElementById('setting-currency').addEventListener('change', e => {
+  const v = e.target.value;
+  if (!ALLOWED_CURRENCIES.includes(v)) return;
+  currencyCode = v;
+  saveCurrency();
+  updateCurrencyPrefixes();
+  if (isSettingsPanelOpen()) renderExtraCardsEditor();
+  recalc();
+});
+
+/* CHART optional UI wiring (off while toolbar + Settings controls are commented out)
+document.getElementById('setting-chart-points').addEventListener('change', e => {
+  setChartPointsMode(e.target.value === 'hover');
+});
+document.getElementById('chart-points-mode-always').addEventListener('click', () => setChartPointsMode(false));
+document.getElementById('chart-points-mode-hover').addEventListener('click', () => setChartPointsMode(true));
+*/
+
+/* ——— Inline slider range (min / max / step) ——— */
+document.addEventListener('change', e => {
+  const t = e.target;
+  if (!(t instanceof HTMLInputElement) || !t.classList.contains('num-input')) return;
+  const row = t.closest('.slider-range-inline');
+  if (!row || !row.dataset.rangeFor) return;
+  validateAndApplyRangeInputs(row.dataset.rangeFor);
+});
+
+/** Toggle `inert` / `aria-hidden` between main slider row and range row for one card. */
+function setSliderModesInertForGroup(group, open) {
+  const main = group.querySelector('.slider-main-mode');
+  const range = group.querySelector('.slider-range-mode');
+  const cog = group.querySelector('.range-cog');
+  if (main) {
+    main.setAttribute('aria-hidden', open ? 'true' : 'false');
+    if ('inert' in main) main.inert = !!open;
+  }
+  if (range) {
+    range.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if ('inert' in range) range.inert = !open;
+  }
+  if (cog) cog.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+/** Wrapper: keep ARIA in sync when entering or leaving inline range edit mode. */
+function syncRangeEditAria(group, open) {
+  setSliderModesInertForGroup(group, open);
+}
+
+/** Initialise inert state for all slider cards on first load. */
+function initAllSliderModeInert() {
+  document.querySelectorAll('.control-group').forEach(g => {
+    setSliderModesInertForGroup(g, g.classList.contains('is-range-edit'));
+  });
+}
+
+/** Move focus out of Min/Max/Step fields when closing range mode (avoids stray focus ring). */
+function blurRangeModeFocus(group) {
+  const rm = group.querySelector('.slider-range-mode');
+  const ae = document.activeElement;
+  if (rm && ae && rm.contains(ae)) ae.blur();
+}
+
+/* Per-card ⚙: toggle inline Min/Max/Step; blur cog on close so hover-reveal CSS resets. */
+document.querySelectorAll('.range-cog').forEach(btn => {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    const group = btn.closest('.control-group');
+    if (!group) return;
+    const willOpen = !group.classList.contains('is-range-edit');
+    if (willOpen) {
+      document.querySelectorAll('.control-group.is-range-edit').forEach(g => {
+        blurRangeModeFocus(g);
+        g.querySelector('.range-cog')?.blur();
+        g.classList.remove('is-range-edit');
+        syncRangeEditAria(g, false);
+      });
+    } else {
+      blurRangeModeFocus(group);
+    }
+    group.classList.toggle('is-range-edit', willOpen);
+    syncRangeEditAria(group, willOpen);
+    /* Lose focus so :focus-within / :focus-visible does not keep the gear visible after close. */
+    if (!willOpen) btn.blur();
+  });
+});
+
+/* ——— Range thumb: card → track; near thumb on card → thumb shadow; drag → drag (CSS can’t hover pseudo) ——— */
+const RANGE_THUMB_RADIUS_PX = 9;
+/** Distance from computed thumb centre for the lighter hover shadow (no click). */
+const RANGE_THUMB_HOVER_R = 17;
+
+let rangeThumbDragTarget = null;
+let rangeThumbLastClientX = -1e9;
+let rangeThumbLastClientY = -1e9;
+
+function pointerInElementBounds(el, clientX, clientY) {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+}
+
+function rangeThumbClientCenter(range) {
+  const r = range.getBoundingClientRect();
+  const min = parseFloat(range.min);
+  const max = parseFloat(range.max);
+  let val = parseFloat(range.value);
+  if (Number.isNaN(min)) return { cx: r.left + r.width / 2, cy: r.top + r.height / 2 };
+  if (Number.isNaN(val)) val = min;
+  const span = max - min;
+  const t = span <= 0 ? 0 : (val - min) / span;
+  const cy = r.top + r.height / 2;
+  const usable = Math.max(0, r.width - 2 * RANGE_THUMB_RADIUS_PX);
+  const cx = r.left + RANGE_THUMB_RADIUS_PX + t * usable;
+  return { cx, cy };
+}
+
+function rangeThumbProximityState(range, clientX, clientY) {
+  if (rangeThumbDragTarget === range) return 'drag';
+  if (range.disabled) return '';
+  const card = range.closest('.control-group');
+  if (!card || !pointerInElementBounds(card, clientX, clientY)) return '';
+  const { cx, cy } = rangeThumbClientCenter(range);
+  if (Math.hypot(clientX - cx, clientY - cy) <= RANGE_THUMB_HOVER_R) return 'thumb';
+  return 'track';
+}
+
+function setRangeThumbStateAttr(range, state) {
+  const next = state || '';
+  if ((range.dataset.thumbState || '') === next) return;
+  if (next) range.dataset.thumbState = next;
+  else delete range.dataset.thumbState;
+}
+
+function updateAllRangeThumbStates(clientX, clientY) {
+  rangeThumbLastClientX = clientX;
+  rangeThumbLastClientY = clientY;
+  document.querySelectorAll('.slider-row input[type="range"]').forEach(range => {
+    setRangeThumbStateAttr(range, rangeThumbProximityState(range, clientX, clientY));
+  });
+}
+
+function initRangeThumbProximity() {
+  document.querySelectorAll('.slider-row input[type="range"]').forEach(range => {
+    range.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      rangeThumbDragTarget = range;
+      updateAllRangeThumbStates(rangeThumbLastClientX, rangeThumbLastClientY);
+    });
+    range.addEventListener('input', () => {
+      updateAllRangeThumbStates(rangeThumbLastClientX, rangeThumbLastClientY);
+    });
+  });
+  window.addEventListener(
+    'pointermove',
+    e => {
+      updateAllRangeThumbStates(e.clientX, e.clientY);
+    },
+    { passive: true }
+  );
+  window.addEventListener('pointerup', () => {
+    rangeThumbDragTarget = null;
+    updateAllRangeThumbStates(rangeThumbLastClientX, rangeThumbLastClientY);
+  });
+  window.addEventListener('pointercancel', () => {
+    rangeThumbDragTarget = null;
+    updateAllRangeThumbStates(rangeThumbLastClientX, rangeThumbLastClientY);
+  });
+  updateAllRangeThumbStates(-1e9, -1e9);
+}
+
+/*
+ * Layout tuning dock (removed 2026-04). Values live on :root --stz-tune-*.
+ * TODO: delete this block when removing cruft; optional: localStorage.removeItem for
+ * 'stoozing-playground-layout-tuning' and 'stoozing-playground-layout-tuning-dock'.
+ *
+const STZ_TUNING_LS_KEY = 'stoozing-playground-layout-tuning';
+const STZ_TUNING_DOCK_POS_KEY = 'stoozing-playground-layout-tuning-dock';
+
+function initStzLayoutTuning() {
+  const panel = document.getElementById('stz-layout-tuning');
+  if (!panel) return;
+  …
+}
+*/
+
+/* ——— Init ——— */
+loadState();
+updateCurrencyPrefixes();
+document.getElementById('setting-currency').value = ALLOWED_CURRENCIES.includes(currencyCode) ? currencyCode : 'GBP';
+// syncChartPointsControls(); // CHART optional UI (on when #setting-chart-points exists)
+sliderRanges['sl-view-month'] = { min: 0, max: N_MONTHS - 1, step: 1 };
+applyAllSliderRanges();
+
+linkInputs('sl-barclays', 'ni-barclays');
+linkInputs('sl-ms-start', 'ni-ms-start');
+linkInputs('sl-newlimit', 'ni-newlimit');
+linkInputs('sl-spend', 'ni-spend');
+linkInputs('sl-apr', 'ni-apr');
+linkInputs('sl-newminpct', 'ni-newminpct');
+
+(function initViewMonthSlider() {
+  const sl = document.getElementById('sl-view-month');
+  const lbl = document.getElementById('lbl-view-month');
+  function syncLabel() {
+    // Human-readable month label next to the “Card balances as of” slider.
+    const idx = parseInt(sl.value, 10);
+    lbl.textContent = MONTHS[idx] || '';
+  }
+  sl.addEventListener('input', () => { syncLabel(); recalc(); });
+  syncLabel();
+})();
+
+for (const inp of document.querySelectorAll('[data-name-key]')) {
+  inp.value = displayNames[inp.dataset.nameKey];
+}
+
+initAllSliderModeInert();
+initRangeThumbProximity();
+debtSideExplainer.init();
+heroSideExplainer.init();
+utilSideExplainer.init();
+chartLegendSideExplainer.init();
+
+/* CHART optional UI: tension dev strip (uncomment with HTML `#dev-sl-chart-tension`)
+(function initDevChartTensionSlider() {
+  const sl = document.getElementById('dev-sl-chart-tension');
+  const valEl = document.getElementById('dev-chart-tension-value');
+  if (!sl || !valEl) return;
+  function readV() {
+    let v = parseFloat(sl.value);
+    if (Number.isNaN(v)) v = 0;
+    return Math.max(0, Math.min(1, v));
+  }
+  function fmtTension(v) {
+    return String(Number(v.toFixed(2)));
+  }
+  chartLineTensionDev = readV();
+  valEl.textContent = fmtTension(chartLineTensionDev);
+  sl.setAttribute('aria-valuenow', String(chartLineTensionDev));
+  sl.addEventListener('input', () => {
+    chartLineTensionDev = readV();
+    valEl.textContent = fmtTension(chartLineTensionDev);
+    sl.setAttribute('aria-valuenow', String(chartLineTensionDev));
+    recalc();
+  });
+})();
+*/
+
+recalc();
+wireChartLegendExplainer();
+// initStzLayoutTuning(); // removed: values baked on :root --stz-tune-*
+initOnboarding();
+</script>
+
+</body>
+</html>
