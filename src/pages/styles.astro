@@ -325,7 +325,6 @@ const layoutRules = [
 ];
 
 const foundationLinks = [
-  { id: 'styles-intro', label: 'Intro' },
   { id: 'styles-colors', label: 'Color tokens' },
   { id: 'styles-typography', label: 'Typography' },
   { id: 'styles-spacing', label: 'Spacing' },
@@ -338,11 +337,26 @@ const componentLinks = componentCatalog.map((component) => ({
 }));
 
 const sectionLinks = [
-  ...foundationLinks,
-  { id: 'styles-components', label: 'Component library' },
-  ...componentLinks,
-  { id: 'styles-pending', label: 'Pending patterns' },
-  { id: 'styles-interaction', label: 'Interaction sample' },
+  { id: 'styles-intro', label: 'Design system' },
+  {
+    label: 'Foundations',
+    defaultOpen: true,
+    children: foundationLinks,
+  },
+  {
+    label: 'Components',
+    children: [
+      { id: 'styles-components', label: 'Overview' },
+      ...componentLinks,
+    ],
+  },
+  {
+    label: 'Patterns',
+    children: [
+      { id: 'styles-pending', label: 'Pending patterns' },
+      { id: 'styles-interaction', label: 'Interaction sample' },
+    ],
+  },
 ];
 
 const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).map((category) => ({
