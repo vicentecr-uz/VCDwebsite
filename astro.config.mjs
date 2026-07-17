@@ -24,11 +24,11 @@ const clampRound = (value, min, max, decimals) => {
 };
 
 /**
- * Dev-only writer for the Tapico hero crop. `apply: 'serve'` means this plugin
+ * Dev-only writer for Tapico image crops. `apply: 'serve'` means this plugin
  * is active only under `astro dev` — it is never part of the static production
  * build, so nothing is emitted to `dist/` and the live site has no such route.
- * The Tapico crop tuner POSTs `{ x, y, zoom }` here; we persist it into the
- * hero section of `tapico.json` so committing that file publishes the crop.
+ * The Tapico crop tuner POSTs `{ id, x, y, zoom }` here; we persist it into
+ * `tapico.json` so committing that file publishes the crop.
  *
  * @returns {import('vite').Plugin}
  */
@@ -57,6 +57,7 @@ function tapicoCropDevWriter() {
           const x = Number(body.x);
           const y = Number(body.y);
           const zoom = Number(body.zoom);
+          const id = String(body.id || 'hero');
           if (![x, y, zoom].every(Number.isFinite)) {
             send(400, { error: 'x, y and zoom must be finite numbers.' });
             return;
@@ -71,14 +72,20 @@ function tapicoCropDevWriter() {
           const file = path.join(process.cwd(), TAPICO_CONTENT);
           const data = JSON.parse(await readFile(file, 'utf8'));
           const hero = data.sections?.find((section) => section.type === 'heroImage');
-          if (!hero) {
-            send(500, { error: 'No heroImage section found in tapico.json.' });
+          const target = id === 'hero'
+            ? hero
+            : data.sections
+                ?.filter((section) => section.type === 'imageGrid')
+                .flatMap((section) => section.items || [])
+                .find((item) => item.id === id);
+          if (!target) {
+            send(404, { error: `No editable Tapico image found for "${id}".` });
             return;
           }
 
-          hero.crop = crop;
+          target.crop = crop;
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-          send(200, { ok: true, crop });
+          send(200, { ok: true, id, crop });
         } catch {
           send(400, { error: 'Could not parse or write the crop.' });
         }
