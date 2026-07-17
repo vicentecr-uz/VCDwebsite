@@ -83,6 +83,9 @@ export default defineConfig({
   devToolbar: { enabled: false },
   vite: {
     plugins: [tailwindcss(), tapicoCropDevWriter()],
+    optimizeDeps: {
+      include: ['gsap'],
+    },
     server: {
       watch: {
         ignored: ['**/ROADMAP.md', '**/sitemap/**']
