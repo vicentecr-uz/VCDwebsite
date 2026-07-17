@@ -85,7 +85,7 @@ export default defineConfig({
     plugins: [tailwindcss(), tapicoCropDevWriter()],
     server: {
       watch: {
-        ignored: ['**/ROADMAP.md']
+        ignored: ['**/ROADMAP.md', '**/sitemap/**']
       }
     }
   }
