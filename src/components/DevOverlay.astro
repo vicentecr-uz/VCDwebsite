@@ -26,24 +26,26 @@ const {
   data-dev-panel-key={panelKey}
   hidden={defaultHidden}
 >
-  <div class="dev-overlay__head" data-drag-handle>
-    <p class="dev-overlay__title">{title}</p>
-    {
-      showMinimize && (
-        <button
-          type="button"
-          class="dev-overlay__minimize-btn"
-          data-drag-ignore
-          data-minimize-toggle
-          aria-expanded="true"
-        >
-          Minimize
-        </button>
-      )
-    }
-  </div>
-  <div class="dev-overlay__body" data-overlay-body>
-    <slot />
+  <div class="dev-overlay__surface">
+    <div class="dev-overlay__head" data-drag-handle>
+      <p class="dev-overlay__title">{title}</p>
+      {
+        showMinimize && (
+          <button
+            type="button"
+            class="dev-overlay__minimize-btn"
+            data-drag-ignore
+            data-minimize-toggle
+            aria-expanded="true"
+          >
+            Minimize
+          </button>
+        )
+      }
+    </div>
+    <div class="dev-overlay__body" data-overlay-body>
+      <slot />
+    </div>
   </div>
 </aside>
 
@@ -193,6 +195,11 @@ const {
 </script>
 
 <style>
+  /*
+    Two layers so Firefox Hyperellipse can keep both a soft shadow and a clipped
+    backdrop blur: outer owns position + box-shadow (no --corner-shape), inner
+    owns squircle clip-path + translucent fill + backdrop-filter.
+  */
   .dev-overlay {
     position: fixed;
     right: 1em;
@@ -200,6 +207,15 @@ const {
     z-index: 40;
     width: min(22em, calc(100vw - 2em));
     border: 0;
+    border-radius: var(--radius-card-smooth);
+    background: transparent;
+    padding: 0;
+    font-family: var(--font-sans);
+    color: var(--color-text);
+    box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+  }
+
+  .dev-overlay__surface {
     border-radius: var(--radius-card-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
@@ -209,9 +225,6 @@ const {
     display: flex;
     flex-direction: column;
     gap: 0.65em;
-    font-family: var(--font-sans);
-    color: var(--color-text);
-    box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
   }
 
   .dev-overlay[hidden] {
