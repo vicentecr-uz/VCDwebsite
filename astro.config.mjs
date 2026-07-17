@@ -7,6 +7,9 @@ import tailwindcss from '@tailwindcss/vite';
 
 const TAPICO_CONTENT = 'src/content/projects/tapico.json';
 const GLOBAL_STYLES = 'src/styles/global.css';
+const EDITABLE_CONTENT_DOCUMENTS = new Map([
+  ['tapico', TAPICO_CONTENT],
+]);
 const EDITABLE_COLOR_TOKENS = new Set([
   '--color-bg',
   '--color-surface-soft',
@@ -185,12 +188,141 @@ function styleTokenDevWriter() {
   };
 }
 
+/**
+ * Dev-only writer for text fields explicitly exposed by page components.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function contentTextDevWriter() {
+  return {
+    name: 'content-text-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/content-text', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > 100_000) {
+              send(413, { error: 'The text update is too large.' });
+              return;
+            }
+            chunks.push(chunk);
+          }
+
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const changes = Array.isArray(body.changes) ? body.changes : [];
+          if (!changes.length) {
+            send(400, { error: 'No text changes were provided.' });
+            return;
+          }
+
+          const grouped = new Map();
+          for (const change of changes) {
+            const documentKey = String(change.document || '');
+            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const fieldPath = change.path;
+            const value = change.value;
+            const valueIsText = typeof value === 'string' && value.length <= 20_000;
+            const valueIsParagraphs = (
+              Array.isArray(value) &&
+              value.length > 0 &&
+              value.every((paragraph) => typeof paragraph === 'string') &&
+              value.join('').length <= 20_000
+            );
+            if (
+              !relativeFile ||
+              !Array.isArray(fieldPath) ||
+              !fieldPath.length ||
+              fieldPath.length > 8 ||
+              (!valueIsText && !valueIsParagraphs) ||
+              fieldPath.some((part) => (
+                (typeof part !== 'string' && typeof part !== 'number') ||
+                part === '__proto__' ||
+                part === 'prototype' ||
+                part === 'constructor'
+              ))
+            ) {
+              send(400, { error: 'One or more text fields are not editable.' });
+              return;
+            }
+            const documentChanges = grouped.get(documentKey) || [];
+            documentChanges.push({ path: fieldPath, value });
+            grouped.set(documentKey, documentChanges);
+          }
+
+          for (const [documentKey, documentChanges] of grouped) {
+            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const file = path.join(process.cwd(), relativeFile);
+            const data = JSON.parse(await readFile(file, 'utf8'));
+
+            for (const change of documentChanges) {
+              let target = data;
+              for (const part of change.path.slice(0, -1)) {
+                if (
+                  target === null ||
+                  typeof target !== 'object' ||
+                  !Object.prototype.hasOwnProperty.call(target, part)
+                ) {
+                  send(400, { error: 'An editable text path no longer exists.' });
+                  return;
+                }
+                target = target[part];
+              }
+
+              const field = change.path.at(-1);
+              const currentValue = target?.[field];
+              if (
+                target === null ||
+                typeof target !== 'object' ||
+                !Object.prototype.hasOwnProperty.call(target, field) ||
+                (
+                  typeof currentValue !== 'string' &&
+                  !(Array.isArray(currentValue) && currentValue.every((item) => typeof item === 'string'))
+                ) ||
+                (typeof currentValue === 'string') !== (typeof change.value === 'string')
+              ) {
+                send(400, { error: 'An editable text field no longer exists.' });
+                return;
+              }
+              target[field] = change.value;
+            }
+
+            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          }
+
+          send(200, { ok: true, count: changes.length });
+        } catch {
+          send(400, { error: 'Could not parse or write the text changes.' });
+        }
+      });
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   // TODO: Re-enable Astro dev toolbar after investigating dev-mode layout jump.
   devToolbar: { enabled: false },
   vite: {
-    plugins: [tailwindcss(), tapicoCropDevWriter(), styleTokenDevWriter()],
+    plugins: [
+      tailwindcss(),
+      tapicoCropDevWriter(),
+      styleTokenDevWriter(),
+      contentTextDevWriter(),
+    ],
     optimizeDeps: {
       include: ['gsap', '@melloware/coloris'],
     },

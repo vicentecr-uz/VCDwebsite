@@ -2,6 +2,7 @@
 import ProjectHero from './ProjectHero.astro';
 import ProjectImageGrid from './ProjectImageGrid.astro';
 import ProjectTagline from './ProjectTagline.astro';
+import ProjectBodyText from './ProjectBodyText.astro';
 import ProjectProse from './ProjectProse.astro';
 import ProjectSectionTitle from './ProjectSectionTitle.astro';
 import ProjectImage from './ProjectImage.astro';
@@ -26,12 +27,13 @@ import { projectImage } from '../../lib/images';
 
 interface Props {
   sections: any[];
+  documentKey?: string;
 }
 
-const { sections } = Astro.props;
+const { sections, documentKey } = Astro.props;
 ---
 
-{sections.map((section) => (
+{sections.map((section, sectionIndex) => (
   <>
     {section.type === 'heroImage' && (
       <ProjectHero
@@ -53,6 +55,14 @@ const { sections } = Astro.props;
         prefix={section.prefix}
         linkLabel={section.linkLabel}
         linkHref={section.linkHref}
+      />
+    )}
+
+    {section.type === 'bodyText' && (
+      <ProjectBodyText
+        paragraphs={section.paragraphs}
+        documentKey={documentKey}
+        pathPrefix={documentKey ? ['sections', sectionIndex, 'paragraphs'] : undefined}
       />
     )}
 
