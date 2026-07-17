@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
+import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
 import ProjectHero from '../components/project/ProjectHero.astro';
 import ProjectTagline from '../components/project/ProjectTagline.astro';
 import ProjectProse from '../components/project/ProjectProse.astro';
@@ -13,6 +14,7 @@ import ProjectCaptionImage from '../components/project/ProjectCaptionImage.astro
 import ProjectDetailImage from '../components/project/ProjectDetailImage.astro';
 import ProjectContextImage from '../components/project/ProjectContextImage.astro';
 import ProjectReferenceImage from '../components/project/ProjectReferenceImage.astro';
+import globalCssSource from '../styles/global.css?raw';
 import '../styles/project.css';
 
 /** Shared preview assets (Tapico) */
@@ -252,17 +254,25 @@ const pendingPatterns = [
   },
 ];
 
+const readCssToken = (name: string, fallback: string) =>
+  globalCssSource.match(new RegExp(`^\\s*${name}:\\s*([^;]+);`, 'm'))?.[1].trim() ?? fallback;
+
 const colorTokens = [
-  { name: '--color-bg', value: '#ffffff', role: 'Primary page background' },
-  { name: '--color-text', value: '#1a1a1a', role: 'Main reading text' },
-  { name: '--color-text-soft', value: '#5a5a5a', role: 'Header menu links and subtle emphasis text' },
-  { name: '--color-link-strong', value: 'var(--color-text)', role: 'Default for dark links' },
-  { name: '--color-link-strong-hover', value: 'var(--color-text-soft)', role: 'Hover for dark links' },
-  { name: '--color-link-soft', value: 'var(--color-text-soft)', role: 'Default for softer links' },
-  { name: '--color-link-soft-hover', value: 'var(--color-text)', role: 'Hover for softer links' },
-  { name: '--color-text-muted', value: '#888888', role: 'Secondary labels and UI hints' },
-  { name: '--color-border', value: '#e0ddd8', role: 'Cards, separators, subtle outlines' },
-];
+  { name: '--color-bg', fallback: '#ffffff', role: 'Primary page background' },
+  { name: '--color-surface-soft', fallback: '#f7f5f1', role: 'Borderless cards and controls' },
+  { name: '--color-surface-strong', fallback: '#eeebe5', role: 'Selected and nested surfaces' },
+  { name: '--color-text', fallback: '#1a1a1a', role: 'Main reading text' },
+  { name: '--color-text-soft', fallback: '#5a5a5a', role: 'Header menu links and subtle emphasis text' },
+  { name: '--color-link-strong', fallback: 'var(--color-text)', role: 'Default for dark links' },
+  { name: '--color-link-strong-hover', fallback: 'var(--color-text-soft)', role: 'Hover for dark links' },
+  { name: '--color-link-soft', fallback: 'var(--color-text-soft)', role: 'Default for softer links' },
+  { name: '--color-link-soft-hover', fallback: 'var(--color-text)', role: 'Hover for softer links' },
+  { name: '--color-text-muted', fallback: '#888888', role: 'Secondary labels and UI hints' },
+  { name: '--color-border', fallback: '#e0ddd8', role: 'Necessary separators and diagrams' },
+].map((token) => ({
+  ...token,
+  value: readCssToken(token.name, token.fallback),
+}));
 
 const typographyScale = [
   {
@@ -389,14 +399,31 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
         <section id="styles-colors" class="section-block">
           <h2>Color tokens</h2>
           <div class="token-grid">
-            {colorTokens.map((token) => (
-              <article class="token-card">
-                <div class="token-card__swatch" style={`background:${token.value};`}></div>
-                <p class="meta-label">{token.name}</p>
-                <p class="meta-values">{token.value}</p>
-                <p class="token-note">{token.role}</p>
-              </article>
-            ))}
+            {colorTokens.map((token) => {
+              const editable = import.meta.env.DEV && /^#[0-9a-f]{3,6}$/i.test(token.value);
+              return (
+                <article class="token-card">
+                  {editable ? (
+                    <button
+                      type="button"
+                      class="token-card__swatch"
+                      style={`background:${token.value};`}
+                      aria-label={`Edit ${token.name}`}
+                      data-dev-edit-trigger="style-color-token"
+                      data-color-token-name={token.name}
+                      data-color-token-value={token.value}
+                      data-color-token-saved-value={token.value}
+                      disabled
+                    ></button>
+                  ) : (
+                    <div class="token-card__swatch" style={`background:${token.value};`}></div>
+                  )}
+                  <p class="meta-label">{token.name}</p>
+                  <p class="meta-values" data-token-value>{token.value}</p>
+                  <p class="token-note">{token.role}</p>
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -659,6 +686,7 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
       </main>
     </div>
 
+    {import.meta.env.DEV && <StyleColorTokenEditor />}
     <Footer />
   </div>
 </Layout>
@@ -738,9 +766,11 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
   .spacing-row,
   .component-card,
   .token-group {
-    border: 1px solid var(--color-border);
+    border: 0;
+    border-radius: var(--radius-card);
+    corner-shape: squircle;
     padding: 1em;
-    background-color: #ffffff;
+    background-color: var(--color-surface-soft);
   }
 
   .token-grid {
@@ -756,9 +786,28 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
   }
 
   .token-card__swatch {
+    display: block;
     width: 100%;
     aspect-ratio: 4 / 2.5;
-    border: 1px solid var(--color-border);
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    padding: 0;
+    appearance: none;
+  }
+
+  button.token-card__swatch:disabled {
+    opacity: 1;
+  }
+
+  :global(html.is-dev-mode) button.token-card__swatch {
+    cursor: pointer;
+    transition: box-shadow 0.18s ease, transform 0.18s ease;
+  }
+
+  :global(html.is-dev-mode) button.token-card__swatch:hover {
+    box-shadow: 0 0 0 0.2em var(--color-text);
+    transform: scale(0.985);
   }
 
   .type-card {
@@ -837,7 +886,10 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
   }
 
   .spacing-row__sample-area {
-    border: 1px solid var(--color-border);
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-strong);
     padding: 0.75em;
     display: flex;
     align-items: center;
@@ -963,7 +1015,9 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
   .preview-note {
     margin: 0;
     padding: 0.75em 1em;
-    background: color-mix(in srgb, var(--color-border) 35%, transparent);
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-strong);
     line-height: 1.45;
     color: color-mix(in srgb, var(--color-text) 80%, transparent);
   }

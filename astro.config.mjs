@@ -6,6 +6,16 @@ import { defineConfig } from 'astro/config';
 import tailwindcss from '@tailwindcss/vite';
 
 const TAPICO_CONTENT = 'src/content/projects/tapico.json';
+const GLOBAL_STYLES = 'src/styles/global.css';
+const EDITABLE_COLOR_TOKENS = new Set([
+  '--color-bg',
+  '--color-surface-soft',
+  '--color-surface-strong',
+  '--color-text',
+  '--color-text-soft',
+  '--color-text-muted',
+  '--color-border',
+]);
 
 const clampRound = (value, min, max, decimals) => {
   const bounded = Math.min(max, Math.max(min, value));
@@ -77,14 +87,77 @@ function tapicoCropDevWriter() {
   };
 }
 
+/**
+ * Dev-only writer for literal colour tokens in global.css.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function styleTokenDevWriter() {
+  return {
+    name: 'style-token-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/style-token', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const token = String(body.token || '');
+          const rawValue = String(body.value || '').trim();
+
+          if (!EDITABLE_COLOR_TOKENS.has(token)) {
+            send(400, { error: 'That colour token is not editable.' });
+            return;
+          }
+
+          const shortHex = /^#([0-9a-f]{3})$/i.exec(rawValue);
+          const longHex = /^#([0-9a-f]{6})$/i.exec(rawValue);
+          if (!shortHex && !longHex) {
+            send(400, { error: 'Use a 3- or 6-digit hex colour.' });
+            return;
+          }
+
+          const value = shortHex
+            ? `#${[...shortHex[1]].map((digit) => digit.repeat(2)).join('')}`.toLowerCase()
+            : rawValue.toLowerCase();
+          const file = path.join(process.cwd(), GLOBAL_STYLES);
+          const source = await readFile(file, 'utf8');
+          const declaration = new RegExp(`(^\\s*${token}:\\s*)(#[0-9a-fA-F]{3,6})(\\s*;)`, 'm');
+
+          if (!declaration.test(source)) {
+            send(500, { error: `Could not find ${token} in global.css.` });
+            return;
+          }
+
+          await writeFile(file, source.replace(declaration, `$1${value}$3`), 'utf8');
+          send(200, { ok: true, token, value });
+        } catch {
+          send(400, { error: 'Could not parse or write the colour token.' });
+        }
+      });
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   // TODO: Re-enable Astro dev toolbar after investigating dev-mode layout jump.
   devToolbar: { enabled: false },
   vite: {
-    plugins: [tailwindcss(), tapicoCropDevWriter()],
+    plugins: [tailwindcss(), tapicoCropDevWriter(), styleTokenDevWriter()],
     optimizeDeps: {
-      include: ['gsap'],
+      include: ['gsap', '@melloware/coloris'],
     },
     server: {
       watch: {

@@ -1,0 +1,263 @@
+---
+import DevOverlay from './DevOverlay.astro';
+---
+
+<DevOverlay
+  title="Edit colour token"
+  storageKey="style-color-token"
+  panelKey="style-color-token"
+  defaultHidden
+>
+  <div class="color-token-editor" data-color-token-editor>
+    <p class="color-token-editor__name" data-token-name>Choose a colour token</p>
+
+    <label class="color-token-editor__field">
+      <span>Hex</span>
+      <input
+        type="text"
+        class="color-token-editor__input"
+        inputmode="text"
+        maxlength="7"
+        autocomplete="off"
+        spellcheck="false"
+        data-coloris
+        data-token-hex
+      />
+    </label>
+
+    <div class="color-token-editor__actions">
+      <button type="button" data-token-save>Save</button>
+      <button type="button" data-token-revert>Revert changes</button>
+    </div>
+
+    <p class="color-token-editor__status" data-token-status aria-live="polite">
+      Changes preview live until saved.
+    </p>
+  </div>
+</DevOverlay>
+
+<script>
+  import '@melloware/coloris/dist/coloris.css';
+  import { coloris, init as initColoris } from '@melloware/coloris';
+
+  const initColorTokenEditor = (editor: HTMLElement) => {
+    if (editor.dataset.initialized === 'true') return;
+    editor.dataset.initialized = 'true';
+
+    const name = editor.querySelector<HTMLElement>('[data-token-name]');
+    const hexInput = editor.querySelector<HTMLInputElement>('[data-token-hex]');
+    const saveButton = editor.querySelector<HTMLButtonElement>('[data-token-save]');
+    const revertButton = editor.querySelector<HTMLButtonElement>('[data-token-revert]');
+    const status = editor.querySelector<HTMLElement>('[data-token-status]');
+    if (!name || !hexInput || !saveButton || !revertButton || !status) return;
+
+    const root = document.documentElement;
+    let activeTrigger: HTMLButtonElement | null = null;
+    let activeToken = '';
+    let savedValue = '';
+    let syncingField = false;
+
+    const normalizeHex = (raw: string) => {
+      const value = raw.trim().startsWith('#') ? raw.trim() : `#${raw.trim()}`;
+      const short = /^#([0-9a-f]{3})$/i.exec(value);
+      if (short) {
+        return `#${[...short[1]].map((digit) => digit.repeat(2)).join('')}`.toLowerCase();
+      }
+      return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
+    };
+
+    const syncHexField = (value: string) => {
+      syncingField = true;
+      hexInput.value = value;
+      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      syncingField = false;
+    };
+
+    const preview = (value: string) => {
+      if (!activeToken) return;
+      root.style.setProperty(activeToken, value);
+      syncHexField(value);
+      status.textContent = 'Previewing unsaved changes.';
+    };
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      const trigger = event.detail?.trigger as HTMLButtonElement | undefined;
+      if (panel?.dataset.devPanelKey !== 'style-color-token' || !trigger) return;
+
+      const token = trigger.dataset.colorTokenName;
+      const fallback = normalizeHex(trigger.dataset.colorTokenSavedValue || '');
+      const current = normalizeHex(getComputedStyle(root).getPropertyValue(token || ''));
+      if (!token || !fallback || !current) return;
+
+      activeTrigger = trigger;
+      activeToken = token;
+      savedValue = fallback;
+      name.textContent = token;
+      syncHexField(current);
+      status.textContent = 'Changes preview live until saved.';
+    }) as EventListener);
+
+    hexInput.addEventListener('input', () => {
+      if (syncingField) return;
+      const value = normalizeHex(hexInput.value);
+      if (!value) {
+        status.textContent = 'Enter a 3- or 6-digit hex colour.';
+        return;
+      }
+      preview(value);
+    });
+
+    hexInput.addEventListener('blur', () => {
+      const value = normalizeHex(hexInput.value);
+      if (value) hexInput.value = value;
+    });
+
+    revertButton.addEventListener('click', () => {
+      if (!activeToken || !savedValue) return;
+      preview(savedValue);
+      status.textContent = 'Reverted to the last saved colour.';
+    });
+
+    saveButton.addEventListener('click', async () => {
+      const value = normalizeHex(hexInput.value);
+      if (!activeToken || !activeTrigger || !value) {
+        status.textContent = 'Enter a valid hex colour before saving.';
+        return;
+      }
+
+      saveButton.disabled = true;
+      status.textContent = 'Saving…';
+
+      try {
+        const response = await fetch('/api/style-token', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token: activeToken, value }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Save failed.');
+
+        savedValue = payload.value;
+        activeTrigger.dataset.colorTokenSavedValue = payload.value;
+        activeTrigger.dataset.colorTokenValue = payload.value;
+        activeTrigger.style.background = payload.value;
+        activeTrigger
+          .closest<HTMLElement>('.token-card')
+          ?.querySelector<HTMLElement>('[data-token-value]')
+          ?.replaceChildren(payload.value);
+        preview(payload.value);
+        status.textContent = 'Saved to global.css.';
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not save the colour.';
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+  };
+
+  initColoris();
+  coloris({
+    el: '[data-token-hex]',
+    wrap: true,
+    theme: 'default',
+    themeMode: 'light',
+    format: 'hex',
+    alpha: false,
+    focusInput: true,
+    closeButton: true,
+    closeLabel: 'Done',
+  });
+
+  document.querySelectorAll<HTMLElement>('[data-color-token-editor]').forEach(initColorTokenEditor);
+</script>
+
+<style>
+  .color-token-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+  }
+
+  .color-token-editor__name {
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+  }
+
+  .color-token-editor__field {
+    display: grid;
+    grid-template-columns: 4em 1fr;
+    align-items: center;
+    gap: 0.65em;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+  }
+
+  .color-token-editor__field input {
+    width: 100%;
+    min-height: 2.4em;
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-strong);
+    color: var(--color-text);
+    font: inherit;
+  }
+
+  .color-token-editor__input {
+    padding: 0.5em 0.65em;
+    font-family: ui-monospace, monospace;
+  }
+
+  :global(.color-token-editor .clr-field) {
+    width: 100%;
+  }
+
+  :global(.color-token-editor .clr-field button) {
+    width: 2.4em;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+  }
+
+  :global(#clr-picker) {
+    border: 0;
+    border-radius: var(--radius-card);
+    corner-shape: squircle;
+    box-shadow: 0 0.6em 2em rgb(0 0 0 / 0.14);
+    font-family: var(--font-sans);
+  }
+
+  .color-token-editor__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4em;
+  }
+
+  .color-token-editor__actions button {
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-strong);
+    padding: 0.55em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .color-token-editor__actions button:first-child {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .color-token-editor__actions button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
+  .color-token-editor__status {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+</style>

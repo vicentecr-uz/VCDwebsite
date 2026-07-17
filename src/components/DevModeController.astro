@@ -9,27 +9,32 @@
       // Keep dev mode scoped to this page load when storage is unavailable.
     }
 
-    const cropTriggers = () =>
-      [...document.querySelectorAll<HTMLButtonElement>('[data-dev-crop-trigger]')];
+    const editTriggers = () =>
+      [...document.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]')];
+    const modeOnlyControls = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-dev-mode-only]')];
     const devPanels = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')];
-    const cropTargets = () =>
-      [...document.querySelectorAll<HTMLElement>('[data-dev-crop-target]')];
+    const imageTargets = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
 
     const setDevMode = (active: boolean) => {
       devMode = active;
       document.documentElement.classList.toggle('is-dev-mode', active);
 
-      cropTriggers().forEach((trigger) => {
-        trigger.hidden = !active;
+      editTriggers().forEach((trigger) => {
+        trigger.disabled = !active;
+      });
+      modeOnlyControls().forEach((control) => {
+        control.hidden = !active;
       });
 
       if (!active) {
         devPanels().forEach((panel) => {
           panel.hidden = true;
         });
-        cropTargets().forEach((target) => {
-          target.classList.remove('is-dev-crop-selected');
+        imageTargets().forEach((target) => {
+          target.classList.remove('is-dev-image-selected');
         });
       }
 
@@ -54,35 +59,42 @@
         return;
       }
 
-      const cropTrigger = target.closest<HTMLButtonElement>('[data-dev-crop-trigger]');
-      if (cropTrigger && devMode) {
+      const editTrigger = target.closest<HTMLButtonElement>('[data-dev-edit-trigger]');
+      if (editTrigger && devMode) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        const panelKey = cropTrigger.dataset.devCropTrigger;
+        const panelKey = editTrigger.dataset.devEditTrigger;
         const panel = devPanels().find((candidate) => candidate.dataset.devPanelKey === panelKey);
         if (!panel) return;
         panel.hidden = !panel.hidden;
         if (!panel.hidden) {
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+            detail: { trigger: editTrigger, panel },
+          }));
           window.dispatchEvent(new Event('resize'));
+        } else {
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+            detail: { trigger: editTrigger, panel },
+          }));
         }
         return;
       }
 
       if (!devMode || !window.matchMedia('(hover: none)').matches) return;
 
-      const cropTarget = target.closest<HTMLElement>('[data-dev-crop-target]');
-      if (cropTarget && !cropTarget.classList.contains('is-dev-crop-selected')) {
+      const imageTarget = target.closest<HTMLElement>('[data-dev-image-target]');
+      if (imageTarget && !imageTarget.classList.contains('is-dev-image-selected')) {
         event.preventDefault();
         event.stopImmediatePropagation();
-        cropTargets().forEach((candidate) => {
-          candidate.classList.toggle('is-dev-crop-selected', candidate === cropTarget);
+        imageTargets().forEach((candidate) => {
+          candidate.classList.toggle('is-dev-image-selected', candidate === imageTarget);
         });
         return;
       }
 
-      if (!cropTarget) {
-        cropTargets().forEach((candidate) => {
-          candidate.classList.remove('is-dev-crop-selected');
+      if (!imageTarget) {
+        imageTargets().forEach((candidate) => {
+          candidate.classList.remove('is-dev-image-selected');
         });
       }
     }, true);
@@ -92,6 +104,7 @@
       devPanels().forEach((panel) => {
         panel.hidden = true;
       });
+      window.dispatchEvent(new Event('vcd:dev-panels-closed'));
     });
   };
 

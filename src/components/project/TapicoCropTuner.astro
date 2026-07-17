@@ -3,9 +3,9 @@ import DevOverlay from '../DevOverlay.astro';
 ---
 
 <DevOverlay
-  title="Tapico hero crop"
-  storageKey="tapico-hero-crop"
-  panelKey="tapico-hero"
+  title="Edit image"
+  storageKey="tapico-image-crop"
+  panelKey="tapico-image"
   defaultHidden
 >
   <div class="tapico-crop-tuner" data-tapico-crop-tuner>
@@ -77,8 +77,8 @@ import DevOverlay from '../DevOverlay.astro';
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-crop-save]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
-    const hero = document.querySelector<HTMLElement>('.project-hero--tapico');
-    const heroImage = hero?.querySelector<HTMLImageElement>('.project-hero__img');
+    const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target="tapico-image"]');
+    const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
     if (
       !preview ||
       !previewImage ||
@@ -93,24 +93,24 @@ import DevOverlay from '../DevOverlay.astro';
       !saveButton ||
       !revertButton ||
       !resetButton ||
-      !hero ||
-      !heroImage
+      !initialTarget ||
+      !initialImage
     ) return;
 
-    previewImage.src = heroImage.currentSrc || heroImage.src;
-
     const defaults: CropState = { x: 0, y: 0, zoom: 1 };
-    const constraintStorageKey = 'tapicoHeroCropConstrained';
+    const constraintStorageKey = 'tapicoImageCropConstrained';
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
     const clean = (value: number) => Math.round(value * 10) / 10;
     const formatSigned = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}%`;
 
-    // Source of truth is the committed crop the page applied from tapico.json
-    // (inline CSS variables on the hero) — not browser storage.
-    const readAppliedCrop = (): CropState => {
-      const rawX = Number.parseFloat(hero.style.getPropertyValue('--tapico-crop-x'));
-      const rawY = Number.parseFloat(hero.style.getPropertyValue('--tapico-crop-y'));
-      const rawZoom = Number.parseFloat(hero.style.getPropertyValue('--tapico-crop-zoom'));
+    let editTarget = initialTarget;
+    let editedImage = initialImage;
+
+    // Source of truth is the committed crop applied from tapico.json.
+    const readAppliedCrop = (target: HTMLElement): CropState => {
+      const rawX = Number.parseFloat(target.style.getPropertyValue('--tapico-crop-x'));
+      const rawY = Number.parseFloat(target.style.getPropertyValue('--tapico-crop-y'));
+      const rawZoom = Number.parseFloat(target.style.getPropertyValue('--tapico-crop-zoom'));
       return {
         x: Number.isFinite(rawX) ? clamp(rawX, -100, 100) : defaults.x,
         y: Number.isFinite(rawY) ? clamp(rawY, -100, 100) : defaults.y,
@@ -126,7 +126,7 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
-    let saved: CropState = readAppliedCrop();
+    let saved: CropState = readAppliedCrop(editTarget);
     let draft: CropState = { ...saved };
     let constrainToFrame = readConstraint();
 
@@ -150,7 +150,7 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const syncCoverSizes = () => {
-      sizeImageToCover(hero, heroImage);
+      sizeImageToCover(editTarget, editedImage);
       sizeImageToCover(preview, previewImage);
     };
 
@@ -175,17 +175,17 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const getPanLimits = () => {
-      const heroSized = sizeImageToCover(hero, heroImage);
+      const targetSized = sizeImageToCover(editTarget, editedImage);
       const previewSized = sizeImageToCover(preview, previewImage);
-      if (!heroSized && !previewSized) return { x: 0, y: 0 };
-      if (!heroSized) return limitsForSize(previewSized!);
-      if (!previewSized) return limitsForSize(heroSized);
+      if (!targetSized && !previewSized) return { x: 0, y: 0 };
+      if (!targetSized) return limitsForSize(previewSized!);
+      if (!previewSized) return limitsForSize(targetSized);
 
-      const heroLimits = limitsForSize(heroSized);
+      const targetLimits = limitsForSize(targetSized);
       const previewLimits = limitsForSize(previewSized);
       return {
-        x: Math.min(heroLimits.x, previewLimits.x),
-        y: Math.min(heroLimits.y, previewLimits.y),
+        x: Math.min(targetLimits.x, previewLimits.x),
+        y: Math.min(targetLimits.y, previewLimits.y),
       };
     };
 
@@ -213,7 +213,7 @@ import DevOverlay from '../DevOverlay.astro';
       syncCoverSizes();
       constrainDraft();
       setCropVariables(preview, draft);
-      setCropVariables(hero, draft);
+      setCropVariables(editTarget, draft);
       zoomInput.value = draft.zoom.toString();
       zoomOutput.value = `${Math.round(draft.zoom * 100)}%`;
       readout.textContent = `x ${formatSigned(draft.x)} · y ${formatSigned(draft.y)} · zoom ${Math.round(draft.zoom * 100)}%`;
@@ -226,7 +226,10 @@ import DevOverlay from '../DevOverlay.astro';
         const response = await fetch('/api/tapico-crop', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(draft),
+          body: JSON.stringify({
+            id: editTarget.dataset.devCropId,
+            ...draft,
+          }),
         });
         if (!response.ok) throw new Error(`Save failed (${response.status})`);
         saved = { ...draft };
@@ -238,24 +241,49 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
-    renderConstraint();
-    renderDraft();
-    status.textContent = 'Loaded the committed crop. Changes update the page live.';
-
     const refreshCover = () => {
-      if (heroImage.naturalWidth) renderDraft();
+      if (editedImage.naturalWidth) renderDraft();
     };
 
-    if (heroImage.complete) refreshCover();
-    heroImage.addEventListener('load', refreshCover);
     previewImage.addEventListener('load', refreshCover);
     window.addEventListener('resize', refreshCover);
 
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(refreshCover);
-    resizeObserver?.observe(hero);
     resizeObserver?.observe(preview);
+
+    const selectTarget = (target: HTMLElement) => {
+      const image = target.querySelector<HTMLImageElement>('img');
+      if (!image) return;
+
+      resizeObserver?.unobserve(editTarget);
+      editTarget = target;
+      editedImage = image;
+      resizeObserver?.observe(editTarget);
+
+      saved = readAppliedCrop(editTarget);
+      draft = { ...saved };
+      preview.style.aspectRatio = getComputedStyle(editTarget).aspectRatio;
+      previewImage.src = editedImage.currentSrc || editedImage.src;
+
+      if (editedImage.complete) {
+        refreshCover();
+      } else {
+        editedImage.addEventListener('load', refreshCover, { once: true });
+      }
+      renderConstraint();
+      renderDraft();
+      status.textContent = 'Loaded the committed crop. Changes update the page live.';
+    };
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+      const trigger = event.detail?.trigger as HTMLElement | undefined;
+      const target = trigger?.closest<HTMLElement>('[data-dev-image-target="tapico-image"]');
+      if (target) selectTarget(target);
+    }) as EventListener);
+
+    selectTarget(initialTarget);
 
     zoomInput.addEventListener('input', () => {
       draft.zoom = clamp(Number(zoomInput.value), 1, 1.5);
@@ -370,8 +398,8 @@ import DevOverlay from '../DevOverlay.astro';
     position: relative;
     aspect-ratio: 16 / 10;
     overflow: hidden;
-    border: 1px solid var(--color-border);
-    background: #f5f5f5;
+    border: 0;
+    background: var(--color-surface-soft);
     cursor: grab;
     touch-action: none;
     user-select: none;
@@ -434,7 +462,9 @@ import DevOverlay from '../DevOverlay.astro';
     right: 0.5em;
     bottom: 0.45em;
     padding: 0.2em 0.4em;
-    background: rgb(255 255 255 / 0.8);
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: color-mix(in srgb, var(--color-surface-soft) 84%, transparent);
     font-size: 0.68rem;
     color: var(--color-text-muted);
     pointer-events: none;
@@ -460,8 +490,10 @@ import DevOverlay from '../DevOverlay.astro';
     align-items: center;
     justify-content: center;
     gap: 0.45em;
-    border: 1px solid var(--color-border);
-    background: #ffffff;
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-soft);
     padding: 0.45em;
     color: var(--color-text);
     font: inherit;
@@ -471,7 +503,7 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .tapico-crop-tuner__toolbar > button:hover {
-    border-color: var(--color-text-muted);
+    background: var(--color-surface-strong);
   }
 
   .tapico-crop-tuner__constraint {
@@ -480,8 +512,7 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .tapico-crop-tuner__constraint.is-locked {
-    border-color: color-mix(in srgb, var(--color-text) 45%, var(--color-border));
-    background: color-mix(in srgb, #ffffff 88%, #f0f0f0);
+    background: color-mix(in srgb, var(--color-surface-strong) 88%, var(--color-text));
   }
 
   .tapico-crop-tuner__lock-icon {
@@ -599,8 +630,10 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .tapico-crop-tuner__actions button {
-    border: 1px solid var(--color-border);
-    background: #ffffff;
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-soft);
     padding: 0.5em;
     color: var(--color-text);
     font: inherit;
@@ -610,12 +643,15 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .tapico-crop-tuner__actions button:first-child {
-    border-color: var(--color-text);
     background: var(--color-text);
     color: #ffffff;
   }
 
   .tapico-crop-tuner__actions button:hover {
-    border-color: var(--color-text-muted);
+    background: var(--color-surface-strong);
+  }
+
+  .tapico-crop-tuner__actions button:first-child:hover {
+    background: var(--color-text-soft);
   }
 </style>
