@@ -6,8 +6,40 @@
   </div>
 </div>
 
+<div class="dev-text-format" data-dev-text-format hidden>
+  <div class="dev-text-format__surface">
+    <div class="dev-text-format__buttons">
+      <button type="button" data-dev-format="bold" title="Bold" aria-label="Bold" aria-pressed="false">
+        <span aria-hidden="true"><b>B</b></span>
+      </button>
+      <button type="button" data-dev-format="italic" title="Italic" aria-label="Italic" aria-pressed="false">
+        <span aria-hidden="true"><i>I</i></span>
+      </button>
+      <button type="button" data-dev-format="underline" title="Underline" aria-label="Underline" aria-pressed="false">
+        <span aria-hidden="true"><u>U</u></span>
+      </button>
+      <button type="button" data-dev-format="link" title="Link" aria-label="Link" aria-pressed="false">
+        Link
+      </button>
+    </div>
+    <form class="dev-text-format__link" data-dev-text-link-panel hidden>
+      <input
+        type="url"
+        data-dev-text-link-input
+        placeholder="https://…"
+        autocomplete="off"
+        spellcheck="false"
+        aria-label="Link URL"
+      />
+      <button type="submit">Apply</button>
+      <button type="button" data-dev-text-unlink>Unlink</button>
+    </form>
+  </div>
+</div>
+
 <script>
   type EditableTextValue = string | string[];
+  type SpacingValue = 'related' | 'section' | 'major' | 'none';
 
   interface EditableTextState {
     element: HTMLElement;
@@ -17,15 +49,60 @@
     savedValue: EditableTextValue;
   }
 
+  interface EditableSpacingState {
+    element: HTMLElement;
+    control: HTMLElement;
+    document: string;
+    path: Array<string | number>;
+    savedValue: SpacingValue;
+    currentValue: SpacingValue;
+  }
+
+  const SPACING_OPTIONS: Array<{ value: 'related' | 'section' | 'major'; label: string; title: string }> = [
+    { value: 'related', label: '1em', title: 'Related · 1em' },
+    { value: 'section', label: '8em', title: 'Section · 8em' },
+    { value: 'major', label: '12em', title: 'Major · 12em' },
+  ];
+
+  const STACK_CLASS: Record<SpacingValue, string | null> = {
+    related: 'project-stack--related',
+    section: null,
+    major: 'project-stack--major',
+    none: 'project-stack--none',
+  };
+
+  const SAFE_HREF = /^(https?:\/\/|\/|#|mailto:)/i;
+
+  const applySpacingClass = (element: HTMLElement, spacing: SpacingValue) => {
+    Object.values(STACK_CLASS).forEach((className) => {
+      if (className) element.classList.remove(className);
+    });
+    const next = STACK_CLASS[spacing];
+    if (next) element.classList.add(next);
+    element.dataset.devSpacingValue = spacing;
+  };
+
   const initDevTextEditor = () => {
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
-    const elements = [
+    const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
+    const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
+    const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
+    const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
+    const formatButtons = formatBar
+      ? [...formatBar.querySelectorAll<HTMLButtonElement>('[data-dev-format]')]
+      : [];
+    const textElements = [
       ...document.querySelectorAll<HTMLElement>('[data-dev-text-document][data-dev-text-path]'),
     ];
-    if (!actions || !saveButton || !revertButton || !status || !elements.length) return;
+    const spacingElements = [
+      ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
+    ];
+    if (!actions || !saveButton || !revertButton || !status) return;
+    if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
+    if (!textElements.length && !spacingElements.length) return;
 
     const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
     /** Keep authored inline markup through Save; unwrap anything else. */
@@ -44,9 +121,7 @@
         if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
         if (tag === 'A') {
           const href = (node.getAttribute('href') || '').trim();
-          const safeHref = /^(https?:\/\/|\/|#|mailto:)/i.test(href)
-            ? href.replaceAll('"', '%22')
-            : '';
+          const safeHref = SAFE_HREF.test(href) ? href.replaceAll('"', '%22') : '';
           if (!safeHref || !inner) return inner;
           return `<a href="${safeHref}">${inner}</a>`;
         }
@@ -86,7 +161,7 @@
       state.element.textContent = typeof value === 'string' ? value : value.join('\n');
     };
 
-    const states = elements.flatMap<EditableTextState>((element) => {
+    const textStates = textElements.flatMap<EditableTextState>((element) => {
       try {
         const path = JSON.parse(element.dataset.devTextPath || '[]');
         if (!Array.isArray(path) || !element.dataset.devTextDocument) return [];
@@ -103,29 +178,392 @@
         return [];
       }
     });
-    if (!states.length) return;
 
-    const dirtyStates = () =>
-      states.filter((state) => !valuesMatch(readValue(state), state.savedValue));
+    const syncSpacingControl = (state: EditableSpacingState) => {
+      state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.devSpacingOption === state.currentValue);
+      });
+      state.element.classList.toggle(
+        'is-dev-spacing-dirty',
+        state.currentValue !== state.savedValue,
+      );
+    };
+
+    const spacingStates = spacingElements.flatMap<EditableSpacingState>((element) => {
+      try {
+        const path = JSON.parse(element.dataset.devSpacingPath || '[]');
+        const raw = (element.dataset.devSpacingValue || 'section') as SpacingValue;
+        if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return [];
+
+        const parent = element.parentElement;
+        if (parent?.classList.contains('project-page__main')) {
+          const siblings = [...parent.children];
+          if (siblings[0] === element) return [];
+        }
+
+        const control = document.createElement('div');
+        control.className = 'dev-spacing-control';
+        control.setAttribute('data-dev-spacing-control', '');
+        control.setAttribute('data-dev-mode-only', '');
+        control.hidden = !document.documentElement.classList.contains('is-dev-mode');
+        control.innerHTML = SPACING_OPTIONS.map(
+          (option) => `
+            <button
+              type="button"
+              class="dev-spacing-control__btn"
+              data-dev-spacing-option="${option.value}"
+              title="${option.title}"
+              aria-label="${option.title}"
+            >
+              <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
+              <span class="dev-spacing-control__label">${option.label}</span>
+            </button>
+          `,
+        ).join('');
+
+        const computed = getComputedStyle(element);
+        if (computed.position === 'static') {
+          element.style.position = 'relative';
+        }
+        element.prepend(control);
+
+        const state: EditableSpacingState = {
+          element,
+          control,
+          document: element.dataset.devSpacingDocument,
+          path,
+          savedValue: raw,
+          currentValue: raw,
+        };
+        syncSpacingControl(state);
+
+        control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
+          button.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const next = button.dataset.devSpacingOption as SpacingValue;
+            if (!next || next === state.currentValue) return;
+            state.currentValue = next;
+            applySpacingClass(element, next);
+            syncSpacingControl(state);
+            updateActions();
+          });
+        });
+
+        return [state];
+      } catch {
+        return [];
+      }
+    });
+
+    if (!textStates.length && !spacingStates.length) return;
+
+    const dirtyTextStates = () =>
+      textStates.filter((state) => !valuesMatch(readValue(state), state.savedValue));
+    const dirtySpacingStates = () =>
+      spacingStates.filter((state) => state.currentValue !== state.savedValue);
 
     const updateActions = () => {
-      const dirty = dirtyStates();
-      states.forEach((state) => {
+      const dirtyText = dirtyTextStates();
+      const dirtySpacing = dirtySpacingStates();
+      const dirtyCount = dirtyText.length + dirtySpacing.length;
+
+      textStates.forEach((state) => {
         state.element.classList.toggle(
           'is-dev-text-dirty',
           !valuesMatch(readValue(state), state.savedValue),
         );
       });
-      actions.hidden = !dirty.length || !document.documentElement.classList.contains('is-dev-mode');
-      if (dirty.length) {
-        status.textContent = `${dirty.length} unsaved ${dirty.length === 1 ? 'change' : 'changes'}`;
+      spacingStates.forEach(syncSpacingControl);
+
+      actions.hidden = !dirtyCount || !document.documentElement.classList.contains('is-dev-mode');
+      if (dirtyCount) {
+        status.textContent = `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`;
       } else {
         status.textContent = '';
       }
     };
 
+    /* ── Selection formatting popup ───────────────────────── */
+    let savedFormatRange: Range | null = null;
+    let linkPanelOpen = false;
+    let formatPlacement: 'above' | 'below' = 'above';
+    let formatRaf = 0;
+
+    const paragraphStates = () => textStates.filter((state) => state.kind === 'paragraphs');
+
+    const findParagraphState = (node: Node | null) => {
+      if (!node) return null;
+      return (
+        paragraphStates().find((state) => state.element.contains(node)) ?? null
+      );
+    };
+
+    const closestAnchor = (node: Node | null): HTMLAnchorElement | null => {
+      const el = node instanceof Element ? node : node?.parentElement;
+      return el?.closest('a') ?? null;
+    };
+
+    const restoreFormatRange = () => {
+      if (!savedFormatRange) return false;
+      const selection = window.getSelection();
+      if (!selection) return false;
+      selection.removeAllRanges();
+      selection.addRange(savedFormatRange);
+      return true;
+    };
+
+    const captureFormatRange = () => {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return null;
+      const range = selection.getRangeAt(0);
+      if (range.collapsed) return null;
+      if (!findParagraphState(range.commonAncestorContainer)) return null;
+      savedFormatRange = range.cloneRange();
+      return savedFormatRange;
+    };
+
+    const hideFormatBar = () => {
+      formatBar.hidden = true;
+      linkPanel.hidden = true;
+      linkPanelOpen = false;
+      linkInput.value = '';
+      savedFormatRange = null;
+      formatBar.dataset.placement = 'above';
+    };
+
+    const setLinkPanelOpen = (open: boolean) => {
+      linkPanelOpen = open;
+      linkPanel.hidden = !open;
+      formatBar.dataset.linkOpen = open ? 'true' : 'false';
+      if (open) {
+        const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
+        linkInput.value = anchor?.getAttribute('href') || '';
+        requestAnimationFrame(() => {
+          linkInput.focus();
+          linkInput.select();
+        });
+      } else {
+        linkInput.value = '';
+      }
+    };
+
+    const syncFormatButtons = () => {
+      formatButtons.forEach((button) => {
+        const command = button.dataset.devFormat;
+        let active = false;
+        if (command === 'bold' || command === 'italic' || command === 'underline') {
+          try {
+            active = document.queryCommandState(command);
+          } catch {
+            active = false;
+          }
+        } else if (command === 'link') {
+          active = Boolean(closestAnchor(savedFormatRange?.commonAncestorContainer ?? null))
+            || linkPanelOpen;
+        }
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    };
+
+    const positionFormatBar = (range: Range) => {
+      const rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) {
+        hideFormatBar();
+        return;
+      }
+
+      formatBar.hidden = false;
+      // Measure with current link-panel state so placement accounts for height.
+      const barRect = formatBar.getBoundingClientRect();
+      const gap = 8;
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const preferAbove = spaceAbove >= barRect.height + gap || spaceAbove >= spaceBelow;
+
+      formatPlacement = preferAbove ? 'above' : 'below';
+      formatBar.dataset.placement = formatPlacement;
+
+      // Re-measure after placement attribute flips link panel order.
+      const measured = formatBar.getBoundingClientRect();
+      let top = preferAbove
+        ? rect.top - measured.height - gap
+        : rect.bottom + gap;
+      let left = rect.left + rect.width / 2 - measured.width / 2;
+
+      const pad = 8;
+      left = Math.min(
+        Math.max(pad, left),
+        window.innerWidth - measured.width - pad,
+      );
+      top = Math.min(
+        Math.max(pad, top),
+        window.innerHeight - measured.height - pad,
+      );
+
+      formatBar.style.top = `${Math.round(top)}px`;
+      formatBar.style.left = `${Math.round(left)}px`;
+    };
+
+    const updateFormatBar = () => {
+      if (!document.documentElement.classList.contains('is-dev-mode')) {
+        hideFormatBar();
+        return;
+      }
+
+      // Keep the bar while the link panel is focused / open.
+      if (linkPanelOpen && savedFormatRange) {
+        positionFormatBar(savedFormatRange);
+        syncFormatButtons();
+        return;
+      }
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) {
+        hideFormatBar();
+        return;
+      }
+
+      const range = selection.getRangeAt(0);
+      if (!findParagraphState(range.commonAncestorContainer)) {
+        hideFormatBar();
+        return;
+      }
+
+      // Don't steal focus from the format UI itself.
+      if (formatBar.contains(document.activeElement)) return;
+
+      savedFormatRange = range.cloneRange();
+      setLinkPanelOpen(false);
+      positionFormatBar(savedFormatRange);
+      syncFormatButtons();
+    };
+
+    const scheduleFormatBarUpdate = () => {
+      cancelAnimationFrame(formatRaf);
+      formatRaf = requestAnimationFrame(updateFormatBar);
+    };
+
+    const runFormatCommand = (command: 'bold' | 'italic' | 'underline') => {
+      if (!restoreFormatRange()) return;
+      document.execCommand(command);
+      captureFormatRange();
+      updateActions();
+      scheduleFormatBarUpdate();
+    };
+
+    const applyLink = (href: string) => {
+      const trimmed = href.trim();
+      if (!SAFE_HREF.test(trimmed)) {
+        linkInput.setCustomValidity('Use http(s)://, /, #, or mailto:');
+        linkInput.reportValidity();
+        return false;
+      }
+      linkInput.setCustomValidity('');
+      if (!restoreFormatRange()) return false;
+      document.execCommand('createLink', false, trimmed);
+      // Ensure serializer-safe href on the created anchor(s).
+      const selection = window.getSelection();
+      if (selection?.rangeCount) {
+        const range = selection.getRangeAt(0);
+        const root = range.commonAncestorContainer;
+        const scope = root instanceof Element ? root : root.parentElement;
+        scope?.querySelectorAll('a').forEach((anchor) => {
+          if (range.intersectsNode(anchor)) {
+            anchor.setAttribute('href', trimmed);
+          }
+        });
+        if (scope instanceof HTMLAnchorElement) {
+          scope.setAttribute('href', trimmed);
+        }
+      }
+      captureFormatRange();
+      setLinkPanelOpen(false);
+      updateActions();
+      scheduleFormatBarUpdate();
+      return true;
+    };
+
+    const removeLink = () => {
+      if (!restoreFormatRange()) return;
+      document.execCommand('unlink');
+      captureFormatRange();
+      setLinkPanelOpen(false);
+      updateActions();
+      scheduleFormatBarUpdate();
+    };
+
+    formatBar.addEventListener('mousedown', (event) => {
+      // Keep the contenteditable selection when clicking toolbar chrome.
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      event.preventDefault();
+    });
+
+    formatButtons.forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        const command = button.dataset.devFormat;
+        if (!command) return;
+        if (!savedFormatRange) captureFormatRange();
+        if (!savedFormatRange) return;
+
+        if (command === 'bold' || command === 'italic' || command === 'underline') {
+          setLinkPanelOpen(false);
+          runFormatCommand(command);
+          return;
+        }
+
+        if (command === 'link') {
+          if (linkPanelOpen) {
+            setLinkPanelOpen(false);
+            scheduleFormatBarUpdate();
+            return;
+          }
+          setLinkPanelOpen(true);
+          positionFormatBar(savedFormatRange);
+          syncFormatButtons();
+        }
+      });
+    });
+
+    linkPanel.addEventListener('submit', (event) => {
+      event.preventDefault();
+      applyLink(linkInput.value);
+    });
+
+    unlinkButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      removeLink();
+    });
+
+    linkInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setLinkPanelOpen(false);
+        restoreFormatRange();
+        scheduleFormatBarUpdate();
+      }
+    });
+
+    document.addEventListener('selectionchange', scheduleFormatBarUpdate);
+    window.addEventListener('scroll', scheduleFormatBarUpdate, true);
+    window.addEventListener('resize', scheduleFormatBarUpdate);
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (formatBar.hidden) return;
+      if (linkPanelOpen) {
+        setLinkPanelOpen(false);
+        restoreFormatRange();
+        scheduleFormatBarUpdate();
+        return;
+      }
+      hideFormatBar();
+    });
+
     const setEditingEnabled = (enabled: boolean) => {
-      states.forEach(({ element, kind }) => {
+      textStates.forEach(({ element, kind }) => {
         if (!enabled && document.activeElement === element) element.blur();
         if (enabled) {
           element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
@@ -135,10 +573,14 @@
           element.removeAttribute('spellcheck');
         }
       });
+      spacingStates.forEach(({ control }) => {
+        control.hidden = !enabled;
+      });
+      if (!enabled) hideFormatBar();
       updateActions();
     };
 
-    states.forEach((state) => {
+    textStates.forEach((state) => {
       const { element } = state;
       element.addEventListener('input', updateActions);
       element.addEventListener('keydown', (event) => {
@@ -185,40 +627,69 @@
     });
 
     revertButton.addEventListener('click', () => {
-      dirtyStates().forEach((state) => {
+      dirtyTextStates().forEach((state) => {
         renderValue(state, state.savedValue);
       });
+      dirtySpacingStates().forEach((state) => {
+        state.currentValue = state.savedValue;
+        applySpacingClass(state.element, state.savedValue);
+        syncSpacingControl(state);
+      });
+      hideFormatBar();
       updateActions();
     });
 
     saveButton.addEventListener('click', async () => {
-      const dirty = dirtyStates();
-      if (!dirty.length) return;
+      const dirtyText = dirtyTextStates();
+      const dirtySpacing = dirtySpacingStates();
+      if (!dirtyText.length && !dirtySpacing.length) return;
       saveButton.disabled = true;
       revertButton.disabled = true;
       status.textContent = 'Saving…';
 
       try {
-        const response = await fetch('/api/content-text', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            changes: dirty.map((state) => ({
-              document: state.document,
-              path: state.path,
-              value: readValue(state),
-            })),
-          }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
+        if (dirtyText.length) {
+          const response = await fetch('/api/content-text', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              changes: dirtyText.map((state) => ({
+                document: state.document,
+                path: state.path,
+                value: readValue(state),
+              })),
+            }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
+          dirtyText.forEach((state) => {
+            state.savedValue = readValue(state);
+          });
+        }
 
-        dirty.forEach((state) => {
-          state.savedValue = readValue(state);
-        });
+        if (dirtySpacing.length) {
+          const response = await fetch('/api/content-spacing', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              changes: dirtySpacing.map((state) => ({
+                document: state.document,
+                path: state.path,
+                value: state.currentValue,
+              })),
+            }),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');
+          dirtySpacing.forEach((state) => {
+            state.savedValue = state.currentValue;
+            syncSpacingControl(state);
+          });
+        }
+
         updateActions();
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not save the text.';
+        status.textContent = error instanceof Error ? error.message : 'Could not save changes.';
       } finally {
         saveButton.disabled = false;
         revertButton.disabled = false;
@@ -229,7 +700,7 @@
       setEditingEnabled(Boolean((event as CustomEvent<{ active: boolean }>).detail?.active));
     });
     window.addEventListener('beforeunload', (event) => {
-      if (!dirtyStates().length) return;
+      if (!dirtyTextStates().length && !dirtySpacingStates().length) return;
       event.preventDefault();
       event.returnValue = '';
     });
@@ -325,5 +796,202 @@
 
   .dev-text-actions .dev-text-actions__save:hover {
     background: var(--color-text-soft);
+  }
+
+  /* ── Selection formatting popup ───────────────────────── */
+  .dev-text-format {
+    position: fixed;
+    z-index: 95;
+    border-radius: var(--radius-control-smooth);
+    background: transparent;
+    padding: 0;
+    box-shadow: 0 0.35em 1.2em rgb(0 0 0 / 0.14);
+  }
+
+  .dev-text-format[hidden] {
+    display: none;
+  }
+
+  .dev-text-format__surface {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    padding: 0.35em;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Keep the URL field on the side away from the selection. */
+  .dev-text-format[data-placement='above'] .dev-text-format__surface {
+    flex-direction: column-reverse;
+  }
+
+  .dev-text-format[data-placement='below'] .dev-text-format__surface {
+    flex-direction: column;
+  }
+
+  .dev-text-format__buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.15em;
+  }
+
+  .dev-text-format__buttons button {
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.2em);
+    background: transparent;
+    min-width: 2em;
+    padding: 0.5em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .dev-text-format__buttons button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .dev-text-format__buttons button.is-active {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .dev-text-format__link {
+    display: flex;
+    align-items: center;
+    gap: 0.25em;
+    padding-inline: 0.1em;
+  }
+
+  .dev-text-format__link[hidden] {
+    display: none;
+  }
+
+  .dev-text-format__link input {
+    width: 14em;
+    max-width: min(14em, 55vw);
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.25em);
+    background: var(--color-bg);
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+
+  .dev-text-format__link input:focus {
+    outline: 1px solid color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+    outline-offset: 0;
+  }
+
+  .dev-text-format__link button {
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.2em);
+    background: transparent;
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .dev-text-format__link button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .dev-text-format__link button[type='submit'] {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .dev-text-format__link button[type='submit']:hover {
+    background: var(--color-text-soft);
+  }
+
+  /* ── Section spacing picker (DEV) ───────────────────────── */
+  .dev-spacing-control {
+    position: absolute;
+    top: 50%;
+    right: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15em;
+    padding: 0.25em;
+    border-radius: var(--radius-control-smooth);
+    background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
+    box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
+    backdrop-filter: blur(12px);
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .is-dev-mode [data-dev-spacing-document]:hover > .dev-spacing-control,
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-spacing-control,
+  .is-dev-mode .dev-spacing-control:hover,
+  .is-dev-mode .dev-spacing-control:focus-within {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .dev-spacing-control__btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.2em);
+    background: transparent;
+    padding: 0.35em 0.45em;
+    color: var(--color-text-soft);
+    font: inherit;
+    font-size: 0.7rem;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .dev-spacing-control__btn:hover {
+    background: var(--color-surface-strong);
+    color: var(--color-text);
+  }
+
+  .dev-spacing-control__btn.is-active {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .dev-spacing-control__mark {
+    display: block;
+    width: 1.1em;
+    border-radius: 999px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .dev-spacing-control__mark--related {
+    height: 0.12em;
+  }
+
+  .dev-spacing-control__mark--section {
+    height: 0.28em;
+  }
+
+  .dev-spacing-control__mark--major {
+    height: 0.45em;
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty {
+    outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 55%, transparent);
+    outline-offset: 0.15em;
   }
 </style>

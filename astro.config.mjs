@@ -341,6 +341,114 @@ function contentTextDevWriter() {
   };
 }
 
+const EDITABLE_SPACING_VALUES = new Set(['related', 'section', 'major', 'none']);
+
+/**
+ * Dev-only writer for project section spacing tokens. Same document allowlist
+ * as text edits; creates `spacing` on the section node when missing.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function contentSpacingDevWriter() {
+  return {
+    name: 'content-spacing-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/content-spacing', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > 20_000) {
+              send(413, { error: 'The spacing update is too large.' });
+              return;
+            }
+            chunks.push(chunk);
+          }
+
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const changes = Array.isArray(body.changes) ? body.changes : [];
+          if (!changes.length) {
+            send(400, { error: 'No spacing changes were provided.' });
+            return;
+          }
+
+          const grouped = new Map();
+          for (const change of changes) {
+            const documentKey = String(change.document || '');
+            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const fieldPath = change.path;
+            const value = change.value;
+            if (
+              !relativeFile ||
+              !Array.isArray(fieldPath) ||
+              fieldPath.length < 2 ||
+              fieldPath.length > 8 ||
+              fieldPath.at(-1) !== 'spacing' ||
+              !EDITABLE_SPACING_VALUES.has(value) ||
+              fieldPath.some((part) => !isSafePathPart(part))
+            ) {
+              send(400, { error: 'One or more spacing fields are not editable.' });
+              return;
+            }
+            const documentChanges = grouped.get(documentKey) || [];
+            documentChanges.push({ path: fieldPath, value });
+            grouped.set(documentKey, documentChanges);
+          }
+
+          for (const [documentKey, documentChanges] of grouped) {
+            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const file = path.join(process.cwd(), relativeFile);
+            const data = JSON.parse(await readFile(file, 'utf8'));
+
+            for (const change of documentChanges) {
+              let target = data;
+              for (const part of change.path.slice(0, -1)) {
+                if (
+                  target === null ||
+                  typeof target !== 'object' ||
+                  !Object.prototype.hasOwnProperty.call(target, part)
+                ) {
+                  send(400, { error: 'A spacing path no longer exists.' });
+                  return;
+                }
+                target = target[part];
+              }
+
+              if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+                send(400, { error: 'A spacing path no longer exists.' });
+                return;
+              }
+              target.spacing = change.value;
+              if (Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
+                delete target.tightTop;
+              }
+            }
+
+            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          }
+
+          send(200, { ok: true, count: changes.length });
+        } catch {
+          send(400, { error: 'Could not parse or write the spacing changes.' });
+        }
+      });
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   // TODO: Re-enable Astro dev toolbar after investigating dev-mode layout jump.
@@ -351,6 +459,7 @@ export default defineConfig({
       imageCropDevWriter(),
       styleTokenDevWriter(),
       contentTextDevWriter(),
+      contentSpacingDevWriter(),
     ],
     optimizeDeps: {
       include: ['gsap', '@melloware/coloris'],

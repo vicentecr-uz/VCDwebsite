@@ -1,5 +1,9 @@
 ---
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
 
 interface Props {
   title: string;
@@ -7,13 +11,23 @@ interface Props {
   tightBottom?: boolean;
   level?: 2 | 3;
   spacing?: ProjectStackSpacing;
+  document?: string;
+  sectionPath?: Array<string | number>;
 }
 
-const { title, tightBottom = true, level = 2, spacing = 'section' } = Astro.props;
+const {
+  title,
+  tightBottom = true,
+  level = 2,
+  spacing = 'section',
+  document: documentKey,
+  sectionPath,
+} = Astro.props;
 const Tag = level === 3 ? 'h3' : 'h2';
 const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 ---
 
-<div class:list={['project-block', stackClass]}>
+<div class:list={['project-block', stackClass]} {...(spacingAttrs ?? {})}>
   <Tag class="project-section-title">{title}</Tag>
 </div>

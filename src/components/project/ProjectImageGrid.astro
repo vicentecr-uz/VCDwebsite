@@ -5,12 +5,17 @@ import {
   responsiveImageStyle,
   type ImageVariants,
 } from '../../lib/responsiveImage';
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
 
 interface Item {
   id?: string;
   src: string;
   alt?: string;
+  caption?: string;
   crop?: { x?: number; y?: number; zoom?: number };
   variants?: ImageVariants;
 }
@@ -27,9 +32,14 @@ interface Props {
 const { items, columns = 2, document: documentKey, basePath, spacing = 'section' } = Astro.props;
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
 const stackClass = projectStackClass(spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
 ---
 
-<div class:list={['project-image-grid', stackClass]} style={`--project-image-grid-columns: ${columns};`}>
+<div
+  class:list={['project-image-grid', stackClass]}
+  style={`--project-image-grid-columns: ${columns};`}
+  {...(spacingAttrs ?? {})}
+>
   {items.map((item, index) => {
     const variants = normalizeImageVariants(item.variants, '1:1', item.crop);
     return (
@@ -52,6 +62,9 @@ const stackClass = projectStackClass(spacing);
           class="project-image-grid__image"
           loading="lazy"
         />
+        {item.caption && (
+          <span class="project-caption project-image-grid__caption">{item.caption}</span>
+        )}
         {showDevEditing && (
           <button
             type="button"
@@ -131,5 +144,21 @@ const stackClass = projectStackClass(spacing);
     object-fit: cover;
     transform: translate(-50%, -50%) scale(var(--tapico-crop-zoom));
     transform-origin: center;
+  }
+
+  .project-image-grid__caption {
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .project-image-grid__item:hover .project-image-grid__caption,
+  .project-image-grid__item:focus-within .project-image-grid__caption {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .project-image-grid__caption {
+      display: none;
+    }
   }
 </style>

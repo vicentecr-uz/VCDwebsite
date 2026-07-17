@@ -23,3 +23,21 @@ export function resolveProjectSpacing(
   if (tightTop) return 'related';
   return 'section';
 }
+
+/**
+ * DEV-only data attrs for on-page spacing edits. `sectionPath` points at the
+ * section object in the project JSON (e.g. `['sections', 2]`); we append
+ * `'spacing'` when writing.
+ */
+export function spacingDevAttrs(
+  documentKey: string | undefined,
+  sectionPath: Array<string | number> | undefined,
+  spacing: ProjectStackSpacing,
+): Record<string, string> | undefined {
+  if (!import.meta.env.DEV || !documentKey || !sectionPath?.length) return undefined;
+  return {
+    'data-dev-spacing-document': documentKey,
+    'data-dev-spacing-path': JSON.stringify([...sectionPath, 'spacing']),
+    'data-dev-spacing-value': spacing,
+  };
+}
