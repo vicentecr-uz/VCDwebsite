@@ -1,16 +1,20 @@
 ---
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+
 interface Props {
   text?: string;
   /** Optional inline-linked form: prefix + link + trailing period */
   prefix?: string;
   linkLabel?: string;
   linkHref?: string;
+  spacing?: ProjectStackSpacing;
 }
 
-const { text, prefix, linkLabel, linkHref } = Astro.props;
+const { text, prefix, linkLabel, linkHref, spacing = 'section' } = Astro.props;
+const stackClass = projectStackClass(spacing, { precedeRelated: true });
 ---
 
-<div class="project-block project-block--tight-bottom">
+<div class:list={['project-block', stackClass]}>
   <h1 class="project-tagline">
     {linkHref ? (
       <>{prefix}{' '}<a href={linkHref} target="_blank" rel="noopener noreferrer" class="project-inline-link">{linkLabel}</a>.</>

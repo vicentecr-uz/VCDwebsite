@@ -1,17 +1,20 @@
 ---
 import { projectImage } from '../../lib/images';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
   src: string;
   alt?: string;
   caption: string;
   hideMobile?: boolean;
+  spacing?: ProjectStackSpacing;
 }
 
-const { src, alt = '', caption, hideMobile = false } = Astro.props;
+const { src, alt = '', caption, hideMobile = false, spacing = 'section' } = Astro.props;
+const stackClass = projectStackClass(spacing);
 ---
 
-<div class:list={['project-block', 'project-block--before-image', hideMobile && 'project-hide-mobile']}>
+<div class:list={['project-block', hideMobile && 'project-hide-mobile', stackClass]}>
   <figure class="project-captioned-image">
     <span class="project-caption">{caption}</span>
     <img src={projectImage(src)} alt={alt} class="project-media__img" loading="lazy" />

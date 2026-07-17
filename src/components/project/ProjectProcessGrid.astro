@@ -1,5 +1,6 @@
 ---
 import { projectImage } from '../../lib/images';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Item {
   src: string;
@@ -8,12 +9,14 @@ interface Item {
 
 interface Props {
   items: Item[];
+  spacing?: ProjectStackSpacing;
 }
 
-const { items } = Astro.props;
+const { items, spacing = 'section' } = Astro.props;
+const stackClass = projectStackClass(spacing);
 ---
 
-<div class="project-block project-block--before-image">
+<div class:list={['project-block', stackClass]}>
   <div class="project-process-grid">
     {items.map((item) => (
       <img src={projectImage(item.src)} alt={item.alt ?? ''} loading="lazy" />

@@ -4,11 +4,10 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
 import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
-import ProjectHero from '../components/project/ProjectHero.astro';
+import ProjectImage from '../components/project/ProjectImage.astro';
 import ProjectTagline from '../components/project/ProjectTagline.astro';
 import ProjectProse from '../components/project/ProjectProse.astro';
 import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
-import ProjectImage from '../components/project/ProjectImage.astro';
 import ProjectGrid from '../components/project/ProjectGrid.astro';
 import ProjectCaptionImage from '../components/project/ProjectCaptionImage.astro';
 import ProjectDetailImage from '../components/project/ProjectDetailImage.astro';
@@ -30,12 +29,11 @@ type PreviewKey =
   | 'footer'
   | 'sidebar-nav'
   | 'project-layout'
-  | 'hero'
+  | 'image-lead'
   | 'tagline'
   | 'prose'
   | 'section-title'
   | 'image'
-  | 'image-constrained'
   | 'grid'
   | 'caption-image'
   | 'detail-image'
@@ -112,22 +110,22 @@ const componentCatalog: ComponentEntry[] = [
     preview: 'project-layout',
   },
   {
-    id: 'component-project-hero',
-    name: 'ProjectHero',
+    id: 'component-project-image',
+    name: 'ProjectImage',
     category: 'project-media',
-    purpose: 'Lead image at top of each project story.',
-    classRef: '.project-hero / .project-hero__img',
-    source: 'src/components/project/ProjectHero.astro',
-    props: 'src, alt, variant? (default | conic)',
+    purpose: 'Single project image — lead/crop (variant) or simple media between prose.',
+    classRef: '.project-image / .project-media',
+    source: 'src/components/project/ProjectImage.astro',
+    props: 'src, alt?, kind? (lead | inline), layout? (default | conic), variants?, constrained?, mobileHeight?, flush?',
     usedOn: ['All project pages'],
-    checklist: 'Confirm crop focal point and min-height feel on desktop.',
-    preview: 'hero',
+    checklist: 'Lead crop focal point; constrained 80% desktop; mobileHeight at 767px.',
+    preview: 'image-lead',
   },
   {
     id: 'component-project-tagline',
     name: 'ProjectTagline',
     category: 'project-content',
-    purpose: 'Large display headline under the hero.',
+    purpose: 'Large display headline under the lead image.',
     classRef: '.project-tagline',
     source: 'src/components/project/ProjectTagline.astro',
     props: 'text',
@@ -142,9 +140,9 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'Main narrative body for case-study explanations.',
     classRef: '.project-prose / .project-block',
     source: 'src/components/project/ProjectProse.astro',
-    props: 'tightTop?, tightBottom? + default slot',
+    props: 'spacing? (related | section | major | none), tightBottom? + default slot',
     usedOn: ['All project pages'],
-    checklist: 'Stay around 80% width desktop, 100% tablet and below.',
+    checklist: 'Stay around 80% width desktop, 100% tablet and below. Stack gap from spacing prop.',
     preview: 'prose',
   },
   {
@@ -154,22 +152,10 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'In-page section break heading (Research, Process, etc.).',
     classRef: '.project-section-title',
     source: 'src/components/project/ProjectSectionTitle.astro',
-    props: 'title, tightBottom?, level? (2 | 3)',
+    props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3)',
     usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
-    checklist: 'Heading-only block spacing; level 3 for nested sections.',
+    checklist: 'Default precede-related so body after a heading sits at 1em; level 3 for nested sections.',
     preview: 'section-title',
-  },
-  {
-    id: 'component-project-image',
-    name: 'ProjectImage',
-    category: 'project-media',
-    purpose: 'Full-width or constrained standalone image between prose blocks.',
-    classRef: '.project-media / .project-media__img',
-    source: 'src/components/project/ProjectImage.astro',
-    props: 'src, alt?, constrained?, mobileHeight?, flush?',
-    usedOn: ['Tapico', 'The Rams', 'ParentPal', 'Conic Collection'],
-    checklist: 'mobileHeight svh values at 767px; flush for gallery stacks.',
-    preview: 'image',
   },
   {
     id: 'component-project-grid',
@@ -309,14 +295,18 @@ const typographyScale = [
 ];
 
 const spacingScale = [
-  { token: '0.5em', value: '0.5em', use: 'Tight micro gaps' },
+  { token: '--space-related', value: '1em', use: 'Continuous / related blocks in a project stack' },
+  { token: '--space-section', value: '5em / 3em tablet', use: 'Default gap between project sections' },
+  { token: '--space-major', value: '8em / 5em tablet', use: 'Provisional chapter break — tune later' },
   { token: '1em', value: '1em', use: 'Default gutter + grid gap' },
-  { token: '2.5em', value: '2.5em', use: 'Tight section transitions' },
-  { token: '3em', value: '3em', use: 'Tablet section rhythm' },
-  { token: '5em', value: '5em', use: 'Desktop section rhythm' },
 ];
 
 const layoutRules = [
+  {
+    name: 'Project stack rhythm',
+    value: 'margin-top on siblings via --space-*',
+    why: 'One gap between sections (related / section / major). Blocks do not pad top and bottom.',
+  },
   {
     name: 'Fluid site gutter',
     value: 'max(1em, calc((100% - 60em) / 2))',
@@ -555,8 +545,8 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
                           <a href="/tapico" class="project-inline-link">Tapico</a>).
                         </p>
                       )}
-                      {component.preview === 'hero' && (
-                        <ProjectHero src={previewHero} alt="ProjectHero preview" />
+                      {component.preview === 'image-lead' && (
+                        <ProjectImage src={previewHero} alt="ProjectImage lead preview" kind="lead" />
                       )}
                       {component.preview === 'tagline' && (
                         <ProjectTagline text="A calculator, but for words." />
@@ -1006,7 +996,7 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
     padding-bottom: 1em;
   }
 
-  .component-preview :global(.project-hero__img) {
+  .component-preview :global(.project-image__img) {
     min-height: 14em;
   }
 

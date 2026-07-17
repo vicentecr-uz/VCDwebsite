@@ -1,15 +1,19 @@
 ---
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+
 interface Props {
   paragraphs: string[];
   documentKey?: string;
   pathPrefix?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
 }
 
-const { paragraphs, documentKey, pathPrefix } = Astro.props;
+const { paragraphs, documentKey, pathPrefix, spacing = 'section' } = Astro.props;
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
+const stackClass = projectStackClass(spacing);
 ---
 
-<section class="project-block">
+<section class:list={['project-block', stackClass]}>
   <div
     class="project-body-text"
     data-dev-text-document={editable ? documentKey : undefined}

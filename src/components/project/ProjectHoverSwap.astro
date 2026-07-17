@@ -1,17 +1,20 @@
 ---
 import { projectImage } from '../../lib/images';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
   baseSrc: string;
   baseAlt?: string;
   topSrc: string;
   topAlt?: string;
+  spacing?: ProjectStackSpacing;
 }
 
-const { baseSrc, baseAlt = '', topSrc, topAlt = '' } = Astro.props;
+const { baseSrc, baseAlt = '', topSrc, topAlt = '', spacing = 'section' } = Astro.props;
+const stackClass = projectStackClass(spacing);
 ---
 
-<div class="project-block project-block--before-image">
+<div class:list={['project-block', stackClass]}>
   <figure class="project-hover-swap">
     <img src={projectImage(baseSrc)} alt={baseAlt} class="project-hover-swap__base" loading="lazy" />
     <img src={projectImage(topSrc)} alt={topAlt} class="project-hover-swap__top" loading="lazy" />

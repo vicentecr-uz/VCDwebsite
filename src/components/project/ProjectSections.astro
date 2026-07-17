@@ -1,5 +1,4 @@
 ---
-import ProjectHero from './ProjectHero.astro';
 import ProjectImageGrid from './ProjectImageGrid.astro';
 import ProjectTagline from './ProjectTagline.astro';
 import ProjectBodyText from './ProjectBodyText.astro';
@@ -24,6 +23,7 @@ import ProjectSketchModels from './ProjectSketchModels.astro';
 import ProjectVideo from './ProjectVideo.astro';
 import ProjectFinalHero from './ProjectFinalHero.astro';
 import { projectImage } from '../../lib/images';
+import { projectStackClass, resolveProjectSpacing } from '../../lib/projectStack';
 
 interface Props {
   sections: any[];
@@ -33,20 +33,33 @@ interface Props {
 const { sections, documentKey } = Astro.props;
 ---
 
-{sections.map((section, sectionIndex) => (
+{sections.map((section, sectionIndex) => {
+  const spacing = resolveProjectSpacing(section.spacing, section.tightTop);
+  return (
   <>
     {section.type === 'heroImage' && (
-      <ProjectHero
+      <ProjectImage
         src={section.src}
         alt={section.alt}
-        variant={section.variant ?? 'default'}
+        kind="lead"
+        layout={section.variant ?? 'default'}
         crop={section.crop}
         variants={section.variants}
+        document={documentKey}
+        path={['sections', sectionIndex]}
+        cropId="hero"
+        spacing={spacing}
       />
     )}
 
     {section.type === 'imageGrid' && (
-      <ProjectImageGrid items={section.items} columns={section.columns ?? 2} />
+      <ProjectImageGrid
+        items={section.items}
+        columns={section.columns ?? 2}
+        document={documentKey}
+        basePath={['sections', sectionIndex]}
+        spacing={spacing}
+      />
     )}
 
     {section.type === 'tagline' && (
@@ -55,6 +68,7 @@ const { sections, documentKey } = Astro.props;
         prefix={section.prefix}
         linkLabel={section.linkLabel}
         linkHref={section.linkHref}
+        spacing={spacing}
       />
     )}
 
@@ -63,15 +77,24 @@ const { sections, documentKey } = Astro.props;
         paragraphs={section.paragraphs}
         documentKey={documentKey}
         pathPrefix={documentKey ? ['sections', sectionIndex, 'paragraphs'] : undefined}
+        spacing={spacing}
       />
     )}
 
     {section.type === 'sectionTitle' && (
-      <ProjectSectionTitle title={section.title} level={section.level ?? 2} />
+      <ProjectSectionTitle
+        title={section.title}
+        level={section.level ?? 2}
+        tightBottom={section.tightBottom ?? true}
+        spacing={spacing}
+      />
     )}
 
     {section.type === 'prose' && (
-      <ProjectProse tightTop={section.tightTop ?? false} tightBottom={section.tightBottom ?? false}>
+      <ProjectProse
+        spacing={spacing}
+        tightBottom={section.tightBottom ?? false}
+      >
         {section.heading && <h4 class="project-section-title">{section.heading}</h4>}
         {section.paragraphs.map((paragraph) => (
           <p set:html={paragraph} />
@@ -81,10 +104,13 @@ const { sections, documentKey } = Astro.props;
 
     {section.type === 'image' && (
       section.showMobileOnly ? (
-        <div class="project-show-mobile-only">
+        <div class:list={['project-show-mobile-only', projectStackClass(spacing, { flush: section.flush })]}>
           <ProjectImage
             src={section.src}
             alt={section.alt}
+            variants={section.variants}
+            document={documentKey}
+            path={['sections', sectionIndex]}
             constrained={section.constrained ?? false}
             mobileHeight={section.mobileHeight}
             flush={section.flush ?? false}
@@ -92,12 +118,16 @@ const { sections, documentKey } = Astro.props;
             max80={section.max80 ?? false}
             fullHeight={section.fullHeight ?? false}
             hideMobile={section.hideMobile ?? false}
+            spacing="none"
           />
         </div>
       ) : (
         <ProjectImage
           src={section.src}
           alt={section.alt}
+          variants={section.variants}
+          document={documentKey}
+          path={['sections', sectionIndex]}
           constrained={section.constrained ?? false}
           mobileHeight={section.mobileHeight}
           flush={section.flush ?? false}
@@ -106,12 +136,13 @@ const { sections, documentKey } = Astro.props;
           fullHeight={section.fullHeight ?? false}
           hideMobile={section.hideMobile ?? false}
           imgModifier={section.imgModifier}
+          spacing={spacing}
         />
       )
     )}
 
     {section.type === 'mediaGrid' && (
-      <ProjectGrid cols={section.cols}>
+      <ProjectGrid cols={section.cols} spacing={spacing}>
         {section.items.map((item) => (
           <>
             {item.style === 'caption' && (
@@ -144,7 +175,7 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'constrainedCaptionImage' && (
-      <div class="project-block project-block--before-image">
+      <div class:list={['project-block', projectStackClass(spacing)]}>
         <figure class="project-media project-media--constrained">
           <span class:list={['project-caption', section.captionVariant === 'dark' && 'project-caption--dark', section.captionVariant === 'black' && 'project-caption--black']}>
             {section.caption}
@@ -160,15 +191,15 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'systemGrid' && (
-      <ProjectSystemGrid items={section.items} />
+      <ProjectSystemGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'researchGrid' && (
-      <ProjectResearchGrid columns={section.columns} />
+      <ProjectResearchGrid columns={section.columns} spacing={spacing} />
     )}
 
     {section.type === 'tripleGrid' && (
-      <ProjectTripleGrid items={section.items} />
+      <ProjectTripleGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'detailGrid' && (
@@ -177,19 +208,20 @@ const { sections, documentKey } = Astro.props;
         wide={section.wide ?? false}
         square={section.square ?? false}
         showMobileOnly={section.showMobileOnly ?? false}
+        spacing={spacing}
       />
     )}
 
     {section.type === 'referenceGrid' && (
-      <ProjectReferenceGrid items={section.items} />
+      <ProjectReferenceGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'processGrid' && (
-      <ProjectProcessGrid items={section.items} />
+      <ProjectProcessGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'moodboard' && (
-      <ProjectMoodboard items={section.items} />
+      <ProjectMoodboard items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'captionedImage' && (
@@ -198,6 +230,7 @@ const { sections, documentKey } = Astro.props;
         alt={section.alt}
         caption={section.caption}
         hideMobile={section.hideMobile ?? false}
+        spacing={spacing}
       />
     )}
 
@@ -207,27 +240,29 @@ const { sections, documentKey } = Astro.props;
         baseAlt={section.baseAlt}
         topSrc={section.topSrc}
         topAlt={section.topAlt}
+        spacing={spacing}
       />
     )}
 
     {section.type === 'contextGrid' && (
-      <ProjectContextGrid items={section.items} />
+      <ProjectContextGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'layoutSplit' && (
-      <ProjectLayoutSplit leftSrc={section.leftSrc} leftAlt={section.leftAlt} items={section.items} />
+      <ProjectLayoutSplit leftSrc={section.leftSrc} leftAlt={section.leftAlt} items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'sketchModels' && (
-      <ProjectSketchModels setupSrc={section.setupSrc} setupAlt={section.setupAlt} items={section.items} />
+      <ProjectSketchModels setupSrc={section.setupSrc} setupAlt={section.setupAlt} items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'video' && (
-      <ProjectVideo src={section.src} title={section.title} />
+      <ProjectVideo src={section.src} title={section.title} spacing={spacing} />
     )}
 
     {section.type === 'finalHero' && (
-      <ProjectFinalHero src={section.src} alt={section.alt} />
+      <ProjectFinalHero src={section.src} alt={section.alt} spacing={spacing} />
     )}
   </>
-))}
+  );
+})}

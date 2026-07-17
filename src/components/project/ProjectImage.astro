@@ -1,32 +1,57 @@
 ---
 import { projectImage } from '../../lib/images';
+import {
+  normalizeImageVariants,
+  responsiveImageStyle,
+  type ImageVariants,
+} from '../../lib/responsiveImage';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
   src: string;
   alt?: string;
+  /** 'lead' = top-of-page image (cover / crop); 'inline' = image between prose. */
+  kind?: 'lead' | 'inline';
+  /** Presentation tweak, independent of crop data. */
+  layout?: 'default' | 'conic';
+  /** Saved per-viewport crop. Presence switches the image into a cropped frame. */
+  variants?: ImageVariants;
+  /** @deprecated single-viewport crop; normalised into `variants`. */
+  crop?: { x?: number; y?: number; zoom?: number };
+  /** Editing wiring: which project JSON + path to the image node. */
+  document?: string;
+  path?: (string | number)[];
+  cropId?: string;
+  /** Stack rhythm before this block (parent-owned). */
+  spacing?: ProjectStackSpacing;
+  /** Simple / inline media props */
   constrained?: boolean;
+  centered?: boolean;
   mobileHeight?: '35' | '40' | '50' | '60';
   loading?: 'eager' | 'lazy';
-  /** Minimal vertical padding when stacked in a gallery sequence */
   flush?: boolean;
-  /** Caps height to 30svh on mobile (object-fit: cover) */
   mobileShort?: boolean;
-  /** Caps height to 80svh (object-fit: cover) */
   max80?: boolean;
-  /** Fills available height (object-fit: cover) */
   fullHeight?: boolean;
-  /** Hides the block on mobile */
   hideMobile?: boolean;
-  /** Appends an arbitrary project-media__img--{modifier} class */
   imgModifier?: string;
 }
 
 const {
   src,
   alt = '',
+  kind = 'inline',
+  layout = 'default',
+  variants: suppliedVariants,
+  crop,
+  document: documentKey,
+  path,
+  cropId,
+  spacing = 'section',
   constrained = false,
+  centered = false,
   mobileHeight,
-  loading = 'lazy',
+  loading,
   flush = false,
   mobileShort = false,
   max80 = false,
@@ -35,23 +60,131 @@ const {
   imgModifier,
 } = Astro.props;
 
+const stackClass = projectStackClass(spacing, { flush });
+
+const isLead = kind === 'lead';
+const hasCrop = !!suppliedVariants && Object.values(suppliedVariants).some(
+  (variant) => variant && (variant.aspectRatio || variant.x || variant.y || variant.zoom),
+);
+const normalized = hasCrop
+  ? normalizeImageVariants(suppliedVariants, isLead ? '16:10' : '1:1', crop)
+  : undefined;
+
+const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && path.length > 0;
+const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
+
+const editAttrs = editable
+  ? {
+      'data-dev-image-target': 'image',
+      'data-dev-document': documentKey,
+      'data-dev-image-path': JSON.stringify(path),
+      'data-dev-crop-id': cropId,
+      'data-dev-image-variants': normalized ? JSON.stringify(normalized) : '{}',
+    }
+  : {};
 ---
 
-<div class:list={['project-block', 'project-block--before-image', flush && 'project-block--flush', hideMobile && 'project-hide-mobile']}>
-  <figure class:list={['project-media', constrained && 'project-media--constrained']}>
-    <img
-      src={projectImage(src)}
-      alt={alt}
+{isLead ? (
+  <div
+    class:list={[
+      'project-image',
+      layout !== 'default' && `project-image--${layout}`,
+      hasCrop && 'project-cropped project-responsive-image',
+      editable && 'dev-image-edit-target',
+      stackClass,
+    ]}
+    style={normalized ? responsiveImageStyle(normalized) : undefined}
+    {...editAttrs}
+  >
+    <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+    {editable && (
+      <button
+        type="button"
+        class="dev-image-edit-trigger"
+        data-dev-edit-trigger="image"
+        data-dev-mode-only
+        hidden
+      >
+        Edit image
+      </button>
+    )}
+  </div>
+) : (
+  <div class:list={['project-block', centered && 'project-block--centered', hideMobile && 'project-hide-mobile', stackClass]}>
+    <figure
       class:list={[
-        'project-media__img',
-        heightClass,
-        mobileShort && 'project-media__img--mobile-short',
-        max80 && 'project-media__img--max80',
-        fullHeight && 'project-media__img--full-height',
-        imgModifier && `project-media__img--${imgModifier}`,
+        'project-media',
+        constrained && 'project-media--constrained',
+        hasCrop && 'project-cropped project-responsive-image',
+        editable && 'dev-image-edit-target',
       ]}
-      loading={loading}
-    />
-  </figure>
-</div>
+      style={normalized ? responsiveImageStyle(normalized) : undefined}
+      {...editAttrs}
+    >
+      <img
+        src={projectImage(src)}
+        alt={alt}
+        class:list={[
+          'project-media__img',
+          heightClass,
+          mobileShort && 'project-media__img--mobile-short',
+          max80 && 'project-media__img--max80',
+          fullHeight && 'project-media__img--full-height',
+          imgModifier && `project-media__img--${imgModifier}`,
+        ]}
+        loading={resolvedLoading}
+      />
+      {editable && (
+        <button
+          type="button"
+          class="dev-image-edit-trigger"
+          data-dev-edit-trigger="image"
+          data-dev-mode-only
+          hidden
+        >
+          Edit image
+        </button>
+      )}
+    </figure>
+  </div>
+)}
+
+<script>
+  const sizeProjectCropCovers = () => {
+    document.querySelectorAll<HTMLElement>('.project-cropped').forEach((frame) => {
+      const image = frame.querySelector<HTMLImageElement>(':scope > img');
+      if (!image?.naturalWidth || !image.naturalHeight) return;
+
+      frame.style.setProperty(
+        '--project-image-original-ratio',
+        `${image.naturalWidth} / ${image.naturalHeight}`,
+      );
+      const frameWidth = frame.clientWidth;
+      const frameHeight = frame.clientHeight;
+      if (!frameWidth || !frameHeight) return;
+
+      const coverScale = Math.max(
+        (frameWidth + 2) / image.naturalWidth,
+        (frameHeight + 2) / image.naturalHeight,
+      );
+      image.style.width = `${Math.ceil(image.naturalWidth * coverScale)}px`;
+      image.style.height = `${Math.ceil(image.naturalHeight * coverScale)}px`;
+    });
+  };
+
+  const initProjectCropCovers = () => {
+    sizeProjectCropCovers();
+    document.querySelectorAll<HTMLImageElement>('.project-cropped > img').forEach((image) => {
+      image.addEventListener('load', sizeProjectCropCovers);
+    });
+    window.addEventListener('resize', sizeProjectCropCovers);
+    if (typeof ResizeObserver !== 'undefined') {
+      document.querySelectorAll<HTMLElement>('.project-cropped').forEach((frame) => {
+        new ResizeObserver(sizeProjectCropCovers).observe(frame);
+      });
+    }
+  };
+
+  initProjectCropCovers();
+</script>

@@ -1,18 +1,19 @@
 ---
+import { projectStackClass, resolveProjectSpacing, type ProjectStackSpacing } from '../../lib/projectStack';
+
 interface Props {
   tightTop?: boolean;
   tightBottom?: boolean;
+  /** Prefer over tightTop when set. */
+  spacing?: ProjectStackSpacing;
 }
 
-const { tightTop = false, tightBottom = false } = Astro.props;
-const classes = [
-  'project-block',
-  'project-prose',
-  tightTop && 'project-block--after-text',
-  tightBottom && 'project-block--tight-bottom',
-].filter(Boolean).join(' ');
+const { tightTop = false, tightBottom = false, spacing } = Astro.props;
+const stackClass = projectStackClass(resolveProjectSpacing(spacing, tightTop), {
+  precedeRelated: tightBottom,
+});
 ---
 
-<section class={classes}>
+<section class:list={['project-block', 'project-prose', stackClass]}>
   <slot />
 </section>
