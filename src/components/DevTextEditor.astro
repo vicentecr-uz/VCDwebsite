@@ -1,0 +1,273 @@
+<div class="dev-text-actions" data-dev-text-actions hidden>
+  <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
+  <button type="button" data-dev-text-revert>Revert changes</button>
+  <button type="button" class="dev-text-actions__save" data-dev-text-save>Save</button>
+</div>
+
+<script>
+  type EditableTextValue = string | string[];
+
+  interface EditableTextState {
+    element: HTMLElement;
+    document: string;
+    path: Array<string | number>;
+    kind: 'text' | 'paragraphs';
+    savedValue: EditableTextValue;
+  }
+
+  const initDevTextEditor = () => {
+    const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
+    const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
+    const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
+    const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
+    const elements = [
+      ...document.querySelectorAll<HTMLElement>('[data-dev-text-document][data-dev-text-path]'),
+    ];
+    if (!actions || !saveButton || !revertButton || !status || !elements.length) return;
+
+    const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
+    const readValue = (state: Pick<EditableTextState, 'element' | 'kind'>): EditableTextValue =>
+      state.kind === 'paragraphs'
+        ? [...state.element.querySelectorAll<HTMLElement>(':scope > p')]
+            .map((paragraph) => cleanText(paragraph.textContent ?? ''))
+        : cleanText(state.element.textContent ?? '');
+    const valuesMatch = (left: EditableTextValue, right: EditableTextValue) =>
+      JSON.stringify(left) === JSON.stringify(right);
+    const renderValue = (state: EditableTextState, value: EditableTextValue) => {
+      if (state.kind === 'paragraphs' && Array.isArray(value)) {
+        const paragraphs = value.map((text) => {
+          const paragraph = document.createElement('p');
+          if (text) paragraph.textContent = text;
+          else paragraph.append(document.createElement('br'));
+          return paragraph;
+        });
+        state.element.replaceChildren(...paragraphs);
+        return;
+      }
+      state.element.textContent = typeof value === 'string' ? value : value.join('\n');
+    };
+
+    const states = elements.flatMap<EditableTextState>((element) => {
+      try {
+        const path = JSON.parse(element.dataset.devTextPath || '[]');
+        if (!Array.isArray(path) || !element.dataset.devTextDocument) return [];
+        const state: EditableTextState = {
+          element,
+          document: element.dataset.devTextDocument,
+          path,
+          kind: element.dataset.devTextKind === 'paragraphs' ? 'paragraphs' : 'text',
+          savedValue: '',
+        };
+        state.savedValue = readValue(state);
+        return [state];
+      } catch {
+        return [];
+      }
+    });
+    if (!states.length) return;
+
+    const dirtyStates = () =>
+      states.filter((state) => !valuesMatch(readValue(state), state.savedValue));
+
+    const updateActions = () => {
+      const dirty = dirtyStates();
+      states.forEach((state) => {
+        state.element.classList.toggle(
+          'is-dev-text-dirty',
+          !valuesMatch(readValue(state), state.savedValue),
+        );
+      });
+      actions.hidden = !dirty.length || !document.documentElement.classList.contains('is-dev-mode');
+      if (dirty.length) {
+        status.textContent = `${dirty.length} unsaved ${dirty.length === 1 ? 'change' : 'changes'}`;
+      } else {
+        status.textContent = '';
+      }
+    };
+
+    const setEditingEnabled = (enabled: boolean) => {
+      states.forEach(({ element, kind }) => {
+        if (!enabled && document.activeElement === element) element.blur();
+        if (enabled) {
+          element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
+          element.setAttribute('spellcheck', 'true');
+        } else {
+          element.removeAttribute('contenteditable');
+          element.removeAttribute('spellcheck');
+        }
+      });
+      updateActions();
+    };
+
+    states.forEach((state) => {
+      const { element } = state;
+      element.addEventListener('input', updateActions);
+      element.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || state.kind !== 'paragraphs') return;
+        event.preventDefault();
+
+        const selection = window.getSelection();
+        if (!selection?.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (!element.contains(range.startContainer)) return;
+        const startElement = range.startContainer instanceof Element
+          ? range.startContainer
+          : range.startContainer.parentElement;
+        const paragraph = startElement?.closest('p');
+        if (!paragraph || paragraph.parentElement !== element) return;
+
+        const offsetRange = document.createRange();
+        offsetRange.selectNodeContents(paragraph);
+        offsetRange.setEnd(range.startContainer, range.startOffset);
+        const offset = offsetRange.toString().length;
+        const text = cleanText(paragraph.textContent ?? '');
+        paragraph.textContent = text.slice(0, offset);
+        if (!paragraph.textContent) paragraph.append(document.createElement('br'));
+
+        const nextParagraph = document.createElement('p');
+        const trailingText = text.slice(offset);
+        if (trailingText) nextParagraph.textContent = trailingText;
+        else nextParagraph.append(document.createElement('br'));
+        paragraph.after(nextParagraph);
+
+        const nextRange = document.createRange();
+        nextRange.setStart(nextParagraph, 0);
+        nextRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        updateActions();
+      });
+    });
+
+    revertButton.addEventListener('click', () => {
+      dirtyStates().forEach((state) => {
+        renderValue(state, state.savedValue);
+      });
+      updateActions();
+    });
+
+    saveButton.addEventListener('click', async () => {
+      const dirty = dirtyStates();
+      if (!dirty.length) return;
+      saveButton.disabled = true;
+      revertButton.disabled = true;
+      status.textContent = 'Saving…';
+
+      try {
+        const response = await fetch('/api/content-text', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            changes: dirty.map((state) => ({
+              document: state.document,
+              path: state.path,
+              value: readValue(state),
+            })),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
+
+        dirty.forEach((state) => {
+          state.savedValue = readValue(state);
+        });
+        updateActions();
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not save the text.';
+      } finally {
+        saveButton.disabled = false;
+        revertButton.disabled = false;
+      }
+    });
+
+    window.addEventListener('vcd:dev-mode-change', (event) => {
+      setEditingEnabled(Boolean((event as CustomEvent<{ active: boolean }>).detail?.active));
+    });
+    window.addEventListener('beforeunload', (event) => {
+      if (!dirtyStates().length) return;
+      event.preventDefault();
+      event.returnValue = '';
+    });
+
+    setEditingEnabled(document.documentElement.classList.contains('is-dev-mode'));
+  };
+
+  initDevTextEditor();
+</script>
+
+<style is:global>
+  .is-dev-mode [data-dev-text-document] {
+    border-radius: 0.15em;
+    cursor: text;
+    outline: 1px dashed transparent;
+    outline-offset: 0.2em;
+    transition: outline-color 0.15s ease, background-color 0.15s ease;
+  }
+
+  .is-dev-mode [data-dev-text-document]:hover,
+  .is-dev-mode [data-dev-text-document]:focus {
+    outline-color: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
+  }
+
+  .is-dev-mode [data-dev-text-document]:focus,
+  .is-dev-mode [data-dev-text-document].is-dev-text-dirty {
+    background: color-mix(in srgb, var(--color-surface-soft) 72%, transparent);
+  }
+
+  .dev-text-actions {
+    position: fixed;
+    right: max(1em, env(safe-area-inset-right));
+    bottom: max(1em, env(safe-area-inset-bottom));
+    z-index: 90;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    padding: 0.4em;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
+    box-shadow: 0 0.4em 1.4em rgb(0 0 0 / 0.12);
+    backdrop-filter: blur(12px);
+  }
+
+  .dev-text-actions[hidden] {
+    display: none;
+  }
+
+  .dev-text-actions__status {
+    padding-inline: 0.45em;
+    color: var(--color-text-soft);
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .dev-text-actions button {
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.2em);
+    background: transparent;
+    padding: 0.55em 0.75em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .dev-text-actions button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .dev-text-actions button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
+  .dev-text-actions .dev-text-actions__save {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .dev-text-actions .dev-text-actions__save:hover {
+    background: var(--color-text-soft);
+  }
+</style>

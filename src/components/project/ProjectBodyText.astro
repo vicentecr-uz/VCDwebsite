@@ -1,0 +1,23 @@
+---
+interface Props {
+  paragraphs: string[];
+  documentKey?: string;
+  pathPrefix?: Array<string | number>;
+}
+
+const { paragraphs, documentKey, pathPrefix } = Astro.props;
+const editable = import.meta.env.DEV && documentKey && pathPrefix;
+---
+
+<section class="project-block">
+  <div
+    class="project-body-text"
+    data-dev-text-document={editable ? documentKey : undefined}
+    data-dev-text-path={editable ? JSON.stringify(pathPrefix) : undefined}
+    data-dev-text-kind={editable ? 'paragraphs' : undefined}
+  >
+    {paragraphs.map((paragraph) => (
+      <p set:html={paragraph} />
+    ))}
+  </div>
+</section>
