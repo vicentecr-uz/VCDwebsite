@@ -47,7 +47,9 @@ export function responsiveImageStyle(
 ): string {
   return VIEWPORTS.flatMap((viewport) => {
     const variant = variants[viewport];
-    const ratio = variant.aspectRatio.replace(':', ' / ');
+    const ratio = variant.aspectRatio === 'original'
+      ? 'var(--project-image-original-ratio, 1 / 1)'
+      : variant.aspectRatio.replace(':', ' / ');
     return [
       `--project-image-ratio-${viewport}:${ratio}`,
       `--project-image-x-${viewport}:${variant.x}%`,

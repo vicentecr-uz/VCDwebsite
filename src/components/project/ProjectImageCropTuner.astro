@@ -18,6 +18,7 @@ import DevOverlay from '../DevOverlay.astro';
     <label class="tapico-crop-tuner__select">
       <span>Aspect ratio</span>
       <select data-crop-aspect-ratio>
+        <option value="original">Original</option>
         <optgroup label="Landscape">
           <option value="16:9">16:9</option>
           <option value="16:10">16:10</option>
@@ -263,7 +264,9 @@ import DevOverlay from '../DevOverlay.astro';
     ) => {
       target.style.setProperty(
         `--project-image-ratio-${viewport}`,
-        crop.aspectRatio.replace(':', ' / '),
+        crop.aspectRatio === 'original'
+          ? 'var(--project-image-original-ratio, 1 / 1)'
+          : crop.aspectRatio.replace(':', ' / '),
       );
       target.style.setProperty(`--project-image-x-${viewport}`, `${crop.x}%`);
       target.style.setProperty(`--project-image-y-${viewport}`, `${crop.y}%`);
@@ -274,11 +277,19 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const renderDraft = () => {
-      preview.style.aspectRatio = draft.aspectRatio.replace(':', ' / ');
+      preview.style.aspectRatio = draft.aspectRatio === 'original'
+        ? `${previewImage.naturalWidth || 1} / ${previewImage.naturalHeight || 1}`
+        : draft.aspectRatio.replace(':', ' / ');
       syncCoverSizes();
       constrainDraft();
       draftVariants[selectedViewport] = { ...draft };
       setCropVariables(preview, draft);
+      if (editedImage.naturalWidth && editedImage.naturalHeight) {
+        editTarget.style.setProperty(
+          '--project-image-original-ratio',
+          `${editedImage.naturalWidth} / ${editedImage.naturalHeight}`,
+        );
+      }
       setTargetVariant(editTarget, selectedViewport, draft);
       editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
       aspectRatioSelect.value = draft.aspectRatio;
