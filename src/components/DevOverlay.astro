@@ -31,15 +31,27 @@ const {
       <p class="dev-overlay__title">{title}</p>
       {
         showMinimize && (
-          <button
-            type="button"
-            class="dev-overlay__minimize-btn"
-            data-drag-ignore
-            data-minimize-toggle
-            aria-expanded="true"
-          >
-            Minimize
-          </button>
+          <div class="dev-overlay__lights" data-drag-ignore>
+            <button
+              type="button"
+              class="dev-overlay__light dev-overlay__light--minimize"
+              data-minimize-toggle
+              aria-label="Minimize"
+              title="Minimize"
+              aria-expanded="true"
+            >
+              <span class="dev-overlay__light-icon" aria-hidden="true"></span>
+            </button>
+            <button
+              type="button"
+              class="dev-overlay__light dev-overlay__light--hide"
+              data-hide-toggle
+              aria-label="Hide"
+              title="Hide"
+            >
+              <span class="dev-overlay__light-icon" aria-hidden="true"></span>
+            </button>
+          </div>
         )
       }
     </div>
@@ -60,6 +72,7 @@ const {
     const minimizedStorageKey = `${storageKey}:minimized`;
     const defaultMinimized = overlay.dataset.defaultMinimized === 'true';
     const dragHandle = overlay.querySelector<HTMLElement>('[data-drag-handle]');
+    const hideBtn = overlay.querySelector<HTMLButtonElement>('[data-hide-toggle]');
     const minimizeBtn = overlay.querySelector<HTMLButtonElement>('[data-minimize-toggle]');
     const body = overlay.querySelector<HTMLElement>('[data-overlay-body]');
     if (!dragHandle || !body) return;
@@ -105,13 +118,21 @@ const {
       body.hidden = minimized;
       if (minimizeBtn) {
         minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
-        minimizeBtn.textContent = minimized ? 'Expand' : 'Minimize';
+        minimizeBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
+        minimizeBtn.title = minimized ? 'Expand' : 'Minimize';
       }
       try {
         window.localStorage.setItem(minimizedStorageKey, minimized ? 'true' : 'false');
       } catch {
         // Ignore storage failures.
       }
+    };
+
+    const hideOverlay = () => {
+      overlay.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+        detail: { panel: overlay },
+      }));
     };
 
     const readMinimized = () => {
@@ -179,7 +200,13 @@ const {
     dragHandle.addEventListener('pointerup', endDrag);
     dragHandle.addEventListener('pointercancel', endDrag);
 
-    minimizeBtn?.addEventListener('click', () => {
+    hideBtn?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      hideOverlay();
+    });
+
+    minimizeBtn?.addEventListener('click', (event) => {
+      event.stopPropagation();
       setMinimized(!overlay.classList.contains('is-minimized'));
     });
 
@@ -216,12 +243,15 @@ const {
   }
 
   .dev-overlay__surface {
+    --dev-overlay-pad: 0.75em;
+    --dev-overlay-light-size: 0.9em;
+    position: relative;
     border-radius: var(--radius-card-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
     background: color-mix(in srgb, var(--color-surface-soft) 96%, transparent);
     backdrop-filter: blur(8px);
-    padding: 0.75em;
+    padding: var(--dev-overlay-pad);
     display: flex;
     flex-direction: column;
     gap: 0.65em;
@@ -234,8 +264,9 @@ const {
   .dev-overlay__head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.6em;
+    /* Reserve the corner for traffic lights (2 × size + gap). */
+    padding-right: calc(var(--dev-overlay-light-size) * 2 + 0.4em + 0.35em);
+    min-height: var(--dev-overlay-light-size);
     cursor: grab;
     user-select: none;
     touch-action: none;
@@ -253,18 +284,87 @@ const {
     color: var(--color-text-muted);
   }
 
-  .dev-overlay__minimize-btn {
+  /*
+    Park lights on the top-right corner diagonal: equal inset from top and right
+    so a 45° line from the squared corner passes through the hide button’s centre.
+  */
+  .dev-overlay__lights {
+    position: absolute;
+    top: calc(var(--dev-overlay-pad) - 0.35em);
+    right: calc(var(--dev-overlay-pad) - 0.35em);
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    /* Hover slop around the circles; compensated in top/right so visuals stay on the pad. */
+    padding: 0.35em;
+    cursor: default;
+  }
+
+  .dev-overlay__light {
+    position: relative;
+    box-sizing: border-box;
+    width: var(--dev-overlay-light-size);
+    height: var(--dev-overlay-light-size);
+    flex: 0 0 auto;
     border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--color-surface-strong);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1;
-    padding: 0.25em 0.5em;
-    color: var(--color-text-muted);
+    border-radius: 50%;
+    padding: 0;
+    background: color-mix(in srgb, var(--color-text) 18%, transparent);
+    color: transparent;
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .dev-overlay__light-icon {
+    position: absolute;
+    inset: 0;
+    display: block;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .dev-overlay__light-icon::before,
+  .dev-overlay__light-icon::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    width: 0.42em;
+    height: 1px;
+    margin: auto;
+    background: currentColor;
+  }
+
+  /* Hide (close): × — rotate a centred bar (inset + margin:auto keeps true centre). */
+  .dev-overlay__light--hide .dev-overlay__light-icon::before {
+    transform: rotate(45deg);
+  }
+
+  .dev-overlay__light--hide .dev-overlay__light-icon::after {
+    transform: rotate(-45deg);
+  }
+
+  /* Minimize: − */
+  .dev-overlay__light--minimize .dev-overlay__light-icon::after {
+    display: none;
+  }
+
+  .dev-overlay__lights:hover .dev-overlay__light--hide,
+  .dev-overlay__light--hide:focus-visible {
+    background: #ff5f57;
+    color: #4d0000;
+  }
+
+  .dev-overlay__lights:hover .dev-overlay__light--minimize,
+  .dev-overlay__light--minimize:focus-visible {
+    background: #febc2e;
+    color: #995700;
+  }
+
+  .dev-overlay__lights:hover .dev-overlay__light-icon,
+  .dev-overlay__light:focus-visible .dev-overlay__light-icon {
+    opacity: 1;
   }
 
   .dev-overlay__body {
