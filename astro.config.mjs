@@ -21,6 +21,7 @@ const EDITABLE_COLOR_TOKENS = new Set([
 ]);
 const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
 const IMAGE_ASPECT_RATIOS = new Set([
+  'original',
   '16:9',
   '16:10',
   '3:2',
