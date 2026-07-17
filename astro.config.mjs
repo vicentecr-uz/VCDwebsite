@@ -91,6 +91,34 @@ function imageCropDevWriter() {
             return;
           }
 
+          const file = path.join(process.cwd(), relativeFile);
+          const data = JSON.parse(await readFile(file, 'utf8'));
+
+          let target = data;
+          for (const part of fieldPath) {
+            if (
+              target === null ||
+              typeof target !== 'object' ||
+              !Object.prototype.hasOwnProperty.call(target, part)
+            ) {
+              send(404, { error: 'That image path no longer exists.' });
+              return;
+            }
+            target = target[part];
+          }
+          if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+            send(404, { error: 'That image path does not point to an image.' });
+            return;
+          }
+
+          if (body.clearVariants === true) {
+            delete target.variants;
+            delete target.crop;
+            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+            send(200, { ok: true, document: documentKey, cleared: true });
+            return;
+          }
+
           const requestedVariants = body.variants && typeof body.variants === 'object'
             ? body.variants
             : {};
@@ -121,6 +149,81 @@ function imageCropDevWriter() {
             return;
           }
 
+          target.variants ||= {};
+          Object.assign(target.variants, variants);
+          delete target.crop;
+          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          send(200, { ok: true, document: documentKey, variants });
+        } catch {
+          send(400, { error: 'Could not parse or write the crop.' });
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Dev-only writer for multi-row image-grid settings (per-breakpoint columns,
+ * default aspect, and visible/parking layouts with waterfall inheritance).
+ *
+ * @returns {import('vite').Plugin}
+ */
+function imageGridDevWriter() {
+  return {
+    name: 'image-grid-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/image-grid', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+
+          const documentKey = String(body.document || '');
+          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const fieldPath = body.path;
+          if (
+            !relativeFile ||
+            !Array.isArray(fieldPath) ||
+            !fieldPath.length ||
+            fieldPath.length > 8 ||
+            !fieldPath.every(isSafePathPart)
+          ) {
+            send(400, { error: 'That grid is not editable.' });
+            return;
+          }
+
+          const requestedColumns = body.columns && typeof body.columns === 'object'
+            ? body.columns
+            : {};
+          /** @type {Record<string, number>} */
+          const columns = {};
+          for (const viewport of IMAGE_VIEWPORTS) {
+            const count = Number(requestedColumns[viewport]);
+            if (!Number.isFinite(count) || count < 1 || count > 6) {
+              send(400, { error: 'Use 1–6 columns for each display width.' });
+              return;
+            }
+            columns[viewport] = Math.round(count);
+          }
+
+          const defaultAspectRatio = String(body.defaultAspectRatio || '');
+          if (!isAllowedAspectRatio(defaultAspectRatio)) {
+            send(400, { error: 'Use a supported default aspect ratio.' });
+            return;
+          }
+
           const file = path.join(process.cwd(), relativeFile);
           const data = JSON.parse(await readFile(file, 'utf8'));
 
@@ -131,23 +234,56 @@ function imageCropDevWriter() {
               typeof target !== 'object' ||
               !Object.prototype.hasOwnProperty.call(target, part)
             ) {
-              send(404, { error: 'That image path no longer exists.' });
+              send(404, { error: 'That grid path no longer exists.' });
               return;
             }
             target = target[part];
           }
           if (target === null || typeof target !== 'object' || Array.isArray(target)) {
-            send(404, { error: 'That image path does not point to an image.' });
+            send(404, { error: 'That path does not point to a grid.' });
             return;
           }
 
-          target.variants ||= {};
-          Object.assign(target.variants, variants);
-          delete target.crop;
+          const itemIds = Array.isArray(target.items)
+            ? target.items.map((item, index) => String(item?.id || `item-${index}`))
+            : [];
+          const knownIds = new Set(itemIds);
+          /** @type {Record<string, { visible: string[] }>} */
+          const layouts = {};
+          const requestedLayouts = body.layouts && typeof body.layouts === 'object'
+            ? body.layouts
+            : {};
+          for (const viewport of IMAGE_VIEWPORTS) {
+            const visible = requestedLayouts[viewport]?.visible;
+            if (!Array.isArray(visible)) continue;
+            const seen = new Set();
+            const cleaned = [];
+            for (const rawId of visible) {
+              const id = String(rawId || '');
+              if (!knownIds.has(id) || seen.has(id)) continue;
+              seen.add(id);
+              cleaned.push(id);
+            }
+            layouts[viewport] = { visible: cleaned };
+          }
+
+          target.columns = columns;
+          target.defaultAspectRatio = defaultAspectRatio;
+          if (Object.keys(layouts).length) {
+            target.layouts = layouts;
+          } else {
+            delete target.layouts;
+          }
+          // Prefer layouts over legacy per-item hide flags.
+          if (Array.isArray(target.items)) {
+            for (const item of target.items) {
+              if (item && typeof item === 'object') delete item.hideOnMobile;
+            }
+          }
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-          send(200, { ok: true, document: documentKey, variants });
+          send(200, { ok: true, document: documentKey, columns, defaultAspectRatio, layouts });
         } catch {
-          send(400, { error: 'Could not parse or write the crop.' });
+          send(400, { error: 'Could not parse or write the grid settings.' });
         }
       });
     },
@@ -457,6 +593,7 @@ export default defineConfig({
     plugins: [
       tailwindcss(),
       imageCropDevWriter(),
+      imageGridDevWriter(),
       styleTokenDevWriter(),
       contentTextDevWriter(),
       contentSpacingDevWriter(),

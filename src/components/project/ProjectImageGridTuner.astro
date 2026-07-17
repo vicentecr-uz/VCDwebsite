@@ -405,6 +405,7 @@ import DevOverlay from '../DevOverlay.astro';
         '--project-grid-tuner-columns',
         String(draftColumns[selectedViewport]),
       );
+      visibleBoard.dataset.gridColumns = String(draftColumns[selectedViewport]);
       visibleBoard.replaceChildren(
         ...resolved.visible
           .map((id) => byId.get(id))
@@ -645,6 +646,13 @@ import DevOverlay from '../DevOverlay.astro';
 
   .project-grid-tuner__visible {
     grid-template-columns: repeat(var(--project-grid-tuner-columns, 4), minmax(0, 1fr));
+  }
+
+  /* Few columns → large cells; keep thumbs compact so the parking lot stays in view. */
+  .project-grid-tuner__visible[data-grid-columns='1'],
+  .project-grid-tuner__visible[data-grid-columns='2'] {
+    grid-template-columns: repeat(var(--project-grid-tuner-columns, 2), minmax(0, 2.5em));
+    justify-content: start;
   }
 
   .project-grid-tuner__parking {

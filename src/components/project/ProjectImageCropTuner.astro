@@ -87,6 +87,7 @@ import DevOverlay from '../DevOverlay.astro';
     <div class="tapico-crop-tuner__actions">
       <button type="button" data-crop-reset>Reset</button>
       <button type="button" data-crop-revert>Revert changes</button>
+      <button type="button" data-crop-use-grid-default hidden>Use grid default</button>
       <button type="button" data-crop-save>Save changes</button>
     </div>
 
@@ -127,6 +128,7 @@ import DevOverlay from '../DevOverlay.astro';
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-crop-save]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
+    const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
     if (
@@ -145,6 +147,7 @@ import DevOverlay from '../DevOverlay.astro';
       !saveButton ||
       !revertButton ||
       !resetButton ||
+      !useGridDefaultButton ||
       !initialTarget ||
       !initialImage
     ) return;
@@ -248,6 +251,23 @@ import DevOverlay from '../DevOverlay.astro';
     let savedSinceSelect = false;
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
+
+    const gridDefaultAspectFor = (target: HTMLElement) => (
+      target.dataset.devGridDefaultAspect
+      || target.closest<HTMLElement>('[data-dev-grid-default-aspect]')?.dataset.devGridDefaultAspect
+      || '1:1'
+    );
+
+    const gridDefaultVariantsFor = (target: HTMLElement): Record<ImageViewport, CropState> => {
+      const aspectRatio = gridDefaultAspectFor(target);
+      const base = { aspectRatio, x: 0, y: 0, zoom: 1 };
+      return { desktop: { ...base }, tablet: { ...base }, mobile: { ...base } };
+    };
+
+    const syncUseGridDefaultButton = () => {
+      const show = isGridTarget(editTarget) && editTarget.dataset.devHasOwnVariants === 'true';
+      useGridDefaultButton.hidden = !show;
+    };
 
     const readAppliedVariants = (
       target: HTMLElement,
@@ -440,6 +460,10 @@ import DevOverlay from '../DevOverlay.astro';
         savedVariants = structuredClone(draftVariants);
         targetWasCropped = true;
         savedSinceSelect = true;
+        if (isGridTarget(editTarget)) {
+          editTarget.dataset.devHasOwnVariants = 'true';
+          syncUseGridDefaultButton();
+        }
         status.textContent = `Saved all display crops to ${documentKey} — commit & push to publish.`;
       } catch (error) {
         status.textContent = error instanceof Error
@@ -500,6 +524,7 @@ import DevOverlay from '../DevOverlay.astro';
       }
       renderConstraint();
       renderDraft();
+      syncUseGridDefaultButton();
       if (live) status.textContent = 'Editing this image. Changes update the page live.';
     };
 
@@ -709,6 +734,54 @@ import DevOverlay from '../DevOverlay.astro';
       draft = { ...defaults, aspectRatio: draft.aspectRatio };
       renderDraft();
       status.textContent = 'Reset to centred cover — unsaved changes.';
+    });
+
+    useGridDefaultButton.addEventListener('click', async () => {
+      if (!isGridTarget(editTarget) || editTarget.dataset.devHasOwnVariants !== 'true') return;
+      const documentKey = editTarget.dataset.devDocument;
+      let imagePath: Array<string | number> = [];
+      try {
+        imagePath = JSON.parse(editTarget.dataset.devImagePath || '[]');
+      } catch {
+        imagePath = [];
+      }
+      if (!documentKey || !Array.isArray(imagePath) || !imagePath.length) {
+        status.textContent = 'This image is not wired for saving.';
+        return;
+      }
+      useGridDefaultButton.disabled = true;
+      status.textContent = 'Reverting to grid default…';
+      try {
+        const response = await fetch('/api/image-crop', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: documentKey,
+            path: imagePath,
+            clearVariants: true,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || `Save failed (${response.status})`);
+        }
+        delete editTarget.dataset.devHasOwnVariants;
+        savedVariants = gridDefaultVariantsFor(editTarget);
+        draftVariants = structuredClone(savedVariants);
+        saved = { ...savedVariants[selectedViewport] };
+        draft = { ...saved };
+        targetWasCropped = true;
+        savedSinceSelect = true;
+        renderDraft();
+        syncUseGridDefaultButton();
+        status.textContent = `Cleared custom crop — now using the grid default (${gridDefaultAspectFor(editTarget)}).`;
+      } catch (error) {
+        status.textContent = error instanceof Error
+          ? error.message
+          : 'Could not revert to grid default.';
+      } finally {
+        useGridDefaultButton.disabled = false;
+      }
     });
   };
 
@@ -1110,8 +1183,8 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .tapico-crop-tuner__actions {
-    display: grid;
-    grid-template-columns: 0.7fr 1fr 1.35fr;
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.4em;
   }
 
@@ -1121,7 +1194,7 @@ import DevOverlay from '../DevOverlay.astro';
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
     background: var(--color-surface-soft);
-    padding: 0.5em;
+    padding: 0.5em 0.65em;
     color: var(--color-text);
     font: inherit;
     font-size: 0.75rem;
@@ -1132,6 +1205,7 @@ import DevOverlay from '../DevOverlay.astro';
   .tapico-crop-tuner__actions button[data-crop-save] {
     background: var(--color-text);
     color: #ffffff;
+    margin-left: auto;
   }
 
   .tapico-crop-tuner__actions button:hover {
@@ -1140,5 +1214,9 @@ import DevOverlay from '../DevOverlay.astro';
 
   .tapico-crop-tuner__actions button[data-crop-save]:hover {
     background: var(--color-text-soft);
+  }
+
+  .tapico-crop-tuner__actions button[hidden] {
+    display: none;
   }
 </style>
