@@ -1,5 +1,9 @@
 ---
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
 
 interface Props {
   text?: string;
@@ -8,13 +12,24 @@ interface Props {
   linkLabel?: string;
   linkHref?: string;
   spacing?: ProjectStackSpacing;
+  document?: string;
+  sectionPath?: Array<string | number>;
 }
 
-const { text, prefix, linkLabel, linkHref, spacing = 'section' } = Astro.props;
+const {
+  text,
+  prefix,
+  linkLabel,
+  linkHref,
+  spacing = 'section',
+  document: documentKey,
+  sectionPath,
+} = Astro.props;
 const stackClass = projectStackClass(spacing, { precedeRelated: true });
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 ---
 
-<div class:list={['project-block', stackClass]}>
+<div class:list={['project-block', stackClass]} {...(spacingAttrs ?? {})}>
   <h1 class="project-tagline">
     {linkHref ? (
       <>{prefix}{' '}<a href={linkHref} target="_blank" rel="noopener noreferrer" class="project-inline-link">{linkLabel}</a>.</>

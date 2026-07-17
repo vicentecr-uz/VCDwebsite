@@ -23,7 +23,7 @@ import ProjectSketchModels from './ProjectSketchModels.astro';
 import ProjectVideo from './ProjectVideo.astro';
 import ProjectFinalHero from './ProjectFinalHero.astro';
 import { projectImage } from '../../lib/images';
-import { projectStackClass, resolveProjectSpacing } from '../../lib/projectStack';
+import { projectStackClass, resolveProjectSpacing, spacingDevAttrs } from '../../lib/projectStack';
 
 interface Props {
   sections: any[];
@@ -35,6 +35,7 @@ const { sections, documentKey } = Astro.props;
 
 {sections.map((section, sectionIndex) => {
   const spacing = resolveProjectSpacing(section.spacing, section.tightTop);
+  const sectionPath = ['sections', sectionIndex];
   return (
   <>
     {section.type === 'heroImage' && (
@@ -46,7 +47,7 @@ const { sections, documentKey } = Astro.props;
         crop={section.crop}
         variants={section.variants}
         document={documentKey}
-        path={['sections', sectionIndex]}
+        path={sectionPath}
         cropId="hero"
         spacing={spacing}
       />
@@ -57,7 +58,7 @@ const { sections, documentKey } = Astro.props;
         items={section.items}
         columns={section.columns ?? 2}
         document={documentKey}
-        basePath={['sections', sectionIndex]}
+        basePath={sectionPath}
         spacing={spacing}
       />
     )}
@@ -69,6 +70,8 @@ const { sections, documentKey } = Astro.props;
         linkLabel={section.linkLabel}
         linkHref={section.linkHref}
         spacing={spacing}
+        document={documentKey}
+        sectionPath={sectionPath}
       />
     )}
 
@@ -87,6 +90,8 @@ const { sections, documentKey } = Astro.props;
         level={section.level ?? 2}
         tightBottom={section.tightBottom ?? true}
         spacing={spacing}
+        document={documentKey}
+        sectionPath={sectionPath}
       />
     )}
 
@@ -94,6 +99,8 @@ const { sections, documentKey } = Astro.props;
       <ProjectProse
         spacing={spacing}
         tightBottom={section.tightBottom ?? false}
+        document={documentKey}
+        sectionPath={sectionPath}
       >
         {section.heading && <h4 class="project-section-title">{section.heading}</h4>}
         {section.paragraphs.map((paragraph) => (
@@ -104,13 +111,16 @@ const { sections, documentKey } = Astro.props;
 
     {section.type === 'image' && (
       section.showMobileOnly ? (
-        <div class:list={['project-show-mobile-only', projectStackClass(spacing, { flush: section.flush })]}>
+        <div
+          class:list={['project-show-mobile-only', projectStackClass(spacing, { flush: section.flush })]}
+          {...(spacingDevAttrs(documentKey, sectionPath, spacing) ?? {})}
+        >
           <ProjectImage
             src={section.src}
             alt={section.alt}
             variants={section.variants}
             document={documentKey}
-            path={['sections', sectionIndex]}
+            path={sectionPath}
             constrained={section.constrained ?? false}
             mobileHeight={section.mobileHeight}
             flush={section.flush ?? false}
@@ -127,7 +137,7 @@ const { sections, documentKey } = Astro.props;
           alt={section.alt}
           variants={section.variants}
           document={documentKey}
-          path={['sections', sectionIndex]}
+          path={sectionPath}
           constrained={section.constrained ?? false}
           mobileHeight={section.mobileHeight}
           flush={section.flush ?? false}
@@ -142,7 +152,12 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'mediaGrid' && (
-      <ProjectGrid cols={section.cols} spacing={spacing}>
+      <ProjectGrid
+        cols={section.cols}
+        spacing={spacing}
+        document={documentKey}
+        sectionPath={sectionPath}
+      >
         {section.items.map((item) => (
           <>
             {item.style === 'caption' && (
@@ -175,7 +190,10 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'constrainedCaptionImage' && (
-      <div class:list={['project-block', projectStackClass(spacing)]}>
+      <div
+        class:list={['project-block', projectStackClass(spacing)]}
+        {...(spacingDevAttrs(documentKey, sectionPath, spacing) ?? {})}
+      >
         <figure class="project-media project-media--constrained">
           <span class:list={['project-caption', section.captionVariant === 'dark' && 'project-caption--dark', section.captionVariant === 'black' && 'project-caption--black']}>
             {section.caption}

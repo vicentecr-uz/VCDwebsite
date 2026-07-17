@@ -1,19 +1,29 @@
 ---
-import { projectStackClass, resolveProjectSpacing, type ProjectStackSpacing } from '../../lib/projectStack';
+import {
+  projectStackClass,
+  resolveProjectSpacing,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
 
 interface Props {
   tightTop?: boolean;
   tightBottom?: boolean;
   /** Prefer over tightTop when set. */
   spacing?: ProjectStackSpacing;
+  document?: string;
+  sectionPath?: Array<string | number>;
 }
 
-const { tightTop = false, tightBottom = false, spacing } = Astro.props;
-const stackClass = projectStackClass(resolveProjectSpacing(spacing, tightTop), {
+const { tightTop = false, tightBottom = false, spacing, document: documentKey, sectionPath } =
+  Astro.props;
+const resolved = resolveProjectSpacing(spacing, tightTop);
+const stackClass = projectStackClass(resolved, {
   precedeRelated: tightBottom,
 });
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, resolved);
 ---
 
-<section class:list={['project-block', 'project-prose', stackClass]}>
+<section class:list={['project-block', 'project-prose', stackClass]} {...(spacingAttrs ?? {})}>
   <slot />
 </section>

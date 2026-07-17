@@ -5,7 +5,11 @@ import {
   responsiveImageStyle,
   type ImageVariants,
 } from '../../lib/responsiveImage';
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
 
 interface Props {
   src: string;
@@ -61,6 +65,7 @@ const {
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing, { flush });
+const spacingAttrs = spacingDevAttrs(documentKey, path, spacing);
 
 const isLead = kind === 'lead';
 const hasCrop = !!suppliedVariants && Object.values(suppliedVariants).some(
@@ -96,6 +101,7 @@ const editAttrs = editable
     ]}
     style={normalized ? responsiveImageStyle(normalized) : undefined}
     {...editAttrs}
+    {...(spacingAttrs ?? {})}
   >
     <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
     {editable && (
@@ -111,7 +117,10 @@ const editAttrs = editable
     )}
   </div>
 ) : (
-  <div class:list={['project-block', centered && 'project-block--centered', hideMobile && 'project-hide-mobile', stackClass]}>
+  <div
+    class:list={['project-block', centered && 'project-block--centered', hideMobile && 'project-hide-mobile', stackClass]}
+    {...(spacingAttrs ?? {})}
+  >
     <figure
       class:list={[
         'project-media',
