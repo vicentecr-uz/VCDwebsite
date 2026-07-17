@@ -1,0 +1,616 @@
+---
+import DevOverlay from '../DevOverlay.astro';
+---
+
+<DevOverlay title="Tapico hero crop" storageKey="tapico-hero-crop">
+  <div class="tapico-crop-tuner" data-tapico-crop-tuner>
+    <div class="tapico-crop-tuner__preview" data-crop-preview>
+      <img alt="" data-crop-image draggable="false" />
+      <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
+      <span class="tapico-crop-tuner__drag-label">Drag to reposition</span>
+    </div>
+
+    <div class="tapico-crop-tuner__toolbar" aria-label="Crop controls">
+      <button type="button" data-crop-center-x aria-label="Centre horizontally">
+        <span class="tapico-crop-tuner__align-icon tapico-crop-tuner__align-icon--x" aria-hidden="true"></span>
+      </button>
+      <button type="button" data-crop-center-y aria-label="Centre vertically">
+        <span class="tapico-crop-tuner__align-icon tapico-crop-tuner__align-icon--y" aria-hidden="true"></span>
+      </button>
+      <button
+        type="button"
+        class="tapico-crop-tuner__constraint"
+        data-crop-constraint
+        aria-pressed="true"
+      >
+        <span class="tapico-crop-tuner__lock-icon" aria-hidden="true"></span>
+        <span data-crop-constraint-state>Crop locked</span>
+      </button>
+    </div>
+
+    <label class="tapico-crop-tuner__control">
+      <span>Zoom</span>
+      <input data-crop-zoom type="range" min="1" max="1.5" step="0.01" value="1" />
+      <output data-crop-zoom-output>100%</output>
+    </label>
+
+    <p class="tapico-crop-tuner__readout" data-crop-readout>x 0.0% · y 0.0% · zoom 100%</p>
+
+    <div class="tapico-crop-tuner__actions">
+      <button type="button" data-crop-save>Save changes</button>
+      <button type="button" data-crop-revert>Revert changes</button>
+      <button type="button" data-crop-reset>Reset</button>
+    </div>
+
+    <p class="tapico-crop-tuner__status" data-crop-status aria-live="polite">
+      Hold Shift while dragging to lock movement to one axis.
+    </p>
+  </div>
+</DevOverlay>
+
+<script>
+  interface CropState {
+    x: number;
+    y: number;
+    zoom: number;
+  }
+
+  const initTapicoCropTuner = (tuner: HTMLElement) => {
+    if (tuner.dataset.initialized === 'true') return;
+    tuner.dataset.initialized = 'true';
+
+    const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
+    const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
+    const zoomInput = tuner.querySelector<HTMLInputElement>('[data-crop-zoom]');
+    const zoomOutput = tuner.querySelector<HTMLOutputElement>('[data-crop-zoom-output]');
+    const readout = tuner.querySelector<HTMLElement>('[data-crop-readout]');
+    const status = tuner.querySelector<HTMLElement>('[data-crop-status]');
+    const centerXButton = tuner.querySelector<HTMLButtonElement>('[data-crop-center-x]');
+    const centerYButton = tuner.querySelector<HTMLButtonElement>('[data-crop-center-y]');
+    const constraintButton = tuner.querySelector<HTMLButtonElement>('[data-crop-constraint]');
+    const constraintState = tuner.querySelector<HTMLElement>('[data-crop-constraint-state]');
+    const saveButton = tuner.querySelector<HTMLButtonElement>('[data-crop-save]');
+    const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
+    const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
+    const hero = document.querySelector<HTMLElement>('.project-hero--tapico');
+    const heroImage = hero?.querySelector<HTMLImageElement>('.project-hero__img');
+    if (
+      !preview ||
+      !previewImage ||
+      !zoomInput ||
+      !zoomOutput ||
+      !readout ||
+      !status ||
+      !centerXButton ||
+      !centerYButton ||
+      !constraintButton ||
+      !constraintState ||
+      !saveButton ||
+      !revertButton ||
+      !resetButton ||
+      !hero ||
+      !heroImage
+    ) return;
+
+    previewImage.src = heroImage.currentSrc || heroImage.src;
+
+    const defaults: CropState = { x: 0, y: 0, zoom: 1 };
+    const constraintStorageKey = 'tapicoHeroCropConstrained';
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+    const clean = (value: number) => Math.round(value * 10) / 10;
+    const formatSigned = (value: number) => `${value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}%`;
+
+    // Source of truth is the committed crop the page applied from tapico.json
+    // (inline CSS variables on the hero) — not browser storage.
+    const readAppliedCrop = (): CropState => {
+      const rawX = Number.parseFloat(hero.style.getPropertyValue('--tapico-crop-x'));
+      const rawY = Number.parseFloat(hero.style.getPropertyValue('--tapico-crop-y'));
+      const rawZoom = Number.parseFloat(hero.style.getPropertyValue('--tapico-crop-zoom'));
+      return {
+        x: Number.isFinite(rawX) ? clamp(rawX, -100, 100) : defaults.x,
+        y: Number.isFinite(rawY) ? clamp(rawY, -100, 100) : defaults.y,
+        zoom: Number.isFinite(rawZoom) ? clamp(rawZoom, 1, 1.5) : defaults.zoom,
+      };
+    };
+
+    const readConstraint = () => {
+      try {
+        return window.localStorage.getItem(constraintStorageKey) !== 'false';
+      } catch {
+        return true;
+      }
+    };
+
+    let saved: CropState = readAppliedCrop();
+    let draft: CropState = { ...saved };
+    let constrainToFrame = readConstraint();
+
+    const sizeImageToCover = (frame: HTMLElement, image: HTMLImageElement) => {
+      const frameWidth = frame.clientWidth;
+      const frameHeight = frame.clientHeight;
+      const imageWidth = image.naturalWidth;
+      const imageHeight = image.naturalHeight;
+      if (!frameWidth || !frameHeight || !imageWidth || !imageHeight) return null;
+
+      // Size slightly past exact cover so subpixel layout never exposes the frame.
+      const coverScale = Math.max(
+        (frameWidth + 2) / imageWidth,
+        (frameHeight + 2) / imageHeight,
+      );
+      const renderWidth = Math.ceil(imageWidth * coverScale);
+      const renderHeight = Math.ceil(imageHeight * coverScale);
+      image.style.width = `${renderWidth}px`;
+      image.style.height = `${renderHeight}px`;
+      return { frameWidth, frameHeight, renderWidth, renderHeight };
+    };
+
+    const syncCoverSizes = () => {
+      sizeImageToCover(hero, heroImage);
+      sizeImageToCover(preview, previewImage);
+    };
+
+    const limitsForSize = (sized: {
+      frameWidth: number;
+      frameHeight: number;
+      renderWidth: number;
+      renderHeight: number;
+    }) => {
+      // Keep 2px of image inside the frame at each extreme to absorb rounding.
+      const insetPx = 2;
+      return {
+        x: Math.max(
+          0,
+          ((sized.renderWidth * draft.zoom - sized.frameWidth) / 2 - insetPx) / sized.frameWidth * 100,
+        ),
+        y: Math.max(
+          0,
+          ((sized.renderHeight * draft.zoom - sized.frameHeight) / 2 - insetPx) / sized.frameHeight * 100,
+        ),
+      };
+    };
+
+    const getPanLimits = () => {
+      const heroSized = sizeImageToCover(hero, heroImage);
+      const previewSized = sizeImageToCover(preview, previewImage);
+      if (!heroSized && !previewSized) return { x: 0, y: 0 };
+      if (!heroSized) return limitsForSize(previewSized!);
+      if (!previewSized) return limitsForSize(heroSized);
+
+      const heroLimits = limitsForSize(heroSized);
+      const previewLimits = limitsForSize(previewSized);
+      return {
+        x: Math.min(heroLimits.x, previewLimits.x),
+        y: Math.min(heroLimits.y, previewLimits.y),
+      };
+    };
+
+    const constrainDraft = () => {
+      if (!constrainToFrame) return;
+      const limits = getPanLimits();
+      // Clamp after rounding so clean() cannot push past the lock edge.
+      draft.x = clamp(clean(draft.x), -limits.x, limits.x);
+      draft.y = clamp(clean(draft.y), -limits.y, limits.y);
+    };
+
+    const renderConstraint = () => {
+      constraintButton.setAttribute('aria-pressed', constrainToFrame ? 'true' : 'false');
+      constraintButton.classList.toggle('is-locked', constrainToFrame);
+      constraintState.textContent = constrainToFrame ? 'Crop locked' : 'Crop unlocked';
+    };
+
+    const setCropVariables = (element: HTMLElement, crop: CropState) => {
+      element.style.setProperty('--tapico-crop-x', `${crop.x}%`);
+      element.style.setProperty('--tapico-crop-y', `${crop.y}%`);
+      element.style.setProperty('--tapico-crop-zoom', crop.zoom.toString());
+    };
+
+    const renderDraft = () => {
+      syncCoverSizes();
+      constrainDraft();
+      setCropVariables(preview, draft);
+      setCropVariables(hero, draft);
+      zoomInput.value = draft.zoom.toString();
+      zoomOutput.value = `${Math.round(draft.zoom * 100)}%`;
+      readout.textContent = `x ${formatSigned(draft.x)} · y ${formatSigned(draft.y)} · zoom ${Math.round(draft.zoom * 100)}%`;
+    };
+
+    const saveDraft = async () => {
+      saveButton.disabled = true;
+      status.textContent = 'Saving to tapico.json…';
+      try {
+        const response = await fetch('/api/tapico-crop', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(draft),
+        });
+        if (!response.ok) throw new Error(`Save failed (${response.status})`);
+        saved = { ...draft };
+        status.textContent = 'Saved to tapico.json — commit & push to publish.';
+      } catch {
+        status.textContent = 'Save failed — is the dev server running?';
+      } finally {
+        saveButton.disabled = false;
+      }
+    };
+
+    renderConstraint();
+    renderDraft();
+    status.textContent = 'Loaded the committed crop. Changes update the page live.';
+
+    const refreshCover = () => {
+      if (heroImage.naturalWidth) renderDraft();
+    };
+
+    if (heroImage.complete) refreshCover();
+    heroImage.addEventListener('load', refreshCover);
+    previewImage.addEventListener('load', refreshCover);
+    window.addEventListener('resize', refreshCover);
+
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(refreshCover);
+    resizeObserver?.observe(hero);
+    resizeObserver?.observe(preview);
+
+    zoomInput.addEventListener('input', () => {
+      draft.zoom = clamp(Number(zoomInput.value), 1, 1.5);
+      renderDraft();
+      status.textContent = 'Unsaved changes.';
+    });
+
+    let pointerId: number | null = null;
+    let startX = 0;
+    let startY = 0;
+    let originX = 0;
+    let originY = 0;
+    let lockedAxis: 'x' | 'y' | null = null;
+
+    preview.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startY = event.clientY;
+      originX = draft.x;
+      originY = draft.y;
+      lockedAxis = null;
+      preview.classList.add('is-dragging');
+      preview.setPointerCapture(event.pointerId);
+    });
+
+    preview.addEventListener('pointermove', (event) => {
+      if (pointerId !== event.pointerId) return;
+      const bounds = preview.getBoundingClientRect();
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+
+      if (event.shiftKey && !lockedAxis && Math.hypot(deltaX, deltaY) >= 3) {
+        lockedAxis = Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y';
+      } else if (!event.shiftKey) {
+        lockedAxis = null;
+      }
+
+      const nextX = originX + (deltaX / bounds.width) * 100;
+      const nextY = originY + (deltaY / bounds.height) * 100;
+      draft.x = clean(clamp(lockedAxis === 'y' ? originX : nextX, -100, 100));
+      draft.y = clean(clamp(lockedAxis === 'x' ? originY : nextY, -100, 100));
+      renderDraft();
+      status.textContent = lockedAxis
+        ? `${lockedAxis.toUpperCase()} axis locked — unsaved changes.`
+        : 'Unsaved changes.';
+    });
+
+    const endDrag = (event: PointerEvent) => {
+      if (pointerId !== event.pointerId) return;
+      pointerId = null;
+      preview.classList.remove('is-dragging');
+      if (preview.hasPointerCapture(event.pointerId)) preview.releasePointerCapture(event.pointerId);
+    };
+
+    preview.addEventListener('pointerup', endDrag);
+    preview.addEventListener('pointercancel', endDrag);
+
+    centerXButton.addEventListener('click', () => {
+      draft.x = 0;
+      renderDraft();
+      status.textContent = 'Centred horizontally — unsaved changes.';
+    });
+
+    centerYButton.addEventListener('click', () => {
+      draft.y = 0;
+      renderDraft();
+      status.textContent = 'Centred vertically — unsaved changes.';
+    });
+
+    constraintButton.addEventListener('click', () => {
+      constrainToFrame = !constrainToFrame;
+      try {
+        window.localStorage.setItem(constraintStorageKey, constrainToFrame ? 'true' : 'false');
+      } catch {
+        // Keep the toggle active for this page load.
+      }
+      renderConstraint();
+      renderDraft();
+      status.textContent = constrainToFrame
+        ? 'Crop locked within the image bounds.'
+        : 'Crop unlocked — image edges may enter the frame.';
+    });
+
+    saveButton.addEventListener('click', saveDraft);
+
+    revertButton.addEventListener('click', () => {
+      draft = { ...saved };
+      renderDraft();
+      status.textContent = 'Reverted to the last saved crop.';
+    });
+
+    resetButton.addEventListener('click', () => {
+      draft = { ...defaults };
+      renderDraft();
+      status.textContent = 'Reset to centred cover — unsaved changes.';
+    });
+  };
+
+  document.querySelectorAll<HTMLElement>('[data-tapico-crop-tuner]').forEach(initTapicoCropTuner);
+</script>
+
+<style>
+  .tapico-crop-tuner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7em;
+  }
+
+  .tapico-crop-tuner__preview {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    background: #f5f5f5;
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    --tapico-crop-x: 0%;
+    --tapico-crop-y: 0%;
+    --tapico-crop-zoom: 1;
+  }
+
+  .tapico-crop-tuner__preview.is-dragging {
+    cursor: grabbing;
+  }
+
+  .tapico-crop-tuner__preview img {
+    position: absolute;
+    top: calc(50% + var(--tapico-crop-y));
+    left: calc(50% + var(--tapico-crop-x));
+    width: auto;
+    height: auto;
+    max-width: none;
+    object-fit: fill;
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(var(--tapico-crop-zoom));
+    transform-origin: center;
+  }
+
+  .tapico-crop-tuner__handle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 1.5em;
+    height: 1.5em;
+    border: 1px solid rgb(26 26 26 / 0.6);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .tapico-crop-tuner__handle::before,
+  .tapico-crop-tuner__handle::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    background: rgb(26 26 26 / 0.6);
+    transform: translate(-50%, -50%);
+  }
+
+  .tapico-crop-tuner__handle::before {
+    width: 2em;
+    height: 1px;
+  }
+
+  .tapico-crop-tuner__handle::after {
+    width: 1px;
+    height: 2em;
+  }
+
+  .tapico-crop-tuner__drag-label {
+    position: absolute;
+    right: 0.5em;
+    bottom: 0.45em;
+    padding: 0.2em 0.4em;
+    background: rgb(255 255 255 / 0.8);
+    font-size: 0.68rem;
+    color: var(--color-text-muted);
+    pointer-events: none;
+  }
+
+  .tapico-crop-tuner__control {
+    display: grid;
+    grid-template-columns: 3em 1fr 3em;
+    align-items: center;
+    gap: 0.6em;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .tapico-crop-tuner__toolbar {
+    display: grid;
+    grid-template-columns: 2.4em 2.4em 1fr;
+    gap: 0.4em;
+  }
+
+  .tapico-crop-tuner__toolbar > button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45em;
+    border: 1px solid var(--color-border);
+    background: #ffffff;
+    padding: 0.45em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.72rem;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__toolbar > button:hover {
+    border-color: var(--color-text-muted);
+  }
+
+  .tapico-crop-tuner__constraint {
+    justify-content: flex-start;
+    padding-inline: 0.55em;
+  }
+
+  .tapico-crop-tuner__constraint.is-locked {
+    border-color: color-mix(in srgb, var(--color-text) 45%, var(--color-border));
+    background: color-mix(in srgb, #ffffff 88%, #f0f0f0);
+  }
+
+  .tapico-crop-tuner__lock-icon {
+    position: relative;
+    display: inline-block;
+    width: 0.85em;
+    height: 1em;
+    flex: 0 0 auto;
+  }
+
+  .tapico-crop-tuner__lock-icon::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 0.5em;
+    height: 0.5em;
+    border: 1px solid currentColor;
+    border-bottom: 0;
+    border-radius: 0.35em 0.35em 0 0;
+    transform: translateX(-50%);
+    transform-origin: bottom left;
+    transition: transform 0.15s ease;
+  }
+
+  .tapico-crop-tuner__lock-icon::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 0.6em;
+    border: 1px solid currentColor;
+    background: #ffffff;
+  }
+
+  .tapico-crop-tuner__constraint:not(.is-locked) .tapico-crop-tuner__lock-icon::before {
+    transform: translateX(-15%) rotate(-24deg);
+  }
+
+  .tapico-crop-tuner__align-icon {
+    position: relative;
+    display: inline-block;
+    width: 1.1em;
+    height: 1.1em;
+    flex: 0 0 auto;
+  }
+
+  .tapico-crop-tuner__align-icon::before,
+  .tapico-crop-tuner__align-icon::after {
+    content: '';
+    position: absolute;
+    background: currentColor;
+  }
+
+  .tapico-crop-tuner__align-icon--x::before {
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+  }
+
+  .tapico-crop-tuner__align-icon--x::after {
+    top: 0.25em;
+    right: 0;
+    bottom: 0.25em;
+    left: 0;
+    border-right: 0.3em solid currentColor;
+    border-left: 0.3em solid currentColor;
+    background: transparent;
+  }
+
+  .tapico-crop-tuner__align-icon--y::before {
+    top: 50%;
+    right: 0;
+    left: 0;
+    height: 1px;
+    transform: translateY(-50%);
+  }
+
+  .tapico-crop-tuner__align-icon--y::after {
+    top: 0;
+    right: 0.25em;
+    bottom: 0;
+    left: 0.25em;
+    border-top: 0.3em solid currentColor;
+    border-bottom: 0.3em solid currentColor;
+    background: transparent;
+  }
+
+  .tapico-crop-tuner__control input {
+    width: 100%;
+    accent-color: var(--color-text);
+  }
+
+  .tapico-crop-tuner__control output {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tapico-crop-tuner__readout,
+  .tapico-crop-tuner__status {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tapico-crop-tuner__actions {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 0.7fr;
+    gap: 0.4em;
+  }
+
+  .tapico-crop-tuner__actions button {
+    border: 1px solid var(--color-border);
+    background: #ffffff;
+    padding: 0.5em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__actions button:first-child {
+    border-color: var(--color-text);
+    background: var(--color-text);
+    color: #ffffff;
+  }
+
+  .tapico-crop-tuner__actions button:hover {
+    border-color: var(--color-text-muted);
+  }
+</style>
