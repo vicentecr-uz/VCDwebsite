@@ -986,9 +986,10 @@
   }
 
   /* ── Section spacing picker (DEV) ───────────────────────── */
+  /* Sit in the middle of the margin-top gap above the section. */
   .dev-spacing-control {
     position: absolute;
-    top: 0;
+    top: calc(var(--space-section) / -2);
     left: 50%;
     z-index: 40;
     display: flex;
@@ -1003,6 +1004,23 @@
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
+  }
+
+  [data-dev-spacing-document].project-stack--related > .dev-spacing-control {
+    top: calc(var(--space-related) / -2);
+  }
+
+  [data-dev-spacing-document].project-stack--major > .dev-spacing-control {
+    top: calc(var(--space-major) / -2);
+  }
+
+  [data-dev-spacing-document].project-stack--none > .dev-spacing-control,
+  .project-stack--flush + [data-dev-spacing-document].project-stack--flush > .dev-spacing-control {
+    top: 0;
+  }
+
+  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--major):not(.project-stack--none) > .dev-spacing-control {
+    top: calc(var(--space-related) / -2);
   }
 
   .is-dev-mode .dev-spacing-control.is-near,
