@@ -17,8 +17,21 @@
   --color-border: #e0ddd8;
   --radius-card: 1em;
   --radius-control: 0.7em;
+  /* Corner curvature knob: superellipse(1)=round, 1.5=soft squircle, 2=squircle(pointier), higher=squarer */
+  --squircle-shape: superellipse(1.5);
+  /* Squircle-aware radii: × --corner-scale until polyfill applies in Safari/Firefox */
+  --radius-card-smooth: calc(var(--radius-card) * var(--corner-scale, 1));
+  --radius-control-smooth: calc(var(--radius-control) * var(--corner-scale, 1));
   --font-serif: 'EB Garamond', Georgia, serif;
   --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
+}
+
+/* Pre-hydration radius softening for browsers without native corner-shape (Safari/Firefox).
+   Tune toward 1 for rounder shapes; 0.6 suits squircle(2), ~0.78 suits superellipse(1.5). */
+@supports not (corner-shape: squircle) {
+  :root {
+    --corner-scale: 0.78;
+  }
 }
 
 /* ── Base ───────────────────────────────────────────────── */

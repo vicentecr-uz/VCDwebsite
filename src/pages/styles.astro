@@ -404,20 +404,17 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
               return (
                 <article class="token-card">
                   {editable ? (
-                    <div class="token-card__swatch-shell">
-                      <div class="token-card__swatch-ring" aria-hidden="true"></div>
-                      <button
-                        type="button"
-                        class="token-card__swatch"
-                        style={`background:${token.value};`}
-                        aria-label={`Edit ${token.name}`}
-                        data-dev-edit-trigger="style-color-token"
-                        data-color-token-name={token.name}
-                        data-color-token-value={token.value}
-                        data-color-token-saved-value={token.value}
-                        disabled
-                      ></button>
-                    </div>
+                    <button
+                      type="button"
+                      class="token-card__swatch"
+                      style={`background:${token.value};`}
+                      aria-label={`Edit ${token.name}`}
+                      data-dev-edit-trigger="style-color-token"
+                      data-color-token-name={token.name}
+                      data-color-token-value={token.value}
+                      data-color-token-saved-value={token.value}
+                      disabled
+                    ></button>
                   ) : (
                     <div class="token-card__swatch" style={`background:${token.value};`}></div>
                   )}
@@ -763,17 +760,32 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
     gap: 0.85em;
   }
 
-  .token-card,
   .type-card,
   .rule-card,
   .spacing-row,
   .component-card,
   .token-group {
     border: 0;
-    border-radius: var(--radius-card);
-    corner-shape: squircle;
+    border-radius: var(--radius-card-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
     padding: 1em;
     background-color: var(--color-surface-soft);
+  }
+
+  /*
+    Colour swatches: plain border-radius + box-shadow hover ring.
+    Squircle + Hyperellipse here fought nested clipping and could not keep a
+    uniform hover stroke (concentric squircles ≠ constant width).
+  */
+  .token-card {
+    border: 0;
+    border-radius: var(--radius-card-smooth);
+    padding: 1em;
+    background-color: var(--color-surface-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 0.6em;
   }
 
   .token-grid {
@@ -782,19 +794,12 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
     gap: 0.85em;
   }
 
-  .token-card {
-    display: flex;
-    flex-direction: column;
-    gap: 0.6em;
-  }
-
   .token-card__swatch {
     display: block;
     width: 100%;
     aspect-ratio: 4 / 2.5;
     border: 0;
     border-radius: var(--radius-control);
-    corner-shape: squircle;
     padding: 0;
     appearance: none;
   }
@@ -803,33 +808,14 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
     opacity: 1;
   }
 
-  /* Ring is a larger squircle behind the swatch (not box-shadow/scale). */
-  .token-card__swatch-shell {
-    position: relative;
-    isolation: isolate;
-  }
-
-  .token-card__swatch-ring {
-    position: absolute;
-    inset: -0.12em;
-    border-radius: calc(var(--radius-control) + 0.12em);
-    corner-shape: squircle;
-    background: var(--color-surface-strong);
-    opacity: 0;
-    z-index: 0;
-    pointer-events: none;
-    transition: opacity 0.18s ease;
-  }
-
-  :global(html.is-dev-mode) .token-card__swatch-shell:has(button:hover) .token-card__swatch-ring,
-  :global(html.is-dev-mode) .token-card__swatch-shell:has(button:focus-visible) .token-card__swatch-ring {
-    opacity: 1;
-  }
-
   :global(html.is-dev-mode) button.token-card__swatch {
-    position: relative;
-    z-index: 1;
     cursor: pointer;
+    transition: box-shadow 0.18s ease;
+  }
+
+  :global(html.is-dev-mode) button.token-card__swatch:hover,
+  :global(html.is-dev-mode) button.token-card__swatch:focus-visible {
+    box-shadow: 0 0 0 0.12em var(--color-text);
   }
 
   .type-card {
@@ -909,8 +895,9 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
 
   .spacing-row__sample-area {
     border: 0;
-    border-radius: var(--radius-control);
-    corner-shape: squircle;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
     background: var(--color-surface-strong);
     padding: 0.75em;
     display: flex;
@@ -1037,8 +1024,9 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
   .preview-note {
     margin: 0;
     padding: 0.75em 1em;
-    border-radius: var(--radius-control);
-    corner-shape: squircle;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
     background: var(--color-surface-strong);
     line-height: 1.45;
     color: color-mix(in srgb, var(--color-text) 80%, transparent);
