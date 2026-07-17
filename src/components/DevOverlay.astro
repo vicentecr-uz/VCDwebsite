@@ -4,6 +4,8 @@ interface Props {
   storageKey?: string;
   defaultMinimized?: boolean;
   showMinimize?: boolean;
+  panelKey?: string;
+  defaultHidden?: boolean;
 }
 
 const {
@@ -11,6 +13,8 @@ const {
   storageKey = 'default',
   defaultMinimized = false,
   showMinimize = true,
+  panelKey,
+  defaultHidden = false,
 } = Astro.props;
 ---
 
@@ -19,6 +23,8 @@ const {
   data-dev-overlay
   data-storage-key={storageKey}
   data-default-minimized={defaultMinimized ? 'true' : 'false'}
+  data-dev-panel-key={panelKey}
+  hidden={defaultHidden}
 >
   <div class="dev-overlay__head" data-drag-handle>
     <p class="dev-overlay__title">{title}</p>
@@ -203,6 +209,10 @@ const {
     font-family: var(--font-sans);
     color: var(--color-text);
     box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+  }
+
+  .dev-overlay[hidden] {
+    display: none;
   }
 
   .dev-overlay__head {

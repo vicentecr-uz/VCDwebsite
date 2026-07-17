@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import DevModeController from '../components/DevModeController.astro';
 
 interface Props {
   title: string;
@@ -13,6 +14,7 @@ const {
   description = 'Portfolio of Vicente Cruz — London-based industrial designer.',
   serif = false,
 } = Astro.props;
+const showDevTools = import.meta.env.DEV;
 ---
 
 <!doctype html>
@@ -40,6 +42,8 @@ const {
     <div id="site-wrapper">
       <slot />
     </div>
+
+    {showDevTools && <DevModeController />}
 
     <script>
       import gsap from 'gsap';

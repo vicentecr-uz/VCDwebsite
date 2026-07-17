@@ -1,0 +1,99 @@
+<script>
+  const initDevModeController = () => {
+    const storageKey = 'vcdDevMode';
+    let devMode = false;
+
+    try {
+      devMode = window.sessionStorage.getItem(storageKey) === 'true';
+    } catch {
+      // Keep dev mode scoped to this page load when storage is unavailable.
+    }
+
+    const cropTriggers = () =>
+      [...document.querySelectorAll<HTMLButtonElement>('[data-dev-crop-trigger]')];
+    const devPanels = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')];
+    const cropTargets = () =>
+      [...document.querySelectorAll<HTMLElement>('[data-dev-crop-target]')];
+
+    const setDevMode = (active: boolean) => {
+      devMode = active;
+      document.documentElement.classList.toggle('is-dev-mode', active);
+
+      cropTriggers().forEach((trigger) => {
+        trigger.hidden = !active;
+      });
+
+      if (!active) {
+        devPanels().forEach((panel) => {
+          panel.hidden = true;
+        });
+        cropTargets().forEach((target) => {
+          target.classList.remove('is-dev-crop-selected');
+        });
+      }
+
+      try {
+        window.sessionStorage.setItem(storageKey, active ? 'true' : 'false');
+      } catch {
+        // Dev mode still works for this page load.
+      }
+    };
+
+    setDevMode(devMode);
+
+    document.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const modeTrigger = target.closest<HTMLElement>('[data-dev-mode-trigger]');
+      if (modeTrigger && event.altKey && event.shiftKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setDevMode(!devMode);
+        return;
+      }
+
+      const cropTrigger = target.closest<HTMLButtonElement>('[data-dev-crop-trigger]');
+      if (cropTrigger && devMode) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        const panelKey = cropTrigger.dataset.devCropTrigger;
+        const panel = devPanels().find((candidate) => candidate.dataset.devPanelKey === panelKey);
+        if (!panel) return;
+        panel.hidden = !panel.hidden;
+        if (!panel.hidden) {
+          window.dispatchEvent(new Event('resize'));
+        }
+        return;
+      }
+
+      if (!devMode || !window.matchMedia('(hover: none)').matches) return;
+
+      const cropTarget = target.closest<HTMLElement>('[data-dev-crop-target]');
+      if (cropTarget && !cropTarget.classList.contains('is-dev-crop-selected')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        cropTargets().forEach((candidate) => {
+          candidate.classList.toggle('is-dev-crop-selected', candidate === cropTarget);
+        });
+        return;
+      }
+
+      if (!cropTarget) {
+        cropTargets().forEach((candidate) => {
+          candidate.classList.remove('is-dev-crop-selected');
+        });
+      }
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !devMode) return;
+      devPanels().forEach((panel) => {
+        panel.hidden = true;
+      });
+    });
+  };
+
+  initDevModeController();
+</script>
