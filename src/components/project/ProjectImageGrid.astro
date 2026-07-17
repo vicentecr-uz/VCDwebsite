@@ -1,8 +1,14 @@
 ---
 import { projectImage } from '../../lib/images';
 import {
+  imageGridColumnsStyle,
+  imageGridItemLayoutStyle,
   normalizeImageVariants,
+  resolveImageGridColumns,
+  resolveImageGridLayouts,
   responsiveImageStyle,
+  type ImageGridColumns,
+  type ImageGridLayouts,
   type ImageVariants,
 } from '../../lib/responsiveImage';
 import {
@@ -18,30 +24,99 @@ interface Item {
   caption?: string;
   crop?: { x?: number; y?: number; zoom?: number };
   variants?: ImageVariants;
+  /** @deprecated Prefer layouts.mobile — kept for one-off legacy items. */
+  hideOnMobile?: boolean;
 }
 
 interface Props {
   items: Item[];
-  columns?: 2 | 3 | 4;
+  columns?: ImageGridColumns;
+  /** Default aspect for cells without their own variants. */
+  defaultAspectRatio?: string;
+  /** Per-breakpoint visible order. Smaller breakpoints inherit unless overridden. */
+  layouts?: ImageGridLayouts;
   /** Editing wiring: which project JSON + path to this grid section. */
   document?: string;
   basePath?: (string | number)[];
   spacing?: ProjectStackSpacing;
+  /** Anchor id for section sidebar nav scrollspy. */
+  sectionId?: string;
 }
 
-const { items, columns = 2, document: documentKey, basePath, spacing = 'section' } = Astro.props;
+const {
+  items,
+  columns: columnsProp = 2,
+  defaultAspectRatio = '1:1',
+  layouts: layoutsProp,
+  document: documentKey,
+  basePath,
+  spacing = 'section',
+  sectionId,
+} = Astro.props;
+
+const columns = resolveImageGridColumns(columnsProp);
+const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
+
+/** Seed mobile hide from legacy hideOnMobile when no layouts.mobile override exists. */
+const layouts: ImageGridLayouts = { ...(layoutsProp ?? {}) };
+if (!layouts.mobile && items.some((item) => item.hideOnMobile)) {
+  layouts.mobile = {
+    visible: itemIds.filter((_, index) => !items[index]?.hideOnMobile),
+  };
+}
+
+const resolvedLayouts = resolveImageGridLayouts(itemIds, layouts);
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
+const isMultiRow = items.length > columns.desktop;
+const showGridEditor = showDevEditing && isMultiRow;
 const stackClass = projectStackClass(spacing);
 const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
+
+const editorItems = items.map((item, index) => ({
+  id: itemIds[index],
+  src: projectImage(item.src),
+  alt: item.alt ?? '',
+}));
 ---
 
 <div
-  class:list={['project-image-grid', stackClass]}
-  style={`--project-image-grid-columns: ${columns};`}
+  id={sectionId}
+  class:list={[
+    'project-image-grid',
+    stackClass,
+    sectionId && 'section-block',
+    showGridEditor && 'dev-grid-edit-target',
+  ]}
+  style={`${imageGridColumnsStyle(columns)};`}
+  data-dev-grid-target={showGridEditor ? 'grid' : undefined}
+  data-dev-document={showGridEditor ? documentKey : undefined}
+  data-dev-grid-path={showGridEditor ? JSON.stringify(basePath) : undefined}
+  data-dev-grid-columns={showGridEditor ? JSON.stringify(columns) : undefined}
+  data-dev-grid-default-aspect={showGridEditor ? defaultAspectRatio : undefined}
+  data-dev-grid-layouts={showGridEditor ? JSON.stringify(layouts) : undefined}
+  data-dev-grid-items={showGridEditor ? JSON.stringify(editorItems) : undefined}
   {...(spacingAttrs ?? {})}
 >
+  {showGridEditor && (
+    <button
+      type="button"
+      class="dev-grid-edit-trigger"
+      data-dev-edit-trigger="grid"
+      data-dev-mode-only
+      hidden
+    >
+      Edit grid
+    </button>
+  )}
   {items.map((item, index) => {
-    const variants = normalizeImageVariants(item.variants, '1:1', item.crop);
+    const itemId = itemIds[index];
+    const hasOwnVariants = !!item.variants;
+    const variants = normalizeImageVariants(
+      hasOwnVariants ? item.variants : undefined,
+      defaultAspectRatio,
+      item.crop,
+    );
+    const layoutStyle = imageGridItemLayoutStyle(itemId, resolvedLayouts);
     return (
       <figure
         class:list={[
@@ -49,12 +124,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
           'project-responsive-image',
           showDevEditing && 'dev-image-edit-target',
         ]}
-        style={responsiveImageStyle(variants)}
+        style={`${responsiveImageStyle(variants)};${layoutStyle}`}
+        data-grid-item-id={itemId}
+        data-grid-hidden-desktop={resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false'}
+        data-grid-hidden-tablet={resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false'}
+        data-grid-hidden-mobile={resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false'}
         data-dev-image-target={showDevEditing ? 'image' : undefined}
         data-dev-document={showDevEditing ? documentKey : undefined}
         data-dev-image-path={showDevEditing ? JSON.stringify([...basePath, 'items', index]) : undefined}
-        data-dev-crop-id={showDevEditing ? item.id ?? `item-${index}` : undefined}
+        data-dev-crop-id={showDevEditing ? itemId : undefined}
         data-dev-image-variants={showDevEditing ? JSON.stringify(variants) : undefined}
+        data-dev-grid-default-aspect={showDevEditing ? defaultAspectRatio : undefined}
+        data-dev-has-own-variants={showDevEditing && hasOwnVariants ? 'true' : undefined}
       >
         <img
           src={projectImage(item.src)}
@@ -120,17 +201,58 @@ const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
 
 <style>
   .project-image-grid {
+    --project-image-grid-columns: var(--project-image-grid-columns-desktop, 2);
+    position: relative;
     display: grid;
     grid-template-columns: repeat(var(--project-image-grid-columns), minmax(0, 1fr));
     gap: 1em;
     width: 100%;
   }
 
+  @media (max-width: 991px) {
+    .project-image-grid {
+      --project-image-grid-columns: var(--project-image-grid-columns-tablet, var(--project-image-grid-columns-desktop, 2));
+    }
+  }
+
+  @media (max-width: 767px) {
+    .project-image-grid {
+      --project-image-grid-columns: var(--project-image-grid-columns-mobile, var(--project-image-grid-columns-tablet, var(--project-image-grid-columns-desktop, 2)));
+    }
+  }
+
   .project-image-grid__item {
     position: relative;
+    order: var(--project-image-grid-order-desktop, 0);
     aspect-ratio: var(--project-image-ratio);
     margin: 0;
     overflow: hidden;
+  }
+
+  @media (min-width: 992px) {
+    .project-image-grid__item[data-grid-hidden-desktop='true'] {
+      display: none;
+    }
+  }
+
+  @media (max-width: 991px) and (min-width: 768px) {
+    .project-image-grid__item {
+      order: var(--project-image-grid-order-tablet, var(--project-image-grid-order-desktop, 0));
+    }
+
+    .project-image-grid__item[data-grid-hidden-tablet='true'] {
+      display: none;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .project-image-grid__item {
+      order: var(--project-image-grid-order-mobile, var(--project-image-grid-order-tablet, var(--project-image-grid-order-desktop, 0)));
+    }
+
+    .project-image-grid__item[data-grid-hidden-mobile='true'] {
+      display: none;
+    }
   }
 
   .project-image-grid__image {
