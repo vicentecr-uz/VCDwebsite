@@ -10,9 +10,17 @@ interface Props {
   documentKey?: string;
   pathPrefix?: Array<string | number>;
   spacing?: ProjectStackSpacing;
+  /** Anchor id for section sidebar nav scrollspy. */
+  sectionId?: string;
 }
 
-const { paragraphs, documentKey, pathPrefix, spacing = 'section' } = Astro.props;
+const {
+  paragraphs,
+  documentKey,
+  pathPrefix,
+  spacing = 'section',
+  sectionId,
+} = Astro.props;
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
 const sectionPath =
   pathPrefix?.at(-1) === 'paragraphs' ? pathPrefix.slice(0, -1) : undefined;
@@ -20,7 +28,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 const stackClass = projectStackClass(spacing);
 ---
 
-<section class:list={['project-block', stackClass]} {...(spacingAttrs ?? {})}>
+<section
+  id={sectionId}
+  class:list={['project-block', stackClass, sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+>
   <div
     class="project-body-text"
     data-dev-text-document={editable ? documentKey : undefined}
