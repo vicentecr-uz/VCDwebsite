@@ -404,17 +404,20 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
               return (
                 <article class="token-card">
                   {editable ? (
-                    <button
-                      type="button"
-                      class="token-card__swatch"
-                      style={`background:${token.value};`}
-                      aria-label={`Edit ${token.name}`}
-                      data-dev-edit-trigger="style-color-token"
-                      data-color-token-name={token.name}
-                      data-color-token-value={token.value}
-                      data-color-token-saved-value={token.value}
-                      disabled
-                    ></button>
+                    <div class="token-card__swatch-shell">
+                      <div class="token-card__swatch-ring" aria-hidden="true"></div>
+                      <button
+                        type="button"
+                        class="token-card__swatch"
+                        style={`background:${token.value};`}
+                        aria-label={`Edit ${token.name}`}
+                        data-dev-edit-trigger="style-color-token"
+                        data-color-token-name={token.name}
+                        data-color-token-value={token.value}
+                        data-color-token-saved-value={token.value}
+                        disabled
+                      ></button>
+                    </div>
                   ) : (
                     <div class="token-card__swatch" style={`background:${token.value};`}></div>
                   )}
@@ -800,14 +803,33 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
     opacity: 1;
   }
 
-  :global(html.is-dev-mode) button.token-card__swatch {
-    cursor: pointer;
-    transition: box-shadow 0.18s ease, transform 0.18s ease;
+  /* Ring is a larger squircle behind the swatch (not box-shadow/scale). */
+  .token-card__swatch-shell {
+    position: relative;
+    isolation: isolate;
   }
 
-  :global(html.is-dev-mode) button.token-card__swatch:hover {
-    box-shadow: 0 0 0 0.2em var(--color-text);
-    transform: scale(0.985);
+  .token-card__swatch-ring {
+    position: absolute;
+    inset: -0.12em;
+    border-radius: calc(var(--radius-control) + 0.12em);
+    corner-shape: squircle;
+    background: var(--color-surface-strong);
+    opacity: 0;
+    z-index: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+
+  :global(html.is-dev-mode) .token-card__swatch-shell:has(button:hover) .token-card__swatch-ring,
+  :global(html.is-dev-mode) .token-card__swatch-shell:has(button:focus-visible) .token-card__swatch-ring {
+    opacity: 1;
+  }
+
+  :global(html.is-dev-mode) button.token-card__swatch {
+    position: relative;
+    z-index: 1;
+    cursor: pointer;
   }
 
   .type-card {
