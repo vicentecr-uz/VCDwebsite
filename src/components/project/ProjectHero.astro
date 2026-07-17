@@ -14,10 +14,25 @@ const cropStyle =
   variant === 'tapico' && crop
     ? `--tapico-crop-x:${crop.x ?? 0}%;--tapico-crop-y:${crop.y ?? 0}%;--tapico-crop-zoom:${crop.zoom ?? 1};`
     : undefined;
+const cropPanelKey = import.meta.env.DEV && variant === 'tapico' ? 'tapico-hero' : undefined;
 ---
 
-<div class:list={['project-hero', variant !== 'default' && `project-hero--${variant}`]} style={cropStyle}>
+<div
+  class:list={['project-hero', variant !== 'default' && `project-hero--${variant}`, cropPanelKey && 'dev-crop-target']}
+  style={cropStyle}
+  data-dev-crop-target={cropPanelKey}
+>
   <img src={projectImage(src)} alt={alt} class="project-hero__img" loading="eager" />
+  {cropPanelKey && (
+    <button
+      type="button"
+      class="dev-crop-trigger"
+      data-dev-crop-trigger={cropPanelKey}
+      hidden
+    >
+      Crop image
+    </button>
+  )}
 </div>
 
 {variant === 'tapico' && (
