@@ -710,6 +710,8 @@ const easingOptions = [
   }
 
   .section-sidebar-nav__link {
+    position: relative;
+    isolation: isolate;
     display: block;
     padding: 0.32em 0.55em;
     border-radius: 0.45em;
@@ -717,7 +719,25 @@ const easingOptions = [
     text-decoration: none;
     font-weight: 520;
     line-height: 1.25;
-    transition: color 0.18s ease, background-color 0.18s ease;
+    background-color: transparent;
+    transition: color 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /*
+    Highlight via opacity on ::before — background-color ↔ transparent
+    often fades out but snaps in (keyword / interpolation quirk).
+    z-index: -1 keeps the fill behind the label text inside this stacking context.
+  */
+  .section-sidebar-nav__link::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-color: var(--color-surface-soft);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .section-sidebar-nav__root-link {
@@ -727,12 +747,15 @@ const easingOptions = [
 
   .section-sidebar-nav__link:hover {
     color: var(--color-text);
-    background: var(--color-surface-soft, #f7f5f1);
+  }
+
+  .section-sidebar-nav__link:hover::before,
+  .section-sidebar-nav__link.is-active::before {
+    opacity: 1;
   }
 
   .section-sidebar-nav__link.is-active {
     color: var(--color-text);
-    background: var(--color-surface-soft);
   }
 
   .section-sidebar-nav-devpanel {
@@ -948,15 +971,16 @@ const easingOptions = [
       background: transparent;
     }
 
-    .section-sidebar-nav__link:hover,
-    .section-sidebar-nav__link.is-active {
-      background: transparent;
+    .section-sidebar-nav__link::before {
+      content: none;
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .section-sidebar-nav__summary svg,
-    .section-sidebar-nav__group-content {
+    .section-sidebar-nav__group-content,
+    .section-sidebar-nav__link,
+    .section-sidebar-nav__link::before {
       transition: none;
     }
   }
