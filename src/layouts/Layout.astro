@@ -48,13 +48,15 @@ const showDevTools = import.meta.env.DEV;
     <script>
       import gsap from 'gsap';
 
-      // ── Intro: pause then fade overlay out to reveal page ──
-      gsap.to('#transition-overlay', {
-        opacity: 0,
-        duration: 0.5,
-        delay: 0.5,
-        ease: 'power2.in',
-      });
+      const overlay = document.getElementById('transition-overlay');
+
+      const revealOverlay = () => {
+        if (!overlay) return;
+        // Restart CSS intro when restoring from bfcache (animation won't re-fire alone).
+        overlay.style.animation = 'none';
+        void overlay.offsetWidth;
+        overlay.style.animation = '';
+      };
 
       // ── Exit: fade overlay in, then navigate ───────────────
       document.querySelectorAll('a[href]').forEach((link) => {
@@ -82,6 +84,10 @@ const showDevTools = import.meta.env.DEV;
           e.preventDefault();
           const target = anchor.href;
 
+          if (overlay) {
+            overlay.style.animation = 'none';
+          }
+
           gsap.to('#transition-overlay', {
             opacity: 1,
             duration: 0.5,
@@ -95,14 +101,7 @@ const showDevTools = import.meta.env.DEV;
 
       // ── Back/forward: reset overlay then fade out ──────────
       window.addEventListener('pageshow', (e) => {
-        if (e.persisted) {
-          gsap.to('#transition-overlay', {
-            opacity: 0,
-            duration: 0.5,
-            delay: 0.5,
-            ease: 'power2.in',
-          });
-        }
+        if (e.persisted) revealOverlay();
       });
     </script>
   </body>
