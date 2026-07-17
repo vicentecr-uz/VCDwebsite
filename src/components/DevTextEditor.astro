@@ -1,7 +1,9 @@
 <div class="dev-text-actions" data-dev-text-actions hidden>
-  <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
-  <button type="button" data-dev-text-revert>Revert changes</button>
-  <button type="button" class="dev-text-actions__save" data-dev-text-save>Save</button>
+  <div class="dev-text-actions__surface">
+    <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
+    <button type="button" data-dev-text-revert>Revert changes</button>
+    <button type="button" class="dev-text-actions__save" data-dev-text-save>Save</button>
+  </div>
 </div>
 
 <script>
@@ -214,11 +216,22 @@
     background: color-mix(in srgb, var(--color-surface-soft) 72%, transparent);
   }
 
+  /*
+    Same split as DevOverlay: outer keeps box-shadow, inner keeps squircle clip +
+    backdrop blur so Hyperellipse layer-mode does not leave a rectangular blur fringe.
+  */
   .dev-text-actions {
     position: fixed;
     right: max(1em, env(safe-area-inset-right));
     bottom: max(1em, env(safe-area-inset-bottom));
     z-index: 90;
+    border-radius: var(--radius-control-smooth);
+    background: transparent;
+    padding: 0;
+    box-shadow: 0 0.4em 1.4em rgb(0 0 0 / 0.12);
+  }
+
+  .dev-text-actions__surface {
     display: flex;
     align-items: center;
     gap: 0.4em;
@@ -227,7 +240,6 @@
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
     background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
-    box-shadow: 0 0.4em 1.4em rgb(0 0 0 / 0.12);
     backdrop-filter: blur(12px);
   }
 
