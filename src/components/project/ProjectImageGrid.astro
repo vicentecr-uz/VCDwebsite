@@ -5,6 +5,7 @@ import {
   responsiveImageStyle,
   type ImageVariants,
 } from '../../lib/responsiveImage';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Item {
   id?: string;
@@ -17,14 +18,18 @@ interface Item {
 interface Props {
   items: Item[];
   columns?: 2 | 3 | 4;
-  editPanelKey?: string;
+  /** Editing wiring: which project JSON + path to this grid section. */
+  document?: string;
+  basePath?: (string | number)[];
+  spacing?: ProjectStackSpacing;
 }
 
-const { items, columns = 2, editPanelKey } = Astro.props;
-const showDevEditing = import.meta.env.DEV && editPanelKey;
+const { items, columns = 2, document: documentKey, basePath, spacing = 'section' } = Astro.props;
+const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
+const stackClass = projectStackClass(spacing);
 ---
 
-<div class="project-image-grid" style={`--project-image-grid-columns: ${columns};`}>
+<div class:list={['project-image-grid', stackClass]} style={`--project-image-grid-columns: ${columns};`}>
   {items.map((item, index) => {
     const variants = normalizeImageVariants(item.variants, '1:1', item.crop);
     return (
@@ -35,7 +40,9 @@ const showDevEditing = import.meta.env.DEV && editPanelKey;
           showDevEditing && 'dev-image-edit-target',
         ]}
         style={responsiveImageStyle(variants)}
-        data-dev-image-target={showDevEditing ? editPanelKey : undefined}
+        data-dev-image-target={showDevEditing ? 'image' : undefined}
+        data-dev-document={showDevEditing ? documentKey : undefined}
+        data-dev-image-path={showDevEditing ? JSON.stringify([...basePath, 'items', index]) : undefined}
         data-dev-crop-id={showDevEditing ? item.id ?? `item-${index}` : undefined}
         data-dev-image-variants={showDevEditing ? JSON.stringify(variants) : undefined}
       >
@@ -49,7 +56,7 @@ const showDevEditing = import.meta.env.DEV && editPanelKey;
           <button
             type="button"
             class="dev-image-edit-trigger"
-            data-dev-edit-trigger={editPanelKey}
+            data-dev-edit-trigger="image"
             data-dev-mode-only
             hidden
           >
@@ -104,7 +111,6 @@ const showDevEditing = import.meta.env.DEV && editPanelKey;
     grid-template-columns: repeat(var(--project-image-grid-columns), minmax(0, 1fr));
     gap: 1em;
     width: 100%;
-    margin-block: 1em;
   }
 
   .project-image-grid__item {

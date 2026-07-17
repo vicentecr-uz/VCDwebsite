@@ -1,5 +1,6 @@
 ---
 import { projectImage } from '../../lib/images';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Item {
   src: string;
@@ -13,12 +14,14 @@ interface Props {
   wide?: boolean;
   square?: boolean;
   showMobileOnly?: boolean;
+  spacing?: ProjectStackSpacing;
 }
 
-const { items, wide = false, square = false, showMobileOnly = false } = Astro.props;
+const { items, wide = false, square = false, showMobileOnly = false, spacing = 'section' } = Astro.props;
+const stackClass = projectStackClass(spacing);
 ---
 
-<div class:list={['project-block', 'project-block--before-image', showMobileOnly && 'project-show-mobile-only']}>
+<div class:list={['project-block', showMobileOnly && 'project-show-mobile-only', stackClass]}>
   <div class:list={['project-detail-grid', wide && 'project-detail-grid--wide', square && 'project-detail-grid--square']}>
     {items.map((item) => (
       <img

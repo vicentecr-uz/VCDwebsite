@@ -4,11 +4,11 @@ import DevOverlay from '../DevOverlay.astro';
 
 <DevOverlay
   title="Edit image"
-  storageKey="tapico-image-crop"
-  panelKey="tapico-image"
+  storageKey="project-image-crop"
+  panelKey="image"
   defaultHidden
 >
-  <div class="tapico-crop-tuner" data-tapico-crop-tuner>
+  <div class="tapico-crop-tuner" data-project-image-crop-tuner>
     <div class="tapico-crop-tuner__viewports" aria-label="Display width">
       <button type="button" data-crop-viewport="desktop">Desktop</button>
       <button type="button" data-crop-viewport="tablet">Tablet</button>
@@ -93,7 +93,7 @@ import DevOverlay from '../DevOverlay.astro';
     zoom: number;
   }
 
-  const initTapicoCropTuner = (tuner: HTMLElement) => {
+  const initProjectImageCropTuner = (tuner: HTMLElement) => {
     if (tuner.dataset.initialized === 'true') return;
     tuner.dataset.initialized = 'true';
 
@@ -114,7 +114,7 @@ import DevOverlay from '../DevOverlay.astro';
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-crop-save]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
-    const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target="tapico-image"]');
+    const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
     if (
       !preview ||
@@ -150,6 +150,13 @@ import DevOverlay from '../DevOverlay.astro';
     let editTarget = initialTarget;
     let editedImage = initialImage;
     let selectedViewport = viewportForWidth();
+    // Only mutate the live page image while the panel is actively editing it,
+    // so frameless images are not cropped merely by loading the page.
+    let liveApply = false;
+    let targetWasCropped = false;
+    let savedSinceSelect = false;
+
+    const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
 
     const readAppliedVariants = (
       target: HTMLElement,
@@ -284,14 +291,17 @@ import DevOverlay from '../DevOverlay.astro';
       constrainDraft();
       draftVariants[selectedViewport] = { ...draft };
       setCropVariables(preview, draft);
-      if (editedImage.naturalWidth && editedImage.naturalHeight) {
-        editTarget.style.setProperty(
-          '--project-image-original-ratio',
-          `${editedImage.naturalWidth} / ${editedImage.naturalHeight}`,
-        );
+      if (liveApply) {
+        if (editedImage.naturalWidth && editedImage.naturalHeight) {
+          editTarget.style.setProperty(
+            '--project-image-original-ratio',
+            `${editedImage.naturalWidth} / ${editedImage.naturalHeight}`,
+          );
+        }
+        setTargetVariant(editTarget, selectedViewport, draft);
+        editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
+        if (!isGridTarget(editTarget)) sizeImageToCover(editTarget, editedImage);
       }
-      setTargetVariant(editTarget, selectedViewport, draft);
-      editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
       aspectRatioSelect.value = draft.aspectRatio;
       viewportButtons.forEach((button) => {
         const active = button.dataset.cropViewport === selectedViewport;
@@ -304,22 +314,36 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const saveDraft = async () => {
+      const documentKey = editTarget.dataset.devDocument;
+      let imagePath: Array<string | number> = [];
+      try {
+        imagePath = JSON.parse(editTarget.dataset.devImagePath || '[]');
+      } catch {
+        imagePath = [];
+      }
+      if (!documentKey || !Array.isArray(imagePath) || !imagePath.length) {
+        status.textContent = 'This image is not wired for saving.';
+        return;
+      }
       saveButton.disabled = true;
-      status.textContent = 'Saving to tapico.json…';
+      status.textContent = 'Saving crop…';
       try {
         draftVariants[selectedViewport] = { ...draft };
-        const response = await fetch('/api/tapico-crop', {
+        const response = await fetch('/api/image-crop', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            id: editTarget.dataset.devCropId,
+            document: documentKey,
+            path: imagePath,
             variants: draftVariants,
           }),
         });
         if (!response.ok) throw new Error(`Save failed (${response.status})`);
         saved = { ...draft };
         savedVariants = structuredClone(draftVariants);
-        status.textContent = 'Saved all display crops to tapico.json — commit & push to publish.';
+        targetWasCropped = true;
+        savedSinceSelect = true;
+        status.textContent = `Saved all display crops to ${documentKey} — commit & push to publish.`;
       } catch {
         status.textContent = 'Save failed — is the dev server running?';
       } finally {
@@ -339,7 +363,15 @@ import DevOverlay from '../DevOverlay.astro';
       : new ResizeObserver(refreshCover);
     resizeObserver?.observe(preview);
 
-    const selectTarget = (target: HTMLElement) => {
+    const revertFramelessTarget = () => {
+      if (!editTarget || targetWasCropped || savedSinceSelect || isGridTarget(editTarget)) return;
+      editTarget.classList.remove('project-cropped', 'project-responsive-image');
+      delete editTarget.dataset.devImageVariants;
+      editedImage.style.width = '';
+      editedImage.style.height = '';
+    };
+
+    const selectTarget = (target: HTMLElement, live: boolean) => {
       const image = target.querySelector<HTMLImageElement>('img');
       if (!image) return;
 
@@ -347,6 +379,13 @@ import DevOverlay from '../DevOverlay.astro';
       editTarget = target;
       editedImage = image;
       resizeObserver?.observe(editTarget);
+
+      liveApply = live;
+      targetWasCropped = target.classList.contains('project-cropped') || isGridTarget(target);
+      savedSinceSelect = false;
+      if (live && !isGridTarget(target)) {
+        target.classList.add('project-responsive-image', 'project-cropped');
+      }
 
       selectedViewport = viewportForWidth();
       savedVariants = readAppliedVariants(editTarget);
@@ -362,16 +401,22 @@ import DevOverlay from '../DevOverlay.astro';
       }
       renderConstraint();
       renderDraft();
-      status.textContent = 'Loaded the committed crop. Changes update the page live.';
+      if (live) status.textContent = 'Editing this image. Changes update the page live.';
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
       const trigger = event.detail?.trigger as HTMLElement | undefined;
-      const target = trigger?.closest<HTMLElement>('[data-dev-image-target="tapico-image"]');
-      if (target) selectTarget(target);
+      const target = trigger?.closest<HTMLElement>('[data-dev-image-target]');
+      if (target) selectTarget(target, true);
     }) as EventListener);
 
-    selectTarget(initialTarget);
+    window.addEventListener('vcd:dev-edit-close', (() => {
+      revertFramelessTarget();
+      liveApply = false;
+    }) as EventListener);
+
+    // Prime the preview canvas without mutating the live page image.
+    selectTarget(initialTarget, false);
 
     viewportButtons.forEach((button) => {
       button.addEventListener('click', () => {
@@ -491,7 +536,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
   };
 
-  document.querySelectorAll<HTMLElement>('[data-tapico-crop-tuner]').forEach(initTapicoCropTuner);
+  document.querySelectorAll<HTMLElement>('[data-project-image-crop-tuner]').forEach(initProjectImageCropTuner);
 </script>
 
 <style>

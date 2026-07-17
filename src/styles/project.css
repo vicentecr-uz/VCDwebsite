@@ -1,15 +1,43 @@
 /* ── Project case study pages (Webflow parity) ─────────────── */
 
 .project-page__main {
+  display: flex;
+  flex-direction: column;
   padding-bottom: 3em;
 }
 
-/* ── Hero ─────────────────────────────────────────────────── */
-.project-hero {
+/* One-sided stack: spacing lives between siblings, not as padding on each block */
+.project-page__main > * + * {
+  margin-top: var(--space-section);
+}
+
+.project-page__main > .project-stack--precede-related + * {
+  margin-top: var(--space-related);
+}
+
+.project-page__main > .project-stack--related {
+  margin-top: var(--space-related);
+}
+
+.project-page__main > .project-stack--major {
+  margin-top: var(--space-major);
+}
+
+.project-page__main > .project-stack--none {
+  margin-top: 0;
+}
+
+/* Flush galleries: abut consecutive flush blocks; first still uses default/own spacing */
+.project-page__main > .project-stack--flush + .project-stack--flush {
+  margin-top: 0;
+}
+
+/* ── Single project image (lead / crop) ───────────────────── */
+.project-image {
   margin-bottom: 0;
 }
 
-.project-hero__img {
+.project-image__img {
   width: 100%;
   object-fit: cover;
   object-position: 70% 50%;
@@ -23,7 +51,7 @@
   --tapico-crop-zoom: var(--project-image-zoom-desktop);
 }
 
-.project-hero--tapico {
+.project-cropped {
   position: relative;
   aspect-ratio: var(--project-image-ratio);
   overflow: hidden;
@@ -47,7 +75,7 @@
   }
 }
 
-.project-hero--tapico .project-hero__img {
+.project-cropped > img {
   position: absolute;
   top: calc(50% + var(--tapico-crop-y));
   left: calc(50% + var(--tapico-crop-x));
@@ -167,37 +195,14 @@
   font-style: italic;
 }
 
-/* ── Section spacing (Webflow .section.text) ─────────────────── */
+/* ── Section blocks (vertical rhythm owned by .project-page__main) ── */
 .project-block {
   display: flex;
   flex-direction: column;
-  padding-top: 5em;
-  padding-bottom: 5em;
 }
 
-.project-block--tight-top {
-  padding-top: 2.5em;
-}
-
-.project-block--tight-bottom {
-  padding-bottom: 1.25em;
-}
-
-.project-block--heading-only {
-  padding-bottom: 0;
-}
-
-.project-block--flush {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-.project-block--after-text {
-  padding-top: 2.5em;
-}
-
-.project-block--before-image {
-  padding-bottom: 0;
+.project-block--centered {
+  align-items: center;
 }
 
 /* ── Media ──────────────────────────────────────────────────── */
@@ -335,11 +340,6 @@
   .project-prose,
   .project-media--constrained {
     width: 100%;
-  }
-
-  .project-block {
-    padding-top: 3em;
-    padding-bottom: 3em;
   }
 
   .project-grid--2,
@@ -606,12 +606,12 @@
 }
 
 /* ── Conic Collection page ──────────────────────────────────── */
-.project-hero--conic {
+.project-image--conic {
   display: flex;
   justify-content: center;
 }
 
-.project-hero--conic .project-hero__img {
+.project-image--conic .project-image__img {
   width: 100%;
   max-width: 100%;
   min-height: auto;
@@ -774,7 +774,7 @@
 }
 
 @media (max-width: 767px) {
-  .project-hero--conic .project-hero__img {
+  .project-image--conic .project-image__img {
     max-height: none;
   }
 

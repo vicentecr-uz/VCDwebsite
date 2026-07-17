@@ -5,11 +5,20 @@ import { defineConfig } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
 
-const TAPICO_CONTENT = 'src/content/projects/tapico.json';
 const GLOBAL_STYLES = 'src/styles/global.css';
 const EDITABLE_CONTENT_DOCUMENTS = new Map([
-  ['tapico', TAPICO_CONTENT],
+  ['tapico', 'src/content/projects/tapico.json'],
+  ['[retired-project]', 'src/content/projects/[retired-project].json'],
+  ['the-rams', 'src/content/projects/the-rams.json'],
+  ['parentpal', 'src/content/projects/parentpal.json'],
+  ['conic-collection', 'src/content/projects/conic-collection.json'],
 ]);
+const isSafePathPart = (part) => (
+  (typeof part === 'string' || typeof part === 'number') &&
+  part !== '__proto__' &&
+  part !== 'prototype' &&
+  part !== 'constructor'
+);
 const EDITABLE_COLOR_TOKENS = new Set([
   '--color-bg',
   '--color-surface-soft',
@@ -42,20 +51,21 @@ const clampRound = (value, min, max, decimals) => {
 };
 
 /**
- * Dev-only writer for Tapico image crops. `apply: 'serve'` means this plugin
+ * Dev-only writer for project image crops. `apply: 'serve'` means this plugin
  * is active only under `astro dev` — it is never part of the static production
  * build, so nothing is emitted to `dist/` and the live site has no such route.
- * The Tapico crop tuner POSTs a viewport-specific ratio and crop here; we
- * persist it into `tapico.json` so committing that file publishes the crop.
+ * The crop tuner POSTs a document key, a JSON path to the image node, and a
+ * set of viewport crops; we persist `variants` onto that node so committing
+ * the project file publishes the crop.
  *
  * @returns {import('vite').Plugin}
  */
-function tapicoCropDevWriter() {
+function imageCropDevWriter() {
   return {
-    name: 'tapico-crop-dev-writer',
+    name: 'image-crop-dev-writer',
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use('/api/tapico-crop', async (req, res, next) => {
+      server.middlewares.use('/api/image-crop', async (req, res, next) => {
         if (req.method !== 'POST') {
           next();
           return;
@@ -72,10 +82,23 @@ function tapicoCropDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
-          const id = String(body.id || 'hero');
+          const documentKey = String(body.document || '');
+          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const fieldPath = body.path;
+          if (
+            !relativeFile ||
+            !Array.isArray(fieldPath) ||
+            !fieldPath.length ||
+            fieldPath.length > 8 ||
+            !fieldPath.every(isSafePathPart)
+          ) {
+            send(400, { error: 'That image is not editable.' });
+            return;
+          }
+
           const requestedVariants = body.variants && typeof body.variants === 'object'
             ? body.variants
-            : { [String(body.viewport || 'desktop')]: body };
+            : {};
           /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
           const variants = {};
           for (const [viewport, requested] of Object.entries(requestedVariants)) {
@@ -98,18 +121,28 @@ function tapicoCropDevWriter() {
               zoom: clampRound(zoom, 1, 1.5, 2),
             };
           }
+          if (!Object.keys(variants).length) {
+            send(400, { error: 'No crop data was provided.' });
+            return;
+          }
 
-          const file = path.join(process.cwd(), TAPICO_CONTENT);
+          const file = path.join(process.cwd(), relativeFile);
           const data = JSON.parse(await readFile(file, 'utf8'));
-          const hero = data.sections?.find((section) => section.type === 'heroImage');
-          const target = id === 'hero'
-            ? hero
-            : data.sections
-                ?.filter((section) => section.type === 'imageGrid')
-                .flatMap((section) => section.items || [])
-                .find((item) => item.id === id);
-          if (!target) {
-            send(404, { error: `No editable Tapico image found for "${id}".` });
+
+          let target = data;
+          for (const part of fieldPath) {
+            if (
+              target === null ||
+              typeof target !== 'object' ||
+              !Object.prototype.hasOwnProperty.call(target, part)
+            ) {
+              send(404, { error: 'That image path no longer exists.' });
+              return;
+            }
+            target = target[part];
+          }
+          if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+            send(404, { error: 'That image path does not point to an image.' });
             return;
           }
 
@@ -117,7 +150,7 @@ function tapicoCropDevWriter() {
           Object.assign(target.variants, variants);
           delete target.crop;
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-          send(200, { ok: true, id, variants });
+          send(200, { ok: true, document: documentKey, variants });
         } catch {
           send(400, { error: 'Could not parse or write the crop.' });
         }
@@ -320,7 +353,7 @@ export default defineConfig({
   vite: {
     plugins: [
       tailwindcss(),
-      tapicoCropDevWriter(),
+      imageCropDevWriter(),
       styleTokenDevWriter(),
       contentTextDevWriter(),
     ],

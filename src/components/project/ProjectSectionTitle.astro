@@ -1,14 +1,19 @@
 ---
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+
 interface Props {
   title: string;
+  /** When true (default), following block uses related spacing. */
   tightBottom?: boolean;
   level?: 2 | 3;
+  spacing?: ProjectStackSpacing;
 }
 
-const { title, tightBottom = true, level = 2 } = Astro.props;
+const { title, tightBottom = true, level = 2, spacing = 'section' } = Astro.props;
 const Tag = level === 3 ? 'h3' : 'h2';
+const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
 ---
 
-<div class:list={['project-block', 'project-block--heading-only', tightBottom && 'project-block--tight-bottom']}>
+<div class:list={['project-block', stackClass]}>
   <Tag class="project-section-title">{title}</Tag>
 </div>

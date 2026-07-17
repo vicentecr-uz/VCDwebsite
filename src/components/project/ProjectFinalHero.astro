@@ -1,15 +1,18 @@
 ---
 import { projectImage } from '../../lib/images';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
   src: string;
   alt?: string;
+  spacing?: ProjectStackSpacing;
 }
 
-const { src, alt = '' } = Astro.props;
+const { src, alt = '', spacing = 'section' } = Astro.props;
+const stackClass = projectStackClass(spacing);
 ---
 
-<div class="project-block project-block--flush">
+<div class:list={['project-block', stackClass]}>
   <figure class="project-final-hero">
     <img src={projectImage(src)} alt={alt} class="project-final-hero__img" loading="lazy" />
   </figure>
