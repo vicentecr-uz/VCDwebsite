@@ -72,12 +72,12 @@ import DevOverlay from '../DevOverlay.astro';
     <p class="tapico-crop-tuner__readout" data-crop-readout>x 0.0% · y 0.0% · zoom 100%</p>
 
     <div class="tapico-crop-tuner__actions">
-      <button type="button" data-crop-save>Save changes</button>
-      <button type="button" data-crop-revert>Revert changes</button>
       <button type="button" data-crop-reset>Reset</button>
+      <button type="button" data-crop-revert>Revert changes</button>
+      <button type="button" data-crop-save>Save changes</button>
     </div>
 
-    <p class="tapico-crop-tuner__status" data-crop-status aria-live="polite">
+    <p class="tapico-crop-tuner__status visually-hidden" data-crop-status aria-live="polite">
       Hold Shift while dragging to lock movement to one axis.
     </p>
   </div>
@@ -556,9 +556,6 @@ import DevOverlay from '../DevOverlay.astro';
   .tapico-crop-tuner__viewports button,
   .tapico-crop-tuner__select select {
     border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
     background: var(--color-surface-soft);
     padding: 0.5em;
     color: var(--color-text);
@@ -567,8 +564,19 @@ import DevOverlay from '../DevOverlay.astro';
     line-height: 1.1;
   }
 
+  /*
+    Plain radius on viewport chips: inset active ring + Hyperellipse corner-shape
+    draws uneven side strokes (same clash as .dev-image-edit-trigger / colour swatches).
+  */
   .tapico-crop-tuner__viewports button {
+    border-radius: var(--radius-control);
     cursor: pointer;
+  }
+
+  .tapico-crop-tuner__select select {
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
   }
 
   .tapico-crop-tuner__viewports button:hover,
@@ -825,9 +833,19 @@ import DevOverlay from '../DevOverlay.astro';
     font-variant-numeric: tabular-nums;
   }
 
+  .tapico-crop-tuner__status.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .tapico-crop-tuner__actions {
     display: grid;
-    grid-template-columns: 1.35fr 1fr 0.7fr;
+    grid-template-columns: 0.7fr 1fr 1.35fr;
     gap: 0.4em;
   }
 
@@ -845,7 +863,7 @@ import DevOverlay from '../DevOverlay.astro';
     cursor: pointer;
   }
 
-  .tapico-crop-tuner__actions button:first-child {
+  .tapico-crop-tuner__actions button[data-crop-save] {
     background: var(--color-text);
     color: #ffffff;
   }
@@ -854,7 +872,7 @@ import DevOverlay from '../DevOverlay.astro';
     background: var(--color-surface-strong);
   }
 
-  .tapico-crop-tuner__actions button:first-child:hover {
+  .tapico-crop-tuner__actions button[data-crop-save]:hover {
     background: var(--color-text-soft);
   }
 </style>
