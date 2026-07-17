@@ -29,20 +29,15 @@ const EDITABLE_COLOR_TOKENS = new Set([
   '--color-border',
 ]);
 const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
-const IMAGE_ASPECT_RATIOS = new Set([
-  'original',
-  '16:9',
-  '16:10',
-  '3:2',
-  '4:3',
-  '5:4',
-  '1:1',
-  '4:5',
-  '3:4',
-  '2:3',
-  '10:16',
-  '9:16',
-]);
+/** Presets plus freeform `W:H` from the crop-frame handles. */
+const isAllowedAspectRatio = (value) => {
+  if (value === 'original') return true;
+  const match = /^(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)$/.exec(String(value));
+  if (!match) return false;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+};
 
 const clampRound = (value, min, max, decimals) => {
   const bounded = Math.min(max, Math.max(min, value));
@@ -108,7 +103,7 @@ function imageCropDevWriter() {
             const aspectRatio = String(requested?.aspectRatio || '');
             if (
               !IMAGE_VIEWPORTS.has(viewport) ||
-              !IMAGE_ASPECT_RATIOS.has(aspectRatio) ||
+              !isAllowedAspectRatio(aspectRatio) ||
               ![x, y, zoom].every(Number.isFinite)
             ) {
               send(400, { error: 'Use supported viewports, aspect ratios and crop values.' });
