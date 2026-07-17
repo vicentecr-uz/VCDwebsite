@@ -403,7 +403,6 @@ function contentTextDevWriter() {
             const valueIsText = typeof value === 'string' && value.length <= 20_000;
             const valueIsParagraphs = (
               Array.isArray(value) &&
-              value.length > 0 &&
               value.every((paragraph) => typeof paragraph === 'string') &&
               value.join('').length <= 20_000
             );
