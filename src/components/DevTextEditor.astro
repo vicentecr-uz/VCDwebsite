@@ -539,26 +539,29 @@
     });
 
     linkInput.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setLinkPanelOpen(false);
-        restoreFormatRange();
-        scheduleFormatBarUpdate();
-      }
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      hideFormatBar();
     });
 
     document.addEventListener('selectionchange', scheduleFormatBarUpdate);
     window.addEventListener('scroll', scheduleFormatBarUpdate, true);
     window.addEventListener('resize', scheduleFormatBarUpdate);
+    // Dismiss even while the link URL field is focused / open.
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (formatBar.hidden) return;
+        const target = event.target;
+        if (!(target instanceof Node) || formatBar.contains(target)) return;
+        hideFormatBar();
+      },
+      true,
+    );
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       if (formatBar.hidden) return;
-      if (linkPanelOpen) {
-        setLinkPanelOpen(false);
-        restoreFormatRange();
-        scheduleFormatBarUpdate();
-        return;
-      }
       hideFormatBar();
     });
 
