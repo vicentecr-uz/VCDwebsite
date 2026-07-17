@@ -625,6 +625,13 @@ const easingOptions = [
   .section-sidebar-nav {
     padding: 0.25em 0;
     background: var(--color-bg);
+    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  /* Fade when either header menu is open (same cue as the menu backdrop). */
+  :global(body:has(.site-header--nav-menu.is-menu-backdrop-visible)) .section-sidebar-nav {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .section-sidebar-nav__list {
@@ -977,6 +984,7 @@ const easingOptions = [
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .section-sidebar-nav,
     .section-sidebar-nav__summary svg,
     .section-sidebar-nav__group-content,
     .section-sidebar-nav__link,
