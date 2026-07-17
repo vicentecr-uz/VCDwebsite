@@ -1,0 +1,78 @@
+---
+import { projectImage } from '../../lib/images';
+
+interface Item {
+  id?: string;
+  src: string;
+  alt?: string;
+  crop?: { x?: number; y?: number; zoom?: number };
+}
+
+interface Props {
+  items: Item[];
+  columns?: 2 | 3 | 4;
+  editPanelKey?: string;
+}
+
+const { items, columns = 2, editPanelKey } = Astro.props;
+const showDevEditing = import.meta.env.DEV && editPanelKey;
+---
+
+<div class="project-image-grid" style={`--project-image-grid-columns: ${columns};`}>
+  {items.map((item, index) => (
+    <figure
+      class:list={['project-image-grid__item', showDevEditing && 'dev-image-edit-target']}
+      style={`--tapico-crop-x:${item.crop?.x ?? 0}%;--tapico-crop-y:${item.crop?.y ?? 0}%;--tapico-crop-zoom:${item.crop?.zoom ?? 1};`}
+      data-dev-image-target={showDevEditing ? editPanelKey : undefined}
+      data-dev-crop-id={showDevEditing ? item.id ?? `item-${index}` : undefined}
+    >
+      <img
+        src={projectImage(item.src)}
+        alt={item.alt ?? ''}
+        class="project-image-grid__image"
+        loading="lazy"
+      />
+      {showDevEditing && (
+        <button
+          type="button"
+          class="dev-image-edit-trigger"
+          data-dev-edit-trigger={editPanelKey}
+          data-dev-mode-only
+          hidden
+        >
+          Edit image
+        </button>
+      )}
+    </figure>
+  ))}
+</div>
+
+<style>
+  .project-image-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--project-image-grid-columns), minmax(0, 1fr));
+    gap: 1em;
+    width: 100%;
+    margin-block: 1em;
+  }
+
+  .project-image-grid__item {
+    position: relative;
+    aspect-ratio: 1;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  .project-image-grid__image {
+    position: absolute;
+    top: calc(50% + var(--tapico-crop-y));
+    left: calc(50% + var(--tapico-crop-x));
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: cover;
+    transform: translate(-50%, -50%) scale(var(--tapico-crop-zoom));
+    transform-origin: center;
+  }
+</style>
