@@ -39,6 +39,8 @@ interface Props {
   fullHeight?: boolean;
   hideMobile?: boolean;
   imgModifier?: string;
+  /** Anchor id for section sidebar nav scrollspy. */
+  sectionId?: string;
 }
 
 const {
@@ -62,6 +64,7 @@ const {
   fullHeight = false,
   hideMobile = false,
   imgModifier,
+  sectionId,
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing, { flush });
@@ -92,11 +95,13 @@ const editAttrs = editable
 
 {isLead ? (
   <div
+    id={sectionId}
     class:list={[
       'project-image',
       layout !== 'default' && `project-image--${layout}`,
       hasCrop && 'project-cropped project-responsive-image',
       editable && 'dev-image-edit-target',
+      sectionId && 'section-block',
       stackClass,
     ]}
     style={normalized ? responsiveImageStyle(normalized) : undefined}
@@ -118,7 +123,14 @@ const editAttrs = editable
   </div>
 ) : (
   <div
-    class:list={['project-block', centered && 'project-block--centered', hideMobile && 'project-hide-mobile', stackClass]}
+    id={sectionId}
+    class:list={[
+      'project-block',
+      centered && 'project-block--centered',
+      hideMobile && 'project-hide-mobile',
+      sectionId && 'section-block',
+      stackClass,
+    ]}
     {...(spacingAttrs ?? {})}
   >
     <figure

@@ -1,0 +1,725 @@
+---
+import DevOverlay from '../DevOverlay.astro';
+---
+
+<DevOverlay
+  title="Edit grid"
+  storageKey="project-image-grid"
+  panelKey="grid"
+  defaultHidden
+>
+  <div class="project-grid-tuner" data-project-image-grid-tuner>
+    <div class="project-grid-tuner__viewports" aria-label="Display width">
+      <button type="button" data-grid-viewport="desktop">Desktop</button>
+      <button type="button" data-grid-viewport="tablet">Tablet</button>
+      <button type="button" data-grid-viewport="mobile">Mobile</button>
+    </div>
+
+    <p class="project-grid-tuner__inherit" data-grid-inherit hidden>
+      Inheriting from larger breakpoint — drag to create an override.
+    </p>
+
+    <label class="project-grid-tuner__select">
+      <span>Columns</span>
+      <select data-grid-columns>
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5</option>
+        <option value="6">6</option>
+      </select>
+    </label>
+
+    <label class="project-grid-tuner__select">
+      <span>Default image aspect</span>
+      <select data-grid-aspect-ratio>
+        <option value="original">Original</option>
+        <optgroup label="Landscape">
+          <option value="16:9">16:9</option>
+          <option value="16:10">16:10</option>
+          <option value="3:2">3:2</option>
+          <option value="4:3">4:3</option>
+          <option value="5:4">5:4</option>
+        </optgroup>
+        <optgroup label="Square">
+          <option value="1:1">1:1</option>
+        </optgroup>
+        <optgroup label="Portrait">
+          <option value="5:6">5:6</option>
+          <option value="4:5">4:5</option>
+          <option value="3:4">3:4</option>
+          <option value="2:3">2:3</option>
+          <option value="10:16">10:16</option>
+          <option value="9:16">9:16</option>
+        </optgroup>
+      </select>
+    </label>
+
+    <div class="project-grid-tuner__board">
+      <p class="project-grid-tuner__board-label">Visible</p>
+      <div
+        class="project-grid-tuner__visible"
+        data-grid-visible
+        data-grid-drop="visible"
+      ></div>
+
+      <p class="project-grid-tuner__board-label">Parking lot</p>
+      <div
+        class="project-grid-tuner__parking"
+        data-grid-parking
+        data-grid-drop="parking"
+      >
+        <span class="project-grid-tuner__parking-hint" data-grid-parking-hint>
+          Drag images here to hide them at this breakpoint
+        </span>
+      </div>
+    </div>
+
+    <p class="project-grid-tuner__hint">
+      Larger breakpoints waterfall down. Editing tablet/mobile creates an override for that width only.
+    </p>
+
+    <div class="project-grid-tuner__actions">
+      <button type="button" data-grid-clear-override hidden>Clear override</button>
+      <button type="button" data-grid-revert>Revert changes</button>
+      <button type="button" data-grid-save>Save changes</button>
+    </div>
+
+    <p class="project-grid-tuner__status" data-grid-status aria-live="polite">
+      Pick a multi-row grid to edit layout, columns, and default aspect.
+    </p>
+  </div>
+</DevOverlay>
+
+<script>
+  type ImageViewport = 'desktop' | 'tablet' | 'mobile';
+
+  interface GridItem {
+    id: string;
+    src: string;
+    alt: string;
+  }
+
+  type GridLayouts = Partial<Record<ImageViewport, { visible: string[] }>>;
+
+  const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
+
+  const initProjectImageGridTuner = (tuner: HTMLElement) => {
+    if (tuner.dataset.initialized === 'true') return;
+    tuner.dataset.initialized = 'true';
+
+    const viewportButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-grid-viewport]'),
+    ];
+    const columnsSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-columns]');
+    const aspectSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-aspect-ratio]');
+    const visibleBoard = tuner.querySelector<HTMLElement>('[data-grid-visible]');
+    const parkingBoard = tuner.querySelector<HTMLElement>('[data-grid-parking]');
+    const parkingHint = tuner.querySelector<HTMLElement>('[data-grid-parking-hint]');
+    const inheritNote = tuner.querySelector<HTMLElement>('[data-grid-inherit]');
+    const saveButton = tuner.querySelector<HTMLButtonElement>('[data-grid-save]');
+    const revertButton = tuner.querySelector<HTMLButtonElement>('[data-grid-revert]');
+    const clearOverrideButton = tuner.querySelector<HTMLButtonElement>('[data-grid-clear-override]');
+    const status = tuner.querySelector<HTMLElement>('[data-grid-status]');
+    const initialTarget = document.querySelector<HTMLElement>('[data-dev-grid-target]');
+    if (
+      !viewportButtons.length ||
+      !columnsSelect ||
+      !aspectSelect ||
+      !visibleBoard ||
+      !parkingBoard ||
+      !parkingHint ||
+      !inheritNote ||
+      !saveButton ||
+      !revertButton ||
+      !clearOverrideButton ||
+      !status ||
+      !initialTarget
+    ) return;
+
+    const viewportForWidth = (): ImageViewport => {
+      if (window.innerWidth <= 767) return 'mobile';
+      if (window.innerWidth <= 991) return 'tablet';
+      return 'desktop';
+    };
+
+    const readColumns = (target: HTMLElement) => {
+      try {
+        const parsed = JSON.parse(target.dataset.devGridColumns || '{}');
+        return {
+          desktop: Number(parsed.desktop) || 2,
+          tablet: Number(parsed.tablet) || Number(parsed.desktop) || 2,
+          mobile: Number(parsed.mobile) || Number(parsed.tablet) || Number(parsed.desktop) || 2,
+        };
+      } catch {
+        return { desktop: 2, tablet: 2, mobile: 2 };
+      }
+    };
+
+    const readItems = (target: HTMLElement): GridItem[] => {
+      try {
+        const parsed = JSON.parse(target.dataset.devGridItems || '[]');
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+          .map((item) => ({
+            id: String(item?.id || ''),
+            src: String(item?.src || ''),
+            alt: String(item?.alt || ''),
+          }))
+          .filter((item) => item.id && item.src);
+      } catch {
+        return [];
+      }
+    };
+
+    const readLayouts = (target: HTMLElement): GridLayouts => {
+      try {
+        const parsed = JSON.parse(target.dataset.devGridLayouts || '{}');
+        if (!parsed || typeof parsed !== 'object') return {};
+        const layouts: GridLayouts = {};
+        VIEWPORTS.forEach((viewport) => {
+          const visible = parsed[viewport]?.visible;
+          if (Array.isArray(visible)) {
+            layouts[viewport] = { visible: visible.map(String) };
+          }
+        });
+        return layouts;
+      } catch {
+        return {};
+      }
+    };
+
+    const cloneLayouts = (layouts: GridLayouts): GridLayouts => {
+      const next: GridLayouts = {};
+      VIEWPORTS.forEach((viewport) => {
+        if (layouts[viewport]?.visible) {
+          next[viewport] = { visible: [...layouts[viewport]!.visible] };
+        }
+      });
+      return next;
+    };
+
+    const resolveVisible = (
+      itemIds: string[],
+      layouts: GridLayouts,
+      viewport: ImageViewport,
+    ): { visible: string[]; overridden: boolean } => {
+      let inherited = [...itemIds];
+      let overridden = false;
+      for (const candidate of VIEWPORTS) {
+        if (layouts[candidate]?.visible) {
+          const known = new Set(itemIds);
+          const seen = new Set<string>();
+          inherited = layouts[candidate]!.visible.filter((id) => {
+            if (!known.has(id) || seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+          if (candidate === viewport) overridden = true;
+        }
+        if (candidate === viewport) break;
+      }
+      return { visible: inherited, overridden };
+    };
+
+    let editTarget = initialTarget;
+    let catalog: GridItem[] = readItems(editTarget);
+    let itemIds = catalog.map((item) => item.id);
+    let selectedViewport = viewportForWidth();
+    let savedColumns = readColumns(editTarget);
+    let draftColumns = { ...savedColumns };
+    let savedAspect = editTarget.dataset.devGridDefaultAspect || '1:1';
+    let draftAspect = savedAspect;
+    let savedLayouts = readLayouts(editTarget);
+    let draftLayouts = cloneLayouts(savedLayouts);
+    let liveApply = false;
+    let dragItemId: string | null = null;
+
+    const ratioCss = (aspectRatio: string) => (
+      aspectRatio === 'original'
+        ? 'var(--project-image-original-ratio, 1 / 1)'
+        : aspectRatio.replace(':', ' / ')
+    );
+
+    const ensureViewportOverride = () => {
+      const resolved = resolveVisible(itemIds, draftLayouts, selectedViewport);
+      if (!draftLayouts[selectedViewport]?.visible) {
+        draftLayouts[selectedViewport] = { visible: [...resolved.visible] };
+      }
+    };
+
+    const applyColumnsLive = () => {
+      if (!liveApply) return;
+      VIEWPORTS.forEach((viewport) => {
+        editTarget.style.setProperty(
+          `--project-image-grid-columns-${viewport}`,
+          String(draftColumns[viewport]),
+        );
+      });
+      editTarget.dataset.devGridColumns = JSON.stringify(draftColumns);
+    };
+
+    const applyAspectLive = () => {
+      if (!liveApply) return;
+      editTarget.dataset.devGridDefaultAspect = draftAspect;
+      editTarget
+        .querySelectorAll<HTMLElement>('.project-image-grid__item')
+        .forEach((item) => {
+          item.dataset.devGridDefaultAspect = draftAspect;
+          if (item.dataset.devHasOwnVariants === 'true') return;
+          VIEWPORTS.forEach((viewport) => {
+            item.style.setProperty(`--project-image-ratio-${viewport}`, ratioCss(draftAspect));
+            item.style.setProperty(`--project-image-x-${viewport}`, '0%');
+            item.style.setProperty(`--project-image-y-${viewport}`, '0%');
+            item.style.setProperty(`--project-image-zoom-${viewport}`, '1');
+          });
+          item.dataset.devImageVariants = JSON.stringify({
+            desktop: { aspectRatio: draftAspect, x: 0, y: 0, zoom: 1 },
+            tablet: { aspectRatio: draftAspect, x: 0, y: 0, zoom: 1 },
+            mobile: { aspectRatio: draftAspect, x: 0, y: 0, zoom: 1 },
+          });
+        });
+    };
+
+    const applyLayoutsLive = () => {
+      if (!liveApply) return;
+      editTarget.dataset.devGridLayouts = JSON.stringify(draftLayouts);
+      const resolvedByViewport = Object.fromEntries(
+        VIEWPORTS.map((viewport) => [viewport, resolveVisible(itemIds, draftLayouts, viewport)]),
+      ) as Record<ImageViewport, { visible: string[]; overridden: boolean }>;
+
+      editTarget.querySelectorAll<HTMLElement>('[data-grid-item-id]').forEach((figure) => {
+        const id = figure.dataset.gridItemId;
+        if (!id) return;
+        VIEWPORTS.forEach((viewport) => {
+          const visible = resolvedByViewport[viewport].visible;
+          const visibleIndex = visible.indexOf(id);
+          const hidden = visibleIndex < 0;
+          const hiddenIds = itemIds.filter((itemId) => !visible.includes(itemId));
+          const order = visibleIndex >= 0
+            ? visibleIndex + 1
+            : visible.length + hiddenIds.indexOf(id) + 1;
+          figure.style.setProperty(`--project-image-grid-order-${viewport}`, String(order));
+          if (viewport === 'desktop') figure.dataset.gridHiddenDesktop = hidden ? 'true' : 'false';
+          if (viewport === 'tablet') figure.dataset.gridHiddenTablet = hidden ? 'true' : 'false';
+          if (viewport === 'mobile') figure.dataset.gridHiddenMobile = hidden ? 'true' : 'false';
+        });
+      });
+    };
+
+    const makeThumb = (item: GridItem) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'project-grid-tuner__thumb';
+      button.draggable = true;
+      button.dataset.gridItemId = item.id;
+      button.title = item.alt || item.id;
+      button.setAttribute('aria-label', item.alt || item.id);
+      const image = document.createElement('img');
+      image.src = item.src;
+      image.alt = '';
+      image.draggable = false;
+      button.append(image);
+      button.addEventListener('dragstart', (event) => {
+        dragItemId = item.id;
+        button.classList.add('is-dragging');
+        event.dataTransfer?.setData('text/plain', item.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      });
+      button.addEventListener('dragend', () => {
+        dragItemId = null;
+        button.classList.remove('is-dragging');
+        visibleBoard.classList.remove('is-drop-target');
+        parkingBoard.classList.remove('is-drop-target');
+      });
+      return button;
+    };
+
+    const insertIdAt = (list: string[], id: string, beforeId: string | null) => {
+      const without = list.filter((entry) => entry !== id);
+      if (!beforeId) {
+        without.push(id);
+        return without;
+      }
+      const index = without.indexOf(beforeId);
+      if (index < 0) {
+        without.push(id);
+        return without;
+      }
+      without.splice(index, 0, id);
+      return without;
+    };
+
+    const moveItem = (id: string, destination: 'visible' | 'parking', beforeId: string | null) => {
+      ensureViewportOverride();
+      const current = [...(draftLayouts[selectedViewport]?.visible ?? [])];
+      if (destination === 'parking') {
+        draftLayouts[selectedViewport] = {
+          visible: current.filter((entry) => entry !== id),
+        };
+      } else {
+        draftLayouts[selectedViewport] = {
+          visible: insertIdAt(current, id, beforeId),
+        };
+      }
+      renderDraft();
+      status.textContent = destination === 'parking'
+        ? `Hidden on ${selectedViewport} — unsaved changes.`
+        : `Rearranged on ${selectedViewport} — unsaved changes.`;
+    };
+
+    const bindDropZone = (zone: HTMLElement, destination: 'visible' | 'parking') => {
+      zone.addEventListener('dragover', (event) => {
+        if (!dragItemId) return;
+        event.preventDefault();
+        zone.classList.add('is-drop-target');
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      });
+      zone.addEventListener('dragleave', (event) => {
+        if (event.target === zone) zone.classList.remove('is-drop-target');
+      });
+      zone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        zone.classList.remove('is-drop-target');
+        const id = dragItemId || event.dataTransfer?.getData('text/plain');
+        if (!id) return;
+        const overThumb = (event.target as HTMLElement | null)
+          ?.closest<HTMLElement>('.project-grid-tuner__thumb');
+        const beforeId = destination === 'visible' && overThumb && overThumb.dataset.gridItemId !== id
+          ? overThumb.dataset.gridItemId || null
+          : null;
+        moveItem(id, destination, beforeId);
+      });
+    };
+
+    bindDropZone(visibleBoard, 'visible');
+    bindDropZone(parkingBoard, 'parking');
+
+    const renderBoard = () => {
+      const resolved = resolveVisible(itemIds, draftLayouts, selectedViewport);
+      const visibleSet = new Set(resolved.visible);
+      const byId = new Map(catalog.map((item) => [item.id, item]));
+
+      visibleBoard.style.setProperty(
+        '--project-grid-tuner-columns',
+        String(draftColumns[selectedViewport]),
+      );
+      visibleBoard.replaceChildren(
+        ...resolved.visible
+          .map((id) => byId.get(id))
+          .filter((item): item is GridItem => !!item)
+          .map(makeThumb),
+      );
+
+      const parked = itemIds
+        .filter((id) => !visibleSet.has(id))
+        .map((id) => byId.get(id))
+        .filter((item): item is GridItem => !!item);
+
+      parkingBoard.replaceChildren(
+        parkingHint,
+        ...parked.map(makeThumb),
+      );
+      parkingHint.hidden = parked.length > 0;
+
+      inheritNote.hidden = selectedViewport === 'desktop' || resolved.overridden;
+      clearOverrideButton.hidden = selectedViewport === 'desktop' || !resolved.overridden;
+    };
+
+    const renderDraft = () => {
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.gridViewport === selectedViewport;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      columnsSelect.value = String(draftColumns[selectedViewport]);
+      aspectSelect.value = draftAspect;
+      renderBoard();
+      applyColumnsLive();
+      applyAspectLive();
+      applyLayoutsLive();
+    };
+
+    const selectTarget = (target: HTMLElement, live: boolean) => {
+      editTarget = target;
+      liveApply = live;
+      catalog = readItems(editTarget);
+      itemIds = catalog.map((item) => item.id);
+      selectedViewport = viewportForWidth();
+      savedColumns = readColumns(editTarget);
+      draftColumns = { ...savedColumns };
+      savedAspect = editTarget.dataset.devGridDefaultAspect || '1:1';
+      draftAspect = savedAspect;
+      savedLayouts = readLayouts(editTarget);
+      draftLayouts = cloneLayouts(savedLayouts);
+      renderDraft();
+      if (live) status.textContent = 'Editing this grid. Drag thumbnails to rearrange or park.';
+    };
+
+    const saveDraft = async () => {
+      const documentKey = editTarget.dataset.devDocument;
+      let gridPath: Array<string | number> = [];
+      try {
+        gridPath = JSON.parse(editTarget.dataset.devGridPath || '[]');
+      } catch {
+        gridPath = [];
+      }
+      if (!documentKey || !Array.isArray(gridPath) || !gridPath.length) {
+        status.textContent = 'This grid is not wired for saving.';
+        return;
+      }
+      saveButton.disabled = true;
+      status.textContent = 'Saving grid…';
+      try {
+        const response = await fetch('/api/image-grid', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: documentKey,
+            path: gridPath,
+            columns: draftColumns,
+            defaultAspectRatio: draftAspect,
+            layouts: draftLayouts,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || `Save failed (${response.status})`);
+        }
+        savedColumns = { ...draftColumns };
+        savedAspect = draftAspect;
+        savedLayouts = cloneLayouts(draftLayouts);
+        status.textContent = `Saved grid settings to ${documentKey} — commit & push to publish.`;
+      } catch (error) {
+        status.textContent = error instanceof Error
+          ? error.message
+          : 'Save failed — is the dev server running?';
+      } finally {
+        saveButton.disabled = false;
+      }
+    };
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+      const trigger = event.detail?.trigger as HTMLElement | undefined;
+      if (trigger?.dataset.devEditTrigger !== 'grid') return;
+      const target = trigger.closest<HTMLElement>('[data-dev-grid-target]');
+      if (target) selectTarget(target, true);
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const trigger = event.detail?.trigger as HTMLElement | undefined;
+      if (trigger?.dataset.devEditTrigger === 'grid') liveApply = false;
+    }) as EventListener);
+
+    selectTarget(initialTarget, false);
+
+    viewportButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const viewport = button.dataset.gridViewport as ImageViewport | undefined;
+        if (!viewport || viewport === selectedViewport) return;
+        selectedViewport = viewport;
+        renderDraft();
+        const resolved = resolveVisible(itemIds, draftLayouts, selectedViewport);
+        status.textContent = resolved.overridden
+          ? `Editing ${selectedViewport} override.`
+          : `Editing ${selectedViewport} (inheriting until you rearrange).`;
+      });
+    });
+
+    columnsSelect.addEventListener('change', () => {
+      draftColumns[selectedViewport] = Number(columnsSelect.value) || 1;
+      renderDraft();
+      status.textContent = 'Column count changed — unsaved changes.';
+    });
+
+    aspectSelect.addEventListener('change', () => {
+      draftAspect = aspectSelect.value;
+      renderDraft();
+      status.textContent = 'Default aspect changed — unsaved changes.';
+    });
+
+    clearOverrideButton.addEventListener('click', () => {
+      if (selectedViewport === 'desktop') return;
+      delete draftLayouts[selectedViewport];
+      renderDraft();
+      status.textContent = `Cleared ${selectedViewport} override — now inheriting.`;
+    });
+
+    saveButton.addEventListener('click', saveDraft);
+
+    revertButton.addEventListener('click', () => {
+      draftColumns = { ...savedColumns };
+      draftAspect = savedAspect;
+      draftLayouts = cloneLayouts(savedLayouts);
+      renderDraft();
+      status.textContent = 'Reverted to the last saved grid settings.';
+    });
+  };
+
+  document
+    .querySelectorAll<HTMLElement>('[data-project-image-grid-tuner]')
+    .forEach(initProjectImageGridTuner);
+</script>
+
+<style>
+  .project-grid-tuner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7em;
+    min-width: 18em;
+    max-width: 24em;
+  }
+
+  .project-grid-tuner__viewports {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4em;
+  }
+
+  .project-grid-tuner__viewports button {
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+    padding: 0.45em 0.4em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .project-grid-tuner__viewports button.is-active {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .project-grid-tuner__inherit {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .project-grid-tuner__select {
+    display: grid;
+    grid-template-columns: 7.5em 1fr;
+    gap: 0.5em;
+    align-items: center;
+    font-size: 0.85rem;
+  }
+
+  .project-grid-tuner__select select {
+    width: 100%;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    font: inherit;
+  }
+
+  .project-grid-tuner__board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45em;
+  }
+
+  .project-grid-tuner__board-label {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .project-grid-tuner__visible,
+  .project-grid-tuner__parking {
+    display: grid;
+    gap: 0.35em;
+    min-height: 3.2em;
+    padding: 0.4em;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 45%, transparent);
+  }
+
+  .project-grid-tuner__visible {
+    grid-template-columns: repeat(var(--project-grid-tuner-columns, 4), minmax(0, 1fr));
+  }
+
+  .project-grid-tuner__parking {
+    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
+    border: 1px dashed color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  }
+
+  .project-grid-tuner__visible.is-drop-target,
+  .project-grid-tuner__parking.is-drop-target {
+    background: color-mix(in srgb, var(--color-text) 8%, var(--color-surface-soft));
+  }
+
+  .project-grid-tuner__parking-hint {
+    grid-column: 1 / -1;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.3;
+    pointer-events: none;
+  }
+
+  .project-grid-tuner__thumb {
+    position: relative;
+    aspect-ratio: 1;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0.2em;
+    overflow: hidden;
+    cursor: grab;
+    background: var(--color-surface-soft);
+  }
+
+  .project-grid-tuner__thumb.is-dragging {
+    opacity: 0.45;
+  }
+
+  .project-grid-tuner__thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .project-grid-tuner__hint,
+  .project-grid-tuner__status {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    line-height: 1.35;
+  }
+
+  .project-grid-tuner__actions {
+    display: flex;
+    gap: 0.45em;
+    flex-wrap: wrap;
+  }
+
+  .project-grid-tuner__actions button {
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+    padding: 0.5em 0.7em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .project-grid-tuner__actions button[data-grid-save] {
+    background: var(--color-text);
+    color: var(--color-bg);
+    margin-left: auto;
+  }
+
+  .project-grid-tuner__actions button[hidden] {
+    display: none;
+  }
+</style>

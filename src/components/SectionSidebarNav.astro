@@ -21,6 +21,8 @@ interface Props {
   clickLockMs?: number;
   enableEasingDevPanel?: boolean;
   defaultEasingPreset?: string;
+  /** Hide below the fixed-sidebar breakpoint (project case studies). */
+  desktopOnly?: boolean;
 }
 
 const {
@@ -34,6 +36,7 @@ const {
   clickLockMs = 700,
   enableEasingDevPanel = false,
   defaultEasingPreset = 'customBezier',
+  desktopOnly = false,
 } = Astro.props;
 
 const navId = `section-sidebar-nav-${Math.random().toString(36).slice(2, 10)}`;
@@ -50,7 +53,7 @@ const easingOptions = [
 ---
 
 <aside
-  class="section-sidebar-nav"
+  class:list={['section-sidebar-nav', desktopOnly && 'section-sidebar-nav--desktop-only']}
   data-nav-id={navId}
   aria-label={ariaLabel}
   data-section-selector={sectionSelector}
@@ -875,7 +878,13 @@ const easingOptions = [
     word-break: break-word;
   }
 
-  @media (min-width: 64em) {
+  /*
+    Fixed gutter nav needs ~14.25em per side: 12.5em width + 1em gap to the
+    60em content column + ≥0.75em from the viewport edge.
+    Viewport: 60em + 2 × 14.25em = 88.5em. Below that, hide (desktop-only)
+    or fall back to the compact sticky strip (Styles).
+  */
+  @media (min-width: 88.5em) {
     .section-sidebar-nav {
       position: fixed;
       top: 6.75em;
@@ -887,7 +896,11 @@ const easingOptions = [
     }
   }
 
-  @media (max-width: 63.9375em) {
+  @media (max-width: 88.4375em) {
+    .section-sidebar-nav--desktop-only {
+      display: none;
+    }
+
     .section-sidebar-nav-devpanel {
       right: 0.75em;
       bottom: 0.75em;
@@ -899,7 +912,7 @@ const easingOptions = [
       grid-template-columns: 1fr;
     }
 
-    .section-sidebar-nav {
+    .section-sidebar-nav:not(.section-sidebar-nav--desktop-only) {
       position: sticky;
       top: 0.75em;
       z-index: 3;
