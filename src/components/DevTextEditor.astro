@@ -71,6 +71,9 @@
     none: 'project-stack--none',
   };
 
+  /** Cursor must be within this distance of the control centre to reveal it. */
+  const SPACING_ACTIVATION_RADIUS_PX = 96;
+
   const SAFE_HREF = /^(https?:\/\/|\/|#|mailto:)/i;
 
   const applySpacingClass = (element: HTMLElement, spacing: SpacingValue) => {
@@ -255,6 +258,65 @@
         return [];
       }
     });
+
+    const isDevTextCaretActive = () => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return false;
+      return textStates.some(
+        (state) => state.element === active || state.element.contains(active),
+      );
+    };
+
+    const syncSpacingCaretSuppression = () => {
+      const suppressed = isDevTextCaretActive();
+      document.documentElement.classList.toggle('is-dev-text-caret', suppressed);
+      if (suppressed) {
+        spacingStates.forEach(({ control }) => control.classList.remove('is-near'));
+      }
+    };
+
+    const syncSpacingProximity = (clientX: number, clientY: number) => {
+      if (!document.documentElement.classList.contains('is-dev-mode') || isDevTextCaretActive()) {
+        spacingStates.forEach(({ control }) => control.classList.remove('is-near'));
+        return;
+      }
+
+      spacingStates.forEach(({ control, element }) => {
+        if (element.classList.contains('is-dev-spacing-dirty') || control.contains(document.activeElement)) {
+          control.classList.add('is-near');
+          return;
+        }
+
+        const rect = control.getBoundingClientRect();
+        const dx = clientX - (rect.left + rect.width / 2);
+        const dy = clientY - (rect.top + rect.height / 2);
+        control.classList.toggle(
+          'is-near',
+          Math.hypot(dx, dy) <= SPACING_ACTIVATION_RADIUS_PX,
+        );
+      });
+    };
+
+    if (spacingStates.length) {
+      document.addEventListener(
+        'pointermove',
+        (event) => {
+          syncSpacingProximity(event.clientX, event.clientY);
+        },
+        { passive: true },
+      );
+      document.documentElement.addEventListener('pointerleave', () => {
+        spacingStates.forEach(({ control, element }) => {
+          if (element.classList.contains('is-dev-spacing-dirty')) return;
+          control.classList.remove('is-near');
+        });
+      });
+      document.addEventListener('focusin', syncSpacingCaretSuppression);
+      document.addEventListener('focusout', () => {
+        // focusout fires before the next focus target is active
+        requestAnimationFrame(syncSpacingCaretSuppression);
+      });
+    }
 
     if (!textStates.length && !spacingStates.length) return;
 
@@ -578,8 +640,12 @@
       });
       spacingStates.forEach(({ control }) => {
         control.hidden = !enabled;
+        if (!enabled) control.classList.remove('is-near');
       });
-      if (!enabled) hideFormatBar();
+      if (!enabled) {
+        document.documentElement.classList.remove('is-dev-text-caret');
+        hideFormatBar();
+      }
       updateActions();
     };
 
@@ -922,8 +988,8 @@
   /* ── Section spacing picker (DEV) ───────────────────────── */
   .dev-spacing-control {
     position: absolute;
-    top: 50%;
-    right: -0.5em;
+    top: 0;
+    left: 50%;
     z-index: 40;
     display: flex;
     flex-direction: column;
@@ -933,18 +999,26 @@
     background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
     box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
     backdrop-filter: blur(12px);
-    transform: translateY(-50%);
+    transform: translate(-50%, -50%);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
   }
 
-  .is-dev-mode [data-dev-spacing-document]:hover > .dev-spacing-control,
+  .is-dev-mode .dev-spacing-control.is-near,
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-spacing-control,
-  .is-dev-mode .dev-spacing-control:hover,
   .is-dev-mode .dev-spacing-control:focus-within {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /* Keep gap controls out of the way while editing text. */
+  .is-dev-mode.is-dev-text-caret .dev-spacing-control,
+  .is-dev-mode.is-dev-text-caret .dev-spacing-control.is-near,
+  .is-dev-mode.is-dev-text-caret [data-dev-spacing-document].is-dev-spacing-dirty > .dev-spacing-control,
+  .is-dev-mode.is-dev-text-caret .dev-spacing-control:focus-within {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .dev-spacing-control__btn {
