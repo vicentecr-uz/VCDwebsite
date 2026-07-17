@@ -1,27 +1,37 @@
 ---
 import { projectImage } from '../../lib/images';
+import {
+  normalizeImageVariants,
+  responsiveImageStyle,
+  type ImageVariants,
+} from '../../lib/responsiveImage';
 
 interface Props {
   src: string;
   alt: string;
   variant?: 'default' | 'conic' | 'tapico';
   crop?: { x?: number; y?: number; zoom?: number };
+  variants?: ImageVariants;
 }
 
-const { src, alt, variant = 'default', crop } = Astro.props;
-
-const cropStyle =
-  variant === 'tapico' && crop
-    ? `--tapico-crop-x:${crop.x ?? 0}%;--tapico-crop-y:${crop.y ?? 0}%;--tapico-crop-zoom:${crop.zoom ?? 1};`
-    : undefined;
+const { src, alt, variant = 'default', crop, variants: suppliedVariants } = Astro.props;
+const variants = variant === 'tapico'
+  ? normalizeImageVariants(suppliedVariants, '16:10', crop)
+  : undefined;
 const editPanelKey = import.meta.env.DEV && variant === 'tapico' ? 'tapico-image' : undefined;
 ---
 
 <div
-  class:list={['project-hero', variant !== 'default' && `project-hero--${variant}`, editPanelKey && 'dev-image-edit-target']}
-  style={cropStyle}
+  class:list={[
+    'project-hero',
+    variant !== 'default' && `project-hero--${variant}`,
+    variants && 'project-responsive-image',
+    editPanelKey && 'dev-image-edit-target',
+  ]}
+  style={variants ? responsiveImageStyle(variants) : undefined}
   data-dev-image-target={editPanelKey}
   data-dev-crop-id={editPanelKey ? 'hero' : undefined}
+  data-dev-image-variants={editPanelKey && variants ? JSON.stringify(variants) : undefined}
 >
   <img src={projectImage(src)} alt={alt} class="project-hero__img" loading="eager" />
   {editPanelKey && (

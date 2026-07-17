@@ -9,6 +9,35 @@ import DevOverlay from '../DevOverlay.astro';
   defaultHidden
 >
   <div class="tapico-crop-tuner" data-tapico-crop-tuner>
+    <div class="tapico-crop-tuner__viewports" aria-label="Display width">
+      <button type="button" data-crop-viewport="desktop">Desktop</button>
+      <button type="button" data-crop-viewport="tablet">Tablet</button>
+      <button type="button" data-crop-viewport="mobile">Mobile</button>
+    </div>
+
+    <label class="tapico-crop-tuner__select">
+      <span>Aspect ratio</span>
+      <select data-crop-aspect-ratio>
+        <optgroup label="Landscape">
+          <option value="16:9">16:9</option>
+          <option value="16:10">16:10</option>
+          <option value="3:2">3:2</option>
+          <option value="4:3">4:3</option>
+          <option value="5:4">5:4</option>
+        </optgroup>
+        <optgroup label="Square">
+          <option value="1:1">1:1</option>
+        </optgroup>
+        <optgroup label="Portrait">
+          <option value="4:5">4:5</option>
+          <option value="3:4">3:4</option>
+          <option value="2:3">2:3</option>
+          <option value="10:16">10:16</option>
+          <option value="9:16">9:16</option>
+        </optgroup>
+      </select>
+    </label>
+
     <div class="tapico-crop-tuner__preview" data-crop-preview>
       <img alt="" data-crop-image draggable="false" />
       <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
@@ -54,7 +83,10 @@ import DevOverlay from '../DevOverlay.astro';
 </DevOverlay>
 
 <script>
+  type ImageViewport = 'desktop' | 'tablet' | 'mobile';
+
   interface CropState {
+    aspectRatio: string;
     x: number;
     y: number;
     zoom: number;
@@ -66,6 +98,10 @@ import DevOverlay from '../DevOverlay.astro';
 
     const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
     const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
+    const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
+    const viewportButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-viewport]'),
+    ];
     const zoomInput = tuner.querySelector<HTMLInputElement>('[data-crop-zoom]');
     const zoomOutput = tuner.querySelector<HTMLOutputElement>('[data-crop-zoom-output]');
     const readout = tuner.querySelector<HTMLElement>('[data-crop-readout]');
@@ -82,6 +118,8 @@ import DevOverlay from '../DevOverlay.astro';
     if (
       !preview ||
       !previewImage ||
+      !aspectRatioSelect ||
+      !viewportButtons.length ||
       !zoomInput ||
       !zoomOutput ||
       !readout ||
@@ -97,7 +135,12 @@ import DevOverlay from '../DevOverlay.astro';
       !initialImage
     ) return;
 
-    const defaults: CropState = { x: 0, y: 0, zoom: 1 };
+    const defaults: CropState = { aspectRatio: '1:1', x: 0, y: 0, zoom: 1 };
+    const viewportForWidth = (): ImageViewport => {
+      if (window.innerWidth <= 767) return 'mobile';
+      if (window.innerWidth <= 991) return 'tablet';
+      return 'desktop';
+    };
     const constraintStorageKey = 'tapicoImageCropConstrained';
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
     const clean = (value: number) => Math.round(value * 10) / 10;
@@ -105,17 +148,30 @@ import DevOverlay from '../DevOverlay.astro';
 
     let editTarget = initialTarget;
     let editedImage = initialImage;
+    let selectedViewport = viewportForWidth();
 
-    // Source of truth is the committed crop applied from tapico.json.
-    const readAppliedCrop = (target: HTMLElement): CropState => {
-      const rawX = Number.parseFloat(target.style.getPropertyValue('--tapico-crop-x'));
-      const rawY = Number.parseFloat(target.style.getPropertyValue('--tapico-crop-y'));
-      const rawZoom = Number.parseFloat(target.style.getPropertyValue('--tapico-crop-zoom'));
-      return {
-        x: Number.isFinite(rawX) ? clamp(rawX, -100, 100) : defaults.x,
-        y: Number.isFinite(rawY) ? clamp(rawY, -100, 100) : defaults.y,
-        zoom: Number.isFinite(rawZoom) ? clamp(rawZoom, 1, 1.5) : defaults.zoom,
-      };
+    const readAppliedVariants = (
+      target: HTMLElement,
+    ): Record<ImageViewport, CropState> => {
+      try {
+        const parsed = JSON.parse(target.dataset.devImageVariants || '{}');
+        return {
+          desktop: { ...defaults, ...parsed.desktop },
+          tablet: { ...defaults, ...parsed.desktop, ...parsed.tablet },
+          mobile: {
+            ...defaults,
+            ...parsed.desktop,
+            ...parsed.tablet,
+            ...parsed.mobile,
+          },
+        };
+      } catch {
+        return {
+          desktop: { ...defaults },
+          tablet: { ...defaults },
+          mobile: { ...defaults },
+        };
+      }
     };
 
     const readConstraint = () => {
@@ -126,8 +182,10 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
-    let saved: CropState = readAppliedCrop(editTarget);
-    let draft: CropState = { ...saved };
+    let savedVariants = readAppliedVariants(editTarget);
+    let draftVariants = structuredClone(savedVariants);
+    let saved: CropState = { ...savedVariants[selectedViewport] };
+    let draft: CropState = { ...draftVariants[selectedViewport] };
     let constrainToFrame = readConstraint();
 
     const sizeImageToCover = (frame: HTMLElement, image: HTMLImageElement) => {
@@ -150,7 +208,6 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const syncCoverSizes = () => {
-      sizeImageToCover(editTarget, editedImage);
       sizeImageToCover(preview, previewImage);
     };
 
@@ -175,18 +232,8 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const getPanLimits = () => {
-      const targetSized = sizeImageToCover(editTarget, editedImage);
       const previewSized = sizeImageToCover(preview, previewImage);
-      if (!targetSized && !previewSized) return { x: 0, y: 0 };
-      if (!targetSized) return limitsForSize(previewSized!);
-      if (!previewSized) return limitsForSize(targetSized);
-
-      const targetLimits = limitsForSize(targetSized);
-      const previewLimits = limitsForSize(previewSized);
-      return {
-        x: Math.min(targetLimits.x, previewLimits.x),
-        y: Math.min(targetLimits.y, previewLimits.y),
-      };
+      return previewSized ? limitsForSize(previewSized) : { x: 0, y: 0 };
     };
 
     const constrainDraft = () => {
@@ -209,11 +256,37 @@ import DevOverlay from '../DevOverlay.astro';
       element.style.setProperty('--tapico-crop-zoom', crop.zoom.toString());
     };
 
+    const setTargetVariant = (
+      target: HTMLElement,
+      viewport: ImageViewport,
+      crop: CropState,
+    ) => {
+      target.style.setProperty(
+        `--project-image-ratio-${viewport}`,
+        crop.aspectRatio.replace(':', ' / '),
+      );
+      target.style.setProperty(`--project-image-x-${viewport}`, `${crop.x}%`);
+      target.style.setProperty(`--project-image-y-${viewport}`, `${crop.y}%`);
+      target.style.setProperty(
+        `--project-image-zoom-${viewport}`,
+        crop.zoom.toString(),
+      );
+    };
+
     const renderDraft = () => {
+      preview.style.aspectRatio = draft.aspectRatio.replace(':', ' / ');
       syncCoverSizes();
       constrainDraft();
+      draftVariants[selectedViewport] = { ...draft };
       setCropVariables(preview, draft);
-      setCropVariables(editTarget, draft);
+      setTargetVariant(editTarget, selectedViewport, draft);
+      editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
+      aspectRatioSelect.value = draft.aspectRatio;
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.cropViewport === selectedViewport;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
       zoomInput.value = draft.zoom.toString();
       zoomOutput.value = `${Math.round(draft.zoom * 100)}%`;
       readout.textContent = `x ${formatSigned(draft.x)} · y ${formatSigned(draft.y)} · zoom ${Math.round(draft.zoom * 100)}%`;
@@ -223,17 +296,19 @@ import DevOverlay from '../DevOverlay.astro';
       saveButton.disabled = true;
       status.textContent = 'Saving to tapico.json…';
       try {
+        draftVariants[selectedViewport] = { ...draft };
         const response = await fetch('/api/tapico-crop', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             id: editTarget.dataset.devCropId,
-            ...draft,
+            variants: draftVariants,
           }),
         });
         if (!response.ok) throw new Error(`Save failed (${response.status})`);
         saved = { ...draft };
-        status.textContent = 'Saved to tapico.json — commit & push to publish.';
+        savedVariants = structuredClone(draftVariants);
+        status.textContent = 'Saved all display crops to tapico.json — commit & push to publish.';
       } catch {
         status.textContent = 'Save failed — is the dev server running?';
       } finally {
@@ -262,9 +337,11 @@ import DevOverlay from '../DevOverlay.astro';
       editedImage = image;
       resizeObserver?.observe(editTarget);
 
-      saved = readAppliedCrop(editTarget);
+      selectedViewport = viewportForWidth();
+      savedVariants = readAppliedVariants(editTarget);
+      draftVariants = structuredClone(savedVariants);
+      saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
-      preview.style.aspectRatio = getComputedStyle(editTarget).aspectRatio;
       previewImage.src = editedImage.currentSrc || editedImage.src;
 
       if (editedImage.complete) {
@@ -284,6 +361,25 @@ import DevOverlay from '../DevOverlay.astro';
     }) as EventListener);
 
     selectTarget(initialTarget);
+
+    viewportButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const viewport = button.dataset.cropViewport as ImageViewport | undefined;
+        if (!viewport || viewport === selectedViewport) return;
+        draftVariants[selectedViewport] = { ...draft };
+        selectedViewport = viewport;
+        saved = { ...savedVariants[selectedViewport] };
+        draft = { ...draftVariants[selectedViewport] };
+        renderDraft();
+        status.textContent = `Editing the ${selectedViewport} display crop.`;
+      });
+    });
+
+    aspectRatioSelect.addEventListener('change', () => {
+      draft.aspectRatio = aspectRatioSelect.value;
+      renderDraft();
+      status.textContent = 'Aspect ratio changed — unsaved changes.';
+    });
 
     zoomInput.addEventListener('input', () => {
       draft.zoom = clamp(Number(zoomInput.value), 1, 1.5);
@@ -378,7 +474,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     resetButton.addEventListener('click', () => {
-      draft = { ...defaults };
+      draft = { ...defaults, aspectRatio: draft.aspectRatio };
       renderDraft();
       status.textContent = 'Reset to centred cover — unsaved changes.';
     });
@@ -392,6 +488,52 @@ import DevOverlay from '../DevOverlay.astro';
     display: flex;
     flex-direction: column;
     gap: 0.7em;
+  }
+
+  .tapico-crop-tuner__viewports {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4em;
+  }
+
+  .tapico-crop-tuner__viewports button,
+  .tapico-crop-tuner__select select {
+    border: 0;
+    border-radius: var(--radius-control);
+    corner-shape: squircle;
+    background: var(--color-surface-soft);
+    padding: 0.5em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.1;
+  }
+
+  .tapico-crop-tuner__viewports button {
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__viewports button:hover,
+  .tapico-crop-tuner__viewports button.is-active {
+    background: var(--color-surface-strong);
+  }
+
+  .tapico-crop-tuner__viewports button.is-active {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 30%, transparent);
+  }
+
+  .tapico-crop-tuner__select {
+    display: grid;
+    grid-template-columns: 5em 1fr;
+    align-items: center;
+    gap: 0.6em;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .tapico-crop-tuner__select select {
+    width: 100%;
+    cursor: pointer;
   }
 
   .tapico-crop-tuner__preview {

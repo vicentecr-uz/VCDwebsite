@@ -16,6 +16,20 @@ const EDITABLE_COLOR_TOKENS = new Set([
   '--color-text-muted',
   '--color-border',
 ]);
+const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
+const IMAGE_ASPECT_RATIOS = new Set([
+  '16:9',
+  '16:10',
+  '3:2',
+  '4:3',
+  '5:4',
+  '1:1',
+  '4:5',
+  '3:4',
+  '2:3',
+  '10:16',
+  '9:16',
+]);
 
 const clampRound = (value, min, max, decimals) => {
   const bounded = Math.min(max, Math.max(min, value));
@@ -27,8 +41,8 @@ const clampRound = (value, min, max, decimals) => {
  * Dev-only writer for Tapico image crops. `apply: 'serve'` means this plugin
  * is active only under `astro dev` — it is never part of the static production
  * build, so nothing is emitted to `dist/` and the live site has no such route.
- * The Tapico crop tuner POSTs `{ id, x, y, zoom }` here; we persist it into
- * `tapico.json` so committing that file publishes the crop.
+ * The Tapico crop tuner POSTs a viewport-specific ratio and crop here; we
+ * persist it into `tapico.json` so committing that file publishes the crop.
  *
  * @returns {import('vite').Plugin}
  */
@@ -54,20 +68,32 @@ function tapicoCropDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
-          const x = Number(body.x);
-          const y = Number(body.y);
-          const zoom = Number(body.zoom);
           const id = String(body.id || 'hero');
-          if (![x, y, zoom].every(Number.isFinite)) {
-            send(400, { error: 'x, y and zoom must be finite numbers.' });
-            return;
+          const requestedVariants = body.variants && typeof body.variants === 'object'
+            ? body.variants
+            : { [String(body.viewport || 'desktop')]: body };
+          /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
+          const variants = {};
+          for (const [viewport, requested] of Object.entries(requestedVariants)) {
+            const x = Number(requested?.x);
+            const y = Number(requested?.y);
+            const zoom = Number(requested?.zoom);
+            const aspectRatio = String(requested?.aspectRatio || '');
+            if (
+              !IMAGE_VIEWPORTS.has(viewport) ||
+              !IMAGE_ASPECT_RATIOS.has(aspectRatio) ||
+              ![x, y, zoom].every(Number.isFinite)
+            ) {
+              send(400, { error: 'Use supported viewports, aspect ratios and crop values.' });
+              return;
+            }
+            variants[viewport] = {
+              aspectRatio,
+              x: clampRound(x, -100, 100, 1),
+              y: clampRound(y, -100, 100, 1),
+              zoom: clampRound(zoom, 1, 1.5, 2),
+            };
           }
-
-          const crop = {
-            x: clampRound(x, -100, 100, 1),
-            y: clampRound(y, -100, 100, 1),
-            zoom: clampRound(zoom, 1, 1.5, 2),
-          };
 
           const file = path.join(process.cwd(), TAPICO_CONTENT);
           const data = JSON.parse(await readFile(file, 'utf8'));
@@ -83,9 +109,11 @@ function tapicoCropDevWriter() {
             return;
           }
 
-          target.crop = crop;
+          target.variants ||= {};
+          Object.assign(target.variants, variants);
+          delete target.crop;
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-          send(200, { ok: true, id, crop });
+          send(200, { ok: true, id, variants });
         } catch {
           send(400, { error: 'Could not parse or write the crop.' });
         }
