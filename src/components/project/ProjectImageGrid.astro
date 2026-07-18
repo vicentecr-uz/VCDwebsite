@@ -2,12 +2,15 @@
 import { projectImage } from '../../lib/images';
 import {
   imageGridColumnsStyle,
+  imageGridConstrainedStyle,
   imageGridItemLayoutStyle,
   normalizeImageVariants,
   resolveImageGridColumns,
+  resolveImageGridConstrained,
   resolveImageGridLayouts,
   responsiveImageStyle,
   type ImageGridColumns,
+  type ImageGridConstrained,
   type ImageGridLayouts,
   type ImageVariants,
 } from '../../lib/responsiveImage';
@@ -33,6 +36,8 @@ interface Props {
   columns?: ImageGridColumns;
   /** Default aspect for cells without their own variants. */
   defaultAspectRatio?: string;
+  /** Per-breakpoint width constraint (30–90%, or 100 / omitted for full width). */
+  constrained?: ImageGridConstrained;
   /** Per-breakpoint visible order. Smaller breakpoints inherit unless overridden. */
   layouts?: ImageGridLayouts;
   /** Editing wiring: which project JSON + path to this grid section. */
@@ -47,6 +52,7 @@ const {
   items,
   columns: columnsProp = 2,
   defaultAspectRatio = '1:1',
+  constrained: constrainedProp,
   layouts: layoutsProp,
   document: documentKey,
   basePath,
@@ -55,6 +61,7 @@ const {
 } = Astro.props;
 
 const columns = resolveImageGridColumns(columnsProp);
+const constrained = resolveImageGridConstrained(constrainedProp);
 const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
 
 /** Seed mobile hide from legacy hideOnMobile when no layouts.mobile override exists. */
@@ -67,8 +74,8 @@ if (!layouts.mobile && items.some((item) => item.hideOnMobile)) {
 
 const resolvedLayouts = resolveImageGridLayouts(itemIds, layouts);
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
-const isMultiRow = items.length > columns.desktop;
-const showGridEditor = showDevEditing && isMultiRow;
+/** Single-row grids still need the editor — e.g. 3-wide desktop → 1-wide mobile. */
+const showGridEditor = showDevEditing;
 const stackClass = projectStackClass(spacing);
 const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
 
@@ -87,11 +94,12 @@ const editorItems = items.map((item, index) => ({
     sectionId && 'section-block',
     showGridEditor && 'dev-grid-edit-target',
   ]}
-  style={`${imageGridColumnsStyle(columns)};`}
+  style={`${imageGridColumnsStyle(columns)};${imageGridConstrainedStyle(constrained)};`}
   data-dev-grid-target={showGridEditor ? 'grid' : undefined}
   data-dev-document={showGridEditor ? documentKey : undefined}
   data-dev-grid-path={showGridEditor ? JSON.stringify(basePath) : undefined}
   data-dev-grid-columns={showGridEditor ? JSON.stringify(columns) : undefined}
+  data-dev-grid-constrained={showGridEditor ? JSON.stringify(constrained) : undefined}
   data-dev-grid-default-aspect={showGridEditor ? defaultAspectRatio : undefined}
   data-dev-grid-layouts={showGridEditor ? JSON.stringify(layouts) : undefined}
   data-dev-grid-items={showGridEditor ? JSON.stringify(editorItems) : undefined}
@@ -202,22 +210,27 @@ const editorItems = items.map((item, index) => ({
 <style>
   .project-image-grid {
     --project-image-grid-columns: var(--project-image-grid-columns-desktop, 2);
+    --project-image-grid-width: var(--project-image-grid-width-desktop, 100%);
     position: relative;
     display: grid;
     grid-template-columns: repeat(var(--project-image-grid-columns), minmax(0, 1fr));
     gap: 1em;
-    width: 100%;
+    width: var(--project-image-grid-width);
+    max-width: 100%;
+    margin-inline: auto;
   }
 
   @media (max-width: 991px) {
     .project-image-grid {
       --project-image-grid-columns: var(--project-image-grid-columns-tablet, var(--project-image-grid-columns-desktop, 2));
+      --project-image-grid-width: var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%));
     }
   }
 
   @media (max-width: 767px) {
     .project-image-grid {
       --project-image-grid-columns: var(--project-image-grid-columns-mobile, var(--project-image-grid-columns-tablet, var(--project-image-grid-columns-desktop, 2)));
+      --project-image-grid-width: var(--project-image-grid-width-mobile, var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%)));
     }
   }
 

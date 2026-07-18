@@ -32,6 +32,20 @@ import DevOverlay from '../DevOverlay.astro';
     </label>
 
     <label class="project-grid-tuner__select">
+      <span>Constrain</span>
+      <select data-grid-constrained>
+        <option value="100">None</option>
+        <option value="90">90%</option>
+        <option value="80">80%</option>
+        <option value="70">70%</option>
+        <option value="60">60%</option>
+        <option value="50">50%</option>
+        <option value="40">40%</option>
+        <option value="30">30%</option>
+      </select>
+    </label>
+
+    <label class="project-grid-tuner__select">
       <span>Default image aspect</span>
       <select data-grid-aspect-ratio>
         <option value="original">Original</option>
@@ -87,7 +101,7 @@ import DevOverlay from '../DevOverlay.astro';
     </div>
 
     <p class="project-grid-tuner__status" data-grid-status aria-live="polite">
-      Pick a multi-row grid to edit layout, columns, and default aspect.
+      Pick a grid to edit layout, columns, width, and default aspect.
     </p>
   </div>
 </DevOverlay>
@@ -113,6 +127,7 @@ import DevOverlay from '../DevOverlay.astro';
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-grid-viewport]'),
     ];
     const columnsSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-columns]');
+    const constrainedSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-constrained]');
     const aspectSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-aspect-ratio]');
     const visibleBoard = tuner.querySelector<HTMLElement>('[data-grid-visible]');
     const parkingBoard = tuner.querySelector<HTMLElement>('[data-grid-parking]');
@@ -126,6 +141,7 @@ import DevOverlay from '../DevOverlay.astro';
     if (
       !viewportButtons.length ||
       !columnsSelect ||
+      !constrainedSelect ||
       !aspectSelect ||
       !visibleBoard ||
       !parkingBoard ||
@@ -154,6 +170,39 @@ import DevOverlay from '../DevOverlay.astro';
         };
       } catch {
         return { desktop: 2, tablet: 2, mobile: 2 };
+      }
+    };
+
+    const normalizeConstrainPercent = (value: unknown, fallback = 100): number => {
+      if (value === true) return 80;
+      if (value === false || value === null || value === undefined) return fallback;
+      const n = Math.round(Number(value));
+      if (!Number.isFinite(n) || n >= 100) return 100;
+      const stepped = Math.round(n / 10) * 10;
+      if (stepped < 30) return 30;
+      if (stepped > 90) return 90;
+      return stepped;
+    };
+
+    const readConstrained = (target: HTMLElement) => {
+      try {
+        const raw = target.dataset.devGridConstrained;
+        if (!raw) return { desktop: 100, tablet: 100, mobile: 100 };
+        const parsed = JSON.parse(raw);
+        if (typeof parsed === 'boolean' || typeof parsed === 'number') {
+          const percent = normalizeConstrainPercent(parsed, 100);
+          return { desktop: percent, tablet: percent, mobile: percent };
+        }
+        const desktop = normalizeConstrainPercent(parsed?.desktop, 100);
+        const tablet = parsed?.tablet === undefined
+          ? desktop
+          : normalizeConstrainPercent(parsed.tablet, desktop);
+        const mobile = parsed?.mobile === undefined
+          ? tablet
+          : normalizeConstrainPercent(parsed.mobile, tablet);
+        return { desktop, tablet, mobile };
+      } catch {
+        return { desktop: 100, tablet: 100, mobile: 100 };
       }
     };
 
@@ -229,6 +278,8 @@ import DevOverlay from '../DevOverlay.astro';
     let selectedViewport = viewportForWidth();
     let savedColumns = readColumns(editTarget);
     let draftColumns = { ...savedColumns };
+    let savedConstrained = readConstrained(editTarget);
+    let draftConstrained = { ...savedConstrained };
     let savedAspect = editTarget.dataset.devGridDefaultAspect || '1:1';
     let draftAspect = savedAspect;
     let savedLayouts = readLayouts(editTarget);
@@ -258,6 +309,17 @@ import DevOverlay from '../DevOverlay.astro';
         );
       });
       editTarget.dataset.devGridColumns = JSON.stringify(draftColumns);
+    };
+
+    const applyConstrainedLive = () => {
+      if (!liveApply) return;
+      VIEWPORTS.forEach((viewport) => {
+        editTarget.style.setProperty(
+          `--project-image-grid-width-${viewport}`,
+          `${draftConstrained[viewport]}%`,
+        );
+      });
+      editTarget.dataset.devGridConstrained = JSON.stringify(draftConstrained);
     };
 
     const applyAspectLive = () => {
@@ -435,9 +497,11 @@ import DevOverlay from '../DevOverlay.astro';
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       columnsSelect.value = String(draftColumns[selectedViewport]);
+      constrainedSelect.value = String(draftConstrained[selectedViewport]);
       aspectSelect.value = draftAspect;
       renderBoard();
       applyColumnsLive();
+      applyConstrainedLive();
       applyAspectLive();
       applyLayoutsLive();
     };
@@ -450,6 +514,8 @@ import DevOverlay from '../DevOverlay.astro';
       selectedViewport = viewportForWidth();
       savedColumns = readColumns(editTarget);
       draftColumns = { ...savedColumns };
+      savedConstrained = readConstrained(editTarget);
+      draftConstrained = { ...savedConstrained };
       savedAspect = editTarget.dataset.devGridDefaultAspect || '1:1';
       draftAspect = savedAspect;
       savedLayouts = readLayouts(editTarget);
@@ -480,6 +546,7 @@ import DevOverlay from '../DevOverlay.astro';
             document: documentKey,
             path: gridPath,
             columns: draftColumns,
+            constrained: draftConstrained,
             defaultAspectRatio: draftAspect,
             layouts: draftLayouts,
           }),
@@ -489,6 +556,7 @@ import DevOverlay from '../DevOverlay.astro';
           throw new Error(payload.error || `Save failed (${response.status})`);
         }
         savedColumns = { ...draftColumns };
+        savedConstrained = { ...draftConstrained };
         savedAspect = draftAspect;
         savedLayouts = cloneLayouts(draftLayouts);
         status.textContent = `Saved grid settings to ${documentKey} — commit & push to publish.`;
@@ -534,6 +602,15 @@ import DevOverlay from '../DevOverlay.astro';
       status.textContent = 'Column count changed — unsaved changes.';
     });
 
+    constrainedSelect.addEventListener('change', () => {
+      draftConstrained[selectedViewport] = normalizeConstrainPercent(constrainedSelect.value, 100);
+      renderDraft();
+      const percent = draftConstrained[selectedViewport];
+      status.textContent = percent >= 100
+        ? `Full width on ${selectedViewport} — unsaved changes.`
+        : `Constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
+    });
+
     aspectSelect.addEventListener('change', () => {
       draftAspect = aspectSelect.value;
       renderDraft();
@@ -551,6 +628,7 @@ import DevOverlay from '../DevOverlay.astro';
 
     revertButton.addEventListener('click', () => {
       draftColumns = { ...savedColumns };
+      draftConstrained = { ...savedConstrained };
       draftAspect = savedAspect;
       draftLayouts = cloneLayouts(savedLayouts);
       renderDraft();
