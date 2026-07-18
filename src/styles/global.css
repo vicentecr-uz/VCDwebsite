@@ -90,7 +90,9 @@ a {
 }
 
 /* ── Page transition overlay ────────────────────────────── */
-/* CSS intro reveal so a failed GSAP/Vite dep load cannot leave a white screen. */
+/* Safety-net reveal only — Layout.astro cancels this and fades out once
+   viewport-visible images are ready. Long delay so a failed JS load still
+   eventually shows the page instead of trapping on white. */
 #transition-overlay {
   position: fixed;
   inset: 0;
@@ -98,7 +100,7 @@ a {
   z-index: 100;
   pointer-events: none;
   opacity: 1;
-  animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 0.5s forwards;
+  animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards;
 }
 
 @keyframes transition-overlay-reveal {
