@@ -55,14 +55,72 @@ const showDevTools = import.meta.env.DEV;
       registerHyperellipse();
 
       const overlay = document.getElementById('transition-overlay');
+      const REVEAL_EASE = 'cubic-bezier(0.55, 0.055, 0.675, 0.19)';
+      const MIN_HOLD_MS = 500;
+      const MAX_WAIT_MS = 4000;
 
-      const revealOverlay = () => {
-        if (!overlay) return;
-        // Restart CSS intro when restoring from bfcache (animation won't re-fire alone).
-        overlay.style.animation = 'none';
-        void overlay.offsetWidth;
-        overlay.style.animation = '';
+      const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+      const isInViewport = (el: Element) => {
+        const rect = el.getBoundingClientRect();
+        const vh = window.innerHeight || document.documentElement.clientHeight;
+        const vw = window.innerWidth || document.documentElement.clientWidth;
+        return rect.bottom > 0 && rect.right > 0 && rect.top < vh && rect.left < vw;
       };
+
+      const whenImageReady = async (img: HTMLImageElement) => {
+        if (!img.complete) {
+          await new Promise<void>((resolve) => {
+            img.addEventListener('load', () => resolve(), { once: true });
+            img.addEventListener('error', () => resolve(), { once: true });
+          });
+        }
+        // Decode so pixels are paint-ready, not just network-complete.
+        if (typeof img.decode === 'function' && img.naturalWidth > 0) {
+          try {
+            await img.decode();
+          } catch {
+            /* broken / unsupported — still reveal */
+          }
+        }
+      };
+
+      const waitForVisibleContent = async () => {
+        const visibleImages = Array.from(document.images).filter(isInViewport);
+        await Promise.all([
+          document.fonts?.ready ?? Promise.resolve(),
+          ...visibleImages.map(whenImageReady),
+        ]);
+      };
+
+      let revealing = false;
+
+      const revealPage = async () => {
+        if (!overlay || revealing) return;
+        revealing = true;
+
+        // Take over from the CSS safety-net animation.
+        overlay.style.animation = 'none';
+        overlay.style.opacity = '1';
+
+        const started = performance.now();
+        await Promise.race([waitForVisibleContent(), sleep(MAX_WAIT_MS)]);
+
+        const remaining = MIN_HOLD_MS - (performance.now() - started);
+        if (remaining > 0) await sleep(remaining);
+
+        gsap.to(overlay, {
+          opacity: 0,
+          duration: 0.5,
+          ease: REVEAL_EASE,
+          onComplete: () => {
+            revealing = false;
+          },
+        });
+      };
+
+      // ── Enter: hold white until visible media is ready ─────
+      void revealPage();
 
       // ── Exit: fade overlay in, then navigate ───────────────
       document.querySelectorAll('a[href]').forEach((link) => {
@@ -105,9 +163,12 @@ const showDevTools = import.meta.env.DEV;
         });
       });
 
-      // ── Back/forward: reset overlay then fade out ──────────
+      // ── Back/forward (bfcache): replay enter reveal ────────
       window.addEventListener('pageshow', (e) => {
-        if (e.persisted) revealOverlay();
+        if (e.persisted) {
+          revealing = false;
+          void revealPage();
+        }
       });
     </script>
   </body>
