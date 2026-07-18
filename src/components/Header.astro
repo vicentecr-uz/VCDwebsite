@@ -189,14 +189,49 @@ const menuLinks = headerSettings.menuLinks;
       ?.classList.toggle('is-menu-backdrop-visible', visible);
   };
 
+  /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
+  const forceCloseMenus = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.closest('.site-header--nav-menu')) {
+      active.blur();
+    }
+
+    setMenuBackdropVisible(false);
+
+    document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
+      const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
+      if (trigger.dataset.menuCloseTimer) {
+        clearTimeout(Number(trigger.dataset.menuCloseTimer));
+        delete trigger.dataset.menuCloseTimer;
+      }
+      trigger.classList.remove('is-menu-open');
+      trigger.style.setProperty('--panel-bg-duration', '0s');
+      trigger.style.setProperty('--panel-bg-delay', '0s');
+      trigger.style.setProperty('--menu-reveal', '0');
+      links.forEach((link) => {
+        link.style.setProperty('--menu-link-delay', '0s');
+        link.style.setProperty('--menu-link-duration', '0s');
+        link.style.opacity = '0';
+      });
+    });
+
+    document.dispatchEvent(new CustomEvent('header:force-close'));
+  };
+
   document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
-    const links = [...trigger.querySelectorAll('.header-menu__link')];
+    const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
     if (!links.length) return;
 
     const panelBg = trigger.querySelector('.header-trigger__panel-bg') as HTMLElement | null;
     const closeLayoutMs =
       Math.ceil(Math.max(0.38, (links.length - 1) * 0.04 + 0.15) * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const clearCloseTimer = () => {
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = undefined;
+      delete trigger.dataset.menuCloseTimer;
+    };
 
     const setPanelReveal = (open: boolean) => {
       if (!panelBg) return;
@@ -234,7 +269,7 @@ const menuLinks = headerSettings.menuLinks;
     };
 
     const openMenu = () => {
-      if (closeTimer) clearTimeout(closeTimer);
+      clearCloseTimer();
       trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
       setMenuBackdropVisible(true);
@@ -246,12 +281,15 @@ const menuLinks = headerSettings.menuLinks;
       setMenuBackdropVisible(false);
       setCloseStagger();
       setPanelReveal(false);
-      if (closeTimer) clearTimeout(closeTimer);
+      clearCloseTimer();
       closeTimer = setTimeout(() => {
+        closeTimer = undefined;
+        delete trigger.dataset.menuCloseTimer;
         if (!trigger.matches(':hover') && !trigger.contains(document.activeElement)) {
           trigger.classList.remove('is-menu-open');
         }
       }, closeLayoutMs);
+      trigger.dataset.menuCloseTimer = String(closeTimer);
     };
 
     trigger.addEventListener('mouseenter', openMenu);
@@ -262,6 +300,15 @@ const menuLinks = headerSettings.menuLinks;
         closeMenu();
       }
     });
+  });
+
+  // Leave menu open during the exit fade (pointer is still over it). Close only when
+  // the page is actually unloaded / restored from bfcache so swipe-back isn't stuck open.
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) forceCloseMenus();
+  });
+  window.addEventListener('pagehide', () => {
+    forceCloseMenus();
   });
 
   const startTrigger = document.querySelector('.header-trigger--start');
@@ -444,6 +491,28 @@ const menuLinks = headerSettings.menuLinks;
       if (!startTrigger.contains(event.relatedTarget as Node | null)) {
         onWordmarkPointerInactive();
       }
+    });
+
+    // Instant wordmark reset when menu force-closes (pagehide / bfcache).
+    document.addEventListener('header:force-close', () => {
+      wordmarkAnimating = false;
+      wordmarkIsOpen = false;
+      startTrigger.classList.remove('is-wordmark-swapped');
+      pageChars.forEach((char) => {
+        char.style.setProperty('--char-duration', '0s');
+        char.style.setProperty('--char-delay', '0s');
+        char.style.setProperty('--char-blur', '0px');
+        char.style.opacity = '1';
+      });
+      homeChars.forEach((char) => {
+        char.style.setProperty('--char-duration', '0s');
+        char.style.setProperty('--char-delay', '0s');
+        char.style.setProperty('--char-blur', '0px');
+        char.style.opacity = '0';
+      });
+      pageWordmark?.setAttribute('aria-hidden', 'false');
+      homeWordmarkEl?.setAttribute('aria-hidden', 'true');
+      brandLink?.removeAttribute('aria-label');
     });
   }
 </script>
