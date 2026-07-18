@@ -163,8 +163,9 @@ function imageCropDevWriter() {
 }
 
 /**
- * Dev-only writer for multi-row image-grid settings (per-breakpoint columns,
- * default aspect, and visible/parking layouts with waterfall inheritance).
+ * Dev-only writer for image-grid settings (per-breakpoint columns,
+ * constrained width, default aspect, and visible/parking layouts with
+ * waterfall inheritance).
  *
  * @returns {import('vite').Plugin}
  */
@@ -218,6 +219,34 @@ function imageGridDevWriter() {
             columns[viewport] = Math.round(count);
           }
 
+          const requestedConstrained = body.constrained && typeof body.constrained === 'object'
+            ? body.constrained
+            : {};
+          /** @type {Record<string, number>} */
+          const constrained = {};
+          for (const viewport of IMAGE_VIEWPORTS) {
+            const raw = requestedConstrained[viewport];
+            if (raw === true) {
+              constrained[viewport] = 80;
+              continue;
+            }
+            if (raw === false || raw === null || raw === undefined) {
+              constrained[viewport] = 100;
+              continue;
+            }
+            const n = Math.round(Number(raw));
+            if (!Number.isFinite(n) || n >= 100) {
+              constrained[viewport] = 100;
+              continue;
+            }
+            const stepped = Math.round(n / 10) * 10;
+            if (stepped < 30 || stepped > 90) {
+              send(400, { error: 'Use a constrain width of 30–90% (or None).' });
+              return;
+            }
+            constrained[viewport] = stepped;
+          }
+
           const defaultAspectRatio = String(body.defaultAspectRatio || '');
           if (!isAllowedAspectRatio(defaultAspectRatio)) {
             send(400, { error: 'Use a supported default aspect ratio.' });
@@ -268,6 +297,7 @@ function imageGridDevWriter() {
           }
 
           target.columns = columns;
+          target.constrained = constrained;
           target.defaultAspectRatio = defaultAspectRatio;
           if (Object.keys(layouts).length) {
             target.layouts = layouts;
@@ -281,7 +311,14 @@ function imageGridDevWriter() {
             }
           }
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-          send(200, { ok: true, document: documentKey, columns, defaultAspectRatio, layouts });
+          send(200, {
+            ok: true,
+            document: documentKey,
+            columns,
+            constrained,
+            defaultAspectRatio,
+            layouts,
+          });
         } catch {
           send(400, { error: 'Could not parse or write the grid settings.' });
         }

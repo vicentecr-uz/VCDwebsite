@@ -9,8 +9,23 @@ export interface ImageVariant {
 
 export type ImageVariants = Partial<Record<ImageViewport, Partial<ImageVariant>>>;
 
-/** Legacy single count, or per-breakpoint column counts for multi-row grids. */
+/** Legacy single count, or per-breakpoint column counts. */
 export type ImageGridColumns = number | Partial<Record<ImageViewport, number>>;
+
+/**
+ * Grid width constraint as a percent (30–90), or 100 / false / omitted for full width.
+ * Legacy boolean `true` maps to 80. Per-breakpoint object inherits smaller widths
+ * from the next larger breakpoint when omitted.
+ */
+export type ImageGridConstrainedValue = number | boolean;
+export type ImageGridConstrained =
+  | ImageGridConstrainedValue
+  | Partial<Record<ImageViewport, ImageGridConstrainedValue>>;
+
+/** Allowed constrain dropdown values (100 = None / full width). */
+export const IMAGE_GRID_CONSTRAIN_PERCENTS = [30, 40, 50, 60, 70, 80, 90, 100] as const;
+
+export type ImageGridConstrainPercent = (typeof IMAGE_GRID_CONSTRAIN_PERCENTS)[number];
 
 /** Visible item ids for one breakpoint. Omitted breakpoints inherit from the next larger one. */
 export interface ImageGridLayout {
@@ -29,6 +44,18 @@ export interface ResolvedImageGridLayout {
 export const IMAGE_VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
 
 const VIEWPORTS = IMAGE_VIEWPORTS;
+
+const normalizeConstrainPercent = (value: unknown, fallback = 100): ImageGridConstrainPercent => {
+  if (value === true) return 80;
+  if (value === false || value === null || value === undefined) return fallback as ImageGridConstrainPercent;
+  const n = Math.round(Number(value));
+  if (!Number.isFinite(n)) return fallback as ImageGridConstrainPercent;
+  if (n >= 100) return 100;
+  const stepped = Math.round(n / 10) * 10;
+  if (stepped < 30) return 30;
+  if (stepped > 90) return 90;
+  return stepped as ImageGridConstrainPercent;
+};
 
 export function resolveImageGridColumns(
   columns: ImageGridColumns | undefined,
@@ -50,6 +77,34 @@ export function resolveImageGridColumns(
 export function imageGridColumnsStyle(columns: Record<ImageViewport, number>): string {
   return VIEWPORTS
     .map((viewport) => `--project-image-grid-columns-${viewport}:${columns[viewport]}`)
+    .join(';');
+}
+
+export function resolveImageGridConstrained(
+  constrained: ImageGridConstrained | undefined,
+): Record<ImageViewport, ImageGridConstrainPercent> {
+  if (typeof constrained === 'boolean' || typeof constrained === 'number') {
+    const percent = normalizeConstrainPercent(constrained, 100);
+    return { desktop: percent, tablet: percent, mobile: percent };
+  }
+  if (constrained && typeof constrained === 'object') {
+    const desktop = normalizeConstrainPercent(constrained.desktop, 100);
+    const tablet = constrained.tablet === undefined
+      ? desktop
+      : normalizeConstrainPercent(constrained.tablet, desktop);
+    const mobile = constrained.mobile === undefined
+      ? tablet
+      : normalizeConstrainPercent(constrained.mobile, tablet);
+    return { desktop, tablet, mobile };
+  }
+  return { desktop: 100, tablet: 100, mobile: 100 };
+}
+
+export function imageGridConstrainedStyle(
+  constrained: Record<ImageViewport, number>,
+): string {
+  return VIEWPORTS
+    .map((viewport) => `--project-image-grid-width-${viewport}:${constrained[viewport]}%`)
     .join(';');
 }
 
