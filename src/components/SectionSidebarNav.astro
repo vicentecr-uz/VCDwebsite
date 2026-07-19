@@ -100,10 +100,35 @@ const easingOptions = [
 {
   enableEasingDevPanel && (
     <div class="section-sidebar-nav-devpanel" data-panel-for={navId}>
-      <p class="section-sidebar-nav-devpanel__title">Scroll easing playground</p>
+      <div class="section-sidebar-nav-devpanel__tabs" role="tablist" aria-label="Easing target">
+        <button
+          type="button"
+          class="section-sidebar-nav-devpanel__tab"
+          role="tab"
+          data-easing-target="scroll"
+          aria-selected="false"
+        >
+          Scroll
+        </button>
+        <button
+          type="button"
+          class="section-sidebar-nav-devpanel__tab is-selected"
+          role="tab"
+          data-easing-target="accordion"
+          aria-selected="true"
+        >
+          Accordion
+        </button>
+      </div>
+      <p class="section-sidebar-nav-devpanel__title" data-panel-title>Accordion easing playground</p>
       <div class="section-sidebar-nav-devpanel__grid">
         {easingOptions.map((option) => (
-          <button type="button" class="section-sidebar-nav-devpanel__btn" data-easing-key={option.key}>
+          <button
+            type="button"
+            class="section-sidebar-nav-devpanel__btn"
+            data-easing-key={option.key}
+            data-native-only={option.key === 'nativeSmooth' ? 'true' : undefined}
+          >
             {option.label}
           </button>
         ))}
@@ -139,10 +164,12 @@ const easingOptions = [
           <p class="section-sidebar-nav-devpanel__bezier-helper">Drag the four control points (degree 5).</p>
         </div>
         <p class="section-sidebar-nav-devpanel__curve-readout" data-curve-readout>
-          bezier5((0.14, 0.00), (0.23, 0.00), (0.20, 1.00), (0.41, 1.00))
+          bezier5((0.46, 0.00), (0.16, 1.00), (0.41, 1.00), (0.70, 1.00))
         </p>
       </div>
-      <p class="section-sidebar-nav-devpanel__hint">Pick a curve, then click section links to test.</p>
+      <p class="section-sidebar-nav-devpanel__hint" data-panel-hint>
+        Pick a curve, then expand/collapse sidebar groups to test.
+      </p>
     </div>
   )
 }
@@ -172,8 +199,6 @@ const easingOptions = [
     let isAutoScrolling = false;
     /** Groups the user expanded via the header — stay open until they close them. */
     const pinnedOpenGroups = new WeakSet();
-    const storageKey = 'sectionSidebarNavEasingPreset_v2';
-    const customCurveStorageKey = 'sectionSidebarNavCustomCurve_v2';
     const navId = nav.dataset.navId || '';
     const panel = navId
       ? document.querySelector(`.section-sidebar-nav-devpanel[data-panel-for="${navId}"]`)
@@ -240,37 +265,10 @@ const easingOptions = [
       };
     };
 
-    const easingPresets = {
-      nativeSmooth: { label: 'Browser native smooth', native: true },
-      appleOut: { label: 'Apple easeOut', points: [0, 0, 0.58, 1] },
-      appleInOut: { label: 'Apple easeInOut', points: [0.42, 0, 0.58, 1] },
-      easeOutCubic: { label: 'Ease Out Cubic', points: [0.215, 0.61, 0.355, 1] },
-      // Tuned to preserve quick pickup while easing off earlier.
-      easeOutQuint: { label: 'Ease Out Quint', points: [0.2, 0.9, 0.32, 1] },
-      easeInOutSoft: { label: 'Soft In/Out', points: [0.25, 0.1, 0.25, 1] },
-      standardWeb: { label: 'CSS ease', points: [0.25, 0.1, 0.25, 1] },
-      customBezier: { label: 'Custom (Bezier editor)', points: [0.14, 0, 0.23, 0, 0.2, 1, 0.41, 1] },
-    };
+    const normalizeQuinticControls = (flatPoints) => flatPoints.map((n) => clamp01(Number(n)));
 
-    const getStoredPreset = () => {
+    const migrateStoredCurve = (raw) => {
       try {
-        return window.localStorage.getItem(storageKey);
-      } catch {
-        return null;
-      }
-    };
-
-    const savePreset = (key) => {
-      try {
-        window.localStorage.setItem(storageKey, key);
-      } catch {
-        // Ignore storage failures in private mode.
-      }
-    };
-
-    const getStoredCustomCurve = () => {
-      try {
-        const raw = window.localStorage.getItem(customCurveStorageKey);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         if (!Array.isArray(parsed)) return null;
@@ -278,7 +276,6 @@ const easingOptions = [
         if (numbers.some((n) => !Number.isFinite(n))) return null;
         if (numbers.length === 8) return numbers.map((n) => clamp01(n));
         if (numbers.length === 4) {
-          // Migrate prior cubic custom curve to a quintic control polygon.
           const [p1x, p1y, p2x, p2y] = numbers.map((n) => clamp01(n));
           return [
             p1x,
@@ -297,47 +294,137 @@ const easingOptions = [
       }
     };
 
-    const saveCustomCurve = (points) => {
-      try {
-        window.localStorage.setItem(customCurveStorageKey, JSON.stringify(points));
-      } catch {
-        // Ignore storage failures in private mode.
+    const createEasingController = ({
+      storageKey,
+      customCurveStorageKey,
+      defaultKey,
+      defaultCustomPoints,
+      allowNative = true,
+    }) => {
+      const presets = {
+        nativeSmooth: { label: 'Browser native smooth', native: true },
+        appleOut: { label: 'Apple easeOut', points: [0, 0, 0.58, 1] },
+        appleInOut: { label: 'Apple easeInOut', points: [0.42, 0, 0.58, 1] },
+        easeOutCubic: { label: 'Ease Out Cubic', points: [0.215, 0.61, 0.355, 1] },
+        easeOutQuint: { label: 'Ease Out Quint', points: [0.2, 0.9, 0.32, 1] },
+        easeInOutSoft: { label: 'Soft In/Out', points: [0.25, 0.1, 0.25, 1] },
+        standardWeb: { label: 'CSS ease', points: [0.25, 0.1, 0.25, 1] },
+        customBezier: {
+          label: 'Custom (Bezier editor)',
+          points: [...defaultCustomPoints],
+        },
+      };
+
+      const readStored = (key) => {
+        try {
+          return window.localStorage.getItem(key);
+        } catch {
+          return null;
+        }
+      };
+
+      const writeStored = (key, value) => {
+        try {
+          window.localStorage.setItem(key, value);
+        } catch {
+          // Ignore storage failures in private mode.
+        }
+      };
+
+      const storedCurve = migrateStoredCurve(readStored(customCurveStorageKey));
+      if (storedCurve) presets.customBezier.points = storedCurve;
+
+      let currentKey = defaultKey;
+      const storedPreset = readStored(storageKey);
+      if (storedPreset && presets[storedPreset] && (allowNative || !presets[storedPreset].native)) {
+        currentKey = storedPreset;
+      } else if (!presets[currentKey] || (!allowNative && presets[currentKey].native)) {
+        currentKey = allowNative ? 'appleOut' : 'easeInOutSoft';
       }
+
+      let easer = createBezierEaser(presets.appleOut.points);
+      let useNative = false;
+
+      const applyKey = (key) => {
+        const preset = presets[key];
+        if (!preset) return;
+        if (!allowNative && preset.native) return;
+        currentKey = key;
+        useNative = Boolean(preset.native);
+        if (!useNative && preset.points) {
+          easer = createBezierEaser(preset.points);
+        }
+      };
+
+      applyKey(currentKey);
+
+      return {
+        allowNative,
+        getKey: () => currentKey,
+        getEaser: () => easer,
+        getUseNative: () => useNative,
+        getCustomPoints: () => presets.customBezier.points,
+        setPreset(key, persist = true) {
+          if (!presets[key]) return;
+          if (!allowNative && presets[key].native) return;
+          applyKey(key);
+          if (persist) writeStored(storageKey, key);
+        },
+        setCustomPoints(points, persist = true) {
+          presets.customBezier.points = normalizeQuinticControls(points);
+          if (persist) writeStored(customCurveStorageKey, JSON.stringify(presets.customBezier.points));
+          if (currentKey === 'customBezier') {
+            easer = createBezierEaser(presets.customBezier.points);
+          }
+        },
+      };
     };
 
-    let currentEasingKey = nav.dataset.defaultEasing || 'appleOut';
-    const storedPreset = getStoredPreset();
-    if (storedPreset && easingPresets[storedPreset]) {
-      currentEasingKey = storedPreset;
-    } else if (!easingPresets[currentEasingKey]) {
-      currentEasingKey = 'appleOut';
-    }
-    const storedCustomCurve = getStoredCustomCurve();
-    if (storedCustomCurve) {
-      easingPresets.customBezier.points = storedCustomCurve;
-    }
-    let currentEaser = createBezierEaser(easingPresets.appleOut.points);
-    let useNativeSmooth = false;
+    const scrollEasing = createEasingController({
+      storageKey: 'sectionSidebarNavEasingPreset_v2',
+      customCurveStorageKey: 'sectionSidebarNavCustomCurve_v2',
+      defaultKey: nav.dataset.defaultEasing || 'customBezier',
+      defaultCustomPoints: [0.14, 0, 0.23, 0, 0.2, 1, 0.41, 1],
+      allowNative: true,
+    });
 
+    // Tuned in the Accordion easing playground (2026-07-19).
+    const accordionEasing = createEasingController({
+      storageKey: 'sectionSidebarNavAccordionEasing_v1',
+      customCurveStorageKey: 'sectionSidebarNavAccordionCurve_v1',
+      defaultKey: 'customBezier',
+      defaultCustomPoints: [0.46, 0, 0.16, 1, 0.41, 1, 0.7, 1],
+      allowNative: false,
+    });
+
+    const easingTargets = {
+      scroll: scrollEasing,
+      accordion: accordionEasing,
+    };
+
+    let activeEasingTarget = 'accordion';
+    // Live-bound so scroll animation always uses the latest scroll preset.
+    const currentEaser = (t) => scrollEasing.getEaser()(t);
+    const accordionEaser = (t) => accordionEasing.getEaser()(t);
+    let useNativeSmooth = scrollEasing.getUseNative();
+
+    const syncNativeFlag = () => {
+      useNativeSmooth = scrollEasing.getUseNative();
+    };
+
+    const panelTitle = panel instanceof HTMLElement ? panel.querySelector('[data-panel-title]') : null;
+    const panelHint = panel instanceof HTMLElement ? panel.querySelector('[data-panel-hint]') : null;
     const curveReadout = panel instanceof HTMLElement ? panel.querySelector('[data-curve-readout]') : null;
     const bezierGraph = panel instanceof HTMLElement ? panel.querySelector('[data-bezier-graph]') : null;
     const bezierPath = panel instanceof HTMLElement ? panel.querySelector('[data-bezier-path]') : null;
     const bezierGuides = panel instanceof HTMLElement ? panel.querySelector('[data-bezier-guides]') : null;
     const bezierHandles = panel instanceof HTMLElement ? Array.from(panel.querySelectorAll('[data-handle]')) : [];
 
-    const normalizeQuinticControls = (flatPoints) => flatPoints.map((n) => clamp01(Number(n)));
-
-    const setCustomCurvePoints = (points, { persist = true } = {}) => {
-      easingPresets.customBezier.points = normalizeQuinticControls(points);
-      if (persist) saveCustomCurve(easingPresets.customBezier.points);
-      if (currentEasingKey === 'customBezier') {
-        currentEaser = createBezierEaser(easingPresets.customBezier.points);
-      }
-      updateCurveUI();
-    };
+    const activeController = () => easingTargets[activeEasingTarget] || accordionEasing;
 
     const updateCurveUI = () => {
-      const controls = flatToControlPairs(easingPresets.customBezier.points);
+      const controller = activeController();
+      const controls = flatToControlPairs(controller.getCustomPoints());
 
       if (curveReadout) {
         const controlText = controls.map(([x, y]) => `(${round2(x)}, ${round2(y)})`).join(', ');
@@ -373,28 +460,69 @@ const easingOptions = [
       });
     };
 
-    const syncPanelSelection = (selectedKey) => {
+    const syncPanelSelection = () => {
       if (!(panel instanceof HTMLElement)) return;
+      const controller = activeController();
+      const selectedKey = controller.getKey();
+
       panel.querySelectorAll('[data-easing-key]').forEach((button) => {
-        const isSelected = button.getAttribute('data-easing-key') === selectedKey;
+        const key = button.getAttribute('data-easing-key');
+        const isNativeOnly = button.getAttribute('data-native-only') === 'true';
+        if (isNativeOnly) {
+          button.hidden = !controller.allowNative;
+        }
+        const isSelected = key === selectedKey;
         button.classList.toggle('is-selected', isSelected);
         button.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
       });
+
+      panel.querySelectorAll('[data-easing-target]').forEach((tab) => {
+        const isActive = tab.getAttribute('data-easing-target') === activeEasingTarget;
+        tab.classList.toggle('is-selected', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+
+      if (panelTitle) {
+        panelTitle.textContent =
+          activeEasingTarget === 'scroll' ? 'Scroll easing playground' : 'Accordion easing playground';
+      }
+      if (panelHint) {
+        panelHint.textContent =
+          activeEasingTarget === 'scroll'
+            ? 'Pick a curve, then click section links to test.'
+            : 'Pick a curve, then expand/collapse sidebar groups to test.';
+      }
     };
 
     const setEasingPreset = (key, persist = true) => {
-      if (!easingPresets[key]) return;
-      currentEasingKey = key;
-      const preset = easingPresets[key];
-      useNativeSmooth = Boolean(preset.native);
-      if (!useNativeSmooth && preset.points) {
-        currentEaser = createBezierEaser(preset.points);
+      activeController().setPreset(key, persist);
+      if (activeEasingTarget === 'scroll') syncNativeFlag();
+      syncPanelSelection();
+      updateCurveUI();
+    };
+
+    const setCustomCurvePoints = (points, { persist = true } = {}) => {
+      const controller = activeController();
+      controller.setCustomPoints(points, persist);
+      if (controller.getKey() !== 'customBezier') {
+        controller.setPreset('customBezier', persist);
       }
-      syncPanelSelection(key);
-      if (persist) savePreset(key);
+      if (activeEasingTarget === 'scroll') syncNativeFlag();
+      syncPanelSelection();
+      updateCurveUI();
     };
 
     if (panel instanceof HTMLElement) {
+      panel.querySelectorAll('[data-easing-target]').forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const target = tab.getAttribute('data-easing-target');
+          if (target !== 'scroll' && target !== 'accordion') return;
+          activeEasingTarget = target;
+          syncPanelSelection();
+          updateCurveUI();
+        });
+      });
+
       panel.querySelectorAll('[data-easing-key]').forEach((button) => {
         button.addEventListener('click', () => {
           const key = button.getAttribute('data-easing-key');
@@ -414,16 +542,13 @@ const easingOptions = [
         const startHandleDrag = (handleName, pointerId) => {
           const onPointerMove = (moveEvent) => {
             const [x, y] = toCurvePoint(moveEvent.clientX, moveEvent.clientY);
-            const nextPoints = [...easingPresets.customBezier.points];
+            const nextPoints = [...activeController().getCustomPoints()];
             const handleIndex = Number(handleName.replace('p', '')) - 1;
             if (Number.isNaN(handleIndex) || handleIndex < 0 || handleIndex > 3) return;
             const xIndex = handleIndex * 2;
             nextPoints[xIndex] = x;
             nextPoints[xIndex + 1] = y;
             setCustomCurvePoints(nextPoints);
-            if (currentEasingKey !== 'customBezier') {
-              setEasingPreset('customBezier');
-            }
           };
 
           const stopDrag = () => {
@@ -455,13 +580,14 @@ const easingOptions = [
         });
       }
     }
+    syncPanelSelection();
     updateCurveUI();
-    setEasingPreset(currentEasingKey, false);
+    syncNativeFlag();
 
     /**
-     * Animate details expand/collapse with the same easing curve as section
-     * click-scroll. Pixel height (not 0fr↔1fr) avoids the common end-of-motion
-     * hitch; `[open]` is only cleared after the close animation finishes.
+     * Animate details expand/collapse with a dedicated easing curve (tunable in
+     * the Accordion tab of the playground). Pixel height (not 0fr↔1fr) avoids
+     * the common end-of-motion hitch; `[open]` is only cleared after close finishes.
      */
     const groupAnimTokens = new WeakMap();
     const prefersReducedMotion = () =>
@@ -479,6 +605,60 @@ const easingOptions = [
       content.style.opacity = '';
       content.style.overflow = '';
       content.style.gridTemplateRows = '';
+      content.style.position = '';
+      content.style.visibility = '';
+      content.style.width = '';
+      content.style.left = '';
+      content.style.top = '';
+    };
+
+    /**
+     * Natural open height without putting full height into document flow.
+     * (height:auto in-flow was shoving sibling group titles to their end
+     * positions for a frame, so expand looked like a jump vs collapse.)
+     */
+    const measureOpenHeight = (content) => {
+      const width =
+        content.getBoundingClientRect().width ||
+        content.parentElement?.getBoundingClientRect().width ||
+        0;
+
+      const prev = {
+        height: content.style.height,
+        opacity: content.style.opacity,
+        overflow: content.style.overflow,
+        gridTemplateRows: content.style.gridTemplateRows,
+        position: content.style.position,
+        visibility: content.style.visibility,
+        width: content.style.width,
+        left: content.style.left,
+        top: content.style.top,
+      };
+
+      content.style.gridTemplateRows = '1fr';
+      content.style.overflow = 'visible';
+      content.style.height = 'auto';
+      content.style.position = 'absolute';
+      content.style.visibility = 'hidden';
+      content.style.pointerEvents = 'none';
+      content.style.left = '0';
+      content.style.top = '0';
+      if (width > 0) content.style.width = `${width}px`;
+
+      const height = content.scrollHeight;
+
+      content.style.height = prev.height;
+      content.style.opacity = prev.opacity;
+      content.style.overflow = prev.overflow;
+      content.style.gridTemplateRows = prev.gridTemplateRows;
+      content.style.position = prev.position;
+      content.style.visibility = prev.visibility;
+      content.style.width = prev.width;
+      content.style.left = prev.left;
+      content.style.top = prev.top;
+      content.style.pointerEvents = '';
+
+      return height;
     };
 
     const animateGroup = (group, shouldOpen) => {
@@ -538,16 +718,17 @@ const easingOptions = [
           content.classList.remove('is-collapsing');
           content.classList.add('is-expanding');
           group.open = true;
-          content.style.height = 'auto';
-          content.style.opacity = content.style.opacity || '0';
-          endHeight = content.scrollHeight;
+          // Keep the in-flow height clamped while measuring off-flow.
+          content.style.height = `${liveHeight}px`;
+          if (!content.style.opacity) content.style.opacity = '0';
+          endHeight = measureOpenHeight(content);
           startHeight = liveHeight;
           content.style.height = `${startHeight}px`;
         } else {
           content.classList.remove('is-expanding');
           content.classList.add('is-collapsing');
           group.open = true;
-          startHeight = liveHeight > 0 ? liveHeight : content.scrollHeight;
+          startHeight = liveHeight > 0 ? liveHeight : measureOpenHeight(content);
           endHeight = 0;
           content.style.height = `${startHeight}px`;
           if (!content.style.opacity) content.style.opacity = '1';
@@ -566,7 +747,7 @@ const easingOptions = [
             return;
           }
           const progress = Math.min((now - startedAt) / durationMs, 1);
-          const eased = currentEaser(progress);
+          const eased = accordionEaser(progress);
           const height = startHeight + (endHeight - startHeight) * eased;
           content.style.height = `${Math.max(0, height)}px`;
           content.style.opacity = String(fromOpacity + (toOpacity - fromOpacity) * eased);
@@ -963,6 +1144,40 @@ const easingOptions = [
     padding: 0.9em;
     z-index: 12;
     box-shadow: 0 0.25em 1em rgba(26, 26, 26, 0.07);
+    max-height: calc(100dvh - 2em);
+    overflow-y: auto;
+  }
+
+  .section-sidebar-nav-devpanel__tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35em;
+    margin-bottom: 0.75em;
+  }
+
+  .section-sidebar-nav-devpanel__tab {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-strong);
+    color: var(--color-text-muted);
+    padding: 0.45em 0.55em;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: color 0.18s ease, background-color 0.18s ease;
+  }
+
+  .section-sidebar-nav-devpanel__tab:hover {
+    color: var(--color-text);
+  }
+
+  .section-sidebar-nav-devpanel__tab.is-selected {
+    background: color-mix(in srgb, var(--color-surface-strong) 88%, var(--color-text));
+    color: var(--color-text);
   }
 
   .section-sidebar-nav-devpanel__title {
@@ -971,6 +1186,10 @@ const easingOptions = [
     letter-spacing: 0.06em;
     color: var(--color-text-muted);
     margin-bottom: 0.75em;
+  }
+
+  .section-sidebar-nav-devpanel__btn[hidden] {
+    display: none;
   }
 
   .section-sidebar-nav-devpanel__grid {
