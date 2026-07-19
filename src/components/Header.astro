@@ -20,6 +20,7 @@ const pageChars = [...wordmark];
 const homeChars = [...homeWordmark];
 const isHome = Astro.url.pathname === '/';
 const brandHref = isHome ? null : '/';
+const isDev = import.meta.env.DEV;
 
 const menuLinks = headerSettings.menuLinks;
 ---
@@ -75,6 +76,18 @@ const menuLinks = headerSettings.menuLinks;
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
             ))}
+            {isDev && (
+              <li>
+                <button
+                  type="button"
+                  class="header-menu__link header-menu__dev-toggle"
+                  data-curve-easing-tuner-toggle
+                  aria-pressed="false"
+                >
+                  Curve Easing Tuner
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </div>
@@ -111,6 +124,18 @@ const menuLinks = headerSettings.menuLinks;
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
             ))}
+            {isDev && (
+              <li>
+                <button
+                  type="button"
+                  class="header-menu__link header-menu__dev-toggle"
+                  data-curve-easing-tuner-toggle
+                  aria-pressed="false"
+                >
+                  Curve Easing Tuner
+                </button>
+              </li>
+            )}
           </ul>
         </div>
       </div>
@@ -515,6 +540,46 @@ const menuLinks = headerSettings.menuLinks;
       brandLink?.removeAttribute('aria-label');
     });
   }
+
+  // DEV-only: show/hide SectionSidebarNav curve playground (persists across pages).
+  {
+    const toggles = [...document.querySelectorAll('[data-curve-easing-tuner-toggle]')];
+    if (toggles.length) {
+      const storageKey = 'vcdShowCurveEasingTuner';
+      const className = 'show-curve-easing-tuner';
+
+      const apply = (show: boolean) => {
+        document.documentElement.classList.toggle(className, show);
+        toggles.forEach((button) => {
+          if (!(button instanceof HTMLElement)) return;
+          button.setAttribute('aria-pressed', show ? 'true' : 'false');
+          button.classList.toggle('is-active', show);
+        });
+      };
+
+      let show = false;
+      try {
+        show = window.localStorage.getItem(storageKey) === 'true';
+      } catch {
+        // Keep closed when storage is unavailable.
+      }
+      apply(show);
+
+      toggles.forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          const next = !document.documentElement.classList.contains(className);
+          try {
+            window.localStorage.setItem(storageKey, String(next));
+          } catch {
+            // Ignore storage failures in private mode.
+          }
+          apply(next);
+          forceCloseMenus();
+        });
+      });
+    }
+  }
 </script>
 
 <style>
@@ -846,6 +911,23 @@ const menuLinks = headerSettings.menuLinks;
     transition:
       opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s),
       color var(--menu-link-color-duration, 0.45s) ease;
+  }
+
+  button.header-menu__dev-toggle {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    text-align: inherit;
+    width: auto;
+    font: inherit;
+  }
+
+  .header-trigger.is-menu-open button.header-menu__dev-toggle.is-active,
+  .header-trigger:focus-within button.header-menu__dev-toggle.is-active {
+    color: var(--color-text);
   }
 
   .header-trigger__wordmark {
