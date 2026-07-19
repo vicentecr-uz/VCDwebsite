@@ -293,11 +293,31 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
-    const readConstraint = () => {
+    const readConstraints = (): Record<ImageViewport, boolean> => {
+      const defaults = { desktop: true, tablet: true, mobile: true };
       try {
-        return window.localStorage.getItem(constraintStorageKey) !== 'false';
+        const raw = window.localStorage.getItem(constraintStorageKey);
+        if (raw === null) return defaults;
+        if (raw === 'true' || raw === 'false') {
+          const value = raw !== 'false';
+          return { desktop: value, tablet: value, mobile: value };
+        }
+        const parsed = JSON.parse(raw) as Partial<Record<ImageViewport, unknown>>;
+        return {
+          desktop: parsed.desktop !== false,
+          tablet: parsed.tablet !== false,
+          mobile: parsed.mobile !== false,
+        };
       } catch {
-        return true;
+        return defaults;
+      }
+    };
+
+    const writeConstraints = (next: Record<ImageViewport, boolean>) => {
+      try {
+        window.localStorage.setItem(constraintStorageKey, JSON.stringify(next));
+      } catch {
+        // Keep the toggle active for this page load.
       }
     };
 
@@ -305,7 +325,8 @@ import DevOverlay from '../DevOverlay.astro';
     let draftVariants = structuredClone(savedVariants);
     let saved: CropState = { ...savedVariants[selectedViewport] };
     let draft: CropState = { ...draftVariants[selectedViewport] };
-    let constrainToFrame = readConstraint();
+    let constrainByViewport = readConstraints();
+    const constrainToFrame = () => constrainByViewport[selectedViewport];
     /** Disk / last globally-saved baseline per pending id (survives popup close). */
     const diskBaselines = new Map<string, Record<ImageViewport, CropState>>();
     const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
@@ -393,7 +414,7 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const constrainDraft = () => {
-      if (!constrainToFrame) return;
+      if (!constrainToFrame()) return;
       const limits = getPanLimits();
       // Clamp after rounding so clean() cannot push past the lock edge.
       draft.x = clamp(clean(draft.x), -limits.x, limits.x);
@@ -401,9 +422,10 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const renderConstraint = () => {
-      constraintButton.setAttribute('aria-pressed', constrainToFrame ? 'true' : 'false');
-      constraintButton.classList.toggle('is-locked', constrainToFrame);
-      constraintState.textContent = constrainToFrame ? 'Crop locked' : 'Crop unlocked';
+      const locked = constrainToFrame();
+      constraintButton.setAttribute('aria-pressed', locked ? 'true' : 'false');
+      constraintButton.classList.toggle('is-locked', locked);
+      constraintState.textContent = locked ? 'Crop locked' : 'Crop unlocked';
     };
 
     const setCropVariables = (element: HTMLElement, crop: CropState) => {
@@ -611,6 +633,7 @@ import DevOverlay from '../DevOverlay.astro';
         selectedViewport = viewport;
         saved = { ...savedVariants[selectedViewport] };
         draft = { ...draftVariants[selectedViewport] };
+        renderConstraint();
         renderDraft();
         status.textContent = `Editing the ${selectedViewport} display crop.`;
       });
@@ -770,17 +793,17 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     constraintButton.addEventListener('click', () => {
-      constrainToFrame = !constrainToFrame;
-      try {
-        window.localStorage.setItem(constraintStorageKey, constrainToFrame ? 'true' : 'false');
-      } catch {
-        // Keep the toggle active for this page load.
-      }
+      const next = !constrainToFrame();
+      constrainByViewport = {
+        ...constrainByViewport,
+        [selectedViewport]: next,
+      };
+      writeConstraints(constrainByViewport);
       renderConstraint();
       renderDraft();
-      status.textContent = constrainToFrame
-        ? 'Crop locked within the image bounds.'
-        : 'Crop unlocked — image edges may enter the frame.';
+      status.textContent = next
+        ? `Crop locked on ${selectedViewport} within the image bounds.`
+        : `Crop unlocked on ${selectedViewport} — image edges may enter the frame.`;
     });
 
     saveButton.addEventListener('click', saveDraft);

@@ -170,6 +170,8 @@ const easingOptions = [
     let manualLockUntil = 0;
     let scrollRafId = 0;
     let isAutoScrolling = false;
+    /** Groups the user expanded via the header — stay open until they close them. */
+    const pinnedOpenGroups = new WeakSet();
     const storageKey = 'sectionSidebarNavEasingPreset_v2';
     const customCurveStorageKey = 'sectionSidebarNavCustomCurve_v2';
     const navId = nav.dataset.navId || '';
@@ -456,7 +458,134 @@ const easingOptions = [
     updateCurveUI();
     setEasingPreset(currentEasingKey, false);
 
+    /**
+     * Animate details expand/collapse with the same easing curve as section
+     * click-scroll. Pixel height (not 0fr↔1fr) avoids the common end-of-motion
+     * hitch; `[open]` is only cleared after the close animation finishes.
+     */
+    const groupAnimTokens = new WeakMap();
+    const prefersReducedMotion = () =>
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const groupIsVisuallyOpen = (group) => {
+      if (!(group instanceof HTMLDetailsElement) || !group.open) return false;
+      const content = group.querySelector('.section-sidebar-nav__group-content');
+      return !(content instanceof HTMLElement && content.classList.contains('is-collapsing'));
+    };
+
+    const clearGroupAnimStyles = (content) => {
+      content.style.transition = '';
+      content.style.height = '';
+      content.style.opacity = '';
+      content.style.overflow = '';
+      content.style.gridTemplateRows = '';
+    };
+
+    const animateGroup = (group, shouldOpen) => {
+      if (!(group instanceof HTMLDetailsElement)) return Promise.resolve();
+
+      const content = group.querySelector('.section-sidebar-nav__group-content');
+      if (!(content instanceof HTMLElement)) {
+        group.open = shouldOpen;
+        return Promise.resolve();
+      }
+
+      // Skip if already at (or animating toward) the requested state — otherwise
+      // scroll-spy would restart mid-expand every frame.
+      if (shouldOpen) {
+        if (group.open && !content.classList.contains('is-collapsing')) {
+          return Promise.resolve();
+        }
+      } else if (!group.open || content.classList.contains('is-collapsing')) {
+        return Promise.resolve();
+      }
+
+      if (prefersReducedMotion()) {
+        content.classList.remove('is-expanding', 'is-collapsing');
+        clearGroupAnimStyles(content);
+        group.open = shouldOpen;
+        return Promise.resolve();
+      }
+
+      const token = {};
+      groupAnimTokens.set(group, token);
+      const isStale = () => groupAnimTokens.get(group) !== token;
+      const durationMs = 480;
+
+      return new Promise((resolve) => {
+        let rafId = 0;
+        let settled = false;
+
+        const finish = () => {
+          if (settled || isStale()) return;
+          settled = true;
+          if (rafId) cancelAnimationFrame(rafId);
+          content.classList.remove('is-expanding', 'is-collapsing');
+          clearGroupAnimStyles(content);
+          resolve();
+        };
+
+        content.style.transition = 'none';
+        content.style.overflow = 'hidden';
+        content.style.gridTemplateRows = '1fr';
+
+        // Continue from the live height when reversing mid-animation.
+        const liveHeight = content.getBoundingClientRect().height;
+        let startHeight = 0;
+        let endHeight = 0;
+
+        if (shouldOpen) {
+          content.classList.remove('is-collapsing');
+          content.classList.add('is-expanding');
+          group.open = true;
+          content.style.height = 'auto';
+          content.style.opacity = content.style.opacity || '0';
+          endHeight = content.scrollHeight;
+          startHeight = liveHeight;
+          content.style.height = `${startHeight}px`;
+        } else {
+          content.classList.remove('is-expanding');
+          content.classList.add('is-collapsing');
+          group.open = true;
+          startHeight = liveHeight > 0 ? liveHeight : content.scrollHeight;
+          endHeight = 0;
+          content.style.height = `${startHeight}px`;
+          if (!content.style.opacity) content.style.opacity = '1';
+        }
+
+        const startOpacity = Number.parseFloat(content.style.opacity);
+        const fromOpacity = Number.isFinite(startOpacity) ? startOpacity : shouldOpen ? 0 : 1;
+        const toOpacity = shouldOpen ? 1 : 0;
+
+        void content.offsetHeight;
+        const startedAt = performance.now();
+
+        const tick = (now) => {
+          if (isStale()) {
+            if (rafId) cancelAnimationFrame(rafId);
+            return;
+          }
+          const progress = Math.min((now - startedAt) / durationMs, 1);
+          const eased = currentEaser(progress);
+          const height = startHeight + (endHeight - startHeight) * eased;
+          content.style.height = `${Math.max(0, height)}px`;
+          content.style.opacity = String(fromOpacity + (toOpacity - fromOpacity) * eased);
+
+          if (progress < 1) {
+            rafId = requestAnimationFrame(tick);
+            return;
+          }
+
+          if (!shouldOpen) group.open = false;
+          finish();
+        };
+
+        rafId = requestAnimationFrame(tick);
+      });
+    };
+
     const setActiveLink = (id) => {
+      let activeGroup = null;
       navLinks.forEach((link) => {
         const href = link.getAttribute('href');
         const isActive = href === `#${id}`;
@@ -464,26 +593,44 @@ const easingOptions = [
         if (isActive) {
           link.setAttribute('aria-current', 'true');
           const group = link.closest('.section-sidebar-nav__group');
-          if (group instanceof HTMLDetailsElement && !group.open) {
-            group.open = true;
-          }
+          if (group instanceof HTMLDetailsElement) activeGroup = group;
         } else {
           link.removeAttribute('aria-current');
+        }
+      });
+
+      /**
+       * Auto accordion: open the active link's group, close others — unless the
+       * user pinned a group open by expanding its header manually. Closing a
+       * pinned group clears the pin so scroll auto-behaviour resumes.
+       *
+       * Open/close animate in parallel so the next group title moves up while
+       * outgoing sub-links fade out and incoming ones fade in.
+       */
+      navGroups.forEach((group) => {
+        if (!(group instanceof HTMLDetailsElement)) return;
+        if (group === activeGroup) {
+          animateGroup(group, true);
+          return;
+        }
+        if (!pinnedOpenGroups.has(group)) {
+          animateGroup(group, false);
         }
       });
     };
 
     navGroups.forEach((group) => {
-      group.addEventListener('toggle', () => {
-        if (!(group instanceof HTMLDetailsElement) || !group.open) return;
-        navGroups.forEach((otherGroup) => {
-          if (otherGroup instanceof HTMLDetailsElement && otherGroup !== group) {
-            otherGroup.open = false;
-          }
-        });
+      if (!(group instanceof HTMLDetailsElement)) return;
+      const summary = group.querySelector(':scope > summary');
+      if (!(summary instanceof HTMLElement)) return;
+      summary.addEventListener('click', (event) => {
+        event.preventDefault();
+        const willBeOpen = !groupIsVisuallyOpen(group);
+        if (willBeOpen) pinnedOpenGroups.add(group);
+        else pinnedOpenGroups.delete(group);
+        animateGroup(group, willBeOpen);
       });
     });
-
     const getActiveSectionId = () => {
       const viewportHeight = window.innerHeight;
       const docHeight = document.documentElement.scrollHeight;
@@ -558,9 +705,20 @@ const easingOptions = [
 
           const startY = window.scrollY;
           const docHeight = document.documentElement.scrollHeight;
-          const maxScroll = Math.max(docHeight - window.innerHeight, 0);
-          const rawTargetTop = Math.max(startY + target.getBoundingClientRect().top - clickOffsetPx, 0);
-          const targetTop = Math.min(rawTargetTop, maxScroll);
+          const viewportHeight = window.innerHeight;
+          const maxScroll = Math.max(docHeight - viewportHeight, 0);
+          const rect = target.getBoundingClientRect();
+          const sectionHeight = rect.height;
+          /**
+           * Short sections pin near the top (under the header offset).
+           * Tall ones (≥ ~65% of the viewport) centre vertically so large
+           * images aren't cropped awkwardly at the fold.
+           */
+          const centerThreshold = viewportHeight * 0.65;
+          const rawTargetTop = sectionHeight >= centerThreshold
+            ? startY + rect.top - (viewportHeight - sectionHeight) / 2
+            : startY + rect.top - clickOffsetPx;
+          const targetTop = Math.min(Math.max(rawTargetTop, 0), maxScroll);
           const distance = targetTop - startY;
 
           setActiveLink(id);
@@ -698,12 +856,16 @@ const easingOptions = [
     display: grid;
     grid-template-rows: 0fr;
     opacity: 0;
-    transition: grid-template-rows 0.22s ease, opacity 0.16s ease;
   }
 
   .section-sidebar-nav__group[open] > .section-sidebar-nav__group-content {
     grid-template-rows: 1fr;
     opacity: 1;
+  }
+
+  .section-sidebar-nav__group[open] > .section-sidebar-nav__group-content.is-collapsing {
+    /* Keep content painted while the close animation runs (before open is cleared). */
+    pointer-events: none;
   }
 
   .section-sidebar-nav__children {
@@ -714,6 +876,29 @@ const easingOptions = [
     gap: 0.1em;
     margin: 0;
     padding: 0.15em 0 0.35em 1em;
+  }
+
+  .section-sidebar-nav__children .section-sidebar-nav__link {
+    transition:
+      color 0.55s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1),
+      transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .section-sidebar-nav__group-content.is-collapsing .section-sidebar-nav__link {
+    opacity: 0;
+    transform: translateY(-0.15em);
+  }
+
+  .section-sidebar-nav__group-content.is-expanding .section-sidebar-nav__link {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .section-sidebar-nav__group-content {
+      transition: none;
+    }
   }
 
   .section-sidebar-nav__link {
