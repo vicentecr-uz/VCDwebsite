@@ -306,6 +306,43 @@ import DevOverlay from '../DevOverlay.astro';
     let saved: CropState = { ...savedVariants[selectedViewport] };
     let draft: CropState = { ...draftVariants[selectedViewport] };
     let constrainToFrame = readConstraint();
+    /** Disk / last globally-saved baseline per pending id (survives popup close). */
+    const diskBaselines = new Map<string, Record<ImageViewport, CropState>>();
+    const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
+
+    const pendingIdFor = (target: HTMLElement) => {
+      const documentKey = target.dataset.devDocument || '';
+      const imagePath = target.dataset.devImagePath || '[]';
+      return `crop:${documentKey}:${imagePath}`;
+    };
+
+    const closePanel = () => {
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panel || panel.hidden) return;
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+        detail: { panel },
+      }));
+    };
+
+    const applyVariantsToTarget = (
+      target: HTMLElement,
+      variants: Record<ImageViewport, CropState>,
+      options?: { clearOwn?: boolean },
+    ) => {
+      const image = target.querySelector<HTMLImageElement>('img');
+      VIEWPORTS.forEach((viewport) => {
+        setTargetVariant(target, viewport, variants[viewport]);
+      });
+      if (options?.clearOwn) {
+        delete target.dataset.devHasOwnVariants;
+        target.dataset.devImageVariants = JSON.stringify(variants);
+      } else {
+        target.dataset.devImageVariants = JSON.stringify(variants);
+        if (isGridTarget(target)) target.dataset.devHasOwnVariants = 'true';
+      }
+      if (image && !isGridTarget(target)) sizeImageToCover(target, image);
+    };
 
     const sizeImageToCover = (frame: HTMLElement, image: HTMLImageElement) => {
       const frameWidth = frame.clientWidth;
@@ -427,11 +464,12 @@ import DevOverlay from '../DevOverlay.astro';
       readout.textContent = `${ratioLabel} · x ${formatSigned(draft.x)} · y ${formatSigned(draft.y)} · zoom ${Math.round(draft.zoom * 100)}%`;
     };
 
-    const saveDraft = async () => {
-      const documentKey = editTarget.dataset.devDocument;
+    const saveDraft = () => {
+      const target = editTarget;
+      const documentKey = target.dataset.devDocument;
       let imagePath: Array<string | number> = [];
       try {
-        imagePath = JSON.parse(editTarget.dataset.devImagePath || '[]');
+        imagePath = JSON.parse(target.dataset.devImagePath || '[]');
       } catch {
         imagePath = [];
       }
@@ -439,39 +477,58 @@ import DevOverlay from '../DevOverlay.astro';
         status.textContent = 'This image is not wired for saving.';
         return;
       }
-      saveButton.disabled = true;
-      status.textContent = 'Saving crop…';
-      try {
-        draftVariants[selectedViewport] = { ...draft };
-        const response = await fetch('/api/image-crop', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+
+      draftVariants[selectedViewport] = { ...draft };
+      const stagedVariants = structuredClone(draftVariants);
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, structuredClone(savedVariants));
+      }
+      const baselineVariants = structuredClone(diskBaselines.get(pendingId)!);
+      const hadOwnVariants = target.dataset.devHasOwnVariants === 'true';
+
+      applyVariantsToTarget(target, stagedVariants);
+      savedVariants = structuredClone(stagedVariants);
+      saved = { ...stagedVariants[selectedViewport] };
+      targetWasCropped = true;
+      savedSinceSelect = true;
+      if (isGridTarget(target)) {
+        target.dataset.devHasOwnVariants = 'true';
+        syncUseGridDefaultButton();
+      }
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'crop',
+          payload: {
             document: documentKey,
             path: imagePath,
-            variants: draftVariants,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload.error || `Save failed (${response.status})`);
-        }
-        saved = { ...draft };
-        savedVariants = structuredClone(draftVariants);
-        targetWasCropped = true;
-        savedSinceSelect = true;
-        if (isGridTarget(editTarget)) {
-          editTarget.dataset.devHasOwnVariants = 'true';
-          syncUseGridDefaultButton();
-        }
-        status.textContent = `Saved all display crops to ${documentKey} — commit & push to publish.`;
-      } catch (error) {
-        status.textContent = error instanceof Error
-          ? error.message
-          : 'Save failed — is the dev server running?';
-      } finally {
-        saveButton.disabled = false;
-      }
+            variants: stagedVariants,
+          },
+          revert: () => {
+            if (isGridTarget(target) && !hadOwnVariants) {
+              applyVariantsToTarget(target, baselineVariants, { clearOwn: true });
+            } else {
+              applyVariantsToTarget(target, baselineVariants);
+              if (isGridTarget(target) && hadOwnVariants) {
+                target.dataset.devHasOwnVariants = 'true';
+              }
+            }
+            if (editTarget === target) {
+              savedVariants = structuredClone(baselineVariants);
+              draftVariants = structuredClone(baselineVariants);
+              saved = { ...baselineVariants[selectedViewport] };
+              draft = { ...saved };
+              renderDraft();
+              syncUseGridDefaultButton();
+            }
+          },
+        },
+      }));
+
+      status.textContent = 'Staged — use Save in the page bar to write to disk.';
+      closePanel();
     };
 
     const refreshCover = () => {
@@ -511,6 +568,10 @@ import DevOverlay from '../DevOverlay.astro';
       }
 
       selectedViewport = viewportForWidth();
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, readAppliedVariants(editTarget));
+      }
       savedVariants = readAppliedVariants(editTarget);
       draftVariants = structuredClone(savedVariants);
       saved = { ...savedVariants[selectedViewport] };
@@ -736,12 +797,13 @@ import DevOverlay from '../DevOverlay.astro';
       status.textContent = 'Reset to centred cover — unsaved changes.';
     });
 
-    useGridDefaultButton.addEventListener('click', async () => {
+    useGridDefaultButton.addEventListener('click', () => {
       if (!isGridTarget(editTarget) || editTarget.dataset.devHasOwnVariants !== 'true') return;
-      const documentKey = editTarget.dataset.devDocument;
+      const target = editTarget;
+      const documentKey = target.dataset.devDocument;
       let imagePath: Array<string | number> = [];
       try {
-        imagePath = JSON.parse(editTarget.dataset.devImagePath || '[]');
+        imagePath = JSON.parse(target.dataset.devImagePath || '[]');
       } catch {
         imagePath = [];
       }
@@ -749,40 +811,62 @@ import DevOverlay from '../DevOverlay.astro';
         status.textContent = 'This image is not wired for saving.';
         return;
       }
-      useGridDefaultButton.disabled = true;
-      status.textContent = 'Reverting to grid default…';
-      try {
-        const response = await fetch('/api/image-crop', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, structuredClone(savedVariants));
+      }
+      const baselineVariants = structuredClone(diskBaselines.get(pendingId)!);
+      const defaultVariants = gridDefaultVariantsFor(target);
+
+      applyVariantsToTarget(target, defaultVariants, { clearOwn: true });
+      savedVariants = structuredClone(defaultVariants);
+      draftVariants = structuredClone(defaultVariants);
+      saved = { ...defaultVariants[selectedViewport] };
+      draft = { ...saved };
+      targetWasCropped = true;
+      savedSinceSelect = true;
+      renderDraft();
+      syncUseGridDefaultButton();
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'crop',
+          payload: {
             document: documentKey,
             path: imagePath,
             clearVariants: true,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload.error || `Save failed (${response.status})`);
-        }
-        delete editTarget.dataset.devHasOwnVariants;
-        savedVariants = gridDefaultVariantsFor(editTarget);
-        draftVariants = structuredClone(savedVariants);
-        saved = { ...savedVariants[selectedViewport] };
-        draft = { ...saved };
-        targetWasCropped = true;
-        savedSinceSelect = true;
-        renderDraft();
-        syncUseGridDefaultButton();
-        status.textContent = `Cleared custom crop — now using the grid default (${gridDefaultAspectFor(editTarget)}).`;
-      } catch (error) {
-        status.textContent = error instanceof Error
-          ? error.message
-          : 'Could not revert to grid default.';
-      } finally {
-        useGridDefaultButton.disabled = false;
-      }
+          },
+          revert: () => {
+            applyVariantsToTarget(target, baselineVariants);
+            target.dataset.devHasOwnVariants = 'true';
+            if (editTarget === target) {
+              savedVariants = structuredClone(baselineVariants);
+              draftVariants = structuredClone(baselineVariants);
+              saved = { ...baselineVariants[selectedViewport] };
+              draft = { ...saved };
+              renderDraft();
+              syncUseGridDefaultButton();
+            }
+          },
+        },
+      }));
+
+      status.textContent = `Staged grid default (${gridDefaultAspectFor(target)}) — use Save in the page bar to write.`;
+      closePanel();
     });
+
+    window.addEventListener('vcd:dev-pending-committed', (() => {
+      diskBaselines.clear();
+      if (editTarget) {
+        diskBaselines.set(pendingIdFor(editTarget), structuredClone(savedVariants));
+      }
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-pending-reverted', (() => {
+      diskBaselines.clear();
+    }) as EventListener);
   };
 
   document.querySelectorAll<HTMLElement>('[data-project-image-crop-tuner]').forEach(initProjectImageCropTuner);

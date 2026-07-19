@@ -13,6 +13,11 @@ interface Props {
   spacing?: ProjectStackSpacing;
   document?: string;
   sectionPath?: Array<string | number>;
+  /**
+   * Hide the heading when the section sidebar is visible (desktop gutter nav),
+   * so the sidebar highlight carries the section label instead.
+   */
+  hideWhenSidebarVisible?: boolean;
 }
 
 const {
@@ -22,12 +27,20 @@ const {
   spacing = 'section',
   document: documentKey,
   sectionPath,
+  hideWhenSidebarVisible = false,
 } = Astro.props;
 const Tag = level === 3 ? 'h3' : 'h2';
 const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 ---
 
-<div class:list={['project-block', stackClass]} {...(spacingAttrs ?? {})}>
+<div
+  class:list={[
+    'project-block',
+    stackClass,
+    hideWhenSidebarVisible && 'project-section-title--hide-when-sidebar',
+  ]}
+  {...(spacingAttrs ?? {})}
+>
   <Tag class="project-section-title">{title}</Tag>
 </div>

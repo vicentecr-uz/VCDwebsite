@@ -286,6 +286,52 @@ import DevOverlay from '../DevOverlay.astro';
     let draftLayouts = cloneLayouts(savedLayouts);
     let liveApply = false;
     let dragItemId: string | null = null;
+    type GridBaseline = {
+      columns: Record<ImageViewport, number>;
+      constrained: Record<ImageViewport, number>;
+      aspect: string;
+      layouts: GridLayouts;
+    };
+    const diskBaselines = new Map<string, GridBaseline>();
+
+    const pendingIdFor = (target: HTMLElement) => {
+      const documentKey = target.dataset.devDocument || '';
+      const gridPath = target.dataset.devGridPath || '[]';
+      return `grid:${documentKey}:${gridPath}`;
+    };
+
+    const closePanel = () => {
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panel || panel.hidden) return;
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+        detail: { panel },
+      }));
+    };
+
+    const snapshotBaseline = (target: HTMLElement): GridBaseline => ({
+      columns: readColumns(target),
+      constrained: readConstrained(target),
+      aspect: target.dataset.devGridDefaultAspect || '1:1',
+      layouts: readLayouts(target),
+    });
+
+    const applyBaselineToTarget = (target: HTMLElement, baseline: GridBaseline) => {
+      const wasLive = liveApply;
+      const wasTarget = editTarget;
+      editTarget = target;
+      liveApply = true;
+      draftColumns = { ...baseline.columns };
+      draftConstrained = { ...baseline.constrained };
+      draftAspect = baseline.aspect;
+      draftLayouts = cloneLayouts(baseline.layouts);
+      applyColumnsLive();
+      applyConstrainedLive();
+      applyAspectLive();
+      applyLayoutsLive();
+      liveApply = wasLive;
+      editTarget = wasTarget;
+    };
 
     const ratioCss = (aspectRatio: string) => (
       aspectRatio === 'original'
@@ -512,6 +558,10 @@ import DevOverlay from '../DevOverlay.astro';
       catalog = readItems(editTarget);
       itemIds = catalog.map((item) => item.id);
       selectedViewport = viewportForWidth();
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, snapshotBaseline(target));
+      }
       savedColumns = readColumns(editTarget);
       draftColumns = { ...savedColumns };
       savedConstrained = readConstrained(editTarget);
@@ -524,11 +574,12 @@ import DevOverlay from '../DevOverlay.astro';
       if (live) status.textContent = 'Editing this grid. Drag thumbnails to rearrange or park.';
     };
 
-    const saveDraft = async () => {
-      const documentKey = editTarget.dataset.devDocument;
+    const saveDraft = () => {
+      const target = editTarget;
+      const documentKey = target.dataset.devDocument;
       let gridPath: Array<string | number> = [];
       try {
-        gridPath = JSON.parse(editTarget.dataset.devGridPath || '[]');
+        gridPath = JSON.parse(target.dataset.devGridPath || '[]');
       } catch {
         gridPath = [];
       }
@@ -536,37 +587,65 @@ import DevOverlay from '../DevOverlay.astro';
         status.textContent = 'This grid is not wired for saving.';
         return;
       }
-      saveButton.disabled = true;
-      status.textContent = 'Saving grid…';
-      try {
-        const response = await fetch('/api/image-grid', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, {
+          columns: { ...savedColumns },
+          constrained: { ...savedConstrained },
+          aspect: savedAspect,
+          layouts: cloneLayouts(savedLayouts),
+        });
+      }
+      const baseline = structuredClone(diskBaselines.get(pendingId)!);
+
+      liveApply = true;
+      applyColumnsLive();
+      applyConstrainedLive();
+      applyAspectLive();
+      applyLayoutsLive();
+
+      savedColumns = { ...draftColumns };
+      savedConstrained = { ...draftConstrained };
+      savedAspect = draftAspect;
+      savedLayouts = cloneLayouts(draftLayouts);
+
+      const stagedColumns = { ...draftColumns };
+      const stagedConstrained = { ...draftConstrained };
+      const stagedAspect = draftAspect;
+      const stagedLayouts = cloneLayouts(draftLayouts);
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'grid',
+          payload: {
             document: documentKey,
             path: gridPath,
-            columns: draftColumns,
-            constrained: draftConstrained,
-            defaultAspectRatio: draftAspect,
-            layouts: draftLayouts,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(payload.error || `Save failed (${response.status})`);
-        }
-        savedColumns = { ...draftColumns };
-        savedConstrained = { ...draftConstrained };
-        savedAspect = draftAspect;
-        savedLayouts = cloneLayouts(draftLayouts);
-        status.textContent = `Saved grid settings to ${documentKey} — commit & push to publish.`;
-      } catch (error) {
-        status.textContent = error instanceof Error
-          ? error.message
-          : 'Save failed — is the dev server running?';
-      } finally {
-        saveButton.disabled = false;
-      }
+            columns: stagedColumns,
+            constrained: stagedConstrained,
+            defaultAspectRatio: stagedAspect,
+            layouts: stagedLayouts,
+          },
+          revert: () => {
+            applyBaselineToTarget(target, baseline);
+            if (editTarget === target) {
+              savedColumns = { ...baseline.columns };
+              draftColumns = { ...baseline.columns };
+              savedConstrained = { ...baseline.constrained };
+              draftConstrained = { ...baseline.constrained };
+              savedAspect = baseline.aspect;
+              draftAspect = baseline.aspect;
+              savedLayouts = cloneLayouts(baseline.layouts);
+              draftLayouts = cloneLayouts(baseline.layouts);
+              renderDraft();
+            }
+          },
+        },
+      }));
+
+      status.textContent = 'Staged — use Save in the page bar to write to disk.';
+      closePanel();
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
@@ -634,6 +713,22 @@ import DevOverlay from '../DevOverlay.astro';
       renderDraft();
       status.textContent = 'Reverted to the last saved grid settings.';
     });
+
+    window.addEventListener('vcd:dev-pending-committed', (() => {
+      diskBaselines.clear();
+      if (editTarget) {
+        diskBaselines.set(pendingIdFor(editTarget), {
+          columns: { ...savedColumns },
+          constrained: { ...savedConstrained },
+          aspect: savedAspect,
+          layouts: cloneLayouts(savedLayouts),
+        });
+      }
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-pending-reverted', (() => {
+      diskBaselines.clear();
+    }) as EventListener);
   };
 
   document

@@ -105,7 +105,15 @@
     ];
     if (!actions || !saveButton || !revertButton || !status) return;
     if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
-    if (!textElements.length && !spacingElements.length) return;
+
+    type PendingMediaChange = {
+      id: string;
+      kind: 'crop' | 'grid';
+      payload: Record<string, unknown>;
+      revert: () => void;
+    };
+
+    const pendingMedia = new Map<string, PendingMediaChange>();
 
     const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
     /** Keep authored inline markup through Save; unwrap anything else. */
@@ -318,8 +326,6 @@
       });
     }
 
-    if (!textStates.length && !spacingStates.length) return;
-
     const dirtyTextStates = () =>
       textStates.filter((state) => !valuesMatch(readValue(state), state.savedValue));
     const dirtySpacingStates = () =>
@@ -328,7 +334,7 @@
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
-      const dirtyCount = dirtyText.length + dirtySpacing.length;
+      const dirtyCount = dirtyText.length + dirtySpacing.length + pendingMedia.size;
 
       textStates.forEach((state) => {
         state.element.classList.toggle(
@@ -345,6 +351,23 @@
         status.textContent = '';
       }
     };
+
+    window.addEventListener('vcd:dev-pending-upsert', ((event: CustomEvent<PendingMediaChange>) => {
+      const detail = event.detail;
+      if (!detail?.id || (detail.kind !== 'crop' && detail.kind !== 'grid')) return;
+      if (typeof detail.revert !== 'function' || !detail.payload || typeof detail.payload !== 'object') {
+        return;
+      }
+      pendingMedia.set(detail.id, detail);
+      updateActions();
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-pending-remove', ((event: CustomEvent<{ id?: string }>) => {
+      const id = event.detail?.id;
+      if (!id || !pendingMedia.has(id)) return;
+      pendingMedia.delete(id);
+      updateActions();
+    }) as EventListener);
 
     /* ── Selection formatting popup ───────────────────────── */
     let savedFormatRange: Range | null = null;
@@ -704,6 +727,15 @@
         applySpacingClass(state.element, state.savedValue);
         syncSpacingControl(state);
       });
+      [...pendingMedia.values()].forEach((change) => {
+        try {
+          change.revert();
+        } catch {
+          // Keep reverting the rest even if one target was removed from the DOM.
+        }
+      });
+      pendingMedia.clear();
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-reverted'));
       hideFormatBar();
       updateActions();
     });
@@ -711,37 +743,31 @@
     saveButton.addEventListener('click', async () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
-      if (!dirtyText.length && !dirtySpacing.length) return;
+      const mediaChanges = [...pendingMedia.values()];
+      if (!dirtyText.length && !dirtySpacing.length && !mediaChanges.length) return;
       saveButton.disabled = true;
       revertButton.disabled = true;
       status.textContent = 'Saving…';
 
       try {
-        if (dirtyText.length) {
-          const response = await fetch('/api/content-text', {
+        const hasMedia = mediaChanges.length > 0;
+        if (hasMedia) {
+          const response = await fetch('/api/content-batch', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
-              changes: dirtyText.map((state) => ({
+              crops: mediaChanges
+                .filter((change) => change.kind === 'crop')
+                .map((change) => change.payload),
+              grids: mediaChanges
+                .filter((change) => change.kind === 'grid')
+                .map((change) => change.payload),
+              text: dirtyText.map((state) => ({
                 document: state.document,
                 path: state.path,
                 value: readValue(state),
               })),
-            }),
-          });
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
-          dirtyText.forEach((state) => {
-            state.savedValue = readValue(state);
-          });
-        }
-
-        if (dirtySpacing.length) {
-          const response = await fetch('/api/content-spacing', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              changes: dirtySpacing.map((state) => ({
+              spacing: dirtySpacing.map((state) => ({
                 document: state.document,
                 path: state.path,
                 value: state.currentValue,
@@ -749,11 +775,55 @@
             }),
           });
           const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');
+          if (!response.ok) throw new Error(payload.error || 'Could not save changes.');
+          dirtyText.forEach((state) => {
+            state.savedValue = readValue(state);
+          });
           dirtySpacing.forEach((state) => {
             state.savedValue = state.currentValue;
             syncSpacingControl(state);
           });
+          pendingMedia.clear();
+          window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
+        } else {
+          if (dirtyText.length) {
+            const response = await fetch('/api/content-text', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                changes: dirtyText.map((state) => ({
+                  document: state.document,
+                  path: state.path,
+                  value: readValue(state),
+                })),
+              }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
+            dirtyText.forEach((state) => {
+              state.savedValue = readValue(state);
+            });
+          }
+
+          if (dirtySpacing.length) {
+            const response = await fetch('/api/content-spacing', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({
+                changes: dirtySpacing.map((state) => ({
+                  document: state.document,
+                  path: state.path,
+                  value: state.currentValue,
+                })),
+              }),
+            });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');
+            dirtySpacing.forEach((state) => {
+              state.savedValue = state.currentValue;
+              syncSpacingControl(state);
+            });
+          }
         }
 
         updateActions();
@@ -769,7 +839,7 @@
       setEditingEnabled(Boolean((event as CustomEvent<{ active: boolean }>).detail?.active));
     });
     window.addEventListener('beforeunload', (event) => {
-      if (!dirtyTextStates().length && !dirtySpacingStates().length) return;
+      if (!dirtyTextStates().length && !dirtySpacingStates().length && !pendingMedia.size) return;
       event.preventDefault();
       event.returnValue = '';
     });
