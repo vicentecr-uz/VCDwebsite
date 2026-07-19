@@ -35,9 +35,24 @@
   margin-top: 0;
 }
 
-/* Flush galleries: abut consecutive flush blocks; first still uses default/own spacing */
-.project-page__main > .project-stack--flush + .project-stack--flush {
+/* Flush galleries: abut consecutive flush blocks; first still uses default/own spacing.
+   Explicit related / major / section spacing must still win (dev spacing preview + saved values). */
+.project-page__main > .project-stack--flush + .project-stack--flush:not(.project-stack--related):not(.project-stack--major):not([data-dev-spacing-value='section']):not([data-dev-spacing-value='related']):not([data-dev-spacing-value='major']) {
   margin-top: 0;
+}
+
+.project-page__main > .project-stack--flush + .project-stack--flush.project-stack--related,
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='related'] {
+  margin-top: var(--space-related);
+}
+
+.project-page__main > .project-stack--flush + .project-stack--flush.project-stack--major,
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='major'] {
+  margin-top: var(--space-major);
+}
+
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='section'] {
+  margin-top: var(--space-section);
 }
 
 /* ── Single project image (lead / crop) ───────────────────── */
@@ -768,6 +783,29 @@
   margin: 1em;
   max-width: 75%;
   text-align: center;
+}
+
+.project-captioned-image--below {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75em;
+}
+
+.project-captioned-image__caption {
+  margin: 0;
+  max-width: 75%;
+  font-size: 1.2em;
+  font-weight: 600;
+  letter-spacing: -0.05ch;
+  line-height: 1.1;
+  color: var(--color-text);
+}
+
+/* Match section sidebar visibility: hide in-page titles when gutter nav is shown. */
+@media (min-width: 88.5em) {
+  .project-section-title--hide-when-sidebar .project-section-title {
+    display: none;
+  }
 }
 
 .project-hover-swap {

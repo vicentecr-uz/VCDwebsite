@@ -8,15 +8,33 @@ interface Props {
   caption: string;
   hideMobile?: boolean;
   spacing?: ProjectStackSpacing;
+  /** Overlay sits on the image; below sits under it in document flow. */
+  captionPlacement?: 'overlay' | 'below';
 }
 
-const { src, alt = '', caption, hideMobile = false, spacing = 'section' } = Astro.props;
+const {
+  src,
+  alt = '',
+  caption,
+  hideMobile = false,
+  spacing = 'section',
+  captionPlacement = 'overlay',
+} = Astro.props;
 const stackClass = projectStackClass(spacing);
+const below = captionPlacement === 'below';
 ---
 
 <div class:list={['project-block', hideMobile && 'project-hide-mobile', stackClass]}>
-  <figure class="project-captioned-image">
-    <span class="project-caption">{caption}</span>
+  <figure
+    class:list={[
+      'project-captioned-image',
+      below && 'project-captioned-image--below',
+    ]}
+  >
+    {!below && <span class="project-caption">{caption}</span>}
     <img src={projectImage(src)} alt={alt} class="project-media__img" loading="lazy" />
+    {below && (
+      <figcaption class="project-captioned-image__caption">{caption}</figcaption>
+    )}
   </figure>
 </div>

@@ -516,6 +516,385 @@ function contentTextDevWriter() {
 const EDITABLE_SPACING_VALUES = new Set(['related', 'section', 'major', 'none']);
 
 /**
+ * Resolve a JSON path against a document root. Returns null when missing.
+ * @param {unknown} data
+ * @param {Array<string | number>} fieldPath
+ */
+const resolvePathTarget = (data, fieldPath) => {
+  let target = data;
+  for (const part of fieldPath) {
+    if (
+      target === null ||
+      typeof target !== 'object' ||
+      !Object.prototype.hasOwnProperty.call(target, part)
+    ) {
+      return null;
+    }
+    target = target[part];
+  }
+  return target;
+};
+
+/**
+ * Apply one image-crop mutation onto an in-memory document node.
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+const applyCropChange = (data, change) => {
+  const fieldPath = change.path;
+  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+    return { ok: false, error: 'That image is not editable.' };
+  }
+  const target = resolvePathTarget(data, fieldPath);
+  if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+    return { ok: false, error: 'That image path no longer exists.' };
+  }
+
+  if (change.clearVariants === true) {
+    delete target.variants;
+    delete target.crop;
+    return { ok: true };
+  }
+
+  const requestedVariants = change.variants && typeof change.variants === 'object'
+    ? change.variants
+    : {};
+  /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
+  const variants = {};
+  for (const [viewport, requested] of Object.entries(requestedVariants)) {
+    const x = Number(requested?.x);
+    const y = Number(requested?.y);
+    const zoom = Number(requested?.zoom);
+    const aspectRatio = String(requested?.aspectRatio || '');
+    if (
+      !IMAGE_VIEWPORTS.has(viewport) ||
+      !isAllowedAspectRatio(aspectRatio) ||
+      ![x, y, zoom].every(Number.isFinite)
+    ) {
+      return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+    }
+    variants[viewport] = {
+      aspectRatio,
+      x: clampRound(x, -100, 100, 1),
+      y: clampRound(y, -100, 100, 1),
+      zoom: clampRound(zoom, 1, 1.5, 2),
+    };
+  }
+  if (!Object.keys(variants).length) {
+    return { ok: false, error: 'No crop data was provided.' };
+  }
+
+  target.variants ||= {};
+  Object.assign(target.variants, variants);
+  delete target.crop;
+  return { ok: true };
+};
+
+/**
+ * Apply one image-grid mutation onto an in-memory document node.
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+const applyGridChange = (data, change) => {
+  const fieldPath = change.path;
+  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+    return { ok: false, error: 'That grid is not editable.' };
+  }
+  const target = resolvePathTarget(data, fieldPath);
+  if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+    return { ok: false, error: 'That grid path no longer exists.' };
+  }
+
+  const requestedColumns = change.columns && typeof change.columns === 'object'
+    ? change.columns
+    : {};
+  /** @type {Record<string, number>} */
+  const columns = {};
+  for (const viewport of IMAGE_VIEWPORTS) {
+    const count = Number(requestedColumns[viewport]);
+    if (!Number.isFinite(count) || count < 1 || count > 6) {
+      return { ok: false, error: 'Use 1–6 columns for each display width.' };
+    }
+    columns[viewport] = Math.round(count);
+  }
+
+  const requestedConstrained = change.constrained && typeof change.constrained === 'object'
+    ? change.constrained
+    : {};
+  /** @type {Record<string, number>} */
+  const constrained = {};
+  for (const viewport of IMAGE_VIEWPORTS) {
+    const raw = requestedConstrained[viewport];
+    if (raw === true) {
+      constrained[viewport] = 80;
+      continue;
+    }
+    if (raw === false || raw === null || raw === undefined) {
+      constrained[viewport] = 100;
+      continue;
+    }
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n) || n >= 100) {
+      constrained[viewport] = 100;
+      continue;
+    }
+    const stepped = Math.round(n / 10) * 10;
+    if (stepped < 30 || stepped > 90) {
+      return { ok: false, error: 'Use a constrain width of 30–90% (or None).' };
+    }
+    constrained[viewport] = stepped;
+  }
+
+  const defaultAspectRatio = String(change.defaultAspectRatio || '');
+  if (!isAllowedAspectRatio(defaultAspectRatio)) {
+    return { ok: false, error: 'Use a supported default aspect ratio.' };
+  }
+
+  const itemIds = Array.isArray(target.items)
+    ? target.items.map((item, index) => String(item?.id || `item-${index}`))
+    : [];
+  const knownIds = new Set(itemIds);
+  /** @type {Record<string, { visible: string[] }>} */
+  const layouts = {};
+  const requestedLayouts = change.layouts && typeof change.layouts === 'object'
+    ? change.layouts
+    : {};
+  for (const viewport of IMAGE_VIEWPORTS) {
+    const visible = requestedLayouts[viewport]?.visible;
+    if (!Array.isArray(visible)) continue;
+    const seen = new Set();
+    const cleaned = [];
+    for (const rawId of visible) {
+      const id = String(rawId || '');
+      if (!knownIds.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      cleaned.push(id);
+    }
+    layouts[viewport] = { visible: cleaned };
+  }
+
+  target.columns = columns;
+  target.constrained = constrained;
+  target.defaultAspectRatio = defaultAspectRatio;
+  if (Object.keys(layouts).length) {
+    target.layouts = layouts;
+  } else {
+    delete target.layouts;
+  }
+  if (Array.isArray(target.items)) {
+    for (const item of target.items) {
+      if (item && typeof item === 'object') delete item.hideOnMobile;
+    }
+  }
+  return { ok: true };
+};
+
+/**
+ * Dev-only batch writer so staged image/grid/text/spacing edits hit disk in one
+ * write per document (avoids mid-save HMR wiping later changes).
+ *
+ * @returns {import('vite').Plugin}
+ */
+function contentBatchDevWriter() {
+  return {
+    name: 'content-batch-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/content-batch', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > 500_000) {
+              send(413, { error: 'The batch update is too large.' });
+              return;
+            }
+            chunks.push(chunk);
+          }
+
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const crops = Array.isArray(body.crops) ? body.crops : [];
+          const grids = Array.isArray(body.grids) ? body.grids : [];
+          const textChanges = Array.isArray(body.text) ? body.text : [];
+          const spacingChanges = Array.isArray(body.spacing) ? body.spacing : [];
+          if (!crops.length && !grids.length && !textChanges.length && !spacingChanges.length) {
+            send(400, { error: 'No changes were provided.' });
+            return;
+          }
+
+          /** @type {Map<string, { crops: any[], grids: any[], text: any[], spacing: any[] }>} */
+          const grouped = new Map();
+          const ensureGroup = (documentKey) => {
+            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            if (!relativeFile) return null;
+            let group = grouped.get(documentKey);
+            if (!group) {
+              group = { crops: [], grids: [], text: [], spacing: [] };
+              grouped.set(documentKey, group);
+            }
+            return group;
+          };
+
+          for (const change of crops) {
+            const documentKey = String(change?.document || '');
+            const group = ensureGroup(documentKey);
+            if (!group) {
+              send(400, { error: 'That image is not editable.' });
+              return;
+            }
+            group.crops.push(change);
+          }
+          for (const change of grids) {
+            const documentKey = String(change?.document || '');
+            const group = ensureGroup(documentKey);
+            if (!group) {
+              send(400, { error: 'That grid is not editable.' });
+              return;
+            }
+            group.grids.push(change);
+          }
+          for (const change of textChanges) {
+            const documentKey = String(change?.document || '');
+            const group = ensureGroup(documentKey);
+            const fieldPath = change?.path;
+            const value = change?.value;
+            const valueIsText = typeof value === 'string' && value.length <= 20_000;
+            const valueIsParagraphs = (
+              Array.isArray(value) &&
+              value.every((paragraph) => typeof paragraph === 'string') &&
+              value.join('').length <= 20_000
+            );
+            if (
+              !group ||
+              !Array.isArray(fieldPath) ||
+              !fieldPath.length ||
+              fieldPath.length > 8 ||
+              (!valueIsText && !valueIsParagraphs) ||
+              fieldPath.some((part) => !isSafePathPart(part))
+            ) {
+              send(400, { error: 'One or more text fields are not editable.' });
+              return;
+            }
+            group.text.push(change);
+          }
+          for (const change of spacingChanges) {
+            const documentKey = String(change?.document || '');
+            const group = ensureGroup(documentKey);
+            const fieldPath = change?.path;
+            const value = change?.value;
+            if (
+              !group ||
+              !Array.isArray(fieldPath) ||
+              fieldPath.length < 2 ||
+              fieldPath.length > 8 ||
+              fieldPath.at(-1) !== 'spacing' ||
+              !EDITABLE_SPACING_VALUES.has(value) ||
+              fieldPath.some((part) => !isSafePathPart(part))
+            ) {
+              send(400, { error: 'One or more spacing fields are not editable.' });
+              return;
+            }
+            group.spacing.push(change);
+          }
+
+          for (const [documentKey, group] of grouped) {
+            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const file = path.join(process.cwd(), relativeFile);
+            const data = JSON.parse(await readFile(file, 'utf8'));
+
+            for (const change of group.crops) {
+              const result = applyCropChange(data, change);
+              if (!result.ok) {
+                send(400, { error: result.error });
+                return;
+              }
+            }
+            for (const change of group.grids) {
+              const result = applyGridChange(data, change);
+              if (!result.ok) {
+                send(400, { error: result.error });
+                return;
+              }
+            }
+            for (const change of group.text) {
+              let target = data;
+              for (const part of change.path.slice(0, -1)) {
+                if (
+                  target === null ||
+                  typeof target !== 'object' ||
+                  !Object.prototype.hasOwnProperty.call(target, part)
+                ) {
+                  send(400, { error: 'An editable text path no longer exists.' });
+                  return;
+                }
+                target = target[part];
+              }
+              const field = change.path.at(-1);
+              const currentValue = target?.[field];
+              if (
+                target === null ||
+                typeof target !== 'object' ||
+                !Object.prototype.hasOwnProperty.call(target, field) ||
+                (
+                  typeof currentValue !== 'string' &&
+                  !(Array.isArray(currentValue) && currentValue.every((item) => typeof item === 'string'))
+                ) ||
+                (typeof currentValue === 'string') !== (typeof change.value === 'string')
+              ) {
+                send(400, { error: 'An editable text field no longer exists.' });
+                return;
+              }
+              target[field] = change.value;
+            }
+            for (const change of group.spacing) {
+              let target = data;
+              for (const part of change.path.slice(0, -1)) {
+                if (
+                  target === null ||
+                  typeof target !== 'object' ||
+                  !Object.prototype.hasOwnProperty.call(target, part)
+                ) {
+                  send(400, { error: 'A spacing path no longer exists.' });
+                  return;
+                }
+                target = target[part];
+              }
+              if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+                send(400, { error: 'A spacing path no longer exists.' });
+                return;
+              }
+              target.spacing = change.value;
+            }
+
+            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          }
+
+          send(200, {
+            ok: true,
+            crops: crops.length,
+            grids: grids.length,
+            text: textChanges.length,
+            spacing: spacingChanges.length,
+          });
+        } catch {
+          send(400, { error: 'Could not parse or write the batch changes.' });
+        }
+      });
+    },
+  };
+}
+
+/**
  * Dev-only writer for project section spacing tokens. Same document allowlist
  * as text edits; creates `spacing` on the section node when missing.
  *
@@ -633,6 +1012,7 @@ export default defineConfig({
       styleTokenDevWriter(),
       contentTextDevWriter(),
       contentSpacingDevWriter(),
+      contentBatchDevWriter(),
     ],
     optimizeDeps: {
       include: ['gsap', '@melloware/coloris'],
