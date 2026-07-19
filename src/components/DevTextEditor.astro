@@ -108,7 +108,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid';
+      kind: 'crop' | 'grid' | 'caption';
       payload: Record<string, unknown>;
       revert: () => void;
     };
@@ -354,7 +354,12 @@
 
     window.addEventListener('vcd:dev-pending-upsert', ((event: CustomEvent<PendingMediaChange>) => {
       const detail = event.detail;
-      if (!detail?.id || (detail.kind !== 'crop' && detail.kind !== 'grid')) return;
+      if (
+        !detail?.id ||
+        (detail.kind !== 'crop' && detail.kind !== 'grid' && detail.kind !== 'caption')
+      ) {
+        return;
+      }
       if (typeof detail.revert !== 'function' || !detail.payload || typeof detail.payload !== 'object') {
         return;
       }
@@ -761,6 +766,9 @@
                 .map((change) => change.payload),
               grids: mediaChanges
                 .filter((change) => change.kind === 'grid')
+                .map((change) => change.payload),
+              captions: mediaChanges
+                .filter((change) => change.kind === 'caption')
                 .map((change) => change.payload),
               text: dirtyText.map((state) => ({
                 document: state.document,
