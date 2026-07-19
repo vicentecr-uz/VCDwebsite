@@ -353,24 +353,122 @@
   left: 0;
   bottom: 0;
   z-index: 1;
-  margin: 1em 1em 0.5em;
+  margin: 0 0 1em 1em;
   max-width: 75%;
   font-size: 1.2em;
   font-weight: 600;
   letter-spacing: -0.05ch;
   line-height: 1.1;
   color: #fff;
-  text-shadow: 0 1px 20px rgba(0, 0, 0, 0.31);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 2px 16px rgba(0, 0, 0, 0.7),
+    0 0 28px rgba(0, 0, 0, 0.45);
   pointer-events: none;
 }
 
 .project-caption--dark {
-  text-shadow: 0 1px 20px rgba(0, 0, 0, 0.5);
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.65),
+    0 2px 18px rgba(0, 0, 0, 0.8),
+    0 0 28px rgba(0, 0, 0, 0.55);
 }
 
 .project-caption--black {
   color: var(--color-text);
   text-shadow: none;
+}
+
+/*
+  Per-breakpoint grid caption text. Kept global (not Astro-scoped) so
+  dynamically created caption nodes from the Dev Mode tuner still hide
+  correctly — otherwise all three labels stack and look “tripled”.
+*/
+.project-image-grid__caption-bp--tablet,
+.project-image-grid__caption-bp--mobile {
+  display: none;
+}
+
+@media (max-width: 991px) and (min-width: 768px) {
+  .project-image-grid__caption-bp--desktop {
+    display: none;
+  }
+
+  .project-image-grid__caption-bp--tablet {
+    display: inline;
+  }
+}
+
+@media (max-width: 767px) {
+  .project-image-grid__caption-bp--desktop,
+  .project-image-grid__caption-bp--tablet {
+    display: none;
+  }
+
+  .project-image-grid__caption-bp--mobile {
+    display: inline;
+  }
+}
+
+/* Grid caption reveal: hover (default) vs always — per breakpoint via data attrs. */
+.project-image-grid__caption {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.project-image-grid__item:hover .project-image-grid__caption,
+.project-image-grid__item:focus-within .project-image-grid__caption {
+  opacity: 1;
+}
+
+@media (min-width: 992px) {
+  .project-image-grid__caption[data-caption-reveal-desktop='always'] {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 991px) and (min-width: 768px) {
+  .project-image-grid__caption[data-caption-reveal-tablet='always'] {
+    opacity: 1;
+  }
+
+  /* No cursor: hover mode can’t work — hide unless set to always. */
+  @media (hover: none) {
+    .project-image-grid__caption[data-caption-reveal-tablet='hover'] {
+      display: none;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  /* Override the global .project-caption mobile hide when always-visible. */
+  .project-image-grid__caption.project-caption[data-caption-reveal-mobile='always'] {
+    display: block;
+    opacity: 1;
+  }
+
+  .project-image-grid__caption[data-caption-reveal-mobile='hover'] {
+    display: none;
+  }
+}
+
+@media (min-width: 992px) and (hover: none) {
+  .project-image-grid__caption[data-caption-reveal-desktop='hover'] {
+    display: none;
+  }
+}
+
+/* Dev Mode: captions stay visible + clickable for the caption tuner. */
+.is-dev-mode .project-image-grid__caption.project-caption {
+  display: block;
+  opacity: 1;
+  pointer-events: auto;
+  cursor: text;
+}
+
+.is-dev-mode .project-image-grid__caption[data-caption-editing='true'] {
+  outline: 1px solid color-mix(in srgb, #ffffff 55%, transparent);
+  outline-offset: 0.15em;
 }
 
 /* ── Detail shots in grids ───────────────────────────────────── */

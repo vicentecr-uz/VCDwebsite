@@ -688,6 +688,90 @@ const applyGridChange = (data, change) => {
 };
 
 /**
+ * Apply one image-caption mutation onto an in-memory document node.
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+const applyCaptionChange = (data, change) => {
+  const fieldPath = change.path;
+  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+    return { ok: false, error: 'That image is not editable.' };
+  }
+  const target = resolvePathTarget(data, fieldPath);
+  if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+    return { ok: false, error: 'That image path no longer exists.' };
+  }
+
+  if (change.clear === true) {
+    delete target.caption;
+    delete target.captions;
+    delete target.captionStyle;
+    delete target.captionReveal;
+    return { ok: true };
+  }
+
+  const CAPTION_STYLES = new Set(['default']);
+  const CAPTION_REVEALS = new Set(['hover', 'always']);
+  const captionStyle = String(change.captionStyle || 'default');
+  if (!CAPTION_STYLES.has(captionStyle)) {
+    return { ok: false, error: 'Use a supported caption style.' };
+  }
+
+  const requested = change.captions && typeof change.captions === 'object'
+    ? change.captions
+    : {};
+  /** @type {Record<string, string>} */
+  const captions = {};
+  for (const viewport of IMAGE_VIEWPORTS) {
+    const text = String(requested[viewport] ?? '');
+    if (text.length > 500) {
+      return { ok: false, error: 'Caption text is too long.' };
+    }
+    captions[viewport] = text.replaceAll('\u00a0', ' ');
+  }
+  if (![...IMAGE_VIEWPORTS].some((viewport) => captions[viewport].trim())) {
+    delete target.caption;
+    delete target.captions;
+    delete target.captionStyle;
+    delete target.captionReveal;
+    return { ok: true };
+  }
+
+  const requestedReveal = change.captionReveal;
+  /** @type {Record<string, string>} */
+  const captionReveal = {};
+  if (typeof requestedReveal === 'string' && CAPTION_REVEALS.has(requestedReveal)) {
+    for (const viewport of IMAGE_VIEWPORTS) {
+      captionReveal[viewport] = requestedReveal;
+    }
+  } else if (requestedReveal && typeof requestedReveal === 'object') {
+    let previous = 'hover';
+    for (const viewport of IMAGE_VIEWPORTS) {
+      const value = String(requestedReveal[viewport] || previous);
+      if (!CAPTION_REVEALS.has(value)) {
+        return { ok: false, error: 'Use hover or always for caption reveal.' };
+      }
+      captionReveal[viewport] = value;
+      previous = value;
+    }
+  } else {
+    captionReveal.desktop = 'hover';
+    captionReveal.tablet = 'always';
+    captionReveal.mobile = 'always';
+  }
+
+  target.captions = captions;
+  // Keep legacy single caption in sync with desktop for older readers.
+  target.caption = captions.desktop;
+  target.captionReveal = captionReveal;
+  if (captionStyle === 'default') {
+    delete target.captionStyle;
+  } else {
+    target.captionStyle = captionStyle;
+  }
+  return { ok: true };
+};
+
+/**
  * Dev-only batch writer so staged image/grid/text/spacing edits hit disk in one
  * write per document (avoids mid-save HMR wiping later changes).
  *
@@ -725,21 +809,28 @@ function contentBatchDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const crops = Array.isArray(body.crops) ? body.crops : [];
           const grids = Array.isArray(body.grids) ? body.grids : [];
+          const captions = Array.isArray(body.captions) ? body.captions : [];
           const textChanges = Array.isArray(body.text) ? body.text : [];
           const spacingChanges = Array.isArray(body.spacing) ? body.spacing : [];
-          if (!crops.length && !grids.length && !textChanges.length && !spacingChanges.length) {
+          if (
+            !crops.length &&
+            !grids.length &&
+            !captions.length &&
+            !textChanges.length &&
+            !spacingChanges.length
+          ) {
             send(400, { error: 'No changes were provided.' });
             return;
           }
 
-          /** @type {Map<string, { crops: any[], grids: any[], text: any[], spacing: any[] }>} */
+          /** @type {Map<string, { crops: any[], grids: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const ensureGroup = (documentKey) => {
             const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
             if (!relativeFile) return null;
             let group = grouped.get(documentKey);
             if (!group) {
-              group = { crops: [], grids: [], text: [], spacing: [] };
+              group = { crops: [], grids: [], captions: [], text: [], spacing: [] };
               grouped.set(documentKey, group);
             }
             return group;
@@ -762,6 +853,15 @@ function contentBatchDevWriter() {
               return;
             }
             group.grids.push(change);
+          }
+          for (const change of captions) {
+            const documentKey = String(change?.document || '');
+            const group = ensureGroup(documentKey);
+            if (!group) {
+              send(400, { error: 'That image is not editable.' });
+              return;
+            }
+            group.captions.push(change);
           }
           for (const change of textChanges) {
             const documentKey = String(change?.document || '');
@@ -826,6 +926,13 @@ function contentBatchDevWriter() {
                 return;
               }
             }
+            for (const change of group.captions) {
+              const result = applyCaptionChange(data, change);
+              if (!result.ok) {
+                send(400, { error: result.error });
+                return;
+              }
+            }
             for (const change of group.text) {
               let target = data;
               for (const part of change.path.slice(0, -1)) {
@@ -883,6 +990,7 @@ function contentBatchDevWriter() {
             ok: true,
             crops: crops.length,
             grids: grids.length,
+            captions: captions.length,
             text: textChanges.length,
             spacing: spacingChanges.length,
           });

@@ -1,0 +1,748 @@
+---
+import DevOverlay from '../DevOverlay.astro';
+import { IMAGE_CAPTION_REVEALS, IMAGE_CAPTION_STYLES } from '../../lib/imageCaptions';
+---
+
+<DevOverlay
+  title="Edit caption"
+  storageKey="project-image-caption"
+  panelKey="caption"
+  defaultHidden
+>
+  <div class="project-caption-tuner" data-project-image-caption-tuner>
+    <div class="project-caption-tuner__viewports" aria-label="Display width">
+      <button type="button" data-caption-viewport="desktop">Desktop</button>
+      <button type="button" data-caption-viewport="tablet">Tablet</button>
+      <button type="button" data-caption-viewport="mobile">Mobile</button>
+    </div>
+
+    <label class="project-caption-tuner__select">
+      <span>Caption style</span>
+      <select data-caption-style>
+        {IMAGE_CAPTION_STYLES.map((style) => (
+          <option value={style.id}>{style.label}</option>
+        ))}
+      </select>
+    </label>
+
+    <label class="project-caption-tuner__select">
+      <span>Show caption</span>
+      <select data-caption-reveal>
+        {IMAGE_CAPTION_REVEALS.map((reveal) => (
+          <option value={reveal.id}>{reveal.label}</option>
+        ))}
+      </select>
+    </label>
+
+    <label class="project-caption-tuner__field">
+      <span>Caption</span>
+      <textarea data-caption-text rows="3" placeholder="Caption title"></textarea>
+    </label>
+
+    <div class="project-caption-tuner__actions">
+      <button type="button" data-caption-clear>Clear</button>
+      <button type="button" data-caption-revert>Revert changes</button>
+      <button type="button" data-caption-save>Save changes</button>
+    </div>
+
+    <p class="project-caption-tuner__status" data-caption-status aria-live="polite">
+      Text and show-mode cascade down: desktop updates tablet and mobile; tablet updates mobile.
+    </p>
+  </div>
+</DevOverlay>
+
+<script>
+  import {
+    DEFAULT_IMAGE_CAPTION_REVEALS,
+    imageCaptionStyleClass,
+    imageCaptionsHaveText,
+    isImageCaptionReveal,
+    matchImageCaptionViewport,
+    resolveImageCaptionReveals,
+    resolveImageCaptionStyle,
+    resolveImageCaptions,
+    setImageCaptionAtViewport,
+    setImageCaptionRevealAtViewport,
+    type ImageCaptionReveal,
+    type ImageCaptionReveals,
+    type ImageCaptionStyleId,
+    type ImageCaptions,
+  } from '../../lib/imageCaptions';
+  import type { ImageViewport } from '../../lib/responsiveImage';
+  import { IMAGE_VIEWPORTS } from '../../lib/responsiveImage';
+
+  type CaptionBaseline = {
+    captions: ImageCaptions;
+    captionStyle: ImageCaptionStyleId;
+    captionReveals: ImageCaptionReveals;
+  };
+
+  const initProjectImageCaptionTuner = (tuner: HTMLElement) => {
+    if (tuner.dataset.initialized === 'true') return;
+    tuner.dataset.initialized = 'true';
+
+    const viewportButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-caption-viewport]'),
+    ];
+    const styleSelect = tuner.querySelector<HTMLSelectElement>('[data-caption-style]');
+    const revealSelect = tuner.querySelector<HTMLSelectElement>('[data-caption-reveal]');
+    const textArea = tuner.querySelector<HTMLTextAreaElement>('[data-caption-text]');
+    const status = tuner.querySelector<HTMLElement>('[data-caption-status]');
+    const saveButton = tuner.querySelector<HTMLButtonElement>('[data-caption-save]');
+    const revertButton = tuner.querySelector<HTMLButtonElement>('[data-caption-revert]');
+    const clearButton = tuner.querySelector<HTMLButtonElement>('[data-caption-clear]');
+    if (
+      !viewportButtons.length ||
+      !styleSelect ||
+      !revealSelect ||
+      !textArea ||
+      !status ||
+      !saveButton ||
+      !revertButton ||
+      !clearButton
+    ) {
+      return;
+    }
+
+    let editTarget: HTMLElement | null = null;
+    let selectedViewport: ImageViewport = 'desktop';
+    let draftCaptions: ImageCaptions = { desktop: '', tablet: '', mobile: '' };
+    let draftStyle: ImageCaptionStyleId = 'default';
+    let draftReveals: ImageCaptionReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
+    let savedCaptions: ImageCaptions = { desktop: '', tablet: '', mobile: '' };
+    let savedStyle: ImageCaptionStyleId = 'default';
+    let savedReveals: ImageCaptionReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
+    const diskBaselines = new Map<string, CaptionBaseline>();
+    let syncingUi = false;
+
+    const pendingIdFor = (target: HTMLElement) => {
+      const documentKey = target.dataset.devDocument || '';
+      const imagePath = target.dataset.devImagePath || '[]';
+      return `caption:${documentKey}:${imagePath}`;
+    };
+
+    const readTargetState = (target: HTMLElement): CaptionBaseline => {
+      let captions = resolveImageCaptions({});
+      try {
+        const parsed = JSON.parse(target.dataset.devCaptions || '{}');
+        captions = resolveImageCaptions({ captions: parsed });
+      } catch {
+        // Fall through to empty.
+      }
+      let captionReveals = resolveImageCaptionReveals(undefined);
+      try {
+        const parsedReveals = JSON.parse(target.dataset.devCaptionReveals || 'null');
+        captionReveals = resolveImageCaptionReveals(parsedReveals);
+      } catch {
+        // Keep defaults.
+      }
+      const host = target.querySelector<HTMLElement>('[data-project-image-caption]');
+      if (host && !imageCaptionsHaveText(captions)) {
+        const fromDom: Partial<ImageCaptions> = {};
+        IMAGE_VIEWPORTS.forEach((viewport) => {
+          const node = host.querySelector<HTMLElement>(`[data-caption-bp="${viewport}"]`);
+          if (node) fromDom[viewport] = node.textContent ?? '';
+        });
+        captions = resolveImageCaptions({ captions: fromDom });
+      }
+      if (host) {
+        captionReveals = resolveImageCaptionReveals({
+          desktop: host.dataset.captionRevealDesktop as ImageCaptionReveal | undefined,
+          tablet: host.dataset.captionRevealTablet as ImageCaptionReveal | undefined,
+          mobile: host.dataset.captionRevealMobile as ImageCaptionReveal | undefined,
+        });
+      }
+      return {
+        captions,
+        captionStyle: resolveImageCaptionStyle(
+          target.dataset.devCaptionStyle || host?.dataset.captionStyle,
+        ),
+        captionReveals,
+      };
+    };
+
+    const ensureCaptionHost = (target: HTMLElement): HTMLElement => {
+      let host = target.querySelector<HTMLElement>('[data-project-image-caption]');
+      if (host) return host;
+
+      host = document.createElement('span');
+      host.className = 'project-caption project-image-grid__caption';
+      host.dataset.projectImageCaption = '';
+      IMAGE_VIEWPORTS.forEach((viewport) => {
+        const bp = document.createElement('span');
+        bp.className = `project-image-grid__caption-bp project-image-grid__caption-bp--${viewport}`;
+        bp.dataset.captionBp = viewport;
+        host!.appendChild(bp);
+      });
+      const addButton = target.querySelector('.dev-caption-add-trigger');
+      if (addButton) addButton.before(host);
+      else target.appendChild(host);
+      return host;
+    };
+
+    const syncAddButton = (target: HTMLElement, captions: ImageCaptions) => {
+      const addButton = target.querySelector<HTMLButtonElement>('.dev-caption-add-trigger');
+      if (!addButton) return;
+      const inDev = document.documentElement.classList.contains('is-dev-mode');
+      // Host present (even empty, while editing) hides Add via CSS :has(); keep attribute in sync too.
+      const hasHost = Boolean(target.querySelector('[data-project-image-caption]'));
+      addButton.hidden = !inDev || imageCaptionsHaveText(captions) || hasHost;
+    };
+
+    const applyCaptionsToTarget = (
+      target: HTMLElement,
+      captions: ImageCaptions,
+      captionStyle: ImageCaptionStyleId,
+      captionReveals: ImageCaptionReveals,
+      options?: { retainEmptyHost?: boolean },
+    ) => {
+      target.dataset.devCaptions = JSON.stringify(captions);
+      target.dataset.devCaptionStyle = captionStyle;
+      target.dataset.devCaptionReveals = JSON.stringify(captionReveals);
+
+      const retainEmpty = options?.retainEmptyHost === true;
+      if (!imageCaptionsHaveText(captions) && !retainEmpty) {
+        target.querySelector('[data-project-image-caption]')?.remove();
+        syncAddButton(target, captions);
+        return;
+      }
+
+      const host = ensureCaptionHost(target);
+      host.dataset.captionStyle = captionStyle;
+      host.dataset.captionRevealDesktop = captionReveals.desktop;
+      host.dataset.captionRevealTablet = captionReveals.tablet;
+      host.dataset.captionRevealMobile = captionReveals.mobile;
+      host.className = [
+        'project-caption',
+        'project-image-grid__caption',
+        imageCaptionStyleClass(captionStyle),
+      ]
+        .filter(Boolean)
+        .join(' ');
+
+      IMAGE_VIEWPORTS.forEach((viewport) => {
+        const node = host.querySelector<HTMLElement>(`[data-caption-bp="${viewport}"]`);
+        if (!node || document.activeElement === node) return;
+        if (node.textContent !== captions[viewport]) {
+          node.textContent = captions[viewport];
+        }
+      });
+
+      syncAddButton(target, captions);
+    };
+
+    /** Drop an empty caption shell once the user leaves the editor (not while typing). */
+    const removeEmptyCaptionHost = (target: HTMLElement | null) => {
+      if (!target) return false;
+      const captions = editTarget === target
+        ? draftCaptions
+        : (() => {
+            try {
+              return resolveImageCaptions({
+                captions: JSON.parse(target.dataset.devCaptions || '{}'),
+              });
+            } catch {
+              return resolveImageCaptions({});
+            }
+          })();
+      if (imageCaptionsHaveText(captions)) return false;
+      disableInlineEditing(target);
+      target.querySelector('[data-project-image-caption]')?.remove();
+      if (editTarget === target) {
+        draftCaptions = { desktop: '', tablet: '', mobile: '' };
+        target.dataset.devCaptions = JSON.stringify(draftCaptions);
+      }
+      syncAddButton(target, captions);
+      return true;
+    };
+
+    const finalizeEmptyCaption = (target: HTMLElement | null) => {
+      if (!removeEmptyCaptionHost(target)) return;
+      // Leaving an empty edit: hide the tuner so Add caption is the next step.
+      if (target === editTarget) {
+        const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+        if (panel && !panel.hidden) {
+          panel.hidden = true;
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+            detail: { panel },
+          }));
+        }
+      }
+    };
+
+    const isCaptionEditorSurface = (node: EventTarget | null) => {
+      if (!(node instanceof Element)) return false;
+      if (node.closest('[data-project-image-caption-tuner]')) return true;
+      if (node.closest('[data-dev-panel-key="caption"]')) return true;
+      if (node.closest('[data-project-image-caption]')) return true;
+      return false;
+    };
+
+    const closePanel = () => {
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panel || panel.hidden) return;
+      panel.hidden = true;
+      removeEmptyCaptionHost(editTarget);
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+        detail: { panel },
+      }));
+    };
+
+    const openPanel = () => {
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panel) return;
+      panel.hidden = false;
+      window.dispatchEvent(new Event('resize'));
+    };
+
+    const renderViewportButtons = () => {
+      viewportButtons.forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.captionViewport === selectedViewport);
+      });
+    };
+
+    const renderFields = () => {
+      syncingUi = true;
+      styleSelect.value = draftStyle;
+      revealSelect.value = draftReveals[selectedViewport];
+      textArea.value = draftCaptions[selectedViewport];
+      syncingUi = false;
+      renderViewportButtons();
+    };
+
+    const setDraftText = (text: string, viewport: ImageViewport = selectedViewport) => {
+      draftCaptions = setImageCaptionAtViewport(draftCaptions, viewport, text);
+      if (editTarget) {
+        // Keep an empty host while editing so clearing the field doesn’t eject focus.
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftReveals, {
+          retainEmptyHost: true,
+        });
+      }
+      if (!syncingUi && document.activeElement !== textArea) {
+        textArea.value = draftCaptions[selectedViewport];
+      }
+    };
+
+    const disableInlineEditing = (target: HTMLElement | null) => {
+      if (!target) return;
+      const host = target.querySelector<HTMLElement>('[data-project-image-caption]');
+      if (!host) return;
+      host.dataset.captionEditing = 'false';
+      host.querySelectorAll<HTMLElement>('[data-caption-bp]').forEach((node) => {
+        node.removeAttribute('contenteditable');
+      });
+    };
+
+    const enableInlineEditing = (target: HTMLElement) => {
+      document.querySelectorAll<HTMLElement>('[data-dev-image-target]').forEach((candidate) => {
+        if (candidate !== target) disableInlineEditing(candidate);
+      });
+
+      if (!imageCaptionsHaveText(draftCaptions) && !target.querySelector('[data-project-image-caption]')) {
+        return;
+      }
+
+      const host = ensureCaptionHost(target);
+      host.dataset.captionEditing = 'true';
+      const liveViewport = matchImageCaptionViewport();
+      host.querySelectorAll<HTMLElement>('[data-caption-bp]').forEach((node) => {
+        const bp = node.dataset.captionBp as ImageViewport | undefined;
+        if (bp === liveViewport) {
+          try {
+            node.contentEditable = 'plaintext-only';
+            if (node.contentEditable !== 'plaintext-only') node.contentEditable = 'true';
+          } catch {
+            node.contentEditable = 'true';
+          }
+        } else {
+          node.removeAttribute('contenteditable');
+        }
+      });
+    };
+
+    const selectTarget = (target: HTMLElement, options?: { focusText?: boolean; seedEmpty?: boolean }) => {
+      const switching = editTarget !== target;
+      if (switching && editTarget) {
+        finalizeEmptyCaption(editTarget);
+      }
+      editTarget = target;
+      const state = readTargetState(target);
+
+      if (switching) {
+        savedCaptions = structuredClone(state.captions);
+        savedStyle = state.captionStyle;
+        savedReveals = structuredClone(state.captionReveals);
+        draftCaptions = structuredClone(state.captions);
+        draftStyle = state.captionStyle;
+        draftReveals = structuredClone(state.captionReveals);
+      }
+
+      if (options?.seedEmpty && !imageCaptionsHaveText(draftCaptions)) {
+        draftCaptions = { desktop: '', tablet: '', mobile: '' };
+        draftReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
+        // Create an empty host so the user can type without the shell vanishing.
+        applyCaptionsToTarget(target, draftCaptions, draftStyle, draftReveals, {
+          retainEmptyHost: true,
+        });
+      }
+
+      selectedViewport = matchImageCaptionViewport();
+      renderFields();
+      openPanel();
+      enableInlineEditing(target);
+
+      if (options?.focusText) {
+        requestAnimationFrame(() => {
+          textArea.focus();
+          textArea.select();
+        });
+      }
+    };
+
+    styleSelect.addEventListener('change', () => {
+      if (syncingUi) return;
+      draftStyle = resolveImageCaptionStyle(styleSelect.value);
+      if (editTarget) {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftReveals, {
+          retainEmptyHost: true,
+        });
+      }
+    });
+
+    revealSelect.addEventListener('change', () => {
+      if (syncingUi) return;
+      const next = revealSelect.value;
+      if (!isImageCaptionReveal(next)) return;
+      draftReveals = setImageCaptionRevealAtViewport(draftReveals, selectedViewport, next);
+      if (editTarget) {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftReveals, {
+          retainEmptyHost: true,
+        });
+      }
+      renderFields();
+    });
+
+    textArea.addEventListener('input', () => {
+      if (syncingUi) return;
+      setDraftText(textArea.value, selectedViewport);
+    });
+
+    viewportButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const next = button.dataset.captionViewport as ImageViewport | undefined;
+        if (!next || !IMAGE_VIEWPORTS.includes(next)) return;
+        selectedViewport = next;
+        renderFields();
+      });
+    });
+
+    clearButton.addEventListener('click', () => {
+      draftCaptions = { desktop: '', tablet: '', mobile: '' };
+      if (editTarget) {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftReveals, {
+          retainEmptyHost: true,
+        });
+      }
+      renderFields();
+      textArea.focus();
+      status.textContent = 'Caption cleared — keep typing, or click away to show Add caption.';
+    });
+
+    revertButton.addEventListener('click', () => {
+      if (!editTarget) return;
+      const pendingId = pendingIdFor(editTarget);
+      const baseline = diskBaselines.get(pendingId) ?? {
+        captions: structuredClone(savedCaptions),
+        captionStyle: savedStyle,
+        captionReveals: structuredClone(savedReveals),
+      };
+      draftCaptions = structuredClone(baseline.captions);
+      draftStyle = baseline.captionStyle;
+      draftReveals = structuredClone(baseline.captionReveals);
+      savedCaptions = structuredClone(baseline.captions);
+      savedStyle = baseline.captionStyle;
+      savedReveals = structuredClone(baseline.captionReveals);
+      applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftReveals);
+      renderFields();
+      status.textContent = 'Reverted to last saved caption.';
+    });
+
+    saveButton.addEventListener('click', () => {
+      if (!editTarget) return;
+      const documentKey = editTarget.dataset.devDocument || '';
+      let imagePath: Array<string | number> = [];
+      try {
+        imagePath = JSON.parse(editTarget.dataset.devImagePath || '[]');
+      } catch {
+        status.textContent = 'That image path is not editable.';
+        return;
+      }
+      if (!documentKey || !Array.isArray(imagePath)) {
+        status.textContent = 'That image is not editable.';
+        return;
+      }
+
+      const pendingId = pendingIdFor(editTarget);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, {
+          captions: structuredClone(savedCaptions),
+          captionStyle: savedStyle,
+          captionReveals: structuredClone(savedReveals),
+        });
+      }
+      const baseline = structuredClone(diskBaselines.get(pendingId)!);
+      const stagedCaptions = structuredClone(draftCaptions);
+      const stagedStyle = draftStyle;
+      const stagedReveals = structuredClone(draftReveals);
+      const target = editTarget;
+
+      applyCaptionsToTarget(target, stagedCaptions, stagedStyle, stagedReveals);
+      savedCaptions = structuredClone(stagedCaptions);
+      savedStyle = stagedStyle;
+      savedReveals = structuredClone(stagedReveals);
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'caption',
+          payload: {
+            document: documentKey,
+            path: imagePath,
+            captions: stagedCaptions,
+            captionStyle: stagedStyle,
+            captionReveal: stagedReveals,
+            clear: !imageCaptionsHaveText(stagedCaptions),
+          },
+          revert: () => {
+            applyCaptionsToTarget(target, baseline.captions, baseline.captionStyle, baseline.captionReveals);
+            if (editTarget === target) {
+              savedCaptions = structuredClone(baseline.captions);
+              savedStyle = baseline.captionStyle;
+              savedReveals = structuredClone(baseline.captionReveals);
+              draftCaptions = structuredClone(baseline.captions);
+              draftStyle = baseline.captionStyle;
+              draftReveals = structuredClone(baseline.captionReveals);
+              renderFields();
+            }
+          },
+        },
+      }));
+
+      status.textContent = 'Staged — use Save in the page bar to write to disk.';
+      closePanel();
+      if (imageCaptionsHaveText(stagedCaptions)) {
+        enableInlineEditing(target);
+      }
+    });
+
+    // Clicking away from the caption editor drops an empty shell → Add caption returns.
+    document.addEventListener('focusin', (event) => {
+      if (!editTarget) return;
+      if (isCaptionEditorSurface(event.target)) return;
+      // Focus moved elsewhere (page chrome, another field) — finalize empty captions.
+      if (!imageCaptionsHaveText(draftCaptions)) {
+        finalizeEmptyCaption(editTarget);
+      }
+    });
+
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!editTarget) return;
+        if (isCaptionEditorSurface(event.target)) return;
+        // Don't finalize when opening Add caption / Edit image on the same cell.
+        const target = event.target as HTMLElement | null;
+        if (target?.closest(`[data-dev-image-target]`) === editTarget) {
+          if (target.closest('[data-dev-edit-trigger="caption"]')) return;
+        }
+        if (!imageCaptionsHaveText(draftCaptions)) {
+          finalizeEmptyCaption(editTarget);
+        }
+      },
+      true,
+    );
+
+    document.addEventListener('input', (event) => {
+      const node = event.target as HTMLElement | null;
+      if (!(node instanceof HTMLElement)) return;
+      if (!node.matches('[data-caption-bp][contenteditable]')) return;
+      if (document.activeElement !== node) return;
+      const target = node.closest<HTMLElement>('[data-dev-image-target]');
+      if (!target || target !== editTarget) return;
+      const bp = (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport;
+      setDraftText(node.textContent ?? '', bp);
+    });
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      const trigger = event.detail?.trigger as HTMLElement | undefined;
+      if (!panel || panel.dataset.devPanelKey !== 'caption' || !trigger) return;
+      const target = trigger.closest<HTMLElement>('[data-dev-image-target]');
+      if (!target) return;
+      selectTarget(target, {
+        focusText: true,
+        seedEmpty: trigger.classList.contains('dev-caption-add-trigger'),
+      });
+    }) as EventListener);
+
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!document.documentElement.classList.contains('is-dev-mode')) return;
+        const node = event.target as HTMLElement | null;
+        if (!node) return;
+        if (node.closest('[data-dev-edit-trigger]')) return;
+        if (node.closest('[data-dev-panel-key="caption"]')) return;
+        const captionNode = node.closest<HTMLElement>('[data-project-image-caption]');
+        if (!captionNode) return;
+        const target = captionNode.closest<HTMLElement>('[data-dev-image-target]');
+        if (!target) return;
+
+        selectTarget(target);
+        const live = matchImageCaptionViewport();
+        selectedViewport = live;
+        renderFields();
+      },
+      true,
+    );
+
+    window.addEventListener('vcd:dev-pending-committed', (() => {
+      if (!editTarget) return;
+      diskBaselines.set(pendingIdFor(editTarget), {
+        captions: structuredClone(savedCaptions),
+        captionStyle: savedStyle,
+        captionReveals: structuredClone(savedReveals),
+      });
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-pending-reverted', (() => {
+      diskBaselines.clear();
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (!event.detail?.active) {
+        document.querySelectorAll<HTMLElement>('[data-dev-image-target]').forEach((target) => {
+          disableInlineEditing(target);
+        });
+        closePanel();
+        editTarget = null;
+      }
+    }) as EventListener);
+
+    window.addEventListener('resize', () => {
+      if (!editTarget || !document.documentElement.classList.contains('is-dev-mode')) return;
+      enableInlineEditing(editTarget);
+    });
+  };
+
+  document
+    .querySelectorAll<HTMLElement>('[data-project-image-caption-tuner]')
+    .forEach(initProjectImageCaptionTuner);
+</script>
+
+<style>
+  .project-caption-tuner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7em;
+  }
+
+  .project-caption-tuner__viewports {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4em;
+  }
+
+  .project-caption-tuner__viewports button,
+  .project-caption-tuner__select select,
+  .project-caption-tuner__field textarea {
+    border: 0;
+    background: var(--color-surface-soft);
+    padding: 0.5em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.1;
+  }
+
+  .project-caption-tuner__viewports button {
+    border-radius: var(--radius-control);
+    cursor: pointer;
+  }
+
+  .project-caption-tuner__select select,
+  .project-caption-tuner__field textarea {
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+  }
+
+  .project-caption-tuner__viewports button:hover,
+  .project-caption-tuner__viewports button.is-active {
+    background: var(--color-surface-strong);
+  }
+
+  .project-caption-tuner__viewports button.is-active {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 30%, transparent);
+  }
+
+  .project-caption-tuner__select,
+  .project-caption-tuner__field {
+    display: grid;
+    gap: 0.45em;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .project-caption-tuner__select {
+    grid-template-columns: 7em 1fr;
+    align-items: center;
+  }
+
+  .project-caption-tuner__select select,
+  .project-caption-tuner__field textarea {
+    width: 100%;
+  }
+
+  .project-caption-tuner__field textarea {
+    min-height: 4.5em;
+    resize: vertical;
+    line-height: 1.35;
+    cursor: text;
+  }
+
+  .project-caption-tuner__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4em;
+  }
+
+  .project-caption-tuner__actions button {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-soft);
+    padding: 0.5em 0.7em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+
+  .project-caption-tuner__actions button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .project-caption-tuner__actions [data-caption-save] {
+    margin-left: auto;
+    background: var(--color-surface-strong);
+  }
+
+  .project-caption-tuner__status {
+    margin: 0;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--color-text-muted);
+  }
+</style>

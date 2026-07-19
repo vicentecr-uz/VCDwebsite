@@ -19,12 +19,29 @@ import {
   spacingDevAttrs,
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
+import {
+  imageCaptionStyleClass,
+  imageCaptionsHaveText,
+  resolveImageCaptionReveals,
+  resolveImageCaptionStyle,
+  resolveImageCaptions,
+  type ImageCaptionReveal,
+  type ImageCaptionReveals,
+  type ImageCaptionStyleId,
+  type ImageCaptions,
+} from '../../lib/imageCaptions';
 
 interface Item {
   id?: string;
   src: string;
   alt?: string;
+  /** Legacy single caption (all breakpoints). Prefer `captions`. */
   caption?: string;
+  /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
+  captions?: Partial<ImageCaptions> | string;
+  captionStyle?: ImageCaptionStyleId;
+  /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
+  captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   crop?: { x?: number; y?: number; zoom?: number };
   variants?: ImageVariants;
   /** @deprecated Prefer layouts.mobile — kept for one-off legacy items. */
@@ -125,6 +142,11 @@ const editorItems = items.map((item, index) => ({
       item.crop,
     );
     const layoutStyle = imageGridItemLayoutStyle(itemId, resolvedLayouts);
+    const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
+    const captionStyle = resolveImageCaptionStyle(item.captionStyle);
+    const captionReveals = resolveImageCaptionReveals(item.captionReveal);
+    const hasCaption = imageCaptionsHaveText(captions);
+    const captionClass = imageCaptionStyleClass(captionStyle);
     return (
       <figure
         class:list={[
@@ -144,6 +166,9 @@ const editorItems = items.map((item, index) => ({
         data-dev-image-variants={showDevEditing ? JSON.stringify(variants) : undefined}
         data-dev-grid-default-aspect={showDevEditing ? defaultAspectRatio : undefined}
         data-dev-has-own-variants={showDevEditing && hasOwnVariants ? 'true' : undefined}
+        data-dev-captions={showDevEditing ? JSON.stringify(captions) : undefined}
+        data-dev-caption-style={showDevEditing ? captionStyle : undefined}
+        data-dev-caption-reveals={showDevEditing ? JSON.stringify(captionReveals) : undefined}
       >
         <img
           src={projectImage(item.src)}
@@ -151,8 +176,30 @@ const editorItems = items.map((item, index) => ({
           class="project-image-grid__image"
           loading="lazy"
         />
-        {item.caption && (
-          <span class="project-caption project-image-grid__caption">{item.caption}</span>
+        {hasCaption && (
+          <span
+            class:list={['project-caption', 'project-image-grid__caption', captionClass]}
+            data-project-image-caption
+            data-caption-style={captionStyle}
+            data-caption-reveal-desktop={captionReveals.desktop}
+            data-caption-reveal-tablet={captionReveals.tablet}
+            data-caption-reveal-mobile={captionReveals.mobile}
+          >
+            <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
+            <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
+            <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
+          </span>
+        )}
+        {showDevEditing && (
+          <button
+            type="button"
+            class="dev-caption-add-trigger"
+            data-dev-edit-trigger="caption"
+            data-dev-mode-only
+            hidden
+          >
+            Add caption
+          </button>
         )}
         {showDevEditing && (
           <button
@@ -281,19 +328,40 @@ const editorItems = items.map((item, index) => ({
     transform-origin: center;
   }
 
-  .project-image-grid__caption {
+  .dev-caption-add-trigger {
+    position: absolute;
+    bottom: 0.75em;
+    left: 0.75em;
+    z-index: 2;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 0.45em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    cursor: pointer;
     opacity: 0;
-    transition: opacity 0.2s ease;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
   }
 
-  .project-image-grid__item:hover .project-image-grid__caption,
-  .project-image-grid__item:focus-within .project-image-grid__caption {
+  .dev-caption-add-trigger[hidden] {
+    display: none;
+  }
+
+  /* Hide Add caption whenever a caption node is present (including after inline create). */
+  .project-image-grid__item:has([data-project-image-caption]) .dev-caption-add-trigger {
+    display: none;
+  }
+
+  .project-image-grid__item:hover .dev-caption-add-trigger,
+  .project-image-grid__item:focus-within .dev-caption-add-trigger,
+  .project-image-grid__item.is-dev-image-selected .dev-caption-add-trigger {
     opacity: 1;
-  }
-
-  @media (hover: none) {
-    .project-image-grid__caption {
-      display: none;
-    }
+    pointer-events: auto;
   }
 </style>
