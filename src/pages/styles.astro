@@ -331,10 +331,19 @@ const foundationLinks = [
   { id: 'styles-layout-rules', label: 'Layout rules' },
 ];
 
-const componentLinks = componentCatalog.map((component) => ({
-  id: component.id,
-  label: component.name,
+const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).map((category) => ({
+  category,
+  label: categoryLabels[category],
+  items: componentCatalog.filter((entry) => entry.category === category),
 }));
+
+/** Match page render order (grouped by category), not raw catalog order. */
+const componentLinks = catalogByCategory.flatMap(({ items }) =>
+  items.map((component) => ({
+    id: component.id,
+    label: component.name,
+  })),
+);
 
 const sectionLinks = [
   { id: 'styles-intro', label: 'Design system' },
@@ -358,12 +367,6 @@ const sectionLinks = [
     ],
   },
 ];
-
-const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).map((category) => ({
-  category,
-  label: categoryLabels[category],
-  items: componentCatalog.filter((entry) => entry.category === category),
-}));
 ---
 
 <Layout title="Design System — Vicente Cruz" serif>
