@@ -115,6 +115,14 @@ const loopItems = [...items, ...items];
   .press-quote-ticker__viewport {
     position: relative;
     overflow: hidden;
+    /* Vertical page scroll still works; horizontal drag is ours. */
+    touch-action: pan-y;
+    cursor: grab;
+    user-select: none;
+  }
+
+  .press-quote-ticker__viewport.is-dragging {
+    cursor: grabbing;
   }
 
   /* Fade to page background at the content edges (not full-bleed). */
@@ -239,13 +247,62 @@ const loopItems = [...items, ...items];
 </style>
 
 <script>
+  const CLEANUP_KEY = '__pressTickerCleanup';
+  const BEAT_KEY = '__pressTickerBeat';
+  const WATCH_KEY = '__pressTickerWatch';
+  const STATE_PREFIX = 'press-ticker-state:';
+
+  type TickerRoot = HTMLElement & {
+    [CLEANUP_KEY]?: () => void;
+    [BEAT_KEY]?: number;
+  };
+
+  const stateKeyFor = (root: HTMLElement) =>
+    `${STATE_PREFIX}${location.pathname}#${root.id || root.dataset.pressTickerCount || 'ticker'}`;
+
+  const readStoredState = (root: HTMLElement) => {
+    try {
+      const raw = sessionStorage.getItem(stateKeyFor(root));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as {
+        phase?: number;
+        speed?: number;
+        targetSpeed?: number;
+        wall?: number;
+      };
+      if (typeof parsed.wall !== 'number' || Date.now() - parsed.wall > 8000) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStoredState = (
+    root: HTMLElement,
+    state: { phase: number; speed: number; targetSpeed: number },
+  ) => {
+    try {
+      sessionStorage.setItem(
+        stateKeyFor(root),
+        JSON.stringify({ ...state, wall: Date.now() }),
+      );
+    } catch {
+      /* private mode / quota */
+    }
+  };
+
   const initPressQuoteTicker = (root: HTMLElement) => {
-    if (root.dataset.initialized === 'true') return;
-    root.dataset.initialized = 'true';
+    const host = root as TickerRoot;
+    // HMR / astro:page-load can reuse the node after the old rAF was torn down.
+    // Always re-bind; tear down any previous instance first.
+    host[CLEANUP_KEY]?.();
 
     const viewport = root.querySelector<HTMLElement>('[data-press-ticker-viewport]');
     const track = root.querySelector<HTMLElement>('[data-press-ticker-track]');
     if (!viewport || !track) return;
+
+    const ac = new AbortController();
+    const { signal } = ac;
 
     // Keep clone + original quotes in sync (both are editable so the scrolled
     // copy can be edited too; they share the same JSON path).
@@ -265,11 +322,15 @@ const loopItems = [...items, ...items];
         });
     };
 
-    track.addEventListener('input', (event) => {
-      const target = event.target as HTMLElement | null;
-      const quote = target?.closest<HTMLElement>('[data-dev-text-document]');
-      if (quote) syncTwinQuote(quote);
-    });
+    track.addEventListener(
+      'input',
+      (event) => {
+        const target = event.target as HTMLElement | null;
+        const quote = target?.closest<HTMLElement>('[data-dev-text-document]');
+        if (quote) syncTwinQuote(quote);
+      },
+      { signal },
+    );
 
     // In Dev Mode, quote sits above the stretch link so caret placement works.
     // Outside Dev Mode the stretch link covers the card. Disable the hit link
@@ -283,11 +344,14 @@ const loopItems = [...items, ...items];
         // Don’t let the absolute hit <a> under the quote take this gesture.
         event.stopPropagation();
       },
-      true,
+      { capture: true, signal },
     );
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion) return;
+    if (reduceMotion) {
+      host[CLEANUP_KEY] = () => ac.abort();
+      return;
+    }
 
     const baseSpeed = Math.max(8, Number(root.dataset.pressTickerSpeed) || 36);
     // Positive speed = content moves right→left.
@@ -298,8 +362,42 @@ const loopItems = [...items, ...items];
     let loopWidth = 0;
     let raf = 0;
     let lastTs = 0;
-    // ~280ms time-constant for ease in/out of hover pause.
+    let lastPersist = 0;
+    // Soft hover pause / resume.
     const tauMs = 280;
+    // Coast after flick: friction-like ease into steady auto-scroll (not a hard stop).
+    const coastTauMs = 1100;
+    // High enough that normal drag/trackpad flicks aren't clipped; still a safety rail.
+    const maxFlickSpeed = 4500;
+    const minFlickSpeed = 40;
+    // Tip-of-gesture window — short enough to feel like the flick, not the whole drag.
+    const sampleWindowMs = 70;
+    let resumeTimer = 0;
+    let wheelIdleTimer = 0;
+    // Soft hover pause — armed after leave (or when cursor starts outside).
+    // Drag/wheel disarms until the next leave→re-enter.
+    let hoverArmed = !viewport.matches(':hover');
+    let hoverPaused = false;
+    let dragging = false;
+    let coasting = false;
+    let dragStartX = 0;
+    let dragStartPhase = 0;
+    let dragMoved = false;
+    // Recent pointer samples for release-velocity (phase space = −pointer X).
+    // Wheel reuses the same buffer via a virtual pointer so inertia matches drag.
+    let samples: Array<{ t: number; x: number }> = [];
+    let wheelVirtualX = 0;
+    let wheelStartPhase = 0;
+    let wheelGesture = false;
+
+    const wrapPhase = (value: number) => {
+      if (loopWidth <= 0) return value;
+      return ((value % loopWidth) + loopWidth) % loopWidth;
+    };
+
+    const persist = () => {
+      writeStoredState(root, { phase, speed, targetSpeed });
+    };
 
     const measure = () => {
       const tickerItems = [...track.querySelectorAll<HTMLElement>('[data-press-ticker-item]')];
@@ -311,41 +409,242 @@ const loopItems = [...items, ...items];
       const first = tickerItems[0].offsetLeft;
       const mid = tickerItems[half].offsetLeft;
       loopWidth = Math.max(0, mid - first);
-      if (loopWidth > 0) {
-        phase = ((phase % loopWidth) + loopWidth) % loopWidth;
-      }
+      phase = wrapPhase(phase);
     };
 
     const apply = () => {
       track.style.transform = `translate3d(${-phase}px, 0, 0)`;
     };
 
+    const pauseForUser = () => {
+      targetSpeed = 0;
+      window.clearTimeout(resumeTimer);
+    };
+
+    // After drag/wheel, stay-over should not keep it paused — only leave→re-enter.
+    const releaseHoverPause = () => {
+      hoverPaused = false;
+      hoverArmed = false;
+    };
+
+    const beginCoast = (flick: number) => {
+      releaseHoverPause();
+      window.clearTimeout(resumeTimer);
+      speed = flick;
+      targetSpeed = baseSpeed;
+      // Use the longer coast tau whenever we're settling from a flick (or from 0
+      // back up to auto-scroll) so wheel and drag share the same feel.
+      coasting = true;
+    };
+
+    const pushSample = (clientX: number) => {
+      const t = performance.now();
+      samples.push({ t, x: clientX });
+      const cutoff = t - sampleWindowMs;
+      while (samples.length > 1 && samples[0].t < cutoff) samples.shift();
+    };
+
+    const flickVelocityFromPointer = () => {
+      if (samples.length < 2) return 0;
+      const a = samples[0];
+      const b = samples[samples.length - 1];
+      const dt = b.t - a.t;
+      if (dt < 8) return 0;
+      // phase = startPhase − pointerX ⇒ phase velocity = −pointerVx
+      const pointerVx = ((b.x - a.x) / dt) * 1000;
+      let flick = -pointerVx;
+      if (Math.abs(flick) < minFlickSpeed) return 0;
+      return Math.max(-maxFlickSpeed, Math.min(maxFlickSpeed, flick));
+    };
+
     const tick = (ts: number) => {
       if (!lastTs) lastTs = ts;
       const dt = Math.min(48, ts - lastTs);
       lastTs = ts;
+      host[BEAT_KEY] = ts;
 
-      const alpha = 1 - Math.exp(-dt / tauMs);
+      const tau = coasting ? coastTauMs : tauMs;
+      const alpha = 1 - Math.exp(-dt / tau);
       speed += (targetSpeed - speed) * alpha;
 
-      if (loopWidth > 0 && Math.abs(speed) > 0.01) {
-        phase += (speed * dt) / 1000;
-        phase = ((phase % loopWidth) + loopWidth) % loopWidth;
+      if (coasting && Math.abs(speed - targetSpeed) < 0.5) {
+        speed = targetSpeed;
+        coasting = false;
+      }
+
+      // Finger owns phase while dragging; raf only coasts / auto-scrolls otherwise.
+      if (loopWidth > 0 && Math.abs(speed) > 0.01 && !(dragging && dragMoved)) {
+        phase = wrapPhase(phase + (speed * dt) / 1000);
         apply();
+      }
+
+      if (ts - lastPersist > 200) {
+        lastPersist = ts;
+        persist();
       }
 
       raf = requestAnimationFrame(tick);
     };
 
-    const setPaused = (paused: boolean) => {
-      targetSpeed = paused ? 0 : baseSpeed;
+    // Soft hover pause — armed after leave (or when cursor starts outside).
+    // Drag/wheel disarms until the next leave→re-enter.
+    viewport.addEventListener(
+      'pointerenter',
+      () => {
+        if (!hoverArmed) return;
+        hoverPaused = true;
+        pauseForUser();
+      },
+      { signal },
+    );
+    viewport.addEventListener(
+      'pointerleave',
+      () => {
+        hoverArmed = true;
+        hoverPaused = false;
+        if (dragging) return;
+        window.clearTimeout(resumeTimer);
+        window.clearTimeout(wheelIdleTimer);
+        targetSpeed = baseSpeed;
+      },
+      { signal },
+    );
+
+    // Drag / swipe to scrub with release momentum.
+    // Plain clicks (open press link) do not pause — only a real drag does.
+    viewport.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (event.button !== 0) return;
+        // Dev Mode caret placement owns the gesture on quotes.
+        if (
+          document.documentElement.classList.contains('is-dev-mode') &&
+          (event.target as HTMLElement | null)?.closest('[data-dev-text-document]')
+        ) {
+          return;
+        }
+        dragging = true;
+        dragMoved = false;
+        coasting = false;
+        dragStartX = event.clientX;
+        dragStartPhase = phase;
+        samples = [{ t: performance.now(), x: event.clientX }];
+        viewport.setPointerCapture(event.pointerId);
+      },
+      { signal },
+    );
+
+    viewport.addEventListener(
+      'pointermove',
+      (event) => {
+        if (!dragging) return;
+        const dx = event.clientX - dragStartX;
+        if (!dragMoved) {
+          if (Math.abs(dx) <= 4) return;
+          dragMoved = true;
+          viewport.classList.add('is-dragging');
+          pauseForUser();
+          speed = 0; // kill auto-scroll under the finger
+          samples = [{ t: performance.now(), x: event.clientX }];
+        }
+        pushSample(event.clientX);
+        // Drag right → reveal earlier content (phase decreases).
+        phase = wrapPhase(dragStartPhase - dx);
+        apply();
+      },
+      { signal },
+    );
+
+    const endDrag = () => {
+      if (!dragging) return;
+      const wasDragging = dragMoved;
+      dragging = false;
+      viewport.classList.remove('is-dragging');
+      if (!wasDragging) {
+        samples = [];
+        return;
+      }
+
+      const flick = flickVelocityFromPointer();
+      samples = [];
+      beginCoast(flick);
     };
 
-    viewport.addEventListener('pointerenter', () => setPaused(true));
-    viewport.addEventListener('pointerleave', () => setPaused(false));
+    viewport.addEventListener('pointerup', endDrag, { signal });
+    viewport.addEventListener('pointercancel', endDrag, { signal });
+
+    // After a drag, suppress the click so we don't open the press link.
+    viewport.addEventListener(
+      'click',
+      (event) => {
+        if (!dragMoved) return;
+        event.preventDefault();
+        event.stopPropagation();
+        dragMoved = false;
+      },
+      { capture: true, signal },
+    );
+
+    // Wheel / trackpad: same virtual-pointer samples + beginCoast path as drag,
+    // so release inertia matches. Coast starts on every event (no idle freeze).
+    viewport.addEventListener(
+      'wheel',
+      (event) => {
+        const absX = Math.abs(event.deltaX);
+        const absY = Math.abs(event.deltaY);
+        if (absX < 0.5 && absY < 0.5) return;
+        const delta = absX >= absY ? event.deltaX : event.deltaY;
+        event.preventDefault();
+
+        const now = performance.now();
+        if (!wheelGesture) {
+          wheelGesture = true;
+          wheelStartPhase = phase;
+          wheelVirtualX = 0;
+          // Seed slightly in the past so the first event can estimate velocity.
+          samples = [{ t: now - 16, x: 0 }];
+        }
+
+        // Drag: phase = start − dx. Positive wheel delta should increase phase
+        // (content moves left) ⇒ virtual pointer moves left (negative x).
+        wheelVirtualX -= delta;
+        pushSample(wheelVirtualX);
+        phase = wrapPhase(wheelStartPhase - wheelVirtualX);
+        apply();
+
+        // Same handoff as pointerup — refresh coast velocity from shared estimator.
+        // Reset lastTs so the next raf tick doesn't also step phase on top of this scrub.
+        lastTs = now;
+        beginCoast(flickVelocityFromPointer());
+
+        window.clearTimeout(wheelIdleTimer);
+        wheelIdleTimer = window.setTimeout(() => {
+          wheelGesture = false;
+          samples = [];
+        }, 120);
+      },
+      { passive: false, signal },
+    );
+
+    // Resume across Vite full-reloads from other agents' edits: restore phase and
+    // extrapolate as if auto-scroll continued during the brief reload gap.
+    const stored = readStoredState(root);
+    if (stored && typeof stored.phase === 'number') {
+      const elapsedSec = Math.max(0, (Date.now() - (stored.wall ?? Date.now())) / 1000);
+      const resumeTarget =
+        typeof stored.targetSpeed === 'number' ? stored.targetSpeed : baseSpeed;
+      // Don't resume into a hover-paused stop after reload — keep moving.
+      targetSpeed = resumeTarget === 0 ? baseSpeed : resumeTarget;
+      speed = typeof stored.speed === 'number' && stored.speed !== 0 ? stored.speed : targetSpeed;
+      phase = stored.phase + targetSpeed * elapsedSec;
+      hoverArmed = false;
+      hoverPaused = false;
+    }
 
     measure();
     apply();
+    persist();
+    host[BEAT_KEY] = performance.now();
     raf = requestAnimationFrame(tick);
 
     const ro = new ResizeObserver(() => {
@@ -355,14 +654,19 @@ const loopItems = [...items, ...items];
     ro.observe(track);
     ro.observe(viewport);
 
-    window.addEventListener(
-      'beforeunload',
-      () => {
-        cancelAnimationFrame(raf);
-        ro.disconnect();
-      },
-      { once: true },
-    );
+    const cleanup = () => {
+      persist();
+      cancelAnimationFrame(raf);
+      window.clearTimeout(resumeTimer);
+      window.clearTimeout(wheelIdleTimer);
+      ro.disconnect();
+      ac.abort();
+      viewport.classList.remove('is-dragging');
+      delete host[CLEANUP_KEY];
+    };
+    host[CLEANUP_KEY] = cleanup;
+
+    window.addEventListener('pagehide', persist, { signal });
   };
 
   const boot = () => {
@@ -371,10 +675,49 @@ const loopItems = [...items, ...items];
       .forEach((node) => initPressQuoteTicker(node));
   };
 
+  /** Restart any ticker whose rAF died after HMR without a clean re-bind. */
+  const ensureTickersAlive = () => {
+    if (document.hidden) return;
+    const now = performance.now();
+    document.querySelectorAll<HTMLElement>('[data-press-quote-ticker]').forEach((node) => {
+      const host = node as TickerRoot;
+      const beat = host[BEAT_KEY] ?? 0;
+      const hasLoop = typeof host[CLEANUP_KEY] === 'function';
+      if (!hasLoop || now - beat > 1600) {
+        initPressQuoteTicker(node);
+      }
+    });
+  };
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', boot, { once: true });
   } else {
     boot();
   }
   document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:after-swap', boot);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) ensureTickersAlive();
+  });
+
+  // One shared watchdog across HMR module re-evals.
+  const previousWatch = (window as Window & { [WATCH_KEY]?: number })[WATCH_KEY];
+  if (previousWatch) window.clearInterval(previousWatch);
+  (window as Window & { [WATCH_KEY]?: number })[WATCH_KEY] = window.setInterval(
+    ensureTickersAlive,
+    1000,
+  );
+
+  if (import.meta.hot) {
+    import.meta.hot.accept();
+    import.meta.hot.dispose(() => {
+      document.querySelectorAll<HTMLElement>('[data-press-quote-ticker]').forEach((node) => {
+        (node as TickerRoot)[CLEANUP_KEY]?.();
+      });
+    });
+    // Don't tear down a healthy loop on unrelated HMR — only revive dead ones.
+    import.meta.hot.on('vite:afterUpdate', () => {
+      queueMicrotask(ensureTickersAlive);
+    });
+  }
 </script>
