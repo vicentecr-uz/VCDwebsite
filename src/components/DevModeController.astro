@@ -51,6 +51,10 @@
 
     setDevMode(devMode);
 
+    window.addEventListener('vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (typeof event.detail?.active === 'boolean') setDevMode(event.detail.active);
+    }) as EventListener);
+
     document.addEventListener('click', (event) => {
       const target = event.target as HTMLElement | null;
       if (!target) return;

@@ -1216,11 +1216,12 @@ function contentSpacingDevWriter() {
                 target = target[part];
               }
 
+              const field = change.path.at(-1);
               if (target === null || typeof target !== 'object' || Array.isArray(target)) {
                 send(400, { error: 'A spacing path no longer exists.' });
                 return;
               }
-              target.spacing = change.value;
+              target[field] = change.value;
               if (Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
                 delete target.tightTop;
               }
@@ -1232,6 +1233,278 @@ function contentSpacingDevWriter() {
           send(200, { ok: true, count: changes.length });
         } catch {
           send(400, { error: 'Could not parse or write the spacing changes.' });
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Dev-only writer for project section nav trees + sectionId / showTitle patches.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function contentNavDevWriter() {
+  const slugify = (label) => {
+    const base = String(label)
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return base || `section-${Date.now().toString(36)}`;
+  };
+
+  const isValidNavLink = (item) => (
+    item &&
+    typeof item === 'object' &&
+    typeof item.id === 'string' &&
+    item.id.length > 0 &&
+    item.id.length <= 80 &&
+    typeof item.label === 'string' &&
+    item.label.length > 0 &&
+    item.label.length <= 120
+  );
+
+  const isValidNavGroup = (item) => (
+    item &&
+    typeof item === 'object' &&
+    typeof item.label === 'string' &&
+    item.label.length > 0 &&
+    item.label.length <= 120 &&
+    Array.isArray(item.children) &&
+    item.children.length <= 40 &&
+    item.children.every(isValidNavLink) &&
+    (item.defaultOpen === undefined || typeof item.defaultOpen === 'boolean')
+  );
+
+  const isValidNav = (nav) => (
+    Array.isArray(nav) &&
+    nav.length <= 60 &&
+    nav.every((item) => isValidNavLink(item) || isValidNavGroup(item))
+  );
+
+  const isValidOutlineEntry = (entry) => {
+    if (!entry || typeof entry !== 'object') return false;
+    const base = (
+      typeof entry.id === 'string' &&
+      entry.id.length > 0 &&
+      entry.id.length <= 80 &&
+      typeof entry.label === 'string' &&
+      entry.label.length > 0 &&
+      entry.label.length <= 120 &&
+      (entry.anchor === undefined || (
+        typeof entry.anchor === 'string' &&
+        entry.anchor.length > 0 &&
+        entry.anchor.length <= 80
+      ))
+    );
+    if (!base) return false;
+    if (entry.kind === 'group') {
+      return entry.defaultOpen === undefined || typeof entry.defaultOpen === 'boolean';
+    }
+    if (entry.kind === 'section') {
+      // New: scroll-target section. Legacy group used kind:section + defaultOpen.
+      return true;
+    }
+    // Legacy kinds still accepted, normalized on write.
+    if (entry.kind === 'subsection') return true;
+    return false;
+  };
+
+  const isValidOutline = (outline) => (
+    Array.isArray(outline) &&
+    outline.length <= 120 &&
+    outline.every(isValidOutlineEntry)
+  );
+
+  const normalizeOutlineForWrite = (outline) => outline.map((entry) => {
+    if (entry.kind === 'group') {
+      return {
+        kind: 'group',
+        id: entry.id,
+        label: entry.label,
+        defaultOpen: entry.defaultOpen !== false,
+        ...(entry.anchor ? { anchor: entry.anchor } : {}),
+      };
+    }
+    if (entry.kind === 'subsection') {
+      return {
+        kind: 'section',
+        id: entry.id,
+        label: entry.label,
+        ...(entry.anchor ? { anchor: entry.anchor } : {}),
+      };
+    }
+    if (entry.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen')) {
+      return {
+        kind: 'group',
+        id: entry.id,
+        label: entry.label,
+        defaultOpen: entry.defaultOpen !== false,
+        ...(entry.anchor ? { anchor: entry.anchor } : {}),
+      };
+    }
+    return {
+      kind: 'section',
+      id: entry.id,
+      label: entry.label,
+      ...(entry.anchor ? { anchor: entry.anchor } : {}),
+    };
+  });
+
+  /** Legacy nested nav → flat outline (group + section). */
+  const outlineFromNav = (nav) => {
+    const outline = [];
+    for (const item of nav) {
+      if (item && typeof item === 'object' && Array.isArray(item.children)) {
+        const first = item.children[0];
+        outline.push({
+          kind: 'group',
+          id: slugify(item.label),
+          label: item.label,
+          defaultOpen: item.defaultOpen !== false,
+          ...(first ? { anchor: first.id } : {}),
+        });
+        for (const child of item.children) {
+          outline.push({
+            kind: 'section',
+            id: child.id,
+            label: child.label,
+            anchor: child.id,
+          });
+        }
+        continue;
+      }
+      outline.push({
+        kind: 'section',
+        id: item.id,
+        label: item.label,
+        anchor: item.id,
+      });
+    }
+    return outline;
+  };
+
+  const isValidShowTitle = (value) => (
+    value &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    ['desktop', 'tablet', 'mobile'].every((key) => typeof value[key] === 'boolean') &&
+    Object.keys(value).every((key) => key === 'desktop' || key === 'tablet' || key === 'mobile')
+  );
+
+  return {
+    name: 'content-nav-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/content-nav', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > 100_000) {
+              send(413, { error: 'The nav update is too large.' });
+              return;
+            }
+            chunks.push(chunk);
+          }
+
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const documentKey = String(body.document || '');
+          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const nav = body.nav;
+          const outlineInput = body.outline;
+          const sectionIds = body.sectionIds && typeof body.sectionIds === 'object'
+            ? body.sectionIds
+            : null;
+          const showTitles = body.showTitles && typeof body.showTitles === 'object'
+            ? body.showTitles
+            : null;
+
+          let outline = null;
+          if (isValidOutline(outlineInput)) {
+            outline = normalizeOutlineForWrite(outlineInput);
+          } else if (isValidNav(nav)) {
+            outline = outlineFromNav(nav);
+          }
+
+          if (!relativeFile || !outline) {
+            send(400, { error: 'That section outline cannot be updated.' });
+            return;
+          }
+
+          const file = path.join(process.cwd(), relativeFile);
+          const data = JSON.parse(await readFile(file, 'utf8'));
+          if (!Array.isArray(data.sections)) {
+            send(400, { error: 'The project content is out of date. Refresh and try again.' });
+            return;
+          }
+
+          data.outline = outline;
+          delete data.nav;
+
+          if (sectionIds) {
+            for (const [rawIndex, rawId] of Object.entries(sectionIds)) {
+              const index = Number(rawIndex);
+              if (!Number.isInteger(index) || index < 0 || index >= data.sections.length) {
+                send(400, { error: 'A section id target is out of date.' });
+                return;
+              }
+              const section = data.sections[index];
+              if (!section || typeof section !== 'object' || Array.isArray(section)) {
+                send(400, { error: 'A section id target is invalid.' });
+                return;
+              }
+              if (rawId === null || rawId === '') {
+                delete section.sectionId;
+              } else if (typeof rawId === 'string' && rawId.length > 0 && rawId.length <= 80) {
+                section.sectionId = rawId;
+              } else {
+                send(400, { error: 'A section id value is invalid.' });
+                return;
+              }
+            }
+          }
+
+          if (showTitles) {
+            for (const [rawIndex, value] of Object.entries(showTitles)) {
+              const index = Number(rawIndex);
+              if (!Number.isInteger(index) || index < 0 || index >= data.sections.length) {
+                send(400, { error: 'A title visibility target is out of date.' });
+                return;
+              }
+              const section = data.sections[index];
+              if (
+                !section ||
+                typeof section !== 'object' ||
+                Array.isArray(section) ||
+                section.type !== 'sectionTitle' ||
+                !isValidShowTitle(value)
+              ) {
+                send(400, { error: 'A title visibility value is invalid.' });
+                return;
+              }
+              section.showTitle = value;
+              delete section.hideWhenSidebarVisible;
+            }
+          }
+
+          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          send(200, { ok: true });
+        } catch {
+          send(400, { error: 'Could not parse or write the nav update.' });
         }
       });
     },
@@ -1252,6 +1525,7 @@ export default defineConfig({
       contentSpacingDevWriter(),
       contentSectionDevWriter(),
       contentBatchDevWriter(),
+      contentNavDevWriter(),
     ],
     optimizeDeps: {
       include: ['gsap', 'color-dialog-box'],

@@ -1,0 +1,1132 @@
+---
+/**
+ * DEV Section Editor — outline markers (Obsidian-style ranges).
+ * Activate via header "Section Editor" while is-dev-mode is on.
+ *
+ * - Section group = Intro / Research / Development (boundary)
+ * - Section = Overview / Public Reception / … (scroll target + range)
+ * A section owns page blocks from its start until the next section or group.
+ */
+---
+
+<div class="section-nav-editor" data-section-nav-editor hidden>
+  <div class="section-nav-editor__popover" data-nav-popover hidden>
+    <p class="section-nav-editor__title">Outline marker</p>
+
+    <p class="section-nav-editor__belongs" data-nav-belongs hidden></p>
+
+    <label class="section-nav-editor__row">
+      <input type="checkbox" data-nav-as-group />
+      <span>Section group</span>
+    </label>
+    <label class="section-nav-editor__field" data-nav-group-label-wrap>
+      <span>Group label</span>
+      <input type="text" data-nav-group-label maxlength="120" autocomplete="off" placeholder="Intro" />
+    </label>
+
+    <label class="section-nav-editor__row">
+      <input type="checkbox" data-nav-as-section />
+      <span>Section</span>
+    </label>
+    <label class="section-nav-editor__field" data-nav-section-label-wrap>
+      <span>Section label</span>
+      <input type="text" data-nav-section-label maxlength="120" autocomplete="off" placeholder="Overview" />
+    </label>
+
+    <p class="section-nav-editor__hint-inline">
+      A section covers this block and everything below it until the next section or group — you don’t mark every block.
+      Same block can start both a group and a section (e.g. Intro + Overview).
+    </p>
+
+    <div class="section-nav-editor__title-vis" data-nav-title-vis hidden>
+      <p class="section-nav-editor__subtitle">Show in-page title</p>
+      <div class="section-nav-editor__chips" role="group" aria-label="Title visibility">
+        <button type="button" data-title-bp="desktop" aria-pressed="true">D</button>
+        <button type="button" data-title-bp="tablet" aria-pressed="true">T</button>
+        <button type="button" data-title-bp="mobile" aria-pressed="true">M</button>
+      </div>
+      <button type="button" class="section-nav-editor__preset" data-nav-hide-sidebar>
+        Hide when sidebar shows
+      </button>
+    </div>
+
+    <div class="section-nav-editor__actions">
+      <button type="button" data-nav-cancel>Cancel</button>
+      <button type="button" class="section-nav-editor__save" data-nav-apply>Apply</button>
+    </div>
+    <p class="section-nav-editor__status" data-nav-status hidden></p>
+  </div>
+
+  <div class="section-nav-editor__hint" data-nav-hint hidden>
+    <span data-nav-hint-text>
+      Click a block → section group and/or section. Ranges run until the next marker. Esc exits.
+    </span>
+    <button type="button" class="section-nav-editor__hint-save" data-nav-sidebar-save hidden>
+      Save sidebar
+    </button>
+  </div>
+</div>
+
+<script>
+  type OutlineGroup = {
+    kind: 'group';
+    id: string;
+    label: string;
+    defaultOpen?: boolean;
+    anchor?: string;
+  };
+  type OutlineSection = {
+    kind: 'section';
+    id: string;
+    label: string;
+    anchor?: string;
+  };
+  type OutlineEntry = OutlineGroup | OutlineSection;
+  type NavLink = { id: string; label: string };
+  type NavGroup = { label: string; children: NavLink[]; defaultOpen?: boolean };
+  type NavItem = NavLink | NavGroup;
+  type ShowTitle = { desktop: boolean; tablet: boolean; mobile: boolean };
+
+  const EDITOR_CLASS = 'show-section-nav-editor';
+
+  const slugify = (label: string) => {
+    const base = label
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    return base || `section-${Date.now().toString(36)}`;
+  };
+
+  const parseJson = <T,>(raw: string | undefined, fallback: T): T => {
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
+  };
+
+  const sectionIndexFromPath = (pathRaw: string | undefined) => {
+    const path = parseJson<Array<string | number>>(pathRaw, []);
+    if (path[0] !== 'sections' || typeof path[1] !== 'number') return null;
+    return path[1];
+  };
+
+  const outlineAnchorId = (entry: OutlineEntry) =>
+    entry.anchor?.trim() || entry.id;
+
+  const deriveNavFromOutline = (outline: OutlineEntry[]): NavItem[] => {
+    const nav: NavItem[] = [];
+    let current: NavGroup | null = null;
+    for (const entry of outline) {
+      if (entry.kind === 'group') {
+        current = {
+          label: entry.label,
+          children: [],
+          defaultOpen: entry.defaultOpen !== false,
+        };
+        nav.push(current);
+        continue;
+      }
+      const link = { id: outlineAnchorId(entry), label: entry.label };
+      if (current) current.children.push(link);
+      else nav.push(link);
+    }
+    return nav;
+  };
+
+  const initSectionNavEditor = () => {
+    const root = document.querySelector<HTMLElement>('[data-section-nav-root]');
+    const shell = document.querySelector<HTMLElement>('[data-section-nav-editor]');
+    if (!root || !shell) return;
+
+    const documentKey = root.dataset.sectionNavDocument?.trim();
+    if (!documentKey) return;
+
+    const popover = shell.querySelector<HTMLElement>('[data-nav-popover]');
+    const hint = shell.querySelector<HTMLElement>('[data-nav-hint]');
+    const hintSaveBtn = shell.querySelector<HTMLButtonElement>('[data-nav-sidebar-save]');
+    const asGroupInput = shell.querySelector<HTMLInputElement>('[data-nav-as-group]');
+    const asSectionInput = shell.querySelector<HTMLInputElement>('[data-nav-as-section]');
+    const groupLabelInput = shell.querySelector<HTMLInputElement>('[data-nav-group-label]');
+    const sectionLabelInput = shell.querySelector<HTMLInputElement>('[data-nav-section-label]');
+    const groupLabelWrap = shell.querySelector<HTMLElement>('[data-nav-group-label-wrap]');
+    const sectionLabelWrap = shell.querySelector<HTMLElement>('[data-nav-section-label-wrap]');
+    const belongsEl = shell.querySelector<HTMLElement>('[data-nav-belongs]');
+    const titleVis = shell.querySelector<HTMLElement>('[data-nav-title-vis]');
+    const statusEl = shell.querySelector<HTMLElement>('[data-nav-status]');
+    const applyBtn = shell.querySelector<HTMLButtonElement>('[data-nav-apply]');
+    const cancelBtn = shell.querySelector<HTMLButtonElement>('[data-nav-cancel]');
+    const hideSidebarBtn = shell.querySelector<HTMLButtonElement>('[data-nav-hide-sidebar]');
+
+    if (
+      !popover ||
+      !hint ||
+      !hintSaveBtn ||
+      !asGroupInput ||
+      !asSectionInput ||
+      !groupLabelInput ||
+      !sectionLabelInput ||
+      !groupLabelWrap ||
+      !sectionLabelWrap ||
+      !belongsEl ||
+      !titleVis ||
+      !statusEl ||
+      !applyBtn ||
+      !cancelBtn ||
+      !hideSidebarBtn
+    ) {
+      return;
+    }
+
+    let outline = parseJson<OutlineEntry[]>(root.dataset.sectionOutline, []);
+    // Normalize legacy kinds from older editor sessions.
+    outline = outline.map((entry) => {
+      if ((entry as { kind: string }).kind === 'subsection') {
+        return { kind: 'section' as const, id: entry.id, label: entry.label, anchor: entry.anchor };
+      }
+      if (
+        (entry as { kind: string }).kind === 'section' &&
+        Object.prototype.hasOwnProperty.call(entry, 'defaultOpen')
+      ) {
+        return {
+          kind: 'group' as const,
+          id: entry.id,
+          label: entry.label,
+          defaultOpen: (entry as OutlineGroup).defaultOpen !== false,
+          anchor: entry.anchor,
+        };
+      }
+      return entry;
+    });
+    if (!outline.length) {
+      const nav = parseJson<NavItem[]>(root.dataset.sectionNav, []);
+      for (const item of nav) {
+        if (item && typeof item === 'object' && 'children' in item) {
+          outline.push({
+            kind: 'group',
+            id: slugify(item.label),
+            label: item.label,
+            defaultOpen: item.defaultOpen !== false,
+            anchor: item.children[0]?.id,
+          });
+          for (const child of item.children) {
+            outline.push({
+              kind: 'section',
+              id: child.id,
+              label: child.label,
+              anchor: child.id,
+            });
+          }
+        } else if (item && 'id' in item) {
+          outline.push({
+            kind: 'section',
+            id: item.id,
+            label: item.label,
+            anchor: item.id,
+          });
+        }
+      }
+    }
+
+    let activeBlock: HTMLElement | null = null;
+    let hoverBlock: HTMLElement | null = null;
+    let saving = false;
+    let dirty = false;
+    let pendingSectionIds: Record<string, string | null> = {};
+    let pendingShowTitles: Record<string, ShowTitle> = {};
+
+    const isActive = () =>
+      document.documentElement.classList.contains(EDITOR_CLASS) &&
+      document.documentElement.classList.contains('is-dev-mode');
+
+    const setDirty = (next: boolean) => {
+      dirty = next;
+      hintSaveBtn.hidden = !next || !isActive();
+      hint.classList.toggle('is-dirty', next);
+      if (next) hintSaveBtn.textContent = 'Save sidebar';
+    };
+
+    const editableBlocks = () =>
+      [...document.querySelectorAll<HTMLElement>('.project-page__main [data-dev-spacing-path]')].filter(
+        (el) => sectionIndexFromPath(el.dataset.devSpacingPath) !== null,
+      );
+
+    const findBlockById = (id: string) =>
+      editableBlocks().find((el) => el.id === id) ??
+      document.querySelector<HTMLElement>(`.project-page__main #${CSS.escape(id)}`);
+
+    const pageIndexForId = (id: string) => {
+      if (!id) return Number.POSITIVE_INFINITY;
+      const blocks = editableBlocks();
+      const byId = blocks.findIndex((el) => el.id === id);
+      if (byId >= 0) return byId;
+      const el = document.getElementById(id);
+      if (!(el instanceof HTMLElement)) return Number.POSITIVE_INFINITY;
+      const idx = blocks.indexOf(el);
+      return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
+    };
+
+    const sortAnchorFor = (entry: OutlineEntry) => {
+      if (entry.kind === 'section') return outlineAnchorId(entry);
+      if (entry.anchor?.trim()) return entry.anchor.trim();
+      const index = outline.indexOf(entry);
+      for (let i = index + 1; i < outline.length; i += 1) {
+        const next = outline[i];
+        if (next.kind === 'group') break;
+        if (next.kind === 'section') return outlineAnchorId(next);
+      }
+      return entry.id;
+    };
+
+    const sortOutlineByPageOrder = (entries: OutlineEntry[]) =>
+      [...entries].sort((a, b) => {
+        const diff = pageIndexForId(sortAnchorFor(a)) - pageIndexForId(sortAnchorFor(b));
+        if (diff !== 0) return diff;
+        if (a.kind === 'group' && b.kind === 'section') return -1;
+        if (a.kind === 'section' && b.kind === 'group') return 1;
+        return 0;
+      });
+
+    const owningSectionForBlock = (block: HTMLElement) => {
+      const blocks = editableBlocks();
+      const blockIndex = blocks.indexOf(block);
+      if (blockIndex < 0) {
+        return { group: null as OutlineGroup | null, section: null as OutlineSection | null };
+      }
+
+      const sorted = sortOutlineByPageOrder(outline);
+      let group: OutlineGroup | null = null;
+      let section: OutlineSection | null = null;
+      for (const entry of sorted) {
+        const pageIndex = pageIndexForId(sortAnchorFor(entry));
+        if (pageIndex > blockIndex) break;
+        if (entry.kind === 'group') {
+          group = entry;
+          section = null;
+        } else {
+          section = entry;
+        }
+      }
+      return { group, section };
+    };
+
+    const clearRangeHighlights = () => {
+      editableBlocks().forEach((el) => el.classList.remove('is-section-nav-in-range'));
+    };
+
+    const highlightSectionRange = (sectionEntry: OutlineSection | null) => {
+      clearRangeHighlights();
+      if (!sectionEntry) return;
+      const start = pageIndexForId(outlineAnchorId(sectionEntry));
+      if (!Number.isFinite(start)) return;
+      const sorted = sortOutlineByPageOrder(outline);
+      const sectionPos = sorted.findIndex(
+        (entry) => entry.kind === 'section' && entry.id === sectionEntry.id,
+      );
+      let end = editableBlocks().length;
+      for (let i = sectionPos + 1; i < sorted.length; i += 1) {
+        const next = sorted[i];
+        const pageIndex = pageIndexForId(sortAnchorFor(next));
+        if (pageIndex > start) {
+          end = pageIndex;
+          break;
+        }
+      }
+      editableBlocks().forEach((el, index) => {
+        if (index >= start && index < end) el.classList.add('is-section-nav-in-range');
+      });
+    };
+
+    const writeRootDatasets = () => {
+      const nav = deriveNavFromOutline(outline);
+      root.dataset.sectionOutline = JSON.stringify(outline);
+      root.dataset.sectionNav = JSON.stringify(nav);
+    };
+
+    const uniqueId = (preferred: string, used: Set<string>) => {
+      let candidate = preferred;
+      let n = 2;
+      while (used.has(candidate)) {
+        candidate = `${preferred}-${n}`;
+        n += 1;
+      }
+      return candidate;
+    };
+
+    const collectUsedIds = () => {
+      const ids = new Set<string>();
+      for (const entry of outline) ids.add(entry.id);
+      return ids;
+    };
+
+    const entriesForBlock = (block: HTMLElement) => {
+      const id = block.id;
+      if (!id) return [] as OutlineEntry[];
+      return outline.filter((entry) => outlineAnchorId(entry) === id);
+    };
+
+    const readShowTitle = (block: HTMLElement): ShowTitle => {
+      const parsed = parseJson<Partial<ShowTitle> | null>(block.dataset.devShowTitle, null);
+      return {
+        desktop: parsed?.desktop ?? !block.classList.contains('project-section-title--hide-desktop'),
+        tablet: parsed?.tablet ?? !block.classList.contains('project-section-title--hide-tablet'),
+        mobile: parsed?.mobile ?? !block.classList.contains('project-section-title--hide-mobile'),
+      };
+    };
+
+    const applyShowTitleClasses = (block: HTMLElement, showTitle: ShowTitle) => {
+      block.classList.toggle('project-section-title--hide-desktop', !showTitle.desktop);
+      block.classList.toggle('project-section-title--hide-tablet', !showTitle.tablet);
+      block.classList.toggle('project-section-title--hide-mobile', !showTitle.mobile);
+      block.classList.toggle('project-section-title--hide-when-sidebar', !showTitle.desktop);
+      block.dataset.devShowTitle = JSON.stringify(showTitle);
+    };
+
+    const setTitleChip = (bp: keyof ShowTitle, on: boolean) => {
+      const button = titleVis.querySelector<HTMLButtonElement>(`[data-title-bp="${bp}"]`);
+      if (!button) return;
+      button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      button.classList.toggle('is-on', on);
+    };
+
+    const readTitleChips = (): ShowTitle => ({
+      desktop: titleVis.querySelector('[data-title-bp="desktop"]')?.getAttribute('aria-pressed') === 'true',
+      tablet: titleVis.querySelector('[data-title-bp="tablet"]')?.getAttribute('aria-pressed') === 'true',
+      mobile: titleVis.querySelector('[data-title-bp="mobile"]')?.getAttribute('aria-pressed') === 'true',
+    });
+
+    const setStatus = (message: string, isError = false) => {
+      statusEl.hidden = !message;
+      statusEl.textContent = message;
+      statusEl.classList.toggle('is-error', isError);
+    };
+
+    const syncMarkerFields = () => {
+      groupLabelWrap.hidden = !asGroupInput.checked;
+      sectionLabelWrap.hidden = !asSectionInput.checked;
+      groupLabelInput.disabled = !asGroupInput.checked;
+      sectionLabelInput.disabled = !asSectionInput.checked;
+    };
+
+    const closePopover = () => {
+      popover.hidden = true;
+      activeBlock?.classList.remove('is-section-nav-active');
+      activeBlock = null;
+      clearRangeHighlights();
+      setStatus('');
+    };
+
+    const positionPopover = (block: HTMLElement) => {
+      const rect = block.getBoundingClientRect();
+      const pad = 12;
+      const width = Math.min(300, window.innerWidth - pad * 2);
+      let left = Math.min(rect.left, window.innerWidth - width - pad);
+      left = Math.max(pad, left);
+      let top = rect.bottom + 8;
+      popover.style.width = `${width}px`;
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+      requestAnimationFrame(() => {
+        const popRect = popover.getBoundingClientRect();
+        if (popRect.bottom > window.innerHeight - pad) {
+          top = Math.max(pad, rect.top - popRect.height - 8);
+          popover.style.top = `${top}px`;
+        }
+      });
+    };
+
+    const suggestGroupLabel = () => 'Intro';
+    const suggestSectionLabel = (block: HTMLElement) => {
+      const title = block.querySelector('.project-section-title')?.textContent?.trim();
+      if (title) return title;
+      const img = block.querySelector('img');
+      if (img?.alt?.trim()) {
+        const alt = img.alt.trim();
+        return alt.length > 40 ? `${alt.slice(0, 37)}…` : alt;
+      }
+      return 'Overview';
+    };
+
+    const openPopover = (block: HTMLElement) => {
+      activeBlock?.classList.remove('is-section-nav-active');
+      activeBlock = block;
+      block.classList.add('is-section-nav-active');
+
+      const markers = entriesForBlock(block);
+      const groupMarker = markers.find((entry) => entry.kind === 'group');
+      const sectionMarker = markers.find((entry) => entry.kind === 'section');
+
+      asGroupInput.checked = Boolean(groupMarker);
+      asSectionInput.checked = Boolean(sectionMarker);
+      groupLabelInput.value = groupMarker?.label || suggestGroupLabel();
+      sectionLabelInput.value = sectionMarker?.label || suggestSectionLabel(block);
+      syncMarkerFields();
+
+      const owned = owningSectionForBlock(block);
+      if (owned.section && !sectionMarker) {
+        const groupBit = owned.group ? `${owned.group.label} › ` : '';
+        belongsEl.hidden = false;
+        belongsEl.textContent = `Already in range: ${groupBit}${owned.section.label} (no extra marker needed)`;
+        highlightSectionRange(owned.section);
+      } else if (sectionMarker) {
+        belongsEl.hidden = false;
+        belongsEl.textContent = 'This section covers blocks below until the next section or group.';
+        highlightSectionRange(sectionMarker);
+      } else {
+        belongsEl.hidden = true;
+        clearRangeHighlights();
+      }
+
+      const isTitle = block.dataset.devSectionTitle === 'true';
+      titleVis.hidden = !isTitle;
+      if (isTitle) {
+        const showTitle = readShowTitle(block);
+        setTitleChip('desktop', showTitle.desktop);
+        setTitleChip('tablet', showTitle.tablet);
+        setTitleChip('mobile', showTitle.mobile);
+      }
+
+      setStatus('');
+      popover.hidden = false;
+      positionPopover(block);
+      if (asGroupInput.checked) {
+        groupLabelInput.focus();
+        groupLabelInput.select();
+      } else if (asSectionInput.checked) {
+        sectionLabelInput.focus();
+        sectionLabelInput.select();
+      }
+    };
+
+    const applyBlockSectionId = (block: HTMLElement, id: string | null) => {
+      if (id) {
+        block.id = id;
+        block.classList.add('section-block');
+      } else {
+        const stillUsed = outline.some((entry) => outlineAnchorId(entry) === block.id);
+        if (!stillUsed) {
+          block.removeAttribute('id');
+          block.classList.remove('section-block');
+        }
+      }
+    };
+
+    const syncSidebarDom = () => {
+      const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
+      if (!list) return;
+
+      outline = sortOutlineByPageOrder(outline);
+      writeRootDatasets();
+      const nav = deriveNavFromOutline(outline);
+
+      const linkTemplate = list.querySelector<HTMLElement>('[data-section-nav-link]');
+      const groupTemplate = list.querySelector<HTMLElement>('[data-section-nav-group]');
+      if (!linkTemplate) return;
+
+      // Collect existing nodes before emptying children — querySelector won't
+      // find detached elements, and cloning would drop scrollspy listeners.
+      const existingLinks = new Map<string, HTMLElement>();
+      list.querySelectorAll<HTMLElement>('[data-section-nav-link]').forEach((el) => {
+        const id = el.dataset.navId;
+        if (id) existingLinks.set(id, el);
+      });
+      const existingGroups = new Map<string, HTMLElement>();
+      list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el) => {
+        const label =
+          el.dataset.navLabel ||
+          el.querySelector('[data-section-nav-label]')?.textContent?.trim() ||
+          '';
+        if (label) existingGroups.set(label, el);
+      });
+
+      const ensureLink = (link: NavLink, rootLink: boolean) => {
+        let el = existingLinks.get(link.id);
+        if (!el) el = linkTemplate.cloneNode(true) as HTMLElement;
+        el.dataset.navId = link.id;
+        el.dataset.navLabel = link.label;
+        const anchor = el.querySelector('a');
+        if (anchor) {
+          anchor.href = `#${link.id}`;
+          anchor.textContent = link.label;
+          anchor.className = rootLink
+            ? 'section-sidebar-nav__link section-sidebar-nav__root-link'
+            : 'section-sidebar-nav__link';
+        }
+        return el;
+      };
+
+      const ensureGroup = (label: string, defaultOpen: boolean) => {
+        let groupEl = existingGroups.get(label);
+        if (!groupEl) {
+          if (!groupTemplate) return null;
+          groupEl = groupTemplate.cloneNode(true) as HTMLElement;
+        }
+        groupEl.dataset.navLabel = label;
+        const labelEl = groupEl.querySelector<HTMLElement>('[data-section-nav-label]');
+        if (labelEl) labelEl.textContent = label;
+        const details = groupEl.querySelector('details');
+        if (details) details.open = defaultOpen;
+        groupEl.querySelector<HTMLElement>('.section-sidebar-nav__children')?.replaceChildren();
+        return groupEl;
+      };
+
+      const kept = new Set<HTMLElement>();
+      for (const item of nav) {
+        if ('children' in item) {
+          const groupEl = ensureGroup(item.label, item.defaultOpen !== false);
+          const childList = groupEl?.querySelector<HTMLElement>('.section-sidebar-nav__children');
+          if (!groupEl || !childList) continue;
+          for (const child of item.children) {
+            childList.append(ensureLink(child, false));
+          }
+          list.append(groupEl);
+          kept.add(groupEl);
+        } else {
+          const linkEl = ensureLink(item, true);
+          list.append(linkEl);
+          kept.add(linkEl);
+        }
+      }
+      [...list.children].forEach((child) => {
+        if (child instanceof HTMLElement && !kept.has(child)) child.remove();
+      });
+
+      bindSidebarLabelEdits();
+    };
+
+    const bindSidebarLabelEdits = () => {
+      const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
+      if (!list) return;
+
+      list.querySelectorAll<HTMLElement>('[data-section-nav-label]').forEach((labelEl) => {
+        labelEl.contentEditable = isActive() ? 'true' : 'false';
+        labelEl.onclick = (event) => {
+          if (!isActive()) return;
+          event.preventDefault();
+          event.stopPropagation();
+        };
+        labelEl.onmousedown = (event) => {
+          if (!isActive()) return;
+          event.stopPropagation();
+        };
+        labelEl.onblur = () => {
+          if (!isActive()) return;
+          const groupEl = labelEl.closest<HTMLElement>('[data-section-nav-group]');
+          const nextLabel = labelEl.textContent?.trim() || 'Section';
+          if (!groupEl) return;
+          const prevLabel = groupEl.dataset.navLabel || '';
+          groupEl.dataset.navLabel = nextLabel;
+          const group = outline.find(
+            (entry) => entry.kind === 'group' && entry.label === prevLabel,
+          );
+          if (group && group.kind === 'group') {
+            group.label = nextLabel;
+            group.id = slugify(nextLabel);
+          }
+          writeRootDatasets();
+          setDirty(true);
+        };
+        labelEl.onkeydown = (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            labelEl.blur();
+          }
+        };
+      });
+
+      list.querySelectorAll<HTMLElement>('[data-section-nav-link] a').forEach((anchor) => {
+        anchor.onclick = (event) => {
+          if (!isActive()) return;
+          event.preventDefault();
+          const li = anchor.closest<HTMLElement>('[data-section-nav-link]');
+          const id = li?.dataset.navId;
+          if (!id) return;
+          const block = findBlockById(id);
+          if (block) openPopover(block);
+        };
+      });
+    };
+
+    const persist = async () => {
+      if (saving) return false;
+      saving = true;
+      hintSaveBtn.textContent = 'Saving…';
+      hintSaveBtn.disabled = true;
+      setStatus('Saving…');
+      try {
+        const response = await fetch('/api/content-nav', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: documentKey,
+            outline,
+            sectionIds: Object.keys(pendingSectionIds).length ? pendingSectionIds : undefined,
+            showTitles: Object.keys(pendingShowTitles).length ? pendingShowTitles : undefined,
+          }),
+        });
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          throw new Error(payload?.error || 'Save failed.');
+        }
+        setStatus('Saved');
+        hintSaveBtn.textContent = 'Saved';
+        pendingSectionIds = {};
+        pendingShowTitles = {};
+        setDirty(false);
+        window.setTimeout(() => {
+          if (statusEl.textContent === 'Saved') setStatus('');
+        }, 1200);
+        return true;
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : 'Save failed.', true);
+        hintSaveBtn.textContent = 'Save sidebar';
+        return false;
+      } finally {
+        saving = false;
+        hintSaveBtn.disabled = false;
+      }
+    };
+
+    const onApply = () => {
+      if (!activeBlock) return;
+      const index = sectionIndexFromPath(activeBlock.dataset.devSpacingPath);
+      if (index === null) {
+        setStatus('This block cannot be marked.', true);
+        return;
+      }
+
+      const wantGroup = asGroupInput.checked;
+      const wantSection = asSectionInput.checked;
+      const groupLabel = groupLabelInput.value.trim() || suggestGroupLabel();
+      const sectionLabel = sectionLabelInput.value.trim() || suggestSectionLabel(activeBlock);
+      const previousId = activeBlock.id || '';
+
+      outline = outline.filter((entry) => outlineAnchorId(entry) !== previousId);
+
+      if (!wantGroup && !wantSection) {
+        if (previousId) {
+          pendingSectionIds[String(index)] = null;
+          applyBlockSectionId(activeBlock, null);
+        }
+      } else {
+        const used = collectUsedIds();
+        if (previousId) used.delete(previousId);
+
+        const preferred = wantSection ? slugify(sectionLabel) : slugify(groupLabel);
+        const anchorId = previousId || uniqueId(preferred, used);
+
+        editableBlocks().forEach((block) => {
+          if (block !== activeBlock && block.id === anchorId) {
+            const otherIndex = sectionIndexFromPath(block.dataset.devSpacingPath);
+            if (otherIndex !== null) pendingSectionIds[String(otherIndex)] = null;
+            block.removeAttribute('id');
+            block.classList.remove('section-block');
+            outline = outline.filter((entry) => outlineAnchorId(entry) !== anchorId);
+          }
+        });
+
+        applyBlockSectionId(activeBlock, anchorId);
+        pendingSectionIds[String(index)] = anchorId;
+
+        if (wantGroup) {
+          const ids = collectUsedIds();
+          ids.add(anchorId);
+          const groupId = wantSection ? uniqueId(slugify(groupLabel), ids) : anchorId;
+          outline.push({
+            kind: 'group',
+            id: groupId,
+            label: groupLabel,
+            defaultOpen: true,
+            anchor: anchorId,
+          });
+        }
+
+        if (wantSection) {
+          outline.push({
+            kind: 'section',
+            id: anchorId,
+            label: sectionLabel,
+            anchor: anchorId,
+          });
+        }
+      }
+
+      if (activeBlock.dataset.devSectionTitle === 'true') {
+        const showTitle = readTitleChips();
+        pendingShowTitles[String(index)] = showTitle;
+        applyShowTitleClasses(activeBlock, showTitle);
+      }
+
+      outline = sortOutlineByPageOrder(outline);
+      syncSidebarDom();
+      setDirty(true);
+      closePopover();
+    };
+
+    const setEditorChrome = (active: boolean) => {
+      shell.hidden = !active;
+      hint.hidden = !active;
+      document.documentElement.classList.toggle('is-section-nav-editing', active);
+      if (!active) {
+        closePopover();
+        hoverBlock?.classList.remove('is-section-nav-hover');
+        hoverBlock = null;
+        editableBlocks().forEach((el) => {
+          el.classList.remove('is-section-nav-hover', 'is-section-nav-active');
+        });
+        setDirty(false);
+      } else {
+        setDirty(dirty);
+        syncSidebarDom();
+      }
+    };
+
+    asGroupInput.addEventListener('change', () => {
+      syncMarkerFields();
+      if (asGroupInput.checked && !groupLabelInput.value.trim()) {
+        groupLabelInput.value = suggestGroupLabel();
+      }
+    });
+    asSectionInput.addEventListener('change', () => {
+      syncMarkerFields();
+      if (asSectionInput.checked && !sectionLabelInput.value.trim() && activeBlock) {
+        sectionLabelInput.value = suggestSectionLabel(activeBlock);
+      }
+    });
+
+    titleVis.querySelectorAll<HTMLButtonElement>('[data-title-bp]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const on = button.getAttribute('aria-pressed') !== 'true';
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+        button.classList.toggle('is-on', on);
+      });
+    });
+
+    hideSidebarBtn.addEventListener('click', () => {
+      setTitleChip('desktop', false);
+      setTitleChip('tablet', true);
+      setTitleChip('mobile', true);
+    });
+
+    cancelBtn.addEventListener('click', closePopover);
+    applyBtn.addEventListener('click', onApply);
+    hintSaveBtn.addEventListener('click', () => {
+      void persist();
+    });
+
+    document.addEventListener(
+      'click',
+      (event) => {
+        if (!isActive()) return;
+        const target = event.target as HTMLElement | null;
+        if (!target) return;
+        if (target.closest('[data-nav-popover]')) return;
+        if (target.closest('[data-section-nav-editor-toggle]')) return;
+        if (target.closest('.section-sidebar-nav')) return;
+        if (target.closest('.site-header')) return;
+
+        const block = target.closest<HTMLElement>('.project-page__main [data-dev-spacing-path]');
+        if (!block || sectionIndexFromPath(block.dataset.devSpacingPath) === null) {
+          if (!popover.hidden) closePopover();
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        openPopover(block);
+      },
+      true,
+    );
+
+    document.addEventListener('mousemove', (event) => {
+      if (!isActive() || !popover.hidden) return;
+      const target = event.target as HTMLElement | null;
+      const block = target?.closest<HTMLElement>('.project-page__main [data-dev-spacing-path]');
+      if (hoverBlock === block) return;
+      hoverBlock?.classList.remove('is-section-nav-hover');
+      hoverBlock = block && sectionIndexFromPath(block.dataset.devSpacingPath) !== null ? block : null;
+      hoverBlock?.classList.add('is-section-nav-hover');
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (!isActive()) return;
+      if (event.key !== 'Escape') return;
+      if (!popover.hidden) {
+        event.preventDefault();
+        closePopover();
+        return;
+      }
+      document.documentElement.classList.remove(EDITOR_CLASS);
+      try {
+        window.localStorage.setItem('vcdShowSectionNavEditor', 'false');
+      } catch {
+        // Ignore.
+      }
+      window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-change', {
+        detail: { active: false },
+      }));
+      setEditorChrome(false);
+    });
+
+    window.addEventListener('vcd:section-nav-editor-change', (() => {
+      setEditorChrome(isActive());
+    }) as EventListener);
+    window.addEventListener('vcd:dev-mode-change', (() => {
+      setEditorChrome(isActive());
+    }) as EventListener);
+
+    writeRootDatasets();
+    setEditorChrome(isActive());
+  };
+
+  initSectionNavEditor();
+</script>
+
+<style is:global>
+  html.is-section-nav-editing,
+  html.is-section-nav-editing * {
+    cursor: crosshair !important;
+  }
+
+  html.is-section-nav-editing .section-sidebar-nav,
+  html.is-section-nav-editing .section-sidebar-nav * {
+    cursor: default !important;
+  }
+
+  html.is-section-nav-editing .section-nav-editor__popover,
+  html.is-section-nav-editing .section-nav-editor__popover *,
+  html.is-section-nav-editing .section-nav-editor__hint,
+  html.is-section-nav-editing .section-nav-editor__hint * {
+    cursor: auto !important;
+  }
+
+  html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-hover {
+    outline: 2px solid color-mix(in srgb, var(--color-text) 35%, transparent);
+    outline-offset: 4px;
+  }
+
+  html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-in-range {
+    outline: 2px dashed color-mix(in srgb, var(--color-text) 28%, transparent);
+    outline-offset: 4px;
+  }
+
+  html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-active {
+    outline: 2px solid var(--color-text);
+    outline-offset: 4px;
+  }
+
+  html.is-section-nav-editing .section-sidebar-nav [data-section-nav-label] {
+    outline: none;
+    border-radius: 0.2em;
+    cursor: text !important;
+  }
+
+  html.is-section-nav-editing .section-sidebar-nav [data-section-nav-label]:focus {
+    background: color-mix(in srgb, var(--color-surface-strong) 80%, var(--color-text));
+  }
+</style>
+
+<style>
+  .section-nav-editor__hint {
+    position: fixed;
+    left: 50%;
+    bottom: 1em;
+    transform: translateX(-50%);
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 0.75em;
+    padding: 0.55em 0.9em;
+    border-radius: var(--radius-control-smooth);
+    background: var(--color-text);
+    color: var(--color-bg);
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    pointer-events: none;
+    box-shadow: 0 0.25em 1em rgba(26, 26, 26, 0.18);
+  }
+
+  .section-nav-editor__hint.is-dirty {
+    pointer-events: auto;
+  }
+
+  .section-nav-editor__hint-save {
+    pointer-events: auto;
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    padding: 0.35em 0.65em;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    background: var(--color-bg);
+    color: var(--color-text);
+  }
+
+  .section-nav-editor__hint-save[hidden] {
+    display: none;
+  }
+
+  .section-nav-editor__popover {
+    position: fixed;
+    z-index: 41;
+    padding: 0.85em;
+    border-radius: var(--radius-card-smooth);
+    background: var(--color-bg);
+    box-shadow: 0 0.35em 1.25em rgba(26, 26, 26, 0.14);
+    border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
+    font-size: 0.9rem;
+  }
+
+  .section-nav-editor__title {
+    margin: 0 0 0.65em;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .section-nav-editor__subtitle {
+    margin: 0 0 0.4em;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .section-nav-editor__belongs {
+    margin: 0 0 0.65em;
+    padding: 0.45em 0.55em;
+    border-radius: var(--radius-control-smooth);
+    background: var(--color-surface-soft);
+    font-size: 0.78rem;
+    line-height: 1.35;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .section-nav-editor__belongs[hidden] {
+    display: none;
+  }
+
+  .section-nav-editor__row {
+    display: flex;
+    align-items: center;
+    gap: 0.45em;
+    margin-bottom: 0.45em;
+    font-weight: 600;
+  }
+
+  .section-nav-editor__hint-inline {
+    margin: 0 0 0.75em;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    color: var(--color-text-muted);
+  }
+
+  .section-nav-editor__field {
+    display: grid;
+    gap: 0.25em;
+    margin: 0 0 0.65em 1.45em;
+  }
+
+  .section-nav-editor__field[hidden] {
+    display: none;
+  }
+
+  .section-nav-editor__field > span {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .section-nav-editor__field input {
+    width: 100%;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-control-smooth);
+    padding: 0.4em 0.5em;
+    font: inherit;
+    background: var(--color-surface-soft);
+  }
+
+  .section-nav-editor__field input:disabled {
+    opacity: 0.55;
+  }
+
+  .section-nav-editor__title-vis {
+    margin: 0.25em 0 0.75em;
+    padding-top: 0.55em;
+    border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  }
+
+  .section-nav-editor__chips {
+    display: flex;
+    gap: 0.35em;
+    margin-bottom: 0.45em;
+  }
+
+  .section-nav-editor__chips button {
+    width: 2.1em;
+    height: 2.1em;
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    background: var(--color-surface-strong);
+    color: var(--color-text-muted);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .section-nav-editor__chips button.is-on,
+  .section-nav-editor__chips button[aria-pressed='true'] {
+    background: color-mix(in srgb, var(--color-surface-strong) 82%, var(--color-text));
+    color: var(--color-text);
+  }
+
+  .section-nav-editor__preset {
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  .section-nav-editor__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4em;
+  }
+
+  .section-nav-editor__actions button {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    padding: 0.4em 0.7em;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--color-surface-strong);
+    color: var(--color-text);
+  }
+
+  .section-nav-editor__save {
+    background: var(--color-text) !important;
+    color: var(--color-bg) !important;
+  }
+
+  .section-nav-editor__status {
+    margin: 0.55em 0 0;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+  }
+
+  .section-nav-editor__status.is-error {
+    color: #a33;
+  }
+</style>

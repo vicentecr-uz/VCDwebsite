@@ -5,6 +5,12 @@ import {
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
 
+type TitleVisibility = {
+  desktop?: boolean;
+  tablet?: boolean;
+  mobile?: boolean;
+};
+
 interface Props {
   title: string;
   /** When true (default), following block uses related spacing. */
@@ -13,10 +19,15 @@ interface Props {
   spacing?: ProjectStackSpacing;
   document?: string;
   sectionPath?: Array<string | number>;
+  /** Anchor id for section sidebar nav scrollspy. */
+  sectionId?: string;
   /**
-   * Hide the heading when the section sidebar is visible (desktop gutter nav),
-   * so the sidebar highlight carries the section label instead.
+   * Per-breakpoint in-page title visibility.
+   * `desktop` = sidebar gutter zone (≥88.5em). Defaults all true.
+   * Legacy `hideWhenSidebarVisible` maps to desktop:false.
    */
+  showTitle?: TitleVisibility;
+  /** @deprecated Prefer showTitle.desktop === false */
   hideWhenSidebarVisible?: boolean;
 }
 
@@ -27,8 +38,17 @@ const {
   spacing = 'section',
   document: documentKey,
   sectionPath,
+  sectionId,
+  showTitle: showTitleProp,
   hideWhenSidebarVisible = false,
 } = Astro.props;
+
+const showTitle = {
+  desktop: showTitleProp?.desktop ?? (hideWhenSidebarVisible ? false : true),
+  tablet: showTitleProp?.tablet ?? true,
+  mobile: showTitleProp?.mobile ?? true,
+};
+
 const Tag = level === 3 ? 'h3' : 'h2';
 const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
@@ -37,13 +57,21 @@ const deletable = Boolean(editable);
 ---
 
 <div
+  id={sectionId}
   class:list={[
     'project-block',
     stackClass,
-    hideWhenSidebarVisible && 'project-section-title--hide-when-sidebar',
+    sectionId && 'section-block',
+    !showTitle.desktop && 'project-section-title--hide-desktop',
+    !showTitle.tablet && 'project-section-title--hide-tablet',
+    !showTitle.mobile && 'project-section-title--hide-mobile',
+    // Legacy class kept for DevTextEditor spacing suppression until fully migrated.
+    !showTitle.desktop && 'project-section-title--hide-when-sidebar',
   ]}
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={deletable ? 'sectionTitle' : undefined}
+  data-dev-section-title={editable ? 'true' : undefined}
+  data-dev-show-title={editable ? JSON.stringify(showTitle) : undefined}
 >
   <Tag
     class="project-section-title"
