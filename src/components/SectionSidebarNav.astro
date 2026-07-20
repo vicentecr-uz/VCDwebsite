@@ -65,7 +65,8 @@ const easingOptions = [
   data-click-lock-ms={clickLockMs}
   data-default-easing={defaultEasingPreset}
 >
-  <ul class="section-sidebar-nav__list" data-section-sidebar-list>
+  <div class="section-sidebar-nav__scroll" data-section-sidebar-scroll>
+    <ul class="section-sidebar-nav__list" data-section-sidebar-list>
     {sectionLinks.map((item) => (
       'children' in item ? (
         <li class="section-sidebar-nav__group-item" data-section-nav-group data-nav-label={item.label}>
@@ -95,7 +96,16 @@ const easingOptions = [
         </li>
       )
     ))}
-  </ul>
+    </ul>
+    {enableEasingDevPanel && (
+      <div
+        class="section-sidebar-nav__scroll-preview-spacer"
+        data-scroll-preview-spacer
+        hidden
+        aria-hidden="true"
+      ></div>
+    )}
+  </div>
 </aside>
 
 {
@@ -171,6 +181,16 @@ const easingOptions = [
       <p class="section-sidebar-nav-devpanel__hint" data-panel-hint>
         Pick a curve, then expand/collapse sidebar groups to test.
       </p>
+      <div class="section-sidebar-nav-devpanel__tools">
+        <button
+          type="button"
+          class="section-sidebar-nav-devpanel__btn section-sidebar-nav-devpanel__btn--wide"
+          data-scroll-fade-preview-toggle
+          aria-pressed="false"
+        >
+          Scroll fade preview
+        </button>
+      </div>
     </div>
   )
 }
@@ -196,6 +216,10 @@ const easingOptions = [
     const getSections = () => Array.from(document.querySelectorAll(sectionSelector));
     const getNavLinks = () => Array.from(nav.querySelectorAll('.section-sidebar-nav__link'));
     const getNavGroups = () => Array.from(nav.querySelectorAll('.section-sidebar-nav__group'));
+    const getScrollShell = () =>
+      nav.querySelector('[data-section-sidebar-scroll]');
+    const getNavList = () =>
+      nav.querySelector('[data-section-sidebar-list]');
     let manualLockUntil = 0;
     let scrollRafId = 0;
     let isAutoScrolling = false;
@@ -533,6 +557,27 @@ const easingOptions = [
         });
       });
 
+      const scrollFadePreviewToggle = panel.querySelector('[data-scroll-fade-preview-toggle]');
+      const scrollPreviewSpacer = nav.querySelector('[data-scroll-preview-spacer]');
+      const setScrollFadePreview = (enabled) => {
+        nav.classList.toggle('is-scroll-fade-preview', enabled);
+        if (scrollPreviewSpacer instanceof HTMLElement) {
+          scrollPreviewSpacer.hidden = !enabled;
+        }
+        if (scrollFadePreviewToggle instanceof HTMLButtonElement) {
+          scrollFadePreviewToggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+          scrollFadePreviewToggle.classList.toggle('is-selected', enabled);
+          scrollFadePreviewToggle.textContent = enabled
+            ? 'Scroll fade preview on'
+            : 'Scroll fade preview';
+        }
+        updateSidebarScrollChrome();
+      };
+
+      scrollFadePreviewToggle?.addEventListener('click', () => {
+        setScrollFadePreview(!nav.classList.contains('is-scroll-fade-preview'));
+      });
+
       if (bezierGraph instanceof SVGElement) {
         const toCurvePoint = (clientX, clientY) => {
           const rect = bezierGraph.getBoundingClientRect();
@@ -591,7 +636,13 @@ const easingOptions = [
      * the Accordion tab of the playground). Pixel height (not 0fr↔1fr) avoids
      * the common end-of-motion hitch; `[open]` is only cleared after close finishes.
      */
-    const groupAnimTokens = new WeakMap();
+    /**
+     * Single source of truth for in-flight accordion motion: one entry per group.
+     * A single RAF ticks them all, so overlapping triggers (fast scroll-spy) can
+     * never clobber each other's cleanup or leak container state.
+     */
+    const groupAnims = new Map();
+    let animRafId = 0;
     const prefersReducedMotion = () =>
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -601,17 +652,250 @@ const easingOptions = [
       return !(content instanceof HTMLElement && content.classList.contains('is-collapsing'));
     };
 
+    const clearLinkAnimStyles = (content) => {
+      content.querySelectorAll('.section-sidebar-nav__children > li').forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        row.style.opacity = '';
+      });
+      content.querySelectorAll('.section-sidebar-nav__link').forEach((link) => {
+        if (!(link instanceof HTMLElement)) return;
+        link.style.transition = '';
+      });
+      const children = content.querySelector('.section-sidebar-nav__children');
+      if (children instanceof HTMLElement) {
+        children.style.overflow = '';
+        children.style.paddingTop = '';
+      }
+    };
+
     const clearGroupAnimStyles = (content) => {
       content.style.transition = '';
       content.style.height = '';
       content.style.opacity = '';
       content.style.overflow = '';
+      content.style.minHeight = '';
       content.style.gridTemplateRows = '';
+      content.style.display = '';
       content.style.position = '';
       content.style.visibility = '';
       content.style.width = '';
       content.style.left = '';
       content.style.top = '';
+      clearLinkAnimStyles(content);
+    };
+
+    const updateSidebarScrollChrome = () => {
+      const scrollShell = getScrollShell();
+      if (!(scrollShell instanceof HTMLElement)) return;
+
+      const em = parseFloat(getComputedStyle(nav).fontSize) || 16;
+      const fadeEm = 1.25;
+      const internalFade =
+        scrollShell.scrollTop > 0
+          ? Math.min(em * fadeEm, scrollShell.scrollTop + em * 0.35)
+          : 0;
+      const pageFade =
+        window.scrollY > 0
+          ? Math.min(em * fadeEm, em * 0.35 + window.scrollY * 0.12)
+          : 0;
+      const fadePx = Math.max(internalFade, pageFade);
+
+      scrollShell.classList.toggle('has-top-fade', fadePx > 0);
+      scrollShell.style.setProperty('--sidebar-top-fade', `${fadePx}px`);
+
+      const needsScroll = scrollShell.scrollHeight > scrollShell.clientHeight + 1;
+      scrollShell.classList.toggle('is-scrollable', needsScroll);
+    };
+
+    const updateAnimatingClass = () => {
+      const animating = groupAnims.size > 0;
+      nav.classList.toggle('is-accordion-animating', animating);
+      if (!animating) updateSidebarScrollChrome();
+    };
+
+    /**
+     * Per-group measurement cache. Open height, row bands, and pad-top only
+     * change when layout width / font-size changes, so we measure once and reuse
+     * across every expand/collapse. WeakMap keys are the <details> elements, so a
+     * Section Editor DOM rebuild (new elements) invalidates automatically; a
+     * resize invalidates the rest by resetting the map.
+     */
+    let measureCache = new WeakMap();
+    const getGroupMeasure = (group, content) => {
+      let m = measureCache.get(group);
+      if (!m) {
+        const openHeight = measureOpenHeight(content);
+        m = {
+          openHeight,
+          bands: measureLinkBands(content, openHeight),
+          padTopPx: readChildrenPadTopPx(content),
+        };
+        measureCache.set(group, m);
+      }
+      return m;
+    };
+
+    /**
+     * List height controller: while any group animates, drive the list's
+     * min-height along one eased curve toward the projected total. This holds a
+     * floor under the container so the summed child boxes can't dip for a frame
+     * at the expand/collapse boundary (the start-of-animation jerk).
+     */
+    let listCtrl = null;
+
+    const recomputeListCtrl = () => {
+      const list = getNavList();
+      if (!(list instanceof HTMLElement) || groupAnims.size === 0) {
+        listCtrl = null;
+        return;
+      }
+      const now = performance.now();
+      const startH = list.getBoundingClientRect().height;
+      let delta = 0;
+      let maxRemaining = 0;
+      groupAnims.forEach((anim) => {
+        delta += anim.toHeight - anim.content.getBoundingClientRect().height;
+        maxRemaining = Math.max(maxRemaining, anim.durationMs - (now - anim.startTime));
+      });
+      listCtrl = {
+        startH,
+        targetH: startH + delta,
+        startTime: now,
+        durationMs: Math.max(1, maxRemaining),
+      };
+    };
+
+    const clearListCtrl = () => {
+      const list = getNavList();
+      if (list instanceof HTMLElement) list.style.minHeight = '';
+      listCtrl = null;
+    };
+
+    const measureLinkBands = (content, heightPx = null) => {
+      const bands = [];
+      const prev = {
+        height: content.style.height,
+        overflow: content.style.overflow,
+        gridTemplateRows: content.style.gridTemplateRows,
+        position: content.style.position,
+        visibility: content.style.visibility,
+        pointerEvents: content.style.pointerEvents,
+        width: content.style.width,
+        left: content.style.left,
+        top: content.style.top,
+      };
+
+      const width =
+        content.getBoundingClientRect().width ||
+        content.parentElement?.getBoundingClientRect().width ||
+        0;
+
+      content.style.gridTemplateRows = '1fr';
+      content.style.overflow = 'visible';
+      content.style.position = 'absolute';
+      content.style.visibility = 'hidden';
+      content.style.pointerEvents = 'none';
+      content.style.left = '0';
+      content.style.top = '0';
+      if (width > 0) content.style.width = `${width}px`;
+      if (heightPx !== null) content.style.height = `${heightPx}px`;
+
+      const contentTop = content.getBoundingClientRect().top;
+      content.querySelectorAll('.section-sidebar-nav__children > li').forEach((li) => {
+        if (!(li instanceof HTMLElement)) return;
+        const rect = li.getBoundingClientRect();
+        bands.push({
+          row: li,
+          top: rect.top - contentTop,
+          height: rect.height,
+        });
+      });
+
+      content.style.height = prev.height;
+      content.style.overflow = prev.overflow;
+      content.style.gridTemplateRows = prev.gridTemplateRows;
+      content.style.position = prev.position;
+      content.style.visibility = prev.visibility;
+      content.style.pointerEvents = prev.pointerEvents;
+      content.style.width = prev.width;
+      content.style.left = prev.left;
+      content.style.top = prev.top;
+
+      return bands;
+    };
+
+    /**
+     * Sequential row fades: height travel is split into slices (bottom-first on
+     * collapse, top-first on expand). Rows overlap slightly during the handoff.
+     */
+    const FADE_TRAVEL_RATIO = 0.88;
+
+    const applyLinkOpacitiesForHeight = (bands, visibleHeight, travelExtent, shouldOpen) => {
+      if (!bands.length || travelExtent <= 0) return;
+
+      const count = bands.length;
+      const fadeTravel = travelExtent * FADE_TRAVEL_RATIO;
+      const slice = fadeTravel / count;
+
+      if (shouldOpen) {
+        const sorted = [...bands].sort((a, b) => a.top - b.top);
+        sorted.forEach((band, index) => {
+          const fadeLow = index * slice;
+          const fadeHigh = (index + 1) * slice;
+          const span = Math.max(fadeHigh - fadeLow, 1);
+          let opacity = 0;
+          if (visibleHeight >= fadeHigh) opacity = 1;
+          else if (visibleHeight > fadeLow) opacity = (visibleHeight - fadeLow) / span;
+          band.row.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+        });
+        return;
+      }
+
+      const sorted = [...bands].sort((a, b) => b.top - a.top);
+      sorted.forEach((band, index) => {
+        const fadeHigh = travelExtent - index * slice;
+        const fadeLow = fadeHigh - slice;
+        const span = Math.max(fadeHigh - fadeLow, 1);
+        let opacity = 1;
+        if (visibleHeight <= fadeLow) opacity = 0;
+        else if (visibleHeight < fadeHigh) opacity = (visibleHeight - fadeLow) / span;
+        band.row.style.opacity = String(Math.max(0, Math.min(1, opacity)));
+      });
+    };
+
+    const setGroupAnimOverflow = (content) => {
+      content.style.overflow = 'visible';
+      const children = content.querySelector('.section-sidebar-nav__children');
+      if (children instanceof HTMLElement) children.style.overflow = 'visible';
+    };
+
+    const setGroupAnimDisplay = (content) => {
+      content.style.display = 'block';
+    };
+
+    const readChildrenPadTopPx = (content) => {
+      const children = content.querySelector('.section-sidebar-nav__children');
+      if (children instanceof HTMLElement) {
+        const px = parseFloat(getComputedStyle(children).paddingTop);
+        if (px > 0) return px;
+      }
+      const em = parseFloat(getComputedStyle(nav).fontSize) || 16;
+      return em * 0.2;
+    };
+
+    const applyExpandChildrenPadding = (content, padTopPx, visibleHeight, endHeight) => {
+      const children = content.querySelector('.section-sidebar-nav__children');
+      if (!(children instanceof HTMLElement) || padTopPx <= 0) return;
+      const ratio = endHeight > 0 ? Math.min(1, Math.max(0, visibleHeight / endHeight)) : 0;
+      children.style.paddingTop = ratio > 0 ? `${padTopPx * ratio}px` : '0';
+    };
+
+    /** Duration scales with travel distance (taller groups take longer; no per-link constants). */
+    const durationForTravel = (travelPx) => {
+      const em = parseFloat(getComputedStyle(nav).fontSize) || 16;
+      const msPerEm = 220;
+      const travelEm = travelPx / em;
+      return Math.min(720, Math.max(320, travelEm * msPerEm));
     };
 
     /**
@@ -663,111 +947,151 @@ const easingOptions = [
       return height;
     };
 
-    const animateGroup = (group, shouldOpen) => {
-      if (!(group instanceof HTMLDetailsElement)) return Promise.resolve();
+    const finishGroupAnim = (group) => {
+      const anim = groupAnims.get(group);
+      if (!anim) return;
+      groupAnims.delete(group);
+      if (!anim.shouldOpen) group.open = false;
+      anim.content.classList.remove('is-expanding', 'is-collapsing');
+      clearGroupAnimStyles(anim.content);
+    };
+
+    const tickGroupAnims = (now) => {
+      animRafId = 0;
+      let anyActive = false;
+
+      groupAnims.forEach((anim, group) => {
+        const progress =
+          anim.durationMs > 0 ? Math.min((now - anim.startTime) / anim.durationMs, 1) : 1;
+        const eased = accordionEaser(progress);
+        const height = anim.fromHeight + (anim.toHeight - anim.fromHeight) * eased;
+        const clampedHeight = Math.max(0, height);
+        anim.content.style.height = `${clampedHeight}px`;
+        if (anim.shouldOpen) {
+          applyExpandChildrenPadding(anim.content, anim.padTopPx, clampedHeight, anim.endHeight);
+        }
+        applyLinkOpacitiesForHeight(anim.bands, clampedHeight, anim.travelExtent, anim.shouldOpen);
+
+        if (progress >= 1) finishGroupAnim(group);
+        else anyActive = true;
+      });
+
+      const list = getNavList();
+      if (list instanceof HTMLElement) {
+        if (groupAnims.size === 0) {
+          clearListCtrl();
+        } else if (listCtrl) {
+          const p =
+            listCtrl.durationMs > 0
+              ? Math.min((now - listCtrl.startTime) / listCtrl.durationMs, 1)
+              : 1;
+          const e = accordionEaser(p);
+          list.style.minHeight = `${listCtrl.startH + (listCtrl.targetH - listCtrl.startH) * e}px`;
+        }
+      }
+
+      updateAnimatingClass();
+      if (anyActive) animRafId = requestAnimationFrame(tickGroupAnims);
+    };
+
+    const ensureAnimTicker = () => {
+      if (!animRafId) animRafId = requestAnimationFrame(tickGroupAnims);
+    };
+
+    /**
+     * Start (or retarget) a single group's expand/collapse. Reversing mid-flight
+     * continues from the current visible height instead of snapping — and because
+     * all groups share one ticker + one map entry each, concurrent scroll-spy
+     * triggers can't orphan inline styles or container state.
+     */
+    const startGroupAnim = (group, shouldOpen) => {
+      if (!(group instanceof HTMLDetailsElement)) return;
 
       const content = group.querySelector('.section-sidebar-nav__group-content');
       if (!(content instanceof HTMLElement)) {
         group.open = shouldOpen;
-        return Promise.resolve();
+        return;
       }
 
-      // Skip if already at (or animating toward) the requested state — otherwise
-      // scroll-spy would restart mid-expand every frame.
-      if (shouldOpen) {
-        if (group.open && !content.classList.contains('is-collapsing')) {
-          return Promise.resolve();
-        }
-      } else if (!group.open || content.classList.contains('is-collapsing')) {
-        return Promise.resolve();
+      const existing = groupAnims.get(group);
+      // Already heading to the requested state — don't restart every scroll frame.
+      if (existing) {
+        if (existing.shouldOpen === shouldOpen) return;
+      } else if (shouldOpen ? group.open : !group.open) {
+        return;
       }
 
       if (prefersReducedMotion()) {
+        groupAnims.delete(group);
         content.classList.remove('is-expanding', 'is-collapsing');
         clearGroupAnimStyles(content);
         group.open = shouldOpen;
-        return Promise.resolve();
+        updateAnimatingClass();
+        return;
       }
 
-      const token = {};
-      groupAnimTokens.set(group, token);
-      const isStale = () => groupAnimTokens.get(group) !== token;
-      const durationMs = 480;
-
-      return new Promise((resolve) => {
-        let rafId = 0;
-        let settled = false;
-
-        const finish = () => {
-          if (settled || isStale()) return;
-          settled = true;
-          if (rafId) cancelAnimationFrame(rafId);
-          content.classList.remove('is-expanding', 'is-collapsing');
-          clearGroupAnimStyles(content);
-          resolve();
-        };
-
-        content.style.transition = 'none';
-        content.style.overflow = 'hidden';
-        // Read height before flipping 0fr→1fr — setting 1fr first expands the
-        // closed group to its open size in-flow, so expand started at endHeight
-        // and only opacity animated (sibling titles jumped).
-        const liveHeight = content.getBoundingClientRect().height;
-        let startHeight = 0;
-        let endHeight = 0;
-
-        if (shouldOpen) {
-          content.classList.remove('is-collapsing');
-          content.classList.add('is-expanding');
-          // Clamp in-flow height, then unlock the grid / [open] for measuring.
-          content.style.height = `${liveHeight}px`;
-          content.style.gridTemplateRows = '1fr';
-          group.open = true;
-          if (!content.style.opacity) content.style.opacity = '0';
-          endHeight = measureOpenHeight(content);
-          startHeight = liveHeight;
-          content.style.height = `${startHeight}px`;
-        } else {
-          content.classList.remove('is-expanding');
-          content.classList.add('is-collapsing');
-          content.style.gridTemplateRows = '1fr';
-          group.open = true;
-          startHeight = liveHeight > 0 ? liveHeight : measureOpenHeight(content);
-          endHeight = 0;
-          content.style.height = `${startHeight}px`;
-          if (!content.style.opacity) content.style.opacity = '1';
-        }
-
-        const startOpacity = Number.parseFloat(content.style.opacity);
-        const fromOpacity = Number.isFinite(startOpacity) ? startOpacity : shouldOpen ? 0 : 1;
-        const toOpacity = shouldOpen ? 1 : 0;
-
-        void content.offsetHeight;
-        const startedAt = performance.now();
-
-        const tick = (now) => {
-          if (isStale()) {
-            if (rafId) cancelAnimationFrame(rafId);
-            return;
-          }
-          const progress = Math.min((now - startedAt) / durationMs, 1);
-          const eased = accordionEaser(progress);
-          const height = startHeight + (endHeight - startHeight) * eased;
-          content.style.height = `${Math.max(0, height)}px`;
-          content.style.opacity = String(fromOpacity + (toOpacity - fromOpacity) * eased);
-
-          if (progress < 1) {
-            rafId = requestAnimationFrame(tick);
-            return;
-          }
-
-          if (!shouldOpen) group.open = false;
-          finish();
-        };
-
-        rafId = requestAnimationFrame(tick);
+      content.style.transition = 'none';
+      content.style.opacity = '1';
+      content.querySelectorAll('.section-sidebar-nav__link').forEach((link) => {
+        if (link instanceof HTMLElement) link.style.transition = 'none';
       });
+
+      const fromHeight = content.getBoundingClientRect().height;
+      setGroupAnimDisplay(content);
+      setGroupAnimOverflow(content);
+      content.style.gridTemplateRows = '1fr';
+      content.style.minHeight = '0';
+
+      const measure = getGroupMeasure(group, content);
+      const { openHeight, bands, padTopPx } = measure;
+      const endHeight = shouldOpen ? openHeight : 0;
+      const toHeight = endHeight;
+      // Row fade timing spans the full open height either way, so the sequence
+      // reads the same whether it's a full run or a mid-flight reversal.
+      const travelExtent = openHeight;
+
+      if (shouldOpen) {
+        content.classList.remove('is-collapsing');
+        content.classList.add('is-expanding');
+        if (!group.open) group.open = true;
+        content.style.height = `${fromHeight}px`;
+        applyExpandChildrenPadding(content, padTopPx, fromHeight, endHeight);
+      } else {
+        content.classList.remove('is-expanding');
+        content.classList.add('is-collapsing');
+        group.open = true; // keep painted until the close finishes
+        content.style.height = `${fromHeight}px`;
+      }
+
+      void content.offsetHeight;
+      applyLinkOpacitiesForHeight(bands, fromHeight, travelExtent, shouldOpen);
+
+      groupAnims.set(group, {
+        content,
+        shouldOpen,
+        fromHeight,
+        toHeight,
+        endHeight,
+        bands,
+        travelExtent,
+        padTopPx,
+        startTime: performance.now(),
+        durationMs: durationForTravel(Math.abs(toHeight - fromHeight)),
+      });
+
+      recomputeListCtrl();
+      updateAnimatingClass();
+      ensureAnimTicker();
     };
+
+    const animateGroups = (entries) => {
+      // Collapses before expands so sibling layout settles before a group opens.
+      [...entries]
+        .sort((a, b) => Number(a.shouldOpen) - Number(b.shouldOpen))
+        .forEach(({ group, shouldOpen }) => startGroupAnim(group, shouldOpen));
+    };
+
+    const animateGroup = (group, shouldOpen) => startGroupAnim(group, shouldOpen);
 
     const setActiveLink = (id) => {
       let activeGroup = null;
@@ -792,16 +1116,18 @@ const easingOptions = [
        * Open/close animate in parallel so the next group title moves up while
        * outgoing sub-links fade out and incoming ones fade in.
        */
+      const batch = [];
       getNavGroups().forEach((group) => {
         if (!(group instanceof HTMLDetailsElement)) return;
         if (group === activeGroup) {
-          animateGroup(group, true);
+          batch.push({ group, shouldOpen: true });
           return;
         }
         if (!pinnedOpenGroups.has(group)) {
-          animateGroup(group, false);
+          batch.push({ group, shouldOpen: false });
         }
       });
+      if (batch.length) animateGroups(batch);
     };
 
     let ticking = false;
@@ -976,8 +1302,37 @@ const easingOptions = [
     };
 
     updateActiveFromScroll();
-    window.addEventListener('scroll', updateActiveFromScroll, { passive: true });
-    window.addEventListener('resize', updateActiveFromScroll);
+    updateSidebarScrollChrome();
+    window.addEventListener('scroll', () => {
+      updateActiveFromScroll();
+      updateSidebarScrollChrome();
+    }, { passive: true });
+    window.addEventListener('resize', () => {
+      // Width / font-size may change → cached open heights & row bands are stale.
+      measureCache = new WeakMap();
+      updateActiveFromScroll();
+      updateSidebarScrollChrome();
+    });
+    const scrollShell = getScrollShell();
+    if (scrollShell instanceof HTMLElement) {
+      scrollShell.addEventListener(
+        'scroll',
+        () => {
+          requestAnimationFrame(updateSidebarScrollChrome);
+        },
+        { passive: true },
+      );
+    }
+
+    // Section Editor can add/remove rows inside a reused group element, which
+    // would leave the measurement cache stale. Watch structure only (not
+    // attributes) so our style-only animation writes never trigger it.
+    const navList = getNavList();
+    if (navList instanceof HTMLElement && 'MutationObserver' in window) {
+      new MutationObserver(() => {
+        measureCache = new WeakMap();
+      }).observe(navList, { childList: true, subtree: true });
+    }
   };
 
   document.querySelectorAll('.section-sidebar-nav').forEach((nav) => initSectionSidebarNav(nav));
@@ -985,9 +1340,28 @@ const easingOptions = [
 
 <style>
   .section-sidebar-nav {
-    padding: 0.25em 0;
     background: var(--color-bg);
     transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .section-sidebar-nav__scroll {
+    --sidebar-top-fade: 0px;
+    padding: 0.25em 0;
+  }
+
+  .section-sidebar-nav__scroll.has-top-fade {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--sidebar-top-fade),
+      #000 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--sidebar-top-fade),
+      #000 100%
+    );
   }
 
   /* Fade when either header menu is open (same cue as the menu backdrop). */
@@ -1081,14 +1455,23 @@ const easingOptions = [
     transform: rotate(90deg);
   }
 
+  .section-sidebar-nav__group:has(> .section-sidebar-nav__group-content.is-expanding)
+    > .section-sidebar-nav__summary
+    svg {
+    transform: rotate(90deg);
+  }
+
   .section-sidebar-nav__group-content {
     display: grid;
-    grid-template-rows: 0fr;
+    /* minmax(0, …) — a bare 0fr is minmax(auto, 0fr), whose `auto` floor uses the
+       children's min-content (incl. their 0.2em padding-top), leaving a collapsed
+       group ~0.2em too tall and popping siblings when it expands. Force true 0. */
+    grid-template-rows: minmax(0, 0fr);
     opacity: 0;
   }
 
   .section-sidebar-nav__group[open] > .section-sidebar-nav__group-content {
-    grid-template-rows: 1fr;
+    grid-template-rows: minmax(0, 1fr);
     opacity: 1;
   }
 
@@ -1109,20 +1492,34 @@ const easingOptions = [
   }
 
   .section-sidebar-nav__children .section-sidebar-nav__link {
-    transition:
-      color 0.55s cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-      transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: color 0.55s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .section-sidebar-nav__group-content.is-collapsing .section-sidebar-nav__link {
-    opacity: 0;
-    transform: translateY(-0.15em);
+  .section-sidebar-nav__group-content.is-collapsing .section-sidebar-nav__children > li,
+  .section-sidebar-nav__group-content.is-expanding .section-sidebar-nav__children > li {
+    /* Opacity driven by height travel in animateGroups (inline on li). */
+    transition: none;
   }
 
-  .section-sidebar-nav__group-content.is-expanding .section-sidebar-nav__link {
-    opacity: 1;
-    transform: translateY(0);
+  .section-sidebar-nav__group-content.is-expanding,
+  .section-sidebar-nav__group-content.is-collapsing {
+    /* Inline height drives layout — avoid intrinsic-size snap when [open] flips. */
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .section-sidebar-nav__group-content.is-expanding > .section-sidebar-nav__children,
+  .section-sidebar-nav__group-content.is-collapsing > .section-sidebar-nav__children {
+    overflow: visible;
+  }
+
+  .section-sidebar-nav__scroll-preview-spacer {
+    min-height: 75dvh;
+    pointer-events: none;
+  }
+
+  .section-sidebar-nav__scroll-preview-spacer[hidden] {
+    display: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1211,12 +1608,24 @@ const easingOptions = [
       left: 0.75em;
       width: 12.5em;
       max-height: calc(100dvh - 8em);
-      overflow-y: auto;
+      overflow: hidden;
       z-index: 20;
       background: color-mix(in srgb, var(--color-bg) 92%, transparent);
-      padding: 0.5em;
+      padding: 0;
       border-radius: var(--radius-card-smooth);
       box-shadow: 0 0.25em 1em rgba(26, 26, 26, 0.08);
+    }
+
+    :global(html.show-section-nav-editor.is-dev-mode) .section-sidebar-nav--desktop-only .section-sidebar-nav__scroll {
+      max-height: inherit;
+      overflow: hidden;
+      padding: 0.5em;
+    }
+
+    :global(html.show-section-nav-editor.is-dev-mode)
+      .section-sidebar-nav--desktop-only
+      .section-sidebar-nav__scroll.is-scrollable {
+      overflow-y: auto;
     }
   }
 
@@ -1301,6 +1710,15 @@ const easingOptions = [
     font-size: 0.8rem;
     line-height: 1.35;
     color: var(--color-text-muted);
+  }
+
+  .section-sidebar-nav-devpanel__tools {
+    margin-top: 0.75em;
+  }
+
+  .section-sidebar-nav-devpanel__btn--wide {
+    width: 100%;
+    text-align: center;
   }
 
   .section-sidebar-nav-devpanel__sliders {
@@ -1397,8 +1815,33 @@ const easingOptions = [
       left: max(0.75em, calc((100vw - 60em) / 2 - 13.5em));
       width: 12.5em;
       max-height: calc(100dvh - 8em);
-      overflow-y: auto;
+      overflow: hidden;
       z-index: 2;
+      padding: 0;
+    }
+
+    .section-sidebar-nav__scroll {
+      max-height: inherit;
+      overflow: hidden;
+    }
+
+    .section-sidebar-nav__scroll.is-scrollable {
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-gutter: stable;
+    }
+
+    /* Hide scrollbar during accordion motion without clipping the wipe edge. */
+    .section-sidebar-nav.is-accordion-animating .section-sidebar-nav__scroll {
+      overflow-y: auto;
+      scrollbar-gutter: auto;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .section-sidebar-nav.is-accordion-animating .section-sidebar-nav__scroll::-webkit-scrollbar {
+      width: 0;
+      height: 0;
     }
   }
 
