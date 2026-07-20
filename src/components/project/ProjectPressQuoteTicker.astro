@@ -1,0 +1,380 @@
+---
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
+
+export type PressQuoteTickerItem = {
+  quote: string;
+  logoSrc: string;
+  logoAlt: string;
+  href: string;
+  /** Optional label for the outlet (used in aria). */
+  name?: string;
+};
+
+interface Props {
+  items: PressQuoteTickerItem[];
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  /** Pixels per second at full speed. */
+  speed?: number;
+  /** Logo opacity in light mode (0–1). */
+  logoOpacity?: number;
+}
+
+const {
+  items,
+  documentKey,
+  sectionPath,
+  spacing = 'section',
+  sectionId,
+  speed = 36,
+  logoOpacity = 0.6,
+} = Astro.props;
+
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const stackClass = projectStackClass(spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+// Duplicate once for a seamless loop.
+const loopItems = [...items, ...items];
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'press-quote-ticker', stackClass, sectionId && 'section-block']}
+  style={`--press-ticker-logo-opacity: ${logoOpacity};`}
+  data-press-quote-ticker
+  data-press-ticker-speed={String(speed)}
+  data-press-ticker-count={String(items.length)}
+  {...(spacingAttrs ?? {})}
+>
+  <div class="press-quote-ticker__viewport" data-press-ticker-viewport>
+    <div class="press-quote-ticker__track" data-press-ticker-track>
+      {loopItems.map((item, index) => {
+        const sourceIndex = index % items.length;
+        const isClone = index >= items.length;
+        const quotePath =
+          editable && sectionPath
+            ? JSON.stringify([...sectionPath, 'items', sourceIndex, 'quote'])
+            : undefined;
+        const name = item.name ?? item.logoAlt;
+
+        return (
+          <article
+            class="press-quote-ticker__item"
+            data-press-ticker-item
+            data-press-ticker-source={String(sourceIndex)}
+            data-press-ticker-href={item.href}
+            aria-hidden={isClone ? 'true' : undefined}
+          >
+            <a
+              class="press-quote-ticker__hit"
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              tabindex={isClone ? -1 : undefined}
+              aria-label={isClone ? undefined : `${name}: ${item.quote} (opens in a new tab)`}
+              data-press-ticker-hit
+            ></a>
+            <p class="press-quote-ticker__quote">
+              <span
+                class="press-quote-ticker__quote-text"
+                data-dev-text-document={editable ? documentKey : undefined}
+                data-dev-text-path={editable ? quotePath : undefined}
+                data-dev-text-kind={editable ? 'text' : undefined}
+              >{item.quote}</span>
+            </p>
+            <span class="press-quote-ticker__logo-slot">
+              <img
+                class="press-quote-ticker__logo"
+                src={item.logoSrc}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable="false"
+              />
+            </span>
+          </article>
+        );
+      })}
+    </div>
+  </div>
+</section>
+
+<style>
+  .press-quote-ticker {
+    /* Stay inside #site-wrapper gutters (same content column as images/text). */
+    width: 100%;
+    max-width: 60em;
+  }
+
+  .press-quote-ticker__viewport {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Fade to page background at the content edges (not full-bleed). */
+  .press-quote-ticker__viewport::before,
+  .press-quote-ticker__viewport::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 3.5em;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .press-quote-ticker__viewport::before {
+    left: 0;
+    background: linear-gradient(to right, var(--color-bg) 0%, transparent 100%);
+  }
+
+  .press-quote-ticker__viewport::after {
+    right: 0;
+    background: linear-gradient(to left, var(--color-bg) 0%, transparent 100%);
+  }
+
+  .press-quote-ticker__track {
+    display: flex;
+    width: max-content;
+    gap: 3.5em;
+    will-change: transform;
+  }
+
+  .press-quote-ticker__item {
+    position: relative;
+    display: grid;
+    grid-template-rows: 5.8em 3em;
+    align-items: center;
+    justify-items: center;
+    gap: 0.85em;
+    flex: 0 0 auto;
+    width: min(14em, 68vw);
+    text-align: center;
+    color: inherit;
+  }
+
+  /* Full-card hit target sits under the quote so Dev Mode caret clicks work. */
+  .press-quote-ticker__hit {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: 0;
+  }
+
+  .press-quote-ticker__quote,
+  .press-quote-ticker__logo-slot {
+    position: relative;
+    z-index: 1;
+  }
+
+  .press-quote-ticker__quote {
+    margin: 0;
+    width: 100%;
+    max-width: 14em;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.05em;
+    font-weight: 400;
+    font-style: italic;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    color: var(--color-text);
+    opacity: var(--press-ticker-logo-opacity, 0.6);
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+  }
+
+  .press-quote-ticker__quote-text {
+    pointer-events: none;
+  }
+
+  /* Only intercept clicks for caret placement while Dev Mode is on. */
+  :global(html.is-dev-mode) .press-quote-ticker__quote-text {
+    pointer-events: auto;
+  }
+
+  .press-quote-ticker__logo-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  .press-quote-ticker__logo {
+    display: block;
+    width: auto;
+    height: 2.25em;
+    max-width: 13em;
+    object-fit: contain;
+    object-position: center;
+    opacity: var(--press-ticker-logo-opacity, 0.6);
+    transition: opacity 0.2s ease;
+    /* Dark mode: invert black→white when theme lands — see GitHub issue. */
+    /* filter: invert(1); */
+  }
+
+  /* Whole card hover: quote + logo go full black. */
+  .press-quote-ticker__item:hover .press-quote-ticker__quote,
+  .press-quote-ticker__item:focus-within .press-quote-ticker__quote,
+  .press-quote-ticker__item:hover .press-quote-ticker__logo,
+  .press-quote-ticker__item:focus-within .press-quote-ticker__logo {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .press-quote-ticker__track {
+      transform: none !important;
+    }
+  }
+</style>
+
+<script>
+  const initPressQuoteTicker = (root: HTMLElement) => {
+    if (root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const viewport = root.querySelector<HTMLElement>('[data-press-ticker-viewport]');
+    const track = root.querySelector<HTMLElement>('[data-press-ticker-track]');
+    if (!viewport || !track) return;
+
+    // Keep clone + original quotes in sync (both are editable so the scrolled
+    // copy can be edited too; they share the same JSON path).
+    const syncTwinQuote = (source: HTMLElement) => {
+      const item = source.closest<HTMLElement>('[data-press-ticker-item]');
+      if (!item) return;
+      const sourceIndex = item.dataset.pressTickerSource;
+      if (sourceIndex == null) return;
+      const text = source.textContent ?? '';
+      track
+        .querySelectorAll<HTMLElement>(
+          `[data-press-ticker-item][data-press-ticker-source="${sourceIndex}"] [data-dev-text-document]`,
+        )
+        .forEach((node) => {
+          if (node === source) return;
+          if ((node.textContent ?? '') !== text) node.textContent = text;
+        });
+    };
+
+    track.addEventListener('input', (event) => {
+      const target = event.target as HTMLElement | null;
+      const quote = target?.closest<HTMLElement>('[data-dev-text-document]');
+      if (quote) syncTwinQuote(quote);
+    });
+
+    // In Dev Mode, quote sits above the stretch link so caret placement works.
+    // Outside Dev Mode the stretch link covers the card. Disable the hit link
+    // while a quote is focused so focus/caret aren’t stolen.
+    track.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!document.documentElement.classList.contains('is-dev-mode')) return;
+        const target = event.target as HTMLElement | null;
+        if (!target?.closest('[data-dev-text-document]')) return;
+        // Don’t let the absolute hit <a> under the quote take this gesture.
+        event.stopPropagation();
+      },
+      true,
+    );
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) return;
+
+    const baseSpeed = Math.max(8, Number(root.dataset.pressTickerSpeed) || 36);
+    // Positive speed = content moves right→left.
+    let targetSpeed = baseSpeed;
+    let speed = baseSpeed;
+    // Phase 0..loopWidth maps to translateX = -phase.
+    let phase = 0;
+    let loopWidth = 0;
+    let raf = 0;
+    let lastTs = 0;
+    // ~280ms time-constant for ease in/out of hover pause.
+    const tauMs = 280;
+
+    const measure = () => {
+      const tickerItems = [...track.querySelectorAll<HTMLElement>('[data-press-ticker-item]')];
+      const half = Math.floor(tickerItems.length / 2);
+      if (half < 1) {
+        loopWidth = 0;
+        return;
+      }
+      const first = tickerItems[0].offsetLeft;
+      const mid = tickerItems[half].offsetLeft;
+      loopWidth = Math.max(0, mid - first);
+      if (loopWidth > 0) {
+        phase = ((phase % loopWidth) + loopWidth) % loopWidth;
+      }
+    };
+
+    const apply = () => {
+      track.style.transform = `translate3d(${-phase}px, 0, 0)`;
+    };
+
+    const tick = (ts: number) => {
+      if (!lastTs) lastTs = ts;
+      const dt = Math.min(48, ts - lastTs);
+      lastTs = ts;
+
+      const alpha = 1 - Math.exp(-dt / tauMs);
+      speed += (targetSpeed - speed) * alpha;
+
+      if (loopWidth > 0 && Math.abs(speed) > 0.01) {
+        phase += (speed * dt) / 1000;
+        phase = ((phase % loopWidth) + loopWidth) % loopWidth;
+        apply();
+      }
+
+      raf = requestAnimationFrame(tick);
+    };
+
+    const setPaused = (paused: boolean) => {
+      targetSpeed = paused ? 0 : baseSpeed;
+    };
+
+    viewport.addEventListener('pointerenter', () => setPaused(true));
+    viewport.addEventListener('pointerleave', () => setPaused(false));
+
+    measure();
+    apply();
+    raf = requestAnimationFrame(tick);
+
+    const ro = new ResizeObserver(() => {
+      measure();
+      apply();
+    });
+    ro.observe(track);
+    ro.observe(viewport);
+
+    window.addEventListener(
+      'beforeunload',
+      () => {
+        cancelAnimationFrame(raf);
+        ro.disconnect();
+      },
+      { once: true },
+    );
+  };
+
+  const boot = () => {
+    document
+      .querySelectorAll<HTMLElement>('[data-press-quote-ticker]')
+      .forEach((node) => initPressQuoteTicker(node));
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+  document.addEventListener('astro:page-load', boot);
+</script>
