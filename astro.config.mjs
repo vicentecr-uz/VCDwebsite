@@ -1097,7 +1097,10 @@ function contentSectionDevWriter() {
           }
 
           const type = String(body.type || '');
-          const spacing = EDITABLE_SPACING_VALUES.has(body.spacing) ? body.spacing : 'section';
+          // New block always opens with default section rhythm above it.
+          // The following block keeps whatever gap the user already had (that
+          // gap becomes the space *below* the insert).
+          const spacing = 'section';
 
           if (!INSERTABLE_SECTION_TYPES.has(type) || index > data.sections.length) {
             send(400, { error: 'That section cannot be inserted.' });
@@ -1112,6 +1115,9 @@ function contentSectionDevWriter() {
                   id,
                   title: 'Section title',
                   spacing,
+                  // Keep the following block's own spacing (don't force 1em via
+                  // precede-related). Authored titles still default tightBottom.
+                  tightBottom: false,
                 }
               : {
                   type: 'bodyText',
@@ -1120,16 +1126,7 @@ function contentSectionDevWriter() {
                   paragraphs: [''],
                 };
 
-          // Preserve the gap the user clicked in on the new section; soften the
-          // following block so we don't double the large top margin.
-          const following = data.sections[index];
           data.sections.splice(index, 0, section);
-          if (following && typeof following === 'object' && !Array.isArray(following)) {
-            following.spacing = type === 'sectionTitle' ? 'related' : 'section';
-            if (Object.prototype.hasOwnProperty.call(following, 'tightTop')) {
-              delete following.tightTop;
-            }
-          }
 
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
           send(200, { ok: true, action: 'insert', index, id, type });

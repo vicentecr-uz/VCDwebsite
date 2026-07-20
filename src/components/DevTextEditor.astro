@@ -225,16 +225,17 @@
       );
     };
 
-    const spacingStates = spacingElements.flatMap<EditableSpacingState>((element) => {
+    const mountSpacingControl = (element: HTMLElement): EditableSpacingState | null => {
       try {
         const path = JSON.parse(element.dataset.devSpacingPath || '[]');
         const raw = (element.dataset.devSpacingValue || 'section') as SpacingValue;
-        if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return [];
+        if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return null;
+        if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
 
         const parent = element.parentElement;
         if (parent?.classList.contains('project-page__main')) {
           const siblings = [...parent.children];
-          if (siblings[0] === element) return [];
+          if (siblings[0] === element) return null;
         }
 
         const control = document.createElement('div');
@@ -280,7 +281,7 @@
         const addButton = control.querySelector<HTMLButtonElement>('[data-dev-section-add]');
         const menu = control.querySelector<HTMLElement>('[data-dev-section-menu]');
         const spacingGroup = control.querySelector<HTMLElement>('.dev-gap-toolbar__spacing');
-        if (!addButton || !menu || !spacingGroup) return [];
+        if (!addButton || !menu || !spacingGroup) return null;
 
         const computed = getComputedStyle(element);
         if (computed.position === 'static') {
@@ -314,11 +315,63 @@
           });
         });
 
-        return [state];
+        return state;
       } catch {
-        return [];
+        return null;
       }
+    };
+
+    const spacingStates = spacingElements.flatMap<EditableSpacingState>((element) => {
+      const state = mountSpacingControl(element);
+      return state ? [state] : [];
     });
+
+    /** Paths on media/text/spacing editors — bumped when sections are inserted/deleted in-place. */
+    const DEV_PATH_ATTRS = [
+      'data-dev-spacing-path',
+      'data-dev-text-path',
+      'data-dev-image-path',
+      'data-dev-grid-path',
+    ] as const;
+
+    const bumpSectionPath = (
+      path: Array<string | number>,
+      fromIndex: number,
+      delta: number,
+    ) => {
+      if (path[0] !== 'sections' || typeof path[1] !== 'number') return false;
+      if (delta > 0) {
+        if (path[1] < fromIndex) return false;
+      } else if (path[1] <= fromIndex) {
+        return false;
+      }
+      path[1] += delta;
+      return true;
+    };
+
+    const reindexDevPaths = (fromIndex: number, delta: number) => {
+      document.querySelectorAll<HTMLElement>(DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(',')).forEach((el) => {
+        DEV_PATH_ATTRS.forEach((attr) => {
+          const raw = el.getAttribute(attr);
+          if (!raw) return;
+          try {
+            const path = JSON.parse(raw);
+            if (!Array.isArray(path)) return;
+            if (bumpSectionPath(path, fromIndex, delta)) {
+              el.setAttribute(attr, JSON.stringify(path));
+            }
+          } catch {
+            // Ignore malformed paths.
+          }
+        });
+      });
+      textStates.forEach((state) => {
+        bumpSectionPath(state.path, fromIndex, delta);
+      });
+      spacingStates.forEach((state) => {
+        bumpSectionPath(state.path, fromIndex, delta);
+      });
+    };
 
     const isDevTextCaretActive = () => {
       const active = document.activeElement;
@@ -519,6 +572,163 @@
     };
     restoreScrollAfterReload();
 
+    const projectStackClassName = (spacing: SpacingValue, precedeRelated: boolean) => {
+      const classes: string[] = [];
+      const stack = STACK_CLASS[spacing];
+      if (stack) classes.push(stack);
+      if (precedeRelated) classes.push('project-stack--precede-related');
+      return classes.join(' ');
+    };
+
+    const buildInsertedSection = (
+      type: InsertableSectionType,
+      documentKey: string,
+      index: number,
+      spacing: SpacingValue,
+    ) => {
+      const sectionPath = ['sections', index] as Array<string | number>;
+      // Inserted titles omit precede-related so the following block keeps its gap.
+      const spacingClass = projectStackClassName(spacing, false);
+
+      if (type === 'sectionTitle') {
+        const wrapper = document.createElement('div');
+        wrapper.className = spacingClass
+          ? `project-block ${spacingClass}`
+          : 'project-block';
+        wrapper.dataset.devSpacingDocument = documentKey;
+        wrapper.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
+        wrapper.dataset.devSpacingValue = spacing;
+        wrapper.dataset.devSectionDeletable = 'sectionTitle';
+
+        const title = document.createElement('h2');
+        title.className = 'project-section-title';
+        title.dataset.devTextDocument = documentKey;
+        title.dataset.devTextPath = JSON.stringify([...sectionPath, 'title']);
+        title.dataset.devTextKind = 'text';
+        title.textContent = 'Section title';
+        wrapper.append(title);
+        return { root: wrapper, textElement: title, textKind: 'text' as const, textPath: [...sectionPath, 'title'] };
+      }
+
+      const section = document.createElement('section');
+      section.className = spacingClass
+        ? `project-block ${spacingClass}`
+        : 'project-block';
+      section.dataset.devSpacingDocument = documentKey;
+      section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
+      section.dataset.devSpacingValue = spacing;
+      section.dataset.devSectionDeletable = 'bodyText';
+
+      const body = document.createElement('div');
+      body.className = 'project-body-text';
+      body.dataset.devTextDocument = documentKey;
+      body.dataset.devTextPath = JSON.stringify([...sectionPath, 'paragraphs']);
+      body.dataset.devTextKind = 'paragraphs';
+      const paragraph = document.createElement('p');
+      paragraph.append(document.createElement('br'));
+      body.append(paragraph);
+      section.append(body);
+      return {
+        root: section,
+        textElement: body,
+        textKind: 'paragraphs' as const,
+        textPath: [...sectionPath, 'paragraphs'],
+      };
+    };
+
+    const bindTextState = (state: EditableTextState) => {
+      const { element } = state;
+      element.addEventListener('input', updateActions);
+      element.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || state.kind !== 'paragraphs') return;
+        event.preventDefault();
+
+        const selection = window.getSelection();
+        if (!selection?.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (!element.contains(range.startContainer)) return;
+        const startElement = range.startContainer instanceof Element
+          ? range.startContainer
+          : range.startContainer.parentElement;
+        const paragraph = startElement?.closest('p');
+        if (!paragraph || paragraph.parentElement !== element) return;
+
+        if (!range.collapsed) range.deleteContents();
+
+        const afterRange = document.createRange();
+        afterRange.setStart(range.startContainer, range.startOffset);
+        afterRange.setEnd(paragraph, paragraph.childNodes.length);
+        const trailing = afterRange.extractContents();
+
+        const nextParagraph = document.createElement('p');
+        if (serializeInlineHtml(trailing) || trailing.textContent?.replaceAll('\u00a0', ' ').trim()) {
+          nextParagraph.append(trailing);
+        } else {
+          nextParagraph.append(document.createElement('br'));
+        }
+
+        if (!serializeInlineHtml(paragraph) && !paragraph.textContent?.replaceAll('\u00a0', ' ').trim()) {
+          paragraph.replaceChildren(document.createElement('br'));
+        }
+
+        paragraph.after(nextParagraph);
+
+        const nextRange = document.createRange();
+        nextRange.setStart(nextParagraph, 0);
+        nextRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(nextRange);
+        updateActions();
+      });
+    };
+
+    const TRASH_ICON = `
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M6 2.5h4M3.5 4.5h9M5.5 4.5v8a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-8M7 7v4.5M9 7v4.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+
+    const deletableSections: HTMLElement[] = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-dev-section-deletable][data-dev-spacing-document][data-dev-spacing-path]',
+      ),
+    ];
+
+    let deleteSectionAt: (element: HTMLElement) => Promise<void> = async () => {};
+
+    const mountDeleteButton = (element: HTMLElement) => {
+      if (element.querySelector(':scope > [data-dev-section-delete]')) return;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dev-section-delete';
+      button.setAttribute('data-dev-section-delete', '');
+      button.setAttribute('data-dev-mode-only', '');
+      button.title = 'Delete section';
+      button.setAttribute('aria-label', 'Delete section');
+      button.innerHTML = TRASH_ICON;
+      button.hidden = !document.documentElement.classList.contains('is-dev-mode');
+
+      const computed = getComputedStyle(element);
+      if (computed.position === 'static') {
+        element.style.position = 'relative';
+      }
+      element.prepend(button);
+
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void deleteSectionAt(element);
+      });
+    };
+
+    const clearBusyStatus = () => {
+      actions.hidden = true;
+      status.textContent = '';
+      saveButton.disabled = false;
+      revertButton.disabled = false;
+    };
+
     const insertSectionAt = async (state: EditableSpacingState, type: InsertableSectionType) => {
       const sectionIndex = state.path.at(-2);
       if (typeof sectionIndex !== 'number') {
@@ -536,6 +746,8 @@
         return;
       }
 
+      const newSpacing: SpacingValue = 'section';
+
       closeSectionMenus();
       actions.hidden = false;
       status.textContent = 'Adding…';
@@ -550,13 +762,55 @@
             document: state.document,
             index: sectionIndex,
             type,
-            spacing: state.currentValue === 'none' ? 'section' : state.currentValue,
+            spacing: newSpacing,
           }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
-        sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
-        window.location.reload();
+
+        // Keep later editors' paths valid, then inject the new block in place.
+        reindexDevPaths(sectionIndex, 1);
+
+        const built = buildInsertedSection(type, state.document, sectionIndex, newSpacing);
+        state.element.before(built.root);
+
+        // Following block keeps its existing spacing (gap below the insert).
+
+        const spacingState = mountSpacingControl(built.root);
+        if (spacingState) {
+          spacingStates.push(spacingState);
+          wireSectionAddMenu(spacingState);
+        }
+
+        const textState: EditableTextState = {
+          element: built.textElement,
+          document: state.document,
+          path: built.textPath,
+          kind: built.textKind,
+          savedValue: built.textKind === 'paragraphs' ? [''] : 'Section title',
+        };
+        textStates.push(textState);
+        bindTextState(textState);
+        if (document.documentElement.classList.contains('is-dev-mode')) {
+          built.textElement.setAttribute(
+            'contenteditable',
+            built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
+          );
+          built.textElement.setAttribute('spellcheck', 'true');
+        }
+
+        mountDeleteButton(built.root);
+        deletableSections.push(built.root);
+
+        clearBusyStatus();
+        built.textElement.focus();
+        if (built.textKind === 'text') {
+          const selection = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(built.textElement);
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+        }
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not add the section.';
         saveButton.disabled = false;
@@ -564,7 +818,7 @@
       }
     };
 
-    spacingStates.forEach((state) => {
+    const wireSectionAddMenu = (state: EditableSpacingState) => {
       state.addButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -585,15 +839,11 @@
           void insertSectionAt(state, type);
         });
       });
-    });
+    };
 
-    const TRASH_ICON = `
-      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-        <path d="M6 2.5h4M3.5 4.5h9M5.5 4.5v8a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-8M7 7v4.5M9 7v4.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    `;
+    spacingStates.forEach(wireSectionAddMenu);
 
-    const deleteSectionAt = async (element: HTMLElement) => {
+    deleteSectionAt = async (element: HTMLElement) => {
       let path: Array<string | number> = [];
       try {
         path = JSON.parse(element.dataset.devSpacingPath || '[]');
@@ -635,8 +885,23 @@
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
-        sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
-        window.location.reload();
+
+        for (let i = textStates.length - 1; i >= 0; i -= 1) {
+          if (element.contains(textStates[i].element) || textStates[i].element === element) {
+            textStates.splice(i, 1);
+          }
+        }
+        for (let i = spacingStates.length - 1; i >= 0; i -= 1) {
+          if (spacingStates[i].element === element) {
+            spacingStates.splice(i, 1);
+          }
+        }
+        const deletableIdx = deletableSections.indexOf(element);
+        if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
+
+        element.remove();
+        reindexDevPaths(sectionIndex, -1);
+        clearBusyStatus();
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not delete the section.';
         saveButton.disabled = false;
@@ -644,36 +909,8 @@
       }
     };
 
-    const deletableSections = [
-      ...document.querySelectorAll<HTMLElement>(
-        '[data-dev-section-deletable][data-dev-spacing-document][data-dev-spacing-path]',
-      ),
-    ];
-
     deletableSections.forEach((element) => {
-      if (element.querySelector(':scope > [data-dev-section-delete]')) return;
-
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'dev-section-delete';
-      button.setAttribute('data-dev-section-delete', '');
-      button.setAttribute('data-dev-mode-only', '');
-      button.title = 'Delete section';
-      button.setAttribute('aria-label', 'Delete section');
-      button.innerHTML = TRASH_ICON;
-      button.hidden = !document.documentElement.classList.contains('is-dev-mode');
-
-      const computed = getComputedStyle(element);
-      if (computed.position === 'static') {
-        element.style.position = 'relative';
-      }
-      element.prepend(button);
-
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void deleteSectionAt(element);
-      });
+      mountDeleteButton(element);
     });
 
     const syncDeleteButtons = (enabled: boolean) => {
@@ -1010,51 +1247,7 @@
 
     window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).addEventListener('change', syncSpacingControlVisibility);
 
-    textStates.forEach((state) => {
-      const { element } = state;
-      element.addEventListener('input', updateActions);
-      element.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' || state.kind !== 'paragraphs') return;
-        event.preventDefault();
-
-        const selection = window.getSelection();
-        if (!selection?.rangeCount) return;
-        const range = selection.getRangeAt(0);
-        if (!element.contains(range.startContainer)) return;
-        const startElement = range.startContainer instanceof Element
-          ? range.startContainer
-          : range.startContainer.parentElement;
-        const paragraph = startElement?.closest('p');
-        if (!paragraph || paragraph.parentElement !== element) return;
-
-        if (!range.collapsed) range.deleteContents();
-
-        const afterRange = document.createRange();
-        afterRange.setStart(range.startContainer, range.startOffset);
-        afterRange.setEnd(paragraph, paragraph.childNodes.length);
-        const trailing = afterRange.extractContents();
-
-        const nextParagraph = document.createElement('p');
-        if (serializeInlineHtml(trailing) || trailing.textContent?.replaceAll('\u00a0', ' ').trim()) {
-          nextParagraph.append(trailing);
-        } else {
-          nextParagraph.append(document.createElement('br'));
-        }
-
-        if (!serializeInlineHtml(paragraph) && !paragraph.textContent?.replaceAll('\u00a0', ' ').trim()) {
-          paragraph.replaceChildren(document.createElement('br'));
-        }
-
-        paragraph.after(nextParagraph);
-
-        const nextRange = document.createRange();
-        nextRange.setStart(nextParagraph, 0);
-        nextRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(nextRange);
-        updateActions();
-      });
-    });
+    textStates.forEach(bindTextState);
 
     revertButton.addEventListener('click', () => {
       dirtyTextStates().forEach((state) => {
@@ -1506,6 +1699,8 @@
     box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
     backdrop-filter: blur(12px);
     transform: translateX(-50%);
+    /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
+    pointer-events: auto;
   }
 
   .dev-gap-toolbar__menu[hidden] {
@@ -1682,8 +1877,19 @@
     display: none;
   }
 
-  .is-dev-mode [data-dev-section-deletable]:hover > .dev-section-delete,
-  .is-dev-mode [data-dev-section-deletable]:focus-within > .dev-section-delete,
+  /*
+    Delete is a sibling of the gap toolbar under the same section. Hovering
+    + / spacing / the add menu still matches section:hover (descendants count
+    even when painted in the margin gap) — exclude those so trash stays put.
+  */
+  .is-dev-mode
+    [data-dev-section-deletable]:hover:not(
+      :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
+    )
+    > .dev-section-delete,
+  .is-dev-mode
+    [data-dev-section-deletable]:focus-within:not(:has(> .dev-gap-toolbar:focus-within))
+    > .dev-section-delete,
   .is-dev-mode .dev-section-delete:hover,
   .is-dev-mode .dev-section-delete:focus-visible {
     opacity: 1;
