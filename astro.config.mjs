@@ -1254,7 +1254,7 @@ export default defineConfig({
       contentBatchDevWriter(),
     ],
     optimizeDeps: {
-      include: ['gsap', '@melloware/coloris'],
+      include: ['gsap', 'color-dialog-box'],
     },
     server: {
       watch: {
