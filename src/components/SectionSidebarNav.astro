@@ -728,7 +728,6 @@ const easingOptions = [
         m = {
           openHeight,
           bands: measureLinkBands(content, openHeight),
-          padTopPx: readChildrenPadTopPx(content),
         };
         measureCache.set(group, m);
       }
@@ -873,21 +872,29 @@ const easingOptions = [
       content.style.display = 'block';
     };
 
-    const readChildrenPadTopPx = (content) => {
-      const children = content.querySelector('.section-sidebar-nav__children');
-      if (children instanceof HTMLElement) {
-        const px = parseFloat(getComputedStyle(children).paddingTop);
-        if (px > 0) return px;
+    const getChevronSvg = (group) => group.querySelector('.section-sidebar-nav__summary svg');
+
+    const getChevronDegrees = (group) => {
+      const svg = getChevronSvg(group);
+      if (svg instanceof SVGElement) {
+        const match = svg.style.transform.match(/rotate\(([-\d.]+)deg\)/);
+        if (match) return parseFloat(match[1]);
       }
-      const em = parseFloat(getComputedStyle(nav).fontSize) || 16;
-      return em * 0.2;
+      return group.open ? 90 : 0;
     };
 
-    const applyExpandChildrenPadding = (content, padTopPx, visibleHeight, endHeight) => {
-      const children = content.querySelector('.section-sidebar-nav__children');
-      if (!(children instanceof HTMLElement) || padTopPx <= 0) return;
-      const ratio = endHeight > 0 ? Math.min(1, Math.max(0, visibleHeight / endHeight)) : 0;
-      children.style.paddingTop = ratio > 0 ? `${padTopPx * ratio}px` : '0';
+    const applyChevronDegrees = (group, degrees) => {
+      const svg = getChevronSvg(group);
+      if (!(svg instanceof SVGElement)) return;
+      svg.style.transition = 'none';
+      svg.style.transform = `rotate(${degrees}deg)`;
+    };
+
+    const clearChevronDegrees = (group) => {
+      const svg = getChevronSvg(group);
+      if (!(svg instanceof SVGElement)) return;
+      svg.style.transition = '';
+      svg.style.transform = '';
     };
 
     /** Duration scales with travel distance (taller groups take longer; no per-link constants). */
@@ -954,6 +961,7 @@ const easingOptions = [
       if (!anim.shouldOpen) group.open = false;
       anim.content.classList.remove('is-expanding', 'is-collapsing');
       clearGroupAnimStyles(anim.content);
+      clearChevronDegrees(group);
     };
 
     const tickGroupAnims = (now) => {
@@ -967,10 +975,10 @@ const easingOptions = [
         const height = anim.fromHeight + (anim.toHeight - anim.fromHeight) * eased;
         const clampedHeight = Math.max(0, height);
         anim.content.style.height = `${clampedHeight}px`;
-        if (anim.shouldOpen) {
-          applyExpandChildrenPadding(anim.content, anim.padTopPx, clampedHeight, anim.endHeight);
-        }
         applyLinkOpacitiesForHeight(anim.bands, clampedHeight, anim.travelExtent, anim.shouldOpen);
+        const chevronDeg =
+          anim.chevronFrom + (anim.chevronTo - anim.chevronFrom) * eased;
+        applyChevronDegrees(group, chevronDeg);
 
         if (progress >= 1) finishGroupAnim(group);
         else anyActive = true;
@@ -1037,13 +1045,15 @@ const easingOptions = [
       });
 
       const fromHeight = content.getBoundingClientRect().height;
+      const chevronFrom = getChevronDegrees(group);
+      const chevronTo = shouldOpen ? 90 : 0;
       setGroupAnimDisplay(content);
       setGroupAnimOverflow(content);
       content.style.gridTemplateRows = '1fr';
       content.style.minHeight = '0';
 
       const measure = getGroupMeasure(group, content);
-      const { openHeight, bands, padTopPx } = measure;
+      const { openHeight, bands } = measure;
       const endHeight = shouldOpen ? openHeight : 0;
       const toHeight = endHeight;
       // Row fade timing spans the full open height either way, so the sequence
@@ -1055,7 +1065,6 @@ const easingOptions = [
         content.classList.add('is-expanding');
         if (!group.open) group.open = true;
         content.style.height = `${fromHeight}px`;
-        applyExpandChildrenPadding(content, padTopPx, fromHeight, endHeight);
       } else {
         content.classList.remove('is-expanding');
         content.classList.add('is-collapsing');
@@ -1065,6 +1074,7 @@ const easingOptions = [
 
       void content.offsetHeight;
       applyLinkOpacitiesForHeight(bands, fromHeight, travelExtent, shouldOpen);
+      applyChevronDegrees(group, chevronFrom);
 
       groupAnims.set(group, {
         content,
@@ -1074,7 +1084,8 @@ const easingOptions = [
         endHeight,
         bands,
         travelExtent,
-        padTopPx,
+        chevronFrom,
+        chevronTo,
         startTime: performance.now(),
         durationMs: durationForTravel(Math.abs(toHeight - fromHeight)),
       });
@@ -1452,12 +1463,6 @@ const easingOptions = [
   }
 
   .section-sidebar-nav__group[open] > .section-sidebar-nav__summary svg {
-    transform: rotate(90deg);
-  }
-
-  .section-sidebar-nav__group:has(> .section-sidebar-nav__group-content.is-expanding)
-    > .section-sidebar-nav__summary
-    svg {
     transform: rotate(90deg);
   }
 
