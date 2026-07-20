@@ -657,12 +657,27 @@
       bindSidebarLabelEdits();
     };
 
+    const syncSidebarLabelEditability = () => {
+      const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
+      if (!list) return;
+
+      const editable = isActive();
+      list.querySelectorAll<HTMLElement>('[data-section-nav-label]').forEach((labelEl) => {
+        if (editable) {
+          labelEl.setAttribute('contenteditable', 'true');
+        } else {
+          labelEl.removeAttribute('contenteditable');
+        }
+      });
+    };
+
     const bindSidebarLabelEdits = () => {
       const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
       if (!list) return;
 
+      syncSidebarLabelEditability();
+
       list.querySelectorAll<HTMLElement>('[data-section-nav-label]').forEach((labelEl) => {
-        labelEl.contentEditable = isActive() ? 'true' : 'false';
         labelEl.onclick = (event) => {
           if (!isActive()) return;
           event.preventDefault();
@@ -690,6 +705,7 @@
           setDirty(true);
         };
         labelEl.onkeydown = (event) => {
+          if (!isActive()) return;
           if (event.key === 'Enter') {
             event.preventDefault();
             labelEl.blur();
@@ -838,6 +854,7 @@
         editableBlocks().forEach((el) => {
           el.classList.remove('is-section-nav-hover', 'is-section-nav-active');
         });
+        syncSidebarLabelEditability();
         setDirty(false);
       } else {
         setDirty(dirty);
