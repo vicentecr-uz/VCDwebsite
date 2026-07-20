@@ -1,7 +1,7 @@
 ---
 /**
  * DEV Section Editor — outline markers (Obsidian-style ranges).
- * Activate via header "Section Editor" while is-dev-mode is on.
+ * Enter with Alt+D while Dev Mode is on; Esc returns to Dev Mode.
  *
  * - Section group = Intro / Research / Development (boundary)
  * - Section = Overview / Public Reception / … (scroll target + range)
@@ -59,7 +59,7 @@
 
   <div class="section-nav-editor__hint" data-nav-hint hidden>
     <span data-nav-hint-text>
-      Click a block → section group and/or section. Ranges run until the next marker. Esc exits.
+      Click a block → section group and/or section. Esc closes marker · Esc again → Dev Mode.
     </span>
     <button type="button" class="section-nav-editor__hint-save" data-nav-sidebar-save hidden>
       Save sidebar
@@ -823,7 +823,6 @@
         const target = event.target as HTMLElement | null;
         if (!target) return;
         if (target.closest('[data-nav-popover]')) return;
-        if (target.closest('[data-section-nav-editor-toggle]')) return;
         if (target.closest('.section-sidebar-nav')) return;
         if (target.closest('.site-header')) return;
 
@@ -853,22 +852,12 @@
     document.addEventListener('keydown', (event) => {
       if (!isActive()) return;
       if (event.key !== 'Escape') return;
-      if (!popover.hidden) {
-        event.preventDefault();
-        closePopover();
-        return;
-      }
-      document.documentElement.classList.remove(EDITOR_CLASS);
-      try {
-        window.localStorage.setItem('vcdShowSectionNavEditor', 'false');
-      } catch {
-        // Ignore.
-      }
-      window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-change', {
-        detail: { active: false },
-      }));
-      setEditorChrome(false);
-    });
+      // Only dismiss the marker popover; DevModeController owns Esc → Dev Mode.
+      if (popover.hidden) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closePopover();
+    }, true);
 
     window.addEventListener('vcd:section-nav-editor-change', (() => {
       setEditorChrome(isActive());

@@ -88,18 +88,6 @@ const menuLinks = headerSettings.menuLinks;
                 </button>
               </li>
             )}
-            {isDev && (
-              <li data-dev-mode-only hidden>
-                <button
-                  type="button"
-                  class="header-menu__link header-menu__dev-toggle"
-                  data-section-nav-editor-toggle
-                  aria-pressed="false"
-                >
-                  Section Editor
-                </button>
-              </li>
-            )}
           </ul>
         </div>
       </div>
@@ -145,18 +133,6 @@ const menuLinks = headerSettings.menuLinks;
                   aria-pressed="false"
                 >
                   Curve Easing Tuner
-                </button>
-              </li>
-            )}
-            {isDev && (
-              <li data-dev-mode-only hidden>
-                <button
-                  type="button"
-                  class="header-menu__link header-menu__dev-toggle"
-                  data-section-nav-editor-toggle
-                  aria-pressed="false"
-                >
-                  Section Editor
                 </button>
               </li>
             )}
@@ -622,63 +598,7 @@ const menuLinks = headerSettings.menuLinks;
     }
   }
 
-  // DEV-only: Section Editor (crosshair nav editing). Needs is-dev-mode + this toggle.
-  {
-    const toggles = [...document.querySelectorAll('[data-section-nav-editor-toggle]')];
-    if (toggles.length) {
-      const storageKey = 'vcdShowSectionNavEditor';
-      const className = 'show-section-nav-editor';
-
-      const apply = (show: boolean) => {
-        document.documentElement.classList.toggle(className, show);
-        toggles.forEach((button) => {
-          if (!(button instanceof HTMLElement)) return;
-          button.setAttribute('aria-pressed', show ? 'true' : 'false');
-          button.classList.toggle('is-active', show);
-        });
-        window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-change', {
-          detail: { active: show },
-        }));
-      };
-
-      let show = false;
-      try {
-        show = window.localStorage.getItem(storageKey) === 'true';
-      } catch {
-        // Keep closed when storage is unavailable.
-      }
-      apply(show && document.documentElement.classList.contains('is-dev-mode'));
-
-      toggles.forEach((button) => {
-        button.addEventListener('click', (event) => {
-          event.preventDefault();
-          if (!document.documentElement.classList.contains('is-dev-mode')) return;
-          const next = !document.documentElement.classList.contains(className);
-          try {
-            window.localStorage.setItem(storageKey, String(next));
-          } catch {
-            // Ignore storage failures in private mode.
-          }
-          apply(next);
-          forceCloseMenus();
-        });
-      });
-
-      window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
-        if (event.detail?.active === false) {
-          apply(false);
-          return;
-        }
-        let preferred = false;
-        try {
-          preferred = window.localStorage.getItem(storageKey) === 'true';
-        } catch {
-          // Ignore.
-        }
-        apply(preferred);
-      }) as EventListener);
-    }
-  }
+  // DEV-only: Section Editor is toggled via Alt+D (see DevModeController).
 </script>
 
 <style>
