@@ -1,0 +1,185 @@
+---
+/**
+ * Positions soft darkening under white project captions.
+ * Geometry reads --caption-shadow-* from CSS (baked in project.css).
+ *
+ * Slider UI archived at `./archive/ProjectCaptionShadowTuner.astro`.
+ */
+---
+
+<script>
+  type CaptionShadowSettings = {
+    x: number;
+    y: number;
+    radius: number;
+  };
+
+  const FALLBACKS: CaptionShadowSettings = {
+    x: -7,
+    y: -7,
+    radius: 25,
+  };
+
+  const readPx = (name: string, fallback: number) => {
+    const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const value = Number.parseFloat(raw);
+    return Number.isFinite(value) ? value : fallback;
+  };
+
+  const readSettings = (): CaptionShadowSettings => ({
+    x: readPx('--caption-shadow-x', FALLBACKS.x),
+    y: readPx('--caption-shadow-y', FALLBACKS.y),
+    radius: readPx('--caption-shadow-radius', FALLBACKS.radius),
+  });
+
+  const ensureShadow = (caption: HTMLElement) => {
+    if (caption.classList.contains('project-caption--black')) {
+      caption.querySelector('.project-caption-shadow')?.remove();
+      return null;
+    }
+
+    let host = caption.querySelector<HTMLElement>(':scope > .project-caption-shadow');
+    if (!host) {
+      host = document.createElement('span');
+      host.className = 'project-caption-shadow';
+      host.setAttribute('aria-hidden', 'true');
+      const fill = document.createElement('span');
+      fill.className = 'project-caption-shadow__fill';
+      host.appendChild(fill);
+      caption.insertBefore(host, caption.firstChild);
+    }
+    return host;
+  };
+
+  /** Visible caption glyphs only — not the host (avoids hidden bp spans / extra line boxes). */
+  const getCaptionTextRect = (caption: HTMLElement): DOMRect => {
+    const bps = [...caption.querySelectorAll<HTMLElement>('[data-caption-bp]')];
+    if (bps.length > 0) {
+      const visible = bps.filter((el) => {
+        const style = getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
+      if (visible.length > 0) {
+        let top = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        let left = Infinity;
+        for (const el of visible) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          top = Math.min(top, rect.top);
+          left = Math.min(left, rect.left);
+          right = Math.max(right, rect.right);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+        if (Number.isFinite(top)) {
+          return new DOMRect(left, top, right - left, bottom - top);
+        }
+      }
+    }
+
+    const range = document.createRange();
+    let started = false;
+    for (const node of caption.childNodes) {
+      if (node instanceof HTMLElement && node.classList.contains('project-caption-shadow')) continue;
+      if (node instanceof HTMLElement && getComputedStyle(node).display === 'none') continue;
+      if (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) continue;
+      if (!started) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          range.setStart(node, 0);
+        } else {
+          range.setStartBefore(node);
+        }
+        started = true;
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        range.setEnd(node, node.textContent?.length ?? 0);
+      } else {
+        range.setEndAfter(node);
+      }
+    }
+    if (started) {
+      const rect = range.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) return rect;
+    }
+
+    return caption.getBoundingClientRect();
+  };
+
+  /**
+   * Shadow centre pinned to image bottom-left; top-right tracks caption
+   * top-right + (--caption-shadow-x, --caption-shadow-y) with +x right, +y up.
+   */
+  const layoutShadow = (caption: HTMLElement, settings: CaptionShadowSettings) => {
+    const host = ensureShadow(caption);
+    if (!host) return;
+
+    const fill = host.querySelector<HTMLElement>('.project-caption-shadow__fill');
+    const parent = caption.offsetParent instanceof HTMLElement
+      ? caption.offsetParent
+      : caption.parentElement;
+    if (!fill || !parent) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const captionBox = caption.getBoundingClientRect();
+    const textRect = getCaptionTextRect(caption);
+
+    host.style.left = `${parentRect.left - captionBox.left}px`;
+    host.style.top = `${parentRect.top - captionBox.top}px`;
+    host.style.width = `${parentRect.width}px`;
+    host.style.height = `${parentRect.height}px`;
+
+    const centerX = 0;
+    const centerY = parentRect.height;
+    const trX = textRect.right - parentRect.left + settings.x;
+    const trY = textRect.top - parentRect.top - settings.y;
+    const fillW = Math.max(1, 2 * (trX - centerX));
+    const fillH = Math.max(1, 2 * (centerY - trY));
+
+    fill.style.width = `${fillW}px`;
+    fill.style.height = `${fillH}px`;
+    fill.style.left = `${centerX - fillW / 2}px`;
+    fill.style.top = `${centerY - fillH / 2}px`;
+    fill.style.borderRadius = `0 ${settings.radius}px 0 0`;
+  };
+
+  const layoutAllShadows = () => {
+    const settings = readSettings();
+    document.querySelectorAll<HTMLElement>('.project-caption').forEach((caption) => {
+      layoutShadow(caption, settings);
+    });
+  };
+
+  let frame = 0;
+  const scheduleLayout = () => {
+    window.cancelAnimationFrame(frame);
+    frame = window.requestAnimationFrame(layoutAllShadows);
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', layoutAllShadows, { once: true });
+  } else {
+    layoutAllShadows();
+  }
+  window.addEventListener('load', layoutAllShadows);
+  window.addEventListener('resize', scheduleLayout);
+
+  const observer = new MutationObserver((records) => {
+    const relevant = records.some((record) => {
+      const nodes = [...record.addedNodes, ...record.removedNodes, record.target];
+      return nodes.some((node) => {
+        if (!(node instanceof HTMLElement) && !(node instanceof Text)) return false;
+        const el = node instanceof Text ? node.parentElement : node;
+        if (!el) return false;
+        if (el.closest('.project-caption-shadow')) return false;
+        return Boolean(
+          el.closest('.project-caption') ||
+            el.classList?.contains('project-caption') ||
+            el.querySelector?.('.project-caption'),
+        );
+      });
+    });
+    if (relevant) scheduleLayout();
+  });
+  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+</script>

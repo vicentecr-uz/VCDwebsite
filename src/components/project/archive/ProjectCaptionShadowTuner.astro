@@ -1,0 +1,611 @@
+---
+/**
+ * ARCHIVED — Dev Mode caption-shadow slider panel.
+ * Not imported by the site. Kept for reference / reuse.
+ *
+ * Runtime layout: `../ProjectCaptionShadow.astro`
+ * Baked values: `src/styles/project.css` (`:root` --caption-shadow-*)
+ *
+ * To revive: import in ProjectLayout.astro / styles.astro (dev only).
+ */
+import DevOverlay from '../../DevOverlay.astro';
+---
+
+<DevOverlay
+  title="Caption shadow"
+  storageKey="project-caption-shadow"
+  panelKey="caption-shadow"
+  defaultHidden
+>
+  <div class="caption-shadow-tuner" data-caption-shadow-tuner>
+    <div class="caption-shadow-tuner__xy">
+      <label class="caption-shadow-tuner__control">
+        <span>X offset</span>
+        <input data-shadow-x type="range" min="-250" max="250" step="1" />
+        <output data-shadow-x-output></output>
+      </label>
+
+      <button
+        type="button"
+        class="caption-shadow-tuner__link"
+        data-shadow-link
+        aria-pressed="false"
+        title="Link X and Y"
+        aria-label="Link X and Y"
+      >
+        <span class="caption-shadow-tuner__link-icon" aria-hidden="true"></span>
+      </button>
+
+      <label class="caption-shadow-tuner__control">
+        <span>Y offset</span>
+        <input data-shadow-y type="range" min="-250" max="250" step="1" />
+        <output data-shadow-y-output></output>
+      </label>
+    </div>
+
+    <p class="caption-shadow-tuner__hint">
+      Shadow centre = image bottom-left. Offsets move the shadow’s top-right from the
+      caption’s top-right (+X right, +Y up).
+    </p>
+
+    <label class="caption-shadow-tuner__control">
+      <span>Top-right radius</span>
+      <input data-shadow-radius type="range" min="0" max="300" step="1" />
+      <output data-shadow-radius-output></output>
+    </label>
+
+    <label class="caption-shadow-tuner__control">
+      <span>Transparency</span>
+      <input data-shadow-transparency type="range" min="0" max="100" step="1" />
+      <output data-shadow-transparency-output></output>
+    </label>
+
+    <label class="caption-shadow-tuner__control">
+      <span>Blur</span>
+      <input data-shadow-blur type="range" min="0" max="200" step="1" />
+      <output data-shadow-blur-output></output>
+    </label>
+
+    <div class="caption-shadow-tuner__actions">
+      <button type="button" data-shadow-reset>Reset defaults</button>
+      <button type="button" data-shadow-copy>Copy CSS vars</button>
+    </div>
+
+    <p class="caption-shadow-tuner__status" data-shadow-status aria-live="polite">
+      Live preview · stored in this browser.
+    </p>
+  </div>
+</DevOverlay>
+
+<script>
+  type CaptionShadowSettings = {
+    x: number;
+    y: number;
+    linked: boolean;
+    radius: number;
+    transparency: number;
+    blur: number;
+  };
+
+  const STORAGE_KEY = 'vcdCaptionShadowSettings_v3';
+  const OFFSET_MIN = -250;
+  const OFFSET_MAX = 250;
+
+  const DEFAULTS: CaptionShadowSettings = {
+    x: -7,
+    y: -7,
+    linked: true,
+    radius: 25,
+    transparency: 35,
+    blur: 50,
+  };
+
+  const clamp = (value: number, min: number, max: number) =>
+    Math.min(max, Math.max(min, value));
+
+  const formatSignedPx = (value: number) => `${value > 0 ? '+' : ''}${value}px`;
+
+  const readStored = (): CaptionShadowSettings | null => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<CaptionShadowSettings>;
+      return {
+        x: clamp(Number.isFinite(Number(parsed.x)) ? Number(parsed.x) : DEFAULTS.x, OFFSET_MIN, OFFSET_MAX),
+        y: clamp(Number.isFinite(Number(parsed.y)) ? Number(parsed.y) : DEFAULTS.y, OFFSET_MIN, OFFSET_MAX),
+        linked: parsed.linked !== false,
+        radius: clamp(
+          Number.isFinite(Number(parsed.radius)) ? Number(parsed.radius) : DEFAULTS.radius,
+          0,
+          300,
+        ),
+        transparency: clamp(
+          Number.isFinite(Number(parsed.transparency))
+            ? Number(parsed.transparency)
+            : DEFAULTS.transparency,
+          0,
+          100,
+        ),
+        blur: clamp(
+          Number.isFinite(Number(parsed.blur)) ? Number(parsed.blur) : DEFAULTS.blur,
+          0,
+          200,
+        ),
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const writeStored = (settings: CaptionShadowSettings) => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      // Preview still works for this page load.
+    }
+  };
+
+  const applyCssVars = (settings: CaptionShadowSettings) => {
+    const root = document.documentElement;
+    const alpha = (100 - settings.transparency) / 100;
+    root.style.setProperty('--caption-shadow-x', `${settings.x}px`);
+    root.style.setProperty('--caption-shadow-y', `${settings.y}px`);
+    root.style.setProperty('--caption-shadow-radius', `${settings.radius}px`);
+    root.style.setProperty('--caption-shadow-alpha', String(alpha));
+    root.style.setProperty('--caption-shadow-blur', `${settings.blur}px`);
+  };
+
+  const ensureShadow = (caption: HTMLElement) => {
+    if (caption.classList.contains('project-caption--black')) {
+      caption.querySelector('.project-caption-shadow')?.remove();
+      return null;
+    }
+
+    let host = caption.querySelector<HTMLElement>(':scope > .project-caption-shadow');
+    if (!host) {
+      host = document.createElement('span');
+      host.className = 'project-caption-shadow';
+      host.setAttribute('aria-hidden', 'true');
+      const fill = document.createElement('span');
+      fill.className = 'project-caption-shadow__fill';
+      host.appendChild(fill);
+      caption.insertBefore(host, caption.firstChild);
+    }
+    return host;
+  };
+
+  /** Visible caption glyphs only — not the host (avoids hidden bp spans / extra line boxes). */
+  const getCaptionTextRect = (caption: HTMLElement): DOMRect => {
+    const bps = [...caption.querySelectorAll<HTMLElement>('[data-caption-bp]')];
+    if (bps.length > 0) {
+      const visible = bps.filter((el) => {
+        const style = getComputedStyle(el);
+        return style.display !== 'none' && style.visibility !== 'hidden';
+      });
+      if (visible.length > 0) {
+        let top = Infinity;
+        let right = -Infinity;
+        let bottom = -Infinity;
+        let left = Infinity;
+        for (const el of visible) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 && rect.height === 0) continue;
+          top = Math.min(top, rect.top);
+          left = Math.min(left, rect.left);
+          right = Math.max(right, rect.right);
+          bottom = Math.max(bottom, rect.bottom);
+        }
+        if (Number.isFinite(top)) {
+          return new DOMRect(left, top, right - left, bottom - top);
+        }
+      }
+    }
+
+    const range = document.createRange();
+    let started = false;
+    for (const node of caption.childNodes) {
+      if (node instanceof HTMLElement && node.classList.contains('project-caption-shadow')) continue;
+      if (node instanceof HTMLElement && getComputedStyle(node).display === 'none') continue;
+      if (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) continue;
+      if (!started) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          range.setStart(node, 0);
+        } else {
+          range.setStartBefore(node);
+        }
+        started = true;
+      }
+      if (node.nodeType === Node.TEXT_NODE) {
+        range.setEnd(node, node.textContent?.length ?? 0);
+      } else {
+        range.setEndAfter(node);
+      }
+    }
+    if (started) {
+      const rect = range.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) return rect;
+    }
+
+    return caption.getBoundingClientRect();
+  };
+
+  /**
+   * Shadow rectangle centre is pinned to the image’s bottom-left corner so blur
+   * stays strong there. Top-right of the rect is caption top-right + (x, y),
+   * with +x right and +y up.
+   */
+  const layoutShadow = (caption: HTMLElement, settings: CaptionShadowSettings) => {
+    const host = ensureShadow(caption);
+    if (!host) return;
+
+    const fill = host.querySelector<HTMLElement>('.project-caption-shadow__fill');
+    const parent = caption.offsetParent instanceof HTMLElement
+      ? caption.offsetParent
+      : caption.parentElement;
+    if (!fill || !parent) return;
+
+    const parentRect = parent.getBoundingClientRect();
+    const captionBox = caption.getBoundingClientRect();
+    const textRect = getCaptionTextRect(caption);
+
+    // Mask = full image/parent area, in caption-local coordinates.
+    host.style.left = `${parentRect.left - captionBox.left}px`;
+    host.style.top = `${parentRect.top - captionBox.top}px`;
+    host.style.width = `${parentRect.width}px`;
+    host.style.height = `${parentRect.height}px`;
+
+    const centerX = 0;
+    const centerY = parentRect.height;
+    const trX = textRect.right - parentRect.left + settings.x;
+    const trY = textRect.top - parentRect.top - settings.y;
+    const fillW = Math.max(1, 2 * (trX - centerX));
+    const fillH = Math.max(1, 2 * (centerY - trY));
+
+    fill.style.width = `${fillW}px`;
+    fill.style.height = `${fillH}px`;
+    fill.style.left = `${centerX - fillW / 2}px`;
+    fill.style.top = `${centerY - fillH / 2}px`;
+    fill.style.borderRadius = `0 ${settings.radius}px 0 0`;
+    fill.style.transform = 'none';
+    fill.style.filter = '';
+    fill.style.maskImage = '';
+    fill.style.webkitMaskImage = '';
+  };
+
+  const layoutAllShadows = (settings: CaptionShadowSettings) => {
+    document.querySelectorAll<HTMLElement>('.project-caption').forEach((caption) => {
+      layoutShadow(caption, settings);
+    });
+  };
+
+  const initCaptionShadowTuner = (tuner: HTMLElement) => {
+    if (tuner.dataset.initialized === 'true') return;
+    tuner.dataset.initialized = 'true';
+
+    const panel = tuner.closest<HTMLElement>('[data-dev-panel-key="caption-shadow"]');
+    const radiusInput = tuner.querySelector<HTMLInputElement>('[data-shadow-radius]');
+    const xInput = tuner.querySelector<HTMLInputElement>('[data-shadow-x]');
+    const yInput = tuner.querySelector<HTMLInputElement>('[data-shadow-y]');
+    const linkButton = tuner.querySelector<HTMLButtonElement>('[data-shadow-link]');
+    const transparencyInput = tuner.querySelector<HTMLInputElement>('[data-shadow-transparency]');
+    const blurInput = tuner.querySelector<HTMLInputElement>('[data-shadow-blur]');
+    const radiusOut = tuner.querySelector<HTMLOutputElement>('[data-shadow-radius-output]');
+    const xOut = tuner.querySelector<HTMLOutputElement>('[data-shadow-x-output]');
+    const yOut = tuner.querySelector<HTMLOutputElement>('[data-shadow-y-output]');
+    const transparencyOut = tuner.querySelector<HTMLOutputElement>(
+      '[data-shadow-transparency-output]',
+    );
+    const blurOut = tuner.querySelector<HTMLOutputElement>('[data-shadow-blur-output]');
+    const resetButton = tuner.querySelector<HTMLButtonElement>('[data-shadow-reset]');
+    const copyButton = tuner.querySelector<HTMLButtonElement>('[data-shadow-copy]');
+    const status = tuner.querySelector<HTMLElement>('[data-shadow-status]');
+
+    if (
+      !radiusInput ||
+      !xInput ||
+      !yInput ||
+      !linkButton ||
+      !transparencyInput ||
+      !blurInput ||
+      !radiusOut ||
+      !xOut ||
+      !yOut ||
+      !transparencyOut ||
+      !blurOut ||
+      !resetButton ||
+      !copyButton ||
+      !status
+    ) {
+      return;
+    }
+
+    let settings: CaptionShadowSettings = readStored() ?? { ...DEFAULTS };
+
+    const syncFields = () => {
+      radiusInput.value = String(settings.radius);
+      xInput.value = String(settings.x);
+      yInput.value = String(settings.y);
+      transparencyInput.value = String(settings.transparency);
+      blurInput.value = String(settings.blur);
+      radiusOut.textContent = `${settings.radius}px`;
+      xOut.textContent = formatSignedPx(settings.x);
+      yOut.textContent = formatSignedPx(settings.y);
+      transparencyOut.textContent = `${settings.transparency}%`;
+      blurOut.textContent = `${settings.blur}px`;
+      linkButton.classList.toggle('is-linked', settings.linked);
+      linkButton.setAttribute('aria-pressed', settings.linked ? 'true' : 'false');
+      linkButton.title = settings.linked ? 'Unlink X and Y' : 'Link X and Y';
+      linkButton.setAttribute('aria-label', linkButton.title);
+    };
+
+    const commit = (next: CaptionShadowSettings, message?: string) => {
+      settings = next;
+      syncFields();
+      applyCssVars(settings);
+      layoutAllShadows(settings);
+      writeStored(settings);
+      if (message) status.textContent = message;
+    };
+
+    const onAxisInput = (axis: 'x' | 'y') => {
+      const raw = axis === 'x' ? Number(xInput.value) : Number(yInput.value);
+      const next = {
+        ...settings,
+        radius: Number(radiusInput.value),
+        transparency: Number(transparencyInput.value),
+        blur: Number(blurInput.value),
+      };
+      if (settings.linked) {
+        next.x = raw;
+        next.y = raw;
+      } else if (axis === 'x') {
+        next.x = raw;
+        next.y = Number(yInput.value);
+      } else {
+        next.x = Number(xInput.value);
+        next.y = raw;
+      }
+      commit(next, 'Live preview · stored in this browser.');
+    };
+
+    xInput.addEventListener('input', () => onAxisInput('x'));
+    yInput.addEventListener('input', () => onAxisInput('y'));
+
+    [radiusInput, transparencyInput, blurInput].forEach((input) => {
+      input.addEventListener('input', () => {
+        commit(
+          {
+            ...settings,
+            radius: Number(radiusInput.value),
+            transparency: Number(transparencyInput.value),
+            blur: Number(blurInput.value),
+          },
+          'Live preview · stored in this browser.',
+        );
+      });
+    });
+
+    linkButton.addEventListener('click', () => {
+      const linked = !settings.linked;
+      const shared = settings.x;
+      commit(
+        {
+          ...settings,
+          linked,
+          x: linked ? shared : settings.x,
+          y: linked ? shared : settings.y,
+        },
+        linked ? 'X and Y linked.' : 'X and Y unlinked.',
+      );
+    });
+
+    resetButton.addEventListener('click', () => {
+      commit({ ...DEFAULTS }, 'Reset to defaults.');
+    });
+
+    copyButton.addEventListener('click', async () => {
+      const alpha = (100 - settings.transparency) / 100;
+      const css = [
+        `--caption-shadow-x: ${settings.x}px;`,
+        `--caption-shadow-y: ${settings.y}px;`,
+        `--caption-shadow-radius: ${settings.radius}px;`,
+        `--caption-shadow-alpha: ${alpha};`,
+        `--caption-shadow-blur: ${settings.blur}px;`,
+      ].join('\n');
+      try {
+        await navigator.clipboard.writeText(css);
+        status.textContent = 'CSS vars copied.';
+      } catch {
+        status.textContent = 'Could not copy — select values manually.';
+      }
+    });
+
+    const syncPanelVisibility = (active: boolean) => {
+      if (!panel) return;
+      panel.hidden = !active;
+    };
+
+    syncPanelVisibility(document.documentElement.classList.contains('is-dev-mode'));
+    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      syncPanelVisibility(Boolean(event.detail?.active));
+      if (event.detail?.active) layoutAllShadows(settings);
+    }) as EventListener);
+
+    let resizeFrame = 0;
+    window.addEventListener('resize', () => {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => layoutAllShadows(settings));
+    });
+
+    let layoutFromObserver = false;
+    const observer = new MutationObserver((records) => {
+      const relevant = records.some((record) => {
+        const nodes = [...record.addedNodes, ...record.removedNodes, record.target];
+        return nodes.some((node) => {
+          if (!(node instanceof HTMLElement) && !(node instanceof Text)) return false;
+          const el = node instanceof Text ? node.parentElement : node;
+          if (!el) return false;
+          if (el.closest('.project-caption-shadow')) return false;
+          return Boolean(
+            el.closest('.project-caption') ||
+              el.classList?.contains('project-caption') ||
+              el.querySelector?.('.project-caption'),
+          );
+        });
+      });
+      if (!relevant || layoutFromObserver) return;
+      layoutFromObserver = true;
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => {
+        layoutFromObserver = false;
+        layoutAllShadows(settings);
+      });
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    commit(settings);
+  };
+
+  const bootSettings = readStored() ?? { ...DEFAULTS };
+  applyCssVars(bootSettings);
+  const bootLayout = () => layoutAllShadows(bootSettings);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootLayout, { once: true });
+  } else {
+    bootLayout();
+  }
+  window.addEventListener('load', bootLayout);
+
+  document
+    .querySelectorAll<HTMLElement>('[data-caption-shadow-tuner]')
+    .forEach(initCaptionShadowTuner);
+</script>
+
+<style>
+  .caption-shadow-tuner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+  }
+
+  .caption-shadow-tuner__xy {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45em;
+  }
+
+  .caption-shadow-tuner__control {
+    display: grid;
+    grid-template-columns: 7.5em 1fr 3.2em;
+    align-items: center;
+    gap: 0.55em;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+  }
+
+  .caption-shadow-tuner__control input[type='range'] {
+    width: 100%;
+    accent-color: var(--color-text);
+  }
+
+  .caption-shadow-tuner__control output {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--color-text);
+    font-size: 0.72rem;
+  }
+
+  .caption-shadow-tuner__link {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.8em;
+    height: 1.8em;
+    margin-left: 7.5em;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: var(--color-surface-soft);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .caption-shadow-tuner__link:hover,
+  .caption-shadow-tuner__link.is-linked {
+    background: var(--color-surface-strong);
+    color: var(--color-text);
+  }
+
+  .caption-shadow-tuner__link-icon {
+    position: relative;
+    width: 0.85em;
+    height: 0.7em;
+    display: block;
+  }
+
+  .caption-shadow-tuner__link-icon::before,
+  .caption-shadow-tuner__link-icon::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    width: 0.45em;
+    height: 0.45em;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    transform: translateX(-50%);
+  }
+
+  .caption-shadow-tuner__link-icon::before {
+    top: 0;
+  }
+
+  .caption-shadow-tuner__link-icon::after {
+    bottom: 0;
+  }
+
+  .caption-shadow-tuner__link.is-linked .caption-shadow-tuner__link-icon::before,
+  .caption-shadow-tuner__link.is-linked .caption-shadow-tuner__link-icon::after {
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
+
+  .caption-shadow-tuner__hint {
+    margin: 0;
+    font-size: 0.68rem;
+    line-height: 1.35;
+    color: var(--color-text-muted);
+  }
+
+  .caption-shadow-tuner__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4em;
+  }
+
+  .caption-shadow-tuner__actions button {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-soft);
+    padding: 0.5em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
+  .caption-shadow-tuner__actions button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .caption-shadow-tuner__status {
+    margin: 0;
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+  }
+
+  :global(.dev-overlay[data-dev-panel-key='caption-shadow']) {
+    width: min(26em, calc(100vw - 2em));
+  }
+</style>

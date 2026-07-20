@@ -348,35 +348,65 @@
 }
 
 /* ── Image captions ─────────────────────────────────────────── */
+:root {
+  --caption-shadow-x: -7px;
+  --caption-shadow-y: -7px;
+  --caption-shadow-radius: 25px;
+  --caption-shadow-alpha: 0.65;
+  --caption-shadow-blur: 50px;
+}
+
 .project-caption {
   position: absolute;
   left: 0;
   bottom: 0;
   z-index: 1;
-  margin: 0 0 1em 1em;
+  margin: 0 0 0.5em 0.5em;
   max-width: 75%;
   font-size: 1.2em;
   font-weight: 600;
   letter-spacing: -0.05ch;
   line-height: 1.1;
   color: #fff;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.55),
-    0 2px 16px rgba(0, 0, 0, 0.7),
-    0 0 28px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 20px rgba(0, 0, 0, 0.31);
+  pointer-events: none;
+  /* Keep the soft fill behind the glyphs, not behind the image. */
+  isolation: isolate;
+}
+
+/*
+  Soft darkening under white captions. The shadow host is sized to the
+  image (via JS) so blur can bloom across the frame; overflow clips it
+  to the image bounds. Fill centre is pinned to the image bottom-left;
+  its top-right tracks the caption top-right + X/Y offsets.
+*/
+.project-caption-shadow {
+  position: absolute;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.project-caption-shadow__fill {
+  position: absolute;
+  /* Width/height set in JS from caption top-right datum + centre pin. */
+  border-radius: 0 var(--caption-shadow-radius) 0 0;
+  background: rgb(0 0 0 / var(--caption-shadow-alpha));
+  filter: blur(var(--caption-shadow-blur));
   pointer-events: none;
 }
 
 .project-caption--dark {
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.65),
-    0 2px 18px rgba(0, 0, 0, 0.8),
-    0 0 28px rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 20px rgba(0, 0, 0, 0.5);
 }
 
 .project-caption--black {
   color: var(--color-text);
   text-shadow: none;
+}
+
+.project-caption--black .project-caption-shadow {
+  display: none;
 }
 
 /*
@@ -878,7 +908,7 @@
   left: 0;
   right: auto;
   bottom: auto;
-  margin: 1em;
+  margin: 0.5em;
   max-width: 75%;
   text-align: center;
 }
