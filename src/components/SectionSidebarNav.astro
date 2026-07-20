@@ -709,9 +709,9 @@ const easingOptions = [
 
         content.style.transition = 'none';
         content.style.overflow = 'hidden';
-        content.style.gridTemplateRows = '1fr';
-
-        // Continue from the live height when reversing mid-animation.
+        // Read height before flipping 0fr→1fr — setting 1fr first expands the
+        // closed group to its open size in-flow, so expand started at endHeight
+        // and only opacity animated (sibling titles jumped).
         const liveHeight = content.getBoundingClientRect().height;
         let startHeight = 0;
         let endHeight = 0;
@@ -719,9 +719,10 @@ const easingOptions = [
         if (shouldOpen) {
           content.classList.remove('is-collapsing');
           content.classList.add('is-expanding');
-          group.open = true;
-          // Keep the in-flow height clamped while measuring off-flow.
+          // Clamp in-flow height, then unlock the grid / [open] for measuring.
           content.style.height = `${liveHeight}px`;
+          content.style.gridTemplateRows = '1fr';
+          group.open = true;
           if (!content.style.opacity) content.style.opacity = '0';
           endHeight = measureOpenHeight(content);
           startHeight = liveHeight;
@@ -729,6 +730,7 @@ const easingOptions = [
         } else {
           content.classList.remove('is-expanding');
           content.classList.add('is-collapsing');
+          content.style.gridTemplateRows = '1fr';
           group.open = true;
           startHeight = liveHeight > 0 ? liveHeight : measureOpenHeight(content);
           endHeight = 0;
@@ -1012,11 +1014,12 @@ const easingOptions = [
     display: flex;
     align-items: center;
     gap: 0.55em;
-    min-height: 2em;
-    padding: 0.2em 0.45em;
+    /* Match .section-sidebar-nav__link box so accordion rows share one pitch. */
+    padding: 0.32em 0.55em;
     border-radius: 0.45em;
     color: var(--color-text);
     font-weight: 650;
+    line-height: 1.25;
     cursor: pointer;
     user-select: none;
     transition: background-color 0.18s ease;
@@ -1099,9 +1102,10 @@ const easingOptions = [
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    gap: 0.1em;
+    gap: 0.2em;
     margin: 0;
-    padding: 0.15em 0 0.35em 1em;
+    /* Top pad = list/children gap; left = indent. No bottom pad (list gap handles it). */
+    padding: 0.2em 0 0 1em;
   }
 
   .section-sidebar-nav__children .section-sidebar-nav__link {
