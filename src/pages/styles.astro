@@ -6,22 +6,53 @@ import SectionSidebarNav from '../components/SectionSidebarNav.astro';
 import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
 import ProjectCaptionShadow from '../components/project/ProjectCaptionShadow.astro';
 import ProjectImage from '../components/project/ProjectImage.astro';
-import ProjectTagline from '../components/project/ProjectTagline.astro';
-import ProjectProse from '../components/project/ProjectProse.astro';
+import ProjectImageGrid from '../components/project/ProjectImageGrid.astro';
+import ProjectBodyText from '../components/project/ProjectBodyText.astro';
 import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
-import ProjectGrid from '../components/project/ProjectGrid.astro';
-import ProjectCaptionImage from '../components/project/ProjectCaptionImage.astro';
-import ProjectDetailImage from '../components/project/ProjectDetailImage.astro';
-import ProjectContextImage from '../components/project/ProjectContextImage.astro';
-import ProjectReferenceImage from '../components/project/ProjectReferenceImage.astro';
+import ProjectPressQuoteTicker from '../components/project/ProjectPressQuoteTicker.astro';
+import ProjectRedditCommentCarousel from '../components/project/ProjectRedditCommentCarousel.astro';
 import globalCssSource from '../styles/global.css?raw';
 import '../styles/project.css';
 
 /** Shared preview assets (Tapico) */
 const previewHero = 'Tapico White Hero Center Crop.jpg';
-const previewWide = 'IMG_5776.jpg';
 const previewDetail = 'IMG_5609.jpg';
-const previewSquare = 'Remarkable Tablet.jpg';
+
+const previewPressQuotes = [
+  {
+    name: 'Yanko Design',
+    quote: '"It’s a single-function device that does only one thing but does it to perfection."',
+    logoSrc: '/images/press-logos/yanko-design.png',
+    logoAlt: 'Yanko Design',
+    href: 'https://www.yankodesign.com/',
+  },
+  {
+    name: 'Hackster.io',
+    quote: '"Tapico Typer is a minimalist writer\'s dream machine"',
+    logoSrc: '/images/press-logos/hackster-dark.png',
+    logoAlt: 'Hackster.io',
+    href: 'https://www.hackster.io/',
+  },
+];
+
+const previewRedditComments = [
+  {
+    author: 'bookworm1103',
+    score: 13,
+    avatarSrc: '/images/reddit/avatar_default_4.png',
+    paragraphs: ['This is exactly the kind of focused writing device I’ve been looking for.'],
+    href: 'https://www.reddit.com/',
+    theme: 'light' as const,
+  },
+  {
+    author: 'minimalist_writer',
+    score: 8,
+    avatarSrc: '/images/reddit/avatar_default_1.png',
+    paragraphs: ['Love the tactile keys and the e-ink screen. No distractions.'],
+    href: 'https://www.reddit.com/',
+    theme: 'dark' as const,
+  },
+];
 
 type ComponentCategory = 'site' | 'project-shell' | 'project-content' | 'project-media';
 
@@ -29,17 +60,14 @@ type PreviewKey =
   | 'header'
   | 'footer'
   | 'sidebar-nav'
+  | 'portfolio-grid'
   | 'project-layout'
   | 'image-lead'
-  | 'tagline'
-  | 'prose'
+  | 'body-text'
   | 'section-title'
-  | 'image'
-  | 'grid'
-  | 'caption-image'
-  | 'detail-image'
-  | 'context-image'
-  | 'reference-image';
+  | 'image-grid'
+  | 'press-quote-ticker'
+  | 'reddit-comment-carousel';
 
 type ComponentEntry = {
   id: string;
@@ -94,9 +122,21 @@ const componentCatalog: ComponentEntry[] = [
     classRef: '.section-sidebar-nav',
     source: 'src/components/SectionSidebarNav.astro',
     props: 'sectionLinks, ariaLabel?, enableEasingDevPanel?',
-    usedOn: ['/styles', '/about'],
+    usedOn: ['/styles', '/about', '/tapico'],
     checklist: 'Click scroll offset, active section highlight, mobile hide.',
     preview: 'sidebar-nav',
+  },
+  {
+    id: 'component-portfolio-grid',
+    name: 'PortfolioGrid',
+    category: 'site',
+    purpose: 'Project/play listing grid on index, Work, and Play — cover cards with hover title reveal.',
+    classRef: '.project-grid / .project-card (home, work) · .play-grid / .play-card (play)',
+    source: 'src/pages/index.astro, src/pages/work.astro, src/pages/play.astro',
+    props: 'Content from src/content/home|work|play/*.json (title, year/meta, image, bg, dark, full?, href?)',
+    usedOn: ['Home', 'Work', 'Play'],
+    checklist: '2-col desktop; featured full-width row on home; titles always visible ≤768px; hover zoom on desktop. Not the same as legacy case-study media grids.',
+    preview: 'portfolio-grid',
   },
   {
     id: 'component-project-layout',
@@ -105,46 +145,46 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'Case-study page shell: Layout + Header + main slot + Footer + project.css.',
     classRef: '.project-page / .project-page__main',
     source: 'src/components/ProjectLayout.astro',
-    props: 'title, description',
-    usedOn: ['Tapico', 'The Rams', 'Conic Collection', 'ParentPal'],
-    checklist: 'Title prop matches header wordmark; description feeds meta.',
+    props: 'title, description, outline?, sectionLinks?, sectionNavDocument?',
+    usedOn: ['Tapico'],
+    checklist: 'Title prop matches header wordmark; description feeds meta. Other case studies are legacy Webflow migrations — rebuild with signed-off components only.',
     preview: 'project-layout',
   },
   {
     id: 'component-project-image',
     name: 'ProjectImage',
     category: 'project-media',
-    purpose: 'Single project image — lead/crop (variant) or simple media between prose.',
+    purpose: 'Single project image — lead/crop (variant) or inline media between prose, with optional overlay captions.',
     classRef: '.project-image / .project-media',
     source: 'src/components/project/ProjectImage.astro',
-    props: 'src, alt?, kind? (lead | inline), layout? (default | conic), variants?, constrained?, mobileHeight?, flush?',
-    usedOn: ['All project pages'],
-    checklist: 'Lead crop focal point; constrained 80% desktop; mobileHeight at 767px.',
+    props: 'src, alt?, kind? (lead | inline), variants?, caption?, captions?, captionReveal?, captionStyle?, captionPosition?, constrained?, spacing?',
+    usedOn: ['Tapico'],
+    checklist: 'Lead crop focal point; caption reveal defaults (hover desktop, always touch); Dev Mode crop + caption tuners.',
     preview: 'image-lead',
   },
   {
-    id: 'component-project-tagline',
-    name: 'ProjectTagline',
-    category: 'project-content',
-    purpose: 'Large display headline under the lead image.',
-    classRef: '.project-tagline',
-    source: 'src/components/project/ProjectTagline.astro',
-    props: 'text',
-    usedOn: ['Tapico', 'The Rams', 'ParentPal'],
-    checklist: '80% width desktop; scales to 2em at tablet.',
-    preview: 'tagline',
+    id: 'component-project-image-grid',
+    name: 'ProjectImageGrid',
+    category: 'project-media',
+    purpose: 'Responsive multi-image grid with per-cell crop and captions.',
+    classRef: '.project-image-grid / .project-image-grid__item',
+    source: 'src/components/project/ProjectImageGrid.astro',
+    props: 'items[], columns?, defaultAspectRatio?, constrained?, layouts?, document?, basePath?, spacing?',
+    usedOn: ['Tapico'],
+    checklist: 'Column count per breakpoint; caption overlay matches ProjectImage; grid tuner in Dev Mode.',
+    preview: 'image-grid',
   },
   {
-    id: 'component-project-prose',
-    name: 'ProjectProse',
+    id: 'component-project-body-text',
+    name: 'ProjectBodyText',
     category: 'project-content',
-    purpose: 'Main narrative body for case-study explanations.',
-    classRef: '.project-prose / .project-block',
-    source: 'src/components/project/ProjectProse.astro',
-    props: 'spacing? (related | group | section | major | none), tightBottom? + default slot',
-    usedOn: ['All project pages'],
-    checklist: 'Stay around 80% width desktop, 100% tablet and below. Stack gap from spacing prop.',
-    preview: 'prose',
+    purpose: 'Narrative body copy between media blocks.',
+    classRef: '.project-body-text / .project-block',
+    source: 'src/components/project/ProjectBodyText.astro',
+    props: 'paragraphs[], documentKey?, pathPrefix?, spacing?, sectionId?',
+    usedOn: ['Tapico'],
+    checklist: 'Comfortable line length; stack gap from spacing prop; inline HTML allowed in paragraphs.',
+    preview: 'body-text',
   },
   {
     id: 'component-project-section-title',
@@ -153,91 +193,62 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'In-page section break heading (Research, Process, etc.).',
     classRef: '.project-section-title',
     source: 'src/components/project/ProjectSectionTitle.astro',
-    props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3)',
-    usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
-    checklist: 'Default precede-related so body after a heading sits at 1em; level 3 for nested sections.',
+    props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3), showTitle?, hideWhenSidebarVisible?',
+    usedOn: ['Tapico'],
+    checklist: 'Default precede-related so body after a heading sits at 1em; per-breakpoint show/hide when sidebar is active.',
     preview: 'section-title',
   },
   {
-    id: 'component-project-grid',
-    name: 'ProjectGrid',
-    category: 'project-media',
-    purpose: 'Two-, three-, or five-column media clusters.',
-    classRef: '.project-grid--2/3/5',
-    source: 'src/components/project/ProjectGrid.astro',
-    props: 'cols (2 | 3 | 5) + default slot',
-    usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
-    checklist: 'Validate collapse path at 991px and 767px breakpoints.',
-    preview: 'grid',
-  },
-  {
-    id: 'component-project-caption-image',
-    name: 'ProjectCaptionImage',
-    category: 'project-media',
-    purpose: 'Grid cell with overlay caption (competitor refs, labeled shots).',
-    classRef: '.project-cell / .project-caption',
-    source: 'src/components/project/ProjectCaptionImage.astro',
-    props: 'src, alt?, caption, variant?, square?',
+    id: 'component-project-press-quote-ticker',
+    name: 'ProjectPressQuoteTicker',
+    category: 'project-content',
+    purpose: 'Horizontally scrolling press quotes with outlet logos.',
+    classRef: '.press-quote-ticker',
+    source: 'src/components/project/ProjectPressQuoteTicker.astro',
+    props: 'items[] (quote, logoSrc, logoAlt, href, name?), documentKey?, sectionPath?, spacing?, speed?, logoOpacity?',
     usedOn: ['Tapico'],
-    checklist: 'Caption short; hidden on mobile per project.css.',
-    preview: 'caption-image',
+    checklist: 'Seamless loop; logo opacity; pause on hover/focus; links open in new tab.',
+    preview: 'press-quote-ticker',
   },
   {
-    id: 'component-project-detail-image',
-    name: 'ProjectDetailImage',
-    category: 'project-media',
-    purpose: 'Grid detail shot with optional caption variants.',
-    classRef: '.project-detail / .project-detail__img',
-    source: 'src/components/project/ProjectDetailImage.astro',
-    props: 'src, alt?, caption?, captionVariant? (light | dark | black)',
-    usedOn: ['Tapico', 'The Rams', 'Conic Collection'],
-    checklist: 'Min-height 16em; caption variant matches image tone.',
-    preview: 'detail-image',
-  },
-  {
-    id: 'component-project-context-image',
-    name: 'ProjectContextImage',
-    category: 'project-media',
-    purpose: 'Moodboard/context cell with caption above image.',
-    classRef: '.project-context-cell / .project-context-caption',
-    source: 'src/components/project/ProjectContextImage.astro',
-    props: 'src, alt?, caption',
-    usedOn: ['The Rams'],
-    checklist: 'Caption above image; used inside context grids.',
-    preview: 'context-image',
-  },
-  {
-    id: 'component-project-reference-image',
-    name: 'ProjectReferenceImage',
-    category: 'project-media',
-    purpose: 'Linked reference tile with overlay caption.',
-    classRef: '.project-reference-cell / .project-reference-cell__link',
-    source: 'src/components/project/ProjectReferenceImage.astro',
-    props: 'src, alt?, caption, href',
-    usedOn: ['Conic Collection'],
-    checklist: 'External link opens new tab; caption readable on image.',
-    preview: 'reference-image',
+    id: 'component-project-reddit-comment-carousel',
+    name: 'ProjectRedditCommentCarousel',
+    category: 'project-content',
+    purpose: 'Masonry board of Reddit-style comment cards with vertical paging.',
+    classRef: '.reddit-comment-carousel',
+    source: 'src/components/project/ProjectRedditCommentCarousel.astro',
+    props: 'items[] (author, paragraphs[], score, avatarSrc?, href?, theme?), documentKey?, sectionPath?, spacing?',
+    usedOn: ['Tapico'],
+    checklist: 'Three-column stagger; wheel scroll passes through to page; infinite loop per column.',
+    preview: 'reddit-comment-carousel',
   },
 ];
 
-const pendingPatterns = [
+/** Legacy Webflow-migration markup on other case studies — not signed off. Do not copy into new work. */
+const legacyPatterns = [
   {
-    name: 'Captioned constrained image',
-    classRef: '.project-media--constrained + .project-caption--black/dark',
-    usedOn: ['Tapico'],
-    note: 'Full-width image with caption above (V2 exploded view, keyboard). Candidate: extend ProjectImage with caption prop.',
+    name: 'Case-study media grid',
+    classRef: '.project-grid--2 / .project-grid--3 / .project-grid--5',
+    usedOn: ['The Rams', 'Conic Collection'],
+    note: 'Legacy case-study image clusters via legacy/LegacyProjectGrid.astro — not the home/work/play portfolio grid.',
   },
   {
     name: 'Stacked grid cell',
     classRef: '.project-cell--stack',
-    usedOn: ['Tapico'],
-    note: 'Tall two-image stack inside a 5-column grid. Candidate: ProjectDetailImage stack variant or ProjectStackedCell.',
+    usedOn: ['The Rams', 'Conic Collection'],
+    note: 'Tall two-image stack inside a 5-column grid. Legacy only — not used on Tapico.',
   },
   {
     name: 'Responsive hide / show pair',
     classRef: '.project-hide-mobile + .project-show-mobile-only',
-    usedOn: ['Tapico', 'Conic Collection'],
-    note: 'Desktop grid cell hidden on mobile, alternate full image shown instead.',
+    usedOn: ['Conic Collection'],
+    note: 'Desktop grid cell hidden on mobile, alternate full image shown instead. Legacy only.',
+  },
+  {
+    name: 'Captioned image (legacy)',
+    classRef: '.project-captioned-image',
+    usedOn: ['Conic Collection'],
+    note: 'Superseded by ProjectImage with caption props. See legacy/LegacyProjectCaptionedImage.astro.',
   },
 ];
 
@@ -364,7 +375,7 @@ const sectionLinks = [
   {
     label: 'Patterns',
     children: [
-      { id: 'styles-pending', label: 'Pending patterns' },
+      { id: 'styles-pending', label: 'Legacy patterns' },
       { id: 'styles-interaction', label: 'Interaction sample' },
     ],
   },
@@ -384,9 +395,11 @@ const sectionLinks = [
       <main class="styles-main">
         <section id="styles-intro" class="styles-intro section-block">
           <p class="intro-copy">
-            This page is the single source of truth for site components, tokens, and project-page patterns.
-            Edit a component in <code>src/components/</code> — every project page imports from here. Use the live
-            previews below to QA before shipping updates to Work, Play, and case studies.
+            This page is the single source of truth for site components, tokens, and signed-off patterns.
+            <strong>Tapico</strong> (<a href="/tapico" class="project-inline-link">/tapico</a>) is the reference
+            case study; <strong>Home</strong>, <strong>Work</strong>, and <strong>Play</strong> define the vetted
+            portfolio grid. Other project routes are legacy Webflow migrations — do not copy their markup when
+            building or porting content.
           </p>
         </section>
 
@@ -495,8 +508,9 @@ const sectionLinks = [
         <section id="styles-components" class="section-block">
           <h2>Component library</h2>
           <p class="section-note">
-            {componentCatalog.length} components across site chrome and project pages. Each card shows a live
-            preview, source file, props, and where it is used today.
+            {componentCatalog.length} signed-off components and patterns across site chrome, portfolio listings,
+            and project pages (vetted on Home/Work/Play + Tapico). Each is built for reuse on future case studies.
+            Cards show a live preview, source file, props, and where it is used today.
           </p>
 
           {catalogByCategory.map(({ category, label, items }) => (
@@ -543,6 +557,32 @@ const sectionLinks = [
                       {component.preview === 'sidebar-nav' && (
                         <p class="preview-note">Fixed nav on the left of this page (desktop).</p>
                       )}
+                      {component.preview === 'portfolio-grid' && (
+                        <ul class="portfolio-grid-preview">
+                          <li class="portfolio-grid-preview__item">
+                            <div class="portfolio-grid-preview__card">
+                              <div class="portfolio-grid-preview__cover" style="background:#e8e4dc">
+                                <img src="/images/Tapico White Hero Center Crop.jpg" alt="Tapico Typer preview" loading="lazy" />
+                                <div class="portfolio-grid-preview__meta">
+                                  <span class="portfolio-grid-preview__title">Tapico Typer</span>
+                                  <span class="portfolio-grid-preview__year">2024</span>
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                          <li class="portfolio-grid-preview__item">
+                            <div class="portfolio-grid-preview__card">
+                              <div class="portfolio-grid-preview__cover" style="background:#1a1a1a">
+                                <img src="/images/IMG_5609.jpg" alt="Project preview" loading="lazy" />
+                                <div class="portfolio-grid-preview__meta">
+                                  <span class="portfolio-grid-preview__title" style="color:#f7f7f7">Another project</span>
+                                  <span class="portfolio-grid-preview__year" style="color:rgba(247,247,247,0.5)">2023</span>
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        </ul>
+                      )}
                       {component.preview === 'project-layout' && (
                         <p class="preview-note">
                           Wraps project pages — see any case study (e.g.{' '}
@@ -552,92 +592,31 @@ const sectionLinks = [
                       {component.preview === 'image-lead' && (
                         <ProjectImage src={previewHero} alt="ProjectImage lead preview" kind="lead" />
                       )}
-                      {component.preview === 'tagline' && (
-                        <ProjectTagline text="A calculator, but for words." />
-                      )}
-                      {component.preview === 'prose' && (
-                        <ProjectProse>
-                          <p>
-                            Designed for narrative flow between media modules. Keep this block comfortable and
-                            readable, then let images carry detail.
-                          </p>
-                        </ProjectProse>
+                      {component.preview === 'body-text' && (
+                        <ProjectBodyText
+                          paragraphs={[
+                            'Designed for narrative flow between media modules. Keep this block comfortable and readable, then let images carry detail.',
+                          ]}
+                        />
                       )}
                       {component.preview === 'section-title' && (
                         <ProjectSectionTitle title="Research" />
                       )}
-                      {component.preview === 'image' && (
-                        <ProjectImage src={previewWide} alt="ProjectImage preview" constrained mobileHeight="35" />
+                      {component.preview === 'image-grid' && (
+                        <ProjectImageGrid
+                          columns={2}
+                          defaultAspectRatio="4:3"
+                          items={[
+                            { src: previewHero, alt: 'Three-quarter view' },
+                            { src: previewDetail, alt: 'Screen close-up' },
+                          ]}
+                        />
                       )}
-                      {component.preview === 'grid' && (
-                        <ProjectGrid cols={3}>
-                          <ProjectDetailImage src={previewDetail} alt="Grid cell 1" />
-                          <ProjectDetailImage src="IMG_5695.jpg" alt="Grid cell 2" />
-                          <ProjectDetailImage src="IMG_5818.jpg" alt="Grid cell 3" />
-                        </ProjectGrid>
+                      {component.preview === 'press-quote-ticker' && (
+                        <ProjectPressQuoteTicker items={previewPressQuotes} />
                       )}
-                      {component.preview === 'caption-image' && (
-                        <ProjectGrid cols={3}>
-                          <ProjectCaptionImage
-                            src={previewSquare}
-                            alt="Caption preview"
-                            caption="reMarkable 2"
-                            square
-                          />
-                          <ProjectCaptionImage
-                            src="TextingUpdated.jpg"
-                            alt="Caption preview"
-                            caption="Light Phone II"
-                            square
-                          />
-                          <ProjectCaptionImage
-                            src="pomera dm30.png"
-                            alt="Caption preview"
-                            caption="Pomera DM30"
-                            square
-                          />
-                        </ProjectGrid>
-                      )}
-                      {component.preview === 'detail-image' && (
-                        <ProjectGrid cols={2}>
-                          <ProjectDetailImage
-                            src="first click snap.jpg"
-                            alt="Detail with caption"
-                            caption="First snap"
-                            captionVariant="dark"
-                          />
-                          <ProjectDetailImage src="IMG_5842.jpg" alt="Detail without caption" />
-                        </ProjectGrid>
-                      )}
-                      {component.preview === 'context-image' && (
-                        <div class="project-context-grid project-context-grid--preview">
-                          <ProjectContextImage
-                            src="Dieter Rams Radio Inspiration.png"
-                            alt="Context preview"
-                            caption="Dieter Rams BT 3 radio"
-                          />
-                          <ProjectContextImage
-                            src="205_2_dieter_rams_the_jf_chen_co.png"
-                            alt="Context preview"
-                            caption="Dieter Rams 606 shelving"
-                          />
-                        </div>
-                      )}
-                      {component.preview === 'reference-image' && (
-                        <div class="project-reference-grid project-reference-grid--preview">
-                          <ProjectReferenceImage
-                            src="Porcelain Jugs reference.jpeg"
-                            alt="Reference preview"
-                            caption="Stacking jugs reference"
-                            href="https://example.com"
-                          />
-                          <ProjectReferenceImage
-                            src="Stacking Mugs reference.jpg"
-                            alt="Reference preview"
-                            caption="Stacking mugs reference"
-                            href="https://example.com"
-                          />
-                        </div>
+                      {component.preview === 'reddit-comment-carousel' && (
+                        <ProjectRedditCommentCarousel items={previewRedditComments} />
                       )}
                     </div>
                   </article>
@@ -648,13 +627,13 @@ const sectionLinks = [
         </section>
 
         <section id="styles-pending" class="section-block">
-          <h2>Pending patterns</h2>
+          <h2>Legacy patterns</h2>
           <p class="section-note">
-            Raw markup still used on some project pages — not yet extracted into components. Promote these when
-            a second page needs the same pattern.
+            Raw markup still present on older Webflow-migration case studies. These are <strong>not</strong> signed
+            off — do not copy into new pages or when porting content to Tapico-style layouts.
           </p>
           <div class="stack">
-            {pendingPatterns.map((pattern) => (
+            {legacyPatterns.map((pattern) => (
               <article class="rule-card">
                 <div class="token-row__top">
                   <span class="token-name">{pattern.name}</span>
@@ -994,6 +973,63 @@ const sectionLinks = [
     border-top: 1px solid var(--color-border);
     padding-top: 0.8em;
     overflow: hidden;
+  }
+
+  .portfolio-grid-preview {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1em;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .portfolio-grid-preview__cover {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    transform: translateZ(0);
+  }
+
+  .portfolio-grid-preview__cover img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scale(1.04);
+    transition: transform 0.5s ease;
+  }
+
+  .portfolio-grid-preview__card:hover .portfolio-grid-preview__cover img {
+    transform: scale(1.07);
+  }
+
+  .portfolio-grid-preview__meta {
+    position: absolute;
+    inset: auto 0 0 0;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5em;
+    padding: 1em;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  .portfolio-grid-preview__card:hover .portfolio-grid-preview__meta {
+    opacity: 1;
+  }
+
+  .portfolio-grid-preview__title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #6d6d6d;
+  }
+
+  .portfolio-grid-preview__year {
+    font-size: 1.1rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: rgba(109, 109, 109, 0.5);
   }
 
   .component-preview :global(.project-block) {

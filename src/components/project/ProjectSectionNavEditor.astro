@@ -632,6 +632,7 @@
           if (event.key === 'Enter') {
             event.preventDefault();
             labelEl.blur();
+            void persist();
           }
         };
       });
@@ -810,8 +811,16 @@
       setTitleChip('mobile', true);
     });
 
+    const onLabelInputKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter') return;
+      event.preventDefault();
+      onApply();
+    };
+
     cancelBtn.addEventListener('click', closePopover);
     applyBtn.addEventListener('click', onApply);
+    groupLabelInput.addEventListener('keydown', onLabelInputKeydown);
+    sectionLabelInput.addEventListener('keydown', onLabelInputKeydown);
     hintSaveBtn.addEventListener('click', () => {
       void persist();
     });

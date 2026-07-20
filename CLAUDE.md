@@ -30,6 +30,22 @@ Open tasks are tracked in [GitHub Issues](https://github.com/vcruzdesigns/VCDweb
 
 ## Implementation notes
 
+### Signed-off components
+Use **only** components and patterns listed on `/styles` (Component library). When copying content from old project pages or Webflow, do not reach for legacy case-study markup in `src/components/project/legacy/`.
+
+**Tapico** (`/tapico`) — case-study components (build each as a reusable primitive for future projects):
+- `ProjectLayout`, `ProjectImage`, `ProjectImageGrid`, `ProjectBodyText`, `ProjectSectionTitle`
+- `ProjectPressQuoteTicker`, `ProjectRedditCommentCarousel`
+
+**Home / Work / Play** — portfolio listing grid (page-local markup, not an Astro component yet):
+- `.project-grid` / `.project-card` on `/` and `/work` (`src/pages/index.astro`, `src/pages/work.astro`)
+- `.play-grid` / `.play-card` on `/play` (`src/pages/play.astro`)
+- Content from `src/content/home|work|play/*.json`
+
+**Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes (The Rams, Conic Collection, ParentPal, [retired-project]). Basic names like `ProjectGrid` are freed for future use. `LegacyProjectSections.astro` renders legacy JSON until those pages are rebuilt.
+
+Ask before introducing anything not on `/styles`.
+
 ### About page
 Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
 - **Wide (≥50em):** photo 3/4 (17em col) left, Contact+About+Experience stacked in right col

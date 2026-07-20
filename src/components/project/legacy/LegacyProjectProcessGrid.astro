@@ -1,12 +1,10 @@
 ---
-import ProjectReferenceImage from './ProjectReferenceImage.astro';
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import { projectImage } from '../../../lib/images';
+import { projectStackClass, type ProjectStackSpacing } from '../../../lib/projectStack';
 
 interface Item {
   src: string;
   alt?: string;
-  caption: string;
-  href: string;
 }
 
 interface Props {
@@ -19,9 +17,9 @@ const stackClass = projectStackClass(spacing);
 ---
 
 <div class:list={['project-block', stackClass]}>
-  <div class="project-reference-grid">
+  <div class="project-process-grid">
     {items.map((item) => (
-      <ProjectReferenceImage src={item.src} alt={item.alt} caption={item.caption} href={item.href} />
+      <img src={projectImage(item.src)} alt={item.alt ?? ''} loading="lazy" />
     ))}
   </div>
 </div>

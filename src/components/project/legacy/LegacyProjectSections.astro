@@ -1,29 +1,33 @@
 ---
-import ProjectImageGrid from './ProjectImageGrid.astro';
-import ProjectTagline from './ProjectTagline.astro';
-import ProjectBodyText from './ProjectBodyText.astro';
-import ProjectProse from './ProjectProse.astro';
-import ProjectSectionTitle from './ProjectSectionTitle.astro';
-import ProjectImage from './ProjectImage.astro';
-import ProjectGrid from './ProjectGrid.astro';
-import ProjectCaptionImage from './ProjectCaptionImage.astro';
-import ProjectDetailImage from './ProjectDetailImage.astro';
-import ProjectSystemGrid from './ProjectSystemGrid.astro';
-import ProjectResearchGrid from './ProjectResearchGrid.astro';
-import ProjectTripleGrid from './ProjectTripleGrid.astro';
-import ProjectDetailGrid from './ProjectDetailGrid.astro';
-import ProjectReferenceGrid from './ProjectReferenceGrid.astro';
-import ProjectProcessGrid from './ProjectProcessGrid.astro';
-import ProjectMoodboard from './ProjectMoodboard.astro';
-import ProjectCaptionedImage from './ProjectCaptionedImage.astro';
-import ProjectHoverSwap from './ProjectHoverSwap.astro';
-import ProjectContextGrid from './ProjectContextGrid.astro';
-import ProjectLayoutSplit from './ProjectLayoutSplit.astro';
-import ProjectSketchModels from './ProjectSketchModels.astro';
-import ProjectVideo from './ProjectVideo.astro';
-import ProjectFinalHero from './ProjectFinalHero.astro';
-import { projectImage } from '../../lib/images';
-import { projectStackClass, resolveProjectSpacing, spacingDevAttrs } from '../../lib/projectStack';
+/**
+ * Legacy Webflow-migration section renderer — used only by old case-study routes.
+ * Signed-off case studies (e.g. Tapico) render sections in their own page file.
+ */
+import ProjectImageGrid from '../ProjectImageGrid.astro';
+import ProjectBodyText from '../ProjectBodyText.astro';
+import ProjectSectionTitle from '../ProjectSectionTitle.astro';
+import ProjectImage from '../ProjectImage.astro';
+import LegacyProjectTagline from './LegacyProjectTagline.astro';
+import LegacyProjectProse from './LegacyProjectProse.astro';
+import LegacyProjectGrid from './LegacyProjectGrid.astro';
+import LegacyProjectCaptionImage from './LegacyProjectCaptionImage.astro';
+import LegacyProjectDetailImage from './LegacyProjectDetailImage.astro';
+import LegacyProjectSystemGrid from './LegacyProjectSystemGrid.astro';
+import LegacyProjectResearchGrid from './LegacyProjectResearchGrid.astro';
+import LegacyProjectTripleGrid from './LegacyProjectTripleGrid.astro';
+import LegacyProjectDetailGrid from './LegacyProjectDetailGrid.astro';
+import LegacyProjectReferenceGrid from './LegacyProjectReferenceGrid.astro';
+import LegacyProjectProcessGrid from './LegacyProjectProcessGrid.astro';
+import LegacyProjectMoodboard from './LegacyProjectMoodboard.astro';
+import LegacyProjectCaptionedImage from './LegacyProjectCaptionedImage.astro';
+import LegacyProjectHoverSwap from './LegacyProjectHoverSwap.astro';
+import LegacyProjectContextGrid from './LegacyProjectContextGrid.astro';
+import LegacyProjectLayoutSplit from './LegacyProjectLayoutSplit.astro';
+import LegacyProjectSketchModels from './LegacyProjectSketchModels.astro';
+import LegacyProjectVideo from './LegacyProjectVideo.astro';
+import LegacyProjectFinalHero from './LegacyProjectFinalHero.astro';
+import { projectImage } from '../../../lib/images';
+import { projectStackClass, resolveProjectSpacing, spacingDevAttrs } from '../../../lib/projectStack';
 
 interface Props {
   sections: any[];
@@ -67,7 +71,7 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'tagline' && (
-      <ProjectTagline
+      <LegacyProjectTagline
         text={section.text}
         prefix={section.prefix}
         linkLabel={section.linkLabel}
@@ -101,7 +105,7 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'prose' && (
-      <ProjectProse
+      <LegacyProjectProse
         spacing={spacing}
         tightBottom={section.tightBottom ?? false}
         document={documentKey}
@@ -111,7 +115,7 @@ const { sections, documentKey } = Astro.props;
         {section.paragraphs.map((paragraph) => (
           <p set:html={paragraph} />
         ))}
-      </ProjectProse>
+      </LegacyProjectProse>
     )}
 
     {section.type === 'image' && (
@@ -168,7 +172,7 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'mediaGrid' && (
-      <ProjectGrid
+      <LegacyProjectGrid
         cols={section.cols}
         spacing={spacing}
         document={documentKey}
@@ -177,7 +181,7 @@ const { sections, documentKey } = Astro.props;
         {section.items.map((item) => (
           <>
             {item.style === 'caption' && (
-              <ProjectCaptionImage
+              <LegacyProjectCaptionImage
                 src={item.src}
                 alt={item.alt}
                 caption={item.caption}
@@ -187,7 +191,7 @@ const { sections, documentKey } = Astro.props;
             )}
 
             {item.style === 'detail' && (
-              <ProjectDetailImage
+              <LegacyProjectDetailImage
                 src={item.src}
                 alt={item.alt}
                 caption={item.caption}
@@ -202,7 +206,7 @@ const { sections, documentKey } = Astro.props;
             )}
           </>
         ))}
-      </ProjectGrid>
+      </LegacyProjectGrid>
     )}
 
     {section.type === 'constrainedCaptionImage' && (
@@ -225,19 +229,19 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'systemGrid' && (
-      <ProjectSystemGrid items={section.items} spacing={spacing} />
+      <LegacyProjectSystemGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'researchGrid' && (
-      <ProjectResearchGrid columns={section.columns} spacing={spacing} />
+      <LegacyProjectResearchGrid columns={section.columns} spacing={spacing} />
     )}
 
     {section.type === 'tripleGrid' && (
-      <ProjectTripleGrid items={section.items} spacing={spacing} />
+      <LegacyProjectTripleGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'detailGrid' && (
-      <ProjectDetailGrid
+      <LegacyProjectDetailGrid
         items={section.items}
         wide={section.wide ?? false}
         square={section.square ?? false}
@@ -247,19 +251,19 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'referenceGrid' && (
-      <ProjectReferenceGrid items={section.items} spacing={spacing} />
+      <LegacyProjectReferenceGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'processGrid' && (
-      <ProjectProcessGrid items={section.items} spacing={spacing} />
+      <LegacyProjectProcessGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'moodboard' && (
-      <ProjectMoodboard items={section.items} spacing={spacing} />
+      <LegacyProjectMoodboard items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'captionedImage' && (
-      <ProjectCaptionedImage
+      <LegacyProjectCaptionedImage
         src={section.src}
         alt={section.alt}
         caption={section.caption}
@@ -270,7 +274,7 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'hoverSwap' && (
-      <ProjectHoverSwap
+      <LegacyProjectHoverSwap
         baseSrc={section.baseSrc}
         baseAlt={section.baseAlt}
         topSrc={section.topSrc}
@@ -280,23 +284,23 @@ const { sections, documentKey } = Astro.props;
     )}
 
     {section.type === 'contextGrid' && (
-      <ProjectContextGrid items={section.items} spacing={spacing} />
+      <LegacyProjectContextGrid items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'layoutSplit' && (
-      <ProjectLayoutSplit leftSrc={section.leftSrc} leftAlt={section.leftAlt} items={section.items} spacing={spacing} />
+      <LegacyProjectLayoutSplit leftSrc={section.leftSrc} leftAlt={section.leftAlt} items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'sketchModels' && (
-      <ProjectSketchModels setupSrc={section.setupSrc} setupAlt={section.setupAlt} items={section.items} spacing={spacing} />
+      <LegacyProjectSketchModels setupSrc={section.setupSrc} setupAlt={section.setupAlt} items={section.items} spacing={spacing} />
     )}
 
     {section.type === 'video' && (
-      <ProjectVideo src={section.src} title={section.title} spacing={spacing} />
+      <LegacyProjectVideo src={section.src} title={section.title} spacing={spacing} />
     )}
 
     {section.type === 'finalHero' && (
-      <ProjectFinalHero src={section.src} alt={section.alt} spacing={spacing} />
+      <LegacyProjectFinalHero src={section.src} alt={section.alt} spacing={spacing} />
     )}
   </>
   );
