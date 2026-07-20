@@ -326,11 +326,15 @@
       );
     };
 
+    const clearGapProximity = (control: HTMLElement) => {
+      control.classList.remove('is-near-add', 'is-near-spacing');
+    };
+
     const syncSpacingCaretSuppression = () => {
       const suppressed = isDevTextCaretActive();
       document.documentElement.classList.toggle('is-dev-text-caret', suppressed);
       if (suppressed) {
-        spacingStates.forEach(({ control }) => control.classList.remove('is-near'));
+        spacingStates.forEach(({ control }) => clearGapProximity(control));
       }
     };
 
@@ -339,11 +343,11 @@
       spacingStates.forEach(({ control, element }) => {
         const suppressed = followsHiddenSidebarTitle(element);
         control.hidden = !devEnabled || suppressed;
-        if (suppressed) control.classList.remove('is-near');
+        if (suppressed) clearGapProximity(control);
       });
     };
 
-    const nearToolbarTarget = (
+    const distanceToToolbarTarget = (
       target: HTMLElement,
       clientX: number,
       clientY: number,
@@ -351,10 +355,19 @@
       const rect = target.getBoundingClientRect();
       const dx = clientX - (rect.left + rect.width / 2);
       const dy = clientY - (rect.top + rect.height / 2);
-      return Math.hypot(dx, dy) <= SPACING_ACTIVATION_RADIUS_PX;
+      return Math.hypot(dx, dy);
     };
 
     const isSectionMenuOpen = (state: EditableSpacingState) => !state.menu.hidden;
+
+    const isAddControlPinned = (state: EditableSpacingState) =>
+      isSectionMenuOpen(state) ||
+      state.addButton === document.activeElement ||
+      state.menu.contains(document.activeElement);
+
+    const isSpacingControlPinned = (state: EditableSpacingState) =>
+      state.element.classList.contains('is-dev-spacing-dirty') ||
+      state.spacingGroup.contains(document.activeElement);
 
     const closeSectionMenus = (except?: EditableSpacingState) => {
       spacingStates.forEach((state) => {
@@ -365,33 +378,57 @@
       });
     };
 
+    /**
+     * Centre + and right-edge spacing reveal independently. Within each
+     * control type, only the nearest in-range target wins — thin sections
+     * otherwise stack two toolbars and the lower one steals clicks.
+     */
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (!document.documentElement.classList.contains('is-dev-mode') || isDevTextCaretActive()) {
         spacingStates.forEach(({ control }) => {
-          if (!control.classList.contains('is-menu-open')) control.classList.remove('is-near');
+          if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
         });
         return;
       }
 
+      let nearestAdd: EditableSpacingState | null = null;
+      let nearestAddDistance = Infinity;
+      let nearestSpacing: EditableSpacingState | null = null;
+      let nearestSpacingDistance = Infinity;
+
       spacingStates.forEach((state) => {
-        const { control, element, addButton, spacingGroup } = state;
-        if (control.hidden) {
-          control.classList.remove('is-near');
-          return;
-        }
-        if (
-          element.classList.contains('is-dev-spacing-dirty') ||
-          control.contains(document.activeElement) ||
-          isSectionMenuOpen(state)
-        ) {
-          control.classList.add('is-near');
-          return;
+        if (state.control.hidden) return;
+
+        if (!isAddControlPinned(state)) {
+          const distance = distanceToToolbarTarget(state.addButton, clientX, clientY);
+          if (distance <= SPACING_ACTIVATION_RADIUS_PX && distance < nearestAddDistance) {
+            nearestAdd = state;
+            nearestAddDistance = distance;
+          }
         }
 
+        if (!isSpacingControlPinned(state)) {
+          const distance = distanceToToolbarTarget(state.spacingGroup, clientX, clientY);
+          if (distance <= SPACING_ACTIVATION_RADIUS_PX && distance < nearestSpacingDistance) {
+            nearestSpacing = state;
+            nearestSpacingDistance = distance;
+          }
+        }
+      });
+
+      spacingStates.forEach((state) => {
+        const { control } = state;
+        if (control.hidden) {
+          clearGapProximity(control);
+          return;
+        }
         control.classList.toggle(
-          'is-near',
-          nearToolbarTarget(addButton, clientX, clientY) ||
-            nearToolbarTarget(spacingGroup, clientX, clientY),
+          'is-near-add',
+          isAddControlPinned(state) || state === nearestAdd,
+        );
+        control.classList.toggle(
+          'is-near-spacing',
+          isSpacingControlPinned(state) || state === nearestSpacing,
         );
       });
     };
@@ -406,9 +443,15 @@
       );
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control, element }) => {
-          if (element.classList.contains('is-dev-spacing-dirty')) return;
-          if (control.classList.contains('is-menu-open')) return;
-          control.classList.remove('is-near');
+          if (element.classList.contains('is-dev-spacing-dirty')) {
+            control.classList.remove('is-near-add');
+            return;
+          }
+          if (control.classList.contains('is-menu-open')) {
+            control.classList.remove('is-near-spacing');
+            return;
+          }
+          clearGapProximity(control);
         });
       });
       document.addEventListener('focusin', syncSpacingCaretSuppression);
@@ -528,7 +571,7 @@
         if (!opening) return;
         state.menu.hidden = false;
         state.addButton.setAttribute('aria-expanded', 'true');
-        state.control.classList.add('is-near', 'is-menu-open');
+        state.control.classList.add('is-near-add', 'is-menu-open');
       });
 
       state.menu.querySelectorAll<HTMLButtonElement>('[data-dev-section-type]').forEach((button) => {
@@ -956,7 +999,7 @@
       syncDeleteButtons(enabled);
       syncSpacingControlVisibility();
       if (!enabled) {
-        spacingStates.forEach(({ control }) => control.classList.remove('is-near'));
+        spacingStates.forEach(({ control }) => clearGapProximity(control));
         document.documentElement.classList.remove('is-dev-text-caret');
         hideFormatBar();
       }
@@ -1152,17 +1195,23 @@
     cursor: text;
     outline: 1px dashed transparent;
     outline-offset: 0.2em;
+    background: transparent;
     transition: outline-color 0.15s ease, background-color 0.15s ease;
   }
 
   .is-dev-mode [data-dev-text-document]:hover,
   .is-dev-mode [data-dev-text-document]:focus {
-    outline-color: color-mix(in srgb, var(--color-text-muted) 55%, transparent);
+    outline-color: color-mix(in srgb, currentColor 40%, transparent);
   }
 
+  /*
+    Adaptive edit wash: tint toward the field’s own text color so focus/dirty
+    stays readable on light page copy and dark embeds (e.g. Reddit comments).
+  */
   .is-dev-mode [data-dev-text-document]:focus,
   .is-dev-mode [data-dev-text-document].is-dev-text-dirty {
-    background: color-mix(in srgb, var(--color-surface-soft) 72%, transparent);
+    background: color-mix(in srgb, currentColor 10%, transparent);
+    outline-color: color-mix(in srgb, currentColor 45%, transparent);
   }
 
   /*
@@ -1363,9 +1412,7 @@
     align-items: center;
     justify-content: center;
     transform: translateY(-50%);
-    opacity: 0;
     pointer-events: none;
-    transition: opacity 0.15s ease;
   }
 
   [data-dev-spacing-document].project-stack--related > .dev-gap-toolbar {
@@ -1385,20 +1432,32 @@
     top: calc(var(--space-related) / -2);
   }
 
-  .is-dev-mode .dev-gap-toolbar.is-near,
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar,
-  .is-dev-mode .dev-gap-toolbar:focus-within,
-  .is-dev-mode .dev-gap-toolbar.is-menu-open {
+  /* + (centre) and spacing (right) reveal independently via proximity. */
+  .dev-gap-toolbar__add,
+  .dev-gap-toolbar__spacing {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .is-dev-mode .dev-gap-toolbar.is-near-add > .dev-gap-toolbar__add,
+  .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__add,
+  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__add:focus-visible, > .dev-gap-toolbar__menu:focus-within)
+    > .dev-gap-toolbar__add {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .is-dev-mode .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__spacing,
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__spacing,
+  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__spacing:focus-within) > .dev-gap-toolbar__spacing {
     opacity: 1;
     pointer-events: auto;
   }
 
   /* Keep gap controls out of the way while editing text. */
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar,
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar.is-near,
-  .is-dev-mode.is-dev-text-caret [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar,
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar:focus-within,
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar.is-menu-open {
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__add,
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__spacing {
     opacity: 0;
     pointer-events: none;
   }
