@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import SectionSidebarNav from '../components/SectionSidebarNav.astro';
 import StyleColorTokenEditor from '../components/StyleColorTokenEditor.astro';
+import ProjectSectionNavEditor from '../components/project/ProjectSectionNavEditor.astro';
 import ProjectCaptionShadow from '../components/project/ProjectCaptionShadow.astro';
 import ProjectImage from '../components/project/ProjectImage.astro';
 import ProjectImageGrid from '../components/project/ProjectImageGrid.astro';
@@ -12,6 +13,12 @@ import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro
 import ProjectPressQuoteTicker from '../components/project/ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from '../components/project/ProjectRedditCommentCarousel.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
+import stylesNav from '../content/pages/styles.json';
+import {
+  deriveNavFromOutline,
+  normalizeOutline,
+  outlineFromNav,
+} from '../lib/projectOutline';
 import globalCssSource from '../styles/global.css?raw';
 import '../styles/project.css';
 
@@ -359,7 +366,7 @@ const componentLinks = catalogByCategory.flatMap(({ items }) =>
   })),
 );
 
-const sectionLinks = [
+const catalogSectionLinks = [
   { id: 'styles-intro', label: 'Design system' },
   {
     label: 'Foundations',
@@ -381,19 +388,33 @@ const sectionLinks = [
     ],
   },
 ];
+
+const savedOutline = normalizeOutline(stylesNav.outline ?? []);
+const outline = savedOutline.length ? savedOutline : outlineFromNav(catalogSectionLinks);
+const sectionLinks = savedOutline.length
+  ? deriveNavFromOutline(outline)
+  : catalogSectionLinks;
 ---
 
 <Layout title="Design System — Vicente Cruz" serif>
-  <div class="styles-page">
+  <div
+    class="styles-page"
+    data-section-nav-root
+    data-section-nav-document="styles"
+    data-section-nav-outline-only="true"
+    data-section-nav={JSON.stringify(sectionLinks)}
+    data-section-outline={JSON.stringify(outline)}
+  >
     <Header title="Design System" />
 
     <div class="styles-layout">
       <SectionSidebarNav
         sectionLinks={sectionLinks}
         ariaLabel="Design System page sections"
+        desktopOnly
       />
 
-      <main class="styles-main">
+      <main class="styles-main" data-section-nav-main>
         <section id="styles-intro" class="styles-intro section-block">
           <p class="intro-copy">
             This page is the single source of truth for site components, tokens, and signed-off patterns.
@@ -658,6 +679,7 @@ const sectionLinks = [
     </div>
 
     {import.meta.env.DEV && <StyleColorTokenEditor />}
+    {import.meta.env.DEV && <ProjectSectionNavEditor />}
     <ProjectCaptionShadow />
     <Footer />
   </div>

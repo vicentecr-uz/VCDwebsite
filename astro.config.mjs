@@ -12,6 +12,7 @@ const EDITABLE_CONTENT_DOCUMENTS = new Map([
   ['the-rams', 'src/content/projects/the-rams.json'],
   ['parentpal', 'src/content/projects/parentpal.json'],
   ['conic-collection', 'src/content/projects/conic-collection.json'],
+  ['styles', 'src/content/pages/styles.json'],
 ]);
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
