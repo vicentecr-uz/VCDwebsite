@@ -13,16 +13,23 @@ import DevOverlay from './DevOverlay.astro';
 
     <label class="color-token-editor__field">
       <span>Hex</span>
-      <input
-        type="text"
-        class="color-token-editor__input"
-        inputmode="text"
-        maxlength="7"
-        autocomplete="off"
-        spellcheck="false"
-        data-coloris
-        data-token-hex
-      />
+      <div class="color-token-editor__hex-row">
+        <input
+          type="text"
+          class="color-token-editor__input"
+          inputmode="text"
+          maxlength="7"
+          autocomplete="off"
+          spellcheck="false"
+          data-token-hex
+        />
+        <button
+          type="button"
+          class="color-token-editor__swatch"
+          aria-label="Open colour picker"
+          data-token-swatch
+        ></button>
+      </div>
     </label>
 
     <div class="color-token-editor__actions">
@@ -33,12 +40,27 @@ import DevOverlay from './DevOverlay.astro';
     <p class="color-token-editor__status" data-token-status aria-live="polite">
       Changes preview live until saved.
     </p>
+
+    <color-picker
+      data-token-picker
+      label-title="Colour"
+      label-hue="Hue"
+      label-saturation="Saturation"
+      label-lightness="Lightness"
+      label-opacity="Opacity"
+      label-ok="Done"
+    ></color-picker>
   </div>
 </DevOverlay>
 
 <script>
-  import '@melloware/coloris/dist/coloris.css';
-  import { coloris, init as initColoris } from '@melloware/coloris';
+  import 'color-dialog-box';
+
+  type ColorPickerElement = HTMLElement & {
+    getAttribute(name: string): string | null;
+    setAttribute(name: string, value: string): void;
+    removeAttribute(name: string): void;
+  };
 
   const initColorTokenEditor = (editor: HTMLElement) => {
     if (editor.dataset.initialized === 'true') return;
@@ -46,10 +68,14 @@ import DevOverlay from './DevOverlay.astro';
 
     const name = editor.querySelector<HTMLElement>('[data-token-name]');
     const hexInput = editor.querySelector<HTMLInputElement>('[data-token-hex]');
+    const swatch = editor.querySelector<HTMLButtonElement>('[data-token-swatch]');
+    const picker = editor.querySelector<ColorPickerElement>('[data-token-picker]');
     const saveButton = editor.querySelector<HTMLButtonElement>('[data-token-save]');
     const revertButton = editor.querySelector<HTMLButtonElement>('[data-token-revert]');
     const status = editor.querySelector<HTMLElement>('[data-token-status]');
-    if (!name || !hexInput || !saveButton || !revertButton || !status) return;
+    if (!name || !hexInput || !swatch || !picker || !saveButton || !revertButton || !status) {
+      return;
+    }
 
     const root = document.documentElement;
     let activeTrigger: HTMLButtonElement | null = null;
@@ -63,21 +89,34 @@ import DevOverlay from './DevOverlay.astro';
       if (short) {
         return `#${[...short[1]].map((digit) => digit.repeat(2)).join('')}`.toLowerCase();
       }
-      return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : null;
+      const long = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value);
+      return long ? `#${long[1].toLowerCase()}` : null;
     };
+
+    const toPickerHex = (hex: string) => `${hex}ff`;
 
     const syncHexField = (value: string) => {
       syncingField = true;
       hexInput.value = value;
-      hexInput.dispatchEvent(new Event('input', { bubbles: true }));
+      swatch.style.background = value;
       syncingField = false;
     };
 
-    const preview = (value: string) => {
+    /** Live-preview a colour. Pass rewriteField=false while the user is typing hex. */
+    const preview = (value: string, rewriteField = true) => {
       if (!activeToken) return;
       root.style.setProperty(activeToken, value);
-      syncHexField(value);
+      swatch.style.background = value;
+      if (rewriteField) syncHexField(value);
       status.textContent = 'Previewing unsaved changes.';
+    };
+
+    const openPicker = (hex: string) => {
+      picker.setAttribute('hex', toPickerHex(hex));
+      if (picker.getAttribute('open') === 'true') {
+        picker.removeAttribute('open');
+      }
+      picker.setAttribute('open', 'true');
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
@@ -95,6 +134,7 @@ import DevOverlay from './DevOverlay.astro';
       savedValue = fallback;
       name.textContent = token;
       syncHexField(current);
+      picker.setAttribute('hex', toPickerHex(current));
       status.textContent = 'Changes preview live until saved.';
     }) as EventListener);
 
@@ -105,17 +145,37 @@ import DevOverlay from './DevOverlay.astro';
         status.textContent = 'Enter a 3- or 6-digit hex colour.';
         return;
       }
-      preview(value);
+      // Don't rewrite the input while typing — that resets the caret.
+      preview(value, false);
+      picker.setAttribute('hex', toPickerHex(value));
     });
 
     hexInput.addEventListener('blur', () => {
       const value = normalizeHex(hexInput.value);
-      if (value) hexInput.value = value;
+      if (!value) return;
+      syncHexField(value);
+      picker.setAttribute('hex', toPickerHex(value));
     });
+
+    swatch.addEventListener('click', () => {
+      const value = normalizeHex(hexInput.value) || savedValue;
+      if (!value) {
+        status.textContent = 'Enter a valid hex colour first.';
+        return;
+      }
+      openPicker(value);
+    });
+
+    picker.addEventListener('update-color', ((event: CustomEvent<{ hex?: string }>) => {
+      const value = normalizeHex(event.detail?.hex || '');
+      if (!value) return;
+      preview(value);
+    }) as EventListener);
 
     revertButton.addEventListener('click', () => {
       if (!activeToken || !savedValue) return;
       preview(savedValue);
+      picker.setAttribute('hex', toPickerHex(savedValue));
       status.textContent = 'Reverted to the last saved colour.';
     });
 
@@ -147,6 +207,7 @@ import DevOverlay from './DevOverlay.astro';
           ?.querySelector<HTMLElement>('[data-token-value]')
           ?.replaceChildren(payload.value);
         preview(payload.value);
+        picker.setAttribute('hex', toPickerHex(payload.value));
         status.textContent = 'Saved to global.css.';
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not save the colour.';
@@ -155,19 +216,6 @@ import DevOverlay from './DevOverlay.astro';
       }
     });
   };
-
-  initColoris();
-  coloris({
-    el: '[data-token-hex]',
-    wrap: true,
-    theme: 'default',
-    themeMode: 'light',
-    format: 'hex',
-    alpha: false,
-    focusInput: true,
-    closeButton: true,
-    closeLabel: 'Done',
-  });
 
   document.querySelectorAll<HTMLElement>('[data-color-token-editor]').forEach(initColorTokenEditor);
 </script>
@@ -193,6 +241,13 @@ import DevOverlay from './DevOverlay.astro';
     font-size: 0.8rem;
   }
 
+  .color-token-editor__hex-row {
+    display: grid;
+    grid-template-columns: 1fr 2.4em;
+    gap: 0.4em;
+    align-items: center;
+  }
+
   .color-token-editor__field input {
     width: 100%;
     min-height: 2.4em;
@@ -210,24 +265,16 @@ import DevOverlay from './DevOverlay.astro';
     font-family: ui-monospace, monospace;
   }
 
-  :global(.color-token-editor .clr-field) {
-    width: 100%;
-  }
-
-  :global(.color-token-editor .clr-field button) {
+  .color-token-editor__swatch {
     width: 2.4em;
+    height: 2.4em;
+    border: 1px solid var(--color-border);
     border-radius: var(--radius-control-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-  }
-
-  :global(#clr-picker) {
-    border: 0;
-    border-radius: var(--radius-card-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    box-shadow: 0 0.6em 2em rgb(0 0 0 / 0.14);
-    font-family: var(--font-sans);
+    background: var(--color-surface-strong);
+    padding: 0;
+    cursor: pointer;
   }
 
   .color-token-editor__actions {
@@ -263,5 +310,15 @@ import DevOverlay from './DevOverlay.astro';
     color: var(--color-text-muted);
     font-size: 0.75rem;
     line-height: 1.35;
+  }
+
+  color-picker {
+    --font: var(--font-sans);
+    --bg-primary: var(--color-bg);
+    --bg-secondary: var(--color-surface-soft);
+    --bg-header: var(--color-surface-strong);
+    --border-color-primary: var(--color-border);
+    --border-color-secondary: var(--color-text);
+    --txt-color-primary: var(--color-text);
   }
 </style>
