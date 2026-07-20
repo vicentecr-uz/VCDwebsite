@@ -146,6 +146,16 @@
     const documentKey = root.dataset.sectionNavDocument?.trim();
     if (!documentKey) return;
 
+    const mainScope = '[data-section-nav-main]';
+    const outlineOnly = root.dataset.sectionNavOutlineOnly === 'true';
+
+    const isEditableBlock = (el: Element | null): el is HTMLElement => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (!el.closest(mainScope)) return false;
+      if (el.classList.contains('section-block') && el.id) return true;
+      return sectionIndexFromPath(el.dataset.devSpacingPath) !== null;
+    };
+
     const popover = shell.querySelector<HTMLElement>('[data-nav-popover]');
     const hint = shell.querySelector<HTMLElement>('[data-nav-hint]');
     const hintSaveBtn = shell.querySelector<HTMLButtonElement>('[data-nav-sidebar-save]');
@@ -298,13 +308,19 @@
     };
 
     const editableBlocks = () =>
-      [...document.querySelectorAll<HTMLElement>('.project-page__main [data-dev-spacing-path]')].filter(
-        (el) => sectionIndexFromPath(el.dataset.devSpacingPath) !== null,
-      );
+      [
+        ...document.querySelectorAll<HTMLElement>(`${mainScope} [data-dev-spacing-path]`),
+        ...document.querySelectorAll<HTMLElement>(`${mainScope} .section-block[id]`),
+      ].filter((el, index, all) => all.indexOf(el) === index && isEditableBlock(el));
 
     const findBlockById = (id: string) =>
       editableBlocks().find((el) => el.id === id) ??
-      document.querySelector<HTMLElement>(`.project-page__main #${CSS.escape(id)}`);
+      document.querySelector<HTMLElement>(`${mainScope} #${CSS.escape(id)}`);
+
+    const blockContentIndex = (block: HTMLElement) => {
+      if (outlineOnly) return null;
+      return sectionIndexFromPath(block.dataset.devSpacingPath);
+    };
 
     const pageIndexForId = (id: string) => {
       if (!id) return Number.POSITIVE_INFINITY;
@@ -769,8 +785,8 @@
 
     const onApply = () => {
       if (!activeBlock) return;
-      const index = sectionIndexFromPath(activeBlock.dataset.devSpacingPath);
-      if (index === null) {
+      const index = blockContentIndex(activeBlock);
+      if (!outlineOnly && index === null) {
         setStatus('This block cannot be marked.', true);
         return;
       }
@@ -785,7 +801,9 @@
 
       if (!wantGroup && !wantSection) {
         if (previousId) {
-          pendingSectionIds[String(index)] = null;
+          if (index !== null) {
+            pendingSectionIds[String(index)] = null;
+          }
           applyBlockSectionId(activeBlock, null);
         }
       } else {
@@ -797,7 +815,7 @@
 
         editableBlocks().forEach((block) => {
           if (block !== activeBlock && block.id === anchorId) {
-            const otherIndex = sectionIndexFromPath(block.dataset.devSpacingPath);
+            const otherIndex = blockContentIndex(block);
             if (otherIndex !== null) pendingSectionIds[String(otherIndex)] = null;
             block.removeAttribute('id');
             block.classList.remove('section-block');
@@ -806,7 +824,7 @@
         });
 
         applyBlockSectionId(activeBlock, anchorId);
-        pendingSectionIds[String(index)] = anchorId;
+        if (index !== null) pendingSectionIds[String(index)] = anchorId;
 
         if (wantGroup) {
           const ids = collectUsedIds();
@@ -831,9 +849,9 @@
         }
       }
 
-      if (activeBlock.dataset.devSectionTitle === 'true') {
+      if (!outlineOnly && activeBlock.dataset.devSectionTitle === 'true') {
         const showTitle = readTitleChips();
-        pendingShowTitles[String(index)] = showTitle;
+        if (index !== null) pendingShowTitles[String(index)] = showTitle;
         applyShowTitleClasses(activeBlock, showTitle);
       }
 
@@ -913,8 +931,8 @@
         if (target.closest('.section-sidebar-nav')) return;
         if (target.closest('.site-header')) return;
 
-        const block = target.closest<HTMLElement>('.project-page__main [data-dev-spacing-path]');
-        if (!block || sectionIndexFromPath(block.dataset.devSpacingPath) === null) {
+        const block = target.closest<HTMLElement>(`${mainScope} [data-dev-spacing-path], ${mainScope} .section-block[id]`);
+        if (!block || !isEditableBlock(block)) {
           if (!popover.hidden) closePopover();
           return;
         }
@@ -929,10 +947,10 @@
     document.addEventListener('mousemove', (event) => {
       if (!isActive() || !popover.hidden) return;
       const target = event.target as HTMLElement | null;
-      const block = target?.closest<HTMLElement>('.project-page__main [data-dev-spacing-path]');
+      const block = target?.closest<HTMLElement>(`${mainScope} [data-dev-spacing-path], ${mainScope} .section-block[id]`);
       if (hoverBlock === block) return;
       hoverBlock?.classList.remove('is-section-nav-hover');
-      hoverBlock = block && sectionIndexFromPath(block.dataset.devSpacingPath) !== null ? block : null;
+      hoverBlock = block && isEditableBlock(block) ? block : null;
       hoverBlock?.classList.add('is-section-nav-hover');
     });
 
@@ -1042,17 +1060,17 @@
     cursor: grabbing !important;
   }
 
-  html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-hover {
+  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-hover {
     outline: 2px solid color-mix(in srgb, var(--color-text) 35%, transparent);
     outline-offset: 4px;
   }
 
-  html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-in-range {
+  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-in-range {
     outline: 2px dashed color-mix(in srgb, var(--color-text) 28%, transparent);
     outline-offset: 4px;
   }
 
-  html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-active {
+  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-active {
     outline: 2px solid var(--color-text);
     outline-offset: 4px;
   }
