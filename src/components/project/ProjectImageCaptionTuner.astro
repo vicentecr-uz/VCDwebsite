@@ -84,6 +84,7 @@ import {
     type ImageCaptionStyleId,
     type ImageCaptions,
   } from '../../lib/imageCaptions';
+  import { captionCornerConflictsWithChrome } from '../../lib/devEditChrome';
   import type { ImageViewport } from '../../lib/responsiveImage';
   import { IMAGE_VIEWPORTS } from '../../lib/responsiveImage';
 
@@ -204,13 +205,49 @@ import {
       return host;
     };
 
-    const syncAddButton = (target: HTMLElement, captions: ImageCaptions) => {
-      const addButton = target.querySelector<HTMLButtonElement>('.dev-caption-add-trigger');
-      if (!addButton) return;
+    const syncCaptionChromeButton = (target: HTMLElement, captions: ImageCaptions) => {
+      const button = target.querySelector<HTMLButtonElement>('.dev-caption-add-trigger');
+      if (!button) return;
       const inDev = document.documentElement.classList.contains('is-dev-mode');
-      // Host present (even empty, while editing) hides Add via CSS :has(); keep attribute in sync too.
+      const hasText = imageCaptionsHaveText(captions);
       const hasHost = Boolean(target.querySelector('[data-project-image-caption]'));
-      addButton.hidden = !inDev || imageCaptionsHaveText(captions) || hasHost;
+      const position = resolveImageCaptionPosition(
+        target.dataset.devCaptionPosition
+          || target.querySelector<HTMLElement>('[data-project-image-caption]')?.dataset.captionPosition,
+      );
+      // Same-corner chrome (e.g. Edit grid) overlapping this cell → Edit caption fallback.
+      const needsFallback = inDev && hasText && captionCornerConflictsWithChrome(target, position);
+
+      if (needsFallback) {
+        button.hidden = false;
+        button.textContent = 'Edit caption';
+        button.dataset.captionAction = 'edit';
+        button.dataset.captionChromeFallback = '';
+        return;
+      }
+
+      delete button.dataset.captionChromeFallback;
+      button.dataset.captionAction = 'add';
+      button.textContent = 'Add caption';
+      // Host present (even empty, while editing) hides Add via CSS :has(); keep attribute in sync too.
+      button.hidden = !inDev || hasText || hasHost;
+    };
+
+    const readCaptionsForTarget = (target: HTMLElement): ImageCaptions => {
+      if (editTarget === target) return draftCaptions;
+      try {
+        return resolveImageCaptions({
+          captions: JSON.parse(target.dataset.devCaptions || '{}'),
+        });
+      } catch {
+        return resolveImageCaptions({});
+      }
+    };
+
+    const syncAllCaptionChromeButtons = () => {
+      document.querySelectorAll<HTMLElement>('[data-dev-image-target]').forEach((target) => {
+        syncCaptionChromeButton(target, readCaptionsForTarget(target));
+      });
     };
 
     const applyCaptionsToTarget = (
@@ -229,7 +266,7 @@ import {
       const retainEmpty = options?.retainEmptyHost === true;
       if (!imageCaptionsHaveText(captions) && !retainEmpty) {
         target.querySelector('[data-project-image-caption]')?.remove();
-        syncAddButton(target, captions);
+        syncCaptionChromeButton(target, captions);
         return;
       }
 
@@ -255,7 +292,7 @@ import {
         }
       });
 
-      syncAddButton(target, captions);
+      syncCaptionChromeButton(target, captions);
     };
 
     /** Drop an empty caption shell once the user leaves the editor (not while typing). */
@@ -279,7 +316,7 @@ import {
         draftCaptions = { desktop: '', tablet: '', mobile: '' };
         target.dataset.devCaptions = JSON.stringify(draftCaptions);
       }
-      syncAddButton(target, captions);
+      syncCaptionChromeButton(target, captions);
       return true;
     };
 
@@ -636,7 +673,9 @@ import {
       if (!target) return;
       selectTarget(target, {
         focusText: true,
-        seedEmpty: trigger.classList.contains('dev-caption-add-trigger'),
+        // Add caption seeds empty; Edit caption fallback opens existing text.
+        seedEmpty: trigger.dataset.captionAction !== 'edit'
+          && trigger.classList.contains('dev-caption-add-trigger'),
       });
     }) as EventListener);
 
@@ -683,12 +722,31 @@ import {
         closePanel();
         editTarget = null;
       }
+      // Dev chrome visibility / which cell sits under Edit grid can change with mode.
+      requestAnimationFrame(syncAllCaptionChromeButtons);
     }) as EventListener);
 
     window.addEventListener('resize', () => {
-      if (!editTarget || !document.documentElement.classList.contains('is-dev-mode')) return;
-      enableInlineEditing(editTarget);
+      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (editTarget) enableInlineEditing(editTarget);
+      // Grid reflow can move a different cell under the Edit grid corner token.
+      syncAllCaptionChromeButtons();
     });
+
+    // Grid layout edits can reorder cells without a window resize — refresh on hover.
+    document.addEventListener(
+      'pointerover',
+      (event) => {
+        if (!document.documentElement.classList.contains('is-dev-mode')) return;
+        const target = (event.target as HTMLElement | null)?.closest?.('[data-dev-image-target]');
+        if (!(target instanceof HTMLElement)) return;
+        syncCaptionChromeButton(target, readCaptionsForTarget(target));
+      },
+      true,
+    );
+
+    // Initial pass once layout has settled (Dev Mode may already be on).
+    requestAnimationFrame(syncAllCaptionChromeButtons);
   };
 
   document

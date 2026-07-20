@@ -153,6 +153,7 @@
 
 .dev-caption-add-trigger {
   position: absolute;
+  /* Fallback Edit caption slot — keep clear of data-dev-corner chrome (e.g. Edit grid). */
   bottom: 0.75em;
   left: 0.75em;
   z-index: 2;
@@ -176,8 +177,8 @@
   display: none;
 }
 
-/* Hide Add caption whenever a caption node is present (including after inline create). */
-.dev-image-edit-target:has([data-project-image-caption]) .dev-caption-add-trigger {
+/* Hide Add caption when a caption exists — unless chrome collision needs Edit caption. */
+.dev-image-edit-target:has([data-project-image-caption]) .dev-caption-add-trigger:not([data-caption-chrome-fallback]) {
   display: none;
 }
 
@@ -192,6 +193,7 @@
   position: relative;
 }
 
+/* data-dev-corner on the button must match this inset corner. */
 .dev-grid-edit-trigger {
   position: absolute;
   top: 0.75em;
