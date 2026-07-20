@@ -1,10 +1,11 @@
 ---
-import { projectImage } from '../../lib/images';
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import LegacyProjectContextImage from './LegacyProjectContextImage.astro';
+import { projectStackClass, type ProjectStackSpacing } from '../../../lib/projectStack';
 
 interface Item {
   src: string;
   alt?: string;
+  caption: string;
 }
 
 interface Props {
@@ -17,9 +18,9 @@ const stackClass = projectStackClass(spacing);
 ---
 
 <div class:list={['project-block', stackClass]}>
-  <div class="project-system-grid">
+  <div class="project-context-grid">
     {items.map((item) => (
-      <img src={projectImage(item.src)} alt={item.alt ?? ''} loading="lazy" />
+      <LegacyProjectContextImage src={item.src} alt={item.alt} caption={item.caption} />
     ))}
   </div>
 </div>
