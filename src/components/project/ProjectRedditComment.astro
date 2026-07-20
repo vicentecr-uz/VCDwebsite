@@ -1,0 +1,308 @@
+---
+/**
+ * Visual replica of a Reddit shreddit-comment (highlighted permalink).
+ * Default: Reddit light mode. Dark tokens kept on data-theme="dark" for
+ * when the site gains a theme switcher.
+ *
+ * Layout mirrors Reddit: avatar in a left gutter column; meta/body/actions
+ * sit in a separate highlighted panel (avatar is not inside that panel).
+ * Body uses the same Dev Mode paragraphs editor as project body text.
+ */
+interface Props {
+  author: string;
+  /** HTML paragraph strings (same shape as ProjectBodyText). */
+  paragraphs: string[];
+  score: number | string;
+  /** Avatar image URL. Defaults to Reddit’s default avatar_default_4. */
+  avatarSrc?: string;
+  /** Permalink — full-card hit target opens in a new tab. */
+  href?: string;
+  /** 'light' (default) or 'dark' — dark kept for future site theming. */
+  theme?: 'light' | 'dark';
+  documentKey?: string;
+  /** Path to the `paragraphs` array in project JSON. */
+  pathPrefix?: Array<string | number>;
+  class?: string;
+}
+
+const {
+  author,
+  paragraphs,
+  score,
+  avatarSrc = '/images/reddit/avatar_default_4.png',
+  href,
+  theme = 'light',
+  documentKey,
+  pathPrefix,
+  class: className,
+} = Astro.props;
+
+const editable = import.meta.env.DEV && documentKey && pathPrefix;
+const plainPreview = paragraphs
+  .map((p) => p.replace(/<[^>]+>/g, ''))
+  .join(' ')
+  .trim();
+---
+
+<article class:list={['reddit-comment', className]} data-theme={theme}>
+  {href && (
+    <a
+      class="reddit-comment__hit"
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Reddit comment by ${author}: ${plainPreview.slice(0, 120)}${plainPreview.length > 120 ? '…' : ''}`}
+      data-reddit-comment-hit
+    ></a>
+  )}
+
+  {/* Col 1 — avatar sits outside the highlighted panel (Reddit grid). */}
+  <div class="reddit-comment__avatar-col" aria-hidden="true">
+    <img
+      class="reddit-comment__avatar"
+      src={avatarSrc}
+      alt=""
+      width="32"
+      height="32"
+      loading="lazy"
+      decoding="async"
+      draggable="false"
+    />
+  </div>
+
+  {/* Col 2 — highlighted panel: meta → body → action row */}
+  <div class="reddit-comment__panel">
+    <header class="reddit-comment__meta">
+      <span class="reddit-comment__author">{author}</span>
+    </header>
+
+    <div
+      class="reddit-comment__body"
+      data-dev-text-document={editable ? documentKey : undefined}
+      data-dev-text-path={editable ? JSON.stringify(pathPrefix) : undefined}
+      data-dev-text-kind={editable ? 'paragraphs' : undefined}
+    >
+      {paragraphs.map((paragraph) => (
+        <p set:html={paragraph} />
+      ))}
+    </div>
+
+    <footer class="reddit-comment__actions">
+      <span class="reddit-comment__upvote" aria-hidden="true">
+        <svg
+          class="reddit-comment__upvote-icon"
+          fill="currentColor"
+          height="16"
+          viewBox="0 0 20 20"
+          width="16"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M10 19a3.966 3.966 0 01-3.96-3.962V10.98H2.838a1.731 1.731 0 01-1.605-1.073 1.734 1.734 0 01.377-1.895L9.364.254a.925.925 0 011.272 0l7.754 7.759c.498.499.646 1.242.376 1.894-.27.652-.9 1.073-1.605 1.073h-3.202v4.058A3.965 3.965 0 019.999 19H10zM2.989 9.179H7.84v5.731c0 1.13.81 2.163 1.934 2.278a2.163 2.163 0 002.386-2.15V9.179h4.851L10 2.163 2.989 9.179z"
+          ></path>
+        </svg>
+        <span class="reddit-comment__score">{score}</span>
+      </span>
+    </footer>
+  </div>
+</article>
+
+<style>
+  .reddit-comment {
+    /*
+      Reddit light tokens on site soft surface:
+      panel white (site provides --color-surface-soft behind the carousel)
+      text  ≈ --color-neutral-content-strong
+      muted ≈ --color-neutral-content-weak
+    */
+    --rc-panel: #ffffff;
+    --rc-text: #181c1f;
+    --rc-muted: #5c6c74;
+    --rc-focus-ring: #181c1f;
+    --rc-hover-filter: brightness(0.97);
+    --rc-avatar: 32px;
+    /* Reddit highlight starts at start-md (mid avatar column). */
+    --rc-overlap: 16px;
+
+    position: relative;
+    box-sizing: border-box;
+    display: grid;
+    /* Matches shreddit: xs:grid-cols-[32px_minmax(0,1fr)] */
+    grid-template-columns: var(--rc-avatar) minmax(0, 1fr);
+    align-items: start;
+    width: 100%;
+    max-width: 36em;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    color: var(--rc-text);
+    font-family:
+      'IBM Plex Sans',
+      'Segoe UI',
+      Roboto,
+      Helvetica,
+      Arial,
+      sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    text-align: left;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Kept for when the site theme switcher lands — pass theme="dark". */
+  .reddit-comment[data-theme='dark'] {
+    --rc-panel: #2a3236;
+    --rc-text: #eef1f3;
+    --rc-muted: #8ba2ad;
+    --rc-focus-ring: #eef1f3;
+    --rc-hover-filter: brightness(1.08);
+  }
+
+  .reddit-comment__hit {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: 0.5rem;
+  }
+
+  .reddit-comment:hover .reddit-comment__panel,
+  .reddit-comment:focus-within .reddit-comment__panel {
+    filter: var(--rc-hover-filter);
+  }
+
+  .reddit-comment:focus-within .reddit-comment__hit:focus-visible {
+    outline: 2px solid var(--rc-focus-ring);
+    outline-offset: 2px;
+  }
+
+  .reddit-comment__avatar-col {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    /* Reddit: avatar link has mt-2xs (~4px) */
+    padding-top: 4px;
+    pointer-events: none;
+  }
+
+  .reddit-comment__avatar {
+    display: block;
+    width: var(--rc-avatar);
+    height: var(--rc-avatar);
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  /*
+    Highlighted panel = meta + body + actions.
+    Pulled left by --rc-overlap so the highlight begins mid-avatar
+    (Reddit: summary-hl start-md + border-start-start-radius).
+  */
+  .reddit-comment__panel {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    margin-left: calc(var(--rc-overlap) * -1);
+    padding-left: var(--rc-overlap);
+    border-radius: 0.5rem;
+    background: var(--rc-panel);
+    pointer-events: none;
+  }
+
+  .reddit-comment__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0;
+    /* Reddit: pt-[4px] ps-xs */
+    padding: 4px 8px 0;
+    min-width: 0;
+  }
+
+  .reddit-comment__author {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 16px;
+    color: var(--rc-text);
+  }
+
+  .reddit-comment__body {
+    /* Reddit: xs:mx-xs, text-14-scalable, pb-2xs */
+    padding: 0 8px 4px;
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 1.45;
+    color: var(--rc-text);
+  }
+
+  .reddit-comment__body p {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .reddit-comment__body p + p {
+    margin-top: 0.35em;
+  }
+
+  /* Dev Mode: body text receives clicks for caret / format bar. */
+  :global(html.is-dev-mode) .reddit-comment__body {
+    pointer-events: auto;
+  }
+
+  .reddit-comment__actions {
+    display: flex;
+    align-items: center;
+    /* Reddit action row: pe-sm pb-2xs, min-h-xl (~32px) */
+    min-height: 32px;
+    padding: 0 12px 4px 8px;
+  }
+
+  .reddit-comment__upvote {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--rc-muted);
+  }
+
+  .reddit-comment__upvote-icon {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .reddit-comment__score {
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--rc-muted);
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+
+<script>
+  // Keep the stretch hit-link from stealing caret clicks in Dev Mode
+  // (same pattern as the press quote ticker).
+  const boot = () => {
+    document.querySelectorAll<HTMLElement>('.reddit-comment').forEach((root) => {
+      if (root.dataset.redditCommentInit === 'true') return;
+      root.dataset.redditCommentInit = 'true';
+
+      root.addEventListener(
+        'pointerdown',
+        (event) => {
+          if (!document.documentElement.classList.contains('is-dev-mode')) return;
+          const target = event.target as HTMLElement | null;
+          if (!target?.closest('[data-dev-text-document]')) return;
+          event.stopPropagation();
+        },
+        true,
+      );
+    });
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+  document.addEventListener('astro:page-load', boot);
+</script>
