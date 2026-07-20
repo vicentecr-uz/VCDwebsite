@@ -1,6 +1,7 @@
 <script>
   const initDevModeController = () => {
     const storageKey = 'vcdDevMode';
+    const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
     let devMode = false;
 
     try {
@@ -18,6 +19,19 @@
     const imageTargets = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
 
+    const isSectionEditor = () =>
+      document.documentElement.classList.contains(SECTION_EDITOR_CLASS);
+
+    const setSectionEditor = (active: boolean) => {
+      const next = Boolean(active) && devMode;
+      const was = isSectionEditor();
+      document.documentElement.classList.toggle(SECTION_EDITOR_CLASS, next);
+      if (was === next) return;
+      window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-change', {
+        detail: { active: next },
+      }));
+    };
+
     const setDevMode = (active: boolean) => {
       devMode = active;
       document.documentElement.classList.toggle('is-dev-mode', active);
@@ -30,6 +44,7 @@
       });
 
       if (!active) {
+        setSectionEditor(false);
         devPanels().forEach((panel) => {
           panel.hidden = true;
         });
@@ -49,10 +64,18 @@
       }));
     };
 
+    // Section Editor is keyboard-only (Alt+D while in Dev Mode) — never restore on load.
+    document.documentElement.classList.remove(SECTION_EDITOR_CLASS);
     setDevMode(devMode);
 
     window.addEventListener('vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
       if (typeof event.detail?.active === 'boolean') setDevMode(event.detail.active);
+    }) as EventListener);
+
+    window.addEventListener('vcd:section-nav-editor-request', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (typeof event.detail?.active !== 'boolean') return;
+      if (event.detail.active && !devMode) setDevMode(true);
+      setSectionEditor(event.detail.active);
     }) as EventListener);
 
     document.addEventListener('click', (event) => {
@@ -107,20 +130,41 @@
       }
     }, true);
 
+    const isTypingTarget = (target: HTMLElement | null) =>
+      Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
+
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyD') {
-        const target = event.target as HTMLElement | null;
-        if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+        if (isTypingTarget(event.target as HTMLElement | null)) return;
         event.preventDefault();
-        setDevMode(!devMode);
+        // Ladder: off → Dev Mode → Section Editor (stay if already there).
+        if (!devMode) {
+          setDevMode(true);
+        } else if (!isSectionEditor()) {
+          setSectionEditor(true);
+        }
         return;
       }
 
-      if (event.key !== 'Escape' || !devMode) return;
+      if (event.key !== 'Escape') return;
+      if (isTypingTarget(event.target as HTMLElement | null)) return;
+
+      // Ladder: Section Editor → Dev Mode → off.
+      // Section Editor closes its popover first (stopImmediatePropagation there).
+      if (isSectionEditor()) {
+        event.preventDefault();
+        setSectionEditor(false);
+        return;
+      }
+
+      if (!devMode) return;
+
+      event.preventDefault();
       devPanels().forEach((panel) => {
         panel.hidden = true;
       });
       window.dispatchEvent(new Event('vcd:dev-panels-closed'));
+      setDevMode(false);
     });
   };
 
