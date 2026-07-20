@@ -22,9 +22,11 @@ import {
 import {
   imageCaptionStyleClass,
   imageCaptionsHaveText,
+  resolveImageCaptionPosition,
   resolveImageCaptionReveals,
   resolveImageCaptionStyle,
   resolveImageCaptions,
+  type ImageCaptionPositionId,
   type ImageCaptionReveal,
   type ImageCaptionReveals,
   type ImageCaptionStyleId,
@@ -40,6 +42,8 @@ interface Item {
   /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
   captions?: Partial<ImageCaptions> | string;
   captionStyle?: ImageCaptionStyleId;
+  /** Overlay corner. Defaults to bottom-left. */
+  captionPosition?: ImageCaptionPositionId;
   /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   crop?: { x?: number; y?: number; zoom?: number };
@@ -144,6 +148,7 @@ const editorItems = items.map((item, index) => ({
     const layoutStyle = imageGridItemLayoutStyle(itemId, resolvedLayouts);
     const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
     const captionStyle = resolveImageCaptionStyle(item.captionStyle);
+    const captionPosition = resolveImageCaptionPosition(item.captionPosition);
     const captionReveals = resolveImageCaptionReveals(item.captionReveal);
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
@@ -168,6 +173,7 @@ const editorItems = items.map((item, index) => ({
         data-dev-has-own-variants={showDevEditing && hasOwnVariants ? 'true' : undefined}
         data-dev-captions={showDevEditing ? JSON.stringify(captions) : undefined}
         data-dev-caption-style={showDevEditing ? captionStyle : undefined}
+        data-dev-caption-position={showDevEditing ? captionPosition : undefined}
         data-dev-caption-reveals={showDevEditing ? JSON.stringify(captionReveals) : undefined}
       >
         <img
@@ -181,6 +187,7 @@ const editorItems = items.map((item, index) => ({
             class:list={['project-caption', 'project-image-grid__caption', captionClass]}
             data-project-image-caption
             data-caption-style={captionStyle}
+            data-caption-position={captionPosition}
             data-caption-reveal-desktop={captionReveals.desktop}
             data-caption-reveal-tablet={captionReveals.tablet}
             data-caption-reveal-mobile={captionReveals.mobile}

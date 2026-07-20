@@ -398,6 +398,8 @@
   position: absolute;
   left: 0;
   bottom: 0;
+  right: auto;
+  top: auto;
   z-index: 1;
   margin: 0 0 0.5em 0.5em;
   max-width: 75%;
@@ -405,6 +407,7 @@
   font-weight: 600;
   letter-spacing: -0.05ch;
   line-height: 1.1;
+  text-align: left;
   color: #fff;
   text-shadow: 0 1px 20px rgba(0, 0, 0, 0.31);
   pointer-events: none;
@@ -412,13 +415,40 @@
   isolation: isolate;
 }
 
+.project-caption[data-caption-position='top-left'] {
+  top: 0;
+  left: 0;
+  bottom: auto;
+  right: auto;
+  margin: 0.5em 0 0 0.5em;
+  text-align: left;
+}
+
+.project-caption[data-caption-position='top-right'] {
+  top: 0;
+  right: 0;
+  bottom: auto;
+  left: auto;
+  margin: 0.5em 0.5em 0 0;
+  text-align: right;
+}
+
+.project-caption[data-caption-position='bottom-right'] {
+  bottom: 0;
+  right: 0;
+  top: auto;
+  left: auto;
+  margin: 0 0.5em 0.5em 0;
+  text-align: right;
+}
+
 /* White (default): base .project-caption — text shadow + soft image fill. */
 
 /*
   Soft darkening under white captions. The shadow host is sized to the
   image (via JS) so blur can bloom across the frame; overflow clips it
-  to the image bounds. Fill centre is pinned to the image bottom-left;
-  its top-right tracks the caption top-right + X/Y offsets.
+  to the image bounds. Fill centre is pinned to the caption’s image
+  corner; the opposite caption corner + X/Y offsets set the fill extent.
 */
 .project-caption-shadow {
   position: absolute;
@@ -429,7 +459,7 @@
 
 .project-caption-shadow__fill {
   position: absolute;
-  /* Width/height set in JS from caption top-right datum + centre pin. */
+  /* Size/radius set in JS: round the fill corner opposite the caption corner. */
   border-radius: 0 var(--caption-shadow-radius) 0 0;
   background: rgb(0 0 0 / var(--caption-shadow-alpha));
   filter: blur(var(--caption-shadow-blur));

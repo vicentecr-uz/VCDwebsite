@@ -9,6 +9,18 @@ export const IMAGE_CAPTION_STYLES = [
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
 
+/** Overlay caption corner (Dev Mode tuner + project images). */
+export const IMAGE_CAPTION_POSITIONS = [
+  { id: 'bottom-left', label: 'Bottom left' },
+  { id: 'top-left', label: 'Top left' },
+  { id: 'bottom-right', label: 'Bottom right' },
+  { id: 'top-right', label: 'Top right' },
+] as const;
+
+export type ImageCaptionPositionId = (typeof IMAGE_CAPTION_POSITIONS)[number]['id'];
+
+export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionPositionId = 'bottom-left';
+
 /** How the caption appears at a breakpoint. */
 export const IMAGE_CAPTION_REVEALS = [
   { id: 'hover', label: 'On hover' },
@@ -49,6 +61,15 @@ export function isImageCaptionStyleId(value: unknown): value is ImageCaptionStyl
 export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
   if (value === 'default') return 'white';
   return isImageCaptionStyleId(value) ? value : 'white';
+}
+
+export function isImageCaptionPositionId(value: unknown): value is ImageCaptionPositionId {
+  return IMAGE_CAPTION_POSITIONS.some((position) => position.id === value);
+}
+
+/** Resolve corner id; missing / unknown → bottom-left. */
+export function resolveImageCaptionPosition(value: unknown): ImageCaptionPositionId {
+  return isImageCaptionPositionId(value) ? value : DEFAULT_IMAGE_CAPTION_POSITION;
 }
 
 /** White uses base `.project-caption`; other styles add a modifier class. */

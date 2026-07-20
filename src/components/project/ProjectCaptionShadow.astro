@@ -110,8 +110,10 @@
   };
 
   /**
-   * Shadow centre pinned to image bottom-left; top-right tracks caption
-   * top-right + (--caption-shadow-x, --caption-shadow-y) with +x right, +y up.
+   * Soft fill: centre pinned to the image corner matching caption position;
+   * the opposite caption corner (+ offsets) sets the fill extent.
+   * Offsets: +x toward image interior horizontally, +y toward interior vertically
+   * (same CSS vars for every corner).
    */
   const layoutShadow = (caption: HTMLElement, settings: CaptionShadowSettings) => {
     const host = ensureShadow(caption);
@@ -126,24 +128,55 @@
     const parentRect = parent.getBoundingClientRect();
     const captionBox = caption.getBoundingClientRect();
     const textRect = getCaptionTextRect(caption);
+    const position = caption.dataset.captionPosition || 'bottom-left';
 
     host.style.left = `${parentRect.left - captionBox.left}px`;
     host.style.top = `${parentRect.top - captionBox.top}px`;
     host.style.width = `${parentRect.width}px`;
     host.style.height = `${parentRect.height}px`;
 
-    const centerX = 0;
-    const centerY = parentRect.height;
-    const trX = textRect.right - parentRect.left + settings.x;
-    const trY = textRect.top - parentRect.top - settings.y;
-    const fillW = Math.max(1, 2 * (trX - centerX));
-    const fillH = Math.max(1, 2 * (centerY - trY));
+    const w = parentRect.width;
+    const h = parentRect.height;
+    const textLeft = textRect.left - parentRect.left;
+    const textRight = textRect.right - parentRect.left;
+    const textTop = textRect.top - parentRect.top;
+    const textBottom = textRect.bottom - parentRect.top;
+    const r = settings.radius;
+
+    let centerX = 0;
+    let centerY = h;
+    let trackX = textRight + settings.x;
+    let trackY = textTop - settings.y;
+    let borderRadius = `0 ${r}px 0 0`;
+
+    if (position === 'bottom-right') {
+      centerX = w;
+      centerY = h;
+      trackX = textLeft - settings.x;
+      trackY = textTop - settings.y;
+      borderRadius = `${r}px 0 0 0`;
+    } else if (position === 'top-left') {
+      centerX = 0;
+      centerY = 0;
+      trackX = textRight + settings.x;
+      trackY = textBottom + settings.y;
+      borderRadius = `0 0 ${r}px 0`;
+    } else if (position === 'top-right') {
+      centerX = w;
+      centerY = 0;
+      trackX = textLeft - settings.x;
+      trackY = textBottom + settings.y;
+      borderRadius = `0 0 0 ${r}px`;
+    }
+
+    const fillW = Math.max(1, 2 * Math.abs(trackX - centerX));
+    const fillH = Math.max(1, 2 * Math.abs(centerY - trackY));
 
     fill.style.width = `${fillW}px`;
     fill.style.height = `${fillH}px`;
     fill.style.left = `${centerX - fillW / 2}px`;
     fill.style.top = `${centerY - fillH / 2}px`;
-    fill.style.borderRadius = `0 ${settings.radius}px 0 0`;
+    fill.style.borderRadius = borderRadius;
   };
 
   const layoutAllShadows = () => {
@@ -184,5 +217,11 @@
     });
     if (relevant) scheduleLayout();
   });
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: ['data-caption-position', 'data-caption-style', 'class'],
+  });
 </script>

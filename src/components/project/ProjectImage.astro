@@ -13,9 +13,11 @@ import {
 import {
   imageCaptionStyleClass,
   imageCaptionsHaveText,
+  resolveImageCaptionPosition,
   resolveImageCaptionReveals,
   resolveImageCaptionStyle,
   resolveImageCaptions,
+  type ImageCaptionPositionId,
   type ImageCaptionReveal,
   type ImageCaptionReveals,
   type ImageCaptionStyleId,
@@ -57,6 +59,8 @@ interface Props {
   /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
   captions?: Partial<ImageCaptions> | string;
   captionStyle?: ImageCaptionStyleId;
+  /** Overlay corner. Defaults to bottom-left. */
+  captionPosition?: ImageCaptionPositionId;
   /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
 }
@@ -86,6 +90,7 @@ const {
   caption,
   captions: captionsProp,
   captionStyle: captionStyleProp,
+  captionPosition: captionPositionProp,
   captionReveal,
 } = Astro.props;
 
@@ -106,6 +111,7 @@ const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
 
 const captions = resolveImageCaptions({ caption, captions: captionsProp });
 const captionStyle = resolveImageCaptionStyle(captionStyleProp);
+const captionPosition = resolveImageCaptionPosition(captionPositionProp);
 const captionReveals = resolveImageCaptionReveals(captionReveal);
 const hasCaption = imageCaptionsHaveText(captions);
 const captionClass = imageCaptionStyleClass(captionStyle);
@@ -119,6 +125,7 @@ const editAttrs = editable
       'data-dev-image-variants': normalized ? JSON.stringify(normalized) : '{}',
       'data-dev-captions': JSON.stringify(captions),
       'data-dev-caption-style': captionStyle,
+      'data-dev-caption-position': captionPosition,
       'data-dev-caption-reveals': JSON.stringify(captionReveals),
     }
   : {};
@@ -145,6 +152,7 @@ const editAttrs = editable
         class:list={['project-caption', 'project-image-grid__caption', captionClass]}
         data-project-image-caption
         data-caption-style={captionStyle}
+        data-caption-position={captionPosition}
         data-caption-reveal-desktop={captionReveals.desktop}
         data-caption-reveal-tablet={captionReveals.tablet}
         data-caption-reveal-mobile={captionReveals.mobile}
@@ -217,6 +225,7 @@ const editAttrs = editable
           class:list={['project-caption', 'project-image-grid__caption', captionClass]}
           data-project-image-caption
           data-caption-style={captionStyle}
+          data-caption-position={captionPosition}
           data-caption-reveal-desktop={captionReveals.desktop}
           data-caption-reveal-tablet={captionReveals.tablet}
           data-caption-reveal-mobile={captionReveals.mobile}
