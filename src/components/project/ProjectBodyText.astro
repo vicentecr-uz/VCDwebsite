@@ -26,12 +26,14 @@ const sectionPath =
   pathPrefix?.at(-1) === 'paragraphs' ? pathPrefix.slice(0, -1) : undefined;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 const stackClass = projectStackClass(spacing);
+const deletable = Boolean(editable && sectionPath);
 ---
 
 <section
   id={sectionId}
   class:list={['project-block', stackClass, sectionId && 'section-block']}
   {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={deletable ? 'bodyText' : undefined}
 >
   <div
     class="project-body-text"

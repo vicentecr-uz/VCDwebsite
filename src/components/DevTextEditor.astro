@@ -52,11 +52,16 @@
   interface EditableSpacingState {
     element: HTMLElement;
     control: HTMLElement;
+    addButton: HTMLButtonElement;
+    spacingGroup: HTMLElement;
+    menu: HTMLElement;
     document: string;
     path: Array<string | number>;
     savedValue: SpacingValue;
     currentValue: SpacingValue;
   }
+
+  type InsertableSectionType = 'bodyText' | 'sectionTitle';
 
   const SPACING_OPTIONS: Array<{ value: 'related' | 'section' | 'major'; label: string; title: string }> = [
     { value: 'related', label: '1em', title: 'Related · 1em' },
@@ -231,25 +236,49 @@
         }
 
         const control = document.createElement('div');
-        control.className = 'dev-spacing-control';
+        control.className = 'dev-gap-toolbar';
         control.setAttribute('data-dev-spacing-control', '');
         control.setAttribute('data-dev-mode-only', '');
         const devEnabled = document.documentElement.classList.contains('is-dev-mode');
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
-        control.innerHTML = SPACING_OPTIONS.map(
-          (option) => `
-            <button
-              type="button"
-              class="dev-spacing-control__btn"
-              data-dev-spacing-option="${option.value}"
-              title="${option.title}"
-              aria-label="${option.title}"
-            >
-              <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
-              <span class="dev-spacing-control__label">${option.label}</span>
-            </button>
-          `,
-        ).join('');
+        control.innerHTML = `
+          <button
+            type="button"
+            class="dev-gap-toolbar__add"
+            data-dev-section-add
+            title="Add section"
+            aria-label="Add section"
+            aria-expanded="false"
+            aria-haspopup="menu"
+          >
+            <span aria-hidden="true">+</span>
+          </button>
+          <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
+            <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
+            <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
+          </div>
+          <div class="dev-gap-toolbar__spacing">
+            ${SPACING_OPTIONS.map(
+              (option) => `
+                <button
+                  type="button"
+                  class="dev-spacing-control__btn"
+                  data-dev-spacing-option="${option.value}"
+                  title="${option.title}"
+                  aria-label="${option.title}"
+                >
+                  <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
+                  <span class="dev-spacing-control__label">${option.label}</span>
+                </button>
+              `,
+            ).join('')}
+          </div>
+        `;
+
+        const addButton = control.querySelector<HTMLButtonElement>('[data-dev-section-add]');
+        const menu = control.querySelector<HTMLElement>('[data-dev-section-menu]');
+        const spacingGroup = control.querySelector<HTMLElement>('.dev-gap-toolbar__spacing');
+        if (!addButton || !menu || !spacingGroup) return [];
 
         const computed = getComputedStyle(element);
         if (computed.position === 'static') {
@@ -260,6 +289,9 @@
         const state: EditableSpacingState = {
           element,
           control,
+          addButton,
+          spacingGroup,
+          menu,
           document: element.dataset.devSpacingDocument,
           path,
           savedValue: raw,
@@ -311,28 +343,55 @@
       });
     };
 
+    const nearToolbarTarget = (
+      target: HTMLElement,
+      clientX: number,
+      clientY: number,
+    ) => {
+      const rect = target.getBoundingClientRect();
+      const dx = clientX - (rect.left + rect.width / 2);
+      const dy = clientY - (rect.top + rect.height / 2);
+      return Math.hypot(dx, dy) <= SPACING_ACTIVATION_RADIUS_PX;
+    };
+
+    const isSectionMenuOpen = (state: EditableSpacingState) => !state.menu.hidden;
+
+    const closeSectionMenus = (except?: EditableSpacingState) => {
+      spacingStates.forEach((state) => {
+        if (except && state === except) return;
+        state.menu.hidden = true;
+        state.addButton.setAttribute('aria-expanded', 'false');
+        state.control.classList.remove('is-menu-open');
+      });
+    };
+
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (!document.documentElement.classList.contains('is-dev-mode') || isDevTextCaretActive()) {
-        spacingStates.forEach(({ control }) => control.classList.remove('is-near'));
+        spacingStates.forEach(({ control }) => {
+          if (!control.classList.contains('is-menu-open')) control.classList.remove('is-near');
+        });
         return;
       }
 
-      spacingStates.forEach(({ control, element }) => {
+      spacingStates.forEach((state) => {
+        const { control, element, addButton, spacingGroup } = state;
         if (control.hidden) {
           control.classList.remove('is-near');
           return;
         }
-        if (element.classList.contains('is-dev-spacing-dirty') || control.contains(document.activeElement)) {
+        if (
+          element.classList.contains('is-dev-spacing-dirty') ||
+          control.contains(document.activeElement) ||
+          isSectionMenuOpen(state)
+        ) {
           control.classList.add('is-near');
           return;
         }
 
-        const rect = control.getBoundingClientRect();
-        const dx = clientX - (rect.left + rect.width / 2);
-        const dy = clientY - (rect.top + rect.height / 2);
         control.classList.toggle(
           'is-near',
-          Math.hypot(dx, dy) <= SPACING_ACTIVATION_RADIUS_PX,
+          nearToolbarTarget(addButton, clientX, clientY) ||
+            nearToolbarTarget(spacingGroup, clientX, clientY),
         );
       });
     };
@@ -348,6 +407,7 @@
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control, element }) => {
           if (element.classList.contains('is-dev-spacing-dirty')) return;
+          if (control.classList.contains('is-menu-open')) return;
           control.classList.remove('is-near');
         });
       });
@@ -355,6 +415,23 @@
       document.addEventListener('focusout', () => {
         // focusout fires before the next focus target is active
         requestAnimationFrame(syncSpacingCaretSuppression);
+      });
+      document.addEventListener(
+        'pointerdown',
+        (event) => {
+          const target = event.target;
+          if (!(target instanceof Node)) return;
+          const open = spacingStates.find((state) => isSectionMenuOpen(state));
+          if (!open) return;
+          if (open.control.contains(target)) return;
+          closeSectionMenus();
+        },
+        true,
+      );
+      document.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        if (!spacingStates.some(isSectionMenuOpen)) return;
+        closeSectionMenus();
       });
     }
 
@@ -382,6 +459,183 @@
       } else {
         status.textContent = '';
       }
+    };
+
+    const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
+    const restoreScrollAfterReload = () => {
+      const raw = sessionStorage.getItem(SCROLL_RESTORE_KEY);
+      if (raw == null) return;
+      sessionStorage.removeItem(SCROLL_RESTORE_KEY);
+      const y = Number(raw);
+      if (!Number.isFinite(y)) return;
+      requestAnimationFrame(() => {
+        window.scrollTo(0, y);
+      });
+    };
+    restoreScrollAfterReload();
+
+    const insertSectionAt = async (state: EditableSpacingState, type: InsertableSectionType) => {
+      const sectionIndex = state.path.at(-2);
+      if (typeof sectionIndex !== 'number') {
+        status.textContent = 'Could not find where to insert.';
+        actions.hidden = false;
+        return;
+      }
+
+      const dirtyCount =
+        dirtyTextStates().length + dirtySpacingStates().length + pendingMedia.size;
+      if (dirtyCount) {
+        actions.hidden = false;
+        status.textContent = 'Save or revert before adding a section.';
+        closeSectionMenus();
+        return;
+      }
+
+      closeSectionMenus();
+      actions.hidden = false;
+      status.textContent = 'Adding…';
+      saveButton.disabled = true;
+      revertButton.disabled = true;
+
+      try {
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: state.document,
+            index: sectionIndex,
+            type,
+            spacing: state.currentValue === 'none' ? 'section' : state.currentValue,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
+        sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
+        window.location.reload();
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not add the section.';
+        saveButton.disabled = false;
+        revertButton.disabled = false;
+      }
+    };
+
+    spacingStates.forEach((state) => {
+      state.addButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const opening = state.menu.hidden;
+        closeSectionMenus(opening ? state : undefined);
+        if (!opening) return;
+        state.menu.hidden = false;
+        state.addButton.setAttribute('aria-expanded', 'true');
+        state.control.classList.add('is-near', 'is-menu-open');
+      });
+
+      state.menu.querySelectorAll<HTMLButtonElement>('[data-dev-section-type]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const type = button.dataset.devSectionType as InsertableSectionType | undefined;
+          if (type !== 'bodyText' && type !== 'sectionTitle') return;
+          void insertSectionAt(state, type);
+        });
+      });
+    });
+
+    const TRASH_ICON = `
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M6 2.5h4M3.5 4.5h9M5.5 4.5v8a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-8M7 7v4.5M9 7v4.5" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    `;
+
+    const deleteSectionAt = async (element: HTMLElement) => {
+      let path: Array<string | number> = [];
+      try {
+        path = JSON.parse(element.dataset.devSpacingPath || '[]');
+      } catch {
+        path = [];
+      }
+      const sectionIndex = path.at(-2);
+      const documentKey = element.dataset.devSpacingDocument;
+      if (typeof sectionIndex !== 'number' || !documentKey) {
+        status.textContent = 'Could not find which section to delete.';
+        actions.hidden = false;
+        return;
+      }
+
+      const dirtyCount =
+        dirtyTextStates().length + dirtySpacingStates().length + pendingMedia.size;
+      if (dirtyCount) {
+        actions.hidden = false;
+        status.textContent = 'Save or revert before deleting a section.';
+        return;
+      }
+
+      if (!window.confirm('Delete this section?')) return;
+
+      actions.hidden = false;
+      status.textContent = 'Deleting…';
+      saveButton.disabled = true;
+      revertButton.disabled = true;
+
+      try {
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            action: 'delete',
+            document: documentKey,
+            index: sectionIndex,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
+        sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
+        window.location.reload();
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not delete the section.';
+        saveButton.disabled = false;
+        revertButton.disabled = false;
+      }
+    };
+
+    const deletableSections = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-dev-section-deletable][data-dev-spacing-document][data-dev-spacing-path]',
+      ),
+    ];
+
+    deletableSections.forEach((element) => {
+      if (element.querySelector(':scope > [data-dev-section-delete]')) return;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dev-section-delete';
+      button.setAttribute('data-dev-section-delete', '');
+      button.setAttribute('data-dev-mode-only', '');
+      button.title = 'Delete section';
+      button.setAttribute('aria-label', 'Delete section');
+      button.innerHTML = TRASH_ICON;
+      button.hidden = !document.documentElement.classList.contains('is-dev-mode');
+
+      const computed = getComputedStyle(element);
+      if (computed.position === 'static') {
+        element.style.position = 'relative';
+      }
+      element.prepend(button);
+
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void deleteSectionAt(element);
+      });
+    });
+
+    const syncDeleteButtons = (enabled: boolean) => {
+      deletableSections.forEach((element) => {
+        const button = element.querySelector<HTMLButtonElement>(':scope > [data-dev-section-delete]');
+        if (button) button.hidden = !enabled;
+      });
     };
 
     window.addEventListener('vcd:dev-pending-upsert', ((event: CustomEvent<PendingMediaChange>) => {
@@ -698,6 +952,8 @@
           element.removeAttribute('spellcheck');
         }
       });
+      if (!enabled) closeSectionMenus();
+      syncDeleteButtons(enabled);
       syncSpacingControlVisibility();
       if (!enabled) {
         spacingStates.forEach(({ control }) => control.classList.remove('is-near'));
@@ -1095,13 +1351,123 @@
     background: var(--color-text-soft);
   }
 
-  /* ── Section spacing picker (DEV) ───────────────────────── */
+  /* ── Section gap toolbar (DEV) ──────────────────────────── */
   /* Sit in the middle of the margin-top gap above the section. */
-  .dev-spacing-control {
+  .dev-gap-toolbar {
     position: absolute;
     top: calc(var(--space-section) / -2);
-    left: 50%;
+    left: 0;
+    right: 0;
     z-index: 40;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(-50%);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  [data-dev-spacing-document].project-stack--related > .dev-gap-toolbar {
+    top: calc(var(--space-related) / -2);
+  }
+
+  [data-dev-spacing-document].project-stack--major > .dev-gap-toolbar {
+    top: calc(var(--space-major) / -2);
+  }
+
+  [data-dev-spacing-document].project-stack--none > .dev-gap-toolbar,
+  .project-stack--flush + [data-dev-spacing-document].project-stack--flush > .dev-gap-toolbar {
+    top: 0;
+  }
+
+  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {
+    top: calc(var(--space-related) / -2);
+  }
+
+  .is-dev-mode .dev-gap-toolbar.is-near,
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar,
+  .is-dev-mode .dev-gap-toolbar:focus-within,
+  .is-dev-mode .dev-gap-toolbar.is-menu-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Keep gap controls out of the way while editing text. */
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar,
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar.is-near,
+  .is-dev-mode.is-dev-text-caret [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar,
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar:focus-within,
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar.is-menu-open {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .dev-gap-toolbar__add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    /* Match .dev-image-edit-trigger / grid / caption chips. */
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 0.45em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    cursor: pointer;
+  }
+
+  .dev-gap-toolbar__add:hover,
+  .dev-gap-toolbar__add[aria-expanded='true'] {
+    background: var(--color-surface-strong);
+  }
+
+  .dev-gap-toolbar__menu {
+    position: absolute;
+    top: calc(100% + 0.35em);
+    left: 50%;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15em;
+    min-width: 10em;
+    padding: 0.25em;
+    border-radius: var(--radius-control-smooth);
+    background: color-mix(in srgb, var(--color-surface-soft) 96%, transparent);
+    box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
+    backdrop-filter: blur(12px);
+    transform: translateX(-50%);
+  }
+
+  .dev-gap-toolbar__menu[hidden] {
+    display: none;
+  }
+
+  .dev-gap-toolbar__menu button {
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.2em);
+    background: transparent;
+    padding: 0.5em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    text-align: left;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .dev-gap-toolbar__menu button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .dev-gap-toolbar__spacing {
+    position: absolute;
+    right: 0;
     display: flex;
     flex-direction: column;
     gap: 0.15em;
@@ -1110,43 +1476,6 @@
     background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
     box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
     backdrop-filter: blur(12px);
-    transform: translate(-50%, -50%);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
-  }
-
-  [data-dev-spacing-document].project-stack--related > .dev-spacing-control {
-    top: calc(var(--space-related) / -2);
-  }
-
-  [data-dev-spacing-document].project-stack--major > .dev-spacing-control {
-    top: calc(var(--space-major) / -2);
-  }
-
-  [data-dev-spacing-document].project-stack--none > .dev-spacing-control,
-  .project-stack--flush + [data-dev-spacing-document].project-stack--flush > .dev-spacing-control {
-    top: 0;
-  }
-
-  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--major):not(.project-stack--none) > .dev-spacing-control {
-    top: calc(var(--space-related) / -2);
-  }
-
-  .is-dev-mode .dev-spacing-control.is-near,
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-spacing-control,
-  .is-dev-mode .dev-spacing-control:focus-within {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  /* Keep gap controls out of the way while editing text. */
-  .is-dev-mode.is-dev-text-caret .dev-spacing-control,
-  .is-dev-mode.is-dev-text-caret .dev-spacing-control.is-near,
-  .is-dev-mode.is-dev-text-caret [data-dev-spacing-document].is-dev-spacing-dirty > .dev-spacing-control,
-  .is-dev-mode.is-dev-text-caret .dev-spacing-control:focus-within {
-    opacity: 0;
-    pointer-events: none;
   }
 
   .dev-spacing-control__btn {
@@ -1198,5 +1527,65 @@
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty {
     outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 55%, transparent);
     outline-offset: 0.15em;
+  }
+
+  /* ── Section delete (DEV) ───────────────────────────────── */
+  /*
+    Invisible hover bridge into the left gutter so the cursor can reach the
+    bin without leaving :hover on the section (button sits outside the box).
+  */
+  .is-dev-mode [data-dev-section-deletable]::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -3.25em;
+    width: 3.25em;
+  }
+
+  .dev-section-delete {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    z-index: 35;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(calc(-100% - 0.55em), -50%);
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+  }
+
+  .dev-section-delete[hidden] {
+    display: none;
+  }
+
+  .is-dev-mode [data-dev-section-deletable]:hover > .dev-section-delete,
+  .is-dev-mode [data-dev-section-deletable]:focus-within > .dev-section-delete,
+  .is-dev-mode .dev-section-delete:hover,
+  .is-dev-mode .dev-section-delete:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .dev-section-delete:hover,
+  .dev-section-delete:focus-visible {
+    background: var(--color-surface-strong);
+  }
+
+  /* Keep delete out of the way while editing text (same as gap toolbar). */
+  .is-dev-mode.is-dev-text-caret [data-dev-section-deletable] > .dev-section-delete,
+  .is-dev-mode.is-dev-text-caret [data-dev-section-deletable]::before {
+    opacity: 0;
+    pointer-events: none;
   }
 </style>

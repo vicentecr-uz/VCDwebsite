@@ -1009,6 +1009,126 @@ function contentBatchDevWriter() {
  *
  * @returns {import('vite').Plugin}
  */
+const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle']);
+
+/**
+ * Dev-only writer that inserts or deletes sections in a project document's
+ * `sections` array (used by the on-page “+” / delete controls).
+ *
+ * @returns {import('vite').Plugin}
+ */
+function contentSectionDevWriter() {
+  return {
+    name: 'content-section-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/content-section', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        try {
+          const chunks = [];
+          let size = 0;
+          for await (const chunk of req) {
+            size += chunk.length;
+            if (size > 10_000) {
+              send(413, { error: 'The section update is too large.' });
+              return;
+            }
+            chunks.push(chunk);
+          }
+
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const documentKey = String(body.document || '');
+          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const action = body.action === 'delete' ? 'delete' : 'insert';
+          const index = Number(body.index);
+
+          if (!relativeFile || !Number.isInteger(index) || index < 0) {
+            send(400, { error: 'That section cannot be updated.' });
+            return;
+          }
+
+          const file = path.join(process.cwd(), relativeFile);
+          const data = JSON.parse(await readFile(file, 'utf8'));
+          if (!Array.isArray(data.sections)) {
+            send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+            return;
+          }
+
+          if (action === 'delete') {
+            if (index >= data.sections.length) {
+              send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+              return;
+            }
+            const existing = data.sections[index];
+            const existingType =
+              existing && typeof existing === 'object' && !Array.isArray(existing)
+                ? String(existing.type || '')
+                : '';
+            if (!INSERTABLE_SECTION_TYPES.has(existingType)) {
+              send(400, { error: 'That section type cannot be deleted here.' });
+              return;
+            }
+            data.sections.splice(index, 1);
+            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+            send(200, { ok: true, action: 'delete', index, type: existingType });
+            return;
+          }
+
+          const type = String(body.type || '');
+          const spacing = EDITABLE_SPACING_VALUES.has(body.spacing) ? body.spacing : 'section';
+
+          if (!INSERTABLE_SECTION_TYPES.has(type) || index > data.sections.length) {
+            send(400, { error: 'That section cannot be inserted.' });
+            return;
+          }
+
+          const id = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
+          const section =
+            type === 'sectionTitle'
+              ? {
+                  type: 'sectionTitle',
+                  id,
+                  title: 'Section title',
+                  spacing,
+                }
+              : {
+                  type: 'bodyText',
+                  id,
+                  spacing,
+                  paragraphs: [''],
+                };
+
+          // Preserve the gap the user clicked in on the new section; soften the
+          // following block so we don't double the large top margin.
+          const following = data.sections[index];
+          data.sections.splice(index, 0, section);
+          if (following && typeof following === 'object' && !Array.isArray(following)) {
+            following.spacing = type === 'sectionTitle' ? 'related' : 'section';
+            if (Object.prototype.hasOwnProperty.call(following, 'tightTop')) {
+              delete following.tightTop;
+            }
+          }
+
+          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          send(200, { ok: true, action: 'insert', index, id, type });
+        } catch {
+          send(400, { error: 'Could not parse or write the section update.' });
+        }
+      });
+    },
+  };
+}
+
 function contentSpacingDevWriter() {
   return {
     name: 'content-spacing-dev-writer',
@@ -1121,6 +1241,7 @@ export default defineConfig({
       styleTokenDevWriter(),
       contentTextDevWriter(),
       contentSpacingDevWriter(),
+      contentSectionDevWriter(),
       contentBatchDevWriter(),
     ],
     optimizeDeps: {
