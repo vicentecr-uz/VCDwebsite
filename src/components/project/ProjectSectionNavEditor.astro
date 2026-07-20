@@ -11,7 +11,9 @@
 
 <div class="section-nav-editor" data-section-nav-editor hidden>
   <div class="section-nav-editor__popover" data-nav-popover hidden>
-    <p class="section-nav-editor__title">Outline marker</p>
+    <div class="section-nav-editor__head" data-nav-drag-handle>
+      <p class="section-nav-editor__title">Outline marker</p>
+    </div>
 
     <p class="section-nav-editor__belongs" data-nav-belongs hidden></p>
 
@@ -159,6 +161,7 @@
     const applyBtn = shell.querySelector<HTMLButtonElement>('[data-nav-apply]');
     const cancelBtn = shell.querySelector<HTMLButtonElement>('[data-nav-cancel]');
     const hideSidebarBtn = shell.querySelector<HTMLButtonElement>('[data-nav-hide-sidebar]');
+    const dragHandle = shell.querySelector<HTMLElement>('[data-nav-drag-handle]');
 
     if (
       !popover ||
@@ -175,10 +178,56 @@
       !statusEl ||
       !applyBtn ||
       !cancelBtn ||
-      !hideSidebarBtn
+      !hideSidebarBtn ||
+      !dragHandle
     ) {
       return;
     }
+
+    const POPOVER_POSITION_KEY = 'sectionNavEditor:popover:position';
+
+    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+    const headerClearance = () => {
+      const header = document.querySelector<HTMLElement>('.site-header');
+      const bottom = header?.getBoundingClientRect().bottom ?? 0;
+      return Math.max(12, bottom + 8);
+    };
+
+    const savePopoverPosition = (left: number, top: number) => {
+      try {
+        window.localStorage.setItem(POPOVER_POSITION_KEY, JSON.stringify({ left, top }));
+      } catch {
+        // Ignore storage failures.
+      }
+    };
+
+    const readPopoverPosition = () => {
+      try {
+        const raw = window.localStorage.getItem(POPOVER_POSITION_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as { left?: unknown; top?: unknown };
+        const left = Number(parsed.left);
+        const top = Number(parsed.top);
+        if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
+        return { left, top };
+      } catch {
+        return null;
+      }
+    };
+
+    const setPopoverPosition = (left: number, top: number, persist = false) => {
+      const pad = 12;
+      const width = popover.offsetWidth || Math.min(300, window.innerWidth - pad * 2);
+      const height = popover.offsetHeight || 0;
+      const maxLeft = Math.max(pad, window.innerWidth - width - pad);
+      const maxTop = Math.max(headerClearance(), window.innerHeight - height - pad);
+      const nextLeft = clamp(left, pad, maxLeft);
+      const nextTop = clamp(top, headerClearance(), maxTop);
+      popover.style.left = `${nextLeft}px`;
+      popover.style.top = `${nextTop}px`;
+      if (persist) savePopoverPosition(nextLeft, nextTop);
+    };
 
     let outline = parseJson<OutlineEntry[]>(root.dataset.sectionOutline, []);
     // Normalize legacy kinds from older editor sessions.
@@ -419,20 +468,32 @@
     };
 
     const positionPopover = (block: HTMLElement) => {
-      const rect = block.getBoundingClientRect();
+      const stored = readPopoverPosition();
       const pad = 12;
       const width = Math.min(300, window.innerWidth - pad * 2);
-      let left = Math.min(rect.left, window.innerWidth - width - pad);
-      left = Math.max(pad, left);
-      let top = rect.bottom + 8;
       popover.style.width = `${width}px`;
+
+      if (stored) {
+        setPopoverPosition(stored.left, stored.top);
+        return;
+      }
+
+      const rect = block.getBoundingClientRect();
+      const minTop = headerClearance();
+      let left = clamp(rect.left, pad, window.innerWidth - width - pad);
+      let top = rect.bottom + 8;
+
       popover.style.left = `${left}px`;
       popover.style.top = `${top}px`;
+
       requestAnimationFrame(() => {
         const popRect = popover.getBoundingClientRect();
-        if (popRect.bottom > window.innerHeight - pad) {
-          top = Math.max(pad, rect.top - popRect.height - 8);
-          popover.style.top = `${top}px`;
+        if (popRect.bottom > window.innerHeight - pad || popRect.top < minTop) {
+          top = rect.top - popRect.height - 8;
+          if (top < minTop) {
+            top = minTop;
+          }
+          setPopoverPosition(left, top);
         }
       });
     };
@@ -868,6 +929,61 @@
       closePopover();
     }, true);
 
+    let dragPointerId: number | null = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragOriginLeft = 0;
+    let dragOriginTop = 0;
+
+    dragHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+
+      const bounds = popover.getBoundingClientRect();
+      setPopoverPosition(bounds.left, bounds.top);
+
+      dragPointerId = event.pointerId;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      dragOriginLeft = bounds.left;
+      dragOriginTop = bounds.top;
+
+      popover.classList.add('is-dragging');
+      dragHandle.setPointerCapture(event.pointerId);
+    });
+
+    dragHandle.addEventListener('pointermove', (event) => {
+      if (dragPointerId !== event.pointerId) return;
+      const dx = event.clientX - dragStartX;
+      const dy = event.clientY - dragStartY;
+      setPopoverPosition(dragOriginLeft + dx, dragOriginTop + dy);
+    });
+
+    const endPopoverDrag = (event: PointerEvent) => {
+      if (dragPointerId !== event.pointerId) return;
+      dragPointerId = null;
+      popover.classList.remove('is-dragging');
+      if (dragHandle.hasPointerCapture(event.pointerId)) {
+        dragHandle.releasePointerCapture(event.pointerId);
+      }
+      const left = Number.parseFloat(popover.style.left);
+      const top = Number.parseFloat(popover.style.top);
+      if (Number.isFinite(left) && Number.isFinite(top)) {
+        setPopoverPosition(left, top, true);
+      }
+    };
+
+    dragHandle.addEventListener('pointerup', endPopoverDrag);
+    dragHandle.addEventListener('pointercancel', endPopoverDrag);
+
+    window.addEventListener('resize', () => {
+      if (popover.hidden) return;
+      const left = Number.parseFloat(popover.style.left);
+      const top = Number.parseFloat(popover.style.top);
+      if (!Number.isFinite(left) || !Number.isFinite(top)) return;
+      setPopoverPosition(left, top);
+    });
+
     window.addEventListener('vcd:section-nav-editor-change', (() => {
       setEditorChrome(isActive());
     }) as EventListener);
@@ -898,6 +1014,15 @@
   html.is-section-nav-editing .section-nav-editor__hint,
   html.is-section-nav-editing .section-nav-editor__hint * {
     cursor: auto !important;
+  }
+
+  html.is-section-nav-editing .section-nav-editor__head,
+  html.is-section-nav-editing .section-nav-editor__popover.is-dragging .section-nav-editor__head {
+    cursor: grab !important;
+  }
+
+  html.is-section-nav-editing .section-nav-editor__popover.is-dragging .section-nav-editor__head {
+    cursor: grabbing !important;
   }
 
   html.is-section-nav-editing .project-page__main [data-dev-spacing-path].is-section-nav-hover {
@@ -969,7 +1094,7 @@
 
   .section-nav-editor__popover {
     position: fixed;
-    z-index: 41;
+    z-index: 60;
     padding: 0.85em;
     border-radius: var(--radius-card-smooth);
     background: var(--color-bg);
@@ -978,8 +1103,20 @@
     font-size: 0.9rem;
   }
 
+  .section-nav-editor__head {
+    margin: -0.15em -0.15em 0.65em;
+    padding: 0.15em 0.15em 0.35em;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+  }
+
+  .section-nav-editor__popover.is-dragging .section-nav-editor__head {
+    cursor: grabbing;
+  }
+
   .section-nav-editor__title {
-    margin: 0 0 0.65em;
+    margin: 0;
     font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.06em;
