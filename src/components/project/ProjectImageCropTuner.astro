@@ -244,8 +244,9 @@ import DevOverlay from '../DevOverlay.astro';
     let editTarget = initialTarget;
     let editedImage = initialImage;
     let selectedViewport = viewportForWidth();
-    // Only mutate the live page image while the panel is actively editing it,
-    // so frameless images are not cropped merely by loading the page.
+    // Panel is open for this image (preview mirrors it; page stays untouched until an edit).
+    let editingSession = false;
+    // Write draft → live page. Stays false on open; flips on the first real crop edit.
     let liveApply = false;
     let targetWasCropped = false;
     let savedSinceSelect = false;
@@ -453,12 +454,23 @@ import DevOverlay from '../DevOverlay.astro';
       );
     };
 
+    /** First user crop change in this session — enable live page writes + frame classes. */
+    const beginLiveEdits = () => {
+      if (!editingSession || liveApply) return;
+      liveApply = true;
+      if (!isGridTarget(editTarget)) {
+        editTarget.classList.add('project-responsive-image', 'project-cropped');
+      }
+    };
+
     const renderDraft = () => {
       preview.style.aspectRatio = draft.aspectRatio === 'original'
         ? `${previewImage.naturalWidth || 1} / ${previewImage.naturalHeight || 1}`
         : draft.aspectRatio.replace(':', ' / ');
       syncCoverSizes();
-      constrainDraft();
+      // Don't clamp on open — preview pan limits differ from the page frame and would
+      // rewrite x/y just by loading the tuner. Clamp only once we're live-editing.
+      if (liveApply) constrainDraft();
       draftVariants[selectedViewport] = { ...draft };
       setCropVariables(preview, draft);
       if (liveApply) {
@@ -582,12 +594,11 @@ import DevOverlay from '../DevOverlay.astro';
       editedImage = image;
       resizeObserver?.observe(editTarget);
 
-      liveApply = live;
+      editingSession = live;
+      // Preview-only until the user actually changes the crop.
+      liveApply = false;
       targetWasCropped = target.classList.contains('project-cropped') || isGridTarget(target);
       savedSinceSelect = false;
-      if (live && !isGridTarget(target)) {
-        target.classList.add('project-responsive-image', 'project-cropped');
-      }
 
       selectedViewport = viewportForWidth();
       const pendingId = pendingIdFor(target);
@@ -608,17 +619,25 @@ import DevOverlay from '../DevOverlay.astro';
       renderConstraint();
       renderDraft();
       syncUseGridDefaultButton();
-      if (live) status.textContent = 'Editing this image. Changes update the page live.';
+      if (live) {
+        status.textContent = 'Editing this image. The page updates when you change the crop.';
+      }
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+      // Only the image/crop panel — caption/grid opens must not hijack this target.
+      const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
+      if (!panel || panel.dataset.devPanelKey !== 'image') return;
       const target = trigger?.closest<HTMLElement>('[data-dev-image-target]');
       if (target) selectTarget(target, true);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-close', (() => {
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      if (panel && panel.dataset.devPanelKey !== 'image') return;
       revertFramelessTarget();
+      editingSession = false;
       liveApply = false;
     }) as EventListener);
 
@@ -640,6 +659,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     aspectRatioSelect.addEventListener('change', () => {
+      beginLiveEdits();
       draft.aspectRatio = aspectRatioSelect.value;
       if (PRESET_ASPECT_RATIOS.has(draft.aspectRatio)) {
         aspectRatioSelect.querySelector('[data-crop-custom-ratio]')?.remove();
@@ -649,6 +669,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     zoomInput.addEventListener('input', () => {
+      beginLiveEdits();
       draft.zoom = clamp(Number(zoomInput.value), 1, 1.5);
       renderDraft();
       status.textContent = 'Unsaved changes.';
@@ -692,6 +713,7 @@ import DevOverlay from '../DevOverlay.astro';
       const minHeight = width / RATIO_MAX;
       const maxHeight = width / RATIO_MIN;
       height = clamp(height, minHeight, maxHeight);
+      beginLiveEdits();
       draft.aspectRatio = ratioFromSize(width, height);
       renderDraft();
       status.textContent = 'Frame resized — unsaved changes.';
@@ -762,6 +784,7 @@ import DevOverlay from '../DevOverlay.astro';
 
       const nextX = originX + (deltaX / bounds.width) * 100;
       const nextY = originY + (deltaY / bounds.height) * 100;
+      beginLiveEdits();
       draft.x = clean(clamp(lockedAxis === 'y' ? originX : nextX, -100, 100));
       draft.y = clean(clamp(lockedAxis === 'x' ? originY : nextY, -100, 100));
       renderDraft();
@@ -781,18 +804,21 @@ import DevOverlay from '../DevOverlay.astro';
     preview.addEventListener('pointercancel', endDrag);
 
     centerXButton.addEventListener('click', () => {
+      beginLiveEdits();
       draft.x = 0;
       renderDraft();
       status.textContent = 'Centred horizontally — unsaved changes.';
     });
 
     centerYButton.addEventListener('click', () => {
+      beginLiveEdits();
       draft.y = 0;
       renderDraft();
       status.textContent = 'Centred vertically — unsaved changes.';
     });
 
     constraintButton.addEventListener('click', () => {
+      beginLiveEdits();
       const next = !constrainToFrame();
       constrainByViewport = {
         ...constrainByViewport,
@@ -815,6 +841,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     resetButton.addEventListener('click', () => {
+      beginLiveEdits();
       draft = { ...defaults, aspectRatio: draft.aspectRatio };
       renderDraft();
       status.textContent = 'Reset to centred cover — unsaved changes.';
