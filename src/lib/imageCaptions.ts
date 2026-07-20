@@ -1,9 +1,10 @@
 import type { ImageViewport } from './responsiveImage';
 import { IMAGE_VIEWPORTS } from './responsiveImage';
 
-/** Styles typography “Caption” — only style defined for now. */
+/** Overlay caption styles (Dev Mode tuner + project image grids). */
 export const IMAGE_CAPTION_STYLES = [
-  { id: 'default', label: 'Default' },
+  { id: 'white', label: 'White' },
+  { id: 'black', label: 'Black' },
 ] as const;
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
@@ -44,12 +45,15 @@ export function isImageCaptionStyleId(value: unknown): value is ImageCaptionStyl
   return IMAGE_CAPTION_STYLES.some((style) => style.id === value);
 }
 
+/** Resolve style id; legacy `default` maps to `white`. */
 export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
-  return isImageCaptionStyleId(value) ? value : 'default';
+  if (value === 'default') return 'white';
+  return isImageCaptionStyleId(value) ? value : 'white';
 }
 
+/** White uses base `.project-caption`; other styles add a modifier class. */
 export function imageCaptionStyleClass(style: ImageCaptionStyleId): string {
-  return style === 'default' ? '' : `project-caption--${style}`;
+  return style === 'white' ? '' : `project-caption--${style}`;
 }
 
 export function isImageCaptionReveal(value: unknown): value is ImageCaptionReveal {
