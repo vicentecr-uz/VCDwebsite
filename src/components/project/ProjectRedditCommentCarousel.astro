@@ -1,0 +1,543 @@
+---
+/**
+ * Reddit-comment masonry board (Pinterest-style).
+ * 3 columns with staggered tops (no flush horizon), 1em gaps.
+ * Up/down pages by card visibility; loops infinitely.
+ * Wheel/touch scroll disabled so page scroll isn’t trapped.
+ *
+ * Loop copies live *inside* each column (not as a second full-width set),
+ * so wrapping never leaves a tall empty band in a shorter column.
+ */
+import ProjectRedditComment from './ProjectRedditComment.astro';
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
+
+export type RedditCommentCarouselItem = {
+  author: string;
+  paragraphs: string[];
+  score: number | string;
+  avatarSrc?: string;
+  href?: string;
+  theme?: 'light' | 'dark';
+};
+
+interface Props {
+  items: RedditCommentCarouselItem[];
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+}
+
+const {
+  items,
+  documentKey,
+  sectionPath,
+  spacing = 'section',
+  sectionId,
+} = Astro.props;
+
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const stackClass = projectStackClass(spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+
+const COL_COUNT = 3;
+/**
+ * Uneven top offsets (em) so the first visible cards don’t share a horizon —
+ * more like a mid-feed than the top of a fresh Pinterest board.
+ */
+const COL_STAGGER_EM = [0.4, 2.45, 1.2] as const;
+
+type ColEntry = { item: (typeof items)[number]; index: number };
+
+/**
+ * Every column gets the full item list (rotated). Same card set ⇒ equal column
+ * heights ⇒ no blank “missing peek” bands when paging the infinite loop.
+ */
+const columns: ColEntry[][] = Array.from({ length: COL_COUNT }, (_, colIndex) => {
+  if (!items.length) return [];
+  const offset = Math.floor((items.length * colIndex) / COL_COUNT);
+  const rotated: ColEntry[] = [];
+  for (let i = 0; i < items.length; i++) {
+    const index = (i + offset) % items.length;
+    rotated.push({ item: items[index], index });
+  }
+  return rotated;
+});
+
+/** Middle copy is interactive; the outer copies provide seamless headroom. */
+const copies = [0, 1, 2] as const;
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'reddit-comment-board', stackClass, sectionId && 'section-block']}
+  data-reddit-comment-board
+  {...(spacingAttrs ?? {})}
+>
+  <div class="reddit-comment-board__shell">
+    <button
+      type="button"
+      class="reddit-comment-board__nav reddit-comment-board__nav--prev"
+      data-reddit-board-prev
+      aria-label="Scroll comments up"
+    >
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="currentColor">
+        <path d="M3.28 12.22a.75.75 0 001.06 0L10 6.56l5.66 5.66a.75.75 0 101.06-1.06l-6.19-6.19a.75.75 0 00-1.06 0L3.28 11.16a.75.75 0 000 1.06z"></path>
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="reddit-comment-board__nav reddit-comment-board__nav--next"
+      data-reddit-board-next
+      aria-label="Scroll comments down"
+    >
+      <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" fill="currentColor">
+        <path d="M16.72 7.78a.75.75 0 00-1.06 0L10 13.44 4.34 7.78a.75.75 0 00-1.06 1.06l6.19 6.19a.75.75 0 001.06 0l6.19-6.19a.75.75 0 000-1.06z"></path>
+      </svg>
+    </button>
+
+    <div class="reddit-comment-board__viewport" data-reddit-board-viewport>
+            <div class="reddit-comment-board__cols" data-reddit-board-track>
+        {columns.map((colItems, colIndex) => (
+          <div
+            class="reddit-comment-board__col"
+            data-reddit-board-col={String(colIndex)}
+            style={`--rcb-stagger: ${COL_STAGGER_EM[colIndex]}em`}
+          >
+            {copies.map((copyIndex) => (
+              <div
+                class="reddit-comment-board__copy"
+                data-reddit-board-copy={String(copyIndex)}
+                aria-hidden={copyIndex !== 1 ? 'true' : undefined}
+                inert={copyIndex !== 1 ? true : undefined}
+              >
+                {colItems.map(({ item, index }) => (
+                  <div
+                    class="reddit-comment-board__item"
+                    data-reddit-board-item
+                    data-reddit-board-index={String(index)}
+                  >
+                    <ProjectRedditComment
+                      author={item.author}
+                      paragraphs={item.paragraphs}
+                      score={item.score}
+                      avatarSrc={item.avatarSrc}
+                      href={copyIndex === 1 ? item.href : undefined}
+                      theme={item.theme ?? 'light'}
+                      documentKey={
+                        editable && copyIndex === 1 && colIndex === 0 ? documentKey : undefined
+                      }
+                      pathPrefix={
+                        editable && copyIndex === 1 && colIndex === 0 && sectionPath
+                          ? [...sectionPath, 'items', index, 'paragraphs']
+                          : undefined
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .reddit-comment-board {
+    width: 100%;
+    max-width: 60em;
+  }
+
+  .reddit-comment-board__shell {
+    --rcb-gap: 1em;
+    --rcb-cols: 3;
+    --rcb-pad-x: 1em;
+    /* Fully faded edge sits 0.75em from the soft canvas; fade length is 1.25em. */
+    --rcb-pad-y: 0.75em;
+    --rcb-fade: 1.25em;
+    /* One “page” of the board; peeks of the next band fade at the edge. */
+    --rcb-viewport-max: min(20em, 52vh);
+
+    position: relative;
+    border-radius: 0.75em;
+    background: var(--color-surface-soft);
+    padding: var(--rcb-pad-y) var(--rcb-pad-x);
+  }
+
+  .reddit-comment-board__viewport {
+    position: relative;
+    max-height: var(--rcb-viewport-max);
+    /* Buttons-only paging — wheel/touch pass through to the page. */
+    overflow: hidden;
+    overscroll-behavior: auto;
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--rcb-fade),
+      #000 calc(100% - var(--rcb-fade)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      #000 var(--rcb-fade),
+      #000 calc(100% - var(--rcb-fade)),
+      transparent 100%
+    );
+  }
+
+  .reddit-comment-board__cols {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--rcb-gap);
+  }
+
+  .reddit-comment-board__col {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--rcb-gap);
+    /* Visual phase only: does not change copy height or the loop period. */
+    transform: translateY(var(--rcb-stagger, 0px));
+  }
+
+  .reddit-comment-board__copy {
+    display: flex;
+    flex-direction: column;
+    gap: var(--rcb-gap);
+  }
+
+  .reddit-comment-board__item {
+    width: 100%;
+  }
+
+  .reddit-comment-board__item :global(.reddit-comment) {
+    max-width: none;
+    width: 100%;
+  }
+
+  .reddit-comment-board__nav {
+    position: absolute;
+    left: 50%;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 2.25em;
+    height: 2.25em;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+    color: var(--color-text);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--color-text) 12%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(-50%);
+    transition: opacity 0.2s ease;
+    cursor: pointer;
+  }
+
+  .reddit-comment-board__nav--prev {
+    top: 0.55em;
+  }
+
+  .reddit-comment-board__nav--next {
+    bottom: 0.55em;
+  }
+
+  /* Hover only — not :focus-within, or a click-stuck focus keeps buttons visible. */
+  .reddit-comment-board__shell:hover .reddit-comment-board__nav:not(:disabled) {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .reddit-comment-board__nav:disabled {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  /* Keyboard users still get a visible target without trapping mouse hover. */
+  .reddit-comment-board__nav:focus-visible:not(:disabled) {
+    opacity: 1;
+    pointer-events: auto;
+    outline: 2px solid var(--color-text);
+    outline-offset: 2px;
+  }
+
+  @media (max-width: 52em) {
+    .reddit-comment-board__shell {
+      --rcb-cols: 2;
+      --rcb-viewport-max: min(32em, 65vh);
+    }
+
+    .reddit-comment-board__cols {
+      flex-wrap: nowrap;
+    }
+
+    .reddit-comment-board__col {
+      flex: 1 1 calc((100% - var(--rcb-gap)) / 2);
+    }
+
+    .reddit-comment-board__col:nth-child(1) {
+      --rcb-stagger: 0.35em;
+    }
+    .reddit-comment-board__col:nth-child(2) {
+      --rcb-stagger: 1.75em;
+    }
+    .reddit-comment-board__col:nth-child(3) {
+      display: none;
+    }
+  }
+
+  @media (max-width: 36em) {
+    .reddit-comment-board__shell {
+      --rcb-cols: 1;
+      --rcb-viewport-max: min(26em, 60vh);
+    }
+
+    .reddit-comment-board__col {
+      flex: 1 1 100%;
+      --rcb-stagger: 0px;
+    }
+
+    .reddit-comment-board__col:nth-child(3) {
+      display: none;
+    }
+
+    .reddit-comment-board__col:nth-child(2) {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const initRedditCommentBoard = (root: HTMLElement) => {
+    const viewport = root.querySelector<HTMLElement>('[data-reddit-board-viewport]');
+    const track = root.querySelector<HTMLElement>('[data-reddit-board-track]');
+    const prevBtn = root.querySelector<HTMLButtonElement>('[data-reddit-board-prev]');
+    const nextBtn = root.querySelector<HTMLButtonElement>('[data-reddit-board-next]');
+    if (!viewport || !track) return;
+
+    // Re-bind on HMR / astro:page-load (buttons may be new DOM nodes).
+    const prior = (root as HTMLElement & { _rcbAbort?: AbortController })._rcbAbort;
+    prior?.abort();
+    const ac = new AbortController();
+    (root as HTMLElement & { _rcbAbort?: AbortController })._rcbAbort = ac;
+    const { signal } = ac;
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let paging = false;
+    let pageTimer = 0;
+    let pendingDir: 1 | -1 | 0 = 0;
+    let startedMidFeed = root.dataset.rcbStarted === 'true';
+
+    const epsilon = 2;
+
+    const cols = () =>
+      Array.from(track.querySelectorAll<HTMLElement>('[data-reddit-board-col]'));
+
+    /** Exact distance between identical copies; transforms cancel out. */
+    const loopPeriod = () => {
+      const col = cols().find((candidate) => candidate.offsetParent !== null);
+      const copy0 = col?.querySelector<HTMLElement>('[data-reddit-board-copy="0"]');
+      const copy1 = col?.querySelector<HTMLElement>('[data-reddit-board-copy="1"]');
+      if (!copy0 || !copy1) return 0;
+      return copy1.getBoundingClientRect().top - copy0.getBoundingClientRect().top;
+    };
+
+    const canLoop = () => loopPeriod() > viewport.clientHeight + epsilon;
+
+    const syncNav = () => {
+      const enabled = canLoop();
+      if (prevBtn) prevBtn.disabled = !enabled;
+      if (nextBtn) nextBtn.disabled = !enabled;
+    };
+
+    /** Keep the viewport around the middle copy. The ±period shift is identical. */
+    const normalizeLoop = () => {
+      const period = loopPeriod();
+      if (period <= epsilon) return;
+      let top = viewport.scrollTop;
+      const lowerBound = period * 0.5;
+      const upperBound = period * 1.5;
+
+      while (top < lowerBound) top += period;
+      while (top >= upperBound) top -= period;
+
+      if (Math.abs(top - viewport.scrollTop) > epsilon) {
+        viewport.scrollTop = top;
+      }
+    };
+
+    const startMidFeed = () => {
+      if (startedMidFeed) return;
+      const period = loopPeriod();
+      if (period <= viewport.clientHeight + epsilon) return;
+      const em = parseFloat(getComputedStyle(root).fontSize) || 16;
+      const offset = Math.min(Math.round(em * 3.25), Math.round(period * 0.2));
+      viewport.scrollTop = period + offset;
+      startedMidFeed = true;
+      root.dataset.rcbStarted = 'true';
+    };
+
+    /**
+     * Reveal the cards currently clipped at the requested edge. The inset
+     * leaves one gap plus 1em for the neighbouring cards to keep peeking.
+     */
+    const pageDistance = (direction: 1 | -1) => {
+      const vRect = viewport.getBoundingClientRect();
+      const em = parseFloat(getComputedStyle(root).fontSize) || 16;
+      const gap = parseFloat(getComputedStyle(track).gap) || em;
+      const preferredInset = gap + em;
+      const items = cols()
+        .filter((col) => col.offsetParent !== null)
+        .flatMap((col) =>
+          Array.from(col.querySelectorAll<HTMLElement>('[data-reddit-board-item]')),
+        );
+
+      const peeks = items
+        .map((item) => item.getBoundingClientRect())
+        .filter((rect) =>
+          direction === 1
+            ? rect.top < vRect.bottom - epsilon && rect.bottom > vRect.bottom + epsilon
+            : rect.top < vRect.top - epsilon && rect.bottom > vRect.top + epsilon,
+        );
+
+      if (!peeks.length) {
+        return Math.max(48, viewport.clientHeight - preferredInset * 2);
+      }
+
+      // Tall cards get the largest symmetric inset that still lets them fit.
+      const tallest = Math.max(...peeks.map((rect) => rect.height));
+      const inset = Math.max(
+        0,
+        Math.min(preferredInset, (viewport.clientHeight - tallest) / 2),
+      );
+
+      if (direction === 1) {
+        const reveal = Math.max(
+          ...peeks.map((rect) => rect.bottom - (vRect.bottom - inset)),
+        );
+        const beforeOppositeEdge = Math.min(
+          ...peeks.map((rect) => rect.top - (vRect.top + inset)),
+        );
+        return Math.max(1, Math.min(reveal, beforeOppositeEdge));
+      }
+
+      const reveal = Math.max(
+        ...peeks.map((rect) => vRect.top + inset - rect.top),
+      );
+      const beforeOppositeEdge = Math.min(
+        ...peeks.map((rect) => vRect.bottom - inset - rect.bottom),
+      );
+      return Math.max(1, Math.min(reveal, beforeOppositeEdge));
+    };
+
+    const endPaging = () => {
+      // scrollend + timeout can both fire — only the first should finish the page.
+      if (!paging) return;
+      paging = false;
+      if (pageTimer) {
+        window.clearTimeout(pageTimer);
+        pageTimer = 0;
+      }
+      normalizeLoop();
+      syncNav();
+
+      if (pendingDir) {
+        const next = pendingDir;
+        pendingDir = 0;
+        scrollByPage(next);
+      }
+    };
+
+    const scrollByPage = (direction: 1 | -1) => {
+      if (paging) {
+        // Remember the latest click so down→up isn’t swallowed mid-animation.
+        pendingDir = direction;
+        return;
+      }
+      if (!canLoop()) {
+        syncNav();
+        return;
+      }
+
+      normalizeLoop();
+      const nextTop = viewport.scrollTop + direction * pageDistance(direction);
+
+      paging = true;
+      pendingDir = 0;
+      viewport.scrollTo({
+        top: nextTop,
+        behavior: reduceMotion ? 'auto' : 'smooth',
+      });
+
+      const onScrollEnd = () => {
+        viewport.removeEventListener('scrollend', onScrollEnd);
+        endPaging();
+      };
+      viewport.addEventListener('scrollend', onScrollEnd, { signal });
+      pageTimer = window.setTimeout(endPaging, reduceMotion ? 50 : 750);
+    };
+
+    // Delegate from the stable section root so HMR button swaps don’t drop handlers.
+    root.addEventListener(
+      'click',
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const next = target.closest<HTMLButtonElement>('[data-reddit-board-next]');
+        const prev = target.closest<HTMLButtonElement>('[data-reddit-board-prev]');
+        if (next) {
+          scrollByPage(1);
+          next.blur();
+        } else if (prev) {
+          scrollByPage(-1);
+          prev.blur();
+        }
+      },
+      { signal },
+    );
+
+    const ro = new ResizeObserver(() => {
+      normalizeLoop();
+      syncNav();
+    });
+    ro.observe(viewport);
+    signal.addEventListener('abort', () => {
+      ro.disconnect();
+      if (pageTimer) window.clearTimeout(pageTimer);
+    });
+
+    const ready = () => {
+      if (signal.aborted) return;
+      startMidFeed();
+      normalizeLoop();
+      syncNav();
+    };
+
+    window.addEventListener('load', ready, { once: true, signal });
+    requestAnimationFrame(ready);
+  };
+
+  const boot = () => {
+    document
+      .querySelectorAll<HTMLElement>('[data-reddit-comment-board]')
+      .forEach((node) => initRedditCommentBoard(node));
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+  document.addEventListener('astro:page-load', boot);
+</script>
