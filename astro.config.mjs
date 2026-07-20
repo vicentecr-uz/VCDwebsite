@@ -513,7 +513,7 @@ function contentTextDevWriter() {
   };
 }
 
-const EDITABLE_SPACING_VALUES = new Set(['related', 'section', 'major', 'none']);
+const EDITABLE_SPACING_VALUES = new Set(['related', 'group', 'section', 'major', 'none']);
 
 /**
  * Resolve a JSON path against a document root. Returns null when missing.

@@ -1,5 +1,5 @@
 /** Vertical rhythm between project page sections (parent-owned stack). */
-export type ProjectStackSpacing = 'related' | 'section' | 'major' | 'none';
+export type ProjectStackSpacing = 'related' | 'group' | 'section' | 'major' | 'none';
 
 export function projectStackClass(
   spacing: ProjectStackSpacing = 'section',
@@ -7,6 +7,7 @@ export function projectStackClass(
 ): string {
   const classes: string[] = [];
   if (spacing === 'related') classes.push('project-stack--related');
+  else if (spacing === 'group') classes.push('project-stack--group');
   else if (spacing === 'major') classes.push('project-stack--major');
   else if (spacing === 'none') classes.push('project-stack--none');
   if (options?.precedeRelated) classes.push('project-stack--precede-related');

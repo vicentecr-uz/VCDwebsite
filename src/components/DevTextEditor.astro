@@ -39,7 +39,7 @@
 
 <script>
   type EditableTextValue = string | string[];
-  type SpacingValue = 'related' | 'section' | 'major' | 'none';
+  type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
   interface EditableTextState {
     element: HTMLElement;
@@ -63,14 +63,16 @@
 
   type InsertableSectionType = 'bodyText' | 'sectionTitle';
 
-  const SPACING_OPTIONS: Array<{ value: 'related' | 'section' | 'major'; label: string; title: string }> = [
+  const SPACING_OPTIONS: Array<{ value: 'related' | 'group' | 'section' | 'major'; label: string; title: string }> = [
     { value: 'related', label: '1em', title: 'Related · 1em' },
+    { value: 'group', label: '4em', title: 'Group · 4em' },
     { value: 'section', label: '8em', title: 'Section · 8em' },
     { value: 'major', label: '12em', title: 'Major · 12em' },
   ];
 
   const STACK_CLASS: Record<SpacingValue, string | null> = {
     related: 'project-stack--related',
+    group: 'project-stack--group',
     section: null,
     major: 'project-stack--major',
     none: 'project-stack--none',
@@ -1419,6 +1421,10 @@
     top: calc(var(--space-related) / -2);
   }
 
+  [data-dev-spacing-document].project-stack--group > .dev-gap-toolbar {
+    top: calc(var(--space-group) / -2);
+  }
+
   [data-dev-spacing-document].project-stack--major > .dev-gap-toolbar {
     top: calc(var(--space-major) / -2);
   }
@@ -1428,7 +1434,7 @@
     top: 0;
   }
 
-  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {
+  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--group):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {
     top: calc(var(--space-related) / -2);
   }
 
@@ -1575,6 +1581,10 @@
     height: 0.12em;
   }
 
+  .dev-spacing-control__mark--group {
+    height: 0.2em;
+  }
+
   .dev-spacing-control__mark--section {
     height: 0.28em;
   }
@@ -1583,9 +1593,53 @@
     height: 0.45em;
   }
 
+  /*
+    Dirty spacing: highlight the margin-top gap above the block (the thing
+    you're editing), not the content box. Same positioning model as the
+    gap toolbar — no spacer section in the DOM.
+  */
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty {
-    outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 55%, transparent);
-    outline-offset: 0.15em;
+    position: relative;
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;
+    height: var(--space-section);
+    box-sizing: border-box;
+    border: 1px dashed color-mix(in srgb, var(--color-text-muted) 55%, transparent);
+    pointer-events: none;
+    z-index: 35;
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--related::after {
+    height: var(--space-related);
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--group::after {
+    height: var(--space-group);
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--major::after {
+    height: var(--space-major);
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--none::after,
+  .is-dev-mode
+    .project-stack--flush
+    + [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--flush::after {
+    content: none;
+  }
+
+  .is-dev-mode
+    .project-stack--precede-related
+    + [data-dev-spacing-document].is-dev-spacing-dirty:not(.project-stack--related):not(
+      .project-stack--group
+    ):not(.project-stack--major):not(.project-stack--none)::after {
+    height: var(--space-related);
   }
 
   /* ── Section delete (DEV) ───────────────────────────────── */
