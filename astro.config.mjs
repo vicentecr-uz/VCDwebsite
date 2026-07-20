@@ -709,9 +709,10 @@ const applyCaptionChange = (data, change) => {
     return { ok: true };
   }
 
-  const CAPTION_STYLES = new Set(['default']);
+  const CAPTION_STYLES = new Set(['white', 'black', 'default']);
   const CAPTION_REVEALS = new Set(['hover', 'always']);
-  const captionStyle = String(change.captionStyle || 'default');
+  const rawStyle = String(change.captionStyle || 'white');
+  const captionStyle = rawStyle === 'default' ? 'white' : rawStyle;
   if (!CAPTION_STYLES.has(captionStyle)) {
     return { ok: false, error: 'Use a supported caption style.' };
   }
@@ -763,7 +764,7 @@ const applyCaptionChange = (data, change) => {
   // Keep legacy single caption in sync with desktop for older readers.
   target.caption = captions.desktop;
   target.captionReveal = captionReveal;
-  if (captionStyle === 'default') {
+  if (captionStyle === 'white') {
     delete target.captionStyle;
   } else {
     target.captionStyle = captionStyle;
