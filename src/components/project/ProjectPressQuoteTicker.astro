@@ -585,15 +585,15 @@ const loopItems = [...items, ...items];
       { capture: true, signal },
     );
 
-    // Wheel / trackpad: same virtual-pointer samples + beginCoast path as drag,
-    // so release inertia matches. Coast starts on every event (no idle freeze).
+    // Horizontal wheel / trackpad only — vertical scroll passes through to the page.
+    // Same virtual-pointer samples + beginCoast path as drag so release inertia matches.
     viewport.addEventListener(
       'wheel',
       (event) => {
         const absX = Math.abs(event.deltaX);
         const absY = Math.abs(event.deltaY);
-        if (absX < 0.5 && absY < 0.5) return;
-        const delta = absX >= absY ? event.deltaX : event.deltaY;
+        // Ignore vertical-dominant gestures so page scroll is not hijacked.
+        if (absX < 0.5 || absX < absY) return;
         event.preventDefault();
 
         const now = performance.now();
@@ -607,7 +607,7 @@ const loopItems = [...items, ...items];
 
         // Drag: phase = start − dx. Positive wheel delta should increase phase
         // (content moves left) ⇒ virtual pointer moves left (negative x).
-        wheelVirtualX -= delta;
+        wheelVirtualX -= event.deltaX;
         pushSample(wheelVirtualX);
         phase = wrapPhase(wheelStartPhase - wheelVirtualX);
         apply();
