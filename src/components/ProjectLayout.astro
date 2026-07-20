@@ -6,19 +6,15 @@ import SectionSidebarNav from './SectionSidebarNav.astro';
 import ProjectImageCropTuner from './project/ProjectImageCropTuner.astro';
 import ProjectImageGridTuner from './project/ProjectImageGridTuner.astro';
 import ProjectImageCaptionTuner from './project/ProjectImageCaptionTuner.astro';
+import ProjectSectionNavEditor from './project/ProjectSectionNavEditor.astro';
 import ProjectCaptionShadow from './project/ProjectCaptionShadow.astro';
+import {
+  deriveNavFromOutline,
+  resolveProjectOutline,
+  type OutlineEntry,
+  type SectionNavItem,
+} from '../lib/projectOutline';
 import '../styles/project.css';
-
-type SectionLink = {
-  id: string;
-  label: string;
-};
-
-type SectionGroup = {
-  label: string;
-  children: SectionLink[];
-  defaultOpen?: boolean;
-};
 
 interface Props {
   title: string;
@@ -26,18 +22,48 @@ interface Props {
   /** @deprecated Not shown on Webflow-style pages; kept for other project stubs */
   year?: string;
   tags?: string[];
-  /** Widescreen section nav (same component as Styles). */
-  sectionLinks?: Array<SectionLink | SectionGroup>;
+  /**
+   * Flat Obsidian-style outline (preferred). Sidebar tree is derived.
+   * Falls back to `sectionLinks` when omitted.
+   */
+  outline?: OutlineEntry[];
+  /** Derived or legacy nested sidebar tree. Prefer `outline`. */
+  sectionLinks?: SectionNavItem[];
   sectionNavLabel?: string;
+  /** Project JSON document key for DEV section-nav editing. */
+  sectionNavDocument?: string;
 }
 
-const { title, description, sectionLinks, sectionNavLabel = 'Project sections' } = Astro.props;
+const {
+  title,
+  description,
+  outline: outlineProp,
+  sectionLinks: sectionLinksProp,
+  sectionNavLabel = 'Project sections',
+  sectionNavDocument,
+} = Astro.props;
+
+const outline = resolveProjectOutline({
+  outline: outlineProp,
+  nav: sectionLinksProp,
+});
+const sectionLinks = sectionLinksProp?.length
+  ? sectionLinksProp
+  : deriveNavFromOutline(outline);
+
 const showDevTools = import.meta.env.DEV;
 const hasSidebar = Array.isArray(sectionLinks) && sectionLinks.length > 0;
+const navDocument = sectionNavDocument ?? '';
 ---
 
 <Layout title={`${title} — Vicente Cruz`} description={description}>
-  <div class="project-page flex flex-col min-h-dvh">
+  <div
+    class="project-page flex flex-col min-h-dvh"
+    data-section-nav-root={hasSidebar ? '' : undefined}
+    data-section-nav-document={hasSidebar && navDocument ? navDocument : undefined}
+    data-section-nav={hasSidebar ? JSON.stringify(sectionLinks) : undefined}
+    data-section-outline={hasSidebar ? JSON.stringify(outline) : undefined}
+  >
     <Header title={title} />
 
     {hasSidebar ? (
@@ -62,5 +88,6 @@ const hasSidebar = Array.isArray(sectionLinks) && sectionLinks.length > 0;
   {showDevTools && <ProjectImageCropTuner />}
   {showDevTools && <ProjectImageGridTuner />}
   {showDevTools && <ProjectImageCaptionTuner />}
+  {showDevTools && hasSidebar && navDocument && <ProjectSectionNavEditor />}
   <ProjectCaptionShadow />
 </Layout>

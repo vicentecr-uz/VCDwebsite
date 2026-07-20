@@ -55,6 +55,7 @@ const easingOptions = [
 <aside
   class:list={['section-sidebar-nav', desktopOnly && 'section-sidebar-nav--desktop-only']}
   data-nav-id={navId}
+  data-section-sidebar
   aria-label={ariaLabel}
   data-section-selector={sectionSelector}
   data-early-ramp-vh={earlyRampVh}
@@ -64,21 +65,21 @@ const easingOptions = [
   data-click-lock-ms={clickLockMs}
   data-default-easing={defaultEasingPreset}
 >
-  <ul class="section-sidebar-nav__list">
+  <ul class="section-sidebar-nav__list" data-section-sidebar-list>
     {sectionLinks.map((item) => (
       'children' in item ? (
-        <li class="section-sidebar-nav__group-item">
+        <li class="section-sidebar-nav__group-item" data-section-nav-group data-nav-label={item.label}>
           <details class="section-sidebar-nav__group" open={item.defaultOpen}>
             <summary class="section-sidebar-nav__summary">
               <svg viewBox="0 0 8 12" aria-hidden="true">
                 <path d="M1.5 1.5 6 6l-4.5 4.5"></path>
               </svg>
-              <span>{item.label}</span>
+              <span data-section-nav-label>{item.label}</span>
             </summary>
             <div class="section-sidebar-nav__group-content">
               <ul class="section-sidebar-nav__children">
                 {item.children.map((link) => (
-                  <li>
+                  <li data-section-nav-link data-nav-id={link.id} data-nav-label={link.label}>
                     <a href={`#${link.id}`} class="section-sidebar-nav__link">{link.label}</a>
                   </li>
                 ))}
@@ -87,7 +88,7 @@ const easingOptions = [
           </details>
         </li>
       ) : (
-        <li>
+        <li data-section-nav-link data-nav-id={item.id} data-nav-label={item.label}>
           <a href={`#${item.id}`} class="section-sidebar-nav__link section-sidebar-nav__root-link">
             {item.label}
           </a>
@@ -191,9 +192,10 @@ const easingOptions = [
     const clickOffsetPx = parseNumber(nav.dataset.clickOffsetPx, 152);
     const clickLockMs = parseNumber(nav.dataset.clickLockMs, 700);
 
-    const sections = Array.from(document.querySelectorAll(sectionSelector));
-    const navLinks = Array.from(nav.querySelectorAll('.section-sidebar-nav__link'));
-    const navGroups = Array.from(nav.querySelectorAll('.section-sidebar-nav__group'));
+    // Live queries — Section Editor may rebuild sidebar DOM without a full reload.
+    const getSections = () => Array.from(document.querySelectorAll(sectionSelector));
+    const getNavLinks = () => Array.from(nav.querySelectorAll('.section-sidebar-nav__link'));
+    const getNavGroups = () => Array.from(nav.querySelectorAll('.section-sidebar-nav__group'));
     let manualLockUntil = 0;
     let scrollRafId = 0;
     let isAutoScrolling = false;
@@ -767,7 +769,7 @@ const easingOptions = [
 
     const setActiveLink = (id) => {
       let activeGroup = null;
-      navLinks.forEach((link) => {
+      getNavLinks().forEach((link) => {
         const href = link.getAttribute('href');
         const isActive = href === `#${id}`;
         link.classList.toggle('is-active', isActive);
@@ -788,7 +790,7 @@ const easingOptions = [
        * Open/close animate in parallel so the next group title moves up while
        * outgoing sub-links fade out and incoming ones fade in.
        */
-      navGroups.forEach((group) => {
+      getNavGroups().forEach((group) => {
         if (!(group instanceof HTMLDetailsElement)) return;
         if (group === activeGroup) {
           animateGroup(group, true);
@@ -800,19 +802,138 @@ const easingOptions = [
       });
     };
 
-    navGroups.forEach((group) => {
-      if (!(group instanceof HTMLDetailsElement)) return;
-      const summary = group.querySelector(':scope > summary');
-      if (!(summary instanceof HTMLElement)) return;
-      summary.addEventListener('click', (event) => {
+    let ticking = false;
+    const updateActiveFromScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          if (isAutoScrolling) {
+            ticking = false;
+            return;
+          }
+          if (performance.now() < manualLockUntil) {
+            ticking = false;
+            return;
+          }
+          if (!getSections().length || !getNavLinks().length) {
+            ticking = false;
+            return;
+          }
+          const activeId = getActiveSectionId();
+          if (activeId) setActiveLink(activeId);
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    // Event delegation so Section Editor DOM rebuilds keep working.
+    nav.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const summary = target.closest('.section-sidebar-nav__summary');
+      if (summary instanceof HTMLElement && nav.contains(summary)) {
+        const group = summary.closest('.section-sidebar-nav__group');
+        if (!(group instanceof HTMLDetailsElement)) return;
         event.preventDefault();
         const willBeOpen = !groupIsVisuallyOpen(group);
         if (willBeOpen) pinnedOpenGroups.add(group);
         else pinnedOpenGroups.delete(group);
         animateGroup(group, willBeOpen);
-      });
+        return;
+      }
+
+      // Section Editor owns sidebar link clicks while active.
+      if (
+        document.documentElement.classList.contains('show-section-nav-editor') &&
+        document.documentElement.classList.contains('is-dev-mode')
+      ) {
+        return;
+      }
+
+      const link = target.closest('.section-sidebar-nav__link');
+      if (!(link instanceof HTMLAnchorElement) || !nav.contains(link)) return;
+
+      const href = link.getAttribute('href');
+      if (!href || !href.startsWith('#')) return;
+
+      const id = href.slice(1);
+      const scrollTarget = document.getElementById(id);
+      if (!scrollTarget) return;
+
+      event.preventDefault();
+
+      const startY = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight;
+      const viewportHeight = window.innerHeight;
+      const maxScroll = Math.max(docHeight - viewportHeight, 0);
+      const rect = scrollTarget.getBoundingClientRect();
+      const sectionHeight = rect.height;
+      /**
+       * Short sections pin near the top (under the header offset).
+       * Tall ones (≥ ~65% of the viewport) centre vertically so large
+       * images aren't cropped awkwardly at the fold.
+       */
+      const centerThreshold = viewportHeight * 0.65;
+      const rawTargetTop = sectionHeight >= centerThreshold
+        ? startY + rect.top - (viewportHeight - sectionHeight) / 2
+        : startY + rect.top - clickOffsetPx;
+      const targetTop = Math.min(Math.max(rawTargetTop, 0), maxScroll);
+      const distance = targetTop - startY;
+
+      setActiveLink(id);
+      window.history.replaceState(null, '', href);
+
+      const useNativeSmooth = scrollEasing.getUseNative();
+      const currentEaser = scrollEasing.getEaser();
+
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(distance) < 2) {
+        manualLockUntil = performance.now() + Math.min(clickLockMs, 120);
+        window.scrollTo(0, targetTop);
+        return;
+      }
+
+      if (useNativeSmooth) {
+        manualLockUntil = performance.now() + clickLockMs;
+        isAutoScrolling = true;
+        window.scrollTo({ top: targetTop, behavior: 'smooth' });
+        window.setTimeout(() => {
+          isAutoScrolling = false;
+          setActiveLink(id);
+          updateActiveFromScroll();
+        }, clickLockMs);
+        return;
+      }
+
+      const duration = Math.min(900, Math.max(480, Math.abs(distance) * 0.55));
+      manualLockUntil = performance.now() + Math.max(clickLockMs, duration + 100);
+
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      isAutoScrolling = true;
+      let animationStart = 0;
+
+      const animateScroll = (timestamp) => {
+        if (animationStart === 0) animationStart = timestamp;
+        const elapsed = timestamp - animationStart;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = currentEaser(progress);
+        window.scrollTo(0, startY + distance * eased);
+
+        if (progress < 1) {
+          scrollRafId = requestAnimationFrame(animateScroll);
+        } else {
+          scrollRafId = 0;
+          isAutoScrolling = false;
+          setActiveLink(id);
+          requestAnimationFrame(updateActiveFromScroll);
+        }
+      };
+
+      scrollRafId = requestAnimationFrame(animateScroll);
     });
+
     const getActiveSectionId = () => {
+      const sections = getSections();
       const viewportHeight = window.innerHeight;
       const docHeight = document.documentElement.scrollHeight;
       const maxScroll = Math.max(docHeight - viewportHeight, 1);
@@ -852,109 +973,9 @@ const easingOptions = [
       return activeId;
     };
 
-    if (sections.length && navLinks.length) {
-      let ticking = false;
-      const updateActiveFromScroll = () => {
-        if (!ticking) {
-          requestAnimationFrame(() => {
-            if (isAutoScrolling) {
-              ticking = false;
-              return;
-            }
-            if (performance.now() < manualLockUntil) {
-              ticking = false;
-              return;
-            }
-            const activeId = getActiveSectionId();
-            if (activeId) setActiveLink(activeId);
-            ticking = false;
-          });
-          ticking = true;
-        }
-      };
-
-      navLinks.forEach((link) => {
-        link.addEventListener('click', (event) => {
-          const href = link.getAttribute('href');
-          if (!href || !href.startsWith('#')) return;
-
-          const id = href.slice(1);
-          const target = document.getElementById(id);
-          if (!target) return;
-
-          event.preventDefault();
-
-          const startY = window.scrollY;
-          const docHeight = document.documentElement.scrollHeight;
-          const viewportHeight = window.innerHeight;
-          const maxScroll = Math.max(docHeight - viewportHeight, 0);
-          const rect = target.getBoundingClientRect();
-          const sectionHeight = rect.height;
-          /**
-           * Short sections pin near the top (under the header offset).
-           * Tall ones (≥ ~65% of the viewport) centre vertically so large
-           * images aren't cropped awkwardly at the fold.
-           */
-          const centerThreshold = viewportHeight * 0.65;
-          const rawTargetTop = sectionHeight >= centerThreshold
-            ? startY + rect.top - (viewportHeight - sectionHeight) / 2
-            : startY + rect.top - clickOffsetPx;
-          const targetTop = Math.min(Math.max(rawTargetTop, 0), maxScroll);
-          const distance = targetTop - startY;
-
-          setActiveLink(id);
-          window.history.replaceState(null, '', href);
-
-          if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(distance) < 2) {
-            manualLockUntil = performance.now() + Math.min(clickLockMs, 120);
-            window.scrollTo(0, targetTop);
-            return;
-          }
-
-          if (useNativeSmooth) {
-            manualLockUntil = performance.now() + clickLockMs;
-            isAutoScrolling = true;
-            window.scrollTo({ top: targetTop, behavior: 'smooth' });
-            window.setTimeout(() => {
-              isAutoScrolling = false;
-              setActiveLink(id);
-              updateActiveFromScroll();
-            }, clickLockMs);
-            return;
-          }
-
-          const duration = Math.min(900, Math.max(480, Math.abs(distance) * 0.55));
-          manualLockUntil = performance.now() + Math.max(clickLockMs, duration + 100);
-
-          if (scrollRafId) cancelAnimationFrame(scrollRafId);
-          isAutoScrolling = true;
-          let animationStart = 0;
-
-          const animateScroll = (timestamp) => {
-            if (animationStart === 0) animationStart = timestamp;
-            const elapsed = timestamp - animationStart;
-            const progress = Math.min(elapsed / duration, 1);
-            const eased = currentEaser(progress);
-            window.scrollTo(0, startY + distance * eased);
-
-            if (progress < 1) {
-              scrollRafId = requestAnimationFrame(animateScroll);
-            } else {
-              scrollRafId = 0;
-              isAutoScrolling = false;
-              setActiveLink(id);
-              requestAnimationFrame(updateActiveFromScroll);
-            }
-          };
-
-          scrollRafId = requestAnimationFrame(animateScroll);
-        });
-      });
-
-      updateActiveFromScroll();
-      window.addEventListener('scroll', updateActiveFromScroll, { passive: true });
-      window.addEventListener('resize', updateActiveFromScroll);
-    }
+    updateActiveFromScroll();
+    window.addEventListener('scroll', updateActiveFromScroll, { passive: true });
+    window.addEventListener('resize', updateActiveFromScroll);
   };
 
   document.querySelectorAll('.section-sidebar-nav').forEach((nav) => initSectionSidebarNav(nav));
@@ -1022,6 +1043,30 @@ const easingOptions = [
   }
 
   .section-sidebar-nav__summary path {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* Unscoped twin: client DOM edits must keep chevrons sized. */
+  :global(.section-sidebar-nav__summary::-webkit-details-marker) {
+    display: none;
+  }
+
+  :global(.section-sidebar-nav__summary::marker) {
+    content: '';
+  }
+
+  :global(.section-sidebar-nav__summary svg) {
+    width: 0.45em;
+    height: 0.7em;
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  :global(.section-sidebar-nav__summary path) {
     fill: none;
     stroke: currentColor;
     stroke-width: 1.5;
@@ -1151,6 +1196,24 @@ const easingOptions = [
 
   :global(html.show-curve-easing-tuner) .section-sidebar-nav-devpanel {
     display: block;
+  }
+
+  /* Force gutter nav visible while the section editor is active (any width). */
+  @media (max-width: 88.4375em) {
+    :global(html.show-section-nav-editor.is-dev-mode) .section-sidebar-nav--desktop-only {
+      display: block;
+      position: fixed;
+      top: 6.75em;
+      left: 0.75em;
+      width: 12.5em;
+      max-height: calc(100dvh - 8em);
+      overflow-y: auto;
+      z-index: 20;
+      background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+      padding: 0.5em;
+      border-radius: var(--radius-card-smooth);
+      box-shadow: 0 0.25em 1em rgba(26, 26, 26, 0.08);
+    }
   }
 
   .section-sidebar-nav-devpanel__tabs {
