@@ -37,12 +37,11 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 - `ProjectLayout`, `ProjectImage`, `ProjectImageGrid`, `ProjectBodyText`, `ProjectSectionTitle`
 - `ProjectPressQuoteTicker`, `ProjectRedditCommentCarousel`
 
-**Home / Work / Play** — portfolio listing grid (page-local markup, not an Astro component yet):
-- `.project-grid` / `.project-card` on `/` and `/work` (`src/pages/index.astro`, `src/pages/work.astro`)
-- `.play-grid` / `.play-card` on `/play` (`src/pages/play.astro`)
-- Content from `src/content/home|work|play/*.json`
+**Home / Work / Play** — `ProjectGrid` (`src/components/ProjectGrid.astro`):
+- Cover-card listing grid; content from `src/content/home|work|play/*.json`
+- `variant`: `home` | `work` | `play` (breakpoint and featured-row presets)
 
-**Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes (The Rams, Conic Collection, ParentPal, [retired-project]). Basic names like `ProjectGrid` are freed for future use. `LegacyProjectSections.astro` renders legacy JSON until those pages are rebuilt.
+**Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes. `LegacyProjectGrid` is case-study media clusters — not the same as site `ProjectGrid` listings.
 
 Ask before introducing anything not on `/styles`.
 

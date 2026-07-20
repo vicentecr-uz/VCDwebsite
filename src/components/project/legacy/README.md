@@ -10,5 +10,5 @@ and are listed on `/styles`.
 It may import signed-off components (`ProjectImage`, `ProjectImageGrid`, etc.)
 where those section types overlap with Tapico.
 
-Names like `ProjectGrid`, `ProjectProse`, and `ProjectTagline` are intentionally
-freed for future first-class components.
+`ProjectGrid` (site listings at `src/components/ProjectGrid.astro`) is separate from
+`LegacyProjectGrid` here. Other freed names include `ProjectProse`, `ProjectTagline`, etc.

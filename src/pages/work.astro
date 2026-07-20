@@ -2,6 +2,8 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import ProjectGrid from '../components/ProjectGrid.astro';
+
 type WorkProject = {
   order?: number;
   slug: string;
@@ -26,42 +28,19 @@ const projects = workEntries
   <div class="flex flex-col min-h-dvh">
     <Header title="Work" navMenu />
 
-    <main class="project-main" style="flex: 1;">
-      <ul class="project-grid">
-        {projects.map((project) => (
-          <li class={project.full ? 'project-item project-item--full' : 'project-item'}>
-            <a href={`/${project.slug}`} class="project-card block">
-              <div
-                class="project-cover relative overflow-hidden"
-                style={`background-color: ${project.bg}`}
-              >
-                <img
-                  src={project.image}
-                  alt={project.title}
-                  class="project-img w-full h-full object-cover"
-                  loading="lazy"
-                />
-                <div class="project-meta absolute bottom-0 left-0 right-0">
-                  <div class="flex items-baseline gap-2">
-                    <h2
-                      class="project-title font-bold"
-                      style={`color: ${project.dark ? '#f7f7f7' : '#6d6d6d'}`}
-                    >
-                      {project.title}
-                    </h2>
-                    <span
-                      class="project-title font-bold"
-                      style={`color: ${project.dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)'}`}
-                    >
-                      {project.year}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </a>
-          </li>
-        ))}
-      </ul>
+    <main class="listing-main" style="flex: 1;">
+      <ProjectGrid
+        variant="work"
+        items={projects.map((project) => ({
+          title: project.title,
+          subtitle: project.year,
+          image: project.image,
+          bg: project.bg,
+          dark: project.dark,
+          full: project.full,
+          href: `/${project.slug}`,
+        }))}
+      />
     </main>
 
     <Footer />
@@ -69,104 +48,7 @@ const projects = workEntries
 </Layout>
 
 <style>
-  /* ── Layout ─────────────────────────────────────────────── */
-  .project-main {
+  .listing-main {
     padding: 0;
-  }
-
-  .project-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1em;
-  }
-
-  .project-item--full {
-    grid-column: span 2;
-  }
-
-  .project-item--full .project-cover {
-    aspect-ratio: 16 / 9;
-  }
-
-  .project-item--full .project-img {
-    object-position: center center;
-  }
-
-  /* ── Cover image container ──────────────────────────────── */
-  .project-cover {
-    aspect-ratio: 4 / 3;
-    transform: translateZ(0);
-  }
-
-  /* ── Title typography (global) ──────────────────────────── */
-  .project-title {
-    font-size: 1.25rem;
-    letter-spacing: -0.03em;
-    line-height: 1.2;
-  }
-
-  /* ── Image & overlay (desktop default) ─────────────────── */
-  .project-img {
-    transform: scale(1.04);
-    transition: transform 0.5s ease;
-  }
-
-  .project-card:hover .project-img {
-    transform: scale(1.07);
-  }
-
-  .project-meta {
-    opacity: 0;
-    padding: 1em;
-    transition: opacity 0.3s ease;
-  }
-
-  .project-card:hover .project-meta {
-    opacity: 1;
-  }
-
-  /* ── Tablet and below (≤768px):
-       disable blur, always show titles ──────────────────── */
-  @media (max-width: 768px) {
-    .project-img {
-      /* hairline overshoot prevents the cover bg bleeding 1px at the fractional bottom edge */
-      transform: scale(1.01);
-      transition: transform 0.4s ease;
-    }
-
-    .project-card:hover .project-img {
-      transform: scale(1.03);
-    }
-
-    .project-meta {
-      opacity: 1 !important;
-      transition: none !important;
-    }
-  }
-
-  /* ── Mobile landscape and below (≤667px):
-       collapse to 2×2, switch to 1:1 aspect ratio ────────── */
-  @media (max-width: 667px) {
-    .project-item--full {
-      grid-column: span 1;
-    }
-
-    .project-cover,
-    .project-item--full .project-cover {
-      aspect-ratio: 1 / 1;
-    }
-  }
-
-  /* ── Narrow portrait (≤480px):
-       single column, resume 4:3 ──────────────────────────── */
-  @media (max-width: 480px) {
-    .project-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .project-cover,
-    .project-item--full .project-cover {
-      aspect-ratio: 4 / 3;
-    }
   }
 </style>

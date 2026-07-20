@@ -1,0 +1,210 @@
+---
+export type ProjectGridItem = {
+  title: string;
+  image: string;
+  bg: string;
+  dark: boolean;
+  /** Year on home/work; optional meta line on play. */
+  subtitle?: string;
+  href?: string;
+  /** Span both columns on home/work. */
+  full?: boolean;
+};
+
+interface Props {
+  items: ProjectGridItem[];
+  /** Layout + motion preset — home, work, and play differ at tablet breakpoints. */
+  variant?: 'home' | 'work' | 'play';
+}
+
+const { items, variant = 'work' } = Astro.props;
+
+const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
+const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
+---
+
+<ul class:list={['project-grid', `project-grid--${variant}`]}>
+  {items.map((item) => {
+    const isPlaceholder = variant === 'play' && !item.href;
+    return (
+      <li class:list={['project-grid__item', item.full && 'project-grid__item--full']}>
+        {isPlaceholder ? (
+          <div class="project-grid__card project-grid__card--placeholder block" aria-disabled="true">
+            <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
+              <img
+                src={item.image}
+                alt={item.title}
+                class="project-grid__img w-full h-full object-cover"
+                loading="lazy"
+              />
+              <div class="project-grid__meta absolute bottom-0 left-0 right-0">
+                <div class="flex items-baseline gap-2">
+                  <h2 class="project-grid__title font-bold" style={`color: ${titleColor(item.dark)}`}>
+                    {item.title}
+                  </h2>
+                  {item.subtitle && (
+                    <span class="project-grid__subtitle font-bold" style={`color: ${subtitleColor(item.dark)}`}>
+                      {item.subtitle}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <a href={item.href} class="project-grid__card block">
+            <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
+              <img
+                src={item.image}
+                alt={item.title}
+                class="project-grid__img w-full h-full object-cover"
+                loading="lazy"
+              />
+              <div class="project-grid__meta absolute bottom-0 left-0 right-0">
+                <div class="flex items-baseline gap-2">
+                  <h2 class="project-grid__title font-bold" style={`color: ${titleColor(item.dark)}`}>
+                    {item.title}
+                  </h2>
+                  {item.subtitle && (
+                    <span class="project-grid__subtitle font-bold" style={`color: ${subtitleColor(item.dark)}`}>
+                      {item.subtitle}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </a>
+        )}
+      </li>
+    );
+  })}
+</ul>
+
+<style>
+  .project-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1em;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .project-grid__item--full {
+    grid-column: span 2;
+  }
+
+  .project-grid--home .project-grid__item--full .project-grid__cover {
+    aspect-ratio: 16 / 12;
+  }
+
+  .project-grid--work .project-grid__item--full .project-grid__cover {
+    aspect-ratio: 16 / 9;
+  }
+
+  .project-grid__item--full .project-grid__img {
+    object-position: center center;
+  }
+
+  .project-grid__cover {
+    aspect-ratio: 4 / 3;
+    transform: translateZ(0);
+  }
+
+  .project-grid__title,
+  .project-grid__subtitle {
+    font-size: 1.25rem;
+    letter-spacing: -0.03em;
+    line-height: 1.2;
+  }
+
+  .project-grid--home .project-grid__img {
+    filter: none;
+    transform: scale(1.18);
+    transition: transform 0.5s ease;
+  }
+
+  .project-grid--home .project-grid__card:hover .project-grid__img {
+    transform: scale(1.22);
+  }
+
+  .project-grid--work .project-grid__img,
+  .project-grid--play .project-grid__img {
+    transform: scale(1.04);
+    transition: transform 0.5s ease;
+  }
+
+  .project-grid--work .project-grid__card:hover .project-grid__img,
+  .project-grid--play .project-grid__card:hover .project-grid__img {
+    transform: scale(1.07);
+  }
+
+  .project-grid__meta {
+    opacity: 0;
+    padding: 1em;
+    transition: opacity 0.3s ease;
+  }
+
+  .project-grid__card:hover .project-grid__meta {
+    opacity: 1;
+  }
+
+  .project-grid__card--placeholder {
+    cursor: not-allowed;
+  }
+
+  .project-grid__card--placeholder .project-grid__img {
+    filter: grayscale(1);
+    transform: scale(1.04);
+  }
+
+  @media (max-width: 768px) {
+    .project-grid__img {
+      /* hairline overshoot prevents the cover bg bleeding 1px at the fractional bottom edge */
+      transform: scale(1.01) !important;
+      transition: transform 0.4s ease !important;
+    }
+
+    .project-grid__card:hover .project-grid__img {
+      transform: scale(1.03) !important;
+    }
+
+    .project-grid__meta {
+      opacity: 1 !important;
+      transition: none !important;
+    }
+  }
+
+  @media (max-width: 667px) {
+    .project-grid--home {
+      grid-template-columns: 1fr;
+    }
+
+    .project-grid--home .project-grid__item--full {
+      grid-column: span 1;
+    }
+
+    .project-grid--work .project-grid__item--full,
+    .project-grid--play .project-grid__cover,
+    .project-grid--work .project-grid__cover,
+    .project-grid--work .project-grid__item--full .project-grid__cover {
+      aspect-ratio: 1 / 1;
+    }
+
+    .project-grid--work .project-grid__item--full {
+      grid-column: span 1;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .project-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .project-grid__cover,
+    .project-grid--home .project-grid__item--full .project-grid__cover,
+    .project-grid--work .project-grid__item--full .project-grid__cover {
+      aspect-ratio: 4 / 3;
+    }
+  }
+</style>

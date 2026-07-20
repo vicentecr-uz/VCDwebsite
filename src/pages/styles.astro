@@ -11,6 +11,7 @@ import ProjectBodyText from '../components/project/ProjectBodyText.astro';
 import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
 import ProjectPressQuoteTicker from '../components/project/ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from '../components/project/ProjectRedditCommentCarousel.astro';
+import ProjectGrid from '../components/ProjectGrid.astro';
 import globalCssSource from '../styles/global.css?raw';
 import '../styles/project.css';
 
@@ -60,7 +61,7 @@ type PreviewKey =
   | 'header'
   | 'footer'
   | 'sidebar-nav'
-  | 'portfolio-grid'
+  | 'project-grid'
   | 'project-layout'
   | 'image-lead'
   | 'body-text'
@@ -127,16 +128,16 @@ const componentCatalog: ComponentEntry[] = [
     preview: 'sidebar-nav',
   },
   {
-    id: 'component-portfolio-grid',
-    name: 'PortfolioGrid',
+    id: 'component-project-grid',
+    name: 'ProjectGrid',
     category: 'site',
-    purpose: 'Project/play listing grid on index, Work, and Play — cover cards with hover title reveal.',
-    classRef: '.project-grid / .project-card (home, work) · .play-grid / .play-card (play)',
-    source: 'src/pages/index.astro, src/pages/work.astro, src/pages/play.astro',
-    props: 'Content from src/content/home|work|play/*.json (title, year/meta, image, bg, dark, full?, href?)',
+    purpose: 'Project/play listing grid on Home, Work, and Play — cover cards with hover title reveal.',
+    classRef: '.project-grid / .project-grid__card / .project-grid__cover',
+    source: 'src/components/ProjectGrid.astro',
+    props: 'items[] (title, image, bg, dark, subtitle?, href?, full?), variant? (home | work | play)',
     usedOn: ['Home', 'Work', 'Play'],
-    checklist: '2-col desktop; featured full-width row on home; titles always visible ≤768px; hover zoom on desktop. Not the same as legacy case-study media grids.',
-    preview: 'portfolio-grid',
+    checklist: '2-col desktop; featured full-width on home/work; titles always visible ≤768px; play placeholders when href omitted. Not legacy case-study media grids.',
+    preview: 'project-grid',
   },
   {
     id: 'component-project-layout',
@@ -557,31 +558,28 @@ const sectionLinks = [
                       {component.preview === 'sidebar-nav' && (
                         <p class="preview-note">Fixed nav on the left of this page (desktop).</p>
                       )}
-                      {component.preview === 'portfolio-grid' && (
-                        <ul class="portfolio-grid-preview">
-                          <li class="portfolio-grid-preview__item">
-                            <div class="portfolio-grid-preview__card">
-                              <div class="portfolio-grid-preview__cover" style="background:#e8e4dc">
-                                <img src="/images/Tapico White Hero Center Crop.jpg" alt="Tapico Typer preview" loading="lazy" />
-                                <div class="portfolio-grid-preview__meta">
-                                  <span class="portfolio-grid-preview__title">Tapico Typer</span>
-                                  <span class="portfolio-grid-preview__year">2024</span>
-                                </div>
-                              </div>
-                            </div>
-                          </li>
-                          <li class="portfolio-grid-preview__item">
-                            <div class="portfolio-grid-preview__card">
-                              <div class="portfolio-grid-preview__cover" style="background:#1a1a1a">
-                                <img src="/images/IMG_5609.jpg" alt="Project preview" loading="lazy" />
-                                <div class="portfolio-grid-preview__meta">
-                                  <span class="portfolio-grid-preview__title" style="color:#f7f7f7">Another project</span>
-                                  <span class="portfolio-grid-preview__year" style="color:rgba(247,247,247,0.5)">2023</span>
-                                </div>
-                              </div>
-                            </div>
-                          </li>
-                        </ul>
+                      {component.preview === 'project-grid' && (
+                        <ProjectGrid
+                          variant="work"
+                          items={[
+                            {
+                              title: 'Tapico Typer',
+                              subtitle: '2024',
+                              image: '/images/Tapico White Hero Center Crop.jpg',
+                              bg: '#e8e4dc',
+                              dark: false,
+                              href: '/tapico',
+                            },
+                            {
+                              title: 'Another project',
+                              subtitle: '2023',
+                              image: '/images/IMG_5609.jpg',
+                              bg: '#1a1a1a',
+                              dark: true,
+                              href: '/tapico',
+                            },
+                          ]}
+                        />
                       )}
                       {component.preview === 'project-layout' && (
                         <p class="preview-note">
@@ -973,63 +971,6 @@ const sectionLinks = [
     border-top: 1px solid var(--color-border);
     padding-top: 0.8em;
     overflow: hidden;
-  }
-
-  .portfolio-grid-preview {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1em;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-
-  .portfolio-grid-preview__cover {
-    position: relative;
-    aspect-ratio: 4 / 3;
-    overflow: hidden;
-    transform: translateZ(0);
-  }
-
-  .portfolio-grid-preview__cover img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    transform: scale(1.04);
-    transition: transform 0.5s ease;
-  }
-
-  .portfolio-grid-preview__card:hover .portfolio-grid-preview__cover img {
-    transform: scale(1.07);
-  }
-
-  .portfolio-grid-preview__meta {
-    position: absolute;
-    inset: auto 0 0 0;
-    display: flex;
-    align-items: baseline;
-    gap: 0.5em;
-    padding: 1em;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-  }
-
-  .portfolio-grid-preview__card:hover .portfolio-grid-preview__meta {
-    opacity: 1;
-  }
-
-  .portfolio-grid-preview__title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    color: #6d6d6d;
-  }
-
-  .portfolio-grid-preview__year {
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    color: rgba(109, 109, 109, 0.5);
   }
 
   .component-preview :global(.project-block) {
