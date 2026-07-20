@@ -57,6 +57,7 @@
 
 /* ── Single project image (lead / crop) ───────────────────── */
 .project-image {
+  position: relative;
   margin-bottom: 0;
 }
 
@@ -146,6 +147,43 @@
 .dev-image-edit-target:hover .dev-image-edit-trigger,
 .dev-image-edit-target:focus-within .dev-image-edit-trigger,
 .dev-image-edit-target.is-dev-image-selected .dev-image-edit-trigger {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.dev-caption-add-trigger {
+  position: absolute;
+  bottom: 0.75em;
+  left: 0.75em;
+  z-index: 2;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+  backdrop-filter: blur(8px);
+  padding: 0.45em 0.65em;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1;
+  box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.dev-caption-add-trigger[hidden] {
+  display: none;
+}
+
+/* Hide Add caption whenever a caption node is present (including after inline create). */
+.dev-image-edit-target:has([data-project-image-caption]) .dev-caption-add-trigger {
+  display: none;
+}
+
+.dev-image-edit-target:hover .dev-caption-add-trigger,
+.dev-image-edit-target:focus-within .dev-caption-add-trigger,
+.dev-image-edit-target.is-dev-image-selected .dev-caption-add-trigger {
   opacity: 1;
   pointer-events: auto;
 }
@@ -443,14 +481,15 @@
   }
 }
 
-/* Grid caption reveal: hover (default) vs always — per breakpoint via data attrs. */
+/* Caption reveal: hover (default) vs always — per breakpoint via data attrs.
+   Shared by grid cells and single ProjectImage frames. */
 .project-image-grid__caption {
   opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-.project-image-grid__item:hover .project-image-grid__caption,
-.project-image-grid__item:focus-within .project-image-grid__caption {
+:is(.project-image-grid__item, .project-media, .project-image):hover .project-image-grid__caption,
+:is(.project-image-grid__item, .project-media, .project-image):focus-within .project-image-grid__caption {
   opacity: 1;
 }
 

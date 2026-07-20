@@ -10,6 +10,17 @@ import {
   spacingDevAttrs,
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
+import {
+  imageCaptionStyleClass,
+  imageCaptionsHaveText,
+  resolveImageCaptionReveals,
+  resolveImageCaptionStyle,
+  resolveImageCaptions,
+  type ImageCaptionReveal,
+  type ImageCaptionReveals,
+  type ImageCaptionStyleId,
+  type ImageCaptions,
+} from '../../lib/imageCaptions';
 
 interface Props {
   src: string;
@@ -41,6 +52,13 @@ interface Props {
   imgModifier?: string;
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
+  /** Legacy single caption (all breakpoints). Prefer `captions`. */
+  caption?: string;
+  /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
+  captions?: Partial<ImageCaptions> | string;
+  captionStyle?: ImageCaptionStyleId;
+  /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
+  captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
 }
 
 const {
@@ -65,6 +83,10 @@ const {
   hideMobile = false,
   imgModifier,
   sectionId,
+  caption,
+  captions: captionsProp,
+  captionStyle: captionStyleProp,
+  captionReveal,
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing, { flush });
@@ -82,6 +104,12 @@ const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && 
 const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
 
+const captions = resolveImageCaptions({ caption, captions: captionsProp });
+const captionStyle = resolveImageCaptionStyle(captionStyleProp);
+const captionReveals = resolveImageCaptionReveals(captionReveal);
+const hasCaption = imageCaptionsHaveText(captions);
+const captionClass = imageCaptionStyleClass(captionStyle);
+
 const editAttrs = editable
   ? {
       'data-dev-image-target': 'image',
@@ -89,6 +117,9 @@ const editAttrs = editable
       'data-dev-image-path': JSON.stringify(path),
       'data-dev-crop-id': cropId,
       'data-dev-image-variants': normalized ? JSON.stringify(normalized) : '{}',
+      'data-dev-captions': JSON.stringify(captions),
+      'data-dev-caption-style': captionStyle,
+      'data-dev-caption-reveals': JSON.stringify(captionReveals),
     }
   : {};
 ---
@@ -109,6 +140,31 @@ const editAttrs = editable
     {...(spacingAttrs ?? {})}
   >
     <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+    {hasCaption && (
+      <span
+        class:list={['project-caption', 'project-image-grid__caption', captionClass]}
+        data-project-image-caption
+        data-caption-style={captionStyle}
+        data-caption-reveal-desktop={captionReveals.desktop}
+        data-caption-reveal-tablet={captionReveals.tablet}
+        data-caption-reveal-mobile={captionReveals.mobile}
+      >
+        <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
+        <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
+        <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
+      </span>
+    )}
+    {editable && (
+      <button
+        type="button"
+        class="dev-caption-add-trigger"
+        data-dev-edit-trigger="caption"
+        data-dev-mode-only
+        hidden
+      >
+        Add caption
+      </button>
+    )}
     {editable && (
       <button
         type="button"
@@ -156,6 +212,31 @@ const editAttrs = editable
         ]}
         loading={resolvedLoading}
       />
+      {hasCaption && (
+        <span
+          class:list={['project-caption', 'project-image-grid__caption', captionClass]}
+          data-project-image-caption
+          data-caption-style={captionStyle}
+          data-caption-reveal-desktop={captionReveals.desktop}
+          data-caption-reveal-tablet={captionReveals.tablet}
+          data-caption-reveal-mobile={captionReveals.mobile}
+        >
+          <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
+          <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
+          <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
+        </span>
+      )}
+      {editable && (
+        <button
+          type="button"
+          class="dev-caption-add-trigger"
+          data-dev-edit-trigger="caption"
+          data-dev-mode-only
+          hidden
+        >
+          Add caption
+        </button>
+      )}
       {editable && (
         <button
           type="button"

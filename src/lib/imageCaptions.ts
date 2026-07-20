@@ -1,7 +1,7 @@
 import type { ImageViewport } from './responsiveImage';
 import { IMAGE_VIEWPORTS } from './responsiveImage';
 
-/** Overlay caption styles (Dev Mode tuner + project image grids). */
+/** Overlay caption styles (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_STYLES = [
   { id: 'white', label: 'White' },
   { id: 'black', label: 'Black' },
