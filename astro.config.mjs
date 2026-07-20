@@ -705,16 +705,22 @@ const applyCaptionChange = (data, change) => {
     delete target.caption;
     delete target.captions;
     delete target.captionStyle;
+    delete target.captionPosition;
     delete target.captionReveal;
     return { ok: true };
   }
 
   const CAPTION_STYLES = new Set(['white', 'black', 'default']);
+  const CAPTION_POSITIONS = new Set(['bottom-left', 'top-left', 'bottom-right', 'top-right']);
   const CAPTION_REVEALS = new Set(['hover', 'always']);
   const rawStyle = String(change.captionStyle || 'white');
   const captionStyle = rawStyle === 'default' ? 'white' : rawStyle;
   if (!CAPTION_STYLES.has(captionStyle)) {
     return { ok: false, error: 'Use a supported caption style.' };
+  }
+  const captionPosition = String(change.captionPosition || 'bottom-left');
+  if (!CAPTION_POSITIONS.has(captionPosition)) {
+    return { ok: false, error: 'Use a supported caption location.' };
   }
 
   const requested = change.captions && typeof change.captions === 'object'
@@ -733,6 +739,7 @@ const applyCaptionChange = (data, change) => {
     delete target.caption;
     delete target.captions;
     delete target.captionStyle;
+    delete target.captionPosition;
     delete target.captionReveal;
     return { ok: true };
   }
@@ -768,6 +775,11 @@ const applyCaptionChange = (data, change) => {
     delete target.captionStyle;
   } else {
     target.captionStyle = captionStyle;
+  }
+  if (captionPosition === 'bottom-left') {
+    delete target.captionPosition;
+  } else {
+    target.captionPosition = captionPosition;
   }
   return { ok: true };
 };
