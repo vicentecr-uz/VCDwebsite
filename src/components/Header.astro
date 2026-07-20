@@ -209,9 +209,15 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   const setMenuBackdropVisible = (visible: boolean) => {
-    document
-      .querySelector('.site-header--nav-menu')
-      ?.classList.toggle('is-menu-backdrop-visible', visible);
+    const headerEl = document.querySelector('.site-header--nav-menu');
+    if (!headerEl) return;
+
+    if (visible) {
+      headerEl.style.removeProperty('--menu-backdrop-close-delay');
+      headerEl.classList.add('is-menu-backdrop-visible');
+    } else {
+      headerEl.classList.remove('is-menu-backdrop-visible');
+    }
   };
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
@@ -221,6 +227,8 @@ const menuLinks = headerSettings.menuLinks;
       active.blur();
     }
 
+    const headerEl = document.querySelector('.site-header--nav-menu');
+    headerEl?.style.setProperty('--menu-backdrop-close-delay', '0s');
     setMenuBackdropVisible(false);
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
@@ -248,8 +256,16 @@ const menuLinks = headerSettings.menuLinks;
     if (!links.length) return;
 
     const panelBg = trigger.querySelector('.header-trigger__panel-bg') as HTMLElement | null;
+    const MENU_LINK_CLOSE_STAGGER = 0.04;
+    const MENU_LINK_CLOSE_DURATION = 0.15;
+    const PANEL_BG_CLOSE_DURATION = 0.38;
+    // Partial delay — panel overlaps link fade-out but starts after the harsh edge would show.
+    const PANEL_BG_CLOSE_DELAY_RATIO = 0.4;
+    const textCloseEnd =
+      (links.length - 1) * MENU_LINK_CLOSE_STAGGER + MENU_LINK_CLOSE_DURATION;
+    const panelBgCloseDelay = textCloseEnd * PANEL_BG_CLOSE_DELAY_RATIO;
     const closeLayoutMs =
-      Math.ceil(Math.max(0.38, (links.length - 1) * 0.04 + 0.15) * 1000) + 32;
+      Math.ceil(Math.max(textCloseEnd, panelBgCloseDelay + PANEL_BG_CLOSE_DURATION) * 1000) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
     const clearCloseTimer = () => {
@@ -270,8 +286,8 @@ const menuLinks = headerSettings.menuLinks;
           });
         });
       } else {
-        trigger.style.setProperty('--panel-bg-duration', '0.38s');
-        trigger.style.setProperty('--panel-bg-delay', '0s');
+        trigger.style.setProperty('--panel-bg-duration', `${PANEL_BG_CLOSE_DURATION}s`);
+        trigger.style.setProperty('--panel-bg-delay', `${panelBgCloseDelay}s`);
         trigger.style.setProperty('--menu-reveal', '0');
       }
     };
@@ -287,8 +303,8 @@ const menuLinks = headerSettings.menuLinks;
     const setCloseStagger = () => {
       links.forEach((link, i) => {
         const reverseIndex = links.length - 1 - i;
-        link.style.setProperty('--menu-link-delay', `${reverseIndex * 0.04}s`);
-        link.style.setProperty('--menu-link-duration', '0.15s');
+        link.style.setProperty('--menu-link-delay', `${reverseIndex * MENU_LINK_CLOSE_STAGGER}s`);
+        link.style.setProperty('--menu-link-duration', `${MENU_LINK_CLOSE_DURATION}s`);
         link.style.opacity = '0';
       });
     };
@@ -303,6 +319,9 @@ const menuLinks = headerSettings.menuLinks;
     };
 
     const closeMenu = () => {
+      document
+        .querySelector('.site-header--nav-menu')
+        ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
       setMenuBackdropVisible(false);
       setCloseStagger();
       setPanelReveal(false);
@@ -644,13 +663,16 @@ const menuLinks = headerSettings.menuLinks;
     inset: 0;
     background-color: rgba(255, 255, 255, 0.9);
     opacity: 0;
-    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+    transition:
+      opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1)
+      var(--menu-backdrop-close-delay, 0.09s);
     pointer-events: none;
     z-index: 0;
   }
 
   .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
     opacity: 1;
+    transition-delay: 0s;
   }
 
   .site-header--nav-menu .site-header__row {
@@ -1064,6 +1086,10 @@ const menuLinks = headerSettings.menuLinks;
 
   @media (prefers-reduced-motion: reduce) {
     .site-header {
+      transition: none;
+    }
+
+    .header-menu-backdrop {
       transition: none;
     }
 
