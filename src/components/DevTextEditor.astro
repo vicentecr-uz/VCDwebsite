@@ -434,6 +434,29 @@
     };
 
     /**
+     * Header chrome sits above gap toolbars in paint order, but proximity can
+     * still reveal spacing chips under the sticky logo/menu. Use geometry (not
+     * elementFromPoint) so an already-visible chip doesn't keep itself alive.
+     */
+    const isPointerOverHeaderChrome = (clientX: number, clientY: number) => {
+      const header = document.querySelector('.site-header');
+      if (!header) return false;
+      return [...header.querySelectorAll<HTMLElement>('.header-trigger')].some((trigger) => {
+        const panel = trigger.querySelector<HTMLElement>('.header-trigger__panel');
+        const box =
+          trigger.classList.contains('is-menu-open') && panel
+            ? panel.getBoundingClientRect()
+            : trigger.getBoundingClientRect();
+        return (
+          clientX >= box.left &&
+          clientX <= box.right &&
+          clientY >= box.top &&
+          clientY <= box.bottom
+        );
+      });
+    };
+
+    /**
      * Centre + and right-edge spacing reveal independently. Within each
      * control type, only the nearest in-range target wins — thin sections
      * otherwise stack two toolbars and the lower one steals clicks.
@@ -442,6 +465,19 @@
       if (!document.documentElement.classList.contains('is-dev-mode') || isDevTextCaretActive()) {
         spacingStates.forEach(({ control }) => {
           if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
+        });
+        return;
+      }
+
+      // Don't reveal gap chips while using the sticky header menu / logo.
+      if (isPointerOverHeaderChrome(clientX, clientY)) {
+        spacingStates.forEach((state) => {
+          if (state.control.hidden) {
+            clearGapProximity(state.control);
+            return;
+          }
+          state.control.classList.toggle('is-near-add', isAddControlPinned(state));
+          state.control.classList.toggle('is-near-spacing', isSpacingControlPinned(state));
         });
         return;
       }
