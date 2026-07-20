@@ -32,6 +32,8 @@ const {
 const Tag = level === 3 ? 'h3' : 'h2';
 const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
+const deletable = Boolean(editable);
 ---
 
 <div
@@ -41,6 +43,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
     hideWhenSidebarVisible && 'project-section-title--hide-when-sidebar',
   ]}
   {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={deletable ? 'sectionTitle' : undefined}
 >
-  <Tag class="project-section-title">{title}</Tag>
+  <Tag
+    class="project-section-title"
+    data-dev-text-document={editable ? documentKey : undefined}
+    data-dev-text-path={editable ? JSON.stringify([...sectionPath, 'title']) : undefined}
+    data-dev-text-kind={editable ? 'text' : undefined}
+  >{title}</Tag>
 </div>
