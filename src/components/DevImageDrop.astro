@@ -29,7 +29,6 @@ const { documentKey } = Astro.props;
 </dialog>
 
 <script>
-  import { withDevViewId } from '../scripts/devViewContext';
 
   const dropZone = document.querySelector('[data-dev-project-drop-zone]');
   const overlay = document.querySelector('[data-dev-image-drop]');
@@ -133,12 +132,12 @@ const { documentKey } = Astro.props;
     const response = await fetch('/api/content-section', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(withDevViewId({
+      body: JSON.stringify({
         document: documentKey,
         index: pendingInsertIndex,
         type,
         filenames,
-      })),
+      }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not insert images.');
