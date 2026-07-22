@@ -224,14 +224,23 @@ export function emptyModernProjectDocument(
     status: 'draft',
     stack: 'modern',
     listings: {
-      [grid]: {
-        order: 999,
-        year: new Date().getFullYear().toString().slice(-2).padStart(2, "'"),
-        image: '/images/black-token.svg',
-        bg: '#efefef',
-        dark: false,
-        full: false,
-      },
+      [grid]: grid === 'play'
+        ? {
+            order: 999,
+            meta: '',
+            image: '/images/black-token.svg',
+            bg: '#efefef',
+            dark: false,
+            full: false,
+          }
+        : {
+            order: 999,
+            year: new Date().getFullYear().toString().slice(-2).padStart(2, "'"),
+            image: '/images/black-token.svg',
+            bg: '#efefef',
+            dark: false,
+            full: false,
+          },
     },
     outline: [
       {
