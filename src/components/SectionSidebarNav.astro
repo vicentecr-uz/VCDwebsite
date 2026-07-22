@@ -225,6 +225,26 @@ const easingOptions = [
     let isAutoScrolling = false;
     /** Groups the user expanded via the header — stay open until they close them. */
     const pinnedOpenGroups = new WeakSet();
+    /** Section editor (level 2): keep all groups open; only highlight the active link. */
+    let sectionEditorKeepOpen = false;
+
+    const isSectionEditorActive = () =>
+      document.documentElement.classList.contains('show-section-nav-editor') &&
+      document.documentElement.classList.contains('is-dev-mode');
+
+    const activateSectionEditorSidebar = () => {
+      sectionEditorKeepOpen = true;
+      getNavGroups().forEach((group) => {
+        if (group instanceof HTMLDetailsElement) pinnedOpenGroups.add(group);
+      });
+    };
+
+    const deactivateSectionEditorSidebar = () => {
+      sectionEditorKeepOpen = false;
+      getNavGroups().forEach((group) => {
+        if (group instanceof HTMLDetailsElement) pinnedOpenGroups.delete(group);
+      });
+    };
     const navId = nav.dataset.navId || '';
     const panel = navId
       ? document.querySelector(`.section-sidebar-nav-devpanel[data-panel-for="${navId}"]`)
@@ -1101,6 +1121,16 @@ const easingOptions = [
 
     const animateGroup = (group, shouldOpen) => startGroupAnim(group, shouldOpen);
 
+    /** Level 2: open collapsed groups only — never auto-close. */
+    const openClosedGroups = () => {
+      const batch = getNavGroups()
+        .filter((group) => group instanceof HTMLDetailsElement && !groupIsVisuallyOpen(group))
+        .map((group) => ({ group, shouldOpen: true }));
+      if (!batch.length) return;
+      animateGroups(batch);
+      batch.forEach(({ group }) => pinnedOpenGroups.add(group));
+    };
+
     const setActiveLink = (id) => {
       let activeGroup = null;
       getNavLinks().forEach((link) => {
@@ -1115,6 +1145,14 @@ const easingOptions = [
           link.removeAttribute('aria-current');
         }
       });
+
+      if (sectionEditorKeepOpen) {
+        if (activeGroup instanceof HTMLDetailsElement && !groupIsVisuallyOpen(activeGroup)) {
+          pinnedOpenGroups.add(activeGroup);
+          animateGroup(activeGroup, true);
+        }
+        return;
+      }
 
       /**
        * Auto accordion: open the active link's group, close others — unless the
@@ -1308,6 +1346,28 @@ const easingOptions = [
 
       return activeId;
     };
+
+    window.addEventListener('vcd:section-nav-editor-change', ((event) => {
+      const active = Boolean(event.detail?.active);
+      if (active) {
+        activateSectionEditorSidebar();
+        // Sync runs in the next listener; open any still-collapsed groups after DOM settles.
+        requestAnimationFrame(() => openClosedGroups());
+      } else {
+        deactivateSectionEditorSidebar();
+        requestAnimationFrame(() => updateActiveFromScroll());
+      }
+    }) as EventListener);
+
+    window.addEventListener('vcd:section-nav-sidebar-synced', () => {
+      if (!sectionEditorKeepOpen) return;
+      openClosedGroups();
+    });
+
+    if (isSectionEditorActive()) {
+      activateSectionEditorSidebar();
+      requestAnimationFrame(() => openClosedGroups());
+    }
 
     updateActiveFromScroll();
     updateSidebarScrollChrome();

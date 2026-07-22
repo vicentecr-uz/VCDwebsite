@@ -126,8 +126,6 @@
 
   const initDevTextEditor = () => {
     if (document.documentElement.dataset.devTextEditorInit === '1') return;
-    document.documentElement.dataset.devTextEditorInit = '1';
-    initDevSectionOutlineSync();
 
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
@@ -148,6 +146,9 @@
     ];
     if (!actions || !saveButton || !revertButton || !status) return;
     if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
+
+    document.documentElement.dataset.devTextEditorInit = '1';
+    initDevSectionOutlineSync();
 
     type PendingMediaChange = {
       id: string;
@@ -1895,6 +1896,12 @@
 
     setEditingEnabled(document.documentElement.classList.contains('is-dev-mode'));
   };
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      delete document.documentElement.dataset.devTextEditorInit;
+    });
+  }
 
   initDevTextEditor();
 </script>

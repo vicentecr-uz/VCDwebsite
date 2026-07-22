@@ -73,6 +73,7 @@
   import {
     getDevSectionOutline,
     initDevSectionOutlineSync,
+    restoreDevSectionOutlineFromRoot,
     setDevSectionOutline,
     syncDevSectionOutlineSidebar,
   } from '../../scripts/devSectionOutlineSync';
@@ -752,7 +753,12 @@
       closePopover();
     };
 
+    let sectionEditorChromeActive = false;
+
     const setEditorChrome = (active: boolean) => {
+      const wasActive = sectionEditorChromeActive;
+      sectionEditorChromeActive = active;
+
       shell.hidden = !active;
       hint.hidden = !active;
       document.documentElement.classList.toggle('is-section-nav-editing', active);
@@ -765,6 +771,8 @@
         });
         syncSidebarLabelEditability();
         setDirty(false);
+        // Only restore when leaving section editor — not on dev-mode toggles while editor is off.
+        if (wasActive) restoreDevSectionOutlineFromRoot();
       } else {
         setDirty(dirty);
         syncSidebarDom();
