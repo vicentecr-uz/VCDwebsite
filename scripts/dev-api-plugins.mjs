@@ -1,7 +1,115 @@
 // @ts-check
 import { readdirSync, readFileSync } from 'node:fs';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'view-only']);
+const LISTING_GRIDS = ['home', 'work', 'play'];
+
+function validateStatus(status, fallback = 'draft') {
+  const value = String(status || fallback);
+  return VALID_STATUSES.has(value) ? value : fallback;
+}
+
+function listingCardForGrid(grid, listing, previous = {}) {
+  const base = {
+    order: previous.order ?? 999,
+    image: String(listing.image || ''),
+    bg: String(listing.bg || '#efefef'),
+    dark: Boolean(listing.dark),
+    full: Boolean(listing.full),
+  };
+  if (grid === 'play') {
+    return {
+      ...base,
+      meta: String(listing.meta || listing.year || previous.meta || ''),
+    };
+  }
+  return {
+    ...base,
+    year: String(listing.year || listing.meta || previous.year || ''),
+  };
+}
+
+function rewriteDraftRefs(node, oldSlug, newSlug) {
+  if (Array.isArray(node)) {
+    for (const item of node) rewriteDraftRefs(item, oldSlug, newSlug);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  if (typeof node.src === 'string' && node.src.startsWith(`draft:${oldSlug}/`)) {
+    node.src = `draft:${newSlug}/${node.src.slice(`draft:${oldSlug}/`.length)}`;
+  }
+  for (const value of Object.values(node)) {
+    rewriteDraftRefs(value, oldSlug, newSlug);
+  }
+}
+
+async function removeProjectFromViews(slug) {
+  const viewsDir = path.join(process.cwd(), 'src/content/views');
+  for (const file of readdirSync(viewsDir)) {
+    if (!file.endsWith('.json') || file === '_registry.json') continue;
+    const viewId = file.replace(/\.json$/, '');
+    const viewPath = path.join(viewsDir, file);
+    const view = JSON.parse(await readFile(viewPath, 'utf8'));
+    if (Array.isArray(view.projects)) {
+      const before = view.projects.length;
+      view.projects = view.projects.filter((entry) => entry.slug !== slug);
+      if (view.projects.length !== before) {
+        await writeFile(viewPath, `${JSON.stringify(view, null, 2)}\n`, 'utf8');
+      }
+    }
+    const overlayPath = path.join(viewsDir, 'overlays', viewId, `${slug}.json`);
+    try {
+      await rm(overlayPath, { force: true });
+    } catch {
+      // no overlay for this view
+    }
+  }
+}
+
+async function renameProjectInViews(oldSlug, newSlug) {
+  const viewsDir = path.join(process.cwd(), 'src/content/views');
+  for (const file of readdirSync(viewsDir)) {
+    if (!file.endsWith('.json') || file === '_registry.json') continue;
+    const viewId = file.replace(/\.json$/, '');
+    const viewPath = path.join(viewsDir, file);
+    const view = JSON.parse(await readFile(viewPath, 'utf8'));
+    let viewChanged = false;
+    if (Array.isArray(view.projects)) {
+      for (const entry of view.projects) {
+        if (entry.slug === oldSlug) {
+          entry.slug = newSlug;
+          viewChanged = true;
+        }
+      }
+    }
+    if (viewChanged) {
+      await writeFile(viewPath, `${JSON.stringify(view, null, 2)}\n`, 'utf8');
+    }
+    const overlayDir = path.join(viewsDir, 'overlays', viewId);
+    const oldOverlay = path.join(overlayDir, `${oldSlug}.json`);
+    const newOverlay = path.join(overlayDir, `${newSlug}.json`);
+    try {
+      await rename(oldOverlay, newOverlay);
+    } catch {
+      // no overlay for this view
+    }
+  }
+}
+
+async function assertModernProject(slug) {
+  const relativeFile = resolveEditableDocument(slug);
+  if (!relativeFile) {
+    throw new Error('Project not found.');
+  }
+  const file = path.join(process.cwd(), relativeFile);
+  const data = JSON.parse(await readFile(file, 'utf8'));
+  if (data.stack !== 'modern') {
+    throw new Error('Only modern projects can be renamed or deleted here.');
+  }
+  return { relativeFile, file, data };
+}
 
 function loadViewRegistry() {
   const file = path.join(process.cwd(), 'src/content/views/_registry.json');
@@ -157,6 +265,23 @@ export function buildImageGridSection(documentKey, filenames) {
 
 export function emptyModernProject(slug, title, grid) {
   const year = `'${new Date().getFullYear().toString().slice(-2)}`;
+  const listing = grid === 'play'
+    ? {
+        order: 999,
+        meta: '',
+        image: '/images/black-token.svg',
+        bg: '#efefef',
+        dark: false,
+        full: false,
+      }
+    : {
+        order: 999,
+        year,
+        image: '/images/black-token.svg',
+        bg: '#efefef',
+        dark: false,
+        full: false,
+      };
   return {
     slug,
     title,
@@ -164,14 +289,7 @@ export function emptyModernProject(slug, title, grid) {
     status: 'draft',
     stack: 'modern',
     listings: {
-      [grid]: {
-        order: 999,
-        year,
-        image: '/images/black-token.svg',
-        bg: '#efefef',
-        dark: false,
-        full: false,
-      },
+      [grid]: listing,
     },
     outline: [
       {
@@ -446,23 +564,14 @@ export function projectSettingsDevWriter() {
           const data = JSON.parse(await readFile(file, 'utf8'));
           data.title = String(body.title || data.title || '').trim();
           data.description = String(body.description || '').trim();
-          data.status = String(body.status || data.status || 'draft');
+          data.status = validateStatus(body.status, validateStatus(data.status));
           data.slug = slug;
           const previousListings = data.listings ?? {};
           data.listings = {};
-          for (const grid of ['home', 'work', 'play']) {
+          for (const grid of LISTING_GRIDS) {
             const listing = body.listings?.[grid];
             if (!listing) continue;
-            data.listings[grid] = {
-              order: previousListings[grid]?.order ?? 999,
-              image: String(listing.image || ''),
-              bg: String(listing.bg || '#efefef'),
-              dark: Boolean(listing.dark),
-              full: Boolean(listing.full),
-              ...(grid === 'play'
-                ? { meta: String(listing.meta || listing.year || '') }
-                : { year: String(listing.year || listing.meta || '') }),
-            };
+            data.listings[grid] = listingCardForGrid(grid, listing, previousListings[grid] ?? {});
           }
           data.teaser = {
             label: String(body.teaser?.label || ''),
@@ -611,6 +720,110 @@ export function devViewSwitcher() {
           res.statusCode = 500;
           res.setHeader('content-type', 'application/json');
           res.end(JSON.stringify({ error: 'Could not load view preview.' }));
+        }
+      });
+    },
+  };
+}
+
+export function projectDeleteDevWriter() {
+  return {
+    name: 'project-delete-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/project-delete', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const slug = String(body.slug || '').trim();
+          if (!/^[a-z0-9-]+$/.test(slug)) {
+            send(400, { error: 'Enter a valid slug.' });
+            return;
+          }
+          const { file } = await assertModernProject(slug);
+          await rm(file, { force: true });
+          await rm(path.join(process.cwd(), 'src/content/drafts/media', slug), {
+            recursive: true,
+            force: true,
+          });
+          await removeProjectFromViews(slug);
+          send(200, { ok: true });
+        } catch (error) {
+          send(400, { error: error instanceof Error ? error.message : 'Could not delete the project.' });
+        }
+      });
+    },
+  };
+}
+
+export function projectRenameDevWriter() {
+  return {
+    name: 'project-rename-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/project-rename', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const slug = String(body.slug || '').trim();
+          const newSlug = String(body.newSlug || '').trim();
+          if (!/^[a-z0-9-]+$/.test(slug) || !/^[a-z0-9-]+$/.test(newSlug) || slug === newSlug) {
+            send(400, { error: 'Enter a valid new slug.' });
+            return;
+          }
+          const newFile = path.join(process.cwd(), `src/content/projects/${newSlug}.json`);
+          try {
+            await readFile(newFile);
+            send(400, { error: 'A project with that slug already exists.' });
+            return;
+          } catch {
+            // available
+          }
+          const pageFile = path.join(process.cwd(), `src/pages/${newSlug}.astro`);
+          try {
+            await readFile(pageFile);
+            send(400, { error: 'A page with that slug already exists.' });
+            return;
+          } catch {
+            // available
+          }
+
+          const { file, data } = await assertModernProject(slug);
+          data.slug = newSlug;
+          rewriteDraftRefs(data, slug, newSlug);
+          const draftDir = path.join(process.cwd(), 'src/content/drafts/media', slug);
+          const nextDraftDir = path.join(process.cwd(), 'src/content/drafts/media', newSlug);
+          try {
+            await rename(draftDir, nextDraftDir);
+          } catch {
+            // no draft media folder yet
+          }
+          await writeFile(newFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await rm(file, { force: true });
+          await renameProjectInViews(slug, newSlug);
+          send(200, { ok: true, slug: newSlug });
+        } catch (error) {
+          send(400, { error: error instanceof Error ? error.message : 'Could not rename the project.' });
         }
       });
     },
