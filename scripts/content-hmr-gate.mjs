@@ -4,7 +4,7 @@
 let suppressUntil = 0;
 
 const isContentPath = (file = '') =>
-  /[/\\]src[/\\]content[/\\](projects|views|drafts|pages)[/\\]/.test(file);
+  /[/\\]src[/\\]content[/\\](projects|drafts|pages)[/\\]/.test(file);
 
 /** Suppress Vite/Astro full-reloads for content JSON briefly after API writes. */
 export function suppressContentHmr(ms = 2500) {

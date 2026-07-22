@@ -54,8 +54,6 @@ bun run preview      # preview the built site locally
 The build is fully static (`output: "static"`). No environment variables are required for the public site. Optional:
 
 - `PUBLIC_TEASER_PASSWORD` — teaser project unlock on the public site (see `.env.example`)
-- `VIEW_ID` — set when building employer views (`bun run build:view example-view`)
-
 
 CMS auth in production is handled by a Cloudflare Worker (PKCE), separate from the site build.
 

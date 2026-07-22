@@ -77,8 +77,6 @@
     setDevSectionOutline,
     syncDevSectionOutlineSidebar,
   } from '../../scripts/devSectionOutlineSync';
-  import { withDevViewId } from '../../scripts/devViewContext';
-
   type OutlineGroup = {
     kind: 'group';
     id: string;
@@ -645,12 +643,12 @@
         const response = await fetch('/api/content-nav', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
+          body: JSON.stringify({
             document: documentKey,
             outline,
             sectionIds: Object.keys(pendingSectionIds).length ? pendingSectionIds : undefined,
             showTitles: Object.keys(pendingShowTitles).length ? pendingShowTitles : undefined,
-          })),
+          }),
         });
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));

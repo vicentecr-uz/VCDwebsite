@@ -1,5 +1,4 @@
 // @ts-check
-import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { defineConfig } from 'astro/config';
@@ -10,32 +9,19 @@ import {
   buildImageSection,
   buildPlaceholderImageSection,
   draftMediaDevServer,
-  devViewSwitcher,
   listingOrderDevWriter,
   projectCreateDevWriter,
   projectDeleteDevWriter,
   projectRenameDevWriter,
   projectSettingsDevWriter,
   publishMediaDevWriter,
-  insertViewSection,
-  deleteViewSection,
   readDevDocument,
   resolveDevFieldTarget,
   resolveEditableDocument,
   uploadDevWriter,
-  viewIdFromRequest,
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
-
-/** Dev-only: the employer view Alt+V has switched to (written to .dev-session/active-view). */
-function resolveDevViewIdFromFile() {
-  try {
-    return readFileSync(path.join(process.cwd(), '.dev-session/active-view'), 'utf8').trim();
-  } catch {
-    return '';
-  }
-}
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -103,8 +89,7 @@ function imageCropDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
           const documentKey = String(body.document || '');
-          const viewId = viewIdFromRequest(req, body);
-          const fieldPath = body.path;
+                    const fieldPath = body.path;
           if (
             !resolveEditableDocument(documentKey) ||
             !Array.isArray(fieldPath) ||
@@ -118,15 +103,13 @@ function imageCropDevWriter() {
 
           let targetInfo;
           try {
-            targetInfo = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+            targetInfo = resolveDevFieldTarget(documentKey, '', fieldPath);
           } catch (error) {
             send(400, { error: error instanceof Error ? error.message : 'That image is not editable.' });
             return;
           }
 
-          const data = await readDevDocument(targetInfo.relativeFile, {
-            ensureOverlay: targetInfo.ensureOverlay,
-          });
+          const data = await readDevDocument(targetInfo.relativeFile);
 
           let target = data;
           for (const part of targetInfo.path) {
@@ -225,10 +208,9 @@ function imageGridDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
-          const viewId = viewIdFromRequest(req, body);
-          const documentKey = String(body.document || '');
+                    const documentKey = String(body.document || '');
           const fieldPath = body.path;
-          const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+          const target = resolveDevFieldTarget(documentKey, '', fieldPath);
           if (
             !target?.relativeFile ||
             !Array.isArray(target.path) ||
@@ -459,8 +441,7 @@ function contentTextDevWriter() {
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const viewId = viewIdFromRequest(req, body);
-          const changes = Array.isArray(body.changes) ? body.changes : [];
+                    const changes = Array.isArray(body.changes) ? body.changes : [];
           if (!changes.length) {
             send(400, { error: 'No text changes were provided.' });
             return;
@@ -477,7 +458,7 @@ function contentTextDevWriter() {
               value.every((paragraph) => typeof paragraph === 'string') &&
               value.join('').length <= 20_000
             );
-            const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+            const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||
@@ -853,8 +834,7 @@ function contentBatchDevWriter() {
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const viewId = viewIdFromRequest(req, body);
-          const crops = Array.isArray(body.crops) ? body.crops : [];
+                    const crops = Array.isArray(body.crops) ? body.crops : [];
           const grids = Array.isArray(body.grids) ? body.grids : [];
           const captions = Array.isArray(body.captions) ? body.captions : [];
           const textChanges = Array.isArray(body.text) ? body.text : [];
@@ -873,7 +853,7 @@ function contentBatchDevWriter() {
           /** @type {Map<string, { crops: any[], grids: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const resolveBatchChange = (documentKey, fieldPath) => {
-            const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+            const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             if (!target?.relativeFile) return null;
             let group = grouped.get(target.relativeFile);
             if (!group) {
@@ -1139,73 +1119,12 @@ function contentSectionDevWriter() {
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
-          const viewId = viewIdFromRequest(req, body);
-          const relativeFile = resolveEditableDocument(documentKey);
+                    const relativeFile = resolveEditableDocument(documentKey);
           const action = body.action === 'delete' ? 'delete' : 'insert';
           const index = Number(body.index);
 
           if (!relativeFile || !Number.isInteger(index) || index < 0) {
             send(400, { error: 'That section cannot be updated.' });
-            return;
-          }
-
-          if (viewId) {
-            if (action === 'delete') {
-              const result = await deleteViewSection(documentKey, viewId, index);
-              send(200, { ok: true, action: 'delete', index, ...result });
-              return;
-            }
-
-            const type = String(body.type || '');
-            const filenames = Array.isArray(body.filenames)
-              ? body.filenames.map((value) => String(value || '').trim()).filter(Boolean)
-              : [];
-            if (!INSERTABLE_SECTION_TYPES.has(type)) {
-              send(400, { error: 'That section cannot be inserted.' });
-              return;
-            }
-
-            let section;
-            if (type === 'sectionTitle') {
-              const id = `title-${Date.now().toString(36)}`;
-              section = {
-                type: 'sectionTitle',
-                id,
-                sectionId: id,
-                title: 'Section title',
-                spacing: 'section',
-                tightBottom: false,
-              };
-            } else if (type === 'bodyText') {
-              section = {
-                type: 'bodyText',
-                id: `body-${Date.now().toString(36)}`,
-                spacing: 'section',
-                paragraphs: [''],
-              };
-            } else if (type === 'image') {
-              if (!filenames.length) {
-                send(400, { error: 'An image file is required.' });
-                return;
-              }
-              section = buildImageSection(documentKey, filenames.slice(0, 1));
-            } else if (type === 'imageGrid') {
-              if (!filenames.length) {
-                send(400, { error: 'At least one image file is required.' });
-                return;
-              }
-              section = buildImageGridSection(documentKey, filenames);
-            } else if (type === 'placeholder') {
-              section = buildPlaceholderImageSection();
-            }
-
-            if (!section) {
-              send(400, { error: 'That section cannot be inserted.' });
-              return;
-            }
-
-            await insertViewSection(documentKey, viewId, index, section);
-            send(200, { ok: true, action: 'insert', index, id: section.id, type: section.type, section });
             return;
           }
 
@@ -1330,8 +1249,7 @@ function contentSpacingDevWriter() {
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const viewId = viewIdFromRequest(req, body);
-          const changes = Array.isArray(body.changes) ? body.changes : [];
+                    const changes = Array.isArray(body.changes) ? body.changes : [];
           if (!changes.length) {
             send(400, { error: 'No spacing changes were provided.' });
             return;
@@ -1342,7 +1260,7 @@ function contentSpacingDevWriter() {
             const documentKey = String(change.document || '');
             const fieldPath = change.path;
             const value = change.value;
-            const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+            const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||
@@ -1672,24 +1590,17 @@ function contentNavDevWriter() {
   };
 }
 
-// Prod view builds pin VIEW_ID via env; only the `astro dev` server reads the
-// Alt+V active-view file (a local build should never pick up a stale dev view).
-const isDevServe = process.argv.includes('dev');
-const activeViewId = process.env.VIEW_ID || (isDevServe ? resolveDevViewIdFromFile() : '');
-
 // https://astro.build/config
 export default defineConfig({
   devToolbar: { enabled: false },
   vite: {
     define: {
-      'import.meta.env.VIEW_ID': JSON.stringify(activeViewId),
       'import.meta.env.PUBLIC_TEASER_PASSWORD': JSON.stringify(process.env.PUBLIC_TEASER_PASSWORD || 'preview'),
     },
     plugins: [
       tailwindcss(),
       contentHmrGate(),
       draftMediaDevServer(),
-      devViewSwitcher(),
       uploadDevWriter(),
       projectCreateDevWriter(),
       projectDeleteDevWriter(),

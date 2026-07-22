@@ -1,6 +1,5 @@
 ---
 import { getTeaserPassword } from '../lib/teaserAuth';
-import { isViewBuild } from '../lib/views';
 
 interface Props {
   slug: string;
@@ -8,7 +7,7 @@ interface Props {
 }
 
 const { slug, status } = Astro.props;
-const gated = status === 'teaser' && !import.meta.env.DEV && !isViewBuild();
+const gated = status === 'teaser' && !import.meta.env.DEV;
 const storageKey = `vcd-teaser-unlock:${slug}`;
 const teaserPassword = getTeaserPassword();
 ---
