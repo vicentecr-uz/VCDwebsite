@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { OutlineEntry } from './projectOutline';
 import { normalizeOutline, outlineAnchorId } from './projectOutline';
 
@@ -56,6 +58,21 @@ export function loadViewConfig(viewId?: string): SiteViewConfig | undefined {
 }
 
 export function loadSectionOverlay(viewId: string, slug: string): ViewSectionOverlay | undefined {
+  if (import.meta.env.DEV) {
+    try {
+      const file = path.join(
+        process.cwd(),
+        'src/content/views/overlays',
+        viewId,
+        `${slug}.json`,
+      );
+      if (existsSync(file)) {
+        return JSON.parse(readFileSync(file, 'utf8')) as ViewSectionOverlay;
+      }
+    } catch {
+      // Fall through to the build-time glob cache.
+    }
+  }
   return overlayModules[`../content/views/overlays/${viewId}/${slug}.json`]?.default;
 }
 

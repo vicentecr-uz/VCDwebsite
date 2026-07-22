@@ -1,5 +1,5 @@
 // @ts-check
-import { readdirSync, readFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -138,9 +138,23 @@ function loadViewRegistry() {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
 
-function isRegisteredViewId(viewId) {
+export function isRegisteredViewId(viewId) {
   const registry = loadViewRegistry();
   return (registry.views ?? []).some((entry) => entry.id === viewId);
+}
+
+const ACTIVE_VIEW_FILE = 'active-view';
+
+function activeViewFilePath() {
+  return path.join(process.cwd(), '.dev-session', ACTIVE_VIEW_FILE);
+}
+
+export function readActiveViewFile() {
+  try {
+    return readFileSync(activeViewFilePath(), 'utf8').trim();
+  } catch {
+    return '';
+  }
 }
 
 function viewIdFromRequest(req, body = {}) {
@@ -148,12 +162,14 @@ function viewIdFromRequest(req, body = {}) {
   if (fromBody && isRegisteredViewId(fromBody)) return fromBody;
   const fromEnv = String(process.env.VIEW_ID || '').trim();
   if (fromEnv) return fromEnv;
+  const fromFile = readActiveViewFile();
+  if (fromFile && isRegisteredViewId(fromFile)) return fromFile;
   return '';
 }
 
 export { viewIdFromRequest };
 
-function buildViewPreview(viewId) {
+export function buildViewPreview(viewId) {
   const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
   const view = JSON.parse(readFileSync(viewPath, 'utf8'));
   const projects = [...(view.projects ?? [])].sort(
@@ -759,6 +775,41 @@ export function devViewSwitcher() {
           res.statusCode = 500;
           res.setHeader('content-type', 'application/json');
           res.end(JSON.stringify({ error: 'Could not load view preview.' }));
+        }
+      });
+
+      // Alt+V "Apply": persist the chosen view and trigger a dev-server restart
+      // (touching the config makes Astro re-read the active-view file → new VIEW_ID).
+      server.middlewares.use('/api/dev-set-view', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const viewId = String(body.viewId || '').trim();
+
+          if (viewId && !isRegisteredViewId(viewId)) {
+            send(400, { error: 'Unknown view.' });
+            return;
+          }
+
+          // The dev-session supervisor watches this file and restarts Astro,
+          // which re-reads it at config load to bake in the new VIEW_ID.
+          const file = path.join(process.cwd(), '.dev-session', 'active-view');
+          mkdirSync(path.dirname(file), { recursive: true });
+          writeFileSync(file, viewId, 'utf8');
+
+          send(200, { ok: true, viewId });
+        } catch {
+          send(500, { error: 'Could not switch view.' });
         }
       });
     },
