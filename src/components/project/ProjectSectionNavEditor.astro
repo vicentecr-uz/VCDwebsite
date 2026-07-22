@@ -70,6 +70,12 @@
 </div>
 
 <script>
+  import {
+    getDevSectionOutline,
+    initDevSectionOutlineSync,
+    setDevSectionOutline,
+    syncDevSectionOutlineSidebar,
+  } from '../../scripts/devSectionOutlineSync';
   import { withDevViewId } from '../../scripts/devViewContext';
 
   type OutlineGroup = {
@@ -147,6 +153,8 @@
 
     const documentKey = root.dataset.sectionNavDocument?.trim();
     if (!documentKey) return;
+
+    initDevSectionOutlineSync();
 
     const mainScope = '[data-section-nav-main]';
     const outlineOnly = root.dataset.sectionNavOutlineOnly === 'true';
@@ -241,55 +249,12 @@
       if (persist) savePopoverPosition(nextLeft, nextTop);
     };
 
-    let outline = parseJson<OutlineEntry[]>(root.dataset.sectionOutline, []);
-    // Normalize legacy kinds from older editor sessions.
-    outline = outline.map((entry) => {
-      if ((entry as { kind: string }).kind === 'subsection') {
-        return { kind: 'section' as const, id: entry.id, label: entry.label, anchor: entry.anchor };
-      }
-      if (
-        (entry as { kind: string }).kind === 'section' &&
-        Object.prototype.hasOwnProperty.call(entry, 'defaultOpen')
-      ) {
-        return {
-          kind: 'group' as const,
-          id: entry.id,
-          label: entry.label,
-          defaultOpen: (entry as OutlineGroup).defaultOpen !== false,
-          anchor: entry.anchor,
-        };
-      }
-      return entry;
-    });
-    if (!outline.length) {
-      const nav = parseJson<NavItem[]>(root.dataset.sectionNav, []);
-      for (const item of nav) {
-        if (item && typeof item === 'object' && 'children' in item) {
-          outline.push({
-            kind: 'group',
-            id: slugify(item.label),
-            label: item.label,
-            defaultOpen: item.defaultOpen !== false,
-            anchor: item.children[0]?.id,
-          });
-          for (const child of item.children) {
-            outline.push({
-              kind: 'section',
-              id: child.id,
-              label: child.label,
-              anchor: child.id,
-            });
-          }
-        } else if (item && 'id' in item) {
-          outline.push({
-            kind: 'section',
-            id: item.id,
-            label: item.label,
-            anchor: item.id,
-          });
-        }
-      }
-    }
+    let outline = getDevSectionOutline();
+
+    const replaceOutline = (next: OutlineEntry[]) => {
+      outline.length = 0;
+      outline.push(...next);
+    };
 
     let activeBlock: HTMLElement | null = null;
     let hoverBlock: HTMLElement | null = null;
@@ -593,85 +558,9 @@
     };
 
     const syncSidebarDom = () => {
-      const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
-      if (!list) return;
-
-      outline = sortOutlineByPageOrder(outline);
-      writeRootDatasets();
-      const nav = deriveNavFromOutline(outline);
-
-      const linkTemplate = list.querySelector<HTMLElement>('[data-section-nav-link]');
-      const groupTemplate = list.querySelector<HTMLElement>('[data-section-nav-group]');
-      if (!linkTemplate) return;
-
-      // Collect existing nodes before emptying children — querySelector won't
-      // find detached elements, and cloning would drop scrollspy listeners.
-      const existingLinks = new Map<string, HTMLElement>();
-      list.querySelectorAll<HTMLElement>('[data-section-nav-link]').forEach((el) => {
-        const id = el.dataset.navId;
-        if (id) existingLinks.set(id, el);
-      });
-      const existingGroups = new Map<string, HTMLElement>();
-      list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el) => {
-        const label =
-          el.dataset.navLabel ||
-          el.querySelector('[data-section-nav-label]')?.textContent?.trim() ||
-          '';
-        if (label) existingGroups.set(label, el);
-      });
-
-      const ensureLink = (link: NavLink, rootLink: boolean) => {
-        let el = existingLinks.get(link.id);
-        if (!el) el = linkTemplate.cloneNode(true) as HTMLElement;
-        el.dataset.navId = link.id;
-        el.dataset.navLabel = link.label;
-        const anchor = el.querySelector('a');
-        if (anchor) {
-          anchor.href = `#${link.id}`;
-          anchor.textContent = link.label;
-          anchor.className = rootLink
-            ? 'section-sidebar-nav__link section-sidebar-nav__root-link'
-            : 'section-sidebar-nav__link';
-        }
-        return el;
-      };
-
-      const ensureGroup = (label: string, defaultOpen: boolean) => {
-        let groupEl = existingGroups.get(label);
-        if (!groupEl) {
-          if (!groupTemplate) return null;
-          groupEl = groupTemplate.cloneNode(true) as HTMLElement;
-        }
-        groupEl.dataset.navLabel = label;
-        const labelEl = groupEl.querySelector<HTMLElement>('[data-section-nav-label]');
-        if (labelEl) labelEl.textContent = label;
-        const details = groupEl.querySelector('details');
-        if (details) details.open = defaultOpen;
-        groupEl.querySelector<HTMLElement>('.section-sidebar-nav__children')?.replaceChildren();
-        return groupEl;
-      };
-
-      const kept = new Set<HTMLElement>();
-      for (const item of nav) {
-        if ('children' in item) {
-          const groupEl = ensureGroup(item.label, item.defaultOpen !== false);
-          const childList = groupEl?.querySelector<HTMLElement>('.section-sidebar-nav__children');
-          if (!groupEl || !childList) continue;
-          for (const child of item.children) {
-            childList.append(ensureLink(child, false));
-          }
-          list.append(groupEl);
-          kept.add(groupEl);
-        } else {
-          const linkEl = ensureLink(item, true);
-          list.append(linkEl);
-          kept.add(linkEl);
-        }
-      }
-      [...list.children].forEach((child) => {
-        if (child instanceof HTMLElement && !kept.has(child)) child.remove();
-      });
-
+      replaceOutline(sortOutlineByPageOrder(outline));
+      setDevSectionOutline(outline);
+      syncDevSectionOutlineSidebar();
       bindSidebarLabelEdits();
     };
 
@@ -799,7 +688,7 @@
       const sectionLabel = sectionLabelInput.value.trim() || suggestSectionLabel(activeBlock);
       const previousId = activeBlock.id || '';
 
-      outline = outline.filter((entry) => outlineAnchorId(entry) !== previousId);
+      replaceOutline(outline.filter((entry) => outlineAnchorId(entry) !== previousId));
 
       if (!wantGroup && !wantSection) {
         if (previousId) {
@@ -821,7 +710,7 @@
             if (otherIndex !== null) pendingSectionIds[String(otherIndex)] = null;
             block.removeAttribute('id');
             block.classList.remove('section-block');
-            outline = outline.filter((entry) => outlineAnchorId(entry) !== anchorId);
+            replaceOutline(outline.filter((entry) => outlineAnchorId(entry) !== anchorId));
           }
         });
 
@@ -857,66 +746,10 @@
         applyShowTitleClasses(activeBlock, showTitle);
       }
 
-      outline = sortOutlineByPageOrder(outline);
+      replaceOutline(sortOutlineByPageOrder(outline));
       syncSidebarDom();
       setDirty(true);
       closePopover();
-    };
-
-    type StructureChangeDetail = {
-      action: 'insert' | 'delete';
-      index?: number;
-      type?: string;
-      section?: Record<string, unknown>;
-      sectionId?: string;
-    };
-
-    const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
-      let changed = false;
-
-      if (detail.action === 'insert' && detail.type === 'sectionTitle' && typeof detail.index === 'number') {
-        const section = detail.section;
-        const sectionId = typeof section?.id === 'string' ? section.id : '';
-        const label = typeof section?.title === 'string'
-          ? section.title.trim() || 'Section title'
-          : 'Section title';
-        if (!sectionId) return;
-
-        const block = editableBlocks().find(
-          (el) => sectionIndexFromPath(el.dataset.devSpacingPath) === detail.index,
-        );
-        if (block) {
-          applyBlockSectionId(block, sectionId);
-          block.dataset.devSectionTitle = 'true';
-          pendingSectionIds[String(detail.index)] = sectionId;
-        }
-
-        outline.push({
-          kind: 'section',
-          id: sectionId,
-          label,
-          anchor: sectionId,
-        });
-        changed = true;
-      } else if (detail.action === 'delete') {
-        const sectionId = detail.sectionId?.trim();
-        if (sectionId) {
-          outline = outline.filter(
-            (entry) => outlineAnchorId(entry) !== sectionId && entry.id !== sectionId,
-          );
-          changed = true;
-        }
-        if (typeof detail.index === 'number') {
-          pendingSectionIds[String(detail.index)] = null;
-          changed = true;
-        }
-      }
-
-      if (!changed) return;
-      outline = sortOutlineByPageOrder(outline);
-      // DOM-only: content-section already persisted outline in the same write.
-      // Calling persist() here would trigger a second Vite full-reload.
-      syncSidebarDom();
     };
 
     const setEditorChrome = (active: boolean) => {
@@ -1082,10 +915,6 @@
     }) as EventListener);
     window.addEventListener('vcd:dev-mode-change', (() => {
       setEditorChrome(isActive());
-    }) as EventListener);
-
-    window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<StructureChangeDetail>) => {
-      syncOutlineForStructureChange(event.detail ?? {});
     }) as EventListener);
 
     writeRootDatasets();

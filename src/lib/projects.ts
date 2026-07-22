@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { loadViewConfig, getActiveViewId, isViewBuild, type SiteViewConfig } from './views';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'view-only';
@@ -66,27 +68,39 @@ const playLinkModules = import.meta.glob<{ default: PlayLinkItem }>(
   { eager: true },
 );
 
-function projectPathToSlug(path: string): string {
-  return path.replace('../content/projects/', '').replace('.json', '');
+function projectPathToSlug(filePath: string): string {
+  return filePath.replace('../content/projects/', '').replace('.json', '');
+}
+
+function normalizeProject(slug: string, doc: ProjectDocument): ProjectDocument {
+  return {
+    ...doc,
+    slug: doc.slug ?? slug,
+    status: doc.status ?? 'published',
+    stack: doc.stack ?? (slug === 'tapico' ? 'modern' : 'legacy'),
+  };
+}
+
+/** Dev SSR must bypass Vite's eager JSON glob — HMR gate keeps it stale after API writes. */
+function loadProjectFromDisk(slug: string): ProjectDocument | undefined {
+  if (!import.meta.env.DEV) return undefined;
+  try {
+    const file = path.join(process.cwd(), 'src/content/projects', `${slug}.json`);
+    const doc = JSON.parse(readFileSync(file, 'utf8')) as ProjectDocument;
+    return normalizeProject(slug, doc);
+  } catch {
+    return undefined;
+  }
 }
 
 export function loadAllProjects(): ProjectDocument[] {
   return Object.entries(projectModules)
-    .filter(([path]) => !path.endsWith('-old.json'))
-    .map(([path, module]) => {
-      const slug = projectPathToSlug(path);
-      const doc = module.default;
-      return {
-        ...doc,
-        slug: doc.slug ?? slug,
-        status: doc.status ?? 'published',
-        stack: doc.stack ?? (slug === 'tapico' ? 'modern' : 'legacy'),
-      };
-    });
+    .filter(([filePath]) => !filePath.endsWith('-old.json'))
+    .map(([filePath, module]) => normalizeProject(projectPathToSlug(filePath), module.default));
 }
 
 export function loadProjectBySlug(slug: string): ProjectDocument | undefined {
-  return loadAllProjects().find((project) => project.slug === slug);
+  return loadProjectFromDisk(slug) ?? loadAllProjects().find((project) => project.slug === slug);
 }
 
 function viewIncludesSlug(view: SiteViewConfig | undefined, slug: string): boolean {

@@ -4,7 +4,7 @@ import ProjectSections from '../components/project/ProjectSections.astro';
 import DevImageDrop from '../components/DevImageDrop.astro';
 import TeaserGate from '../components/TeaserGate.astro';
 import { resolveProjectOutline, resolveProjectSectionLinks } from '../lib/projectOutline';
-import { applyViewToSections, applyViewToOutline } from '../lib/views';
+import { applyViewToOutline, applyViewToSections } from '../lib/views';
 import {
   getModernProjectSlugsForBuild,
   loadProjectBySlug,
@@ -22,9 +22,9 @@ if (!project || project.stack !== 'modern' || !shouldIncludeProjectInBuild(proje
   return Astro.redirect('/404');
 }
 
-const previewViewId = import.meta.env.DEV ? Astro.cookies.get('vcd-dev-view')?.value : undefined;
-const sections = applyViewToSections(slug, project.sections, previewViewId);
-const outline = applyViewToOutline(slug, resolveProjectOutline(project), project.sections, previewViewId);
+// View overlays apply via the active VIEW_ID (env in prod builds; Alt+V active-view file in dev).
+const sections = applyViewToSections(slug, project.sections);
+const outline = applyViewToOutline(slug, resolveProjectOutline(project), project.sections);
 const sectionLinks = resolveProjectSectionLinks({ outline });
 ---
 

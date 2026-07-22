@@ -43,7 +43,11 @@
     mountInsertedSection,
     syncDevModeOnSection,
   } from '../scripts/devSectionMount';
-  import { withDevViewId } from '../scripts/devViewContext';
+  import {
+    initDevSectionOutlineSync,
+    remapDevSectionOutlineId,
+  } from '../scripts/devSectionOutlineSync';
+  import { isPlannedDevNavigation, withDevViewId } from '../scripts/devViewContext';
 
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -121,6 +125,10 @@
   };
 
   const initDevTextEditor = () => {
+    if (document.documentElement.dataset.devTextEditorInit === '1') return;
+    document.documentElement.dataset.devTextEditorInit = '1';
+    initDevSectionOutlineSync();
+
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
@@ -148,7 +156,42 @@
       revert: () => void;
     };
 
+    type PendingSectionDelete = {
+      documentKey: string;
+      deletedIndex: number;
+      root: HTMLElement;
+      insertBefore: ChildNode | null;
+      textStates: EditableTextState[];
+      spacingState: EditableSpacingState | null;
+      outlineRevert: {
+        action: 'insert';
+        index: number;
+        type?: string;
+        section: Record<string, unknown>;
+      };
+    };
+
+    type PendingSectionInsert = {
+      documentKey: string;
+      index: number;
+      type: InsertableSectionType;
+      spacing: SpacingValue;
+      sectionId: string;
+      root: HTMLElement;
+      textStates: EditableTextState[];
+      spacingState: EditableSpacingState | null;
+    };
+
     const pendingMedia = new Map<string, PendingMediaChange>();
+    const pendingSectionDeletes: PendingSectionDelete[] = [];
+    const pendingSectionInserts: PendingSectionInsert[] = [];
+    let devServerReloading = false;
+
+    if (import.meta.hot) {
+      import.meta.hot.on('vite:beforeFullReload', () => {
+        devServerReloading = true;
+      });
+    }
 
     const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
     /** Keep authored inline markup through Save; unwrap anything else. */
@@ -597,6 +640,158 @@
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-reverted'));
     };
 
+    const detachSectionStates = (element: HTMLElement) => {
+      const texts = textStates.filter(
+        (state) => element.contains(state.element) || state.element === element,
+      );
+      const spacing = spacingStates.find((state) => state.element === element) ?? null;
+      texts.forEach((state) => {
+        const index = textStates.indexOf(state);
+        if (index >= 0) textStates.splice(index, 1);
+      });
+      if (spacing) {
+        const index = spacingStates.indexOf(spacing);
+        if (index >= 0) spacingStates.splice(index, 1);
+      }
+      return { texts, spacing };
+    };
+
+    const restorePendingSectionDelete = (pending: PendingSectionDelete) => {
+      reindexDevPaths(pending.deletedIndex, 1);
+      const anchor = findInsertAnchor(pending.deletedIndex);
+      if (anchor) {
+        anchor.before(pending.root);
+      } else if (pending.insertBefore?.parentNode) {
+        pending.insertBefore.parentNode.insertBefore(pending.root, pending.insertBefore);
+      } else {
+        document.querySelector('.project-page__main')?.append(pending.root);
+      }
+
+      textStates.push(...pending.textStates);
+      if (pending.spacingState) {
+        spacingStates.push(pending.spacingState);
+        wireSectionAddMenu(pending.spacingState);
+      }
+      deletableSections.push(pending.root);
+      mountDeleteButton(pending.root);
+      syncDevModeOnSection(pending.root, document.documentElement.classList.contains('is-dev-mode'));
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+        detail: pending.outlineRevert,
+      }));
+    };
+
+    const revertPendingSectionInserts = () => {
+      if (!pendingSectionInserts.length) return;
+      const pending = [...pendingSectionInserts].sort((a, b) => b.index - a.index);
+      pendingSectionInserts.length = 0;
+      pending.forEach((entry) => {
+        entry.textStates.forEach((state) => {
+          const index = textStates.indexOf(state);
+          if (index >= 0) textStates.splice(index, 1);
+        });
+        if (entry.spacingState) {
+          const index = spacingStates.indexOf(entry.spacingState);
+          if (index >= 0) spacingStates.splice(index, 1);
+        }
+        const deletableIdx = deletableSections.indexOf(entry.root);
+        if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
+        reindexDevPaths(entry.index, -1);
+        entry.root.remove();
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+          detail: {
+            action: 'delete',
+            index: entry.index,
+            sectionId: entry.sectionId,
+            type: entry.type,
+          },
+        }));
+      });
+    };
+
+    const revertPendingSectionDeletes = () => {
+      if (!pendingSectionDeletes.length) return;
+      const pending = [...pendingSectionDeletes].sort((a, b) => a.deletedIndex - b.deletedIndex);
+      pendingSectionDeletes.length = 0;
+      pending.forEach(restorePendingSectionDelete);
+    };
+
+    const persistPendingSectionInserts = async () => {
+      if (!pendingSectionInserts.length) return [] as Array<{
+        clientId: string;
+        serverId: string;
+        documentKey: string;
+      }>;
+      const pending = [...pendingSectionInserts].sort((a, b) => a.index - b.index);
+      const remapped: Array<{ clientId: string; serverId: string; documentKey: string }> = [];
+      for (const entry of pending) {
+        const clientId = entry.sectionId;
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(withDevViewId({
+            document: entry.documentKey,
+            index: entry.index,
+            type: entry.type,
+            spacing: entry.spacing,
+          })),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
+        const serverSectionId = String(
+          payload.section?.sectionId || payload.section?.id || payload.id || clientId,
+        );
+        if (serverSectionId && serverSectionId !== clientId) {
+          entry.root.id = serverSectionId;
+          entry.sectionId = serverSectionId;
+          remapped.push({
+            clientId,
+            serverId: serverSectionId,
+            documentKey: entry.documentKey,
+          });
+        }
+      }
+      pendingSectionInserts.length = 0;
+      return remapped;
+    };
+
+    const persistPendingSectionDeletes = async () => {
+      if (!pendingSectionDeletes.length) return;
+      const pending = [...pendingSectionDeletes].sort((a, b) => b.deletedIndex - a.deletedIndex);
+      for (const entry of pending) {
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(withDevViewId({
+            action: 'delete',
+            document: entry.documentKey,
+            index: entry.deletedIndex,
+          })),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
+      }
+      pendingSectionDeletes.length = 0;
+    };
+
+    const syncSavedSectionTitleLabels = (states: EditableTextState[]) => {
+      states.forEach((state) => {
+        if (state.kind !== 'text') return;
+        const block = state.element.closest<HTMLElement>('.section-block[id], [data-dev-section-title]');
+        const sectionId = block?.id;
+        if (!sectionId) return;
+        const label = readValue(state);
+        if (typeof label !== 'string' || !label.trim()) return;
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-outline-label', {
+          detail: {
+            document: state.document,
+            sectionId,
+            label: label.trim(),
+          },
+        }));
+      });
+    };
+
     const revertDirtyEdits = () => {
       dirtyTextStates().forEach((state) => {
         renderValue(state, state.savedValue);
@@ -609,7 +804,11 @@
     };
 
     const unsavedChangeCount = () =>
-      dirtyTextStates().length + dirtySpacingStates().length + pendingMedia.size;
+      dirtyTextStates().length
+      + dirtySpacingStates().length
+      + pendingMedia.size
+      + pendingSectionDeletes.length
+      + pendingSectionInserts.length;
 
     window.addEventListener('vcd:dev-mode-before-exit', (event) => {
       const dirtyCount = unsavedChangeCount();
@@ -623,6 +822,8 @@
         return;
       }
 
+      revertPendingSectionInserts();
+      revertPendingSectionDeletes();
       revertDirtyEdits();
       revertAllPending();
       hideFormatBar();
@@ -644,7 +845,8 @@
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
-      const dirtyCount = dirtyText.length + dirtySpacing.length + pendingMedia.size;
+      const dirtyCount = dirtyText.length + dirtySpacing.length + pendingMedia.size
+        + pendingSectionDeletes.length + pendingSectionInserts.length;
 
       textStates.forEach((state) => {
         state.element.classList.toggle(
@@ -832,7 +1034,7 @@
       revertButton.disabled = false;
     };
 
-    const insertSectionAt = async (state: EditableSpacingState, type: InsertableSectionType) => {
+    const insertSectionAt = (state: EditableSpacingState, type: InsertableSectionType) => {
       const sectionIndex = state.path.at(-2);
       if (typeof sectionIndex !== 'number') {
         status.textContent = 'Could not find where to insert.';
@@ -840,90 +1042,76 @@
         return;
       }
 
-      const dirtyCount =
-        dirtyTextStates().length + dirtySpacingStates().length + pendingMedia.size;
-      if (dirtyCount) {
-        actions.hidden = false;
-        status.textContent = 'Save or revert before adding a section.';
-        closeSectionMenus();
-        return;
-      }
-
       const newSpacing: SpacingValue = 'section';
+      const sectionId = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
-      actions.hidden = false;
-      status.textContent = 'Adding…';
-      saveButton.disabled = true;
-      revertButton.disabled = true;
+      reindexDevPaths(sectionIndex, 1);
 
-      try {
-        const response = await fetch('/api/content-section', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
-            document: state.document,
-            index: sectionIndex,
-            type,
-            spacing: newSpacing,
-          })),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
+      const built = buildInsertedSection(type, state.document, sectionIndex, newSpacing);
+      state.element.before(built.root);
 
-        // Keep later editors' paths valid, then inject the new block in place.
-        reindexDevPaths(sectionIndex, 1);
+      const spacingState = mountSpacingControl(built.root);
+      if (spacingState) {
+        spacingStates.push(spacingState);
+        wireSectionAddMenu(spacingState);
+      }
 
-        const built = buildInsertedSection(type, state.document, sectionIndex, newSpacing);
-        state.element.before(built.root);
+      const textState: EditableTextState = {
+        element: built.textElement,
+        document: state.document,
+        path: built.textPath,
+        kind: built.textKind,
+        savedValue: built.textKind === 'paragraphs' ? [''] : 'Section title',
+      };
+      textStates.push(textState);
+      bindTextState(textState);
+      if (document.documentElement.classList.contains('is-dev-mode')) {
+        built.textElement.setAttribute(
+          'contenteditable',
+          built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
+        );
+        built.textElement.setAttribute('spellcheck', 'true');
+      }
 
-        // Following block keeps its existing spacing (gap below the insert).
+      mountDeleteButton(built.root);
+      deletableSections.push(built.root);
 
-        const spacingState = mountSpacingControl(built.root);
-        if (spacingState) {
-          spacingStates.push(spacingState);
-          wireSectionAddMenu(spacingState);
-        }
+      if (type === 'sectionTitle') {
+        built.root.id = sectionId;
+        built.root.classList.add('section-block');
+        built.root.dataset.devSectionTitle = 'true';
+      }
 
-        const textState: EditableTextState = {
-          element: built.textElement,
+      pendingSectionInserts.push({
+        documentKey: state.document,
+        index: sectionIndex,
+        type,
+        spacing: newSpacing,
+        sectionId,
+        root: built.root,
+        textStates: [textState],
+        spacingState: spacingState ?? null,
+      });
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+        detail: {
           document: state.document,
-          path: built.textPath,
-          kind: built.textKind,
-          savedValue: built.textKind === 'paragraphs' ? [''] : 'Section title',
-        };
-        textStates.push(textState);
-        bindTextState(textState);
-        if (document.documentElement.classList.contains('is-dev-mode')) {
-          built.textElement.setAttribute(
-            'contenteditable',
-            built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
-          );
-          built.textElement.setAttribute('spellcheck', 'true');
-        }
-
-        mountDeleteButton(built.root);
-        deletableSections.push(built.root);
-
-        if (type === 'sectionTitle' && payload.section) {
-          const sectionId = String(payload.section.sectionId || payload.section.id || '');
-          if (sectionId) {
-            built.root.id = sectionId;
-            built.root.classList.add('section-block');
-            built.root.dataset.devSectionTitle = 'true';
-          }
-        }
-
-        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
-          detail: {
-            action: 'insert',
-            index: sectionIndex,
+          action: 'insert',
+          index: sectionIndex,
+          type,
+          sectionId,
+          section: {
             type,
-            section: payload.section ?? { type },
+            id: sectionId,
+            sectionId,
+            title: 'Section title',
           },
-        }));
+        },
+      }));
 
-        clearBusyStatus();
+      updateActions();
+      requestAnimationFrame(() => {
         built.textElement.focus();
         if (built.textKind === 'text') {
           const selection = window.getSelection();
@@ -932,11 +1120,7 @@
           selection?.removeAllRanges();
           selection?.addRange(range);
         }
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not add the section.';
-        saveButton.disabled = false;
-        revertButton.disabled = false;
-      }
+      });
     };
 
     const wireSectionAddMenu = (state: EditableSpacingState) => {
@@ -966,7 +1150,7 @@
             return;
           }
           if (type !== 'bodyText' && type !== 'sectionTitle') return;
-          void insertSectionAt(state, type);
+          insertSectionAt(state, type);
         });
       });
     };
@@ -988,65 +1172,66 @@
         return;
       }
 
-      const dirtyCount =
-        dirtyTextStates().length + dirtySpacingStates().length + pendingMedia.size;
-      if (dirtyCount) {
-        actions.hidden = false;
-        status.textContent = 'Save or revert before deleting a section.';
+      const sectionId = element.id || undefined;
+      const sectionType = element.dataset.devSectionDeletable;
+      const titleElement = element.querySelector<HTMLElement>('[data-dev-text-document]');
+      const title = titleElement?.textContent?.trim() || 'Section title';
+      const insertBefore = element.nextSibling;
+      const pendingInsertIdx = pendingSectionInserts.findIndex((entry) => entry.root === element);
+      const { texts, spacing } = detachSectionStates(element);
+
+      const deletableIdx = deletableSections.indexOf(element);
+      if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
+
+      element.remove();
+      reindexDevPaths(sectionIndex, -1);
+
+      if (pendingInsertIdx >= 0) {
+        pendingSectionInserts.splice(pendingInsertIdx, 1);
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+          detail: {
+            document: documentKey,
+            action: 'delete',
+            index: sectionIndex,
+            sectionId,
+            type: sectionType,
+          },
+        }));
+        updateActions();
         return;
       }
 
-      if (!window.confirm('Delete this section?')) return;
-
-      actions.hidden = false;
-      status.textContent = 'Deleting…';
-      saveButton.disabled = true;
-      revertButton.disabled = true;
-
-      try {
-        const response = await fetch('/api/content-section', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
-            action: 'delete',
-            document: documentKey,
-            index: sectionIndex,
-          })),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
-
-        for (let i = textStates.length - 1; i >= 0; i -= 1) {
-          if (element.contains(textStates[i].element) || textStates[i].element === element) {
-            textStates.splice(i, 1);
-          }
-        }
-        for (let i = spacingStates.length - 1; i >= 0; i -= 1) {
-          if (spacingStates[i].element === element) {
-            spacingStates.splice(i, 1);
-          }
-        }
-        const deletableIdx = deletableSections.indexOf(element);
-        if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
-
-        element.remove();
-        reindexDevPaths(sectionIndex, -1);
-
-        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
-          detail: {
-            action: 'delete',
-            index: sectionIndex,
-            sectionId: element.id || undefined,
-            type: element.dataset.devSectionDeletable,
+      pendingSectionDeletes.push({
+        documentKey,
+        deletedIndex: sectionIndex,
+        root: element,
+        insertBefore,
+        textStates: texts,
+        spacingState: spacing,
+        outlineRevert: {
+          action: 'insert',
+          index: sectionIndex,
+          type: sectionType,
+          section: {
+            type: sectionType,
+            sectionId,
+            id: sectionId,
+            title,
           },
-        }));
+        },
+      });
 
-        clearBusyStatus();
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not delete the section.';
-        saveButton.disabled = false;
-        revertButton.disabled = false;
-      }
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+        detail: {
+          document: documentKey,
+          action: 'delete',
+          index: sectionIndex,
+          sectionId,
+          type: sectionType,
+        },
+      }));
+
+      updateActions();
     };
 
     deletableSections.forEach((element) => {
@@ -1444,6 +1629,8 @@
     textStates.forEach(bindTextState);
 
     revertButton.addEventListener('click', () => {
+      revertPendingSectionInserts();
+      revertPendingSectionDeletes();
       revertDirtyEdits();
       revertAllPending();
       hideFormatBar();
@@ -1454,14 +1641,16 @@
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
       const pendingChanges = [...pendingMedia.values()];
+      const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const imageChanges = pendingChanges.filter((change) => change.kind !== 'listing-order');
-      if (!dirtyText.length && !dirtySpacing.length && !pendingChanges.length) return;
+      if (!dirtyText.length && !dirtySpacing.length && !pendingChanges.length && !structuralPending) return;
       saveButton.disabled = true;
       revertButton.disabled = true;
       status.textContent = 'Saving…';
 
       try {
+        const insertedSections = await persistPendingSectionInserts();
         for (const change of listingChanges) {
           const response = await fetch('/api/listing-order', {
             method: 'POST',
@@ -1541,6 +1730,12 @@
           state.savedValue = state.currentValue;
           syncSpacingControl(state);
         });
+        await persistPendingSectionDeletes();
+        insertedSections.forEach(({ clientId, serverId }) => {
+          remapDevSectionOutlineId(clientId, serverId);
+        });
+        syncSavedSectionTitleLabels(dirtyText);
+
         pendingMedia.clear();
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
         status.textContent = 'Saved.';
@@ -1557,7 +1752,14 @@
       setEditingEnabled(Boolean((event as CustomEvent<{ active: boolean }>).detail?.active));
     });
     window.addEventListener('beforeunload', (event) => {
-      if (!dirtyTextStates().length && !dirtySpacingStates().length && !pendingMedia.size) return;
+      if (devServerReloading || isPlannedDevNavigation()) return;
+      // Structural insert/delete is already reflected in the DOM — only warn when
+      // text, spacing, or media edits would be lost (or during a dev-server reload).
+      const hasContentEdits =
+        dirtyTextStates().length > 0
+        || dirtySpacingStates().length > 0
+        || pendingMedia.size > 0;
+      if (!hasContentEdits) return;
       event.preventDefault();
       event.returnValue = '';
     });

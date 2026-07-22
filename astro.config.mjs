@@ -1,4 +1,5 @@
 // @ts-check
+import { readFileSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { defineConfig } from 'astro/config';
@@ -26,6 +27,15 @@ import {
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
+
+/** Dev-only: the employer view Alt+V has switched to (written to .dev-session/active-view). */
+function resolveDevViewIdFromFile() {
+  try {
+    return readFileSync(path.join(process.cwd(), '.dev-session/active-view'), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -1662,13 +1672,17 @@ function contentNavDevWriter() {
   };
 }
 
+// Prod view builds pin VIEW_ID via env; only the `astro dev` server reads the
+// Alt+V active-view file (a local build should never pick up a stale dev view).
+const isDevServe = process.argv.includes('dev');
+const activeViewId = process.env.VIEW_ID || (isDevServe ? resolveDevViewIdFromFile() : '');
+
 // https://astro.build/config
 export default defineConfig({
-  // TODO: Re-enable Astro dev toolbar after investigating dev-mode layout jump.
   devToolbar: { enabled: false },
   vite: {
     define: {
-      'import.meta.env.VIEW_ID': JSON.stringify(process.env.VIEW_ID || ''),
+      'import.meta.env.VIEW_ID': JSON.stringify(activeViewId),
       'import.meta.env.PUBLIC_TEASER_PASSWORD': JSON.stringify(process.env.PUBLIC_TEASER_PASSWORD || 'preview'),
     },
     plugins: [

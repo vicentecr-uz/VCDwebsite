@@ -126,13 +126,13 @@ start_process() {
   fi
 
   : >"$log_file"
-  (
-    cd "$ROOT"
-    exec "$@"
-  ) >>"$log_file" 2>&1 &
+  # nohup + disown detaches the child so it survives the caller's shell exiting
+  # (e.g. an agent that launches the session from a short-lived command).
+  nohup bash -c "cd '$ROOT'; exec \"\$@\"" _ "$@" >>"$log_file" 2>&1 &
 
   local pid=$!
   echo "$pid" >"$pid_file"
+  disown "$pid" 2>/dev/null || true
 
   for _ in {1..40}; do
     if ! pid_alive "$pid"; then
@@ -172,7 +172,8 @@ cmd_start() {
   fi
 
   echo "Starting dev session..."
-  start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev
+  # Supervisor runs `astro dev` and restarts it when Alt+V switches employer view.
+  start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" "$ROOT/scripts/dev-astro-supervisor.mjs"
   start_process "Decap" "$DECAP_PID" "$DECAP_LOG" "$BUN" x decap-server
 
   echo ""
