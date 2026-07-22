@@ -619,19 +619,24 @@
           }
         };
       });
-
-      list.querySelectorAll<HTMLElement>('[data-section-nav-link] a').forEach((anchor) => {
-        anchor.onclick = (event) => {
-          if (!isActive()) return;
-          event.preventDefault();
-          const li = anchor.closest<HTMLElement>('[data-section-nav-link]');
-          const id = li?.dataset.navId;
-          if (!id) return;
-          const block = findBlockById(id);
-          if (block) openPopover(block);
-        };
-      });
     };
+
+    const onSidebarLinkClick = (event: MouseEvent) => {
+      if (!isActive()) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>('[data-section-nav-link] a');
+      if (!anchor) return;
+      event.preventDefault();
+      const li = anchor.closest<HTMLElement>('[data-section-nav-link]');
+      const id = li?.dataset.navId;
+      if (!id) return;
+      const block = findBlockById(id);
+      if (block) openPopover(block);
+    };
+
+    const sidebarList = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
+    sidebarList?.addEventListener('click', onSidebarLinkClick);
 
     const persist = async () => {
       if (saving) return false;
