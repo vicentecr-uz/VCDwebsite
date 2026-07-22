@@ -25,6 +25,7 @@ import {
   viewIdFromRequest,
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
+import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -1044,6 +1045,53 @@ function contentBatchDevWriter() {
  */
 const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle', 'image', 'imageGrid', 'placeholder']);
 
+const outlineAnchorId = (entry) => {
+  if (!entry || typeof entry !== 'object') return '';
+  const anchor = typeof entry.anchor === 'string' ? entry.anchor.trim() : '';
+  if (anchor) return anchor;
+  return typeof entry.id === 'string' ? entry.id : '';
+};
+
+/** Keep project outline in sync with sectionTitle insert/delete in one write. */
+const syncOutlineForSectionMutation = (data, { action, section }) => {
+  if (!data || typeof data !== 'object') return;
+  if (!Array.isArray(data.outline)) data.outline = [];
+
+  if (action === 'insert' && section?.type === 'sectionTitle') {
+    const anchor = String(section.sectionId || section.id || '').trim();
+    if (!anchor) return;
+    section.sectionId = section.sectionId || anchor;
+    const label = String(section.title || 'Section title').trim() || 'Section title';
+    data.outline = data.outline.filter(
+      (entry) => outlineAnchorId(entry) !== anchor && entry?.id !== anchor,
+    );
+    data.outline.push({
+      kind: 'section',
+      id: anchor,
+      label,
+      anchor,
+    });
+    return;
+  }
+
+  if (action === 'delete' && section) {
+    const anchors = new Set(
+      [String(section.sectionId || ''), String(section.id || '')]
+        .map((value) => value.trim())
+        .filter(Boolean),
+    );
+    if (!anchors.size) return;
+    data.outline = data.outline.filter(
+      (entry) => !anchors.has(outlineAnchorId(entry)) && !anchors.has(String(entry?.id || '')),
+    );
+  }
+};
+
+const writeContentJson = async (file, data) => {
+  suppressContentHmr();
+  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+};
+
 /**
  * Dev-only writer that inserts or deletes sections in a project document's
  * `sections` array (used by the on-page “+” / delete controls).
@@ -1109,9 +1157,11 @@ function contentSectionDevWriter() {
 
             let section;
             if (type === 'sectionTitle') {
+              const id = `title-${Date.now().toString(36)}`;
               section = {
                 type: 'sectionTitle',
-                id: `title-${Date.now().toString(36)}`,
+                id,
+                sectionId: id,
                 title: 'Section title',
                 spacing: 'section',
                 tightBottom: false,
@@ -1170,9 +1220,10 @@ function contentSectionDevWriter() {
               send(400, { error: 'That section type cannot be deleted here.' });
               return;
             }
+            syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
             data.sections.splice(index, 1);
-            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-            send(200, { ok: true, action: 'delete', index, type: existingType });
+            await writeContentJson(file, data);
+            send(200, { ok: true, action: 'delete', index, type: existingType, section: existing });
             return;
           }
 
@@ -1192,6 +1243,7 @@ function contentSectionDevWriter() {
             section = {
               type: 'sectionTitle',
               id,
+              sectionId: id,
               title: 'Section title',
               spacing: 'section',
               tightBottom: false,
@@ -1226,8 +1278,9 @@ function contentSectionDevWriter() {
           }
 
           data.sections.splice(index, 0, section);
+          syncOutlineForSectionMutation(data, { action: 'insert', section });
 
-          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeContentJson(file, data);
           send(200, { ok: true, action: 'insert', index, id: section.id, type: section.type, section });
         } catch {
           send(400, { error: 'Could not parse or write the section update.' });
@@ -1599,7 +1652,7 @@ function contentNavDevWriter() {
             }
           }
 
-          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeContentJson(file, data);
           send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not parse or write the nav update.' });
@@ -1620,6 +1673,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
+      contentHmrGate(),
       draftMediaDevServer(),
       devViewSwitcher(),
       uploadDevWriter(),

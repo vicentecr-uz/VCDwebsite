@@ -905,6 +905,15 @@
         mountDeleteButton(built.root);
         deletableSections.push(built.root);
 
+        if (type === 'sectionTitle' && payload.section) {
+          const sectionId = String(payload.section.sectionId || payload.section.id || '');
+          if (sectionId) {
+            built.root.id = sectionId;
+            built.root.classList.add('section-block');
+            built.root.dataset.devSectionTitle = 'true';
+          }
+        }
+
         window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
           detail: {
             action: 'insert',
