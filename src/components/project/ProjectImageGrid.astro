@@ -31,6 +31,7 @@ import {
 import {
   gridItemLayoutStyle,
   imageDevEditAttrs,
+  isPlaceholderSrc,
   resolveGridItemCrop,
   resolveGridItemLayout,
 } from '../../lib/projectImageFrame';
@@ -151,6 +152,7 @@ const editorItems = items.map((item, index) => ({
     const captionReveals = resolveImageCaptionReveals(item.captionReveal);
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
+    const isPlaceholder = isPlaceholderSrc(item.src);
     const editAttrs = showDevEditing
       ? imageDevEditAttrs(true, {
           documentKey: documentKey!,
@@ -171,6 +173,7 @@ const editorItems = items.map((item, index) => ({
         class:list={[
           'project-image-grid__item',
           'project-responsive-image',
+          isPlaceholder && 'project-media--placeholder',
           showDevEditing && 'dev-image-edit-target',
         ]}
         style={`${variantStyle};${layoutStyle}`}
