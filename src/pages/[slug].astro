@@ -22,8 +22,9 @@ if (!project || project.stack !== 'modern' || !shouldIncludeProjectInBuild(proje
   return Astro.redirect('/404');
 }
 
-const sections = applyViewToSections(slug, project.sections);
-const outline = applyViewToOutline(slug, resolveProjectOutline(project), project.sections);
+const previewViewId = import.meta.env.DEV ? Astro.cookies.get('vcd-dev-view')?.value : undefined;
+const sections = applyViewToSections(slug, project.sections, previewViewId);
+const outline = applyViewToOutline(slug, resolveProjectOutline(project), project.sections, previewViewId);
 const sectionLinks = resolveProjectSectionLinks({ outline });
 ---
 
