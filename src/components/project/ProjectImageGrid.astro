@@ -3,12 +3,8 @@ import { projectImage } from '../../lib/images';
 import {
   imageGridColumnsStyle,
   imageGridConstrainedStyle,
-  imageGridItemLayoutStyle,
-  normalizeImageVariants,
   resolveImageGridColumns,
   resolveImageGridConstrained,
-  resolveImageGridLayouts,
-  responsiveImageStyle,
   type ImageGridColumns,
   type ImageGridConstrained,
   type ImageGridLayouts,
@@ -32,6 +28,12 @@ import {
   type ImageCaptionStyleId,
   type ImageCaptions,
 } from '../../lib/imageCaptions';
+import {
+  gridItemLayoutStyle,
+  imageDevEditAttrs,
+  resolveGridItemCrop,
+  resolveGridItemLayout,
+} from '../../lib/projectImageFrame';
 
 interface Item {
   id?: string;
@@ -93,7 +95,7 @@ if (!layouts.mobile && items.some((item) => item.hideOnMobile)) {
   };
 }
 
-const resolvedLayouts = resolveImageGridLayouts(itemIds, layouts);
+const resolvedLayouts = resolveGridItemLayout(itemIds, layouts);
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
 /** Single-row grids still need the editor — e.g. 3-wide desktop → 1-wide mobile. */
 const showGridEditor = showDevEditing;
@@ -141,19 +143,29 @@ const editorItems = items.map((item, index) => ({
   )}
   {items.map((item, index) => {
     const itemId = itemIds[index];
-    const hasOwnVariants = !!item.variants;
-    const variants = normalizeImageVariants(
-      hasOwnVariants ? item.variants : undefined,
-      defaultAspectRatio,
-      item.crop,
-    );
-    const layoutStyle = imageGridItemLayoutStyle(itemId, resolvedLayouts);
+    const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(item, defaultAspectRatio);
+    const layoutStyle = gridItemLayoutStyle(itemId, resolvedLayouts);
     const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
     const captionStyle = resolveImageCaptionStyle(item.captionStyle);
     const captionPosition = resolveImageCaptionPosition(item.captionPosition);
     const captionReveals = resolveImageCaptionReveals(item.captionReveal);
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
+    const editAttrs = showDevEditing
+      ? imageDevEditAttrs(true, {
+          documentKey: documentKey!,
+          path: [...basePath!, 'items', index],
+          cropId: itemId,
+          variants,
+          caption: item.caption,
+          captions: item.captions,
+          captionStyle: item.captionStyle,
+          captionPosition: item.captionPosition,
+          captionReveal: item.captionReveal,
+          gridDefaultAspect: defaultAspectRatio,
+          hasOwnVariants,
+        })
+      : {};
     return (
       <figure
         class:list={[
@@ -161,22 +173,12 @@ const editorItems = items.map((item, index) => ({
           'project-responsive-image',
           showDevEditing && 'dev-image-edit-target',
         ]}
-        style={`${responsiveImageStyle(variants)};${layoutStyle}`}
+        style={`${variantStyle};${layoutStyle}`}
         data-grid-item-id={itemId}
         data-grid-hidden-desktop={resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false'}
         data-grid-hidden-tablet={resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false'}
         data-grid-hidden-mobile={resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false'}
-        data-dev-image-target={showDevEditing ? 'image' : undefined}
-        data-dev-document={showDevEditing ? documentKey : undefined}
-        data-dev-image-path={showDevEditing ? JSON.stringify([...basePath, 'items', index]) : undefined}
-        data-dev-crop-id={showDevEditing ? itemId : undefined}
-        data-dev-image-variants={showDevEditing ? JSON.stringify(variants) : undefined}
-        data-dev-grid-default-aspect={showDevEditing ? defaultAspectRatio : undefined}
-        data-dev-has-own-variants={showDevEditing && hasOwnVariants ? 'true' : undefined}
-        data-dev-captions={showDevEditing ? JSON.stringify(captions) : undefined}
-        data-dev-caption-style={showDevEditing ? captionStyle : undefined}
-        data-dev-caption-position={showDevEditing ? captionPosition : undefined}
-        data-dev-caption-reveals={showDevEditing ? JSON.stringify(captionReveals) : undefined}
+        {...editAttrs}
       >
         <img
           src={projectImage(item.src)}
@@ -228,40 +230,9 @@ const editorItems = items.map((item, index) => ({
 </div>
 
 <script>
-  const initProjectImageGridCover = (frame: HTMLElement) => {
-    if (frame.dataset.coverInitialized === 'true') return;
-    frame.dataset.coverInitialized = 'true';
-    const image = frame.querySelector<HTMLImageElement>('.project-image-grid__image');
-    if (!image) return;
+  import { bindProjectCropCovers } from '../../lib/projectCropCover';
 
-    const sizeToCover = () => {
-      if (!image.naturalWidth || !image.naturalHeight) return;
-      frame.style.setProperty(
-        '--project-image-original-ratio',
-        `${image.naturalWidth} / ${image.naturalHeight}`,
-      );
-      const frameWidth = frame.clientWidth;
-      const frameHeight = frame.clientHeight;
-      if (!frameWidth || !frameHeight) return;
-      const scale = Math.max(
-        (frameWidth + 2) / image.naturalWidth,
-        (frameHeight + 2) / image.naturalHeight,
-      );
-      image.style.width = `${Math.ceil(image.naturalWidth * scale)}px`;
-      image.style.height = `${Math.ceil(image.naturalHeight * scale)}px`;
-    };
-
-    image.addEventListener('load', sizeToCover);
-    if (image.complete) sizeToCover();
-    window.addEventListener('resize', sizeToCover);
-    if (typeof ResizeObserver !== 'undefined') {
-      new ResizeObserver(sizeToCover).observe(frame);
-    }
-  };
-
-  document
-    .querySelectorAll<HTMLElement>('.project-image-grid__item')
-    .forEach(initProjectImageGridCover);
+  bindProjectCropCovers();
 </script>
 
 <style>

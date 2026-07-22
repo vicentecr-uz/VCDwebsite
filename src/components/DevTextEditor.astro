@@ -182,9 +182,17 @@
       spacingState: EditableSpacingState | null;
     };
 
+    type PersistedMediaInsert = {
+      documentKey: string;
+      index: number;
+      root: HTMLElement;
+      section: Record<string, unknown>;
+    };
+
     const pendingMedia = new Map<string, PendingMediaChange>();
     const pendingSectionDeletes: PendingSectionDelete[] = [];
     const pendingSectionInserts: PendingSectionInsert[] = [];
+    const persistedMediaInserts: PersistedMediaInsert[] = [];
     let devServerReloading = false;
 
     if (import.meta.hot) {
@@ -716,6 +724,87 @@
       pending.forEach(restorePendingSectionDelete);
     };
 
+    const revertPersistedMediaInserts = async () => {
+      if (!persistedMediaInserts.length) return;
+      const pending = [...persistedMediaInserts].sort((a, b) => b.index - a.index);
+      persistedMediaInserts.length = 0;
+      for (const entry of pending) {
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(withDevViewId({
+            action: 'delete',
+            document: entry.documentKey,
+            index: entry.index,
+          })),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not undo the image insert.');
+
+        const deletableIdx = deletableSections.indexOf(entry.root);
+        if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
+        entry.root.remove();
+        reindexDevPaths(entry.index, -1);
+
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+          detail: {
+            document: entry.documentKey,
+            action: 'delete',
+            index: entry.index,
+            type: String(entry.section.type ?? 'image'),
+          },
+        }));
+      }
+    };
+
+    const flushPendingEditsForDocument = async (documentKey: string) => {
+      const dirtyText = dirtyTextStates().filter((state) => state.document === documentKey);
+      const dirtySpacing = dirtySpacingStates().filter((state) => state.document === documentKey);
+      if (!dirtyText.length && !dirtySpacing.length) return;
+
+      if (dirtyText.length) {
+        const response = await fetch('/api/content-text', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(withDevViewId({
+            changes: dirtyText.map((state) => ({
+              document: state.document,
+              path: state.path,
+              value: readValue(state),
+            })),
+          })),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not save pending text before inserting images.');
+        dirtyText.forEach((state) => {
+          state.savedValue = readValue(state);
+        });
+        syncSavedSectionTitleLabels(dirtyText);
+      }
+
+      if (dirtySpacing.length) {
+        const response = await fetch('/api/content-spacing', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(withDevViewId({
+            changes: dirtySpacing.map((state) => ({
+              document: state.document,
+              path: state.path,
+              value: state.currentValue,
+            })),
+          })),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not save pending spacing before inserting images.');
+        dirtySpacing.forEach((state) => {
+          state.savedValue = state.currentValue;
+          syncSpacingControl(state);
+        });
+      }
+
+      updateActions();
+    };
+
     const persistPendingSectionInserts = async () => {
       if (!pendingSectionInserts.length) return [] as Array<{
         clientId: string;
@@ -808,7 +897,8 @@
       + dirtySpacingStates().length
       + pendingMedia.size
       + pendingSectionDeletes.length
-      + pendingSectionInserts.length;
+      + pendingSectionInserts.length
+      + persistedMediaInserts.length;
 
     window.addEventListener('vcd:dev-mode-before-exit', (event) => {
       const dirtyCount = unsavedChangeCount();
@@ -1178,6 +1268,7 @@
       const title = titleElement?.textContent?.trim() || 'Section title';
       const insertBefore = element.nextSibling;
       const pendingInsertIdx = pendingSectionInserts.findIndex((entry) => entry.root === element);
+      const persistedInsertIdx = persistedMediaInserts.findIndex((entry) => entry.root === element);
       const { texts, spacing } = detachSectionStates(element);
 
       const deletableIdx = deletableSections.indexOf(element);
@@ -1199,6 +1290,10 @@
         }));
         updateActions();
         return;
+      }
+
+      if (persistedInsertIdx >= 0) {
+        persistedMediaInserts.splice(persistedInsertIdx, 1);
       }
 
       pendingSectionDeletes.push({
@@ -1277,7 +1372,32 @@
       deletableSections.push(root);
       initMountedSectionCovers(root);
       syncDevModeOnSection(root, document.documentElement.classList.contains('is-dev-mode'));
+
+      persistedMediaInserts.push({
+        documentKey,
+        index,
+        root,
+        section,
+      });
+      updateActions();
     };
+
+    window.addEventListener('vcd:dev-flush-pending-edits', ((event: CustomEvent<{
+      documentKey?: string;
+      resolve?: () => void;
+      reject?: (error: Error) => void;
+    }>) => {
+      const { documentKey, resolve, reject } = event.detail ?? {};
+      if (!documentKey) {
+        resolve?.();
+        return;
+      }
+      void flushPendingEditsForDocument(documentKey)
+        .then(() => resolve?.())
+        .catch((error) => {
+          reject?.(error instanceof Error ? error : new Error('Could not save pending edits.'));
+        });
+    }) as EventListener);
 
     window.addEventListener('vcd:dev-section-inserted', ((event: CustomEvent<{
       documentKey?: string;
@@ -1629,12 +1749,20 @@
     textStates.forEach(bindTextState);
 
     revertButton.addEventListener('click', () => {
-      revertPendingSectionInserts();
-      revertPendingSectionDeletes();
-      revertDirtyEdits();
-      revertAllPending();
-      hideFormatBar();
-      updateActions();
+      void (async () => {
+        revertPendingSectionInserts();
+        revertPendingSectionDeletes();
+        revertDirtyEdits();
+        revertAllPending();
+        try {
+          await revertPersistedMediaInserts();
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'Could not undo image inserts.';
+          actions.hidden = false;
+        }
+        hideFormatBar();
+        updateActions();
+      })();
     });
 
     saveButton.addEventListener('click', async () => {
@@ -1737,6 +1865,7 @@
         syncSavedSectionTitleLabels(dirtyText);
 
         pendingMedia.clear();
+        persistedMediaInserts.length = 0;
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
         status.textContent = 'Saved.';
         updateActions();
