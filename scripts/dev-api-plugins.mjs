@@ -487,6 +487,36 @@ export function listingOrderDevWriter() {
               await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
             }
           }
+
+          const viewId = String(body.viewId || process.env.VIEW_ID || '').trim();
+          if (viewId && !viewId.startsWith('_') && (grid === 'home' || grid === 'work')) {
+            const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
+            const viewData = JSON.parse(await readFile(viewPath, 'utf8'));
+            const projectItems = items.filter((entry) => entry.type === 'project');
+            const orderBySlug = new Map(
+              projectItems.map((entry) => [String(entry.slug || '').trim(), Number(entry.order)]),
+            );
+            const fullBySlug = new Map(
+              projectItems
+                .filter((entry) => typeof entry.full === 'boolean')
+                .map((entry) => [String(entry.slug || '').trim(), entry.full]),
+            );
+
+            if (Array.isArray(viewData.projects)) {
+              for (const project of viewData.projects) {
+                const nextOrder = orderBySlug.get(project.slug);
+                if (nextOrder != null) {
+                  project.order = nextOrder;
+                }
+                if (fullBySlug.has(project.slug)) {
+                  project.card = { ...(project.card ?? {}), full: fullBySlug.get(project.slug) };
+                }
+              }
+              viewData.projects.sort((left, right) => (left.order ?? 999) - (right.order ?? 999));
+              await writeFile(viewPath, `${JSON.stringify(viewData, null, 2)}\n`, 'utf8');
+            }
+          }
+
           send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not save listing order.' });

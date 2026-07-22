@@ -52,7 +52,15 @@
       }));
     };
 
+    const requestDevModeExit = () => {
+      const beforeExit = new CustomEvent('vcd:dev-mode-before-exit', { cancelable: true });
+      window.dispatchEvent(beforeExit);
+      return !beforeExit.defaultPrevented;
+    };
+
     const setDevMode = (active: boolean) => {
+      if (!active && devMode && !requestDevModeExit()) return;
+
       devMode = active;
       document.documentElement.classList.toggle('is-dev-mode', active);
 
