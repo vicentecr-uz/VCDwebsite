@@ -2,6 +2,7 @@
   const initDevModeController = () => {
     const storageKey = 'vcdDevMode';
     const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
+    const GRID_EDITOR_CLASS = 'show-listing-grid-editor';
     let devMode = false;
 
     try {
@@ -22,12 +23,31 @@
     const isSectionEditor = () =>
       document.documentElement.classList.contains(SECTION_EDITOR_CLASS);
 
+    const isGridEditor = () =>
+      document.documentElement.classList.contains(GRID_EDITOR_CLASS);
+
+    const hasSectionNav = () =>
+      Boolean(document.querySelector('[data-section-nav-root]'));
+
+    const hasListingGrid = () =>
+      Boolean(document.querySelector('[data-dev-project-grid]'));
+
     const setSectionEditor = (active: boolean) => {
       const next = Boolean(active) && devMode;
       const was = isSectionEditor();
       document.documentElement.classList.toggle(SECTION_EDITOR_CLASS, next);
       if (was === next) return;
       window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-change', {
+        detail: { active: next },
+      }));
+    };
+
+    const setGridEditor = (active: boolean) => {
+      const next = Boolean(active) && devMode;
+      const was = isGridEditor();
+      document.documentElement.classList.toggle(GRID_EDITOR_CLASS, next);
+      if (was === next) return;
+      window.dispatchEvent(new CustomEvent('vcd:listing-grid-editor-change', {
         detail: { active: next },
       }));
     };
@@ -45,6 +65,7 @@
 
       if (!active) {
         setSectionEditor(false);
+        setGridEditor(false);
         devPanels().forEach((panel) => {
           panel.hidden = true;
         });
@@ -64,8 +85,7 @@
       }));
     };
 
-    // Section Editor is keyboard-only (Alt+D while in Dev Mode) — never restore on load.
-    document.documentElement.classList.remove(SECTION_EDITOR_CLASS);
+    document.documentElement.classList.remove(SECTION_EDITOR_CLASS, GRID_EDITOR_CLASS);
     setDevMode(devMode);
 
     window.addEventListener('vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
@@ -75,6 +95,7 @@
     window.addEventListener('vcd:section-nav-editor-request', ((event: CustomEvent<{ active?: boolean }>) => {
       if (typeof event.detail?.active !== 'boolean') return;
       if (event.detail.active && !devMode) setDevMode(true);
+      setGridEditor(false);
       setSectionEditor(event.detail.active);
     }) as EventListener);
 
@@ -135,12 +156,29 @@
 
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyD') {
-        if (isTypingTarget(event.target as HTMLElement | null)) return;
         event.preventDefault();
-        // Ladder: off → Dev Mode → Section Editor (stay if already there).
+
+        if (hasListingGrid() && !hasSectionNav()) {
+          if (!devMode) {
+            setDevMode(true);
+          } else if (!isGridEditor()) {
+            setGridEditor(true);
+          }
+          return;
+        }
+
+        if (!hasSectionNav()) {
+          setSectionEditor(false);
+          setGridEditor(false);
+          setDevMode(!devMode);
+          return;
+        }
+
+        if (isTypingTarget(event.target as HTMLElement | null)) return;
         if (!devMode) {
           setDevMode(true);
         } else if (!isSectionEditor()) {
+          setGridEditor(false);
           setSectionEditor(true);
         }
         return;
@@ -149,11 +187,15 @@
       if (event.key !== 'Escape') return;
       if (isTypingTarget(event.target as HTMLElement | null)) return;
 
-      // Ladder: Section Editor → Dev Mode → off.
-      // Section Editor closes its popover first (stopImmediatePropagation there).
       if (isSectionEditor()) {
         event.preventDefault();
         setSectionEditor(false);
+        return;
+      }
+
+      if (isGridEditor()) {
+        event.preventDefault();
+        setGridEditor(false);
         return;
       }
 

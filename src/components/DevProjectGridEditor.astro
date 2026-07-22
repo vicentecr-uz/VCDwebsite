@@ -1,0 +1,350 @@
+---
+/** Singleton dev dialogs + handlers for Home / Work / Play project grids. */
+import { getTeaserPassword } from '../lib/teaserAuth';
+
+const teaserPassword = getTeaserPassword();
+---
+
+<dialog class="dev-project-dialog" data-dev-project-create-dialog>
+  <form method="dialog" class="dev-project-dialog__panel" data-dev-project-create-form>
+    <h2>New project page</h2>
+    <label>
+      Title
+      <input type="text" name="title" required placeholder="Project title" />
+    </label>
+    <label>
+      Slug
+      <input type="text" name="slug" required placeholder="project-slug" pattern="[a-z0-9-]+" />
+    </label>
+    <div class="dev-project-dialog__actions">
+      <button type="button" value="cancel">Cancel</button>
+      <button type="submit" value="create">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog class="dev-project-dialog" data-dev-project-settings-dialog>
+  <form method="dialog" class="dev-project-dialog__panel" data-dev-project-settings-form>
+    <h2>Project settings</h2>
+    <input type="hidden" name="slug" />
+    <label>
+      Title
+      <input type="text" name="title" required />
+    </label>
+    <label>
+      Description
+      <textarea name="description" rows="3"></textarea>
+    </label>
+    <label>
+      Visibility
+      <select name="status">
+        <option value="published">Published</option>
+        <option value="draft">Draft</option>
+        <option value="teaser">Teaser</option>
+        <option value="view-only">View only</option>
+      </select>
+    </label>
+    <label>
+      Cover image URL
+      <input type="text" name="image" />
+    </label>
+    <label>
+      Card background
+      <input type="text" name="bg" />
+    </label>
+    <label>
+      <input type="checkbox" name="dark" />
+      Light text on card
+    </label>
+    <label>
+      <input type="checkbox" name="full" />
+      Full-width card
+    </label>
+    <label>
+      Year / meta
+      <input type="text" name="subtitle" />
+    </label>
+    <fieldset>
+      <legend>List on</legend>
+      <label><input type="checkbox" name="listing-home" /> Home</label>
+      <label><input type="checkbox" name="listing-work" /> Work</label>
+      <label><input type="checkbox" name="listing-play" /> Play</label>
+    </fieldset>
+    <label>
+      Teaser label
+      <input type="text" name="teaserLabel" placeholder="Coming soon" />
+    </label>
+    <label>
+      Teaser cover image URL
+      <input type="text" name="teaserCover" />
+    </label>
+    <div class="dev-project-dialog__actions">
+      <button type="button" value="cancel">Cancel</button>
+      <button type="submit" value="save">Save</button>
+      <button type="button" data-dev-publish-media>Publish media</button>
+    </div>
+  </form>
+</dialog>
+
+<script define:vars={{ teaserPassword }}>
+  const createDialog = document.querySelector('[data-dev-project-create-dialog]');
+  const createForm = document.querySelector('[data-dev-project-create-form]');
+  const settingsDialog = document.querySelector('[data-dev-project-settings-dialog]');
+  const settingsForm = document.querySelector('[data-dev-project-settings-form]');
+  const publishMediaButton = settingsForm?.querySelector('[data-dev-publish-media]');
+
+  let activeGrid = 'work';
+
+  const slugify = (value: string) => value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+
+  const openCreateDialog = () => {
+    if (!(createDialog instanceof HTMLDialogElement) || !(createForm instanceof HTMLFormElement)) return;
+    createForm.reset();
+    createDialog.showModal();
+    const titleInput = createForm.querySelector('input[name="title"]');
+    const slugInput = createForm.querySelector('input[name="slug"]');
+    if (titleInput instanceof HTMLInputElement) {
+      titleInput.focus();
+      titleInput.addEventListener('input', () => {
+        if (slugInput instanceof HTMLInputElement && !slugInput.dataset.touched) {
+          slugInput.value = slugify(titleInput.value);
+        }
+      }, { once: true });
+    }
+    if (slugInput instanceof HTMLInputElement) {
+      slugInput.addEventListener('input', () => {
+        slugInput.dataset.touched = 'true';
+      }, { once: true });
+    }
+  };
+
+  const openSettingsDialog = async (slug: string) => {
+    if (!(settingsDialog instanceof HTMLDialogElement) || !(settingsForm instanceof HTMLFormElement)) return;
+    const response = await fetch(`/api/project-settings?slug=${encodeURIComponent(slug)}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      window.alert(payload.error || 'Could not load project settings.');
+      return;
+    }
+
+    const form = settingsForm;
+    (form.elements.namedItem('slug') as HTMLInputElement).value = slug;
+    (form.elements.namedItem('title') as HTMLInputElement).value = payload.title ?? '';
+    (form.elements.namedItem('description') as HTMLTextAreaElement).value = payload.description ?? '';
+    (form.elements.namedItem('status') as HTMLSelectElement).value = payload.status ?? 'draft';
+    (form.elements.namedItem('image') as HTMLInputElement).value = payload.listing?.image ?? '';
+    (form.elements.namedItem('bg') as HTMLInputElement).value = payload.listing?.bg ?? '#efefef';
+    (form.elements.namedItem('dark') as HTMLInputElement).checked = Boolean(payload.listing?.dark);
+    (form.elements.namedItem('full') as HTMLInputElement).checked = Boolean(payload.listing?.full);
+    (form.elements.namedItem('subtitle') as HTMLInputElement).value = payload.listing?.subtitle ?? '';
+    (form.elements.namedItem('teaserLabel') as HTMLInputElement).value = payload.teaser?.label ?? '';
+    (form.elements.namedItem('teaserCover') as HTMLInputElement).value = payload.teaser?.coverImage ?? '';
+    (form.elements.namedItem('listing-home') as HTMLInputElement).checked = Boolean(payload.listings?.home);
+    (form.elements.namedItem('listing-work') as HTMLInputElement).checked = Boolean(payload.listings?.work);
+    (form.elements.namedItem('listing-play') as HTMLInputElement).checked = Boolean(payload.listings?.play);
+    settingsDialog.showModal();
+  };
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+
+    const newButton = target.closest('[data-dev-project-new]');
+    if (newButton) {
+      event.preventDefault();
+      const gridRoot = newButton.closest('[data-dev-project-grid]');
+      activeGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
+      openCreateDialog();
+      return;
+    }
+
+    const settingsButton = target.closest('[data-dev-project-settings]');
+    if (settingsButton instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const slug = settingsButton.dataset.devProjectSettings;
+      if (slug) void openSettingsDialog(slug);
+      return;
+    }
+
+    const teaserCard = target.closest('[data-dev-teaser-slug]');
+    if (teaserCard instanceof HTMLElement && event.altKey) {
+      event.preventDefault();
+      const href = teaserCard.dataset.devTeaserHref;
+      const password = window.prompt('Enter teaser password');
+      if (!password) return;
+      if (password !== teaserPassword) {
+        window.alert('Incorrect password.');
+        return;
+      }
+      if (href) window.location.assign(href);
+    }
+  });
+
+  createForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!(createForm instanceof HTMLFormElement)) return;
+    const formData = new FormData(createForm);
+    const title = String(formData.get('title') || '').trim();
+    const slug = String(formData.get('slug') || '').trim();
+    const response = await fetch('/api/project-create', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title, slug, grid: activeGrid }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      window.alert(payload.error || 'Could not create the project.');
+      return;
+    }
+    window.location.assign(`/${slug}`);
+  });
+
+  createForm?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
+    if (createDialog instanceof HTMLDialogElement) createDialog.close();
+  });
+
+  settingsForm?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!(settingsForm instanceof HTMLFormElement)) return;
+    const formData = new FormData(settingsForm);
+    const slug = String(formData.get('slug') || '').trim();
+    const response = await fetch('/api/project-settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        slug,
+        title: String(formData.get('title') || '').trim(),
+        description: String(formData.get('description') || '').trim(),
+        status: String(formData.get('status') || 'draft'),
+        listings: {
+          home: formData.get('listing-home') ? {
+            image: String(formData.get('image') || ''),
+            bg: String(formData.get('bg') || '#efefef'),
+            dark: formData.get('dark') === 'on',
+            full: formData.get('full') === 'on',
+            year: String(formData.get('subtitle') || ''),
+            order: 999,
+          } : null,
+          work: formData.get('listing-work') ? {
+            image: String(formData.get('image') || ''),
+            bg: String(formData.get('bg') || '#efefef'),
+            dark: formData.get('dark') === 'on',
+            full: formData.get('full') === 'on',
+            year: String(formData.get('subtitle') || ''),
+            order: 999,
+          } : null,
+          play: formData.get('listing-play') ? {
+            image: String(formData.get('image') || ''),
+            bg: String(formData.get('bg') || '#efefef'),
+            dark: formData.get('dark') === 'on',
+            meta: String(formData.get('subtitle') || ''),
+            order: 999,
+          } : null,
+        },
+        teaser: {
+          label: String(formData.get('teaserLabel') || ''),
+          coverImage: String(formData.get('teaserCover') || ''),
+        },
+      }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      window.alert(payload.error || 'Could not save project settings.');
+      return;
+    }
+    window.location.reload();
+  });
+
+  settingsForm?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
+    if (settingsDialog instanceof HTMLDialogElement) settingsDialog.close();
+  });
+
+  publishMediaButton?.addEventListener('click', async () => {
+    if (!(settingsForm instanceof HTMLFormElement)) return;
+    const slug = String(new FormData(settingsForm).get('slug') || '').trim();
+    const response = await fetch('/api/publish-media', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug }),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      window.alert(payload.error || 'Could not publish media.');
+      return;
+    }
+    window.alert(`Published ${payload.moved?.length ?? 0} file(s).`);
+    window.location.reload();
+  });
+</script>
+
+<style is:global>
+  .dev-project-dialog {
+    border: 0;
+    padding: 0;
+    margin: auto;
+    background: transparent;
+  }
+
+  .dev-project-dialog:not([open]) {
+    display: none !important;
+  }
+
+  .dev-project-dialog::backdrop {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(8px);
+  }
+
+  .dev-project-dialog__panel {
+    display: grid;
+    gap: 0.85em;
+    width: min(28em, calc(100vw - 2em));
+    padding: 1.25em;
+    border: 1px solid #ddd;
+    border-radius: 0.5em;
+    background: #fff;
+    color: #111;
+  }
+
+  .dev-project-dialog__panel h2 {
+    margin: 0;
+    font-size: 1.1rem;
+  }
+
+  .dev-project-dialog__panel label,
+  .dev-project-dialog__panel fieldset {
+    display: grid;
+    gap: 0.35em;
+    font-size: 0.92rem;
+  }
+
+  .dev-project-dialog__panel input[type='text'],
+  .dev-project-dialog__panel textarea,
+  .dev-project-dialog__panel select {
+    width: 100%;
+    padding: 0.55em 0.65em;
+    border: 1px solid #ccc;
+    border-radius: 0.35em;
+    font: inherit;
+  }
+
+  .dev-project-dialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    justify-content: flex-end;
+  }
+
+  .dev-project-dialog__actions button {
+    padding: 0.5em 0.85em;
+    border: 1px solid #ccc;
+    border-radius: 0.35em;
+    background: #f7f7f7;
+    font: inherit;
+    cursor: pointer;
+  }
+</style>
