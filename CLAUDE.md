@@ -46,7 +46,7 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 **Project pages** — dynamic route `src/pages/[slug].astro` for `stack: "modern"` projects:
 - Content in `src/content/projects/{slug}.json` (`sections[]`, `outline`, `listings`, `status`)
 - `status`: `published` | `draft` | `teaser` — controls public visibility and build output
-- Draft images: `draft:{slug}/file.jpg` in JSON → `src/content/drafts/media/` (dev); publish via settings or `/api/publish-media`
+- Draft images: `draft:{slug}/file.jpg` in JSON → `src/content/drafts/media/` (dev); auto-promoted to `public/images/` when project settings are saved as `published` or `teaser`
 - Dev mode: drag-and-drop images (`DevImageDrop`), text/spacing editors, crop/grid tuners
 
 **Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes. `LegacyProjectGrid` is case-study media clusters — not the same as site `ProjectGrid` listings.

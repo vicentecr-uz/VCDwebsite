@@ -12,6 +12,7 @@ async function writeProjectJson(file, data) {
 }
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser']);
+const PUBLIC_STATUSES = new Set(['published', 'teaser']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
 
 function validateStatus(status, fallback = 'draft') {
@@ -522,8 +523,12 @@ export function projectSettingsDevWriter() {
             label: String(body.teaser?.label || ''),
             coverImage: String(body.teaser?.coverImage || ''),
           };
+          let moved = [];
+          if (PUBLIC_STATUSES.has(data.status)) {
+            moved = await publishDraftMediaForProject(slug, data);
+          }
           await writeProjectJson(file, data);
-          send(200, { ok: true });
+          send(200, { ok: true, moved });
         } catch {
           send(400, { error: 'Could not save project settings.' });
         }

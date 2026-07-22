@@ -118,7 +118,6 @@ const listingGrids = ['home', 'work', 'play'] as const;
     <div class="dev-project-dialog__actions dev-project-dialog__actions--footer">
       <button type="button" value="cancel">Cancel</button>
       <button type="submit" value="save">Save</button>
-      <button type="button" data-dev-publish-media>Publish media</button>
     </div>
   </form>
 </dialog>
@@ -128,7 +127,6 @@ const listingGrids = ['home', 'work', 'play'] as const;
   const createForm = document.querySelector('[data-dev-project-create-form]');
   const settingsDialog = document.querySelector('[data-dev-project-settings-dialog]');
   const settingsForm = document.querySelector('[data-dev-project-settings-form]');
-  const publishMediaButton = settingsForm?.querySelector('[data-dev-publish-media]');
   const renameButton = settingsForm?.querySelector('[data-dev-project-rename]');
   const deleteButton = settingsForm?.querySelector('[data-dev-project-delete]');
 
@@ -461,6 +459,9 @@ const listingGrids = ['home', 'work', 'play'] as const;
       window.alert(payload.error || 'Could not save project settings.');
       return;
     }
+    if (payload.moved?.length) {
+      window.alert(`Published ${payload.moved.length} image(s) to public/images.`);
+    }
     reloadPage();
   });
 
@@ -508,22 +509,6 @@ const listingGrids = ['home', 'work', 'play'] as const;
     navigateAway('/work');
   });
 
-  publishMediaButton?.addEventListener('click', async () => {
-    if (!(settingsForm instanceof HTMLFormElement)) return;
-    const slug = String(new FormData(settingsForm).get('slug') || '').trim();
-    const response = await fetch('/api/publish-media', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      window.alert(payload.error || 'Could not publish media.');
-      return;
-    }
-    window.alert(`Published ${payload.moved?.length ?? 0} file(s).`);
-    reloadPage();
-  });
 </script>
 
 <style is:global>
