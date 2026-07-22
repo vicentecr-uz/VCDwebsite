@@ -10,7 +10,7 @@ const { documentKey } = Astro.props;
   <p>Drop images to add</p>
 </div>
 
-<dialog class="dev-image-drop-dialog" data-dev-image-picker>
+<dialog class="dev-image-drop-dialog" data-dev-image-picker data-document-key={documentKey}>
   <form method="dialog" class="dev-image-drop-dialog__panel">
     <h2>Add image</h2>
     <div class="dev-image-drop-dialog__drop" data-dev-image-dropzone>
@@ -28,10 +28,13 @@ const { documentKey } = Astro.props;
   </form>
 </dialog>
 
-<script define:vars={{ documentKey }}>
+<script>
+  import { withDevViewId } from '../scripts/devViewContext';
+
   const dropZone = document.querySelector('[data-dev-project-drop-zone]');
   const overlay = document.querySelector('[data-dev-image-drop]');
   const picker = document.querySelector('[data-dev-image-picker]');
+  const documentKey = picker instanceof HTMLElement ? (picker.dataset.documentKey || '') : '';
   const pickerCount = document.querySelector('[data-dev-image-picker-count]');
   const dropzone = document.querySelector('[data-dev-image-dropzone]');
   const fileInput = document.querySelector('[data-dev-image-file-input]');
@@ -123,12 +126,12 @@ const { documentKey } = Astro.props;
     const response = await fetch('/api/content-section', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
+      body: JSON.stringify(withDevViewId({
         document: documentKey,
         index: pendingInsertIndex,
         type,
         filenames,
-      }),
+      })),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not insert images.');
@@ -137,6 +140,14 @@ const { documentKey } = Astro.props;
         documentKey,
         index: pendingInsertIndex,
         section: result.section,
+      },
+    }));
+    window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+      detail: {
+        action: 'insert',
+        index: pendingInsertIndex,
+        type,
+        section: result.section ?? { type },
       },
     }));
     pendingFiles = [];

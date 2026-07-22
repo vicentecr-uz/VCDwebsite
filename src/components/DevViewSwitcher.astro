@@ -67,9 +67,22 @@
 
     select.value = sessionStorage.getItem(STORAGE_KEY) || '';
 
+    const setViewCookie = (viewId: string) => {
+      if (viewId) {
+        document.cookie = `${STORAGE_KEY}=${encodeURIComponent(viewId)}; path=/; SameSite=Lax`;
+      } else {
+        document.cookie = `${STORAGE_KEY}=; path=/; max-age=0; SameSite=Lax`;
+      }
+    };
+
     select.addEventListener('change', () => {
-      if (select.value) sessionStorage.setItem(STORAGE_KEY, select.value);
-      else sessionStorage.removeItem(STORAGE_KEY);
+      if (select.value) {
+        sessionStorage.setItem(STORAGE_KEY, select.value);
+        setViewCookie(select.value);
+      } else {
+        sessionStorage.removeItem(STORAGE_KEY);
+        setViewCookie('');
+      }
       window.location.reload();
     });
 

@@ -86,6 +86,7 @@
     const viewId = sessionStorage.getItem(STORAGE_KEY) || '';
     if (!viewId) return;
 
+    document.cookie = `${STORAGE_KEY}=${encodeURIComponent(viewId)}; path=/; SameSite=Lax`;
     document.documentElement.dataset.viewId = viewId;
 
     const response = await fetch(`/api/dev-view-preview?viewId=${encodeURIComponent(viewId)}`);

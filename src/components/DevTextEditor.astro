@@ -43,6 +43,7 @@
     mountInsertedSection,
     syncDevModeOnSection,
   } from '../scripts/devSectionMount';
+  import { withDevViewId } from '../scripts/devViewContext';
 
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -860,12 +861,12 @@
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(withDevViewId({
             document: state.document,
             index: sectionIndex,
             type,
             spacing: newSpacing,
-          }),
+          })),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
@@ -903,6 +904,15 @@
 
         mountDeleteButton(built.root);
         deletableSections.push(built.root);
+
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+          detail: {
+            action: 'insert',
+            index: sectionIndex,
+            type,
+            section: payload.section ?? { type },
+          },
+        }));
 
         clearBusyStatus();
         built.textElement.focus();
@@ -988,11 +998,11 @@
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(withDevViewId({
             action: 'delete',
             document: documentKey,
             index: sectionIndex,
-          }),
+          })),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
@@ -1012,6 +1022,16 @@
 
         element.remove();
         reindexDevPaths(sectionIndex, -1);
+
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+          detail: {
+            action: 'delete',
+            index: sectionIndex,
+            sectionId: element.id || undefined,
+            type: element.dataset.devSectionDeletable,
+          },
+        }));
+
         clearBusyStatus();
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not delete the section.';
@@ -1447,7 +1467,7 @@
           const response = await fetch('/api/content-batch', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
+            body: JSON.stringify(withDevViewId({
               crops: imageChanges
                 .filter((change) => change.kind === 'crop')
                 .map((change) => change.payload),
@@ -1467,7 +1487,7 @@
                 path: state.path,
                 value: state.currentValue,
               })),
-            }),
+            })),
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save changes.');
@@ -1476,13 +1496,13 @@
             const response = await fetch('/api/content-text', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
+              body: JSON.stringify(withDevViewId({
                 changes: dirtyText.map((state) => ({
                   document: state.document,
                   path: state.path,
                   value: readValue(state),
                 })),
-              }),
+              })),
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
@@ -1492,13 +1512,13 @@
             const response = await fetch('/api/content-spacing', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({
+              body: JSON.stringify(withDevViewId({
                 changes: dirtySpacing.map((state) => ({
                   document: state.document,
                   path: state.path,
                   value: state.currentValue,
                 })),
-              }),
+              })),
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');

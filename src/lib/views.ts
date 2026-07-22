@@ -112,8 +112,9 @@ function applyInserts(
 export function applyViewToSections(
   slug: string,
   sections: Array<Record<string, unknown>>,
+  viewIdOverride?: string,
 ): Array<Record<string, unknown>> {
-  const viewId = getActiveViewId();
+  const viewId = viewIdOverride ?? getActiveViewId();
   if (!viewId) return sections;
 
   const inline = loadViewConfig(viewId)?.projects.find((entry) => entry.slug === slug)?.sections;
@@ -156,8 +157,9 @@ export function applyViewToOutline(
   slug: string,
   outline: OutlineEntry[],
   baseSections: Array<Record<string, unknown>>,
+  viewIdOverride?: string,
 ): OutlineEntry[] {
-  const viewId = getActiveViewId();
+  const viewId = viewIdOverride ?? getActiveViewId();
   if (!viewId) return outline;
 
   const inline = loadViewConfig(viewId)?.projects.find((entry) => entry.slug === slug)?.sections;

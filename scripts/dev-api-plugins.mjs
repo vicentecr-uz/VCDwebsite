@@ -2,6 +2,21 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  deleteViewSection,
+  insertViewSection,
+  readDevDocument,
+  resolveDevFieldTarget,
+  writeDevDocument,
+} from './view-dev-sections.mjs';
+
+export {
+  deleteViewSection,
+  insertViewSection,
+  readDevDocument,
+  resolveDevFieldTarget,
+  writeDevDocument,
+} from './view-dev-sections.mjs';
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'view-only']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
@@ -128,6 +143,8 @@ function viewIdFromRequest(req, body = {}) {
   if (fromEnv) return fromEnv;
   return '';
 }
+
+export { viewIdFromRequest };
 
 function buildViewPreview(viewId) {
   const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
@@ -322,6 +339,7 @@ export async function publishDraftMediaForProject(slug, data) {
   const draftDir = path.join(process.cwd(), 'src/content/drafts/media', slug);
   const publicDir = path.join(process.cwd(), 'public/images');
   const moved = [];
+  const publishedSources = [];
 
   const rewriteNode = async (node) => {
     if (Array.isArray(node)) {
@@ -338,6 +356,7 @@ export async function publishDraftMediaForProject(slug, data) {
       await writeFile(target, file);
       node.src = targetName;
       moved.push(targetName);
+      publishedSources.push(source);
     }
     for (const value of Object.values(node)) {
       await rewriteNode(value);
@@ -345,6 +364,19 @@ export async function publishDraftMediaForProject(slug, data) {
   };
 
   await rewriteNode(data);
+
+  for (const source of publishedSources) {
+    await rm(source, { force: true });
+  }
+
+  try {
+    if (!readdirSync(draftDir).length) {
+      await rm(draftDir, { recursive: true, force: true });
+    }
+  } catch {
+    // Draft folder may not exist.
+  }
+
   return moved;
 }
 

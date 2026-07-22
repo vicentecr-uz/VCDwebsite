@@ -70,6 +70,8 @@
 </div>
 
 <script>
+  import { withDevViewId } from '../../scripts/devViewContext';
+
   type OutlineGroup = {
     kind: 'group';
     id: string;
@@ -753,12 +755,12 @@
         const response = await fetch('/api/content-nav', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+          body: JSON.stringify(withDevViewId({
             document: documentKey,
             outline,
             sectionIds: Object.keys(pendingSectionIds).length ? pendingSectionIds : undefined,
             showTitles: Object.keys(pendingShowTitles).length ? pendingShowTitles : undefined,
-          }),
+          })),
         });
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
@@ -859,6 +861,61 @@
       syncSidebarDom();
       setDirty(true);
       closePopover();
+    };
+
+    type StructureChangeDetail = {
+      action: 'insert' | 'delete';
+      index?: number;
+      type?: string;
+      section?: Record<string, unknown>;
+      sectionId?: string;
+    };
+
+    const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
+      let changed = false;
+
+      if (detail.action === 'insert' && detail.type === 'sectionTitle' && typeof detail.index === 'number') {
+        const section = detail.section;
+        const sectionId = typeof section?.id === 'string' ? section.id : '';
+        const label = typeof section?.title === 'string'
+          ? section.title.trim() || 'Section title'
+          : 'Section title';
+        if (!sectionId) return;
+
+        const block = editableBlocks().find(
+          (el) => sectionIndexFromPath(el.dataset.devSpacingPath) === detail.index,
+        );
+        if (block) {
+          applyBlockSectionId(block, sectionId);
+          block.dataset.devSectionTitle = 'true';
+          pendingSectionIds[String(detail.index)] = sectionId;
+        }
+
+        outline.push({
+          kind: 'section',
+          id: sectionId,
+          label,
+          anchor: sectionId,
+        });
+        changed = true;
+      } else if (detail.action === 'delete') {
+        const sectionId = detail.sectionId?.trim();
+        if (sectionId) {
+          outline = outline.filter(
+            (entry) => outlineAnchorId(entry) !== sectionId && entry.id !== sectionId,
+          );
+          changed = true;
+        }
+        if (typeof detail.index === 'number') {
+          pendingSectionIds[String(detail.index)] = null;
+          changed = true;
+        }
+      }
+
+      if (!changed) return;
+      outline = sortOutlineByPageOrder(outline);
+      syncSidebarDom();
+      void persist();
     };
 
     const setEditorChrome = (active: boolean) => {
@@ -1024,6 +1081,10 @@
     }) as EventListener);
     window.addEventListener('vcd:dev-mode-change', (() => {
       setEditorChrome(isActive());
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<StructureChangeDetail>) => {
+      syncOutlineForStructureChange(event.detail ?? {});
     }) as EventListener);
 
     writeRootDatasets();

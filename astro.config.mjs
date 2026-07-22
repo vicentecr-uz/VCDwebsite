@@ -16,8 +16,14 @@ import {
   projectRenameDevWriter,
   projectSettingsDevWriter,
   publishMediaDevWriter,
+  insertViewSection,
+  deleteViewSection,
+  readDevDocument,
+  resolveDevFieldTarget,
   resolveEditableDocument,
   uploadDevWriter,
+  viewIdFromRequest,
+  writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
@@ -86,10 +92,10 @@ function imageCropDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
           const documentKey = String(body.document || '');
-          const relativeFile = resolveEditableDocument(documentKey);
+          const viewId = viewIdFromRequest(req, body);
           const fieldPath = body.path;
           if (
-            !relativeFile ||
+            !resolveEditableDocument(documentKey) ||
             !Array.isArray(fieldPath) ||
             !fieldPath.length ||
             fieldPath.length > 8 ||
@@ -99,11 +105,20 @@ function imageCropDevWriter() {
             return;
           }
 
-          const file = path.join(process.cwd(), relativeFile);
-          const data = JSON.parse(await readFile(file, 'utf8'));
+          let targetInfo;
+          try {
+            targetInfo = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+          } catch (error) {
+            send(400, { error: error instanceof Error ? error.message : 'That image is not editable.' });
+            return;
+          }
+
+          const data = await readDevDocument(targetInfo.relativeFile, {
+            ensureOverlay: targetInfo.ensureOverlay,
+          });
 
           let target = data;
-          for (const part of fieldPath) {
+          for (const part of targetInfo.path) {
             if (
               target === null ||
               typeof target !== 'object' ||
@@ -122,7 +137,7 @@ function imageCropDevWriter() {
           if (body.clearVariants === true) {
             delete target.variants;
             delete target.crop;
-            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+            await writeDevDocument(targetInfo.relativeFile, data);
             send(200, { ok: true, document: documentKey, cleared: true });
             return;
           }
@@ -160,7 +175,7 @@ function imageCropDevWriter() {
           target.variants ||= {};
           Object.assign(target.variants, variants);
           delete target.crop;
-          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeDevDocument(targetInfo.relativeFile, data);
           send(200, { ok: true, document: documentKey, variants });
         } catch {
           send(400, { error: 'Could not parse or write the crop.' });
@@ -199,15 +214,16 @@ function imageGridDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
+          const viewId = viewIdFromRequest(req, body);
           const documentKey = String(body.document || '');
-          const relativeFile = resolveEditableDocument(documentKey);
           const fieldPath = body.path;
+          const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
           if (
-            !relativeFile ||
-            !Array.isArray(fieldPath) ||
-            !fieldPath.length ||
-            fieldPath.length > 8 ||
-            !fieldPath.every(isSafePathPart)
+            !target?.relativeFile ||
+            !Array.isArray(target.path) ||
+            !target.path.length ||
+            target.path.length > 8 ||
+            !target.path.every(isSafePathPart)
           ) {
             send(400, { error: 'That grid is not editable.' });
             return;
@@ -261,28 +277,27 @@ function imageGridDevWriter() {
             return;
           }
 
-          const file = path.join(process.cwd(), relativeFile);
-          const data = JSON.parse(await readFile(file, 'utf8'));
+          const data = await readDevDocument(target.relativeFile);
 
-          let target = data;
-          for (const part of fieldPath) {
+          let node = data;
+          for (const part of target.path) {
             if (
-              target === null ||
-              typeof target !== 'object' ||
-              !Object.prototype.hasOwnProperty.call(target, part)
+              node === null ||
+              typeof node !== 'object' ||
+              !Object.prototype.hasOwnProperty.call(node, part)
             ) {
               send(404, { error: 'That grid path no longer exists.' });
               return;
             }
-            target = target[part];
+            node = node[part];
           }
-          if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+          if (node === null || typeof node !== 'object' || Array.isArray(node)) {
             send(404, { error: 'That path does not point to a grid.' });
             return;
           }
 
-          const itemIds = Array.isArray(target.items)
-            ? target.items.map((item, index) => String(item?.id || `item-${index}`))
+          const itemIds = Array.isArray(node.items)
+            ? node.items.map((item, index) => String(item?.id || `item-${index}`))
             : [];
           const knownIds = new Set(itemIds);
           /** @type {Record<string, { visible: string[] }>} */
@@ -304,21 +319,21 @@ function imageGridDevWriter() {
             layouts[viewport] = { visible: cleaned };
           }
 
-          target.columns = columns;
-          target.constrained = constrained;
-          target.defaultAspectRatio = defaultAspectRatio;
+          node.columns = columns;
+          node.constrained = constrained;
+          node.defaultAspectRatio = defaultAspectRatio;
           if (Object.keys(layouts).length) {
-            target.layouts = layouts;
+            node.layouts = layouts;
           } else {
-            delete target.layouts;
+            delete node.layouts;
           }
           // Prefer layouts over legacy per-item hide flags.
-          if (Array.isArray(target.items)) {
-            for (const item of target.items) {
+          if (Array.isArray(node.items)) {
+            for (const item of node.items) {
               if (item && typeof item === 'object') delete item.hideOnMobile;
             }
           }
-          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeDevDocument(target.relativeFile, data);
           send(200, {
             ok: true,
             document: documentKey,
@@ -433,6 +448,7 @@ function contentTextDevWriter() {
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const viewId = viewIdFromRequest(req, body);
           const changes = Array.isArray(body.changes) ? body.changes : [];
           if (!changes.length) {
             send(400, { error: 'No text changes were provided.' });
@@ -442,7 +458,6 @@ function contentTextDevWriter() {
           const grouped = new Map();
           for (const change of changes) {
             const documentKey = String(change.document || '');
-            const relativeFile = resolveEditableDocument(documentKey);
             const fieldPath = change.path;
             const value = change.value;
             const valueIsText = typeof value === 'string' && value.length <= 20_000;
@@ -451,13 +466,14 @@ function contentTextDevWriter() {
               value.every((paragraph) => typeof paragraph === 'string') &&
               value.join('').length <= 20_000
             );
+            const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
             if (
-              !relativeFile ||
-              !Array.isArray(fieldPath) ||
-              !fieldPath.length ||
-              fieldPath.length > 8 ||
+              !target?.relativeFile ||
+              !Array.isArray(target.path) ||
+              !target.path.length ||
+              target.path.length > 8 ||
               (!valueIsText && !valueIsParagraphs) ||
-              fieldPath.some((part) => (
+              target.path.some((part) => (
                 (typeof part !== 'string' && typeof part !== 'number') ||
                 part === '__proto__' ||
                 part === 'prototype' ||
@@ -467,15 +483,13 @@ function contentTextDevWriter() {
               send(400, { error: 'One or more text fields are not editable.' });
               return;
             }
-            const documentChanges = grouped.get(documentKey) || [];
-            documentChanges.push({ path: fieldPath, value });
-            grouped.set(documentKey, documentChanges);
+            const documentChanges = grouped.get(target.relativeFile) || [];
+            documentChanges.push({ path: target.path, value });
+            grouped.set(target.relativeFile, documentChanges);
           }
 
-          for (const [documentKey, documentChanges] of grouped) {
-            const relativeFile = resolveEditableDocument(documentKey);
-            const file = path.join(process.cwd(), relativeFile);
-            const data = JSON.parse(await readFile(file, 'utf8'));
+          for (const [relativeFile, documentChanges] of grouped) {
+            const data = await readDevDocument(relativeFile);
 
             for (const change of documentChanges) {
               let target = data;
@@ -509,7 +523,7 @@ function contentTextDevWriter() {
               target[field] = change.value;
             }
 
-            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+            await writeDevDocument(relativeFile, data);
           }
 
           send(200, { ok: true, count: changes.length });
@@ -828,6 +842,7 @@ function contentBatchDevWriter() {
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const viewId = viewIdFromRequest(req, body);
           const crops = Array.isArray(body.crops) ? body.crops : [];
           const grids = Array.isArray(body.grids) ? body.grids : [];
           const captions = Array.isArray(body.captions) ? body.captions : [];
@@ -846,47 +861,46 @@ function contentBatchDevWriter() {
 
           /** @type {Map<string, { crops: any[], grids: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
-          const ensureGroup = (documentKey) => {
-            const relativeFile = resolveEditableDocument(documentKey);
-            if (!relativeFile) return null;
-            let group = grouped.get(documentKey);
+          const resolveBatchChange = (documentKey, fieldPath) => {
+            const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
+            if (!target?.relativeFile) return null;
+            let group = grouped.get(target.relativeFile);
             if (!group) {
               group = { crops: [], grids: [], captions: [], text: [], spacing: [] };
-              grouped.set(documentKey, group);
+              grouped.set(target.relativeFile, group);
             }
-            return group;
+            return { group, path: target.path };
           };
 
           for (const change of crops) {
             const documentKey = String(change?.document || '');
-            const group = ensureGroup(documentKey);
-            if (!group) {
+            const resolved = resolveBatchChange(documentKey, change?.path);
+            if (!resolved) {
               send(400, { error: 'That image is not editable.' });
               return;
             }
-            group.crops.push(change);
+            resolved.group.crops.push({ ...change, path: resolved.path });
           }
           for (const change of grids) {
             const documentKey = String(change?.document || '');
-            const group = ensureGroup(documentKey);
-            if (!group) {
+            const resolved = resolveBatchChange(documentKey, change?.path);
+            if (!resolved) {
               send(400, { error: 'That grid is not editable.' });
               return;
             }
-            group.grids.push(change);
+            resolved.group.grids.push({ ...change, path: resolved.path });
           }
           for (const change of captions) {
             const documentKey = String(change?.document || '');
-            const group = ensureGroup(documentKey);
-            if (!group) {
+            const resolved = resolveBatchChange(documentKey, change?.path);
+            if (!resolved) {
               send(400, { error: 'That image is not editable.' });
               return;
             }
-            group.captions.push(change);
+            resolved.group.captions.push({ ...change, path: resolved.path });
           }
           for (const change of textChanges) {
             const documentKey = String(change?.document || '');
-            const group = ensureGroup(documentKey);
             const fieldPath = change?.path;
             const value = change?.value;
             const valueIsText = typeof value === 'string' && value.length <= 20_000;
@@ -895,43 +909,42 @@ function contentBatchDevWriter() {
               value.every((paragraph) => typeof paragraph === 'string') &&
               value.join('').length <= 20_000
             );
+            const resolved = resolveBatchChange(documentKey, fieldPath);
             if (
-              !group ||
-              !Array.isArray(fieldPath) ||
-              !fieldPath.length ||
-              fieldPath.length > 8 ||
+              !resolved ||
+              !Array.isArray(resolved.path) ||
+              !resolved.path.length ||
+              resolved.path.length > 8 ||
               (!valueIsText && !valueIsParagraphs) ||
-              fieldPath.some((part) => !isSafePathPart(part))
+              resolved.path.some((part) => !isSafePathPart(part))
             ) {
               send(400, { error: 'One or more text fields are not editable.' });
               return;
             }
-            group.text.push(change);
+            resolved.group.text.push({ ...change, path: resolved.path });
           }
           for (const change of spacingChanges) {
             const documentKey = String(change?.document || '');
-            const group = ensureGroup(documentKey);
             const fieldPath = change?.path;
             const value = change?.value;
+            const resolved = resolveBatchChange(documentKey, fieldPath);
             if (
-              !group ||
-              !Array.isArray(fieldPath) ||
-              fieldPath.length < 2 ||
-              fieldPath.length > 8 ||
-              fieldPath.at(-1) !== 'spacing' ||
+              !resolved ||
+              !Array.isArray(resolved.path) ||
+              resolved.path.length < 2 ||
+              resolved.path.length > 8 ||
+              resolved.path.at(-1) !== 'spacing' ||
               !EDITABLE_SPACING_VALUES.has(value) ||
-              fieldPath.some((part) => !isSafePathPart(part))
+              resolved.path.some((part) => !isSafePathPart(part))
             ) {
               send(400, { error: 'One or more spacing fields are not editable.' });
               return;
             }
-            group.spacing.push(change);
+            resolved.group.spacing.push({ ...change, path: resolved.path });
           }
 
-          for (const [documentKey, group] of grouped) {
-            const relativeFile = resolveEditableDocument(documentKey);
-            const file = path.join(process.cwd(), relativeFile);
-            const data = JSON.parse(await readFile(file, 'utf8'));
+          for (const [relativeFile, group] of grouped) {
+            const data = await readDevDocument(relativeFile);
 
             for (const change of group.crops) {
               const result = applyCropChange(data, change);
@@ -1004,7 +1017,7 @@ function contentBatchDevWriter() {
               target.spacing = change.value;
             }
 
-            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+            await writeDevDocument(relativeFile, data);
           }
 
           send(200, {
@@ -1068,12 +1081,71 @@ function contentSectionDevWriter() {
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
+          const viewId = viewIdFromRequest(req, body);
           const relativeFile = resolveEditableDocument(documentKey);
           const action = body.action === 'delete' ? 'delete' : 'insert';
           const index = Number(body.index);
 
           if (!relativeFile || !Number.isInteger(index) || index < 0) {
             send(400, { error: 'That section cannot be updated.' });
+            return;
+          }
+
+          if (viewId) {
+            if (action === 'delete') {
+              const result = await deleteViewSection(documentKey, viewId, index);
+              send(200, { ok: true, action: 'delete', index, ...result });
+              return;
+            }
+
+            const type = String(body.type || '');
+            const filenames = Array.isArray(body.filenames)
+              ? body.filenames.map((value) => String(value || '').trim()).filter(Boolean)
+              : [];
+            if (!INSERTABLE_SECTION_TYPES.has(type)) {
+              send(400, { error: 'That section cannot be inserted.' });
+              return;
+            }
+
+            let section;
+            if (type === 'sectionTitle') {
+              section = {
+                type: 'sectionTitle',
+                id: `title-${Date.now().toString(36)}`,
+                title: 'Section title',
+                spacing: 'section',
+                tightBottom: false,
+              };
+            } else if (type === 'bodyText') {
+              section = {
+                type: 'bodyText',
+                id: `body-${Date.now().toString(36)}`,
+                spacing: 'section',
+                paragraphs: [''],
+              };
+            } else if (type === 'image') {
+              if (!filenames.length) {
+                send(400, { error: 'An image file is required.' });
+                return;
+              }
+              section = buildImageSection(documentKey, filenames.slice(0, 1));
+            } else if (type === 'imageGrid') {
+              if (!filenames.length) {
+                send(400, { error: 'At least one image file is required.' });
+                return;
+              }
+              section = buildImageGridSection(documentKey, filenames);
+            } else if (type === 'placeholder') {
+              section = buildPlaceholderImageSection();
+            }
+
+            if (!section) {
+              send(400, { error: 'That section cannot be inserted.' });
+              return;
+            }
+
+            await insertViewSection(documentKey, viewId, index, section);
+            send(200, { ok: true, action: 'insert', index, id: section.id, type: section.type, section });
             return;
           }
 
@@ -1195,6 +1267,7 @@ function contentSpacingDevWriter() {
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const viewId = viewIdFromRequest(req, body);
           const changes = Array.isArray(body.changes) ? body.changes : [];
           if (!changes.length) {
             send(400, { error: 'No spacing changes were provided.' });
@@ -1204,30 +1277,28 @@ function contentSpacingDevWriter() {
           const grouped = new Map();
           for (const change of changes) {
             const documentKey = String(change.document || '');
-            const relativeFile = resolveEditableDocument(documentKey);
             const fieldPath = change.path;
             const value = change.value;
+            const target = resolveDevFieldTarget(documentKey, viewId, fieldPath);
             if (
-              !relativeFile ||
-              !Array.isArray(fieldPath) ||
-              fieldPath.length < 2 ||
-              fieldPath.length > 8 ||
-              fieldPath.at(-1) !== 'spacing' ||
+              !target?.relativeFile ||
+              !Array.isArray(target.path) ||
+              target.path.length < 2 ||
+              target.path.length > 8 ||
+              target.path.at(-1) !== 'spacing' ||
               !EDITABLE_SPACING_VALUES.has(value) ||
-              fieldPath.some((part) => !isSafePathPart(part))
+              target.path.some((part) => !isSafePathPart(part))
             ) {
               send(400, { error: 'One or more spacing fields are not editable.' });
               return;
             }
-            const documentChanges = grouped.get(documentKey) || [];
-            documentChanges.push({ path: fieldPath, value });
-            grouped.set(documentKey, documentChanges);
+            const documentChanges = grouped.get(target.relativeFile) || [];
+            documentChanges.push({ path: target.path, value });
+            grouped.set(target.relativeFile, documentChanges);
           }
 
-          for (const [documentKey, documentChanges] of grouped) {
-            const relativeFile = resolveEditableDocument(documentKey);
-            const file = path.join(process.cwd(), relativeFile);
-            const data = JSON.parse(await readFile(file, 'utf8'));
+          for (const [relativeFile, documentChanges] of grouped) {
+            const data = await readDevDocument(relativeFile);
 
             for (const change of documentChanges) {
               let target = data;
@@ -1254,7 +1325,7 @@ function contentSpacingDevWriter() {
               }
             }
 
-            await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+            await writeDevDocument(relativeFile, data);
           }
 
           send(200, { ok: true, count: changes.length });
