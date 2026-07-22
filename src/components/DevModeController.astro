@@ -1,15 +1,8 @@
 <script>
   const initDevModeController = () => {
-    const storageKey = 'vcdDevMode';
     const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
     const GRID_EDITOR_CLASS = 'show-listing-grid-editor';
     let devMode = false;
-
-    try {
-      devMode = window.sessionStorage.getItem(storageKey) === 'true';
-    } catch {
-      // Keep dev mode scoped to this page load when storage is unavailable.
-    }
 
     const editTriggers = () =>
       [...document.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]')];
@@ -80,12 +73,6 @@
         imageTargets().forEach((target) => {
           target.classList.remove('is-dev-image-selected');
         });
-      }
-
-      try {
-        window.sessionStorage.setItem(storageKey, active ? 'true' : 'false');
-      } catch {
-        // Dev mode still works for this page load.
       }
 
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-change', {
