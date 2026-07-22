@@ -1,0 +1,131 @@
+---
+import { getTeaserPassword } from '../lib/teaserAuth';
+import { isViewBuild } from '../lib/views';
+
+interface Props {
+  slug: string;
+  status?: string;
+}
+
+const { slug, status } = Astro.props;
+const gated = status === 'teaser' && !import.meta.env.DEV && !isViewBuild();
+const storageKey = `vcd-teaser-unlock:${slug}`;
+const teaserPassword = getTeaserPassword();
+---
+
+{gated ? (
+  <div class="teaser-gate" data-teaser-gate={slug} data-teaser-storage-key={storageKey}>
+    <div class="teaser-gate__screen" data-teaser-locked>
+      <form class="teaser-gate__form" data-teaser-form>
+        <p class="teaser-gate__label">Coming soon</p>
+        <label class="teaser-gate__field">
+          <span class="sr-only">Password</span>
+          <input type="password" name="password" autocomplete="current-password" required placeholder="Password" />
+        </label>
+        <button type="submit">Enter</button>
+        <p class="teaser-gate__error" data-teaser-error hidden>Incorrect password.</p>
+      </form>
+    </div>
+    <div class="teaser-gate__content" data-teaser-content hidden>
+      <slot />
+    </div>
+  </div>
+) : (
+  <slot />
+)}
+
+<script define:vars={{ teaserPassword }}>
+  const gates = document.querySelectorAll('[data-teaser-gate]');
+  gates.forEach((root) => {
+    if (!(root instanceof HTMLElement)) return;
+    const storageKey = root.dataset.teaserStorageKey;
+    const locked = root.querySelector<HTMLElement>('[data-teaser-locked]');
+    const content = root.querySelector<HTMLElement>('[data-teaser-content]');
+    const form = root.querySelector<HTMLFormElement>('[data-teaser-form]');
+    const error = root.querySelector<HTMLElement>('[data-teaser-error]');
+    if (!storageKey || !locked || !content || !form) return;
+
+    const unlock = () => {
+      locked.hidden = true;
+      content.hidden = false;
+    };
+
+    try {
+      if (window.sessionStorage.getItem(storageKey) === 'true') unlock();
+    } catch {
+      // Session storage unavailable.
+    }
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const password = new FormData(form).get('password');
+      if (password !== teaserPassword) {
+        if (error) error.hidden = false;
+        return;
+      }
+      if (error) error.hidden = true;
+      try {
+        window.sessionStorage.setItem(storageKey, 'true');
+      } catch {
+        // Still unlock for this page load.
+      }
+      unlock();
+    });
+  });
+</script>
+
+<style>
+  .teaser-gate__screen {
+    display: grid;
+    place-items: center;
+    min-height: 50vh;
+    padding: 2em 1em;
+  }
+
+  .teaser-gate__form {
+    display: grid;
+    gap: 0.85em;
+    width: min(18em, 100%);
+    text-align: center;
+  }
+
+  .teaser-gate__label {
+    margin: 0;
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
+  }
+
+  .teaser-gate__field input,
+  .teaser-gate__form button {
+    width: 100%;
+    padding: 0.65em 0.75em;
+    border: 1px solid #ccc;
+    border-radius: 0.35em;
+    font: inherit;
+  }
+
+  .teaser-gate__form button {
+    cursor: pointer;
+    background: #111;
+    color: #fff;
+    border-color: #111;
+  }
+
+  .teaser-gate__error {
+    margin: 0;
+    color: #a33;
+    font-size: 0.9rem;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
