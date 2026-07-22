@@ -38,8 +38,21 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 - `ProjectPressQuoteTicker`, `ProjectRedditCommentCarousel`
 
 **Home / Work / Play** — `ProjectGrid` (`src/components/ProjectGrid.astro`):
-- Cover-card listing grid; content from `src/content/home|work|play/*.json`
+- Cover-card listing grid; project cards from `listings` on each `src/content/projects/{slug}.json`
+- Play also includes non-project links from `src/content/play/*.json`
 - `variant`: `home` | `work` | `play` (breakpoint and featured-row presets)
+- Dev mode: grid management via `DevProjectGrid` (+ New page, ⋯ settings) — see project `status` field
+
+**Project pages** — dynamic route `src/pages/[slug].astro` for `stack: "modern"` projects:
+- Content in `src/content/projects/{slug}.json` (`sections[]`, `outline`, `listings`, `status`)
+- `status`: `published` | `draft` | `teaser` | `view-only` — controls public visibility and build output
+- Draft images: `draft:{slug}/file.jpg` in JSON → `src/content/drafts/media/` (dev); publish via settings or `/api/publish-media`
+- Dev mode: drag-and-drop images (`DevImageDrop`), text/spacing editors, crop/grid tuners
+
+**Employer views** — `src/content/views/{viewId}.json`; build with `VIEW_ID=example-view bun run build`
+- Curated project order, nav (`site.nav`), per-project section overrides (`hide` / `order` / `append`)
+- Section overlays: `src/content/views/overlays/{viewId}/{slug}.json`
+- Teaser password: `PUBLIC_TEASER_PASSWORD` env (public site only; default `preview`)
 
 **Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes. `LegacyProjectGrid` is case-study media clusters — not the same as site `ProjectGrid` listings.
 

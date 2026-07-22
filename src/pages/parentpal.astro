@@ -2,6 +2,10 @@
 import ProjectLayout from '../components/ProjectLayout.astro';
 import LegacyProjectSections from '../components/project/legacy/LegacyProjectSections.astro';
 import projectCopy from '../content/projects/parentpal.json';
+import { redirectIfViewBuildBlocked } from '../lib/viewBuildGuard';
+
+const blocked = redirectIfViewBuildBlocked();
+if (blocked) return Astro.redirect(blocked.redirect);
 ---
 
 <ProjectLayout title={projectCopy.title} description={projectCopy.description}>

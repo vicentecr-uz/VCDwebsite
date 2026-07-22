@@ -38,6 +38,12 @@
 </div>
 
 <script>
+  import {
+    initMountedSectionCovers,
+    mountInsertedSection,
+    syncDevModeOnSection,
+  } from '../scripts/devSectionMount';
+
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
@@ -61,7 +67,7 @@
     currentValue: SpacingValue;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle';
+  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image';
 
   const SPACING_OPTIONS: Array<{ value: 'related' | 'group' | 'section' | 'major'; label: string; title: string }> = [
     { value: 'related', label: '1em', title: 'Related · 1em' },
@@ -136,7 +142,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'caption';
+      kind: 'crop' | 'grid' | 'caption' | 'listing-order';
       payload: Record<string, unknown>;
       revert: () => void;
     };
@@ -262,6 +268,7 @@
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
             <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
+            <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
           </div>
           <div class="dev-gap-toolbar__spacing">
             ${SPACING_OPTIONS.map(
@@ -874,6 +881,15 @@
           event.preventDefault();
           event.stopPropagation();
           const type = button.dataset.devSectionType as InsertableSectionType | undefined;
+          if (type === 'image') {
+            const sectionIndex = state.path.at(-2);
+            if (typeof sectionIndex !== 'number') return;
+            closeSectionMenus();
+            window.dispatchEvent(new CustomEvent('vcd:dev-image-picker-open', {
+              detail: { documentKey: state.document, index: sectionIndex },
+            }));
+            return;
+          }
           if (type !== 'bodyText' && type !== 'sectionTitle') return;
           void insertSectionAt(state, type);
         });
@@ -952,6 +968,57 @@
       mountDeleteButton(element);
     });
 
+    const findInsertAnchor = (index: number) => {
+      for (const block of document.querySelectorAll<HTMLElement>(
+        '[data-dev-spacing-document][data-dev-spacing-path]',
+      )) {
+        try {
+          const path = JSON.parse(block.dataset.devSpacingPath || '[]');
+          if (path[0] === 'sections' && path[1] === index + 1) return block;
+        } catch {
+          // Ignore malformed paths.
+        }
+      }
+      return null;
+    };
+
+    const mountMediaSectionInPlace = (
+      section: Record<string, unknown>,
+      documentKey: string,
+      index: number,
+    ) => {
+      const pageUsesDocument =
+        spacingStates.some((state) => state.document === documentKey)
+        || textStates.some((state) => state.document === documentKey);
+      if (!pageUsesDocument) return;
+
+      reindexDevPaths(index, 1);
+      const root = mountInsertedSection(section, documentKey, index);
+      const anchor = findInsertAnchor(index);
+      if (anchor) anchor.before(root);
+      else document.querySelector('.project-page__main')?.append(root);
+
+      const spacingState = mountSpacingControl(root);
+      if (spacingState) {
+        spacingStates.push(spacingState);
+        wireSectionAddMenu(spacingState);
+      }
+      mountDeleteButton(root);
+      deletableSections.push(root);
+      initMountedSectionCovers(root);
+      syncDevModeOnSection(root, document.documentElement.classList.contains('is-dev-mode'));
+    };
+
+    window.addEventListener('vcd:dev-section-inserted', ((event: CustomEvent<{
+      documentKey?: string;
+      index?: number;
+      section?: Record<string, unknown>;
+    }>) => {
+      const { documentKey, index, section } = event.detail ?? {};
+      if (!documentKey || typeof index !== 'number' || !section) return;
+      mountMediaSectionInPlace(section, documentKey, index);
+    }) as EventListener);
+
     const syncDeleteButtons = (enabled: boolean) => {
       deletableSections.forEach((element) => {
         const button = element.querySelector<HTMLButtonElement>(':scope > [data-dev-section-delete]');
@@ -963,7 +1030,10 @@
       const detail = event.detail;
       if (
         !detail?.id ||
-        (detail.kind !== 'crop' && detail.kind !== 'grid' && detail.kind !== 'caption')
+        (detail.kind !== 'crop'
+          && detail.kind !== 'grid'
+          && detail.kind !== 'caption'
+          && detail.kind !== 'listing-order')
       ) {
         return;
       }
@@ -1313,26 +1383,37 @@
     saveButton.addEventListener('click', async () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
-      const mediaChanges = [...pendingMedia.values()];
-      if (!dirtyText.length && !dirtySpacing.length && !mediaChanges.length) return;
+      const pendingChanges = [...pendingMedia.values()];
+      const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
+      const imageChanges = pendingChanges.filter((change) => change.kind !== 'listing-order');
+      if (!dirtyText.length && !dirtySpacing.length && !pendingChanges.length) return;
       saveButton.disabled = true;
       revertButton.disabled = true;
       status.textContent = 'Saving…';
 
       try {
-        const hasMedia = mediaChanges.length > 0;
-        if (hasMedia) {
+        for (const change of listingChanges) {
+          const response = await fetch('/api/listing-order', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || 'Could not save grid order.');
+        }
+
+        if (imageChanges.length > 0) {
           const response = await fetch('/api/content-batch', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
-              crops: mediaChanges
+              crops: imageChanges
                 .filter((change) => change.kind === 'crop')
                 .map((change) => change.payload),
-              grids: mediaChanges
+              grids: imageChanges
                 .filter((change) => change.kind === 'grid')
                 .map((change) => change.payload),
-              captions: mediaChanges
+              captions: imageChanges
                 .filter((change) => change.kind === 'caption')
                 .map((change) => change.payload),
               text: dirtyText.map((state) => ({
@@ -1349,15 +1430,6 @@
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save changes.');
-          dirtyText.forEach((state) => {
-            state.savedValue = readValue(state);
-          });
-          dirtySpacing.forEach((state) => {
-            state.savedValue = state.currentValue;
-            syncSpacingControl(state);
-          });
-          pendingMedia.clear();
-          window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
         } else {
           if (dirtyText.length) {
             const response = await fetch('/api/content-text', {
@@ -1373,9 +1445,6 @@
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
-            dirtyText.forEach((state) => {
-              state.savedValue = readValue(state);
-            });
           }
 
           if (dirtySpacing.length) {
@@ -1392,13 +1461,19 @@
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');
-            dirtySpacing.forEach((state) => {
-              state.savedValue = state.currentValue;
-              syncSpacingControl(state);
-            });
           }
         }
 
+        dirtyText.forEach((state) => {
+          state.savedValue = readValue(state);
+        });
+        dirtySpacing.forEach((state) => {
+          state.savedValue = state.currentValue;
+          syncSpacingControl(state);
+        });
+        pendingMedia.clear();
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
+        status.textContent = 'Saved.';
         updateActions();
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not save changes.';

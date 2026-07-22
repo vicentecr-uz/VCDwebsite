@@ -4,16 +4,20 @@ import path from 'node:path';
 import { defineConfig } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
+import {
+  buildImageGridSection,
+  buildImageSection,
+  buildPlaceholderImageSection,
+  draftMediaDevServer,
+  listingOrderDevWriter,
+  projectCreateDevWriter,
+  projectSettingsDevWriter,
+  publishMediaDevWriter,
+  resolveEditableDocument,
+  uploadDevWriter,
+} from './scripts/dev-api-plugins.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
-const EDITABLE_CONTENT_DOCUMENTS = new Map([
-  ['tapico', 'src/content/projects/tapico.json'],
-  ['[retired-project]', 'src/content/projects/[retired-project].json'],
-  ['the-rams', 'src/content/projects/the-rams.json'],
-  ['parentpal', 'src/content/projects/parentpal.json'],
-  ['conic-collection', 'src/content/projects/conic-collection.json'],
-  ['styles', 'src/content/pages/styles.json'],
-]);
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
   part !== '__proto__' &&
@@ -79,7 +83,7 @@ function imageCropDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
           const documentKey = String(body.document || '');
-          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const relativeFile = resolveEditableDocument(documentKey);
           const fieldPath = body.path;
           if (
             !relativeFile ||
@@ -193,7 +197,7 @@ function imageGridDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
           const documentKey = String(body.document || '');
-          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const relativeFile = resolveEditableDocument(documentKey);
           const fieldPath = body.path;
           if (
             !relativeFile ||
@@ -435,7 +439,7 @@ function contentTextDevWriter() {
           const grouped = new Map();
           for (const change of changes) {
             const documentKey = String(change.document || '');
-            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const relativeFile = resolveEditableDocument(documentKey);
             const fieldPath = change.path;
             const value = change.value;
             const valueIsText = typeof value === 'string' && value.length <= 20_000;
@@ -466,7 +470,7 @@ function contentTextDevWriter() {
           }
 
           for (const [documentKey, documentChanges] of grouped) {
-            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const relativeFile = resolveEditableDocument(documentKey);
             const file = path.join(process.cwd(), relativeFile);
             const data = JSON.parse(await readFile(file, 'utf8'));
 
@@ -840,7 +844,7 @@ function contentBatchDevWriter() {
           /** @type {Map<string, { crops: any[], grids: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const ensureGroup = (documentKey) => {
-            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const relativeFile = resolveEditableDocument(documentKey);
             if (!relativeFile) return null;
             let group = grouped.get(documentKey);
             if (!group) {
@@ -922,7 +926,7 @@ function contentBatchDevWriter() {
           }
 
           for (const [documentKey, group] of grouped) {
-            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const relativeFile = resolveEditableDocument(documentKey);
             const file = path.join(process.cwd(), relativeFile);
             const data = JSON.parse(await readFile(file, 'utf8'));
 
@@ -1022,7 +1026,7 @@ function contentBatchDevWriter() {
  *
  * @returns {import('vite').Plugin}
  */
-const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle']);
+const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle', 'image', 'imageGrid', 'placeholder']);
 
 /**
  * Dev-only writer that inserts or deletes sections in a project document's
@@ -1061,7 +1065,7 @@ function contentSectionDevWriter() {
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
-          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const relativeFile = resolveEditableDocument(documentKey);
           const action = body.action === 'delete' ? 'delete' : 'insert';
           const index = Number(body.index);
 
@@ -1098,39 +1102,58 @@ function contentSectionDevWriter() {
           }
 
           const type = String(body.type || '');
-          // New block always opens with default section rhythm above it.
-          // The following block keeps whatever gap the user already had (that
-          // gap becomes the space *below* the insert).
-          const spacing = 'section';
+          const filenames = Array.isArray(body.filenames)
+            ? body.filenames.map((value) => String(value || '').trim()).filter(Boolean)
+            : [];
 
           if (!INSERTABLE_SECTION_TYPES.has(type) || index > data.sections.length) {
             send(400, { error: 'That section cannot be inserted.' });
             return;
           }
 
-          const id = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
-          const section =
-            type === 'sectionTitle'
-              ? {
-                  type: 'sectionTitle',
-                  id,
-                  title: 'Section title',
-                  spacing,
-                  // Keep the following block's own spacing (don't force 1em via
-                  // precede-related). Authored titles still default tightBottom.
-                  tightBottom: false,
-                }
-              : {
-                  type: 'bodyText',
-                  id,
-                  spacing,
-                  paragraphs: [''],
-                };
+          let section;
+          if (type === 'sectionTitle') {
+            const id = `title-${Date.now().toString(36)}`;
+            section = {
+              type: 'sectionTitle',
+              id,
+              title: 'Section title',
+              spacing: 'section',
+              tightBottom: false,
+            };
+          } else if (type === 'bodyText') {
+            const id = `body-${Date.now().toString(36)}`;
+            section = {
+              type: 'bodyText',
+              id,
+              spacing: 'section',
+              paragraphs: [''],
+            };
+          } else if (type === 'image') {
+            if (!filenames.length) {
+              send(400, { error: 'An image file is required.' });
+              return;
+            }
+            section = buildImageSection(documentKey, filenames.slice(0, 1));
+          } else if (type === 'imageGrid') {
+            if (!filenames.length) {
+              send(400, { error: 'At least one image file is required.' });
+              return;
+            }
+            section = buildImageGridSection(documentKey, filenames);
+          } else if (type === 'placeholder') {
+            section = buildPlaceholderImageSection();
+          }
+
+          if (!section) {
+            send(400, { error: 'That section cannot be inserted.' });
+            return;
+          }
 
           data.sections.splice(index, 0, section);
 
           await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-          send(200, { ok: true, action: 'insert', index, id, type });
+          send(200, { ok: true, action: 'insert', index, id: section.id, type: section.type, section });
         } catch {
           send(400, { error: 'Could not parse or write the section update.' });
         }
@@ -1178,7 +1201,7 @@ function contentSpacingDevWriter() {
           const grouped = new Map();
           for (const change of changes) {
             const documentKey = String(change.document || '');
-            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const relativeFile = resolveEditableDocument(documentKey);
             const fieldPath = change.path;
             const value = change.value;
             if (
@@ -1199,7 +1222,7 @@ function contentSpacingDevWriter() {
           }
 
           for (const [documentKey, documentChanges] of grouped) {
-            const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+            const relativeFile = resolveEditableDocument(documentKey);
             const file = path.join(process.cwd(), relativeFile);
             const data = JSON.parse(await readFile(file, 'utf8'));
 
@@ -1424,7 +1447,7 @@ function contentNavDevWriter() {
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
-          const relativeFile = EDITABLE_CONTENT_DOCUMENTS.get(documentKey);
+          const relativeFile = resolveEditableDocument(documentKey);
           const nav = body.nav;
           const outlineInput = body.outline;
           const sectionIds = body.sectionIds && typeof body.sectionIds === 'object'
@@ -1517,8 +1540,18 @@ export default defineConfig({
   // TODO: Re-enable Astro dev toolbar after investigating dev-mode layout jump.
   devToolbar: { enabled: false },
   vite: {
+    define: {
+      'import.meta.env.VIEW_ID': JSON.stringify(process.env.VIEW_ID || ''),
+      'import.meta.env.PUBLIC_TEASER_PASSWORD': JSON.stringify(process.env.PUBLIC_TEASER_PASSWORD || 'preview'),
+    },
     plugins: [
       tailwindcss(),
+      draftMediaDevServer(),
+      uploadDevWriter(),
+      projectCreateDevWriter(),
+      listingOrderDevWriter(),
+      projectSettingsDevWriter(),
+      publishMediaDevWriter(),
       imageCropDevWriter(),
       imageGridDevWriter(),
       styleTokenDevWriter(),
