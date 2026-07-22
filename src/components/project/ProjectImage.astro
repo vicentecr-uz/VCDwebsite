@@ -1,7 +1,6 @@
 ---
 import { projectImage } from '../../lib/images';
 import {
-  normalizeImageVariants,
   responsiveImageStyle,
   type ImageVariants,
 } from '../../lib/responsiveImage';
@@ -23,6 +22,11 @@ import {
   type ImageCaptionStyleId,
   type ImageCaptions,
 } from '../../lib/imageCaptions';
+import {
+  imageDevEditAttrs,
+  isPlaceholderSrc,
+  resolveInlineImageCrop,
+} from '../../lib/projectImageFrame';
 
 interface Props {
   src: string;
@@ -98,13 +102,11 @@ const stackClass = projectStackClass(spacing, { flush });
 const spacingAttrs = spacingDevAttrs(documentKey, path, spacing);
 
 const isLead = kind === 'lead';
-const isPlaceholder = src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
-const hasCrop = !!suppliedVariants && Object.values(suppliedVariants).some(
-  (variant) => variant && (variant.aspectRatio || variant.x || variant.y || variant.zoom),
-);
-const normalized = hasCrop
-  ? normalizeImageVariants(suppliedVariants, isLead ? '16:10' : '1:1', crop)
-  : undefined;
+const isPlaceholder = isPlaceholderSrc(src);
+const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
+  lead: isLead,
+  crop,
+});
 
 const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && path.length > 0;
 const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
@@ -118,17 +120,17 @@ const hasCaption = imageCaptionsHaveText(captions);
 const captionClass = imageCaptionStyleClass(captionStyle);
 
 const editAttrs = editable
-  ? {
-      'data-dev-image-target': 'image',
-      'data-dev-document': documentKey,
-      'data-dev-image-path': JSON.stringify(path),
-      'data-dev-crop-id': cropId,
-      'data-dev-image-variants': normalized ? JSON.stringify(normalized) : '{}',
-      'data-dev-captions': JSON.stringify(captions),
-      'data-dev-caption-style': captionStyle,
-      'data-dev-caption-position': captionPosition,
-      'data-dev-caption-reveals': JSON.stringify(captionReveals),
-    }
+  ? imageDevEditAttrs(true, {
+      documentKey: documentKey!,
+      path: path!,
+      cropId: cropId ?? 'image',
+      variants: normalized,
+      caption,
+      captions: captionsProp,
+      captionStyle: captionStyleProp,
+      captionPosition: captionPositionProp,
+      captionReveal,
+    })
   : {};
 ---
 

@@ -2,14 +2,19 @@ import { projectImage } from '../lib/images';
 import {
   imageGridColumnsStyle,
   imageGridConstrainedStyle,
-  imageGridItemLayoutStyle,
-  normalizeImageVariants,
+  responsiveImageStyle,
   resolveImageGridColumns,
   resolveImageGridConstrained,
-  resolveImageGridLayouts,
-  responsiveImageStyle,
   type ImageVariants,
 } from '../lib/responsiveImage';
+import {
+  gridItemLayoutStyle,
+  imageDevEditAttrs,
+  isPlaceholderSrc,
+  resolveGridItemCrop,
+  resolveGridItemLayout,
+  resolveInlineImageCrop,
+} from '../lib/projectImageFrame';
 import { bindProjectCropCovers } from '../lib/projectCropCover';
 
 type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -28,14 +33,6 @@ const spacingClassName = (spacing: string) => {
   const stack = STACK_CLASS[spacing as SpacingValue];
   return stack ? `project-block ${stack}` : 'project-block';
 };
-
-const hasCropVariants = (variants: ImageVariants | undefined) =>
-  !!variants && Object.values(variants).some(
-    (variant) => variant && (variant.aspectRatio || variant.x || variant.y || variant.zoom),
-  );
-
-const isPlaceholderSrc = (src: string) =>
-  src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
 
 const appendEditTriggers = (target: HTMLElement) => {
   const caption = document.createElement('button');
@@ -58,6 +55,13 @@ const appendEditTriggers = (target: HTMLElement) => {
   target.append(caption, image);
 };
 
+const applyDataAttrs = (element: HTMLElement, attrs: Record<string, string> | undefined) => {
+  if (!attrs) return;
+  Object.entries(attrs).forEach(([key, value]) => {
+    element.setAttribute(key, value);
+  });
+};
+
 const buildInlineImageFigure = (
   section: MountedSection,
   documentKey: string,
@@ -65,12 +69,15 @@ const buildInlineImageFigure = (
 ) => {
   const src = String(section.src ?? '');
   const variants = section.variants as ImageVariants | undefined;
-  const hasCrop = hasCropVariants(variants);
-  const normalized = hasCrop
-    ? normalizeImageVariants(variants, '1:1', undefined)
-    : undefined;
+  const { hasCrop, normalized } = resolveInlineImageCrop(src, variants);
   const cropId = String(section.id ?? 'image');
   const placeholder = isPlaceholderSrc(src);
+  const editAttrs = imageDevEditAttrs(true, {
+    documentKey,
+    path: sectionPath,
+    cropId,
+    variants: normalized,
+  });
 
   const figure = document.createElement('figure');
   figure.className = [
@@ -80,19 +87,7 @@ const buildInlineImageFigure = (
     placeholder && 'project-media--placeholder',
   ].filter(Boolean).join(' ');
   if (normalized) figure.style.cssText = responsiveImageStyle(normalized);
-  figure.setAttribute('data-dev-image-target', 'image');
-  figure.setAttribute('data-dev-document', documentKey);
-  figure.setAttribute('data-dev-image-path', JSON.stringify(sectionPath));
-  figure.setAttribute('data-dev-crop-id', cropId);
-  figure.setAttribute('data-dev-image-variants', JSON.stringify(normalized ?? {}));
-  figure.setAttribute('data-dev-captions', JSON.stringify({ desktop: '', tablet: '', mobile: '' }));
-  figure.setAttribute('data-dev-caption-style', 'default');
-  figure.setAttribute('data-dev-caption-position', 'bottom-left');
-  figure.setAttribute('data-dev-caption-reveals', JSON.stringify({
-    desktop: 'hover',
-    tablet: 'always',
-    mobile: 'always',
-  }));
+  applyDataAttrs(figure, editAttrs);
 
   const img = document.createElement('img');
   img.src = projectImage(src);
@@ -136,7 +131,7 @@ export function mountImageGridSection(
     ? section.layouts as Record<string, { visible?: string[] }>
     : {};
   const itemIds = items.map((item, itemIndex) => String(item.id ?? `item-${itemIndex}`));
-  const resolvedLayouts = resolveImageGridLayouts(itemIds, layouts);
+  const resolvedLayouts = resolveGridItemLayout(itemIds, layouts);
   const editorItems = items.map((item, itemIndex) => ({
     id: itemIds[itemIndex],
     src: projectImage(String(item.src ?? '')),
@@ -174,14 +169,24 @@ export function mountImageGridSection(
 
   items.forEach((item, itemIndex) => {
     const itemId = itemIds[itemIndex];
-    const hasOwnVariants = !!item.variants;
-    const variants = normalizeImageVariants(
-      hasOwnVariants ? item.variants as ImageVariants : undefined,
+    const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(
+      {
+        src: String(item.src ?? ''),
+        variants: item.variants as ImageVariants | undefined,
+        crop: item.crop as { x?: number; y?: number; zoom?: number } | undefined,
+      },
       defaultAspectRatio,
-      item.crop as { x?: number; y?: number; zoom?: number } | undefined,
     );
-    const layoutStyle = imageGridItemLayoutStyle(itemId, resolvedLayouts);
+    const layoutStyle = gridItemLayoutStyle(itemId, resolvedLayouts);
     const placeholder = isPlaceholderSrc(String(item.src ?? ''));
+    const editAttrs = imageDevEditAttrs(true, {
+      documentKey,
+      path: [...sectionPath, 'items', itemIndex],
+      cropId: itemId,
+      variants,
+      gridDefaultAspect: defaultAspectRatio,
+      hasOwnVariants,
+    });
 
     const figure = document.createElement('figure');
     figure.className = [
@@ -190,26 +195,12 @@ export function mountImageGridSection(
       'dev-image-edit-target',
       placeholder && 'project-media--placeholder',
     ].filter(Boolean).join(' ');
-    figure.style.cssText = `${responsiveImageStyle(variants)};${layoutStyle}`;
+    figure.style.cssText = `${variantStyle};${layoutStyle}`;
     figure.setAttribute('data-grid-item-id', itemId);
     figure.setAttribute('data-grid-hidden-desktop', resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false');
     figure.setAttribute('data-grid-hidden-tablet', resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false');
     figure.setAttribute('data-grid-hidden-mobile', resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false');
-    figure.setAttribute('data-dev-image-target', 'image');
-    figure.setAttribute('data-dev-document', documentKey);
-    figure.setAttribute('data-dev-image-path', JSON.stringify([...sectionPath, 'items', itemIndex]));
-    figure.setAttribute('data-dev-crop-id', itemId);
-    figure.setAttribute('data-dev-image-variants', JSON.stringify(variants));
-    figure.setAttribute('data-dev-grid-default-aspect', defaultAspectRatio);
-    if (hasOwnVariants) figure.setAttribute('data-dev-has-own-variants', 'true');
-    figure.setAttribute('data-dev-captions', JSON.stringify({ desktop: '', tablet: '', mobile: '' }));
-    figure.setAttribute('data-dev-caption-style', 'default');
-    figure.setAttribute('data-dev-caption-position', 'bottom-left');
-    figure.setAttribute('data-dev-caption-reveals', JSON.stringify({
-      desktop: 'hover',
-      tablet: 'always',
-      mobile: 'always',
-    }));
+    applyDataAttrs(figure, editAttrs);
 
     const img = document.createElement('img');
     img.src = projectImage(String(item.src ?? ''));
