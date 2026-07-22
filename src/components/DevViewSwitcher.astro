@@ -1,5 +1,8 @@
 ---
 /** Dev-only employer view preview switcher (Alt+V, sessionStorage). */
+import viewRegistry from '../content/views/_registry.json';
+
+const devViews = import.meta.env.DEV ? (viewRegistry.views ?? []) : [];
 ---
 
 <div class="dev-view-switcher" data-dev-view-switcher aria-hidden="true">
@@ -12,68 +15,102 @@
   >
     <p class="dev-view-switcher__eyebrow">Dev preview</p>
     <h2 id="dev-view-switcher-title" class="dev-view-switcher__title">Employer view</h2>
-    <p class="dev-view-switcher__hint">Alt+V to open · Esc to close</p>
+    <p class="dev-view-switcher__hint">Alt+V to open · Esc to cancel</p>
     <label class="dev-view-switcher__field">
       <span class="dev-view-switcher__label">Preview as</span>
       <select class="dev-view-switcher__select" data-dev-view-select aria-label="Preview employer view">
         <option value="">Public site</option>
+        {devViews.map((view) => <option value={view.id}>{view.title || view.id}</option>)}
       </select>
     </label>
+    <div class="dev-view-switcher__actions">
+      <button type="button" class="dev-view-switcher__cancel" data-dev-view-cancel>Cancel</button>
+      <button type="button" class="dev-view-switcher__apply" data-dev-view-apply disabled>Apply</button>
+    </div>
   </div>
 </div>
 
 <script>
-  const STORAGE_KEY = 'vcd-dev-view';
+  import { confirmBeforeDevReload, switchDevView } from '../scripts/devViewContext';
 
-  const initDevViewSwitcher = async () => {
-    const root = document.querySelector<HTMLElement>('[data-dev-view-switcher]');
-    const backdrop = root?.querySelector<HTMLElement>('[data-dev-view-backdrop]');
-    const select = root?.querySelector<HTMLSelectElement>('[data-dev-view-select]');
-    if (!root || !backdrop || !select) return;
+  const initDevViewSwitcher = () => {
+    const root = document.querySelector('[data-dev-view-switcher]');
+    const backdrop = root?.querySelector('[data-dev-view-backdrop]');
+    const select = root?.querySelector('[data-dev-view-select]');
+    const applyButton = root?.querySelector('[data-dev-view-apply]');
+    const cancelButton = root?.querySelector('[data-dev-view-cancel]');
+    if (!root || !backdrop || !select || !applyButton || !cancelButton) return;
+    if (root.dataset.devViewSwitcherReady === 'true') return;
+    root.dataset.devViewSwitcherReady = 'true';
 
-    const isTypingTarget = (target: EventTarget | null) =>
+    // The server decides the active view; mirror it from <html data-view-id>.
+    const activeView = document.documentElement.dataset.viewId || '';
+    select.value = activeView;
+
+    const isTypingTarget = (target) =>
       Boolean(
         target instanceof HTMLElement
-        && target.closest('input, textarea, select, [contenteditable="true"]'),
+        && target.closest('input, textarea, select, [contenteditable="true"]')
+        && !target.closest('[data-dev-view-switcher]'),
       );
 
-    const setOpen = (open: boolean) => {
+    const setOpen = (open) => {
       root.classList.toggle('is-open', open);
       root.toggleAttribute('aria-hidden', !open);
       root.toggleAttribute('inert', !open);
       document.documentElement.classList.toggle('is-dev-view-switcher-open', open);
-      if (open) {
-        requestAnimationFrame(() => select.focus());
+      if (open) requestAnimationFrame(() => select.focus());
+    };
+    const close = () => setOpen(false);
+
+    const syncApplyState = () => {
+      applyButton.disabled = select.disabled || select.value === activeView;
+    };
+
+    const open = () => {
+      select.value = activeView;
+      syncApplyState();
+      setOpen(true);
+    };
+
+    const cancel = () => {
+      select.value = activeView;
+      syncApplyState();
+      close();
+    };
+
+    const toggle = () => (root.classList.contains('is-open') ? cancel() : open());
+
+    const apply = async () => {
+      const nextView = select.value;
+      if (nextView === activeView) {
+        close();
+        return;
+      }
+      if (!confirmBeforeDevReload()) return;
+
+      select.disabled = true;
+      cancelButton.disabled = true;
+      applyButton.disabled = true;
+      applyButton.textContent = 'Switching…';
+      try {
+        await switchDevView(nextView);
+        // On success the page reloads into the new view; nothing more to do.
+      } catch (error) {
+        select.disabled = false;
+        cancelButton.disabled = false;
+        applyButton.disabled = false;
+        applyButton.textContent = 'Apply';
+        syncApplyState();
+        window.alert(error instanceof Error ? error.message : 'Could not switch view.');
       }
     };
 
-    const close = () => setOpen(false);
-    const toggle = () => setOpen(!root.classList.contains('is-open'));
-
-    try {
-      const response = await fetch('/api/dev-views');
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Could not load views.');
-
-      for (const view of payload.views ?? []) {
-        const option = document.createElement('option');
-        option.value = view.id;
-        option.textContent = view.title || view.id;
-        select.append(option);
-      }
-    } catch {
-      select.disabled = true;
-    }
-
-    select.value = sessionStorage.getItem(STORAGE_KEY) || '';
-
-    select.addEventListener('change', () => {
-      if (select.value) sessionStorage.setItem(STORAGE_KEY, select.value);
-      else sessionStorage.removeItem(STORAGE_KEY);
-      window.location.reload();
-    });
-
-    backdrop.addEventListener('click', close);
+    syncApplyState();
+    select.addEventListener('change', syncApplyState);
+    applyButton.addEventListener('click', apply);
+    cancelButton.addEventListener('click', cancel);
+    backdrop.addEventListener('click', cancel);
 
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyV') {
@@ -82,11 +119,10 @@
         toggle();
         return;
       }
-
       if (event.key === 'Escape' && root.classList.contains('is-open')) {
         event.preventDefault();
         event.stopPropagation();
-        close();
+        cancel();
       }
     });
   };
@@ -201,6 +237,47 @@
   .dev-view-switcher__select:disabled {
     cursor: wait;
     opacity: 0.6;
+  }
+
+  .dev-view-switcher__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+    justify-content: flex-end;
+    margin-top: 1.15em;
+  }
+
+  .dev-view-switcher__actions button {
+    padding: 0.55em 0.9em;
+    border: 1px solid var(--color-border);
+    border-radius: calc(var(--radius-control) - 0.15em);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    cursor: pointer;
+  }
+
+  .dev-view-switcher__actions button:hover:not(:disabled) {
+    background: var(--color-surface-soft);
+  }
+
+  .dev-view-switcher__actions button:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .dev-view-switcher__apply {
+    border-color: var(--color-text);
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .dev-view-switcher__apply:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--color-text) 88%, white);
+    border-color: color-mix(in srgb, var(--color-text) 88%, white);
   }
 
   @media (prefers-reduced-motion: reduce) {
