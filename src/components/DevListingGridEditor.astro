@@ -12,6 +12,10 @@
   let gridEditorActive = false;
   let dragItem: HTMLElement | null = null;
   let dragGrid: HTMLElement | null = null;
+  let dragPointerId: number | null = null;
+  let keyboardGrabItem: HTMLElement | null = null;
+  let keyboardGrabGrid: HTMLElement | null = null;
+  let keyboardGrabSnapshot: ListingOrderEntry[] | null = null;
   const baselines = new Map<string, ListingOrderEntry[]>();
 
   const grids = () => [...document.querySelectorAll<HTMLElement>(GRID_SELECTOR)];
@@ -50,6 +54,8 @@
     }
   };
 
+  const viewIdForPayload = () => document.documentElement.dataset.viewId || undefined;
+
   const syncPending = (grid: HTMLElement) => {
     const gridId = grid.dataset.devProjectGrid;
     if (!gridId || !['home', 'work', 'play'].includes(gridId)) return;
@@ -73,7 +79,11 @@
       detail: {
         id: pendingId,
         kind: 'listing-order',
-        payload: { grid: gridId, items: current },
+        payload: {
+          grid: gridId,
+          items: current,
+          viewId: viewIdForPayload(),
+        },
         revert: () => {
           restoreOrder(grid, structuredClone(baseline));
           grid.classList.remove('is-grid-order-dirty');
@@ -89,11 +99,22 @@
     });
   };
 
-  const setDraggable = (active: boolean) => {
+  const itemLabel = (item: HTMLElement) =>
+    item.querySelector('.project-grid__title')?.textContent?.trim() || 'item';
+
+  const setGridItemReorderable = (active: boolean) => {
     grids().forEach((grid) => {
+      grid.setAttribute('aria-dropeffect', active ? 'move' : 'none');
       gridItems(grid).forEach((item) => {
-        item.draggable = active;
+        item.draggable = false;
+        item.tabIndex = active ? 0 : -1;
+        item.setAttribute('aria-grabbed', 'false');
         item.toggleAttribute('data-dev-grid-draggable', active);
+        if (active) {
+          item.setAttribute('aria-label', `Reorder ${itemLabel(item)}`);
+        } else {
+          item.removeAttribute('aria-label');
+        }
       });
     });
   };
@@ -106,18 +127,83 @@
     });
   };
 
-  const finishGridDrag = () => {
+  const insertRelativeToHover = (
+    grid: HTMLElement,
+    item: HTMLElement,
+    hoverItem: HTMLElement,
+    clientY: number,
+  ) => {
+    const rect = hoverItem.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    grid.insertBefore(item, before ? hoverItem : hoverItem.nextSibling);
+  };
+
+  const hoverItemAtPoint = (grid: HTMLElement, clientX: number, clientY: number) => {
+    const hovered = document.elementFromPoint(clientX, clientY);
+    if (!(hovered instanceof HTMLElement)) return null;
+    const hoverItem = hovered.closest<HTMLElement>('.project-grid__item:not(.project-grid__item--new)');
+    if (!hoverItem || !grid.contains(hoverItem)) return null;
+    return hoverItem;
+  };
+
+  const finishPointerDrag = () => {
     if (gridEditorActive && dragGrid) syncPending(dragGrid);
-    if (dragItem) dragItem.classList.remove('is-grid-dragging');
+    if (dragItem) {
+      dragItem.classList.remove('is-grid-dragging');
+      if (dragPointerId != null) {
+        try {
+          dragItem.releasePointerCapture(dragPointerId);
+        } catch {
+          // Pointer may already be released.
+        }
+      }
+    }
     clearDropTargets();
     dragItem = null;
     dragGrid = null;
+    dragPointerId = null;
+  };
+
+  const releaseKeyboardGrab = (revert: boolean) => {
+    if (!keyboardGrabItem) return;
+    const grid = keyboardGrabGrid;
+    keyboardGrabItem.classList.remove('is-grid-keyboard-grabbed');
+    keyboardGrabItem.setAttribute('aria-grabbed', 'false');
+    keyboardGrabItem = null;
+    keyboardGrabGrid = null;
+
+    if (revert && grid && keyboardGrabSnapshot) {
+      restoreOrder(grid, keyboardGrabSnapshot);
+    }
+    keyboardGrabSnapshot = null;
+
+    if (grid) syncPending(grid);
+  };
+
+  const moveKeyboardGrab = (delta: number) => {
+    if (!keyboardGrabItem || !keyboardGrabGrid) return;
+    const items = gridItems(keyboardGrabGrid);
+    const index = items.indexOf(keyboardGrabItem);
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const target = items[targetIndex];
+    keyboardGrabGrid.insertBefore(
+      keyboardGrabItem,
+      delta > 0 ? target.nextSibling : target,
+    );
+    syncPending(keyboardGrabGrid);
   };
 
   const onGridEditorChange = (active: boolean) => {
     gridEditorActive = active;
-    if (active) captureBaselines();
-    setDraggable(active);
+    if (active) {
+      captureBaselines();
+    } else {
+      finishPointerDrag();
+      releaseKeyboardGrab(true);
+    }
+    setGridItemReorderable(active);
   };
 
   window.addEventListener('vcd:listing-grid-editor-change', ((event: CustomEvent<{ active?: boolean }>) => {
@@ -137,59 +223,103 @@
     grids().forEach((grid) => grid.classList.remove('is-grid-order-dirty'));
   });
 
-  document.addEventListener('dragstart', (event) => {
-    if (!gridEditorActive) return;
+  document.addEventListener('pointerdown', (event) => {
+    if (!gridEditorActive || keyboardGrabItem) return;
+    if (event.button !== 0) return;
+
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     const item = target.closest<HTMLElement>('.project-grid__item[data-dev-grid-draggable]');
     if (!item) return;
+
+    const grid = item.closest<HTMLElement>(GRID_SELECTOR);
+    if (!grid) return;
+
     dragItem = item;
-    dragGrid = item.closest<HTMLElement>(GRID_SELECTOR);
+    dragGrid = grid;
+    dragPointerId = event.pointerId;
     item.classList.add('is-grid-dragging');
-    if (event.dataTransfer) {
-      event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData(
-        'text/plain',
-        item.dataset.devProjectSlug ?? item.dataset.devPlayLink ?? '',
-      );
-    }
-  });
-
-  document.addEventListener('dragend', () => {
-    if (gridEditorActive && dragGrid) syncPending(dragGrid);
-    if (dragItem) dragItem.classList.remove('is-grid-dragging');
-    clearDropTargets();
-    dragItem = null;
-    dragGrid = null;
-  });
-
-  document.addEventListener('dragenter', (event) => {
-    if (!gridEditorActive || !dragItem) return;
+    item.setPointerCapture(event.pointerId);
     event.preventDefault();
   });
 
-  document.addEventListener('dragover', (event) => {
-    if (!gridEditorActive || !dragItem) return;
-    event.preventDefault();
+  document.addEventListener('pointermove', (event) => {
+    if (!gridEditorActive || !dragItem || dragPointerId !== event.pointerId) return;
+
+    const grid = dragGrid ?? dragItem.closest<HTMLElement>(GRID_SELECTOR);
+    if (!grid) return;
+
+    const hoverItem = hoverItemAtPoint(grid, event.clientX, event.clientY);
+    gridItems(grid).forEach((item) => item.classList.remove('is-grid-drop-target'));
+    if (!hoverItem || hoverItem === dragItem) return;
+
+    hoverItem.classList.add('is-grid-drop-target');
+    insertRelativeToHover(grid, dragItem, hoverItem, event.clientY);
+  });
+
+  document.addEventListener('pointerup', (event) => {
+    if (!dragItem || dragPointerId !== event.pointerId) return;
+    finishPointerDrag();
+  });
+
+  document.addEventListener('pointercancel', (event) => {
+    if (!dragItem || dragPointerId !== event.pointerId) return;
+    finishPointerDrag();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (!gridEditorActive) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
 
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const grid = dragGrid ?? dragItem.closest<HTMLElement>(GRID_SELECTOR);
-    const hoverItem = target.closest<HTMLElement>('.project-grid__item:not(.project-grid__item--new)');
-    if (!grid || !hoverItem || hoverItem === dragItem || !grid.contains(hoverItem)) return;
+    const focusedItem = target instanceof HTMLElement
+      ? target.closest<HTMLElement>('.project-grid__item[data-dev-grid-draggable]')
+      : null;
 
-    gridItems(grid).forEach((item) => item.classList.remove('is-grid-drop-target'));
-    hoverItem.classList.add('is-grid-drop-target');
+    if (keyboardGrabItem) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        releaseKeyboardGrab(false);
+        return;
+      }
 
-    const rect = hoverItem.getBoundingClientRect();
-    const before = event.clientY < rect.top + rect.height / 2;
-    grid.insertBefore(dragItem, before ? hoverItem : hoverItem.nextSibling);
-  });
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        releaseKeyboardGrab(true);
+        return;
+      }
 
-  document.addEventListener('drop', (event) => {
-    if (!gridEditorActive || !dragItem) return;
-    event.preventDefault();
-    finishGridDrag();
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveKeyboardGrab(-1);
+        return;
+      }
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveKeyboardGrab(1);
+        return;
+      }
+      return;
+    }
+
+    if (!focusedItem) return;
+
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      const grid = focusedItem.closest<HTMLElement>(GRID_SELECTOR);
+      if (!grid) return;
+      keyboardGrabItem = focusedItem;
+      keyboardGrabGrid = grid;
+      keyboardGrabSnapshot = captureOrder(grid);
+      focusedItem.classList.add('is-grid-keyboard-grabbed');
+      focusedItem.setAttribute('aria-grabbed', 'true');
+    }
   });
 </script>
 
@@ -206,11 +336,15 @@
 
   .show-listing-grid-editor .project-grid__item[data-dev-grid-draggable] {
     cursor: grab;
+    touch-action: none;
   }
 
-  .show-listing-grid-editor .project-grid__item.is-grid-dragging {
+  .show-listing-grid-editor .project-grid__item.is-grid-dragging,
+  .show-listing-grid-editor .project-grid__item.is-grid-keyboard-grabbed {
     opacity: 0.55;
     cursor: grabbing;
+    outline: 2px solid #6f6b62;
+    outline-offset: 2px;
   }
 
   .show-listing-grid-editor .project-grid__item.is-grid-drop-target {

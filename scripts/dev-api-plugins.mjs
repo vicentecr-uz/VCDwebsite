@@ -1,7 +1,49 @@
 // @ts-check
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+function loadViewRegistry() {
+  const file = path.join(process.cwd(), 'src/content/views/_registry.json');
+  return JSON.parse(readFileSync(file, 'utf8'));
+}
+
+function isRegisteredViewId(viewId) {
+  const registry = loadViewRegistry();
+  return (registry.views ?? []).some((entry) => entry.id === viewId);
+}
+
+function viewIdFromRequest(req, body = {}) {
+  const fromBody = String(body.viewId || '').trim();
+  if (fromBody && isRegisteredViewId(fromBody)) return fromBody;
+  const fromEnv = String(process.env.VIEW_ID || '').trim();
+  if (fromEnv) return fromEnv;
+  return '';
+}
+
+function buildViewPreview(viewId) {
+  const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
+  const view = JSON.parse(readFileSync(viewPath, 'utf8'));
+  const projects = [...(view.projects ?? [])].sort(
+    (left, right) => (left.order ?? 999) - (right.order ?? 999),
+  );
+  const grids = {};
+  for (const grid of ['home', 'work']) {
+    grids[grid] = {
+      projects: projects.map((entry) => ({
+        slug: entry.slug,
+        order: entry.order ?? 999,
+        full: Boolean(entry.card?.full),
+      })),
+    };
+  }
+  return {
+    viewId,
+    title: view.title ?? viewId,
+    nav: view.site?.nav ?? ['home', 'work', 'play', 'about'],
+    grids,
+  };
+}
 
 const DEFAULT_IMAGE_VARIANTS = {
   desktop: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
@@ -487,9 +529,88 @@ export function listingOrderDevWriter() {
               await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
             }
           }
+
+          const viewId = viewIdFromRequest(req, body);
+          if (viewId && (grid === 'home' || grid === 'work')) {
+            const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
+            const viewData = JSON.parse(await readFile(viewPath, 'utf8'));
+            const projectItems = items.filter((entry) => entry.type === 'project');
+            const orderBySlug = new Map(
+              projectItems.map((entry) => [String(entry.slug || '').trim(), Number(entry.order)]),
+            );
+            const fullBySlug = new Map(
+              projectItems
+                .filter((entry) => typeof entry.full === 'boolean')
+                .map((entry) => [String(entry.slug || '').trim(), entry.full]),
+            );
+
+            if (Array.isArray(viewData.projects)) {
+              for (const project of viewData.projects) {
+                const nextOrder = orderBySlug.get(project.slug);
+                if (nextOrder != null) {
+                  project.order = nextOrder;
+                }
+                if (fullBySlug.has(project.slug)) {
+                  project.card = { ...(project.card ?? {}), full: fullBySlug.get(project.slug) };
+                }
+              }
+              viewData.projects.sort((left, right) => (left.order ?? 999) - (right.order ?? 999));
+              await writeFile(viewPath, `${JSON.stringify(viewData, null, 2)}\n`, 'utf8');
+            }
+          }
+
           send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not save listing order.' });
+        }
+      });
+    },
+  };
+}
+
+export function devViewSwitcher() {
+  return {
+    name: 'dev-view-switcher',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/dev-views', (req, res, next) => {
+        if (req.method !== 'GET') {
+          next();
+          return;
+        }
+        try {
+          const registry = loadViewRegistry();
+          res.statusCode = 200;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify({ views: registry.views ?? [] }));
+        } catch {
+          res.statusCode = 500;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify({ error: 'Could not load view registry.' }));
+        }
+      });
+
+      server.middlewares.use('/api/dev-view-preview', (req, res, next) => {
+        if (req.method !== 'GET') {
+          next();
+          return;
+        }
+        try {
+          const url = new URL(req.url ?? '/', 'http://localhost');
+          const viewId = String(url.searchParams.get('viewId') || '').trim();
+          if (!viewId || !isRegisteredViewId(viewId)) {
+            res.statusCode = 400;
+            res.setHeader('content-type', 'application/json');
+            res.end(JSON.stringify({ error: 'Unknown view.' }));
+            return;
+          }
+          res.statusCode = 200;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(buildViewPreview(viewId)));
+        } catch {
+          res.statusCode = 500;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify({ error: 'Could not load view preview.' }));
         }
       });
     },
