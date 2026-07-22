@@ -1,4 +1,6 @@
 ---
+import type { ProjectStatus } from '../lib/projects';
+
 export type ProjectGridItem = {
   title: string;
   image: string;
@@ -9,6 +11,11 @@ export type ProjectGridItem = {
   href?: string;
   /** Span both columns on home/work. */
   full?: boolean;
+  slug?: string;
+  playLinkId?: string;
+  status?: ProjectStatus;
+  teaser?: boolean;
+  teaserLabel?: string;
 };
 
 interface Props {
@@ -18,66 +25,98 @@ interface Props {
 }
 
 const { items, variant = 'work' } = Astro.props;
+const isDev = import.meta.env.DEV;
 
 const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
 const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
 ---
 
-<ul class:list={['project-grid', `project-grid--${variant}`]}>
+<ul class:list={['project-grid', `project-grid--${variant}`]} data-dev-project-grid={variant}>
   {items.map((item) => {
-    const isPlaceholder = variant === 'play' && !item.href;
+    const isPlayPlaceholder = variant === 'play' && !item.href && !item.teaser;
+    const isTeaser = Boolean(item.teaser);
+    const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
+    const statusLabel = item.status && item.status !== 'published' ? item.status : '';
+
+    const cover = (
+      <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
+        <img
+          src={item.image}
+          alt={item.title}
+          class="project-grid__img w-full h-full object-cover"
+          loading="lazy"
+        />
+        <div class="project-grid__meta absolute bottom-0 left-0 right-0">
+          <div class="flex items-baseline gap-2">
+            <h2 class="project-grid__title font-bold" style={`color: ${titleColor(item.dark)}`}>
+              {item.title}
+            </h2>
+            {item.subtitle && (
+              <span class="project-grid__subtitle font-bold" style={`color: ${subtitleColor(item.dark)}`}>
+                {item.subtitle}
+              </span>
+            )}
+            {isTeaser && (
+              <span class="project-grid__teaser-label font-bold" style={`color: ${subtitleColor(item.dark)}`}>
+                {item.teaserLabel ?? 'Coming soon'}
+              </span>
+            )}
+          </div>
+        </div>
+        {statusLabel && (
+          <span class="project-grid__status-badge" data-dev-mode-only>
+            {statusLabel}
+          </span>
+        )}
+      </div>
+    );
+
     return (
-      <li class:list={['project-grid__item', item.full && 'project-grid__item--full']}>
-        {isPlaceholder ? (
-          <div class="project-grid__card project-grid__card--placeholder block" aria-disabled="true">
-            <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
-              <img
-                src={item.image}
-                alt={item.title}
-                class="project-grid__img w-full h-full object-cover"
-                loading="lazy"
-              />
-              <div class="project-grid__meta absolute bottom-0 left-0 right-0">
-                <div class="flex items-baseline gap-2">
-                  <h2 class="project-grid__title font-bold" style={`color: ${titleColor(item.dark)}`}>
-                    {item.title}
-                  </h2>
-                  {item.subtitle && (
-                    <span class="project-grid__subtitle font-bold" style={`color: ${subtitleColor(item.dark)}`}>
-                      {item.subtitle}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
+      <li
+        class:list={['project-grid__item', item.full && 'project-grid__item--full']}
+        data-dev-project-slug={item.slug}
+        data-dev-play-link={item.playLinkId}
+      >
+        {isStatic ? (
+          <div
+            class:list={[
+              'project-grid__card',
+              'block',
+              isPlayPlaceholder && 'project-grid__card--placeholder',
+              isTeaser && 'project-grid__card--teaser',
+            ]}
+            aria-disabled="true"
+            data-dev-teaser-slug={isTeaser ? item.slug : undefined}
+            data-dev-teaser-href={isTeaser ? item.href ?? `/${item.slug}` : undefined}
+          >
+            {cover}
           </div>
         ) : (
           <a href={item.href} class="project-grid__card block">
-            <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
-              <img
-                src={item.image}
-                alt={item.title}
-                class="project-grid__img w-full h-full object-cover"
-                loading="lazy"
-              />
-              <div class="project-grid__meta absolute bottom-0 left-0 right-0">
-                <div class="flex items-baseline gap-2">
-                  <h2 class="project-grid__title font-bold" style={`color: ${titleColor(item.dark)}`}>
-                    {item.title}
-                  </h2>
-                  {item.subtitle && (
-                    <span class="project-grid__subtitle font-bold" style={`color: ${subtitleColor(item.dark)}`}>
-                      {item.subtitle}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
+            {cover}
           </a>
+        )}
+        {isDev && item.slug && (
+          <button
+            type="button"
+            class="project-grid__settings"
+            data-dev-project-settings={item.slug}
+            data-dev-mode-only
+            aria-label={`Settings for ${item.title}`}
+          >
+            ⋯
+          </button>
         )}
       </li>
     );
   })}
+  {isDev && (
+    <li class="project-grid__item project-grid__item--new" data-dev-mode-only hidden>
+      <button type="button" class="project-grid__new-page" data-dev-project-new>
+        + New page
+      </button>
+    </li>
+  )}
 </ul>
 
 <style>
@@ -88,6 +127,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     list-style: none;
     margin: 0;
     padding: 0;
+  }
+
+  .project-grid__item {
+    position: relative;
   }
 
   .project-grid__item--full {
@@ -112,7 +155,8 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
   }
 
   .project-grid__title,
-  .project-grid__subtitle {
+  .project-grid__subtitle,
+  .project-grid__teaser-label {
     font-size: 1.25rem;
     letter-spacing: -0.03em;
     line-height: 1.2;
@@ -149,7 +193,8 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 1;
   }
 
-  .project-grid__card--placeholder {
+  .project-grid__card--placeholder,
+  .project-grid__card--teaser {
     cursor: not-allowed;
   }
 
@@ -158,9 +203,99 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     transform: scale(1.04);
   }
 
+  .project-grid__card--teaser .project-grid__img {
+    filter: blur(12px);
+    transform: scale(1.08);
+  }
+
+  .project-grid__card--teaser:hover .project-grid__img {
+    filter: blur(10px);
+  }
+
+  .project-grid__card--teaser .project-grid__meta,
+  .project-grid__card--placeholder .project-grid__meta {
+    opacity: 1;
+  }
+
+  .project-grid__status-badge {
+    position: absolute;
+    top: 0.75em;
+    left: 0.75em;
+    padding: 0.2em 0.55em;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.72);
+    color: #fff;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .project-grid__settings {
+    position: absolute;
+    top: 0.65em;
+    right: 0.65em;
+    z-index: 2;
+    width: 2em;
+    height: 2em;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    color: #222;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    pointer-events: auto;
+  }
+
+  :global(.is-dev-mode:not(.show-listing-grid-editor)) .project-grid__settings,
+  :global(.is-dev-mode) .project-grid__settings:focus-visible {
+    opacity: 1;
+  }
+
+  .project-grid__new-page {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    margin: 0;
+    padding: 1em;
+    border: 1px dashed #b8b4ab;
+    border-radius: 0;
+    background: transparent;
+    color: #8a857c;
+    font: inherit;
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+    cursor: pointer;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+
+  .project-grid__new-page:hover {
+    border-color: #6f6b62;
+    color: #4f4b43;
+  }
+
+  .project-grid--home .project-grid__item--new .project-grid__new-page {
+    aspect-ratio: 4 / 3;
+  }
+
+  .project-grid--work .project-grid__item--new .project-grid__new-page,
+  .project-grid--play .project-grid__item--new .project-grid__new-page {
+    aspect-ratio: 4 / 3;
+  }
+
+  @media (max-width: 667px) {
+    .project-grid--work .project-grid__item--new .project-grid__new-page,
+    .project-grid--play .project-grid__item--new .project-grid__new-page {
+      aspect-ratio: 1 / 1;
+    }
+  }
+
   @media (max-width: 768px) {
     .project-grid__img {
-      /* hairline overshoot prevents the cover bg bleeding 1px at the fractional bottom edge */
       transform: scale(1.01) !important;
       transition: transform 0.4s ease !important;
     }
@@ -172,6 +307,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     .project-grid__meta {
       opacity: 1 !important;
       transition: none !important;
+    }
+
+    .project-grid__card--teaser .project-grid__img {
+      filter: blur(10px);
     }
   }
 
