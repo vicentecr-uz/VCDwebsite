@@ -584,6 +584,50 @@
     const dirtySpacingStates = () =>
       spacingStates.filter((state) => state.currentValue !== state.savedValue);
 
+    const revertAllPending = () => {
+      [...pendingMedia.values()].forEach((change) => {
+        try {
+          change.revert();
+        } catch {
+          // Keep reverting the rest even if one target was removed from the DOM.
+        }
+      });
+      pendingMedia.clear();
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-reverted'));
+    };
+
+    const revertDirtyEdits = () => {
+      dirtyTextStates().forEach((state) => {
+        renderValue(state, state.savedValue);
+      });
+      dirtySpacingStates().forEach((state) => {
+        state.currentValue = state.savedValue;
+        applySpacingClass(state.element, state.savedValue);
+        syncSpacingControl(state);
+      });
+    };
+
+    const unsavedChangeCount = () =>
+      dirtyTextStates().length + dirtySpacingStates().length + pendingMedia.size;
+
+    window.addEventListener('vcd:dev-mode-before-exit', (event) => {
+      const dirtyCount = unsavedChangeCount();
+      if (!dirtyCount) return;
+
+      const message = dirtyCount === 1
+        ? 'Discard 1 unsaved change?'
+        : `Discard ${dirtyCount} unsaved changes?`;
+      if (!window.confirm(message)) {
+        event.preventDefault();
+        return;
+      }
+
+      revertDirtyEdits();
+      revertAllPending();
+      hideFormatBar();
+      updateActions();
+    });
+
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
@@ -1359,23 +1403,8 @@
     textStates.forEach(bindTextState);
 
     revertButton.addEventListener('click', () => {
-      dirtyTextStates().forEach((state) => {
-        renderValue(state, state.savedValue);
-      });
-      dirtySpacingStates().forEach((state) => {
-        state.currentValue = state.savedValue;
-        applySpacingClass(state.element, state.savedValue);
-        syncSpacingControl(state);
-      });
-      [...pendingMedia.values()].forEach((change) => {
-        try {
-          change.revert();
-        } catch {
-          // Keep reverting the rest even if one target was removed from the DOM.
-        }
-      });
-      pendingMedia.clear();
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-reverted'));
+      revertDirtyEdits();
+      revertAllPending();
       hideFormatBar();
       updateActions();
     });
