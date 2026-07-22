@@ -1,0 +1,116 @@
+---
+/** Dev-only employer view preview (sessionStorage + client DOM apply). */
+---
+
+<script>
+  const STORAGE_KEY = 'vcd-dev-view';
+
+  type ViewPreviewProject = {
+    slug: string;
+    order: number;
+    full: boolean;
+  };
+
+  type ViewPreview = {
+    viewId: string;
+    title: string;
+    nav: string[];
+    grids: Record<string, { projects: ViewPreviewProject[] }>;
+  };
+
+  const navHasRoute = (nav: Set<string>, pathname: string) => {
+    if (pathname === '/' || pathname === '/index.html') return nav.has('home');
+    if (pathname.startsWith('/work')) return nav.has('work');
+    if (pathname.startsWith('/play')) return nav.has('play');
+    if (pathname.startsWith('/about')) return nav.has('about');
+    return true;
+  };
+
+  const fallbackPath = (nav: Set<string>) => {
+    if (nav.has('home')) return '/';
+    if (nav.has('about')) return '/about';
+    if (nav.has('work')) return '/work';
+    if (nav.has('play')) return '/play';
+    return '/';
+  };
+
+  const filterHeaderNav = (nav: Set<string>) => {
+    const rules: Array<[string, string]> = [
+      ['/work', 'work'],
+      ['/play', 'play'],
+      ['/about', 'about'],
+    ];
+
+    document.querySelectorAll<HTMLAnchorElement>('.header-menu__link[href]').forEach((link) => {
+      const href = link.getAttribute('href') || '';
+      for (const [path, key] of rules) {
+        if (href !== path) continue;
+        if (!nav.has(key)) link.closest('li')?.remove();
+      }
+    });
+  };
+
+  const applyGridPreview = (preview: ViewPreview) => {
+    for (const [gridId, gridData] of Object.entries(preview.grids)) {
+      const grid = document.querySelector<HTMLElement>(`[data-dev-project-grid="${gridId}"]`);
+      if (!grid) continue;
+
+      const projects = gridData.projects ?? [];
+      const slugs = projects.map((entry) => entry.slug);
+      const fullBySlug = new Map(projects.map((entry) => [entry.slug, entry.full]));
+
+      grid.querySelectorAll<HTMLElement>('[data-dev-project-slug]').forEach((item) => {
+        const slug = item.dataset.devProjectSlug;
+        if (!slug || !slugs.includes(slug)) {
+          item.remove();
+          return;
+        }
+        item.classList.toggle('project-grid__item--full', Boolean(fullBySlug.get(slug)));
+      });
+
+      const anchor = grid.querySelector('.project-grid__item--new');
+      for (const slug of slugs) {
+        const item = grid.querySelector<HTMLElement>(`[data-dev-project-slug="${slug}"]`);
+        if (!item) continue;
+        if (anchor) grid.insertBefore(item, anchor);
+        else grid.append(item);
+      }
+    }
+  };
+
+  const initDevViewPreview = async () => {
+    const viewId = sessionStorage.getItem(STORAGE_KEY) || '';
+    if (!viewId) return;
+
+    document.documentElement.dataset.viewId = viewId;
+    document.documentElement.classList.add('is-dev-view-preview');
+
+    const response = await fetch(`/api/dev-view-preview?viewId=${encodeURIComponent(viewId)}`);
+    const preview = await response.json() as ViewPreview;
+    if (!response.ok) return;
+
+    const nav = new Set(preview.nav ?? []);
+    if (!navHasRoute(nav, window.location.pathname)) {
+      window.location.replace(fallbackPath(nav));
+      return;
+    }
+
+    filterHeaderNav(nav);
+    applyGridPreview(preview);
+  };
+
+  initDevViewPreview();
+</script>
+
+<style is:global>
+  html.is-dev-view-preview::before {
+    content: '';
+    position: fixed;
+    inset: 0 auto auto 0;
+    z-index: 89;
+    width: 0.35em;
+    height: 100vh;
+    background: #6f6b62;
+    pointer-events: none;
+  }
+</style>

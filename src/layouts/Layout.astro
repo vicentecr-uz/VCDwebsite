@@ -4,7 +4,9 @@ import DevModeController from '../components/DevModeController.astro';
 import DevTextEditor from '../components/DevTextEditor.astro';
 import DevProjectGridEditor from '../components/DevProjectGridEditor.astro';
 import DevListingGridEditor from '../components/DevListingGridEditor.astro';
-import { isViewBuild } from '../lib/views';
+import DevViewSwitcher from '../components/DevViewSwitcher.astro';
+import DevViewPreview from '../components/DevViewPreview.astro';
+import { getActiveViewId, isViewBuild } from '../lib/views';
 
 interface Props {
   title: string;
@@ -20,7 +22,7 @@ const {
 } = Astro.props;
 const showDevTools = import.meta.env.DEV;
 const viewBuild = isViewBuild();
-const viewId = import.meta.env.VIEW_ID || '';
+const viewId = getActiveViewId() || '';
 ---
 
 <!doctype html>
@@ -54,6 +56,8 @@ const viewId = import.meta.env.VIEW_ID || '';
     {showDevTools && <DevModeController />}
     {showDevTools && <DevProjectGridEditor />}
     {showDevTools && <DevListingGridEditor />}
+    {showDevTools && <DevViewPreview />}
+    {showDevTools && <DevViewSwitcher />}
 
     <script>
       import gsap from 'gsap';
