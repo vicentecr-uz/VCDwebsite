@@ -3,25 +3,14 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
+import { getProjectGridListings } from '../lib/projects';
+import { isListingRouteEnabled } from '../lib/siteNav';
 
-type WorkProject = {
-  order?: number;
-  slug: string;
-  title: string;
-  year: string;
-  image: string;
-  bg: string;
-  dark: boolean;
-  full: boolean;
-};
+if (!isListingRouteEnabled('/work')) {
+  return Astro.redirect('/');
+}
 
-const workEntries = Object.values(
-  import.meta.glob('../content/work/*.json', { eager: true }),
-) as { default: WorkProject }[];
-
-const projects = workEntries
-  .map((entry) => entry.default)
-  .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+const projects = getProjectGridListings('work');
 ---
 
 <Layout title="Work — Vicente Cruz">
@@ -33,12 +22,16 @@ const projects = workEntries
         variant="work"
         items={projects.map((project) => ({
           title: project.title,
-          subtitle: project.year,
+          subtitle: project.subtitle,
           image: project.image,
           bg: project.bg,
           dark: project.dark,
           full: project.full,
-          href: `/${project.slug}`,
+          href: project.href,
+          teaser: project.teaser,
+          teaserLabel: project.teaserLabel,
+          status: project.status,
+          slug: project.slug,
         }))}
       />
     </main>

@@ -3,24 +3,14 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
+import { getPlayGridItems } from '../lib/projects';
+import { isListingRouteEnabled } from '../lib/siteNav';
 
-type PlayItem = {
-  order?: number;
-  title: string;
-  meta?: string;
-  image: string;
-  bg: string;
-  dark: boolean;
-  href?: string;
-};
+if (!isListingRouteEnabled('/play')) {
+  return Astro.redirect('/');
+}
 
-const playEntries = Object.values(
-  import.meta.glob('../content/play/*.json', { eager: true }),
-) as { default: PlayItem }[];
-
-const playItems = playEntries
-  .map((entry) => entry.default)
-  .sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+const playItems = getPlayGridItems();
 ---
 
 <Layout title="Play — Vicente Cruz">
@@ -30,14 +20,31 @@ const playItems = playEntries
     <main class="listing-main" style="flex: 1;">
       <ProjectGrid
         variant="play"
-        items={playItems.map((item) => ({
-          title: item.title,
-          subtitle: item.meta,
-          image: item.image,
-          bg: item.bg,
-          dark: item.dark,
-          href: item.href,
-        }))}
+        items={playItems.map((item) => {
+          if ('isLink' in item) {
+            return {
+              title: item.title,
+              subtitle: item.meta,
+              image: item.image,
+              bg: item.bg,
+              dark: item.dark,
+              href: item.href,
+              playLinkId: item.id,
+            };
+          }
+          return {
+            title: item.title,
+            subtitle: item.subtitle,
+            image: item.image,
+            bg: item.bg,
+            dark: item.dark,
+            href: item.href,
+            teaser: item.teaser,
+            teaserLabel: item.teaserLabel,
+            status: item.status,
+            slug: item.slug,
+          };
+        })}
       />
     </main>
 

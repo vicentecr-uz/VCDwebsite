@@ -1,0 +1,44 @@
+---
+import ProjectLayout from '../components/ProjectLayout.astro';
+import ProjectSections from '../components/project/ProjectSections.astro';
+import DevImageDrop from '../components/DevImageDrop.astro';
+import TeaserGate from '../components/TeaserGate.astro';
+import { resolveProjectOutline, resolveProjectSectionLinks } from '../lib/projectOutline';
+import { applyViewToSections, applyViewToOutline } from '../lib/views';
+import {
+  getModernProjectSlugsForBuild,
+  loadProjectBySlug,
+  shouldIncludeProjectInBuild,
+} from '../lib/projects';
+
+export function getStaticPaths() {
+  return getModernProjectSlugsForBuild().map((slug) => ({ params: { slug } }));
+}
+
+const slug = Astro.params.slug ?? '';
+const project = loadProjectBySlug(slug);
+
+if (!project || project.stack !== 'modern' || !shouldIncludeProjectInBuild(project)) {
+  return Astro.redirect('/404');
+}
+
+const sections = applyViewToSections(slug, project.sections);
+const outline = applyViewToOutline(slug, resolveProjectOutline(project), project.sections);
+const sectionLinks = resolveProjectSectionLinks({ outline });
+---
+
+<ProjectLayout
+  title={project.title}
+  description={project.description}
+  outline={outline}
+  sectionLinks={sectionLinks}
+  sectionNavLabel={`${project.title} sections`}
+  sectionNavDocument={slug}
+>
+  <TeaserGate slug={slug} status={project.status}>
+    <div data-dev-project-drop-zone>
+      <ProjectSections documentKey={slug} sections={sections} />
+    </div>
+    <DevImageDrop documentKey={slug} />
+  </TeaserGate>
+</ProjectLayout>
