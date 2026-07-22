@@ -106,6 +106,12 @@ const { documentKey } = Astro.props;
     reader.readAsDataURL(file);
   });
 
+  const flushPendingEdits = (targetDocumentKey) => new Promise((resolve, reject) => {
+    window.dispatchEvent(new CustomEvent('vcd:dev-flush-pending-edits', {
+      detail: { documentKey: targetDocumentKey, resolve, reject },
+    }));
+  });
+
   const uploadFiles = async (files) => {
     const payload = await Promise.all(files.map(async (file) => ({
       filename: file.name,
@@ -123,6 +129,7 @@ const { documentKey } = Astro.props;
   };
 
   const insertSection = async (type, filenames = []) => {
+    await flushPendingEdits(documentKey);
     const response = await fetch('/api/content-section', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

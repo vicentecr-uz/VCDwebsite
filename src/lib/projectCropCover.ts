@@ -42,6 +42,21 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
 }
 
 let resizeBound = false;
+let cropCoverObserver: ResizeObserver | null = null;
+
+function observeCropFrames(root: ParentNode): void {
+  if (typeof ResizeObserver === 'undefined') return;
+
+  if (!cropCoverObserver) {
+    cropCoverObserver = new ResizeObserver(() => refreshProjectCropCovers());
+  }
+
+  root.querySelectorAll<HTMLElement>('.project-cropped, .project-image-grid__item').forEach((frame) => {
+    if (frame.dataset.cropCoverObserved === 'true') return;
+    frame.dataset.cropCoverObserved = 'true';
+    cropCoverObserver!.observe(frame);
+  });
+}
 
 export function bindProjectCropCovers(root: ParentNode = document): void {
   refreshProjectCropCovers(root);
@@ -50,14 +65,9 @@ export function bindProjectCropCovers(root: ParentNode = document): void {
     image.dataset.cropCoverBound = 'true';
     image.addEventListener('load', () => refreshProjectCropCovers(root));
   });
+  observeCropFrames(root);
   if (!resizeBound && root === document) {
     resizeBound = true;
     window.addEventListener('resize', () => refreshProjectCropCovers());
-    if (typeof ResizeObserver !== 'undefined') {
-      const observer = new ResizeObserver(() => refreshProjectCropCovers());
-      document.querySelectorAll<HTMLElement>('.project-cropped, .project-image-grid__item').forEach((frame) => {
-        observer.observe(frame);
-      });
-    }
   }
 }

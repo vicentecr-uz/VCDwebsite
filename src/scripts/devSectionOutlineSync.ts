@@ -25,6 +25,8 @@ const mainScope = '[data-section-nav-main]';
 let root: HTMLElement | null = null;
 let documentKey = '';
 const outline: OutlineEntry[] = [];
+let preservedLinkTemplate: HTMLElement | null = null;
+let preservedGroupTemplate: HTMLElement | null = null;
 
 const parseJson = <T>(raw: string | undefined, fallback: T): T => {
   if (!raw) return fallback;
@@ -133,18 +135,67 @@ export function remapDevSectionOutlineId(clientId: string, serverId: string) {
   syncDevSectionOutlineSidebar();
 }
 
+const isSectionEditorActive = () =>
+  document.documentElement.classList.contains('show-section-nav-editor') &&
+  document.documentElement.classList.contains('is-dev-mode');
+
+const clearGroupAnimState = (groupEl: HTMLElement) => {
+  const content = groupEl.querySelector<HTMLElement>('.section-sidebar-nav__group-content');
+  if (!content) return;
+  content.classList.remove('is-expanding', 'is-collapsing');
+  content.style.height = '';
+  content.style.transition = '';
+  content.style.opacity = '';
+  content.style.overflow = '';
+  content.style.minHeight = '';
+  content.style.gridTemplateRows = '';
+  content.style.display = '';
+  content.querySelectorAll<HTMLElement>('.section-sidebar-nav__link').forEach((link) => {
+    link.style.transition = '';
+  });
+  content.querySelectorAll<HTMLElement>('.section-sidebar-nav__children > li').forEach((row) => {
+    row.style.opacity = '';
+  });
+};
+
 export function syncDevSectionOutlineSidebar() {
   const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
   if (!list || !root) return;
 
+  if (!outline.length) {
+    loadOutlineFromRoot();
+  }
+
   const sorted = sortOutlineByPageOrder(outline);
   outline.length = 0;
   outline.push(...sorted);
-  writeRootDatasets();
   const nav = deriveNavFromOutline(outline) as NavItem[];
 
-  const linkTemplate = list.querySelector<HTMLElement>('[data-section-nav-link]');
-  const groupTemplate = list.querySelector<HTMLElement>('[data-section-nav-group]');
+  if (!nav.length) return;
+
+  const editorMode = isSectionEditorActive();
+  const openStateByLabel = new Map<string, boolean>();
+  if (!editorMode) {
+    list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el) => {
+      const label = el.dataset.navLabel;
+      const details = el.querySelector('details');
+      if (label && details) openStateByLabel.set(label, details.open);
+    });
+  }
+
+  writeRootDatasets();
+
+  const liveLinkTemplate = list.querySelector<HTMLElement>('[data-section-nav-link]');
+  const liveGroupTemplate = list.querySelector<HTMLElement>('[data-section-nav-group]');
+  if (liveLinkTemplate) {
+    preservedLinkTemplate = liveLinkTemplate.cloneNode(true) as HTMLElement;
+  }
+  if (liveGroupTemplate) {
+    preservedGroupTemplate = liveGroupTemplate.cloneNode(true) as HTMLElement;
+  }
+
+  const linkTemplate = liveLinkTemplate ?? preservedLinkTemplate;
+  const groupTemplate = liveGroupTemplate ?? preservedGroupTemplate;
   if (!linkTemplate) return;
 
   const existingLinks = new Map<string, HTMLElement>();
@@ -163,7 +214,7 @@ export function syncDevSectionOutlineSidebar() {
 
   const ensureLink = (link: NavLink, rootLink: boolean) => {
     let el = existingLinks.get(link.id);
-    if (!el) el = linkTemplate.cloneNode(true) as HTMLElement;
+    if (!el) el = (preservedLinkTemplate ?? linkTemplate).cloneNode(true) as HTMLElement;
     el.dataset.navId = link.id;
     el.dataset.navLabel = link.label;
     const anchor = el.querySelector('a');
@@ -187,7 +238,16 @@ export function syncDevSectionOutlineSidebar() {
     const labelEl = groupEl.querySelector<HTMLElement>('[data-section-nav-label]');
     if (labelEl) labelEl.textContent = label;
     const details = groupEl.querySelector('details');
-    if (details) details.open = defaultOpen;
+    if (details) {
+      clearGroupAnimState(groupEl);
+      if (editorMode) {
+        details.open = true;
+      } else if (openStateByLabel.has(label)) {
+        details.open = openStateByLabel.get(label) !== false;
+      } else {
+        details.open = defaultOpen;
+      }
+    }
     groupEl.querySelector<HTMLElement>('.section-sidebar-nav__children')?.replaceChildren();
     return groupEl;
   };
@@ -213,6 +273,10 @@ export function syncDevSectionOutlineSidebar() {
   [...list.children].forEach((child) => {
     if (child instanceof HTMLElement && !kept.has(child)) child.remove();
   });
+
+  if (editorMode) {
+    window.dispatchEvent(new CustomEvent('vcd:section-nav-sidebar-synced'));
+  }
 }
 
 const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
@@ -304,6 +368,17 @@ const loadOutlineFromRoot = () => {
   outline.push(...next);
   writeRootDatasets();
 };
+
+/** Reload outline from SSR datasets and rebuild the sidebar (e.g. after section editor exits). */
+export function restoreDevSectionOutlineFromRoot() {
+  if (!root) {
+    root = document.querySelector<HTMLElement>('[data-section-nav-root]');
+    documentKey = root?.dataset.sectionNavDocument?.trim() || '';
+  }
+  if (!root) return;
+  loadOutlineFromRoot();
+  syncDevSectionOutlineSidebar();
+}
 
 export function initDevSectionOutlineSync() {
   if (document.documentElement.dataset.devSectionOutlineSync === '1') return;
