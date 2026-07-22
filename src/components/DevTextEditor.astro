@@ -47,8 +47,6 @@
     initDevSectionOutlineSync,
     remapDevSectionOutlineId,
   } from '../scripts/devSectionOutlineSync';
-  import { isPlannedDevNavigation, withDevViewId } from '../scripts/devViewContext';
-
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
@@ -733,11 +731,11 @@
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
+          body: JSON.stringify({
             action: 'delete',
             document: entry.documentKey,
             index: entry.index,
-          })),
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not undo the image insert.');
@@ -767,13 +765,13 @@
         const response = await fetch('/api/content-text', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
+          body: JSON.stringify({
             changes: dirtyText.map((state) => ({
               document: state.document,
               path: state.path,
               value: readValue(state),
             })),
-          })),
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not save pending text before inserting images.');
@@ -787,13 +785,13 @@
         const response = await fetch('/api/content-spacing', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
+          body: JSON.stringify({
             changes: dirtySpacing.map((state) => ({
               document: state.document,
               path: state.path,
               value: state.currentValue,
             })),
-          })),
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not save pending spacing before inserting images.');
@@ -819,12 +817,12 @@
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
+          body: JSON.stringify({
             document: entry.documentKey,
             index: entry.index,
             type: entry.type,
             spacing: entry.spacing,
-          })),
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
@@ -852,11 +850,11 @@
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(withDevViewId({
+          body: JSON.stringify({
             action: 'delete',
             document: entry.documentKey,
             index: entry.deletedIndex,
-          })),
+          }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
@@ -1794,7 +1792,7 @@
           const response = await fetch('/api/content-batch', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(withDevViewId({
+            body: JSON.stringify({
               crops: imageChanges
                 .filter((change) => change.kind === 'crop')
                 .map((change) => change.payload),
@@ -1814,7 +1812,7 @@
                 path: state.path,
                 value: state.currentValue,
               })),
-            })),
+            }),
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save changes.');
@@ -1823,13 +1821,13 @@
             const response = await fetch('/api/content-text', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(withDevViewId({
+              body: JSON.stringify({
                 changes: dirtyText.map((state) => ({
                   document: state.document,
                   path: state.path,
                   value: readValue(state),
                 })),
-              })),
+              }),
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
@@ -1839,13 +1837,13 @@
             const response = await fetch('/api/content-spacing', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(withDevViewId({
+              body: JSON.stringify({
                 changes: dirtySpacing.map((state) => ({
                   document: state.document,
                   path: state.path,
                   value: state.currentValue,
                 })),
-              })),
+              }),
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');
@@ -1882,7 +1880,7 @@
       setEditingEnabled(Boolean((event as CustomEvent<{ active: boolean }>).detail?.active));
     });
     window.addEventListener('beforeunload', (event) => {
-      if (devServerReloading || isPlannedDevNavigation()) return;
+      if (devServerReloading) return;
       // Structural insert/delete is already reflected in the DOM — only warn when
       // text, spacing, or media edits would be lost (or during a dev-server reload).
       const hasContentEdits =

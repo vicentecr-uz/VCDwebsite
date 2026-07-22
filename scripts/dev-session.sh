@@ -172,8 +172,7 @@ cmd_start() {
   fi
 
   echo "Starting dev session..."
-  # Supervisor runs `astro dev` and restarts it when Alt+V switches employer view.
-  start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" "$ROOT/scripts/dev-astro-supervisor.mjs"
+  start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev
   start_process "Decap" "$DECAP_PID" "$DECAP_LOG" "$BUN" x decap-server
 
   echo ""
