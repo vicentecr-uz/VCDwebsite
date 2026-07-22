@@ -19,6 +19,45 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - Page transitions: GSAP fades `#transition-overlay` (starts opaque; fades out once viewport-visible images + fonts are ready, min 0.5s hold / max 4s wait; fades in on navigation). CSS 5s safety-net reveal if JS fails.
 - Max page width: fluid gutter via `#site-wrapper { padding-inline: max(1em, calc((100% - 60em) / 2)) }` — gutter holds at 1em until viewport exceeds 62em, then grows to keep content at 60em max
 
+## Dev authoring (local only)
+
+Two ways to edit content on disk in dev — both write the same JSON under `src/content/`, but behave differently:
+
+| | **In-page editor** | **Decap CMS** (`/admin`) |
+|--|---------------------|--------------------------|
+| Where | On the live page (dev mode toggle) | Separate admin UI |
+| Best for | Visual tweaks — inline text, crops, spacing, grid order | Structural/bulk edits |
+| UI update on save | **No page flash** — DOM already shows your edits | May trigger Astro/Vite HMR reload |
+
+### In-page editor flow
+
+1. **Turn on dev mode** — `DevModeController` adds `is-dev-mode` to `<html>`; edit controls appear.
+2. **Edit in the browser DOM** — text fields become `contenteditable`; image/grid/caption tuners preview changes live. Components carry `data-dev-*` attributes mapping DOM nodes to JSON paths (e.g. `sections[12].paragraphs` in `tapico.json`).
+3. **Dirty / pending state** — `DevTextEditor.astro` tracks unsaved text, spacing, and media edits. Image tuners queue changes via `vcd:dev-pending-upsert` until Save.
+4. **Save** — POST to dev-only API routes in `astro.config.mjs` (`/api/content-text`, `/api/content-spacing`, `/api/content-batch`, `/api/content-section`, etc.). Handlers call `writeDevDocument()` in `scripts/dev-api-plugins.mjs`, which patches the JSON file on disk.
+5. **No flash on Save** — `suppressContentHmr()` + `contentHmrGate` (`scripts/content-hmr-gate.mjs`) block Vite full-reloads and module invalidation for ~2.5s after API writes. The page already looks correct; Save only persists to disk. `vcd:dev-pending-committed` syncs client “saved” state in tuners. **Do not assume Save triggers HMR** for in-page edits.
+6. **Reload without Save** — unsaved DOM edits are lost (warning shown if dirty).
+
+### Lifecycle
+
+- **Unsaved** = DOM only (what you see while editing)
+- **Saved** = JSON on disk (survives reload)
+- **Committed/pushed to `main`** = production deploy
+
+No auto-save, no git commit on Save.
+
+### Key files (agents: read these for editor bugs)
+
+- `src/components/DevTextEditor.astro` — text/spacing save bar, section insert/delete, pending media batch
+- `src/components/DevModeController.astro` — dev mode toggle
+- `src/components/project/ProjectImage*Tuner.astro` — crop, grid, caption pending edits
+- `scripts/dev-api-plugins.mjs` — `readDevDocument` / `writeDevDocument`, `suppressContentHmr` on every write
+- `scripts/content-hmr-gate.mjs` — suppresses full-reload WS + `handleHotUpdate` for `src/content/**` during API writes
+
+### Text save caveat
+
+Body-text fields read `<p>` children first; if the browser puts typed text outside `<p>` (e.g. after clearing a field), `readParagraphsValue` also checks other block children and inline content in the field — **only at Save time**, without rewriting the DOM while typing.
+
 ## Scope
 What belongs in this repo: work that is **the site itself** — IA, global layout, deploy, nav, and integration of other work (routes, embeds, links, how a tool sits inside vcruzdesigns.com). What does **not** belong here: tasks inside another repo's product (calculator logic, chart bugs, Stoozing HTML layout, AutoSpeedTest features) — those stay in that project's own notes. Gray line: if the issue is the site shell (iframe sizing, Astro page grid, site chrome breaking mobile), it's here; if it's Stoozing's own layout/CSS in `stoozing-playground.html`, it's Stoozing Playground.
 

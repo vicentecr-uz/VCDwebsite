@@ -237,16 +237,30 @@
       if (html) paragraph.innerHTML = html;
       else paragraph.replaceChildren(document.createElement('br'));
     };
+    const readParagraphsValue = (element: HTMLElement): string[] => {
+      const paragraphs = [...element.querySelectorAll<HTMLElement>(':scope > p')];
+      if (paragraphs.length) {
+        return paragraphs.map((paragraph) => serializeInlineHtml(paragraph));
+      }
+      const blocks = [...element.children].filter(
+        (child): child is HTMLElement => child instanceof HTMLElement,
+      );
+      if (blocks.length) {
+        return blocks.map((block) => serializeInlineHtml(block));
+      }
+      const inline = serializeInlineHtml(element);
+      return inline ? [inline] : [];
+    };
     const readValue = (state: Pick<EditableTextState, 'element' | 'kind'>): EditableTextValue =>
       state.kind === 'paragraphs'
-        ? [...state.element.querySelectorAll<HTMLElement>(':scope > p')]
-            .map((paragraph) => serializeInlineHtml(paragraph))
+        ? readParagraphsValue(state.element)
         : cleanText(state.element.textContent ?? '');
     const valuesMatch = (left: EditableTextValue, right: EditableTextValue) =>
       JSON.stringify(left) === JSON.stringify(right);
     const renderValue = (state: EditableTextState, value: EditableTextValue) => {
       if (state.kind === 'paragraphs' && Array.isArray(value)) {
-        const paragraphs = value.map((text) => {
+        const texts = value.length ? value : [''];
+        const paragraphs = texts.map((text) => {
           const paragraph = document.createElement('p');
           fillParagraph(paragraph, text);
           return paragraph;
