@@ -115,8 +115,10 @@ export function getDevSectionOutline() {
 }
 
 export function setDevSectionOutline(entries: OutlineEntry[]) {
+  // Caller may pass the live module array — copy before clear/push.
+  const next = entries === outline ? [...entries] : entries;
   outline.length = 0;
-  outline.push(...entries);
+  outline.push(...next);
   writeRootDatasets();
 }
 
