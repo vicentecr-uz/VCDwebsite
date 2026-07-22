@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser';
@@ -92,7 +92,22 @@ function loadProjectFromDisk(slug: string): ProjectDocument | undefined {
   }
 }
 
+/** Dev must read JSON from disk — the eager glob stays stale after writes / stack changes. */
+function loadAllProjectsFromDisk(): ProjectDocument[] {
+  const dir = path.join(process.cwd(), 'src/content/projects');
+  return readdirSync(dir)
+    .filter((file) => file.endsWith('.json') && !file.endsWith('-old.json'))
+    .map((file) => {
+      const slug = file.replace(/\.json$/, '');
+      const doc = JSON.parse(readFileSync(path.join(dir, file), 'utf8')) as ProjectDocument;
+      return normalizeProject(slug, doc);
+    });
+}
+
 export function loadAllProjects(): ProjectDocument[] {
+  if (import.meta.env.DEV) {
+    return loadAllProjectsFromDisk();
+  }
   return Object.entries(projectModules)
     .filter(([filePath]) => !filePath.endsWith('-old.json'))
     .map(([filePath, module]) => normalizeProject(projectPathToSlug(filePath), module.default));
@@ -250,7 +265,7 @@ export function getEditableProjectDocuments(): Map<string, string> {
     }
   }
   map.set('[retired-project]', 'src/content/projects/[retired-project].json');
-  map.set('the-rams', 'src/content/projects/the-rams.json');
+  map.set('[retired-project]', 'src/content/projects/[retired-project].json');
   map.set('parentpal', 'src/content/projects/parentpal.json');
   map.set('conic-collection', 'src/content/projects/conic-collection.json');
   map.set('styles', 'src/content/pages/styles.json');
