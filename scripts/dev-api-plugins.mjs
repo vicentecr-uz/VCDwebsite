@@ -2,22 +2,8 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import {
-  deleteViewSection,
-  insertViewSection,
-  readDevDocument,
-  resolveDevFieldTarget,
-  writeDevDocument,
-} from './view-dev-sections.mjs';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 
-export {
-  deleteViewSection,
-  insertViewSection,
-  readDevDocument,
-  resolveDevFieldTarget,
-  writeDevDocument,
-} from './view-dev-sections.mjs';
 export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
 
 async function writeProjectJson(file, data) {
@@ -25,7 +11,7 @@ async function writeProjectJson(file, data) {
   await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
-const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'view-only']);
+const VALID_STATUSES = new Set(['published', 'draft', 'teaser']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
 
 function validateStatus(status, fallback = 'draft') {
@@ -67,59 +53,6 @@ function rewriteDraftRefs(node, oldSlug, newSlug) {
   }
 }
 
-async function removeProjectFromViews(slug) {
-  const viewsDir = path.join(process.cwd(), 'src/content/views');
-  for (const file of readdirSync(viewsDir)) {
-    if (!file.endsWith('.json') || file === '_registry.json') continue;
-    const viewId = file.replace(/\.json$/, '');
-    const viewPath = path.join(viewsDir, file);
-    const view = JSON.parse(await readFile(viewPath, 'utf8'));
-    if (Array.isArray(view.projects)) {
-      const before = view.projects.length;
-      view.projects = view.projects.filter((entry) => entry.slug !== slug);
-      if (view.projects.length !== before) {
-        await writeProjectJson(viewPath, view);
-      }
-    }
-    const overlayPath = path.join(viewsDir, 'overlays', viewId, `${slug}.json`);
-    try {
-      await rm(overlayPath, { force: true });
-    } catch {
-      // no overlay for this view
-    }
-  }
-}
-
-async function renameProjectInViews(oldSlug, newSlug) {
-  const viewsDir = path.join(process.cwd(), 'src/content/views');
-  for (const file of readdirSync(viewsDir)) {
-    if (!file.endsWith('.json') || file === '_registry.json') continue;
-    const viewId = file.replace(/\.json$/, '');
-    const viewPath = path.join(viewsDir, file);
-    const view = JSON.parse(await readFile(viewPath, 'utf8'));
-    let viewChanged = false;
-    if (Array.isArray(view.projects)) {
-      for (const entry of view.projects) {
-        if (entry.slug === oldSlug) {
-          entry.slug = newSlug;
-          viewChanged = true;
-        }
-      }
-    }
-    if (viewChanged) {
-      await writeProjectJson(viewPath, view);
-    }
-    const overlayDir = path.join(viewsDir, 'overlays', viewId);
-    const oldOverlay = path.join(overlayDir, `${oldSlug}.json`);
-    const newOverlay = path.join(overlayDir, `${newSlug}.json`);
-    try {
-      await rename(oldOverlay, newOverlay);
-    } catch {
-      // no overlay for this view
-    }
-  }
-}
-
 async function assertModernProject(slug) {
   const relativeFile = resolveEditableDocument(slug);
   if (!relativeFile) {
@@ -133,64 +66,21 @@ async function assertModernProject(slug) {
   return { relativeFile, file, data };
 }
 
-function loadViewRegistry() {
-  const file = path.join(process.cwd(), 'src/content/views/_registry.json');
-  return JSON.parse(readFileSync(file, 'utf8'));
+export async function readDevDocument(relativeFile) {
+  return JSON.parse(await readFile(path.join(process.cwd(), relativeFile), 'utf8'));
 }
 
-export function isRegisteredViewId(viewId) {
-  const registry = loadViewRegistry();
-  return (registry.views ?? []).some((entry) => entry.id === viewId);
+export async function writeDevDocument(relativeFile, data) {
+  await writeProjectJson(path.join(process.cwd(), relativeFile), data);
 }
 
-const ACTIVE_VIEW_FILE = 'active-view';
-
-function activeViewFilePath() {
-  return path.join(process.cwd(), '.dev-session', ACTIVE_VIEW_FILE);
-}
-
-export function readActiveViewFile() {
-  try {
-    return readFileSync(activeViewFilePath(), 'utf8').trim();
-  } catch {
-    return '';
+export function resolveDevFieldTarget(slug, _viewId, fieldPath) {
+  const relativeFile = resolveEditableDocument(slug);
+  if (!relativeFile) throw new Error('Project not found.');
+  if (!Array.isArray(fieldPath) || !fieldPath.length) {
+    throw new Error('Invalid field path.');
   }
-}
-
-function viewIdFromRequest(req, body = {}) {
-  const fromBody = String(body.viewId || '').trim();
-  if (fromBody && isRegisteredViewId(fromBody)) return fromBody;
-  const fromEnv = String(process.env.VIEW_ID || '').trim();
-  if (fromEnv) return fromEnv;
-  const fromFile = readActiveViewFile();
-  if (fromFile && isRegisteredViewId(fromFile)) return fromFile;
-  return '';
-}
-
-export { viewIdFromRequest };
-
-export function buildViewPreview(viewId) {
-  const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
-  const view = JSON.parse(readFileSync(viewPath, 'utf8'));
-  const projects = [...(view.projects ?? [])].sort(
-    (left, right) => (left.order ?? 999) - (right.order ?? 999),
-  );
-  const grids = {};
-  for (const grid of ['home', 'work']) {
-    grids[grid] = {
-      projects: projects.map((entry) => ({
-        slug: entry.slug,
-        order: entry.order ?? 999,
-        full: Boolean(entry.card?.full),
-      })),
-    };
-  }
-  return {
-    viewId,
-    title: view.title ?? viewId,
-    nav: view.site?.nav ?? ['home', 'work', 'play', 'about'],
-    grids,
-  };
+  return { relativeFile, path: fieldPath, ensureOverlay: false };
 }
 
 const DEFAULT_IMAGE_VARIANTS = {
@@ -694,122 +584,9 @@ export function listingOrderDevWriter() {
             }
           }
 
-          const viewId = viewIdFromRequest(req, body);
-          if (viewId && (grid === 'home' || grid === 'work')) {
-            const viewPath = path.join(process.cwd(), `src/content/views/${viewId}.json`);
-            const viewData = JSON.parse(await readFile(viewPath, 'utf8'));
-            const projectItems = items.filter((entry) => entry.type === 'project');
-            const orderBySlug = new Map(
-              projectItems.map((entry) => [String(entry.slug || '').trim(), Number(entry.order)]),
-            );
-            const fullBySlug = new Map(
-              projectItems
-                .filter((entry) => typeof entry.full === 'boolean')
-                .map((entry) => [String(entry.slug || '').trim(), entry.full]),
-            );
-
-            if (Array.isArray(viewData.projects)) {
-              for (const project of viewData.projects) {
-                const nextOrder = orderBySlug.get(project.slug);
-                if (nextOrder != null) {
-                  project.order = nextOrder;
-                }
-                if (fullBySlug.has(project.slug)) {
-                  project.card = { ...(project.card ?? {}), full: fullBySlug.get(project.slug) };
-                }
-              }
-              viewData.projects.sort((left, right) => (left.order ?? 999) - (right.order ?? 999));
-              await writeProjectJson(viewPath, viewData);
-            }
-          }
-
           send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not save listing order.' });
-        }
-      });
-    },
-  };
-}
-
-export function devViewSwitcher() {
-  return {
-    name: 'dev-view-switcher',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api/dev-views', (req, res, next) => {
-        if (req.method !== 'GET') {
-          next();
-          return;
-        }
-        try {
-          const registry = loadViewRegistry();
-          res.statusCode = 200;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ views: registry.views ?? [] }));
-        } catch {
-          res.statusCode = 500;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ error: 'Could not load view registry.' }));
-        }
-      });
-
-      server.middlewares.use('/api/dev-view-preview', (req, res, next) => {
-        if (req.method !== 'GET') {
-          next();
-          return;
-        }
-        try {
-          const url = new URL(req.url ?? '/', 'http://localhost');
-          const viewId = String(url.searchParams.get('viewId') || '').trim();
-          if (!viewId || !isRegisteredViewId(viewId)) {
-            res.statusCode = 400;
-            res.setHeader('content-type', 'application/json');
-            res.end(JSON.stringify({ error: 'Unknown view.' }));
-            return;
-          }
-          res.statusCode = 200;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify(buildViewPreview(viewId)));
-        } catch {
-          res.statusCode = 500;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify({ error: 'Could not load view preview.' }));
-        }
-      });
-
-      // Alt+V "Apply": persist the chosen view and trigger a dev-server restart
-      // (touching the config makes Astro re-read the active-view file → new VIEW_ID).
-      server.middlewares.use('/api/dev-set-view', async (req, res, next) => {
-        if (req.method !== 'POST') {
-          next();
-          return;
-        }
-        const send = (status, payload) => {
-          res.statusCode = status;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify(payload));
-        };
-        try {
-          const chunks = [];
-          for await (const chunk of req) chunks.push(chunk);
-          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const viewId = String(body.viewId || '').trim();
-
-          if (viewId && !isRegisteredViewId(viewId)) {
-            send(400, { error: 'Unknown view.' });
-            return;
-          }
-
-          // The dev-session supervisor watches this file and restarts Astro,
-          // which re-reads it at config load to bake in the new VIEW_ID.
-          const file = path.join(process.cwd(), '.dev-session', 'active-view');
-          mkdirSync(path.dirname(file), { recursive: true });
-          writeFileSync(file, viewId, 'utf8');
-
-          send(200, { ok: true, viewId });
-        } catch {
-          send(500, { error: 'Could not switch view.' });
         }
       });
     },
@@ -846,7 +623,6 @@ export function projectDeleteDevWriter() {
             recursive: true,
             force: true,
           });
-          await removeProjectFromViews(slug);
           send(200, { ok: true });
         } catch (error) {
           send(400, { error: error instanceof Error ? error.message : 'Could not delete the project.' });
@@ -910,7 +686,6 @@ export function projectRenameDevWriter() {
           }
           await writeProjectJson(newFile, data);
           await rm(file, { force: true });
-          await renameProjectInViews(slug, newSlug);
           send(200, { ok: true, slug: newSlug });
         } catch (error) {
           send(400, { error: error instanceof Error ? error.message : 'Could not rename the project.' });

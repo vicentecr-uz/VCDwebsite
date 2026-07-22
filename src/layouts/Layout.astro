@@ -4,9 +4,6 @@ import DevModeController from '../components/DevModeController.astro';
 import DevTextEditor from '../components/DevTextEditor.astro';
 import DevProjectGridEditor from '../components/DevProjectGridEditor.astro';
 import DevListingGridEditor from '../components/DevListingGridEditor.astro';
-import DevViewSwitcher from '../components/DevViewSwitcher.astro';
-import DevViewPreview from '../components/DevViewPreview.astro';
-import { getActiveViewId, isViewBuild } from '../lib/views';
 
 interface Props {
   title: string;
@@ -21,17 +18,14 @@ const {
   serif = false,
 } = Astro.props;
 const showDevTools = import.meta.env.DEV;
-const viewBuild = isViewBuild();
-const viewId = getActiveViewId() || '';
 ---
 
 <!doctype html>
-<html lang="en" data-view-id={viewId || undefined}>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
-    {viewBuild && <meta name="robots" content="noindex, nofollow" />}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@300;400;500;600;700;800;900&display=swap" />
@@ -56,8 +50,6 @@ const viewId = getActiveViewId() || '';
     {showDevTools && <DevModeController />}
     {showDevTools && <DevProjectGridEditor />}
     {showDevTools && <DevListingGridEditor />}
-    {showDevTools && <DevViewPreview />}
-    {showDevTools && <DevViewSwitcher />}
 
     <script>
       import gsap from 'gsap';

@@ -1,8 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { loadViewConfig, getActiveViewId, isViewBuild, type SiteViewConfig } from './views';
 
-export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'view-only';
+export type ProjectStatus = 'published' | 'draft' | 'teaser';
 export type ProjectStack = 'modern' | 'legacy';
 
 export type ProjectListingCard = {
@@ -103,33 +102,17 @@ export function loadProjectBySlug(slug: string): ProjectDocument | undefined {
   return loadProjectFromDisk(slug) ?? loadAllProjects().find((project) => project.slug === slug);
 }
 
-function viewIncludesSlug(view: SiteViewConfig | undefined, slug: string): boolean {
-  return Boolean(view?.projects.some((entry) => entry.slug === slug));
-}
-
 export function shouldIncludeProjectInBuild(
   project: ProjectDocument,
-  options: { dev?: boolean; viewId?: string } = {},
+  options: { dev?: boolean } = {},
 ): boolean {
   const dev = options.dev ?? import.meta.env.DEV;
-  const view = loadViewConfig(options.viewId);
-
   if (dev) return true;
-
-  if (isViewBuild() || options.viewId) {
-    if (!viewIncludesSlug(view, project.slug)) return false;
-    if (project.status === 'draft') return false;
-    return true;
-  }
-
-  if (project.status === 'draft' || project.status === 'view-only') {
-    return false;
-  }
-
+  if (project.status === 'draft') return false;
   return project.status === 'published' || project.status === 'teaser';
 }
 
-export function getModernProjectSlugsForBuild(options: { dev?: boolean; viewId?: string } = {}): string[] {
+export function getModernProjectSlugsForBuild(options: { dev?: boolean } = {}): string[] {
   return loadAllProjects()
     .filter((project) => project.stack === 'modern')
     .filter((project) => shouldIncludeProjectInBuild(project, options))
@@ -145,7 +128,6 @@ function listingCardForGrid(
   const status = project.status ?? 'published';
 
   if (!dev && status === 'draft') return undefined;
-  if (!dev && status === 'view-only' && !isViewBuild()) return undefined;
 
   const isTeaser = status === 'teaser';
   const image = isTeaser
@@ -169,26 +151,8 @@ function listingCardForGrid(
 }
 
 export function getProjectGridListings(grid: 'home' | 'work' | 'play'): ProjectGridListing[] {
-  const view = loadViewConfig();
   const projects = loadAllProjects();
   const listings: ProjectGridListing[] = [];
-
-  if (view && (grid === 'home' || grid === 'work')) {
-    const ordered = [...view.projects].sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
-    for (const entry of ordered) {
-      const project = projects.find((item) => item.slug === entry.slug);
-      if (!project) continue;
-      const baseListing = project.listings?.[grid];
-      if (!baseListing) continue;
-      const merged = {
-        ...baseListing,
-        ...(entry.card ?? {}),
-      };
-      const item = listingCardForGrid(project, merged, grid);
-      if (item) listings.push(item);
-    }
-    return listings;
-  }
 
   for (const project of projects) {
     const listing = project.listings?.[grid];
@@ -207,11 +171,6 @@ export function getProjectGridListings(grid: 'home' | 'work' | 'play'): ProjectG
 }
 
 export function getPlayGridItems(): Array<ProjectGridListing | PlayLinkItem & { isLink: true }> {
-  const view = loadViewConfig();
-  if (view?.site?.nav && !view.site.nav.includes('play')) {
-    return [];
-  }
-
   const projectItems = getProjectGridListings('play');
   const linkItems = Object.entries(playLinkModules)
     .map(([filePath, entry]) => ({
