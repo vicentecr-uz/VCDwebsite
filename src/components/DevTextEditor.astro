@@ -628,6 +628,18 @@
       updateActions();
     });
 
+    window.addEventListener('vcd:before-reload', (event) => {
+      const dirtyCount = unsavedChangeCount();
+      if (!dirtyCount) return;
+
+      const message = dirtyCount === 1
+        ? 'Reload will discard 1 unsaved edit on this page. Continue?'
+        : `Reload will discard ${dirtyCount} unsaved edits on this page. Continue?`;
+      if (!window.confirm(message)) {
+        event.preventDefault();
+      }
+    });
+
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
