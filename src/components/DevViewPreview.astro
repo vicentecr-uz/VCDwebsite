@@ -2,6 +2,10 @@
 /** Dev-only employer view preview (sessionStorage + client DOM apply). */
 ---
 
+<p class="dev-view-preview-badge" data-dev-view-preview-badge hidden>
+  <span data-dev-view-preview-badge-label></span>
+</p>
+
 <script>
   const STORAGE_KEY = 'vcd-dev-view';
 
@@ -83,7 +87,6 @@
     if (!viewId) return;
 
     document.documentElement.dataset.viewId = viewId;
-    document.documentElement.classList.add('is-dev-view-preview');
 
     const response = await fetch(`/api/dev-view-preview?viewId=${encodeURIComponent(viewId)}`);
     const preview = await response.json() as ViewPreview;
@@ -97,20 +100,40 @@
 
     filterHeaderNav(nav);
     applyGridPreview(preview);
+
+    const badge = document.querySelector<HTMLElement>('[data-dev-view-preview-badge]');
+    const badgeLabel = document.querySelector<HTMLElement>('[data-dev-view-preview-badge-label]');
+    if (badge && badgeLabel) {
+      badgeLabel.textContent = `${preview.title || preview.viewId} preview`;
+      badge.hidden = false;
+    }
   };
 
   initDevViewPreview();
 </script>
 
-<style is:global>
-  html.is-dev-view-preview::before {
-    content: '';
+<style>
+  .dev-view-preview-badge {
     position: fixed;
-    inset: 0 auto auto 0;
-    z-index: 89;
-    width: 0.35em;
-    height: 100vh;
-    background: #6f6b62;
+    left: max(1em, env(safe-area-inset-left));
+    bottom: max(1em, env(safe-area-inset-bottom));
+    z-index: 88;
+    margin: 0;
+    padding: 0.4em 0.7em;
+    border-radius: var(--radius-control-smooth);
+    background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.1);
+    color: var(--color-text-soft);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
     pointer-events: none;
+    user-select: none;
+  }
+
+  .dev-view-preview-badge[hidden] {
+    display: none;
   }
 </style>
