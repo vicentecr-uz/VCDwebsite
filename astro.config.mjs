@@ -1531,7 +1531,18 @@ function contentNavDevWriter() {
             return;
           }
 
-          data.outline = outline;
+          const existingOutline = isValidOutline(data.outline)
+            ? normalizeOutlineForWrite(data.outline)
+            : [];
+          let outlinePreserved = false;
+          if (outline.length === 0 && existingOutline.length > 0) {
+            // Editor saves can ship an empty in-memory outline (e.g. after HMR). Never wipe a
+            // populated sidebar from disk — still apply sectionIds / showTitles below.
+            data.outline = existingOutline;
+            outlinePreserved = true;
+          } else {
+            data.outline = outline;
+          }
           delete data.nav;
 
           if (sectionIds) {
@@ -1581,7 +1592,7 @@ function contentNavDevWriter() {
           }
 
           await writeContentJson(file, data);
-          send(200, { ok: true });
+          send(200, { ok: true, ...(outlinePreserved ? { outlinePreserved: true } : {}) });
         } catch {
           send(400, { error: 'Could not parse or write the nav update.' });
         }
