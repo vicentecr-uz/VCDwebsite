@@ -1,0 +1,356 @@
+---
+interface Props {
+  documentKey: string;
+}
+
+const { documentKey } = Astro.props;
+---
+
+<div class="dev-image-drop" data-dev-image-drop hidden>
+  <p>Drop images to add</p>
+</div>
+
+<dialog class="dev-image-drop-dialog" data-dev-image-picker>
+  <form method="dialog" class="dev-image-drop-dialog__panel">
+    <h2>Add image</h2>
+    <div class="dev-image-drop-dialog__drop" data-dev-image-dropzone>
+      <p class="dev-image-drop-dialog__drop-label">Drop images here</p>
+      <button type="button" data-dev-image-choose>Choose from Finder</button>
+      <input type="file" accept="image/*" multiple hidden data-dev-image-file-input />
+    </div>
+    <p class="dev-image-drop-dialog__count" data-dev-image-picker-count hidden></p>
+    <div class="dev-image-drop-dialog__actions">
+      <button type="button" data-dev-image-pick="image" disabled>Single image</button>
+      <button type="button" data-dev-image-pick="imageGrid" disabled>Image grid</button>
+      <button type="button" data-dev-image-placeholder>Add placeholder</button>
+      <button type="button" value="cancel">Cancel</button>
+    </div>
+  </form>
+</dialog>
+
+<script define:vars={{ documentKey }}>
+  const dropZone = document.querySelector('[data-dev-project-drop-zone]');
+  const overlay = document.querySelector('[data-dev-image-drop]');
+  const picker = document.querySelector('[data-dev-image-picker]');
+  const pickerCount = document.querySelector('[data-dev-image-picker-count]');
+  const dropzone = document.querySelector('[data-dev-image-dropzone]');
+  const fileInput = document.querySelector('[data-dev-image-file-input]');
+  const chooseButton = document.querySelector('[data-dev-image-choose]');
+  const pickButtons = picker?.querySelectorAll('[data-dev-image-pick]') ?? [];
+  const placeholderButton = document.querySelector('[data-dev-image-placeholder]');
+
+  let pendingFiles = [];
+  let pendingInsertIndex = 0;
+  let dragDepth = 0;
+
+  const syncVisibility = () => {
+    const devMode = document.documentElement.classList.contains('is-dev-mode');
+    if (overlay instanceof HTMLElement) overlay.hidden = !devMode;
+  };
+
+  const spacingBlocks = () => Array.from(
+    document.querySelectorAll('[data-dev-spacing-document]'),
+  );
+
+  const insertIndexForY = (clientY) => {
+    const blocks = spacingBlocks();
+    if (!blocks.length) return 0;
+    for (let index = 0; index < blocks.length; index += 1) {
+      const rect = blocks[index].getBoundingClientRect();
+      if (clientY < rect.top + rect.height / 2) {
+        const path = JSON.parse(blocks[index].dataset.devSpacingPath || '[]');
+        const sectionIndex = path.at(-2);
+        return typeof sectionIndex === 'number' ? sectionIndex : index;
+      }
+    }
+    const last = blocks[blocks.length - 1];
+    const path = JSON.parse(last.dataset.devSpacingPath || '[]');
+    const sectionIndex = path.at(-2);
+    return typeof sectionIndex === 'number' ? sectionIndex + 1 : blocks.length;
+  };
+
+  const syncPickerState = () => {
+    const count = pendingFiles.length;
+    if (pickerCount instanceof HTMLElement) {
+      pickerCount.hidden = count === 0;
+      pickerCount.textContent = `${count} file${count === 1 ? '' : 's'} selected`;
+    }
+    pickButtons.forEach((button) => {
+      button.disabled = count === 0;
+    });
+    if (placeholderButton instanceof HTMLButtonElement) {
+      placeholderButton.disabled = count > 0;
+    }
+  };
+
+  const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+
+  const uploadFiles = async (files) => {
+    const payload = await Promise.all(files.map(async (file) => ({
+      filename: file.name,
+      data: await readFileAsBase64(file),
+      mimeType: file.type,
+    })));
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ document: documentKey, files: payload }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Upload failed.');
+    return result.filenames;
+  };
+
+  const insertSection = async (type, filenames = []) => {
+    const response = await fetch('/api/content-section', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        document: documentKey,
+        index: pendingInsertIndex,
+        type,
+        filenames,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not insert images.');
+    window.dispatchEvent(new CustomEvent('vcd:dev-section-inserted', {
+      detail: {
+        documentKey,
+        index: pendingInsertIndex,
+        section: result.section,
+      },
+    }));
+    pendingFiles = [];
+    syncPickerState();
+    if (picker instanceof HTMLDialogElement) picker.close();
+  };
+
+  const openPicker = (clientY) => {
+    if (typeof clientY === 'number') {
+      pendingInsertIndex = insertIndexForY(clientY);
+    }
+    if (!(picker instanceof HTMLDialogElement)) return;
+    syncPickerState();
+    picker.showModal();
+  };
+
+  const setPendingFiles = (files) => {
+    pendingFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    syncPickerState();
+  };
+
+  const handleFiles = (files, clientY) => {
+    const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    if (!images.length) return;
+    pendingInsertIndex = insertIndexForY(clientY);
+    if (images.length === 1) {
+      pendingFiles = images;
+      openPicker(clientY);
+      return;
+    }
+    void (async () => {
+      try {
+        const filenames = await uploadFiles(images);
+        await insertSection('imageGrid', filenames);
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Could not add images.');
+      }
+    })();
+  };
+
+  const prevent = (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    event.preventDefault();
+  };
+
+  const onDragEnter = (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    dragDepth += 1;
+    if (overlay instanceof HTMLElement) overlay.dataset.active = 'true';
+    prevent(event);
+  };
+
+  const onDragLeave = () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (dragDepth === 0 && overlay instanceof HTMLElement) {
+      delete overlay.dataset.active;
+    }
+  };
+
+  const onDrop = (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    event.preventDefault();
+    dragDepth = 0;
+    if (overlay instanceof HTMLElement) delete overlay.dataset.active;
+    const transfer = event.dataTransfer;
+    if (!transfer?.files?.length) return;
+    handleFiles(transfer.files, event.clientY);
+  };
+
+  pickButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const type = button.getAttribute('data-dev-image-pick');
+      if (!type || !pendingFiles.length) return;
+      void (async () => {
+        try {
+          const filenames = await uploadFiles(pendingFiles);
+          await insertSection(type, filenames);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not add images.');
+        }
+      })();
+    });
+  });
+
+  placeholderButton?.addEventListener('click', () => {
+    void (async () => {
+      try {
+        await insertSection('placeholder');
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Could not add placeholder.');
+      }
+    })();
+  });
+
+  chooseButton?.addEventListener('click', () => {
+    if (fileInput instanceof HTMLInputElement) fileInput.click();
+  });
+
+  fileInput?.addEventListener('change', () => {
+    if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) return;
+    setPendingFiles(fileInput.files);
+    fileInput.value = '';
+  });
+
+  dropzone?.addEventListener('dragover', (event) => {
+    event.preventDefault();
+    if (dropzone instanceof HTMLElement) dropzone.dataset.active = 'true';
+  });
+
+  dropzone?.addEventListener('dragleave', () => {
+    if (dropzone instanceof HTMLElement) delete dropzone.dataset.active;
+  });
+
+  dropzone?.addEventListener('drop', (event) => {
+    event.preventDefault();
+    if (dropzone instanceof HTMLElement) delete dropzone.dataset.active;
+    if (!event.dataTransfer?.files?.length) return;
+    setPendingFiles(event.dataTransfer.files);
+  });
+
+  picker?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
+    if (picker instanceof HTMLDialogElement) picker.close();
+    pendingFiles = [];
+    syncPickerState();
+  });
+
+  const root = dropZone ?? document.body;
+  root.addEventListener('dragenter', onDragEnter);
+  root.addEventListener('dragover', prevent);
+  root.addEventListener('dragleave', onDragLeave);
+  root.addEventListener('drop', onDrop);
+
+  document.addEventListener('vcd:dev-mode-change', syncVisibility);
+
+  window.addEventListener('vcd:dev-image-picker-open', ((event) => {
+    const detail = event.detail ?? {};
+    if (detail.documentKey !== documentKey || typeof detail.index !== 'number') return;
+    pendingInsertIndex = detail.index;
+    openPicker();
+  }));
+
+  syncVisibility();
+</script>
+
+<style>
+  .dev-image-drop {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    place-items: center;
+    background: rgba(255, 255, 255, 0.55);
+    color: #222;
+    font-size: 1.1rem;
+    letter-spacing: -0.02em;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .dev-image-drop[data-active='true'] {
+    opacity: 1;
+  }
+
+  .dev-image-drop-dialog::backdrop {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(8px);
+  }
+
+  .dev-image-drop-dialog__panel {
+    display: grid;
+    gap: 0.85em;
+    width: min(28em, calc(100vw - 2em));
+    padding: 1.25em;
+    border: 1px solid #ddd;
+    border-radius: 0.5em;
+    background: #fff;
+  }
+
+  .dev-image-drop-dialog__drop {
+    display: grid;
+    gap: 0.65em;
+    padding: 1.25em;
+    border: 1px dashed #ccc;
+    border-radius: 0.45em;
+    background: #fafafa;
+    text-align: center;
+  }
+
+  .dev-image-drop-dialog__drop[data-active='true'] {
+    border-color: #888;
+    background: #f3f3f3;
+  }
+
+  .dev-image-drop-dialog__drop-label {
+    margin: 0;
+    color: #555;
+    font-size: 0.95em;
+  }
+
+  .dev-image-drop-dialog__count {
+    margin: 0;
+    color: #444;
+    font-size: 0.9em;
+  }
+
+  .dev-image-drop-dialog__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+  }
+
+  .dev-image-drop-dialog__actions button {
+    padding: 0.55em 0.85em;
+    border: 1px solid #ccc;
+    border-radius: 0.35em;
+    background: #f7f7f7;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .dev-image-drop-dialog__actions button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+</style>
