@@ -1,0 +1,34 @@
+---
+description: Git branches, localhost preview, and parallel Cursor chats
+alwaysApply: true
+---
+
+# Git workflow & localhost preview
+
+**One local checkout = one branch in the browser.** `localhost:4321` serves whatever branch is checked out in this repo folder. The user controls preview via Cursor’s **Checkout branch** on a chat — not by agents switching branches silently.
+
+## Never checkout without permission
+
+- Do **not** run `git checkout`, `git switch`, or create a branch that checks out locally unless the user explicitly asks (e.g. they clicked Checkout branch in that chat, or said “check out …”).
+- Before any git operation, run `git branch --show-current` and mention which branch you’re on if it matters.
+
+## Parallel work (other chats / features)
+
+- Prefer **cloud agents** for side features so commits push to GitHub without changing the user’s local checkout.
+- Local alternative: **git worktree** in a sibling folder (e.g. `../VCDwebsite-<branch>`) — never steal the main repo checkout for parallel edits.
+- Do **not** start unrelated feature work on the user’s current preview branch without asking.
+
+## Commits
+
+- Only stage and commit files changed **in this chat session**. Leave other unstaged edits alone.
+- One logical change set per branch/PR. Say which branch commits land on.
+
+## PRs and main
+
+- **Open PR** ≠ merge. Merge only when the user asks.
+- After merge, preview `main` with: `git checkout main && git pull`, then reload the browser.
+- Production deploys from `main` push (Cloudflare Pages).
+
+## Dev session
+
+Reuse the existing dev session (`bun run dev:session:status`) — do not start duplicate servers. See `dev-session.mdc`.
