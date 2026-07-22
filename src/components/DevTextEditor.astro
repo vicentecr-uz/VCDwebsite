@@ -47,6 +47,11 @@
     initDevSectionOutlineSync,
     remapDevSectionOutlineId,
   } from '../scripts/devSectionOutlineSync';
+  import {
+    buildIndexMapFromOrder,
+    remapSectionPaths,
+    resetSectionOrderIds,
+  } from '../scripts/devSectionPaths';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
@@ -150,7 +155,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'caption' | 'listing-order';
+      kind: 'crop' | 'grid' | 'caption' | 'listing-order' | 'section-order';
       payload: Record<string, unknown>;
       revert: () => void;
     };
@@ -422,6 +427,21 @@
       }
       path[1] += delta;
       return true;
+    };
+
+    const remapPathsInStates = (indexMap: Record<number, number>) => {
+      textStates.forEach((state) => {
+        if (state.path[0] === 'sections' && typeof state.path[1] === 'number') {
+          const newIdx = indexMap[state.path[1]];
+          if (newIdx !== undefined) state.path[1] = newIdx;
+        }
+      });
+      spacingStates.forEach((state) => {
+        if (state.path[0] === 'sections' && typeof state.path[1] === 'number') {
+          const newIdx = indexMap[state.path[1]];
+          if (newIdx !== undefined) state.path[1] = newIdx;
+        }
+      });
     };
 
     const reindexDevPaths = (fromIndex: number, delta: number) => {
@@ -1436,7 +1456,8 @@
         (detail.kind !== 'crop'
           && detail.kind !== 'grid'
           && detail.kind !== 'caption'
-          && detail.kind !== 'listing-order')
+          && detail.kind !== 'listing-order'
+          && detail.kind !== 'section-order')
       ) {
         return;
       }
@@ -1784,7 +1805,10 @@
       const pendingChanges = [...pendingMedia.values()];
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
-      const imageChanges = pendingChanges.filter((change) => change.kind !== 'listing-order');
+      const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
+      const imageChanges = pendingChanges.filter(
+        (change) => change.kind !== 'listing-order' && change.kind !== 'section-order',
+      );
       if (!dirtyText.length && !dirtySpacing.length && !pendingChanges.length && !structuralPending) return;
       saveButton.disabled = true;
       revertButton.disabled = true;
@@ -1872,6 +1896,22 @@
           syncSpacingControl(state);
         });
         await persistPendingSectionDeletes();
+        for (const change of sectionOrderChanges) {
+          const response = await fetch('/api/content-section-order', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || 'Could not save section order.');
+          const order = Array.isArray(change.payload.order)
+            ? change.payload.order.map((value) => Number(value))
+            : [];
+          const indexMap = buildIndexMapFromOrder(order);
+          remapSectionPaths(indexMap);
+          remapPathsInStates(indexMap);
+          resetSectionOrderIds();
+        }
         insertedSections.forEach(({ clientId, serverId }) => {
           remapDevSectionOutlineId(clientId, serverId);
         });
@@ -2373,23 +2413,32 @@
 
   /* ── Section delete (DEV) ───────────────────────────────── */
   /*
-    Invisible hover bridge into the left gutter so the cursor can reach the
-    bin without leaving :hover on the section (button sits outside the box).
+    Delete uses a right gutter bridge (::after). Drag uses a real bridge element
+    in DevSectionReorderEditor so it can sit below the handle in the stack.
   */
-  .is-dev-mode [data-dev-section-deletable]::before {
+  .is-dev-mode [data-dev-section-deletable]::after {
     content: '';
     position: absolute;
     top: 0;
     bottom: 0;
-    left: -3.25em;
-    width: 3.25em;
+    right: -4.5em;
+    width: 4.5em;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  .is-dev-mode
+    [data-dev-section-deletable].is-dev-section-controls-visible::after,
+  .is-dev-mode [data-dev-section-deletable]:hover::after {
+    pointer-events: auto;
   }
 
   .dev-section-delete {
     position: absolute;
     top: 50%;
-    left: 0;
-    z-index: 35;
+    right: 0;
+    left: auto;
+    z-index: 70;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2403,8 +2452,10 @@
     cursor: pointer;
     opacity: 0;
     pointer-events: none;
-    transform: translate(calc(-100% - 0.55em), -50%);
-    transition: opacity 0.15s ease, background-color 0.15s ease;
+    transform: translate(calc(100% + 0.55em), -50%);
+    transition:
+      opacity 0.15s ease 0.35s,
+      background-color 0.15s ease 0s;
   }
 
   .dev-section-delete[hidden] {
@@ -2417,6 +2468,11 @@
     even when painted in the margin gap) — exclude those so trash stays put.
   */
   .is-dev-mode
+    [data-dev-section-deletable].is-dev-section-controls-visible:not(
+      :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
+    )
+    > .dev-section-delete,
+  .is-dev-mode
     [data-dev-section-deletable]:hover:not(
       :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
     )
@@ -2428,6 +2484,7 @@
   .is-dev-mode .dev-section-delete:focus-visible {
     opacity: 1;
     pointer-events: auto;
+    transition-delay: 0s;
   }
 
   .dev-section-delete:hover,
@@ -2437,7 +2494,9 @@
 
   /* Keep delete out of the way while editing text (same as gap toolbar). */
   .is-dev-mode.is-dev-text-caret [data-dev-section-deletable] > .dev-section-delete,
-  .is-dev-mode.is-dev-text-caret [data-dev-section-deletable]::before {
+  .is-dev-mode.is-dev-text-caret [data-dev-section-deletable]::after,
+  .is-dev-mode.is-dev-text-caret [data-dev-section-deletable].is-dev-section-controls-visible
+    > .dev-section-delete {
     opacity: 0;
     pointer-events: none;
   }

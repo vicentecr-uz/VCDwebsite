@@ -537,6 +537,65 @@ export function projectSettingsDevWriter() {
   };
 }
 
+export function sectionOrderDevWriter() {
+  return {
+    name: 'section-order-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/content-section-order', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const documentKey = String(body.document || '').trim();
+          const relativeFile = resolveEditableDocument(documentKey);
+          if (!relativeFile) {
+            send(400, { error: 'That document cannot be updated.' });
+            return;
+          }
+          const order = Array.isArray(body.order) ? body.order : [];
+          const data = await readDevDocument(relativeFile);
+          const sections = Array.isArray(data.sections) ? data.sections : [];
+          if (order.length !== sections.length) {
+            send(400, { error: 'Section order does not match the document.' });
+            return;
+          }
+          const used = new Set();
+          const reordered = [];
+          for (const raw of order) {
+            const index = Number(raw);
+            if (
+              !Number.isInteger(index)
+              || index < 0
+              || index >= sections.length
+              || used.has(index)
+            ) {
+              send(400, { error: 'Invalid section order.' });
+              return;
+            }
+            used.add(index);
+            reordered.push(sections[index]);
+          }
+          data.sections = reordered;
+          await writeDevDocument(relativeFile, data);
+          send(200, { ok: true });
+        } catch {
+          send(400, { error: 'Could not save section order.' });
+        }
+      });
+    },
+  };
+}
+
 export function listingOrderDevWriter() {
   return {
     name: 'listing-order-dev-writer',
