@@ -15,52 +15,66 @@
 }
 
 /* One-sided stack: spacing lives between siblings, not as padding on each block */
-.project-page__main > * + * {
+.project-page__main > * + *,
+.project-page__main [data-dev-project-drop-zone] > * + * {
   margin-top: var(--space-section);
 }
 
-.project-page__main > .project-stack--precede-related + * {
+.project-page__main > .project-stack--precede-related + *,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--precede-related + * {
   margin-top: var(--space-related);
 }
 
-.project-page__main > .project-stack--related {
+.project-page__main > .project-stack--related,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--related {
   margin-top: var(--space-related);
 }
 
-.project-page__main > .project-stack--group {
+.project-page__main > .project-stack--group,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--group {
   margin-top: var(--space-group);
 }
 
-.project-page__main > .project-stack--major {
+.project-page__main > .project-stack--major,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--major {
   margin-top: var(--space-major);
 }
 
-.project-page__main > .project-stack--none {
+.project-page__main > .project-stack--none,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--none {
   margin-top: 0;
 }
 
 /* Flush galleries: abut consecutive flush blocks; first still uses default/own spacing.
    Explicit related / group / major / section spacing must still win (dev spacing preview + saved values). */
-.project-page__main > .project-stack--flush + .project-stack--flush:not(.project-stack--related):not(.project-stack--group):not(.project-stack--major):not([data-dev-spacing-value='section']):not([data-dev-spacing-value='related']):not([data-dev-spacing-value='group']):not([data-dev-spacing-value='major']) {
+.project-page__main > .project-stack--flush + .project-stack--flush:not(.project-stack--related):not(.project-stack--group):not(.project-stack--major):not([data-dev-spacing-value='section']):not([data-dev-spacing-value='related']):not([data-dev-spacing-value='group']):not([data-dev-spacing-value='major']),
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush:not(.project-stack--related):not(.project-stack--group):not(.project-stack--major):not([data-dev-spacing-value='section']):not([data-dev-spacing-value='related']):not([data-dev-spacing-value='group']):not([data-dev-spacing-value='major']) {
   margin-top: 0;
 }
 
 .project-page__main > .project-stack--flush + .project-stack--flush.project-stack--related,
-.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='related'] {
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='related'],
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush.project-stack--related,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='related'] {
   margin-top: var(--space-related);
 }
 
 .project-page__main > .project-stack--flush + .project-stack--flush.project-stack--group,
-.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='group'] {
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='group'],
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush.project-stack--group,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='group'] {
   margin-top: var(--space-group);
 }
 
 .project-page__main > .project-stack--flush + .project-stack--flush.project-stack--major,
-.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='major'] {
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='major'],
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush.project-stack--major,
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='major'] {
   margin-top: var(--space-major);
 }
 
-.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='section'] {
+.project-page__main > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='section'],
+.project-page__main [data-dev-project-drop-zone] > .project-stack--flush + .project-stack--flush[data-dev-spacing-value='section'] {
   margin-top: var(--space-section);
 }
 
@@ -120,6 +134,13 @@
   object-fit: fill;
   transform: translate(-50%, -50%) scale(var(--tapico-crop-zoom));
   transform-origin: center;
+}
+
+.project-media--placeholder.project-cropped,
+.project-image-grid__item.project-media--placeholder {
+  outline: 1px dashed color-mix(in srgb, #b8b4ab 85%, transparent);
+  outline-offset: -1px;
+  background: #f3f1ec;
 }
 
 /* ── Development image-editing affordance ────────────────── */

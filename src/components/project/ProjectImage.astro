@@ -98,6 +98,7 @@ const stackClass = projectStackClass(spacing, { flush });
 const spacingAttrs = spacingDevAttrs(documentKey, path, spacing);
 
 const isLead = kind === 'lead';
+const isPlaceholder = src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
 const hasCrop = !!suppliedVariants && Object.values(suppliedVariants).some(
   (variant) => variant && (variant.aspectRatio || variant.x || variant.y || variant.zoom),
 );
@@ -145,6 +146,7 @@ const editAttrs = editable
     style={normalized ? responsiveImageStyle(normalized) : undefined}
     {...editAttrs}
     {...(spacingAttrs ?? {})}
+    data-dev-section-deletable={editable ? 'image' : undefined}
   >
     <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
     {hasCaption && (
@@ -197,12 +199,14 @@ const editAttrs = editable
       stackClass,
     ]}
     {...(spacingAttrs ?? {})}
+    data-dev-section-deletable={editable ? 'image' : undefined}
   >
     <figure
       class:list={[
         'project-media',
         constrained && 'project-media--constrained',
         hasCrop && 'project-cropped project-responsive-image',
+        isPlaceholder && 'project-media--placeholder',
         editable && 'dev-image-edit-target',
       ]}
       style={normalized ? responsiveImageStyle(normalized) : undefined}
@@ -264,40 +268,7 @@ const editAttrs = editable
 )}
 
 <script>
-  const sizeProjectCropCovers = () => {
-    document.querySelectorAll<HTMLElement>('.project-cropped').forEach((frame) => {
-      const image = frame.querySelector<HTMLImageElement>(':scope > img');
-      if (!image?.naturalWidth || !image.naturalHeight) return;
+  import { bindProjectCropCovers } from '../../lib/projectCropCover';
 
-      frame.style.setProperty(
-        '--project-image-original-ratio',
-        `${image.naturalWidth} / ${image.naturalHeight}`,
-      );
-      const frameWidth = frame.clientWidth;
-      const frameHeight = frame.clientHeight;
-      if (!frameWidth || !frameHeight) return;
-
-      const coverScale = Math.max(
-        (frameWidth + 2) / image.naturalWidth,
-        (frameHeight + 2) / image.naturalHeight,
-      );
-      image.style.width = `${Math.ceil(image.naturalWidth * coverScale)}px`;
-      image.style.height = `${Math.ceil(image.naturalHeight * coverScale)}px`;
-    });
-  };
-
-  const initProjectCropCovers = () => {
-    sizeProjectCropCovers();
-    document.querySelectorAll<HTMLImageElement>('.project-cropped > img').forEach((image) => {
-      image.addEventListener('load', sizeProjectCropCovers);
-    });
-    window.addEventListener('resize', sizeProjectCropCovers);
-    if (typeof ResizeObserver !== 'undefined') {
-      document.querySelectorAll<HTMLElement>('.project-cropped').forEach((frame) => {
-        new ResizeObserver(sizeProjectCropCovers).observe(frame);
-      });
-    }
-  };
-
-  initProjectCropCovers();
+  bindProjectCropCovers();
 </script>

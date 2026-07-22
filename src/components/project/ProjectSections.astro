@@ -1,0 +1,209 @@
+---
+import ProjectBodyText from './ProjectBodyText.astro';
+import ProjectImage from './ProjectImage.astro';
+import ProjectImageGrid from './ProjectImageGrid.astro';
+import ProjectPressQuoteTicker from './ProjectPressQuoteTicker.astro';
+import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
+import ProjectSectionTitle from './ProjectSectionTitle.astro';
+import ProjectScrollFinale from './ProjectScrollFinale.astro';
+import { projectStackClass, resolveProjectSpacing, spacingDevAttrs } from '../../lib/projectStack';
+import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
+
+interface Props {
+  documentKey: string;
+  sections: Array<Record<string, unknown>>;
+}
+
+const { documentKey, sections } = Astro.props;
+
+const sectionSpacing = (section: Record<string, unknown>, fallback = 'section') =>
+  section?.spacing ? resolveProjectSpacing(String(section.spacing)) : fallback;
+
+const finaleFadeSection = sections.at(-2);
+const finaleTargetSection = sections.at(-1);
+const useScrollFinale = Boolean(
+  sections.length >= 2
+  && finaleFadeSection?.type === 'image'
+  && finaleTargetSection?.type === 'image',
+);
+const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
+---
+
+{mainSections.map((section, sectionIndex) => {
+  const path = ['sections', sectionIndex];
+  const spacing = sectionSpacing(section);
+  const type = String(section.type ?? '');
+
+  if (type === 'heroImage') {
+    return (
+      <ProjectImage
+        src={String(section.src ?? '')}
+        alt={String(section.alt ?? '')}
+        kind="lead"
+        variants={section.variants}
+        document={documentKey}
+        path={path}
+        cropId={String(section.id ?? 'hero')}
+        sectionId={section.sectionId as string | undefined}
+        spacing={spacing}
+      />
+    );
+  }
+
+  if (type === 'imageGrid') {
+    return (
+      <ProjectImageGrid
+        columns={section.columns as number | undefined}
+        items={section.items as never}
+        defaultAspectRatio={String(section.defaultAspectRatio ?? '1:1')}
+        constrained={section.constrained as never}
+        layouts={section.layouts as never}
+        document={documentKey}
+        basePath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'bodyText') {
+    return (
+      <ProjectBodyText
+        paragraphs={section.paragraphs as string[]}
+        documentKey={documentKey}
+        pathPrefix={[...path, 'paragraphs']}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'sectionTitle') {
+    return (
+      <ProjectSectionTitle
+        title={String(section.title ?? '')}
+        level={(section.level as 2 | 3 | undefined) ?? 2}
+        tightBottom={(section.tightBottom as boolean | undefined) ?? true}
+        spacing={spacing}
+        document={documentKey}
+        sectionPath={path}
+        sectionId={section.sectionId as string | undefined}
+        showTitle={section.showTitle as never}
+        hideWhenSidebarVisible={(section.hideWhenSidebarVisible as boolean | undefined) ?? false}
+      />
+    );
+  }
+
+  if (type === 'image') {
+    return (
+      <ProjectImage
+        src={String(section.src ?? '')}
+        alt={String(section.alt ?? '')}
+        variants={section.variants}
+        document={documentKey}
+        path={path}
+        cropId={String(section.id ?? '')}
+        constrained={(section.constrained as boolean | undefined) ?? false}
+        centered={(section.centered as boolean | undefined) ?? false}
+        mobileHeight={section.mobileHeight as string | undefined}
+        flush={(section.flush as boolean | undefined) ?? false}
+        caption={section.caption as string | undefined}
+        captions={section.captions as never}
+        captionStyle={section.captionStyle as never}
+        captionPosition={section.captionPosition as never}
+        captionReveal={section.captionReveal as never}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'pressQuoteTicker') {
+    return (
+      <ProjectPressQuoteTicker
+        items={section.items as never}
+        documentKey={documentKey}
+        sectionPath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+        speed={section.speed as number | undefined}
+        logoOpacity={section.logoOpacity as number | undefined}
+      />
+    );
+  }
+
+  if (type === 'redditCommentCarousel') {
+    return (
+      <ProjectRedditCommentCarousel
+        items={section.items as never}
+        documentKey={documentKey}
+        sectionPath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'placeholder') {
+    return (
+      <ProjectImage
+        src="placeholder.svg"
+        alt={String(section.label ?? 'Placeholder')}
+        variants={(section.variants as never) ?? PLACEHOLDER_IMAGE_VARIANTS}
+        document={documentKey}
+        path={path}
+        cropId={String(section.id ?? 'placeholder')}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  return null;
+})}
+
+{useScrollFinale && finaleFadeSection && finaleTargetSection && (
+  <ProjectScrollFinale>
+    <ProjectImage
+      slot="fade"
+      src={String(finaleFadeSection.src ?? '')}
+      alt={String(finaleFadeSection.alt ?? '')}
+      variants={finaleFadeSection.variants}
+      document={documentKey}
+      path={['sections', sections.length - 2]}
+      cropId={String(finaleFadeSection.id ?? '')}
+      constrained={(finaleFadeSection.constrained as boolean | undefined) ?? false}
+      centered={(finaleFadeSection.centered as boolean | undefined) ?? false}
+      mobileHeight={finaleFadeSection.mobileHeight as string | undefined}
+      flush={(finaleFadeSection.flush as boolean | undefined) ?? false}
+      caption={finaleFadeSection.caption as string | undefined}
+      captions={finaleFadeSection.captions as never}
+      captionStyle={finaleFadeSection.captionStyle as never}
+      captionPosition={finaleFadeSection.captionPosition as never}
+      captionReveal={finaleFadeSection.captionReveal as never}
+      spacing={sectionSpacing(finaleFadeSection)}
+      sectionId={finaleFadeSection.sectionId as string | undefined}
+    />
+    <ProjectImage
+      slot="target"
+      src={String(finaleTargetSection.src ?? '')}
+      alt={String(finaleTargetSection.alt ?? '')}
+      variants={finaleTargetSection.variants}
+      document={documentKey}
+      path={['sections', sections.length - 1]}
+      cropId={String(finaleTargetSection.id ?? '')}
+      constrained={(finaleTargetSection.constrained as boolean | undefined) ?? false}
+      centered={(finaleTargetSection.centered as boolean | undefined) ?? false}
+      mobileHeight={finaleTargetSection.mobileHeight as string | undefined}
+      flush={(finaleTargetSection.flush as boolean | undefined) ?? false}
+      caption={finaleTargetSection.caption as string | undefined}
+      captions={finaleTargetSection.captions as never}
+      captionStyle={finaleTargetSection.captionStyle as never}
+      captionPosition={finaleTargetSection.captionPosition as never}
+      captionReveal={finaleTargetSection.captionReveal as never}
+      spacing="none"
+      sectionId={finaleTargetSection.sectionId as string | undefined}
+    />
+  </ProjectScrollFinale>
+)}
+

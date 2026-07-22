@@ -1,0 +1,229 @@
+---
+/** Drag-to-reorder project cards on Home / Work / Play when grid editor mode is active. */
+---
+
+<script>
+  const GRID_SELECTOR = '[data-dev-project-grid]';
+
+  type ListingOrderEntry =
+    | { type: 'project'; slug: string; order: number; full: boolean }
+    | { type: 'play-link'; id: string; order: number };
+
+  let gridEditorActive = false;
+  let dragItem: HTMLElement | null = null;
+  let dragGrid: HTMLElement | null = null;
+  const baselines = new Map<string, ListingOrderEntry[]>();
+
+  const grids = () => [...document.querySelectorAll<HTMLElement>(GRID_SELECTOR)];
+
+  const gridItems = (grid: HTMLElement) => [
+    ...grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)'),
+  ];
+
+  const captureOrder = (grid: HTMLElement): ListingOrderEntry[] => (
+    gridItems(grid).map((item, index) => {
+      const slug = item.dataset.devProjectSlug;
+      const playLink = item.dataset.devPlayLink;
+      const full = item.classList.contains('project-grid__item--full');
+      if (slug) return { type: 'project', slug, order: index + 1, full };
+      if (playLink) return { type: 'play-link', id: playLink, order: index + 1 };
+      return null;
+    }).filter((item): item is ListingOrderEntry => item !== null)
+  );
+
+  const ordersMatch = (left: ListingOrderEntry[], right: ListingOrderEntry[]) =>
+    JSON.stringify(left) === JSON.stringify(right);
+
+  const restoreOrder = (grid: HTMLElement, items: ListingOrderEntry[]) => {
+    const anchor = grid.querySelector('.project-grid__item--new');
+    for (const entry of items) {
+      const selector = entry.type === 'project'
+        ? `[data-dev-project-slug="${entry.slug}"]`
+        : `[data-dev-play-link="${entry.id}"]`;
+      const item = grid.querySelector<HTMLElement>(selector);
+      if (!item) continue;
+      if (entry.type === 'project') {
+        item.classList.toggle('project-grid__item--full', entry.full);
+      }
+      if (anchor) grid.insertBefore(item, anchor);
+      else grid.append(item);
+    }
+  };
+
+  const syncPending = (grid: HTMLElement) => {
+    const gridId = grid.dataset.devProjectGrid;
+    if (!gridId || !['home', 'work', 'play'].includes(gridId)) return;
+
+    if (!baselines.has(gridId)) {
+      baselines.set(gridId, captureOrder(grid));
+    }
+
+    const baseline = baselines.get(gridId) ?? [];
+    const current = captureOrder(grid);
+    const pendingId = `listing-order:${gridId}`;
+
+    if (ordersMatch(baseline, current)) {
+      grid.classList.remove('is-grid-order-dirty');
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+      return;
+    }
+
+    grid.classList.add('is-grid-order-dirty');
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+      detail: {
+        id: pendingId,
+        kind: 'listing-order',
+        payload: { grid: gridId, items: current },
+        revert: () => {
+          restoreOrder(grid, structuredClone(baseline));
+          grid.classList.remove('is-grid-order-dirty');
+        },
+      },
+    }));
+  };
+
+  const captureBaselines = () => {
+    grids().forEach((grid) => {
+      const gridId = grid.dataset.devProjectGrid;
+      if (gridId) baselines.set(gridId, captureOrder(grid));
+    });
+  };
+
+  const setDraggable = (active: boolean) => {
+    grids().forEach((grid) => {
+      gridItems(grid).forEach((item) => {
+        item.draggable = active;
+        item.toggleAttribute('data-dev-grid-draggable', active);
+      });
+    });
+  };
+
+  const clearDropTargets = () => {
+    grids().forEach((grid) => {
+      grid.querySelectorAll('.is-grid-drop-target').forEach((node) => {
+        node.classList.remove('is-grid-drop-target');
+      });
+    });
+  };
+
+  const finishGridDrag = () => {
+    if (gridEditorActive && dragGrid) syncPending(dragGrid);
+    if (dragItem) dragItem.classList.remove('is-grid-dragging');
+    clearDropTargets();
+    dragItem = null;
+    dragGrid = null;
+  };
+
+  const onGridEditorChange = (active: boolean) => {
+    gridEditorActive = active;
+    if (active) captureBaselines();
+    setDraggable(active);
+  };
+
+  window.addEventListener('vcd:listing-grid-editor-change', ((event: CustomEvent<{ active?: boolean }>) => {
+    onGridEditorChange(Boolean(event.detail?.active));
+  }) as EventListener);
+
+  window.addEventListener('vcd:dev-pending-committed', () => {
+    grids().forEach((grid) => {
+      const gridId = grid.dataset.devProjectGrid;
+      if (!gridId) return;
+      baselines.set(gridId, captureOrder(grid));
+      grid.classList.remove('is-grid-order-dirty');
+    });
+  });
+
+  window.addEventListener('vcd:dev-pending-reverted', () => {
+    grids().forEach((grid) => grid.classList.remove('is-grid-order-dirty'));
+  });
+
+  document.addEventListener('dragstart', (event) => {
+    if (!gridEditorActive) return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const item = target.closest<HTMLElement>('.project-grid__item[data-dev-grid-draggable]');
+    if (!item) return;
+    dragItem = item;
+    dragGrid = item.closest<HTMLElement>(GRID_SELECTOR);
+    item.classList.add('is-grid-dragging');
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData(
+        'text/plain',
+        item.dataset.devProjectSlug ?? item.dataset.devPlayLink ?? '',
+      );
+    }
+  });
+
+  document.addEventListener('dragend', () => {
+    if (gridEditorActive && dragGrid) syncPending(dragGrid);
+    if (dragItem) dragItem.classList.remove('is-grid-dragging');
+    clearDropTargets();
+    dragItem = null;
+    dragGrid = null;
+  });
+
+  document.addEventListener('dragenter', (event) => {
+    if (!gridEditorActive || !dragItem) return;
+    event.preventDefault();
+  });
+
+  document.addEventListener('dragover', (event) => {
+    if (!gridEditorActive || !dragItem) return;
+    event.preventDefault();
+
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const grid = dragGrid ?? dragItem.closest<HTMLElement>(GRID_SELECTOR);
+    const hoverItem = target.closest<HTMLElement>('.project-grid__item:not(.project-grid__item--new)');
+    if (!grid || !hoverItem || hoverItem === dragItem || !grid.contains(hoverItem)) return;
+
+    gridItems(grid).forEach((item) => item.classList.remove('is-grid-drop-target'));
+    hoverItem.classList.add('is-grid-drop-target');
+
+    const rect = hoverItem.getBoundingClientRect();
+    const before = event.clientY < rect.top + rect.height / 2;
+    grid.insertBefore(dragItem, before ? hoverItem : hoverItem.nextSibling);
+  });
+
+  document.addEventListener('drop', (event) => {
+    if (!gridEditorActive || !dragItem) return;
+    event.preventDefault();
+    finishGridDrag();
+  });
+</script>
+
+<style is:global>
+  .show-listing-grid-editor [data-dev-project-grid] {
+    outline: 1px dashed #b8b4ab;
+    outline-offset: 0.35em;
+  }
+
+  .show-listing-grid-editor [data-dev-project-grid].is-grid-order-dirty {
+    outline-style: solid;
+    outline-color: #6f6b62;
+  }
+
+  .show-listing-grid-editor .project-grid__item[data-dev-grid-draggable] {
+    cursor: grab;
+  }
+
+  .show-listing-grid-editor .project-grid__item.is-grid-dragging {
+    opacity: 0.55;
+    cursor: grabbing;
+  }
+
+  .show-listing-grid-editor .project-grid__item.is-grid-drop-target {
+    outline: 2px solid #6f6b62;
+    outline-offset: 2px;
+  }
+
+  .show-listing-grid-editor .project-grid__item[data-dev-grid-draggable] .project-grid__card {
+    pointer-events: none;
+  }
+
+  .show-listing-grid-editor .project-grid__item--new,
+  .show-listing-grid-editor .project-grid__settings {
+    display: none;
+  }
+</style>
