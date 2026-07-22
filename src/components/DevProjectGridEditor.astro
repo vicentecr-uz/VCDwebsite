@@ -95,11 +95,23 @@ const teaserPassword = getTeaserPassword();
 
   let activeGrid = 'work';
 
-  const slugify = (value: string) => value
+  const slugify = (value) => value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
+
+  const setFieldValue = (form, name, value) => {
+    const field = form.elements.namedItem(name);
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement || field instanceof HTMLSelectElement) {
+      field.value = value;
+    }
+  };
+
+  const setFieldChecked = (form, name, checked) => {
+    const field = form.elements.namedItem(name);
+    if (field instanceof HTMLInputElement) field.checked = checked;
+  };
 
   const openCreateDialog = () => {
     if (!(createDialog instanceof HTMLDialogElement) || !(createForm instanceof HTMLFormElement)) return;
@@ -122,7 +134,7 @@ const teaserPassword = getTeaserPassword();
     }
   };
 
-  const openSettingsDialog = async (slug: string) => {
+  const openSettingsDialog = async (slug) => {
     if (!(settingsDialog instanceof HTMLDialogElement) || !(settingsForm instanceof HTMLFormElement)) return;
     const response = await fetch(`/api/project-settings?slug=${encodeURIComponent(slug)}`);
     const payload = await response.json();
@@ -132,20 +144,20 @@ const teaserPassword = getTeaserPassword();
     }
 
     const form = settingsForm;
-    (form.elements.namedItem('slug') as HTMLInputElement).value = slug;
-    (form.elements.namedItem('title') as HTMLInputElement).value = payload.title ?? '';
-    (form.elements.namedItem('description') as HTMLTextAreaElement).value = payload.description ?? '';
-    (form.elements.namedItem('status') as HTMLSelectElement).value = payload.status ?? 'draft';
-    (form.elements.namedItem('image') as HTMLInputElement).value = payload.listing?.image ?? '';
-    (form.elements.namedItem('bg') as HTMLInputElement).value = payload.listing?.bg ?? '#efefef';
-    (form.elements.namedItem('dark') as HTMLInputElement).checked = Boolean(payload.listing?.dark);
-    (form.elements.namedItem('full') as HTMLInputElement).checked = Boolean(payload.listing?.full);
-    (form.elements.namedItem('subtitle') as HTMLInputElement).value = payload.listing?.subtitle ?? '';
-    (form.elements.namedItem('teaserLabel') as HTMLInputElement).value = payload.teaser?.label ?? '';
-    (form.elements.namedItem('teaserCover') as HTMLInputElement).value = payload.teaser?.coverImage ?? '';
-    (form.elements.namedItem('listing-home') as HTMLInputElement).checked = Boolean(payload.listings?.home);
-    (form.elements.namedItem('listing-work') as HTMLInputElement).checked = Boolean(payload.listings?.work);
-    (form.elements.namedItem('listing-play') as HTMLInputElement).checked = Boolean(payload.listings?.play);
+    setFieldValue(form, 'slug', slug);
+    setFieldValue(form, 'title', payload.title ?? '');
+    setFieldValue(form, 'description', payload.description ?? '');
+    setFieldValue(form, 'status', payload.status ?? 'draft');
+    setFieldValue(form, 'image', payload.listing?.image ?? '');
+    setFieldValue(form, 'bg', payload.listing?.bg ?? '#efefef');
+    setFieldChecked(form, 'dark', Boolean(payload.listing?.dark));
+    setFieldChecked(form, 'full', Boolean(payload.listing?.full));
+    setFieldValue(form, 'subtitle', payload.listing?.subtitle ?? '');
+    setFieldValue(form, 'teaserLabel', payload.teaser?.label ?? '');
+    setFieldValue(form, 'teaserCover', payload.teaser?.coverImage ?? '');
+    setFieldChecked(form, 'listing-home', Boolean(payload.listings?.home));
+    setFieldChecked(form, 'listing-work', Boolean(payload.listings?.work));
+    setFieldChecked(form, 'listing-play', Boolean(payload.listings?.play));
     settingsDialog.showModal();
   };
 
