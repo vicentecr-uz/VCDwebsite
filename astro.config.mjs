@@ -9,6 +9,7 @@ import {
   buildImageSection,
   buildPlaceholderImageSection,
   draftMediaDevServer,
+  devViewSwitcher,
   listingOrderDevWriter,
   projectCreateDevWriter,
   projectSettingsDevWriter,
@@ -1547,6 +1548,7 @@ export default defineConfig({
     plugins: [
       tailwindcss(),
       draftMediaDevServer(),
+      devViewSwitcher(),
       uploadDevWriter(),
       projectCreateDevWriter(),
       listingOrderDevWriter(),
