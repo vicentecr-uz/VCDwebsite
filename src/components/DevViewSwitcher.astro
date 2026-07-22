@@ -1,0 +1,96 @@
+---
+/** Dev-only employer view preview switcher (sessionStorage, no server restart). */
+---
+
+<div class="dev-view-switcher" data-dev-view-switcher>
+  <label class="dev-view-switcher__label">
+    <span class="dev-view-switcher__title">Preview</span>
+    <select class="dev-view-switcher__select" data-dev-view-select aria-label="Preview employer view">
+      <option value="">Public site</option>
+    </select>
+  </label>
+</div>
+
+<script>
+  const STORAGE_KEY = 'vcd-dev-view';
+
+  const initDevViewSwitcher = async () => {
+    const root = document.querySelector('[data-dev-view-switcher]');
+    const select = root?.querySelector('[data-dev-view-select]');
+    if (!(select instanceof HTMLSelectElement)) return;
+
+    try {
+      const response = await fetch('/api/dev-views');
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Could not load views.');
+
+      for (const view of payload.views ?? []) {
+        const option = document.createElement('option');
+        option.value = view.id;
+        option.textContent = view.title || view.id;
+        select.append(option);
+      }
+    } catch {
+      select.disabled = true;
+      return;
+    }
+
+    select.value = sessionStorage.getItem(STORAGE_KEY) || '';
+
+    select.addEventListener('change', () => {
+      if (select.value) sessionStorage.setItem(STORAGE_KEY, select.value);
+      else sessionStorage.removeItem(STORAGE_KEY);
+      window.location.reload();
+    });
+  };
+
+  initDevViewSwitcher();
+</script>
+
+<style>
+  .dev-view-switcher {
+    position: fixed;
+    left: max(1em, env(safe-area-inset-left));
+    bottom: max(1em, env(safe-area-inset-bottom));
+    z-index: 90;
+    border-radius: var(--radius-control-smooth);
+    background: color-mix(in srgb, var(--color-surface-soft) 94%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 0.4em 1.4em rgb(0 0 0 / 0.12);
+    padding: 0.45em 0.55em;
+  }
+
+  .dev-view-switcher__label {
+    display: flex;
+    align-items: center;
+    gap: 0.55em;
+    margin: 0;
+  }
+
+  .dev-view-switcher__title {
+    color: var(--color-text-soft);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .dev-view-switcher__select {
+    border: 0;
+    border-radius: calc(var(--radius-control) - 0.2em);
+    background: var(--color-bg);
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    line-height: 1.2;
+    padding: 0.45em 0.6em;
+    max-width: min(14em, 42vw);
+    cursor: pointer;
+  }
+
+  .dev-view-switcher__select:disabled {
+    cursor: wait;
+    opacity: 0.6;
+  }
+</style>
