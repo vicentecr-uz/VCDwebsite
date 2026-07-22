@@ -1,0 +1,649 @@
+---
+/** Drag-to-reorder project page blocks in dev mode (sections[] on modern project pages). */
+---
+
+<script>
+  import {
+    captureSectionOrder,
+    ensureSectionOrderIds,
+    getDropZone,
+    getSectionRootsInDomOrder,
+    sectionOrderId,
+  } from '../scripts/devSectionPaths';
+  import { syncDevSectionOutlineSidebar } from '../scripts/devSectionOutlineSync';
+
+  const DROP_ZONE_SELECTOR = '[data-dev-project-drop-zone]';
+  const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
+
+  let reorderActive = false;
+  let dragItem: HTMLElement | null = null;
+  let dragHandle: HTMLElement | null = null;
+  let dragPointerId: number | null = null;
+  let keyboardGrabItem: HTMLElement | null = null;
+  let keyboardGrabSnapshot: number[] | null = null;
+  let baselineOrder: number[] | null = null;
+  let documentKey = '';
+
+  const dropZone = () => getDropZone();
+  const sectionItems = () => getSectionRootsInDomOrder();
+
+  const resolveSectionRoot = (element: HTMLElement | null): HTMLElement | null => {
+    if (!element) return null;
+    const items = sectionItems();
+    if (items.includes(element)) return element;
+    return items.find((item) => item === element || item.contains(element)) ?? null;
+  };
+
+  const moveSectionToIndex = (item: HTMLElement, targetIndex: number) => {
+    const zone = dropZone();
+    if (!zone) return;
+
+    const others = sectionItems().filter((entry) => entry !== item);
+    const nextIndex = Math.max(0, Math.min(targetIndex, others.length));
+
+    if (nextIndex >= others.length) {
+      zone.append(item);
+      return;
+    }
+
+    const before = others[nextIndex];
+    const parent = before.parentElement;
+    if (parent) parent.insertBefore(item, before);
+    else zone.insertBefore(item, before);
+  };
+
+  const ordersMatch = (left: number[], right: number[]) =>
+    JSON.stringify(left) === JSON.stringify(right);
+
+  const restoreDomOrder = (order: number[]) => {
+    const zone = dropZone();
+    if (!zone) return;
+
+    const rootsById = new Map<number, HTMLElement>();
+    sectionItems().forEach((root) => {
+      const id = sectionOrderId(root);
+      if (id !== null) rootsById.set(id, root);
+    });
+
+    for (const id of order) {
+      const root = rootsById.get(id);
+      if (!root) continue;
+      zone.append(root);
+    }
+  };
+
+  const syncPending = () => {
+    const zone = dropZone();
+    if (!zone || !documentKey) return;
+
+    if (!baselineOrder) baselineOrder = captureSectionOrder(zone);
+    const baseline = baselineOrder;
+    const current = captureSectionOrder(zone);
+    const pendingId = `section-order:${documentKey}`;
+
+    if (ordersMatch(baseline, current)) {
+      zone.classList.remove('is-section-order-dirty');
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+      return;
+    }
+
+    zone.classList.add('is-section-order-dirty');
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+      detail: {
+        id: pendingId,
+        kind: 'section-order',
+        payload: {
+          document: documentKey,
+          order: current,
+        },
+        revert: () => {
+          restoreDomOrder(structuredClone(baseline));
+          zone.classList.remove('is-section-order-dirty');
+          syncDevSectionOutlineSidebar();
+        },
+      },
+    }));
+    syncDevSectionOutlineSidebar();
+  };
+
+  const clearDropTargets = () => {
+    sectionItems().forEach((item) => item.classList.remove('is-section-drop-target'));
+  };
+
+  const insertRelativeToHover = (
+    item: HTMLElement,
+    hoverItem: HTMLElement,
+    clientY: number,
+  ) => {
+    const others = sectionItems().filter((entry) => entry !== item);
+    const hoverRoot = resolveSectionRoot(hoverItem);
+    if (!hoverRoot) return;
+
+    let refIndex = others.indexOf(hoverRoot);
+    if (refIndex < 0) return;
+
+    const rect = hoverRoot.getBoundingClientRect();
+    const before = clientY < rect.top + rect.height / 2;
+    if (!before) refIndex += 1;
+
+    moveSectionToIndex(item, refIndex);
+  };
+
+  const hoverItemAtPoint = (clientX: number, clientY: number) => {
+    const stack = document.elementsFromPoint(clientX, clientY);
+    for (const node of stack) {
+      if (!(node instanceof HTMLElement)) continue;
+      if (dragItem && (node === dragItem || dragItem.contains(node))) continue;
+
+      const handle = node.closest<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`);
+      if (handle) {
+        const root = resolveSectionRoot(handle);
+        if (root && root !== dragItem) return root;
+      }
+
+      const item = node.closest<HTMLElement>('[data-dev-section-reorderable]');
+      const root = resolveSectionRoot(item);
+      if (root && root !== dragItem) return root;
+    }
+    return null;
+  };
+
+  const updateDragHover = (clientX: number, clientY: number) => {
+    if (!dragItem) return;
+
+    const hoverItem = hoverItemAtPoint(clientX, clientY);
+    clearDropTargets();
+    if (!hoverItem || hoverItem === dragItem) return;
+
+    hoverItem.classList.add('is-section-drop-target');
+    insertRelativeToHover(dragItem, hoverItem, clientY);
+  };
+
+  const autoScrollStep = () => {
+    autoScrollRafId = 0;
+    if (!dragItem) return;
+
+    const viewportHeight = window.innerHeight;
+    let scrollDelta = 0;
+
+    if (dragPointerY < AUTO_SCROLL_EDGE_PX) {
+      const depth = (AUTO_SCROLL_EDGE_PX - dragPointerY) / AUTO_SCROLL_EDGE_PX;
+      scrollDelta = -Math.max(2, Math.round(AUTO_SCROLL_MAX_SPEED * depth));
+    } else if (dragPointerY > viewportHeight - AUTO_SCROLL_EDGE_PX) {
+      const depth = (dragPointerY - (viewportHeight - AUTO_SCROLL_EDGE_PX)) / AUTO_SCROLL_EDGE_PX;
+      scrollDelta = Math.max(2, Math.round(AUTO_SCROLL_MAX_SPEED * depth));
+    }
+
+    if (scrollDelta !== 0) {
+      const prevScroll = window.scrollY;
+      window.scrollBy(0, scrollDelta);
+      if (window.scrollY !== prevScroll) {
+        updateDragHover(dragPointerX, dragPointerY);
+      }
+      autoScrollRafId = requestAnimationFrame(autoScrollStep);
+    }
+  };
+
+  const startAutoScroll = () => {
+    if (autoScrollRafId) return;
+    autoScrollRafId = requestAnimationFrame(autoScrollStep);
+  };
+
+  const stopAutoScroll = () => {
+    if (!autoScrollRafId) return;
+    cancelAnimationFrame(autoScrollRafId);
+    autoScrollRafId = 0;
+  };
+
+  const finishPointerDrag = () => {
+    stopAutoScroll();
+    setSectionDragging(false);
+    if (reorderActive) syncPending();
+    if (dragItem) {
+      dragItem.classList.remove('is-section-dragging');
+      dragItem.style.pointerEvents = '';
+    }
+    if (dragHandle) {
+      dragHandle.style.pointerEvents = '';
+    }
+    if (dragHandle && dragPointerId != null) {
+      try {
+        dragHandle.releasePointerCapture(dragPointerId);
+      } catch {
+        // Pointer may already be released.
+      }
+    }
+    clearDropTargets();
+    dragItem = null;
+    dragHandle = null;
+    dragPointerId = null;
+  };
+
+  const releaseKeyboardGrab = (revert: boolean) => {
+    if (!keyboardGrabItem) return;
+    const root = keyboardGrabItem;
+    const handle = root.querySelector<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`);
+    root.classList.remove('is-section-keyboard-grabbed');
+    root.setAttribute('aria-grabbed', 'false');
+    handle?.setAttribute('aria-grabbed', 'false');
+    keyboardGrabItem = null;
+
+    if (revert && keyboardGrabSnapshot) {
+      restoreDomOrder(keyboardGrabSnapshot);
+    }
+    keyboardGrabSnapshot = null;
+    if (reorderActive) syncPending();
+    scheduleUnpinSectionControls(root);
+  };
+
+  const moveKeyboardGrab = (delta: number) => {
+    if (!keyboardGrabItem) return;
+    const items = sectionItems();
+    const index = items.indexOf(keyboardGrabItem);
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+    moveSectionToIndex(keyboardGrabItem, targetIndex);
+    syncPending();
+  };
+
+  const HOVER_LEAVE_MS = 450;
+  const AUTO_SCROLL_EDGE_PX = 96;
+  const AUTO_SCROLL_MAX_SPEED = 20;
+  const hoverLeaveTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
+  let autoScrollRafId = 0;
+  let dragPointerX = 0;
+  let dragPointerY = 0;
+
+  const pinSectionControls = (root: HTMLElement) => {
+    const pending = hoverLeaveTimers.get(root);
+    if (pending) clearTimeout(pending);
+    hoverLeaveTimers.delete(root);
+    root.classList.add('is-dev-section-controls-visible');
+  };
+
+  const DRAG_BRIDGE_CLASS = 'dev-section-drag-bridge';
+  const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
+
+  const setSectionDragging = (active: boolean) => {
+    document.documentElement.classList.toggle(SECTION_DRAGGING_CLASS, active);
+    if (active) {
+      document.querySelector('.site-header')?.classList.add('is-scrolled-hidden');
+    }
+  };
+
+  const scheduleUnpinSectionControls = (root: HTMLElement) => {
+    if (
+      root.classList.contains('is-section-dragging')
+      || root.classList.contains('is-section-keyboard-grabbed')
+    ) {
+      return;
+    }
+    const pending = hoverLeaveTimers.get(root);
+    if (pending) clearTimeout(pending);
+    hoverLeaveTimers.set(root, setTimeout(() => {
+      hoverLeaveTimers.delete(root);
+      if (
+        root.classList.contains('is-section-dragging')
+        || root.classList.contains('is-section-keyboard-grabbed')
+      ) {
+        return;
+      }
+      if (!root.matches(':hover')) {
+        root.classList.remove('is-dev-section-controls-visible');
+      }
+    }, HOVER_LEAVE_MS));
+  };
+
+  const wireSectionControlHover = (root: HTMLElement) => {
+    if (root.dataset.devSectionControlsWired === 'true') return;
+    root.dataset.devSectionControlsWired = 'true';
+
+    root.addEventListener('mouseenter', () => pinSectionControls(root));
+    root.addEventListener('mouseleave', () => scheduleUnpinSectionControls(root));
+  };
+
+  const wireDragHandle = (root: HTMLElement, handle: HTMLButtonElement) => {
+    if (handle.dataset.devSectionDragWired === 'true') return;
+    handle.dataset.devSectionDragWired = 'true';
+
+    handle.addEventListener('focus', () => pinSectionControls(root));
+    handle.addEventListener('blur', () => scheduleUnpinSectionControls(root));
+    handle.addEventListener('click', (event) => {
+      event.preventDefault();
+    });
+
+    handle.addEventListener('pointerdown', (event) => {
+      if (!reorderActive || keyboardGrabItem) return;
+      if (event.button !== 0) return;
+
+      dragItem = root;
+      dragHandle = handle;
+      dragPointerId = event.pointerId;
+      root.classList.add('is-section-dragging');
+      pinSectionControls(root);
+      root.style.pointerEvents = 'none';
+      handle.style.pointerEvents = 'auto';
+      handle.setPointerCapture(event.pointerId);
+      dragPointerX = event.clientX;
+      dragPointerY = event.clientY;
+      setSectionDragging(true);
+      startAutoScroll();
+      event.preventDefault();
+      event.stopPropagation();
+    });
+  };
+
+  const mountDragHandle = (root: HTMLElement) => {
+    let bridge = root.querySelector<HTMLElement>(`.${DRAG_BRIDGE_CLASS}`);
+    if (!bridge) {
+      bridge = document.createElement('div');
+      bridge.className = DRAG_BRIDGE_CLASS;
+      bridge.setAttribute('aria-hidden', 'true');
+      root.prepend(bridge);
+    }
+
+    let handle = root.querySelector<HTMLButtonElement>(`[${DRAG_HANDLE_ATTR}]`);
+    if (!handle) {
+      handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'dev-section-drag-handle';
+      handle.setAttribute(DRAG_HANDLE_ATTR, '');
+      handle.setAttribute('aria-label', 'Reorder section');
+      handle.setAttribute('title', 'Drag to reorder · Save to persist');
+      handle.setAttribute('aria-grabbed', 'false');
+      handle.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+          <circle cx="4.5" cy="3" r="1.1" fill="currentColor"/>
+          <circle cx="9.5" cy="3" r="1.1" fill="currentColor"/>
+          <circle cx="4.5" cy="7" r="1.1" fill="currentColor"/>
+          <circle cx="9.5" cy="7" r="1.1" fill="currentColor"/>
+          <circle cx="4.5" cy="11" r="1.1" fill="currentColor"/>
+          <circle cx="9.5" cy="11" r="1.1" fill="currentColor"/>
+        </svg>
+      `;
+      root.append(handle);
+    }
+
+    root.setAttribute('data-dev-section-reorderable', '');
+    handle.tabIndex = reorderActive ? 0 : -1;
+    wireSectionControlHover(root);
+    wireDragHandle(root, handle);
+  };
+
+  const syncDragHandles = () => {
+    const zone = dropZone();
+    if (!zone) return;
+
+    ensureSectionOrderIds(zone);
+    sectionItems().forEach((root) => {
+      mountDragHandle(root);
+      root.toggleAttribute('data-dev-section-reorderable', reorderActive);
+      root.tabIndex = -1;
+      const handle = root.querySelector<HTMLButtonElement>(`[${DRAG_HANDLE_ATTR}]`);
+      if (handle) {
+        handle.hidden = !reorderActive;
+        handle.tabIndex = reorderActive ? 0 : -1;
+      }
+    });
+
+    if (!documentKey) {
+      const first = sectionItems()[0];
+      documentKey = first?.dataset.devSpacingDocument ?? '';
+    }
+  };
+
+  const setReorderActive = (active: boolean) => {
+    reorderActive = active;
+    if (active) {
+      syncDragHandles();
+      baselineOrder = captureSectionOrder();
+    } else {
+      finishPointerDrag();
+      releaseKeyboardGrab(true);
+      dropZone()?.classList.remove('is-section-order-dirty');
+    }
+    syncDragHandles();
+  };
+
+  const onDevModeChange = () => {
+    const active = document.documentElement.classList.contains('is-dev-mode') && Boolean(dropZone());
+    setReorderActive(active);
+  };
+
+  window.addEventListener('vcd:dev-mode-change', onDevModeChange);
+  window.addEventListener('vcd:dev-section-structure-changed', () => {
+    if (!reorderActive) return;
+    syncDragHandles();
+  });
+
+  window.addEventListener('vcd:dev-pending-committed', () => {
+    const zone = dropZone();
+    if (!zone) return;
+    baselineOrder = captureSectionOrder(zone);
+    zone.classList.remove('is-section-order-dirty');
+  });
+
+  window.addEventListener('vcd:dev-pending-reverted', () => {
+    dropZone()?.classList.remove('is-section-order-dirty');
+    if (reorderActive) {
+      baselineOrder = captureSectionOrder();
+      syncDevSectionOutlineSidebar();
+    }
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    if (!reorderActive || !dragItem || dragPointerId !== event.pointerId) return;
+
+    dragPointerX = event.clientX;
+    dragPointerY = event.clientY;
+    updateDragHover(event.clientX, event.clientY);
+    startAutoScroll();
+  });
+
+  document.addEventListener('pointerup', (event) => {
+    if (!dragItem || dragPointerId !== event.pointerId) return;
+    finishPointerDrag();
+  });
+
+  document.addEventListener('pointercancel', (event) => {
+    if (!dragItem || dragPointerId !== event.pointerId) return;
+    finishPointerDrag();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (!reorderActive) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    if (event.repeat) return;
+
+    const target = event.target;
+    const handle = target instanceof HTMLElement
+      ? target.closest<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`)
+      : null;
+
+    if (keyboardGrabItem) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        releaseKeyboardGrab(false);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        releaseKeyboardGrab(true);
+        return;
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveKeyboardGrab(-1);
+        return;
+      }
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveKeyboardGrab(1);
+        return;
+      }
+      return;
+    }
+
+    if (!handle || document.activeElement !== handle) return;
+
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      keyboardGrabItem = resolveSectionRoot(handle);
+      if (!keyboardGrabItem) return;
+      pinSectionControls(keyboardGrabItem);
+      keyboardGrabSnapshot = captureSectionOrder();
+      keyboardGrabItem.classList.add('is-section-keyboard-grabbed');
+      keyboardGrabItem.setAttribute('aria-grabbed', 'true');
+      handle.setAttribute('aria-grabbed', 'true');
+    }
+  });
+
+  onDevModeChange();
+</script>
+
+<style is:global>
+  /*
+    Sidebar sits fixed in the left gutter and blocks drag handles sitting outside
+    the content column. Pass clicks through the nav chrome in dev mode; links
+    and controls inside stay interactive.
+  */
+  .is-dev-mode .section-sidebar-nav {
+    pointer-events: none;
+  }
+
+  .is-dev-mode .section-sidebar-nav a,
+  .is-dev-mode .section-sidebar-nav summary,
+  .is-dev-mode .section-sidebar-nav button,
+  .is-dev-mode .section-sidebar-nav [contenteditable='true'] {
+    pointer-events: auto;
+  }
+
+  .is-dev-mode [data-dev-section-reorderable] {
+    position: relative;
+  }
+
+  .is-dev-mode
+    [data-dev-section-reorderable]:is(
+      :hover,
+      :focus-within,
+      .is-section-dragging,
+      .is-section-keyboard-grabbed,
+      .is-dev-section-controls-visible
+    ) {
+    z-index: 60;
+  }
+
+  .is-dev-mode [data-dev-project-drop-zone] {
+    position: relative;
+  }
+
+  .is-dev-mode [data-dev-project-drop-zone].is-section-order-dirty {
+    outline: 1px solid #6f6b62;
+    outline-offset: 0.35em;
+  }
+
+  .dev-section-drag-bridge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -4.5em;
+    width: 4.5em;
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .is-dev-mode
+    [data-dev-section-reorderable].is-dev-section-controls-visible
+    > .dev-section-drag-bridge,
+  .is-dev-mode [data-dev-section-reorderable]:hover > .dev-section-drag-bridge {
+    pointer-events: auto;
+  }
+
+  .dev-section-drag-handle {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    z-index: 80;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    backdrop-filter: blur(8px);
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    cursor: grab;
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(calc(-100% - 0.55em), -50%);
+    transition:
+      opacity 0.15s ease 0.35s,
+      background-color 0.15s ease 0s;
+    touch-action: none;
+  }
+
+  .is-dev-mode
+    [data-dev-section-reorderable].is-dev-section-controls-visible:not(
+      :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
+    )
+    > .dev-section-drag-handle,
+  .is-dev-mode [data-dev-section-reorderable]:hover:not(
+      :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
+    )
+    > .dev-section-drag-handle,
+  .is-dev-mode [data-dev-section-reorderable]:focus-within:not(:has(> .dev-gap-toolbar:focus-within))
+    > .dev-section-drag-handle,
+  .is-dev-mode .dev-section-drag-handle:hover,
+  .is-dev-mode .dev-section-drag-handle:focus-visible,
+  .is-dev-mode [data-dev-section-reorderable].is-section-dragging > .dev-section-drag-handle,
+  .is-dev-mode [data-dev-section-reorderable].is-section-keyboard-grabbed > .dev-section-drag-handle {
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+
+  .is-dev-mode .dev-section-drag-handle:hover,
+  .is-dev-mode .dev-section-drag-handle:focus-visible {
+    background: var(--color-surface-strong);
+  }
+
+  .is-dev-mode [data-dev-section-reorderable].is-section-dragging,
+  .is-dev-mode [data-dev-section-reorderable].is-section-keyboard-grabbed {
+    outline: 2px solid #6f6b62;
+    outline-offset: 2px;
+  }
+
+  .is-dev-mode [data-dev-section-reorderable].is-section-drop-target {
+    outline: 2px solid #6f6b62;
+    outline-offset: 2px;
+  }
+
+  .is-dev-mode [data-dev-section-reorderable].is-section-dragging {
+    opacity: 0.55;
+  }
+
+  .is-dev-mode [data-dev-section-reorderable].is-section-dragging .dev-section-drag-handle {
+    cursor: grabbing;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 80;
+  }
+
+  .is-dev-mode.is-dev-text-caret [data-dev-section-reorderable] > .dev-section-drag-handle,
+  .is-dev-mode.is-dev-text-caret [data-dev-section-reorderable] > .dev-section-drag-bridge,
+  .is-dev-mode.is-dev-text-caret [data-dev-section-reorderable].is-dev-section-controls-visible
+    > .dev-section-drag-handle {
+    opacity: 0;
+    pointer-events: none;
+  }
+</style>

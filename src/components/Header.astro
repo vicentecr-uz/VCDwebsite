@@ -181,8 +181,18 @@ const menuLinks = headerSettings.menuLinks;
         ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
       );
 
+    const isSectionReorderDragging = () =>
+      document.documentElement.classList.contains('is-section-reorder-dragging');
+
     const update = () => {
       const y = window.scrollY;
+
+      if (isSectionReorderDragging()) {
+        header.classList.add('is-scrolled-hidden');
+        lastY = y;
+        ticking = false;
+        return;
+      }
 
       if (isMenuOpen() || y <= 8) {
         header.classList.remove('is-scrolled-hidden');
