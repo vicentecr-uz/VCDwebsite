@@ -231,6 +231,7 @@ export function syncDevSectionOutlineSidebar() {
   };
 
   const ensureGroup = (label: string, defaultOpen: boolean) => {
+    const isNewGroup = !existingGroups.has(label);
     let groupEl = existingGroups.get(label);
     if (!groupEl) {
       if (!groupTemplate) return null;
@@ -242,13 +243,15 @@ export function syncDevSectionOutlineSidebar() {
     const details = groupEl.querySelector('details');
     if (details) {
       clearGroupAnimState(groupEl);
-      if (editorMode) {
-        details.open = true;
-      } else if (openStateByLabel.has(label)) {
+      if (openStateByLabel.has(label)) {
         details.open = openStateByLabel.get(label) !== false;
-      } else {
+      } else if (editorMode && isNewGroup) {
+        // SectionSidebarNav openClosedGroups animates expand on level-2 entry.
+        details.open = false;
+      } else if (!editorMode) {
         details.open = defaultOpen;
       }
+      // editorMode + reused group: keep details.open — openClosedGroups expands closed ones.
     }
     groupEl.querySelector<HTMLElement>('.section-sidebar-nav__children')?.replaceChildren();
     return groupEl;
