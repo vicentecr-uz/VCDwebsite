@@ -9,6 +9,7 @@ import {
   resolveDevFieldTarget,
   writeDevDocument,
 } from './view-dev-sections.mjs';
+import { suppressContentHmr } from './content-hmr-gate.mjs';
 
 export {
   deleteViewSection,
@@ -17,6 +18,12 @@ export {
   resolveDevFieldTarget,
   writeDevDocument,
 } from './view-dev-sections.mjs';
+export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
+
+async function writeProjectJson(file, data) {
+  suppressContentHmr();
+  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+}
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'view-only']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
@@ -71,7 +78,7 @@ async function removeProjectFromViews(slug) {
       const before = view.projects.length;
       view.projects = view.projects.filter((entry) => entry.slug !== slug);
       if (view.projects.length !== before) {
-        await writeFile(viewPath, `${JSON.stringify(view, null, 2)}\n`, 'utf8');
+        await writeProjectJson(viewPath, view);
       }
     }
     const overlayPath = path.join(viewsDir, 'overlays', viewId, `${slug}.json`);
@@ -100,7 +107,7 @@ async function renameProjectInViews(oldSlug, newSlug) {
       }
     }
     if (viewChanged) {
-      await writeFile(viewPath, `${JSON.stringify(view, null, 2)}\n`, 'utf8');
+      await writeProjectJson(viewPath, view);
     }
     const overlayDir = path.join(viewsDir, 'overlays', viewId);
     const oldOverlay = path.join(overlayDir, `${oldSlug}.json`);
@@ -522,7 +529,7 @@ export function projectCreateDevWriter() {
             // available
           }
           const project = emptyModernProject(slug, title, grid);
-          await writeFile(file, `${JSON.stringify(project, null, 2)}\n`, 'utf8');
+          await writeProjectJson(file, project);
           send(200, { ok: true, slug });
         } catch {
           send(400, { error: 'Could not create the project.' });
@@ -609,7 +616,7 @@ export function projectSettingsDevWriter() {
             label: String(body.teaser?.label || ''),
             coverImage: String(body.teaser?.coverImage || ''),
           };
-          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeProjectJson(file, data);
           send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not save project settings.' });
@@ -658,7 +665,7 @@ export function listingOrderDevWriter() {
               if (typeof entry.full === 'boolean') {
                 data.listings[grid].full = entry.full;
               }
-              await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+              await writeProjectJson(file, data);
               continue;
             }
             if (entry.type === 'play-link') {
@@ -667,7 +674,7 @@ export function listingOrderDevWriter() {
               const file = path.join(process.cwd(), `src/content/play/${id}.json`);
               const data = JSON.parse(await readFile(file, 'utf8'));
               data.order = order;
-              await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+              await writeProjectJson(file, data);
             }
           }
 
@@ -696,7 +703,7 @@ export function listingOrderDevWriter() {
                 }
               }
               viewData.projects.sort((left, right) => (left.order ?? 999) - (right.order ?? 999));
-              await writeFile(viewPath, `${JSON.stringify(viewData, null, 2)}\n`, 'utf8');
+              await writeProjectJson(viewPath, viewData);
             }
           }
 
@@ -850,7 +857,7 @@ export function projectRenameDevWriter() {
           } catch {
             // no draft media folder yet
           }
-          await writeFile(newFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeProjectJson(newFile, data);
           await rm(file, { force: true });
           await renameProjectInViews(slug, newSlug);
           send(200, { ok: true, slug: newSlug });
@@ -890,7 +897,7 @@ export function publishMediaDevWriter() {
           const file = path.join(process.cwd(), relativeFile);
           const data = JSON.parse(await readFile(file, 'utf8'));
           const moved = await publishDraftMediaForProject(slug, data);
-          await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+          await writeProjectJson(file, data);
           send(200, { ok: true, moved });
         } catch {
           send(400, { error: 'Could not publish media.' });

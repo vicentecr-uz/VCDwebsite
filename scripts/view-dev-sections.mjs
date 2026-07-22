@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { suppressContentHmr } from './content-hmr-gate.mjs';
 
 function mergeOverlays(file, inline) {
   if (!file && !inline) return undefined;
@@ -190,6 +191,7 @@ export async function readDevDocument(relativeFile, { ensureOverlay = false } = 
 export async function writeDevDocument(relativeFile, data) {
   const absolute = path.join(process.cwd(), relativeFile);
   await mkdir(path.dirname(absolute), { recursive: true });
+  suppressContentHmr();
   await writeFile(absolute, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
