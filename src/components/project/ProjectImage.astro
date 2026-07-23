@@ -10,8 +10,10 @@ import {
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
 import {
+  BELOW_IMAGE_CAPTION_REVEALS,
   imageCaptionStyleClass,
   imageCaptionsHaveText,
+  isBelowImageCaptionStyle,
   resolveImageCaptionPosition,
   resolveImageCaptionReveals,
   resolveImageCaptionStyle,
@@ -127,7 +129,9 @@ const mediaStyle = joinMediaStyles(
 const captions = resolveImageCaptions({ caption, captions: captionsProp });
 const captionStyle = resolveImageCaptionStyle(captionStyleProp);
 const captionPosition = resolveImageCaptionPosition(captionPositionProp);
-const captionReveals = resolveImageCaptionReveals(captionReveal);
+const captionReveals = isBelowImageCaptionStyle(captionStyle)
+  ? BELOW_IMAGE_CAPTION_REVEALS
+  : resolveImageCaptionReveals(captionReveal);
 const hasCaption = imageCaptionsHaveText(captions);
 const captionClass = imageCaptionStyleClass(captionStyle);
 

@@ -1,13 +1,19 @@
 import type { ImageViewport } from './responsiveImage';
 import { IMAGE_VIEWPORTS } from './responsiveImage';
 
-/** Overlay caption styles (Dev Mode tuner + project images). */
+/** Caption styles (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_STYLES = [
   { id: 'white', label: 'White' },
   { id: 'black', label: 'Black' },
+  { id: 'below', label: 'Below image' },
 ] as const;
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
+
+/** Below-image captions are in-flow body text; overlays use corner + reveal. */
+export function isBelowImageCaptionStyle(style: ImageCaptionStyleId): boolean {
+  return style === 'below';
+}
 
 /** Overlay caption corner (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_POSITIONS = [
@@ -49,6 +55,13 @@ const VIEWPORTS = IMAGE_VIEWPORTS;
 /** Defaults when content has no reveal setting: hover on desktop, always on touch-first sizes. */
 export const DEFAULT_IMAGE_CAPTION_REVEALS: ImageCaptionReveals = {
   desktop: 'hover',
+  tablet: 'always',
+  mobile: 'always',
+};
+
+/** Forced reveal map for below-image captions (always visible, no hover). */
+export const BELOW_IMAGE_CAPTION_REVEALS: ImageCaptionReveals = {
+  desktop: 'always',
   tablet: 'always',
   mobile: 'always',
 };

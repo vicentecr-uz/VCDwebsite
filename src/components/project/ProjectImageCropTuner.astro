@@ -287,6 +287,10 @@ import DevOverlay from '../DevOverlay.astro';
     const isStandaloneMedia = (target: HTMLElement) => (
       target.classList.contains('project-media') && !isGridTarget(target)
     );
+    /** Prefer crop-clip when present (below captions move aspect-ratio onto the clip). */
+    const cropFrameFor = (target: HTMLElement) => (
+      target.querySelector<HTMLElement>(':scope > .project-crop-clip') ?? target
+    );
 
     const MAX_VH_ALLOWED = new Set([90, 80, 70, 60, 50, 40, 30]);
     const normalizeMaxVh = (value: unknown): number | undefined => {
@@ -467,7 +471,7 @@ import DevOverlay from '../DevOverlay.astro';
         target.dataset.devImageVariants = JSON.stringify(variants);
         if (isGridTarget(target)) target.dataset.devHasOwnVariants = 'true';
       }
-      if (image && !isGridTarget(target)) sizeImageToCover(target, image);
+      if (image && !isGridTarget(target)) sizeImageToCover(cropFrameFor(target), image);
     };
 
     const sizeImageToCover = (frame: HTMLElement, image: HTMLImageElement) => {
@@ -622,7 +626,7 @@ import DevOverlay from '../DevOverlay.astro';
         }
         setTargetVariant(editTarget, selectedViewport, draft);
         editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
-        if (!isGridTarget(editTarget)) sizeImageToCover(editTarget, editedImage);
+        if (!isGridTarget(editTarget)) sizeImageToCover(cropFrameFor(editTarget), editedImage);
       }
       syncAspectRatioSelect();
       viewportButtons.forEach((button) => {
