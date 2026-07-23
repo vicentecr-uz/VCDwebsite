@@ -2,6 +2,7 @@ import {
   deriveNavFromOutline,
   normalizeOutline,
   outlineAnchorId,
+  reorderOutlinePreservingGroups,
   type OutlineEntry,
   type SectionNavGroup,
   type SectionNavItem,
@@ -74,27 +75,6 @@ const pageIndexForId = (id: string) => {
   return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
 };
 
-const sortAnchorFor = (entry: OutlineEntry) => {
-  if (entry.kind === 'section') return outlineAnchorId(entry);
-  if (entry.anchor?.trim()) return entry.anchor.trim();
-  const index = outline.indexOf(entry);
-  for (let i = index + 1; i < outline.length; i += 1) {
-    const next = outline[i];
-    if (next.kind === 'group') break;
-    if (next.kind === 'section') return outlineAnchorId(next);
-  }
-  return entry.id;
-};
-
-const sortOutlineByPageOrder = (entries: OutlineEntry[]) =>
-  [...entries].sort((a, b) => {
-    const diff = pageIndexForId(sortAnchorFor(a)) - pageIndexForId(sortAnchorFor(b));
-    if (diff !== 0) return diff;
-    if (a.kind === 'group' && b.kind === 'section') return -1;
-    if (a.kind === 'section' && b.kind === 'group') return 1;
-    return 0;
-  });
-
 const writeRootDatasets = () => {
   if (!root) return;
   const nav = deriveNavFromOutline(outline);
@@ -162,13 +142,17 @@ const clearGroupAnimState = (groupEl: HTMLElement) => {
 
 export function syncDevSectionOutlineSidebar() {
   const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
+  if (!root) {
+    root = document.querySelector<HTMLElement>('[data-section-nav-root]');
+    documentKey = root?.dataset.sectionNavDocument?.trim() || '';
+  }
   if (!list || !root) return;
 
   if (!outline.length) {
     loadOutlineFromRoot();
   }
 
-  const sorted = sortOutlineByPageOrder(outline);
+  const sorted = reorderOutlinePreservingGroups(outline, pageIndexForId);
   outline.length = 0;
   outline.push(...sorted);
   const nav = deriveNavFromOutline(outline) as NavItem[];

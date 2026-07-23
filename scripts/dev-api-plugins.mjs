@@ -586,6 +586,12 @@ export function sectionOrderDevWriter() {
             reordered.push(sections[index]);
           }
           data.sections = reordered;
+          // Keep sidebar group membership in sync with the new page order.
+          // Client sends the sticky-rebuilt outline (group anchors follow first child).
+          if (Array.isArray(body.outline) && body.outline.length > 0) {
+            data.outline = body.outline;
+            delete data.nav;
+          }
           await writeDevDocument(relativeFile, data);
           send(200, { ok: true });
         } catch {

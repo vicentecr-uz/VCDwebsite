@@ -137,6 +137,76 @@ export function outlineSortAnchor(
 }
 
 /**
+ * Re-order outline entries to match page block order while keeping each
+ * section in its current group. Group markers move with their first child
+ * on the page (anchor updated), so dragging a later section above a group's
+ * former first section keeps it in that group instead of the previous one.
+ */
+export function reorderOutlinePreservingGroups(
+  outline: OutlineEntry[],
+  pageIndexForId: (id: string) => number,
+): OutlineEntry[] {
+  const normalized = normalizeOutline(outline);
+  if (!normalized.length) return [];
+
+  const groupsById = new Map<string, OutlineGroup>();
+  const groupOrder: string[] = [];
+  const sectionToGroupId = new Map<string, string | null>();
+  const sections: OutlineSection[] = [];
+  let currentGroupId: string | null = null;
+
+  for (const entry of normalized) {
+    if (entry.kind === 'group') {
+      currentGroupId = entry.id;
+      if (!groupsById.has(entry.id)) {
+        groupsById.set(entry.id, entry);
+        groupOrder.push(entry.id);
+      }
+      continue;
+    }
+    sections.push(entry);
+    sectionToGroupId.set(entry.id, currentGroupId);
+  }
+
+  const sortedSections = [...sections].sort((a, b) => {
+    const diff =
+      pageIndexForId(outlineAnchorId(a)) - pageIndexForId(outlineAnchorId(b));
+    if (diff !== 0) return diff;
+    return sections.indexOf(a) - sections.indexOf(b);
+  });
+
+  const result: OutlineEntry[] = [];
+  let lastGroupId: string | null | undefined;
+  const emittedGroups = new Set<string>();
+
+  for (const section of sortedSections) {
+    const groupId = sectionToGroupId.get(section.id) ?? null;
+    if (groupId !== lastGroupId) {
+      if (groupId !== null) {
+        const group = groupsById.get(groupId);
+        if (group) {
+          result.push({
+            ...group,
+            anchor: outlineAnchorId(section),
+          });
+          emittedGroups.add(groupId);
+        }
+      }
+      lastGroupId = groupId;
+    }
+    result.push(section);
+  }
+
+  for (const groupId of groupOrder) {
+    if (emittedGroups.has(groupId)) continue;
+    const group = groupsById.get(groupId);
+    if (group) result.push(group);
+  }
+
+  return result;
+}
+
+/**
  * Derive the sidebar tree from a flat outline.
  * Sections attach to the nearest preceding group; leading sections
  * before any group become top-level links.
