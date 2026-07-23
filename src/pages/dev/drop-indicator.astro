@@ -1,0 +1,417 @@
+---
+/**
+ * Dev-only probe: uniform section blocks + drop indicator insert preview.
+ * Isolates lift, indicator fade/collapse, and neighbouring-block shift from Tapico.
+ */
+import Layout from '../../layouts/Layout.astro';
+
+if (!import.meta.env.DEV) {
+  return Astro.redirect('/404');
+}
+
+const BLOCK_COUNT = 10;
+const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
+---
+
+<Layout title="Drop indicator probe (dev)">
+  <main class="probe">
+    <header class="probe__intro">
+      <h1>Drop indicator probe</h1>
+      <p>
+        Uniform test blocks with lift + drop indicator. Grab a handle, hold and move up or
+        down to scroll the page (same driver as Tapico), then release over a new insert point.
+        Neighbouring blocks should shift smoothly as the indicator collapses and reopens.
+      </p>
+      <p class="probe__status" id="probe-status" aria-live="polite">Idle · insert —</p>
+      <p class="probe__links">
+        <a href="/dev/scroll-hold">Scroll-hold probe</a>
+      </p>
+    </header>
+
+    <div class="probe__spacer" aria-hidden="true"></div>
+
+    <div class="probe__drop-zone" id="probe-drop-zone" data-probe-drop-zone>
+      {
+        blocks.map((n) => (
+          <section class="probe-block" data-probe-block>
+            <button
+              type="button"
+              class="probe-block__handle"
+              data-probe-handle
+              aria-label={`Reorder block ${n}`}
+            >
+              <span aria-hidden="true">⋮⋮</span>
+            </button>
+            <div class="probe-block__body">
+              <span class="probe-block__label">Block {n}</span>
+              <span class="probe-block__meta">6em fixed height</span>
+            </div>
+          </section>
+        ))
+      }
+    </div>
+
+    <div class="probe__spacer probe__spacer--tail" aria-hidden="true"></div>
+  </main>
+</Layout>
+
+<script>
+  import {
+    createReorderController,
+    measureGapBelow,
+  } from '../../scripts/sectionReorder';
+
+  const status = document.getElementById('probe-status');
+  const dropZone = document.getElementById('probe-drop-zone');
+
+  let dragItem: HTMLElement | null = null;
+
+  const setStatus = (text: string) => {
+    if (status) status.textContent = text;
+  };
+
+  const getBlocks = () =>
+    [...dropZone?.querySelectorAll<HTMLElement>('[data-probe-block]') ?? []]
+      .filter((el) => el !== dragItem);
+
+  const controller = createReorderController({
+    getItems: getBlocks,
+    getDropZone: () => dropZone,
+    getDragItem: () => dragItem,
+    classes: {
+      indicator: 'probe-drop-indicator',
+      indicatorBody: 'probe-drop-indicator__body',
+      flipMoving: 'is-probe-flip-moving',
+      dropPreviewAbove: 'is-drop-preview-above',
+      fadeGhost: 'is-drop-indicator-fade-ghost',
+    },
+    measureInsertGaps: (insertIndex, sourceIndex, liftGaps) => {
+      if (insertIndex === sourceIndex) {
+        return { top: liftGaps.top, bottom: liftGaps.bottom };
+      }
+
+      // Probe blocks use margin-bottom only. Transfer the above block's
+      // margin into --gap-top (and suppress it via is-drop-preview-above).
+      // --gap-bottom keeps the lifted block's bottom gap so the dashed body
+      // does not butt the neighbor below.
+      const blocks = getBlocks();
+      let top = '0px';
+      if (insertIndex > 0) {
+        if (insertIndex < blocks.length) {
+          top = getComputedStyle(blocks[insertIndex - 1]).marginBottom;
+        } else if (blocks.length > 0) {
+          top = measureGapBelow(blocks[blocks.length - 1]);
+        }
+      }
+
+      const bottom = insertIndex < blocks.length ? liftGaps.bottom : '0px';
+      return { top, bottom };
+    },
+    onStatus: setStatus,
+  });
+
+  document.addEventListener('pointermove', (event) => {
+    controller.setPointerY(event.clientY);
+  }, { capture: true, passive: true });
+
+  document.addEventListener('mousemove', (event) => {
+    controller.setPointerY(event.clientY);
+  }, { capture: true, passive: true });
+
+  let ending = false;
+  const endSession = () => {
+    if (ending || !controller.isActive()) return;
+    ending = true;
+    void (async () => {
+      try {
+        await controller.endDrop();
+      } finally {
+        dragItem = null;
+        ending = false;
+        document.documentElement.classList.remove('is-probe-lifting');
+      }
+    })();
+  };
+
+  document.addEventListener('pointerup', (event) => {
+    if (event.button !== 0) return;
+    endSession();
+  }, { capture: true });
+
+  document.addEventListener('mouseup', (event) => {
+    if (event.button !== 0) return;
+    endSession();
+  }, { capture: true });
+
+  dropZone?.querySelectorAll<HTMLButtonElement>('[data-probe-handle]').forEach((handle) => {
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || controller.isActive()) return;
+      event.preventDefault();
+
+      const root = handle.closest<HTMLElement>('[data-probe-block]');
+      if (!root) return;
+
+      const allBlocks = [...dropZone?.querySelectorAll<HTMLElement>('[data-probe-block]') ?? []];
+      let sourceIndex = allBlocks.indexOf(root);
+      if (sourceIndex < 0) sourceIndex = 0;
+
+      dragItem = root;
+      document.documentElement.classList.add('is-probe-lifting');
+      controller.beginLift(root, handle, event.clientY, sourceIndex);
+
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch {
+        // Document listeners still work.
+      }
+    });
+  });
+</script>
+
+<style>
+  .probe {
+    padding-block: 2em;
+    min-height: 100%;
+    background-color: var(--color-bg, #ffffff);
+    background-image:
+      radial-gradient(circle, color-mix(in srgb, var(--color-text-muted, #6f6b62) 48%, transparent) 1px, transparent 1px);
+    background-size: 1.25em 1.25em;
+  }
+
+  .probe__intro {
+    max-width: 40em;
+    margin-inline: auto;
+    padding-inline: 1em;
+  }
+
+  .probe__intro h1 {
+    font-size: 1.25em;
+    font-weight: 600;
+    margin-bottom: 0.5em;
+  }
+
+  .probe__status {
+    margin-top: 1em;
+    font-family: ui-monospace, monospace;
+    font-size: 0.85em;
+    color: var(--color-text-muted, #6f6b62);
+  }
+
+  .probe__links {
+    margin-top: 0.75em;
+    font-size: 0.9em;
+  }
+
+  .probe__spacer {
+    height: 30vh;
+  }
+
+  .probe__spacer--tail {
+    height: 80vh;
+  }
+
+  .probe__drop-zone {
+    position: relative;
+    isolation: isolate;
+    max-width: 40em;
+    margin-inline: auto;
+    padding-inline: 1em;
+  }
+
+  .probe-block {
+    position: relative;
+    height: 6em;
+    margin-bottom: 1em;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--color-text-muted, #6f6b62) 22%, transparent);
+    border-radius: var(--radius-control-smooth, 0.35em);
+    background: var(--color-bg, #fff);
+    box-shadow: 0 0.15em 0.5em rgb(0 0 0 / 0.04);
+  }
+
+  .probe-block:last-child {
+    margin-bottom: 0;
+  }
+
+  .probe-block.is-lifted {
+    transform: scale(1);
+    transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+    box-shadow: 0 0.6em 2em rgb(0 0 0 / 0.14);
+  }
+
+  .probe-block.is-lifted.is-dropping {
+    transition:
+      top 350ms ease-out,
+      left 350ms ease-out,
+      transform 200ms ease-out,
+      box-shadow 200ms ease-out;
+    transform: scale(1);
+    box-shadow: none;
+  }
+
+  .probe-block.is-lifted.is-lifted-raised {
+    transform: scale(1.02);
+    box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 0.18);
+  }
+
+  .probe-block.is-lifted.is-lifted-raised.is-dropping {
+    transform: scale(1.02);
+    box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 0.18);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .probe-block.is-lifted {
+      transition: none;
+    }
+  }
+
+  .probe-block__body {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    padding-inline: 1.25em;
+    gap: 0.25em;
+  }
+
+  .probe-block__label {
+    font-weight: 600;
+  }
+
+  .probe-block__meta {
+    font-size: 0.85em;
+    color: var(--color-text-muted, #6f6b62);
+  }
+
+  .probe-block__handle {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-control, 0.7em);
+    background: var(--color-surface-soft, #f4f3f0);
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    cursor: grab;
+    transform: translate(calc(-100% - 0.55em), -50%);
+    touch-action: none;
+  }
+
+  .probe-block.is-probe-flip-moving {
+    position: relative;
+    z-index: 2;
+    will-change: transform;
+  }
+
+  html.is-probe-lifting {
+    touch-action: none;
+    user-select: none;
+  }
+
+  html.is-probe-lifting .probe-block__handle {
+    cursor: grabbing;
+  }
+
+  html.is-probe-lifting .probe-block:not(.is-lifted) .probe-block__handle {
+    opacity: 0;
+    pointer-events: none;
+  }
+</style>
+
+<style is:global>
+  .probe__drop-zone > .is-drop-preview-above {
+    margin-bottom: 0 !important;
+  }
+
+  .probe-drop-indicator {
+    display: grid;
+    grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .probe-drop-indicator__body {
+    grid-row: 2;
+    min-height: 0;
+    height: 0;
+    box-sizing: border-box;
+    border: 1px dashed transparent;
+    background: transparent;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transition:
+      height 140ms ease-out,
+      opacity 90ms ease-out,
+      background-color 90ms ease-out,
+      border-color 90ms ease-out;
+  }
+
+  .probe-drop-indicator.is-visible .probe-drop-indicator__body {
+    height: var(--gap-height, 6em);
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--color-text-muted, #6f6b62) 45%, transparent);
+    background: color-mix(in srgb, var(--color-surface-soft, #f4f3f0) 85%, transparent);
+  }
+
+  .probe-drop-indicator.is-fading-out .probe-drop-indicator__body {
+    opacity: 0;
+    transition:
+      opacity 90ms ease-out,
+      background-color 90ms ease-out,
+      border-color 90ms ease-out;
+  }
+
+  .probe-drop-indicator.is-visible.is-exiting .probe-drop-indicator__body,
+  .probe-drop-indicator.is-exiting .probe-drop-indicator__body {
+    height: 0;
+    opacity: 0;
+    transition:
+      height 140ms ease-out,
+      opacity 90ms ease-out,
+      background-color 90ms ease-out,
+      border-color 90ms ease-out;
+  }
+
+  .probe-drop-indicator.is-repositioning {
+    transition: none !important;
+  }
+
+  .probe-drop-indicator.is-repositioning .probe-drop-indicator__body {
+    transition-property: height, background-color, border-color;
+    transition-duration: 0s;
+    transition-timing-function: ease-out;
+  }
+
+  .probe-drop-indicator__body.is-drop-indicator-fade-ghost {
+    position: fixed;
+    margin: 0;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: -1;
+    overflow: hidden;
+    border: 1px dashed color-mix(in srgb, var(--color-text-muted, #6f6b62) 45%, transparent);
+    background: color-mix(in srgb, var(--color-surface-soft, #f4f3f0) 85%, transparent);
+    border-radius: var(--radius-control-smooth, 0.35em);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .probe-drop-indicator__body {
+      transition: none;
+    }
+
+    .probe-drop-indicator.is-visible .probe-drop-indicator__body {
+      height: var(--gap-height, 6em);
+      opacity: 1;
+    }
+  }
+</style>
