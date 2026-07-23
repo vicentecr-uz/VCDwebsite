@@ -12,8 +12,8 @@ export const REORDER_TIMING = {
   DROP_INDICATOR_ENTER_MS: 140,
   FLIP_REPOSITION_MS: 350,
   FADE_IN_DELAY_MS: 100,
-  DROP_ANIMATION_MS: 350,
-  DROP_SCALE_MS: 200,
+  /** Drop settle via easeOutElastic (sampled WAAPI keyframes). */
+  DROP_ANIMATION_MS: 700,
 } as const;
 
 export const SCROLL_HOLD = {
@@ -264,6 +264,19 @@ const idleState = (): ReorderState => ({
 
 const easeOut = (t: number) => 1 - (1 - t) ** 2;
 
+/** easings.net easeOutElastic — spring settle with decaying overshoot. */
+export const easeOutElastic = (t: number) => {
+  if (t === 0 || t === 1) return t;
+  const c4 = (2 * Math.PI) / 3;
+  return 2 ** (-10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+};
+
+const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
+
+const DROP_ELASTIC_SAMPLES = 32;
+/** Softens easeOutElastic overshoot (1 = full easings.net amplitude). */
+const DROP_ELASTIC_AMPLITUDE = 0.55;
+
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 
 export type ReorderController = {
@@ -304,6 +317,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let activeFadeGhosts: HTMLElement[] = [];
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
+  let dropAnimation: Animation | null = null;
 
   const nowMs = () => performance.now();
 
@@ -660,32 +674,61 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (!targetRect) return Promise.resolve();
 
     const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_ANIMATION_MS;
-    const settleMs = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_SCALE_MS;
+    const fromTop = Number.parseFloat(item.style.top) || item.getBoundingClientRect().top;
+    const fromLeft = Number.parseFloat(item.style.left) || item.getBoundingClientRect().left;
+    const toTop = targetRect.top;
+    const toLeft = targetRect.left;
+    const fromScale = 1.02;
+    const toScale = 1;
 
     item.classList.add('is-dropping');
+    item.classList.remove('is-lifted-raised');
     void item.offsetHeight;
 
-    if (motionMs <= 0 && settleMs <= 0) {
-      item.classList.remove('is-lifted-raised');
-      item.style.top = `${targetRect.top}px`;
-      item.style.left = `${targetRect.left}px`;
+    if (motionMs <= 0) {
+      item.style.top = `${toTop}px`;
+      item.style.left = `${toLeft}px`;
       item.classList.remove('is-dropping');
       return Promise.resolve();
     }
 
-    return new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          item.classList.remove('is-lifted-raised');
-          item.style.top = `${targetRect.top}px`;
-          item.style.left = `${targetRect.left}px`;
-          setTimeout(() => {
-            item.classList.remove('is-dropping');
-            resolve();
-          }, Math.max(motionMs, settleMs));
-        });
+    dropAnimation?.cancel();
+    // WAAPI owns top/left/scale — suppress CSS transitions that would fight it.
+    item.style.transition = 'none';
+
+    const keyframes: Keyframe[] = [];
+    for (let i = 0; i <= DROP_ELASTIC_SAMPLES; i += 1) {
+      const t = i / DROP_ELASTIC_SAMPLES;
+      const elastic = easeOutElastic(t);
+      const pos = 1 + (elastic - 1) * DROP_ELASTIC_AMPLITUDE;
+      const scaleT = easeOutCubic(t);
+      keyframes.push({
+        top: `${fromTop + (toTop - fromTop) * pos}px`,
+        left: `${fromLeft + (toLeft - fromLeft) * pos}px`,
+        transform: `scale(${fromScale + (toScale - fromScale) * scaleT})`,
+        offset: t,
       });
+    }
+
+    const animation = item.animate(keyframes, {
+      duration: motionMs,
+      easing: 'linear',
+      fill: 'forwards',
     });
+    dropAnimation = animation;
+
+    return animation.finished
+      .catch(() => {
+        // Cancelled (destroy / new drop) — still commit if this item is live.
+      })
+      .then(() => {
+        if (dropAnimation === animation) dropAnimation = null;
+        item.style.top = `${toTop}px`;
+        item.style.left = `${toLeft}px`;
+        item.style.removeProperty('transition');
+        animation.cancel();
+        item.classList.remove('is-dropping');
+      });
   };
 
   const teardownChrome = () => {
@@ -694,6 +737,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     clearActiveFlip();
     clearGhosts();
     releaseNeighbor();
+    dropAnimation?.cancel();
+    dropAnimation = null;
     indicatorAnim = { type: 'steady' };
     dropIndicator?.remove();
     dropIndicator = null;
