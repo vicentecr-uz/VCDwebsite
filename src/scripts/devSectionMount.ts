@@ -22,7 +22,7 @@ type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 const STACK_CLASS: Record<SpacingValue, string | null> = {
   related: 'project-stack--related',
   group: 'project-stack--group',
-  section: null,
+  section: 'project-stack--section',
   major: 'project-stack--major',
   none: 'project-stack--none',
 };

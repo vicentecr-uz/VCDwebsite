@@ -77,19 +77,67 @@
 
   type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image';
 
-  const SPACING_OPTIONS: Array<{ value: 'related' | 'group' | 'section' | 'major'; label: string; title: string }> = [
+  type SpacingOption = { value: SpacingValue; label: string; title: string };
+
+  const SPACING_OPTIONS: SpacingOption[] = [
     { value: 'related', label: '1em', title: 'Related · 1em' },
     { value: 'group', label: '4em', title: 'Group · 4em' },
     { value: 'section', label: '8em', title: 'Section · 8em' },
     { value: 'major', label: '12em', title: 'Major · 12em' },
   ];
 
+  /** Only the page-top gap control offers 0. */
+  const PAGE_TOP_NONE_OPTION: SpacingOption = {
+    value: 'none',
+    label: '0',
+    title: 'None · 0',
+  };
+
   const STACK_CLASS: Record<SpacingValue, string | null> = {
     related: 'project-stack--related',
     group: 'project-stack--group',
-    section: null,
+    section: 'project-stack--section',
     major: 'project-stack--major',
     none: 'project-stack--none',
+  };
+
+  const spacingOptionsFor = (pageTop: boolean): SpacingOption[] =>
+    pageTop ? [PAGE_TOP_NONE_OPTION, ...SPACING_OPTIONS] : SPACING_OPTIONS;
+
+  const spacingButtonsHtml = (pageTop: boolean) =>
+    spacingOptionsFor(pageTop)
+      .map(
+        (option) => `
+          <button
+            type="button"
+            class="dev-spacing-control__btn"
+            data-dev-spacing-option="${option.value}"
+            title="${option.title}"
+            aria-label="${option.title}"
+          >
+            <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
+            <span class="dev-spacing-control__label">${option.label}</span>
+          </button>
+        `,
+      )
+      .join('');
+
+  const isSpacingStackParent = (el: HTMLElement | null): el is HTMLElement =>
+    Boolean(
+      el && (
+        el.hasAttribute('data-dev-project-drop-zone') ||
+        el.classList.contains('project-page__main')
+      ),
+    );
+
+  const isPageTopSpacingBlock = (element: HTMLElement) => {
+    const parent = element.parentElement;
+    if (!isSpacingStackParent(parent)) return false;
+    const siblings = [...parent.children].filter(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement && child.hasAttribute('data-dev-spacing-document'),
+    );
+    return siblings[0] === element;
   };
 
   /** Cursor must be within this distance of the control centre to reveal it. */
@@ -304,6 +352,56 @@
       );
     };
 
+    const bindSpacingOptionClicks = (state: EditableSpacingState) => {
+      state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const next = button.dataset.devSpacingOption as SpacingValue;
+          if (!next || next === state.currentValue) return;
+          state.currentValue = next;
+          applySpacingClass(state.element, next);
+          syncSpacingControl(state);
+          updateActions();
+        });
+      });
+    };
+
+    const rebuildSpacingOptionButtons = (state: EditableSpacingState, pageTop: boolean) => {
+      state.spacingGroup.innerHTML = spacingButtonsHtml(pageTop);
+      bindSpacingOptionClicks(state);
+      syncSpacingControl(state);
+      state.control.dataset.pageTop = pageTop ? 'true' : 'false';
+    };
+
+    /**
+     * Page-top is the only control with a 0 option. When structure changes,
+     * rebuild option sets and coerce legacy/invalid values.
+     */
+    const syncPageTopSpacingControls = () => {
+      spacingStates.forEach((state) => {
+        const pageTop = isPageTopSpacingBlock(state.element);
+        const wasPageTop = state.control.dataset.pageTop === 'true';
+
+        if (pageTop && !wasPageTop
+          && state.currentValue === 'section'
+          && state.savedValue === 'section') {
+          // Became page-top with between-sibling default — page top should be flush.
+          applySpacingClass(state.element, 'none');
+          state.currentValue = 'none';
+          state.savedValue = 'none';
+        }
+
+        if (!pageTop && state.currentValue === 'none') {
+          applySpacingClass(state.element, 'section');
+          state.currentValue = 'section';
+          if (state.savedValue === 'none') state.savedValue = 'section';
+        }
+
+        rebuildSpacingOptionButtons(state, pageTop);
+      });
+    };
+
     const mountSpacingControl = (element: HTMLElement): EditableSpacingState | null => {
       try {
         const path = JSON.parse(element.dataset.devSpacingPath || '[]');
@@ -311,16 +409,14 @@
         if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return null;
         if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
 
-        const parent = element.parentElement;
-        if (parent?.classList.contains('project-page__main')) {
-          const siblings = [...parent.children];
-          if (siblings[0] === element) return null;
-        }
+        const pageTop = isPageTopSpacingBlock(element);
+        const initial = raw;
 
         const control = document.createElement('div');
         control.className = 'dev-gap-toolbar';
         control.setAttribute('data-dev-spacing-control', '');
         control.setAttribute('data-dev-mode-only', '');
+        control.dataset.pageTop = pageTop ? 'true' : 'false';
         const devEnabled = document.documentElement.classList.contains('is-dev-mode');
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
         control.innerHTML = `
@@ -341,20 +437,7 @@
             <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
           </div>
           <div class="dev-gap-toolbar__spacing">
-            ${SPACING_OPTIONS.map(
-              (option) => `
-                <button
-                  type="button"
-                  class="dev-spacing-control__btn"
-                  data-dev-spacing-option="${option.value}"
-                  title="${option.title}"
-                  aria-label="${option.title}"
-                >
-                  <span class="dev-spacing-control__mark dev-spacing-control__mark--${option.value}" aria-hidden="true"></span>
-                  <span class="dev-spacing-control__label">${option.label}</span>
-                </button>
-              `,
-            ).join('')}
+            ${spacingButtonsHtml(pageTop)}
           </div>
         `;
 
@@ -377,23 +460,11 @@
           menu,
           document: element.dataset.devSpacingDocument,
           path,
-          savedValue: raw,
-          currentValue: raw,
+          savedValue: initial,
+          currentValue: initial,
         };
+        bindSpacingOptionClicks(state);
         syncSpacingControl(state);
-
-        control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
-          button.addEventListener('click', (event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const next = button.dataset.devSpacingOption as SpacingValue;
-            if (!next || next === state.currentValue) return;
-            state.currentValue = next;
-            applySpacingClass(element, next);
-            syncSpacingControl(state);
-            updateActions();
-          });
-        });
 
         return state;
       } catch {
@@ -405,6 +476,7 @@
       const state = mountSpacingControl(element);
       return state ? [state] : [];
     });
+    syncPageTopSpacingControls();
 
     /** Paths on media/text/spacing editors — bumped when sections are inserted/deleted in-place. */
     const DEV_PATH_ATTRS = [
@@ -485,6 +557,7 @@
       document.documentElement.classList.toggle('is-dev-text-caret', suppressed);
       if (suppressed) {
         spacingStates.forEach(({ control }) => clearGapProximity(control));
+        document.documentElement.classList.remove('is-page-top-gap-above-header');
       }
     };
 
@@ -495,6 +568,7 @@
         control.hidden = !devEnabled || suppressed;
         if (suppressed) clearGapProximity(control);
       });
+      if (!devEnabled) document.documentElement.classList.remove('is-page-top-gap-above-header');
     };
 
     const distanceToToolbarTarget = (
@@ -519,6 +593,26 @@
       state.element.classList.contains('is-dev-spacing-dirty') ||
       state.spacingGroup.contains(document.activeElement);
 
+    const isPageTopGapControl = (control: HTMLElement) => control.dataset.pageTop === 'true';
+
+    /** Escape drop-zone isolation so page-top chips paint/hit above the sticky header. */
+    const syncPageTopGapStacking = () => {
+      const pageTopActive = spacingStates.some(
+        ({ control }) =>
+          isPageTopGapControl(control) &&
+          !control.hidden &&
+          (control.classList.contains('is-near-add') ||
+            control.classList.contains('is-near-spacing') ||
+            control.classList.contains('is-menu-open')),
+      );
+      const root = document.documentElement;
+      const wasActive = root.classList.contains('is-page-top-gap-above-header');
+      root.classList.toggle('is-page-top-gap-above-header', pageTopActive);
+      if (pageTopActive && !wasActive) {
+        document.dispatchEvent(new CustomEvent('header:force-close'));
+      }
+    };
+
     const closeSectionMenus = (except?: EditableSpacingState) => {
       spacingStates.forEach((state) => {
         if (except && state === except) return;
@@ -526,11 +620,13 @@
         state.addButton.setAttribute('aria-expanded', 'false');
         state.control.classList.remove('is-menu-open');
       });
+      syncPageTopGapStacking();
     };
 
     /**
-     * Header chrome sits above gap toolbars in paint order, but proximity can
-     * still reveal spacing chips under the sticky logo/menu. Use geometry (not
+     * Header chrome sits above mid-page gap toolbars in paint order (drop zone
+     * z-index 25 vs header 50). Page-top chips lift the drop zone above the
+     * header while active — see syncPageTopGapStacking. Use geometry (not
      * elementFromPoint) so an already-visible chip doesn't keep itself alive.
      */
     const isPointerOverHeaderChrome = (clientX: number, clientY: number) => {
@@ -561,21 +657,11 @@
         spacingStates.forEach(({ control }) => {
           if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
         });
+        document.documentElement.classList.remove('is-page-top-gap-above-header');
         return;
       }
 
-      // Don't reveal gap chips while using the sticky header menu / logo.
-      if (isPointerOverHeaderChrome(clientX, clientY)) {
-        spacingStates.forEach((state) => {
-          if (state.control.hidden) {
-            clearGapProximity(state.control);
-            return;
-          }
-          state.control.classList.toggle('is-near-add', isAddControlPinned(state));
-          state.control.classList.toggle('is-near-spacing', isSpacingControlPinned(state));
-        });
-        return;
-      }
+      const overHeader = isPointerOverHeaderChrome(clientX, clientY);
 
       let nearestAdd: EditableSpacingState | null = null;
       let nearestAddDistance = Infinity;
@@ -584,6 +670,8 @@
 
       spacingStates.forEach((state) => {
         if (state.control.hidden) return;
+        // Mid-page chips stay suppressed under the sticky header; page-top may lift above it.
+        if (overHeader && !isPageTopGapControl(state.control)) return;
 
         if (!isAddControlPinned(state)) {
           const distance = distanceToToolbarTarget(state.addButton, clientX, clientY);
@@ -608,15 +696,17 @@
           clearGapProximity(control);
           return;
         }
+        const allowNear = !overHeader || isPageTopGapControl(control);
         control.classList.toggle(
           'is-near-add',
-          isAddControlPinned(state) || state === nearestAdd,
+          isAddControlPinned(state) || (allowNear && state === nearestAdd),
         );
         control.classList.toggle(
           'is-near-spacing',
-          isSpacingControlPinned(state) || state === nearestSpacing,
+          isSpacingControlPinned(state) || (allowNear && state === nearestSpacing),
         );
       });
+      syncPageTopGapStacking();
     };
 
     if (spacingStates.length) {
@@ -627,18 +717,26 @@
         },
         { passive: true },
       );
+      // Header mouseenter can beat the next pointermove — sync first so page-top
+      // chips lift above the nav before openMenu hit-tests.
+      document.addEventListener('dev:sync-gap-proximity', ((event: CustomEvent<{ clientX: number; clientY: number }>) => {
+        syncSpacingProximity(event.detail.clientX, event.detail.clientY);
+      }) as EventListener);
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control, element }) => {
           if (element.classList.contains('is-dev-spacing-dirty')) {
             control.classList.remove('is-near-add');
+            syncPageTopGapStacking();
             return;
           }
           if (control.classList.contains('is-menu-open')) {
             control.classList.remove('is-near-spacing');
+            syncPageTopGapStacking();
             return;
           }
           clearGapProximity(control);
         });
+        document.documentElement.classList.remove('is-page-top-gap-above-header');
       });
       document.addEventListener('focusin', syncSpacingCaretSuppression);
       document.addEventListener('focusout', () => {
@@ -729,6 +827,7 @@
       window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
         detail: pending.outlineRevert,
       }));
+      syncPageTopSpacingControls();
     };
 
     const revertPendingSectionInserts = () => {
@@ -757,6 +856,7 @@
           },
         }));
       });
+      syncPageTopSpacingControls();
     };
 
     const revertPendingSectionDeletes = () => {
@@ -797,6 +897,7 @@
           },
         }));
       }
+      syncPageTopSpacingControls();
     };
 
     const flushPendingEditsForDocument = async (documentKey: string) => {
@@ -1253,7 +1354,7 @@
         return;
       }
 
-      const newSpacing: SpacingValue = 'section';
+      const newSpacing: SpacingValue = sectionIndex === 0 ? 'none' : 'section';
       const sectionId = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
@@ -1321,6 +1422,7 @@
         },
       }));
 
+      syncPageTopSpacingControls();
       updateActions();
       requestAnimationFrame(() => {
         built.textElement.focus();
@@ -1346,6 +1448,7 @@
         state.menu.hidden = false;
         state.addButton.setAttribute('aria-expanded', 'true');
         state.control.classList.add('is-near-add', 'is-menu-open');
+        syncPageTopGapStacking();
       });
 
       state.menu.querySelectorAll<HTMLButtonElement>('[data-dev-section-type]').forEach((button) => {
@@ -1411,6 +1514,7 @@
             type: sectionType,
           },
         }));
+        syncPageTopSpacingControls();
         updateActions();
         return;
       }
@@ -1449,6 +1553,7 @@
         },
       }));
 
+      syncPageTopSpacingControls();
       updateActions();
     };
 
@@ -1502,6 +1607,7 @@
         root,
         section,
       });
+      syncPageTopSpacingControls();
       updateActions();
     };
 
@@ -1555,6 +1661,7 @@
         return;
       }
       pendingMedia.set(detail.id, detail);
+      if (detail.kind === 'section-order') syncPageTopSpacingControls();
       updateActions();
     }) as EventListener);
 
@@ -2089,6 +2196,7 @@
           remapPathsInStates(indexMap);
           resetSectionOrderIds();
         }
+        syncPageTopSpacingControls();
         insertedSections.forEach(({ clientId, serverId }) => {
           remapDevSectionOutlineId(clientId, serverId);
         });
@@ -2367,12 +2475,21 @@
     pointer-events: none;
   }
 
+  /* Above mid-page siblings; drop zone still traps under header until lifted. */
+  .dev-gap-toolbar[data-page-top='true'] {
+    z-index: 55;
+  }
+
   [data-dev-spacing-document].project-stack--related > .dev-gap-toolbar {
     top: calc(var(--space-related) / -2);
   }
 
   [data-dev-spacing-document].project-stack--group > .dev-gap-toolbar {
     top: calc(var(--space-group) / -2);
+  }
+
+  [data-dev-spacing-document].project-stack--section > .dev-gap-toolbar {
+    top: calc(var(--space-section) / -2);
   }
 
   [data-dev-spacing-document].project-stack--major > .dev-gap-toolbar {
@@ -2384,7 +2501,7 @@
     top: 0;
   }
 
-  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--group):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {
+  .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--group):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {
     top: calc(var(--space-related) / -2);
   }
 
@@ -2545,16 +2662,29 @@
     height: 0.45em;
   }
 
+  .dev-spacing-control__mark--none {
+    height: 0;
+    width: 1.1em;
+    border: 1px solid currentColor;
+    background: transparent;
+    box-sizing: border-box;
+    border-radius: 1px;
+  }
+
   /*
     Dirty spacing: highlight the margin-top gap above the block (the thing
     you're editing), not the content box. Same positioning model as the
     gap toolbar — no spacer section in the DOM.
+
+    Use ::before — ::after is the section-delete hit bridge
+    ([data-dev-section-deletable]::after). Sharing one pseudo collapsed the
+    gap outline into a small dashed box over the content.
   */
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty {
     position: relative;
   }
 
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty::after {
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty::before {
     content: '';
     position: absolute;
     left: 0;
@@ -2567,22 +2697,22 @@
     z-index: 35;
   }
 
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--related::after {
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--related::before {
     height: var(--space-related);
   }
 
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--group::after {
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--group::before {
     height: var(--space-group);
   }
 
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--major::after {
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--major::before {
     height: var(--space-major);
   }
 
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--none::after,
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--none::before,
   .is-dev-mode
     .project-stack--flush
-    + [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--flush::after {
+    + [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--flush::before {
     content: none;
   }
 
@@ -2590,7 +2720,7 @@
     .project-stack--precede-related
     + [data-dev-spacing-document].is-dev-spacing-dirty:not(.project-stack--related):not(
       .project-stack--group
-    ):not(.project-stack--major):not(.project-stack--none)::after {
+    ):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none)::before {
     height: var(--space-related);
   }
 

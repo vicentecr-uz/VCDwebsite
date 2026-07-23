@@ -6,7 +6,7 @@ import ProjectPressQuoteTicker from './ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
 import ProjectSectionTitle from './ProjectSectionTitle.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
-import { projectStackClass, resolveProjectSpacing, spacingDevAttrs } from '../../lib/projectStack';
+import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 
 interface Props {
@@ -16,8 +16,16 @@ interface Props {
 
 const { documentKey, sections } = Astro.props;
 
-const sectionSpacing = (section: Record<string, unknown>, fallback = 'section') =>
-  section?.spacing ? resolveProjectSpacing(String(section.spacing)) : fallback;
+const sectionSpacing = (
+  section: Record<string, unknown>,
+  index: number,
+  fallback = 'section',
+) => {
+  const raw = section?.spacing ? String(section.spacing) : undefined;
+  if (raw) return resolveStackSpacingForIndex(index, resolveProjectSpacing(raw));
+  if (fallback !== 'section') return resolveStackSpacingForIndex(index, fallback as never);
+  return resolveStackSpacingForIndex(index, undefined);
+};
 
 const finaleFadeSection = sections.at(-2);
 const finaleTargetSection = sections.at(-1);
@@ -31,7 +39,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
 
 {mainSections.map((section, sectionIndex) => {
   const path = ['sections', sectionIndex];
-  const spacing = sectionSpacing(section);
+  const spacing = sectionSpacing(section, sectionIndex);
   const type = String(section.type ?? '');
 
   if (type === 'heroImage') {
@@ -181,7 +189,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       captionStyle={finaleFadeSection.captionStyle as never}
       captionPosition={finaleFadeSection.captionPosition as never}
       captionReveal={finaleFadeSection.captionReveal as never}
-      spacing={sectionSpacing(finaleFadeSection)}
+      spacing={sectionSpacing(finaleFadeSection, sections.length - 2)}
       sectionId={finaleFadeSection.sectionId as string | undefined}
     />
     <ProjectImage
