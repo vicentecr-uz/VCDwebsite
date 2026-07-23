@@ -61,7 +61,7 @@
 
   <div class="section-nav-editor__hint" data-nav-hint hidden>
     <span data-nav-hint-text>
-      Click a block → section group and/or section. Esc closes marker · Esc again → Dev Mode.
+      Click a block → section group and/or section. Esc closes marker · Esc again discards unsaved → Dev Mode.
     </span>
     <button type="button" class="section-nav-editor__hint-save" data-nav-sidebar-save hidden>
       Save sidebar
@@ -73,7 +73,6 @@
   import {
     getDevSectionOutline,
     initDevSectionOutlineSync,
-    restoreDevSectionOutlineFromRoot,
     setDevSectionOutline,
     syncDevSectionOutlineSidebar,
   } from '../../scripts/devSectionOutlineSync';
@@ -266,6 +265,10 @@
     let dirty = false;
     let pendingSectionIds: Record<string, string | null> = {};
     let pendingShowTitles: Record<string, ShowTitle> = {};
+    /** Last saved (or session-start) outline — Esc / leave reverts to this. */
+    let baselineOutline: OutlineEntry[] = [];
+    let baselineBlockIds: Array<{ pageIndex: number; id: string | null }> = [];
+    let baselineShowTitles: Record<string, ShowTitle> = {};
 
     const isActive = () =>
       document.documentElement.classList.contains(EDITOR_CLASS) &&
@@ -276,6 +279,51 @@
       hintSaveBtn.hidden = !next || !isActive();
       hint.classList.toggle('is-dirty', next);
       if (next) hintSaveBtn.textContent = 'Save sidebar';
+    };
+
+    const cloneOutline = (entries: OutlineEntry[]) =>
+      JSON.parse(JSON.stringify(entries)) as OutlineEntry[];
+
+    const captureBaseline = () => {
+      baselineOutline = cloneOutline(outline);
+      baselineBlockIds = editableBlocks().map((block, pageIndex) => ({
+        pageIndex,
+        id: block.id || null,
+      }));
+      baselineShowTitles = {};
+      editableBlocks().forEach((block) => {
+        const index = blockContentIndex(block);
+        if (index === null || block.dataset.devSectionTitle !== 'true') return;
+        baselineShowTitles[String(index)] = readShowTitle(block);
+      });
+    };
+
+    const discardToBaseline = () => {
+      replaceOutline(cloneOutline(baselineOutline));
+      setDevSectionOutline(outline);
+
+      const blocks = editableBlocks();
+      baselineBlockIds.forEach(({ pageIndex, id }) => {
+        const block = blocks[pageIndex];
+        if (!block) return;
+        if (id) {
+          block.id = id;
+          block.classList.add('section-block');
+        } else {
+          block.removeAttribute('id');
+          block.classList.remove('section-block');
+        }
+      });
+
+      Object.entries(baselineShowTitles).forEach(([indexKey, showTitle]) => {
+        const block = blocks.find((el) => String(blockContentIndex(el)) === indexKey);
+        if (block) applyShowTitleClasses(block, showTitle);
+      });
+
+      pendingSectionIds = {};
+      pendingShowTitles = {};
+      syncSidebarDom();
+      setDirty(false);
     };
 
     const editableBlocks = () =>
@@ -660,6 +708,7 @@
         hintSaveBtn.textContent = 'Saved';
         pendingSectionIds = {};
         pendingShowTitles = {};
+        captureBaseline();
         setDirty(false);
         window.setTimeout(() => {
           if (statusEl.textContent === 'Saved') setStatus('');
@@ -791,13 +840,14 @@
         editableBlocks().forEach((el) => {
           el.classList.remove('is-section-nav-hover', 'is-section-nav-active');
         });
+        // Esc / leave without Save → revert Apply + sidebar label edits (like Revert).
+        if (wasActive) discardToBaseline();
+        else setDirty(false);
         syncSidebarLabelEditability();
-        setDirty(false);
-        // Only restore when leaving section editor — not on dev-mode toggles while editor is off.
-        if (wasActive) restoreDevSectionOutlineFromRoot();
       } else {
-        setDirty(dirty);
         syncSidebarDom();
+        captureBaseline();
+        setDirty(false);
       }
     };
 
