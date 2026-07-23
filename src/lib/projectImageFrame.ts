@@ -4,7 +4,10 @@ import {
   responsiveImageStyle,
   resolveImageGridLayouts,
   type ImageGridLayouts,
+  type ImageSourceDims,
+  type ImageVariant,
   type ImageVariants,
+  type ImageViewport,
 } from './responsiveImage';
 import {
   resolveImageCaptionPosition,
@@ -23,9 +26,11 @@ export function isPlaceholderSrc(src: string): boolean {
   return src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
 }
 
+const VARIANT_FIELDS = ['aspect', 'cx', 'cy', 'w', 'aspectRatio', 'x', 'y', 'zoom'] as const;
+
 export function hasCropVariants(variants: ImageVariants | undefined): boolean {
   return !!variants && Object.values(variants).some(
-    (variant) => variant && (variant.aspectRatio || variant.x || variant.y || variant.zoom),
+    (variant) => !!variant && VARIANT_FIELDS.some((field) => variant[field] !== undefined),
   );
 }
 
@@ -38,22 +43,33 @@ export function suppliedImageVariants(
   return undefined;
 }
 
+/** Read `srcWidth`/`srcHeight` off an image node, if the migration stamped them. */
+export function imageSourceDims(node: {
+  srcWidth?: unknown;
+  srcHeight?: unknown;
+} | null | undefined): ImageSourceDims | null {
+  const width = Number(node?.srcWidth);
+  const height = Number(node?.srcHeight);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+  return { width, height };
+}
+
 export function resolveInlineImageCrop(
   src: string,
   variants: ImageVariants | undefined,
   options?: {
     lead?: boolean;
     defaultAspectRatio?: string;
-    crop?: { x?: number; y?: number; zoom?: number };
+    srcDims?: ImageSourceDims | null;
   },
-): { hasCrop: boolean; normalized: ImageVariants | undefined } {
+): { hasCrop: boolean; normalized: Record<ImageViewport, ImageVariant> | undefined } {
   const effective = suppliedImageVariants(src, variants);
   const hasCrop = hasCropVariants(effective);
   const normalized = hasCrop
     ? normalizeImageVariants(
       effective,
       options?.lead ? '16:10' : (options?.defaultAspectRatio ?? '1:1'),
-      options?.crop,
+      options?.srcDims,
     )
     : undefined;
   return { hasCrop, normalized };
@@ -63,24 +79,26 @@ export function resolveGridItemCrop(
   item: {
     src: string;
     variants?: ImageVariants;
-    crop?: { x?: number; y?: number; zoom?: number };
+    srcWidth?: unknown;
+    srcHeight?: unknown;
   },
   defaultAspectRatio: string,
 ): {
   hasOwnVariants: boolean;
-  variants: ImageVariants;
+  variants: Record<ImageViewport, ImageVariant>;
   style: string;
 } {
   const hasOwnVariants = !!item.variants;
+  const srcDims = imageSourceDims(item);
   const variants = normalizeImageVariants(
     hasOwnVariants ? item.variants : undefined,
     defaultAspectRatio,
-    item.crop,
+    srcDims,
   );
   return {
     hasOwnVariants,
     variants,
-    style: responsiveImageStyle(variants),
+    style: responsiveImageStyle(variants, srcDims),
   };
 }
 

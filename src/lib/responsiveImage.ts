@@ -1,13 +1,42 @@
 export type ImageViewport = 'desktop' | 'tablet' | 'mobile';
 
+/**
+ * Frame + content, kept deliberately separate.
+ *
+ * `aspect` is the *frame*: the shape of the box on the page. `cx`/`cy`/`w`
+ * describe the *content*: which part of the source bitmap sits in that box,
+ * anchored to the source image rather than to the rendered frame. That anchoring
+ * is the whole point — the same values pick the same slice at any frame size,
+ * so a crop no longer drifts when the breakpoint, caption or height cap changes.
+ */
 export interface ImageVariant {
+  /** Frame shape, `"W:H"` or `"original"` (natural ratio). */
+  aspect: string;
+  /** Source point at the frame centre, 0–1 of natural width. */
+  cx: number;
+  /** Source point at the frame centre, 0–1 of natural height. */
+  cy: number;
+  /** Fraction of the source WIDTH the frame spans. 1 = fit width, 0.5 = 2× zoom. */
+  w: number;
+}
+
+/** Pre-migration shape. Read-only support; see scripts/migrate-crop-rects.mjs. */
+export interface LegacyImageVariant {
   aspectRatio: string;
   x: number;
   y: number;
   zoom: number;
 }
 
-export type ImageVariants = Partial<Record<ImageViewport, Partial<ImageVariant>>>;
+export type ImageVariants = Partial<
+  Record<ImageViewport, Partial<ImageVariant> & Partial<LegacyImageVariant>>
+>;
+
+/** Natural pixel dimensions, stored on the image node as `srcWidth`/`srcHeight`. */
+export interface ImageSourceDims {
+  width: number;
+  height: number;
+}
 
 /** Legacy single count, or per-breakpoint column counts. */
 export type ImageGridColumns = number | Partial<Record<ImageViewport, number>>;
@@ -162,32 +191,90 @@ export function imageGridItemLayoutStyle(
   }).join(';');
 }
 
-const normalizeVariant = (
-  variant: Partial<ImageVariant> | undefined,
-  fallback: ImageVariant,
-): ImageVariant => ({
-  aspectRatio: variant?.aspectRatio ?? fallback.aspectRatio,
-  x: variant?.x ?? fallback.x,
-  y: variant?.y ?? fallback.y,
-  zoom: variant?.zoom ?? fallback.zoom,
-});
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
 
+const hasRectFields = (
+  variant: (Partial<ImageVariant> & Partial<LegacyImageVariant>) | undefined,
+): boolean => !!variant && (variant.w !== undefined || variant.cx !== undefined || variant.cy !== undefined);
+
+/**
+ * Convert a pre-migration variant. Closed form and frame-independent — the same
+ * maths as scripts/migrate-crop-rects.mjs, kept here so content the CMS writes in
+ * the old shape still renders. Needs the natural ratio; without it we can only
+ * carry the frame aspect across and centre the content.
+ */
+const fromLegacy = (
+  variant: Partial<LegacyImageVariant>,
+  fallbackAspect: string,
+  srcAspect: number | null,
+): ImageVariant => {
+  const aspect = variant.aspectRatio ?? fallbackAspect;
+  if (!srcAspect) return { aspect, cx: 0.5, cy: 0.5, w: 1 };
+
+  const frameAspect = aspect === 'original'
+    ? srcAspect
+    : (aspectRatioNumber(aspect) ?? srcAspect);
+  const zoom = variant.zoom || 1;
+  const w = clamp01(Math.min(1, frameAspect / srcAspect) / zoom);
+  const h = clamp01((w * srcAspect) / frameAspect);
+  return {
+    aspect,
+    cx: clamp01(0.5 - ((variant.x ?? 0) / 100) * w),
+    cy: clamp01(0.5 - ((variant.y ?? 0) / 100) * h),
+    w,
+  };
+};
+
+/**
+ * Largest `w` that still covers the frame. Wider-than-frame sources must show
+ * less than their full width or the frame is left short vertically — this is the
+ * implicit default for content that has never been positioned (e.g. grid cells
+ * inheriting the grid's aspect), matching the old cover-fit behaviour.
+ */
+export function coverWidthFraction(aspect: string, srcAspect: number | null): number {
+  if (!srcAspect) return 1;
+  const frameAspect = aspect === 'original'
+    ? srcAspect
+    : (aspectRatioNumber(aspect) ?? srcAspect);
+  return Math.min(1, frameAspect / srcAspect);
+}
+
+const normalizeVariant = (
+  variant: (Partial<ImageVariant> & Partial<LegacyImageVariant>) | undefined,
+  fallback: ImageVariant,
+  srcAspect: number | null,
+): ImageVariant => {
+  if (variant && !hasRectFields(variant) && variant.aspectRatio !== undefined) {
+    return fromLegacy(variant, fallback.aspect, srcAspect);
+  }
+  const aspect = variant?.aspect ?? variant?.aspectRatio ?? fallback.aspect;
+  return {
+    aspect,
+    cx: variant?.cx ?? fallback.cx,
+    cy: variant?.cy ?? fallback.cy,
+    // Clamp inherited zoom to this frame's cover bound so a breakpoint that only
+    // changes `aspect` can't end up under-covering.
+    w: variant?.w ?? Math.min(fallback.w, coverWidthFraction(aspect, srcAspect)),
+  };
+};
+
+/**
+ * Resolve per-breakpoint variants. Tablet inherits desktop and mobile inherits
+ * tablet unless overridden — unchanged from before, only the fields differ.
+ */
 export function normalizeImageVariants(
   variants: ImageVariants | undefined,
-  fallbackAspectRatio: string,
-  legacyCrop?: { x?: number; y?: number; zoom?: number },
+  fallbackAspect: string,
+  srcDims?: ImageSourceDims | null,
 ): Record<ImageViewport, ImageVariant> {
-  const initial: ImageVariant = {
-    aspectRatio: fallbackAspectRatio,
-    x: legacyCrop?.x ?? 0,
-    y: legacyCrop?.y ?? 0,
-    zoom: legacyCrop?.zoom ?? 1,
-  };
+  const srcAspect = srcDims && srcDims.width > 0 && srcDims.height > 0
+    ? srcDims.width / srcDims.height
+    : null;
 
   const normalized = {} as Record<ImageViewport, ImageVariant>;
-  let fallback = initial;
+  let fallback: ImageVariant = { aspect: fallbackAspect, cx: 0.5, cy: 0.5, w: 1 };
   for (const viewport of VIEWPORTS) {
-    normalized[viewport] = normalizeVariant(variants?.[viewport], fallback);
+    normalized[viewport] = normalizeVariant(variants?.[viewport], fallback, srcAspect);
     fallback = normalized[viewport];
   }
   return normalized;
@@ -201,25 +288,40 @@ export function aspectRatioNumber(aspectRatio: string): number | null {
   return widthRaw / heightRaw;
 }
 
+/**
+ * Emit the per-breakpoint custom properties the frame and content read.
+ *
+ * With `srcDims` known, `aspect: "original"` resolves to a literal ratio here,
+ * so the frame is correct in the first paint. Without it we fall back to the
+ * JS-written var, which costs a layout pass once the bitmap decodes.
+ */
 export function responsiveImageStyle(
   variants: Record<ImageViewport, ImageVariant>,
+  srcDims?: ImageSourceDims | null,
 ): string {
+  const hasDims = !!srcDims && srcDims.width > 0 && srcDims.height > 0;
   return VIEWPORTS.flatMap((viewport) => {
     const variant = variants[viewport];
-    const ratio = variant.aspectRatio === 'original'
-      ? 'var(--project-image-original-ratio, 1 / 1)'
-      : variant.aspectRatio.replace(':', ' / ');
-    const ratioNum = aspectRatioNumber(variant.aspectRatio);
+    const isOriginal = variant.aspect === 'original';
+
+    const ratio = isOriginal
+      ? (hasDims
+        ? `${srcDims!.width} / ${srcDims!.height}`
+        : 'var(--project-image-original-ratio, 1 / 1)')
+      : variant.aspect.replace(':', ' / ');
+
+    const ratioNum = isOriginal
+      ? (hasDims
+        ? String(srcDims!.width / srcDims!.height)
+        : 'var(--project-image-original-ratio-num, 1)')
+      : String(aspectRatioNumber(variant.aspect) ?? 1);
+
     return [
       `--project-image-ratio-${viewport}:${ratio}`,
-      `--project-image-ratio-num-${viewport}:${
-        ratioNum === null
-          ? 'var(--project-image-original-ratio-num, 1)'
-          : String(ratioNum)
-      }`,
-      `--project-image-x-${viewport}:${variant.x}%`,
-      `--project-image-y-${viewport}:${variant.y}%`,
-      `--project-image-zoom-${viewport}:${variant.zoom}`,
+      `--project-image-ratio-num-${viewport}:${ratioNum}`,
+      `--project-content-w-${viewport}:${variant.w}`,
+      `--project-content-cx-${viewport}:${variant.cx}`,
+      `--project-content-cy-${viewport}:${variant.cy}`,
     ];
   }).join(';');
 }

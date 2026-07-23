@@ -572,25 +572,33 @@ const applyCropChange = (data, change) => {
     || typeof change.max80 === 'boolean';
 
   if (requestedVariants) {
-    /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
+    /**
+     * Frame + content rect. `cx`/`cy` are the source point at the frame centre
+     * and `w` the fraction of source width the frame spans — all normalised, so
+     * the bounds are fixed rather than depending on any rendered size.
+     * @type {Record<string, { aspect: string, cx: number, cy: number, w: number }>}
+     */
     const variants = {};
     for (const [viewport, requested] of Object.entries(requestedVariants)) {
-      const x = Number(requested?.x);
-      const y = Number(requested?.y);
-      const zoom = Number(requested?.zoom);
-      const aspectRatio = String(requested?.aspectRatio || '');
+      const cx = Number(requested?.cx);
+      const cy = Number(requested?.cy);
+      const w = Number(requested?.w);
+      const aspect = String(requested?.aspect || '');
       if (
         !IMAGE_VIEWPORTS.has(viewport) ||
-        !isAllowedAspectRatio(aspectRatio) ||
-        ![x, y, zoom].every(Number.isFinite)
+        !isAllowedAspectRatio(aspect) ||
+        ![cx, cy, w].every(Number.isFinite) ||
+        w <= 0 || w > 1
       ) {
         return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
       }
       variants[viewport] = {
-        aspectRatio,
-        x: clampRound(x, -100, 100, 1),
-        y: clampRound(y, -100, 100, 1),
-        zoom: clampRound(zoom, 1, 1.5, 2),
+        aspect,
+        // Allow a little outside 0-1: the crop lock can be released to let the
+        // image edge enter the frame deliberately.
+        cx: clampRound(cx, -1, 2, 6),
+        cy: clampRound(cy, -1, 2, 6),
+        w: clampRound(w, 0.01, 1, 6),
       };
     }
     if (!Object.keys(variants).length) {
@@ -598,7 +606,10 @@ const applyCropChange = (data, change) => {
     }
 
     target.variants ||= {};
-    Object.assign(target.variants, variants);
+    for (const [viewport, next] of Object.entries(variants)) {
+      // Replace wholesale so migrated legacy keys can't linger and win on read.
+      target.variants[viewport] = next;
+    }
     delete target.crop;
   } else if (!hasWidthFlags) {
     return { ok: false, error: 'No crop data was provided.' };
@@ -1224,14 +1235,14 @@ function contentSectionDevWriter() {
               send(400, { error: 'An image file is required.' });
               return;
             }
-            section = buildImageSection(documentKey, filenames.slice(0, 1));
+            section = await buildImageSection(documentKey, filenames.slice(0, 1));
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageGrid') {
             if (!filenames.length) {
               send(400, { error: 'At least one image file is required.' });
               return;
             }
-            section = buildImageGridSection(documentKey, filenames);
+            section = await buildImageGridSection(documentKey, filenames);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();

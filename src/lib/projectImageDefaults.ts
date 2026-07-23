@@ -1,15 +1,16 @@
 import type { ImageVariants } from './responsiveImage';
 
+/** Centred, full-width content in a natural-ratio frame — i.e. an uncropped image. */
 export const DEFAULT_IMAGE_VARIANTS: ImageVariants = {
-  desktop: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
-  tablet: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
-  mobile: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
+  desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
+  tablet: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
+  mobile: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
 };
 
 export const PLACEHOLDER_IMAGE_VARIANTS: ImageVariants = {
-  desktop: { aspectRatio: '4:3', x: 0, y: 0, zoom: 1 },
-  tablet: { aspectRatio: '4:3', x: 0, y: 0, zoom: 1 },
-  mobile: { aspectRatio: '4:3', x: 0, y: 0, zoom: 1 },
+  desktop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
+  tablet: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
+  mobile: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
 };
 
 export function slugifyId(value: string): string {
