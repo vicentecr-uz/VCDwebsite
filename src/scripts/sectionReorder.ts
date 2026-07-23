@@ -258,8 +258,8 @@ export type ReorderHost = {
 export type BeginLiftOptions = {
   /**
    * When true (default), tick derives insert index from the lifted block center
-   * and runs scroll-hold + lift-follow. When false (keyboard), target is set only
-   * via `setTargetIndex` and the lift stays put.
+   * and runs scroll-hold + lift-follow. When false, target is set only via
+   * `setTargetIndex` and the lift stays put.
    */
   followPointer?: boolean;
 };
