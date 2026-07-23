@@ -334,29 +334,46 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
   }
 
   .probe-drop-indicator {
+    --section-lift-card-inset: 0.75em;
     display: grid;
     grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
     margin: 0;
     padding: 0;
     border: none;
     background: transparent;
-    overflow: hidden;
+    overflow: visible;
     pointer-events: none;
   }
 
   .probe-drop-indicator__body {
+    position: relative;
     grid-row: 2;
+    justify-self: stretch;
+    box-sizing: border-box;
     min-height: 0;
     height: 0;
-    box-sizing: border-box;
-    border: 1px dashed transparent;
+    width: 100%;
+    margin: 0;
+    border: 0;
     background: transparent;
     opacity: 0;
-    overflow: hidden;
+    overflow: visible;
     pointer-events: none;
     transition:
       height 140ms ease-out,
-      opacity 90ms ease-out,
+      opacity 90ms ease-out;
+  }
+
+  .probe-drop-indicator__body::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
+    box-sizing: border-box;
+    border: 1px dashed transparent;
+    border-radius: var(--radius-control-smooth, 0.35em);
+    background: transparent;
+    pointer-events: none;
+    transition:
       background-color 90ms ease-out,
       border-color 90ms ease-out;
   }
@@ -364,16 +381,16 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
   .probe-drop-indicator.is-visible .probe-drop-indicator__body {
     height: var(--gap-height, 6em);
     opacity: 1;
+  }
+
+  .probe-drop-indicator.is-visible .probe-drop-indicator__body::after {
     border-color: color-mix(in srgb, var(--color-text-muted, #6f6b62) 45%, transparent);
     background: color-mix(in srgb, var(--color-surface-soft, #f4f3f0) 85%, transparent);
   }
 
   .probe-drop-indicator.is-fading-out .probe-drop-indicator__body {
     opacity: 0;
-    transition:
-      opacity 90ms ease-out,
-      background-color 90ms ease-out,
-      border-color 90ms ease-out;
+    transition: opacity 90ms ease-out;
   }
 
   .probe-drop-indicator.is-visible.is-exiting .probe-drop-indicator__body,
@@ -382,9 +399,7 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
     opacity: 0;
     transition:
       height 140ms ease-out,
-      opacity 90ms ease-out,
-      background-color 90ms ease-out,
-      border-color 90ms ease-out;
+      opacity 90ms ease-out;
   }
 
   .probe-drop-indicator.is-repositioning {
@@ -392,9 +407,13 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
   }
 
   .probe-drop-indicator.is-repositioning .probe-drop-indicator__body {
-    transition-property: height, background-color, border-color;
+    transition-property: height;
     transition-duration: 0s;
     transition-timing-function: ease-out;
+  }
+
+  .probe-drop-indicator.is-repositioning .probe-drop-indicator__body::after {
+    transition-duration: 0s;
   }
 
   .probe-drop-indicator__body.is-drop-indicator-fade-ghost {
@@ -403,14 +422,23 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
     box-sizing: border-box;
     pointer-events: none;
     z-index: -1;
-    overflow: hidden;
-    border: 1px dashed color-mix(in srgb, var(--color-text-muted, #6f6b62) 45%, transparent);
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .probe-drop-indicator__body.is-drop-indicator-fade-ghost::after {
+    border-color: color-mix(in srgb, var(--color-text-muted, #6f6b62) 45%, transparent);
     background: color-mix(in srgb, var(--color-surface-soft, #f4f3f0) 85%, transparent);
-    border-radius: var(--radius-control-smooth, 0.35em);
   }
 
   @media (prefers-reduced-motion: reduce) {
     .probe-drop-indicator__body {
+      transition: none;
+    }
+
+    .probe-drop-indicator__body::after {
       transition: none;
     }
 
