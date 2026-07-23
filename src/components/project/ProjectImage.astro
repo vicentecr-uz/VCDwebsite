@@ -25,7 +25,11 @@ import {
 import {
   imageDevEditAttrs,
   isPlaceholderSrc,
+  joinMediaStyles,
+  maxVhStyle,
   resolveInlineImageCrop,
+  resolveMaxVh,
+  type MaxVhPercent,
 } from '../../lib/projectImageFrame';
 
 interface Props {
@@ -52,6 +56,9 @@ interface Props {
   loading?: 'eager' | 'lazy';
   flush?: boolean;
   mobileShort?: boolean;
+  /** Cap height at N% of the viewport. Prefer over legacy `max80`. */
+  maxVh?: MaxVhPercent | number;
+  /** @deprecated use `maxVh: 80` */
   max80?: boolean;
   fullHeight?: boolean;
   hideMobile?: boolean;
@@ -86,6 +93,7 @@ const {
   loading,
   flush = false,
   mobileShort = false,
+  maxVh: maxVhProp,
   max80 = false,
   fullHeight = false,
   hideMobile = false,
@@ -111,7 +119,11 @@ const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
 const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && path.length > 0;
 const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
-
+const maxVh = resolveMaxVh({ maxVh: maxVhProp, max80 });
+const mediaStyle = joinMediaStyles(
+  normalized ? responsiveImageStyle(normalized) : undefined,
+  maxVhStyle(maxVh),
+);
 const captions = resolveImageCaptions({ caption, captions: captionsProp });
 const captionStyle = resolveImageCaptionStyle(captionStyleProp);
 const captionPosition = resolveImageCaptionPosition(captionPositionProp);
@@ -130,7 +142,7 @@ const editAttrs = editable
       captionStyle: captionStyleProp,
       captionPosition: captionPositionProp,
       captionReveal,
-      ...(isLead ? {} : { constrained, centered, max80 }),
+      ...(isLead ? {} : { constrained, centered, maxVh }),
     })
   : {};
 ---
@@ -202,7 +214,7 @@ const editAttrs = editable
     id={sectionId}
     class:list={[
       'project-block',
-      centered && 'project-block--centered',
+      (centered || constrained || maxVh) && 'project-block--centered',
       hideMobile && 'project-hide-mobile',
       sectionId && 'section-block',
       stackClass,
@@ -214,12 +226,12 @@ const editAttrs = editable
       class:list={[
         'project-media',
         constrained && 'project-media--constrained',
-        max80 && 'project-media--max80',
+        maxVh && 'project-media--max-vh',
         hasCrop && 'project-cropped project-responsive-image',
         isPlaceholder && 'project-media--placeholder',
         editable && 'dev-image-edit-target',
       ]}
-      style={normalized ? responsiveImageStyle(normalized) : undefined}
+      style={mediaStyle}
       {...editAttrs}
     >
       {hasCrop ? (
@@ -231,7 +243,7 @@ const editAttrs = editable
               'project-media__img',
               heightClass,
               mobileShort && 'project-media__img--mobile-short',
-              max80 && 'project-media__img--max80',
+              maxVh && 'project-media__img--max-vh',
               fullHeight && 'project-media__img--full-height',
               imgModifier && `project-media__img--${imgModifier}`,
             ]}
@@ -246,7 +258,7 @@ const editAttrs = editable
             'project-media__img',
             heightClass,
             mobileShort && 'project-media__img--mobile-short',
-            max80 && 'project-media__img--max80',
+            maxVh && 'project-media__img--max-vh',
             fullHeight && 'project-media__img--full-height',
             imgModifier && `project-media__img--${imgModifier}`,
           ]}

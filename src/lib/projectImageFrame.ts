@@ -84,6 +84,37 @@ export function resolveGridItemCrop(
   };
 }
 
+/** Allowed max view-height caps (% of svh). Matches grid width steps. */
+export const MAX_VH_PERCENTS = [90, 80, 70, 60, 50, 40, 30] as const;
+export type MaxVhPercent = (typeof MAX_VH_PERCENTS)[number];
+
+const MAX_VH_SET = new Set<number>(MAX_VH_PERCENTS);
+
+/** Resolve `maxVh` from content; `max80: true` still maps to 80. */
+export function resolveMaxVh(source: {
+  maxVh?: unknown;
+  max80?: unknown;
+} | null | undefined): MaxVhPercent | undefined {
+  if (!source) return undefined;
+  const raw = source.maxVh;
+  if (raw === false || raw === null || raw === '' || raw === 0) return undefined;
+  if (typeof raw === 'number' || typeof raw === 'string') {
+    const n = Math.round(Number(raw));
+    if (MAX_VH_SET.has(n)) return n as MaxVhPercent;
+  }
+  if (source.max80 === true) return 80;
+  return undefined;
+}
+
+export function maxVhStyle(maxVh: MaxVhPercent | undefined): string | undefined {
+  return maxVh ? `--project-max-vh:${maxVh}` : undefined;
+}
+
+export function joinMediaStyles(...parts: Array<string | undefined | false | null>): string | undefined {
+  const joined = parts.filter((part): part is string => typeof part === 'string' && part.length > 0).join(';');
+  return joined || undefined;
+}
+
 export interface ImageDevEditContext {
   documentKey: string;
   path: Array<string | number>;
@@ -100,8 +131,8 @@ export interface ImageDevEditContext {
   constrained?: boolean;
   /** Centre the constrained block in its stack column. */
   centered?: boolean;
-  /** Cap rendered height at 80% of the viewport (max80). */
-  max80?: boolean;
+  /** Cap rendered height at N% of the viewport (`maxVh`). */
+  maxVh?: MaxVhPercent;
 }
 
 export function imageDevEditAttrs(
@@ -142,8 +173,10 @@ export function imageDevEditAttrs(
   if (typeof context.centered === 'boolean') {
     attrs['data-dev-centered'] = context.centered ? 'true' : 'false';
   }
-  if (typeof context.max80 === 'boolean') {
-    attrs['data-dev-max80'] = context.max80 ? 'true' : 'false';
+  if (context.maxVh) {
+    attrs['data-dev-max-vh'] = String(context.maxVh);
+  } else {
+    attrs['data-dev-max-vh'] = '';
   }
 
   return attrs;

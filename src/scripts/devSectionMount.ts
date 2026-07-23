@@ -11,9 +11,12 @@ import {
   gridItemLayoutStyle,
   imageDevEditAttrs,
   isPlaceholderSrc,
+  joinMediaStyles,
+  maxVhStyle,
   resolveGridItemCrop,
   resolveGridItemLayout,
   resolveInlineImageCrop,
+  resolveMaxVh,
 } from '../lib/projectImageFrame';
 import { bindProjectCropCovers } from '../lib/projectCropCover';
 
@@ -74,7 +77,7 @@ const buildInlineImageFigure = (
   const placeholder = isPlaceholderSrc(src);
   const constrained = section.constrained === true;
   const centered = section.centered === true || constrained;
-  const max80 = section.max80 === true;
+  const maxVh = resolveMaxVh(section);
   const editAttrs = imageDevEditAttrs(true, {
     documentKey,
     path: sectionPath,
@@ -82,19 +85,22 @@ const buildInlineImageFigure = (
     variants: normalized,
     constrained,
     centered,
-    max80,
+    maxVh,
   });
 
   const figure = document.createElement('figure');
   figure.className = [
     'project-media',
     constrained && 'project-media--constrained',
-    max80 && 'project-media--max80',
+    maxVh && 'project-media--max-vh',
     hasCrop && 'project-cropped project-responsive-image',
     'dev-image-edit-target',
     placeholder && 'project-media--placeholder',
   ].filter(Boolean).join(' ');
-  if (normalized) figure.style.cssText = responsiveImageStyle(normalized);
+  figure.style.cssText = joinMediaStyles(
+    normalized ? responsiveImageStyle(normalized) : undefined,
+    maxVhStyle(maxVh),
+  ) ?? '';
   applyDataAttrs(figure, editAttrs);
 
   const img = document.createElement('img');
@@ -102,7 +108,7 @@ const buildInlineImageFigure = (
   img.alt = String(section.alt ?? '');
   img.className = [
     'project-media__img',
-    max80 && 'project-media__img--max80',
+    maxVh && 'project-media__img--max-vh',
   ].filter(Boolean).join(' ');
   img.loading = 'lazy';
   if (hasCrop) {
@@ -125,11 +131,11 @@ export function mountImageSection(
   const spacing = String(section.spacing ?? 'section');
   const sectionPath = ['sections', index];
   const constrained = section.constrained === true;
-  const max80 = section.max80 === true;
+  const maxVh = resolveMaxVh(section);
   const block = document.createElement('div');
   block.className = [
     spacingClassName(spacing),
-    (constrained || max80 || section.centered === true) && 'project-block--centered',
+    (constrained || maxVh || section.centered === true) && 'project-block--centered',
   ].filter(Boolean).join(' ');
   block.setAttribute('data-dev-spacing-document', documentKey);
   block.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));

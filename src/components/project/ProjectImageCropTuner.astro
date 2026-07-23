@@ -46,10 +46,18 @@ import DevOverlay from '../DevOverlay.astro';
       <span class="tapico-crop-tuner__toggle-hint">80% · centred</span>
     </label>
 
-    <label class="tapico-crop-tuner__toggle" data-crop-height-constrain-wrap hidden>
-      <input type="checkbox" data-crop-height-constrain />
-      <span>Constrain height</span>
-      <span class="tapico-crop-tuner__toggle-hint">80% · max view height</span>
+    <label class="tapico-crop-tuner__select" data-crop-height-constrain-wrap hidden>
+      <span>Max view height</span>
+      <select data-crop-max-vh>
+        <option value="">Off</option>
+        <option value="90">90%</option>
+        <option value="80">80%</option>
+        <option value="70">70%</option>
+        <option value="60">60%</option>
+        <option value="50">50%</option>
+        <option value="40">40%</option>
+        <option value="30">30%</option>
+      </select>
     </label>
 
     <div class="tapico-crop-tuner__stage">
@@ -129,7 +137,7 @@ import DevOverlay from '../DevOverlay.astro';
     const widthConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-width-constrain-wrap]');
     const widthConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-width-constrain]');
     const heightConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-height-constrain-wrap]');
-    const heightConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-height-constrain]');
+    const maxVhSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-max-vh]');
     const viewportButtons = [
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-viewport]'),
     ];
@@ -154,7 +162,7 @@ import DevOverlay from '../DevOverlay.astro';
       !widthConstrainWrap ||
       !widthConstrainInput ||
       !heightConstrainWrap ||
-      !heightConstrainInput ||
+      !maxVhSelect ||
       !viewportButtons.length ||
       !zoomInput ||
       !zoomOutput ||
@@ -272,35 +280,61 @@ import DevOverlay from '../DevOverlay.astro';
     let savedSinceSelect = false;
     let savedConstrained = false;
     let draftConstrained = false;
-    let savedMax80 = false;
-    let draftMax80 = false;
+    let savedMaxVh: number | undefined;
+    let draftMaxVh: number | undefined;
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
     const isStandaloneMedia = (target: HTMLElement) => (
       target.classList.contains('project-media') && !isGridTarget(target)
     );
 
+    const MAX_VH_ALLOWED = new Set([90, 80, 70, 60, 50, 40, 30]);
+    const normalizeMaxVh = (value: unknown): number | undefined => {
+      if (value === true) return 80;
+      if (value === false || value === null || value === undefined || value === '') return undefined;
+      const n = Math.round(Number(value));
+      return MAX_VH_ALLOWED.has(n) ? n : undefined;
+    };
+
     const readConstrained = (target: HTMLElement) => target.dataset.devConstrained === 'true'
       || target.classList.contains('project-media--constrained');
 
-    const readMax80 = (target: HTMLElement) => target.dataset.devMax80 === 'true'
-      || target.classList.contains('project-media--max80')
-      || !!target.querySelector('.project-media__img--max80');
+    const readMaxVh = (target: HTMLElement): number | undefined => {
+      const fromData = normalizeMaxVh(target.dataset.devMaxVh);
+      if (fromData) return fromData;
+      if (
+        target.classList.contains('project-media--max-vh')
+        || target.classList.contains('project-media--max80')
+        || target.querySelector('.project-media__img--max-vh, .project-media__img--max80')
+      ) {
+        return 80;
+      }
+      return undefined;
+    };
+
+    const setMaxVhVar = (target: HTMLElement, maxVh: number | undefined) => {
+      if (maxVh) target.style.setProperty('--project-max-vh', String(maxVh));
+      else target.style.removeProperty('--project-max-vh');
+    };
 
     const applyFrameFlagsLive = (
       target: HTMLElement,
-      flags: { constrained: boolean; max80: boolean },
+      flags: { constrained: boolean; maxVh: number | undefined },
     ) => {
       if (!isStandaloneMedia(target)) return;
       target.classList.toggle('project-media--constrained', flags.constrained);
       target.dataset.devConstrained = flags.constrained ? 'true' : 'false';
       target.dataset.devCentered = flags.constrained ? 'true' : 'false';
-      target.classList.toggle('project-media--max80', flags.max80);
-      target.dataset.devMax80 = flags.max80 ? 'true' : 'false';
+      const hasMaxVh = !!flags.maxVh;
+      target.classList.toggle('project-media--max-vh', hasMaxVh);
+      target.classList.remove('project-media--max80');
+      target.dataset.devMaxVh = hasMaxVh ? String(flags.maxVh) : '';
+      setMaxVhVar(target, flags.maxVh);
       const image = target.querySelector<HTMLImageElement>('img');
-      image?.classList.toggle('project-media__img--max80', flags.max80);
+      image?.classList.toggle('project-media__img--max-vh', hasMaxVh);
+      image?.classList.remove('project-media__img--max80');
       const block = target.closest('.project-block');
-      block?.classList.toggle('project-block--centered', flags.constrained || flags.max80);
+      block?.classList.toggle('project-block--centered', flags.constrained || hasMaxVh);
     };
 
     const syncWidthConstrainUi = () => {
@@ -308,7 +342,7 @@ import DevOverlay from '../DevOverlay.astro';
       widthConstrainWrap.hidden = !show;
       widthConstrainInput.checked = draftConstrained;
       heightConstrainWrap.hidden = !show;
-      heightConstrainInput.checked = draftMax80;
+      maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
     };
 
     const gridDefaultAspectFor = (target: HTMLElement) => (
@@ -390,7 +424,7 @@ import DevOverlay from '../DevOverlay.astro';
     const diskBaselines = new Map<string, {
       variants: Record<ImageViewport, CropState>;
       constrained: boolean;
-      max80: boolean;
+      maxVh: number | undefined;
       cropped: boolean;
     }>();
     const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
@@ -404,7 +438,7 @@ import DevOverlay from '../DevOverlay.astro';
     const snapshotBaseline = (target: HTMLElement) => ({
       variants: readAppliedVariants(target),
       constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
-      max80: isStandaloneMedia(target) ? readMax80(target) : false,
+      maxVh: isStandaloneMedia(target) ? readMaxVh(target) : undefined,
       cropped: target.classList.contains('project-cropped') || isGridTarget(target),
     });
 
@@ -621,7 +655,7 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants[selectedViewport] = { ...draft };
       const stagedVariants = structuredClone(draftVariants);
       const stagedConstrained = draftConstrained;
-      const stagedMax80 = draftMax80;
+      const stagedMaxVh = draftMaxVh;
       const standalone = isStandaloneMedia(target);
       const persistCrop = targetWasCropped || liveApply;
       const pendingId = pendingIdFor(target);
@@ -629,7 +663,7 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingId, {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
-          max80: savedMax80,
+          maxVh: savedMaxVh,
           cropped: targetWasCropped,
         });
       }
@@ -643,9 +677,9 @@ import DevOverlay from '../DevOverlay.astro';
         targetWasCropped = true;
       }
       if (standalone) {
-        applyFrameFlagsLive(target, { constrained: stagedConstrained, max80: stagedMax80 });
+        applyFrameFlagsLive(target, { constrained: stagedConstrained, maxVh: stagedMaxVh });
         savedConstrained = stagedConstrained;
-        savedMax80 = stagedMax80;
+        savedMaxVh = stagedMaxVh;
       }
       savedSinceSelect = true;
       if (isGridTarget(target) && persistCrop) {
@@ -665,7 +699,7 @@ import DevOverlay from '../DevOverlay.astro';
               ? {
                 constrained: stagedConstrained,
                 centered: stagedConstrained,
-                max80: stagedMax80,
+                maxVh: stagedMaxVh ?? 0,
               }
               : {}),
           },
@@ -692,7 +726,7 @@ import DevOverlay from '../DevOverlay.astro';
             if (standalone) {
               applyFrameFlagsLive(target, {
                 constrained: baseline.constrained,
-                max80: baseline.max80,
+                maxVh: baseline.maxVh,
               });
             }
             if (editTarget === target) {
@@ -707,8 +741,8 @@ import DevOverlay from '../DevOverlay.astro';
               }
               savedConstrained = baseline.constrained;
               draftConstrained = baseline.constrained;
-              savedMax80 = baseline.max80;
-              draftMax80 = baseline.max80;
+              savedMaxVh = baseline.maxVh;
+              draftMaxVh = baseline.maxVh;
               syncWidthConstrainUi();
             }
           },
@@ -741,10 +775,10 @@ import DevOverlay from '../DevOverlay.astro';
       if (isStandaloneMedia(editTarget)) {
         applyFrameFlagsLive(editTarget, {
           constrained: savedConstrained,
-          max80: savedMax80,
+          maxVh: savedMaxVh,
         });
         draftConstrained = savedConstrained;
-        draftMax80 = savedMax80;
+        draftMaxVh = savedMaxVh;
         syncWidthConstrainUi();
       }
     };
@@ -773,8 +807,8 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants = structuredClone(savedVariants);
       savedConstrained = isStandaloneMedia(target) ? readConstrained(target) : false;
       draftConstrained = savedConstrained;
-      savedMax80 = isStandaloneMedia(target) ? readMax80(target) : false;
-      draftMax80 = savedMax80;
+      savedMaxVh = isStandaloneMedia(target) ? readMaxVh(target) : undefined;
+      draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
       previewImage.src = editedImage.currentSrc || editedImage.src;
@@ -809,10 +843,10 @@ import DevOverlay from '../DevOverlay.astro';
       if (editTarget && isStandaloneMedia(editTarget) && !savedSinceSelect) {
         applyFrameFlagsLive(editTarget, {
           constrained: savedConstrained,
-          max80: savedMax80,
+          maxVh: savedMaxVh,
         });
         draftConstrained = savedConstrained;
-        draftMax80 = savedMax80;
+        draftMaxVh = savedMaxVh;
         syncWidthConstrainUi();
       }
       editingSession = false;
@@ -1018,25 +1052,25 @@ import DevOverlay from '../DevOverlay.astro';
       draftConstrained = widthConstrainInput.checked;
       applyFrameFlagsLive(editTarget, {
         constrained: draftConstrained,
-        max80: draftMax80,
+        maxVh: draftMaxVh,
       });
       status.textContent = draftConstrained
         ? 'Width constrained to 80% (centred) — unsaved changes.'
         : 'Full width — unsaved changes.';
     });
 
-    heightConstrainInput.addEventListener('change', () => {
+    maxVhSelect.addEventListener('change', () => {
       if (!isStandaloneMedia(editTarget)) {
-        heightConstrainInput.checked = false;
+        maxVhSelect.value = '';
         return;
       }
-      draftMax80 = heightConstrainInput.checked;
+      draftMaxVh = normalizeMaxVh(maxVhSelect.value);
       applyFrameFlagsLive(editTarget, {
         constrained: draftConstrained,
-        max80: draftMax80,
+        maxVh: draftMaxVh,
       });
-      status.textContent = draftMax80
-        ? 'Height constrained to 80% view height — unsaved changes.'
+      status.textContent = draftMaxVh
+        ? `Height constrained to ${draftMaxVh}% view height — unsaved changes.`
         : 'Full height — unsaved changes.';
     });
 
@@ -1045,11 +1079,11 @@ import DevOverlay from '../DevOverlay.astro';
     revertButton.addEventListener('click', () => {
       draft = { ...saved };
       draftConstrained = savedConstrained;
-      draftMax80 = savedMax80;
+      draftMaxVh = savedMaxVh;
       if (isStandaloneMedia(editTarget)) {
         applyFrameFlagsLive(editTarget, {
           constrained: draftConstrained,
-          max80: draftMax80,
+          maxVh: draftMaxVh,
         });
       }
       syncWidthConstrainUi();
@@ -1084,7 +1118,7 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingId, {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
-          max80: savedMax80,
+          maxVh: savedMaxVh,
           cropped: targetWasCropped,
         });
       }
@@ -1135,7 +1169,7 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingIdFor(editTarget), {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
-          max80: savedMax80,
+          maxVh: savedMaxVh,
           cropped: targetWasCropped,
         });
       }
@@ -1204,6 +1238,10 @@ import DevOverlay from '../DevOverlay.astro';
     gap: 0.6em;
     font-size: 0.8rem;
     color: var(--color-text-muted);
+  }
+
+  .tapico-crop-tuner__select[hidden] {
+    display: none;
   }
 
   .tapico-crop-tuner__select select {

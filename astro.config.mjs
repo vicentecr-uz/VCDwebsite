@@ -527,9 +527,16 @@ const applyImageWidthFlags = (target, change) => {
     else delete target.centered;
     touched = true;
   }
-  if (typeof change.max80 === 'boolean') {
-    if (change.max80) target.max80 = true;
-    else delete target.max80;
+  if (Object.prototype.hasOwnProperty.call(change, 'maxVh') || typeof change.max80 === 'boolean') {
+    const raw = Object.prototype.hasOwnProperty.call(change, 'maxVh') ? change.maxVh : (change.max80 ? 80 : 0);
+    const n = Math.round(Number(raw));
+    const allowed = new Set([90, 80, 70, 60, 50, 40, 30]);
+    if (allowed.has(n)) {
+      target.maxVh = n;
+    } else {
+      delete target.maxVh;
+    }
+    delete target.max80;
     touched = true;
   }
   return touched;
@@ -561,6 +568,7 @@ const applyCropChange = (data, change) => {
     : null;
   const hasWidthFlags = typeof change.constrained === 'boolean'
     || typeof change.centered === 'boolean'
+    || Object.prototype.hasOwnProperty.call(change, 'maxVh')
     || typeof change.max80 === 'boolean';
 
   if (requestedVariants) {

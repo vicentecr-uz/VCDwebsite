@@ -354,7 +354,7 @@
 .project-block {
   display: flex;
   flex-direction: column;
-  /* Lets max80 images cap width as % of the column while the figure
+  /* Lets max-vh images cap width as % of the column while the figure
      shrink-wraps to the bitmap (so captions/shadows match the image). */
   container-type: inline-size;
 }
@@ -373,30 +373,30 @@
 }
 
 /*
- * Max view-height (80svh): scale the whole image down, keep aspect ratio.
- * Uncropped: figure shrink-wraps to the bitmap so captions match the image;
- * width caps use cqw against .project-block (100% or 80% when width-constrained).
+ * Max view-height (--project-max-vh, % of svh): scale the whole image down,
+ * keep aspect ratio. Uncropped: figure shrink-wraps to the bitmap so captions
+ * match the image; width caps use cqw against .project-block.
  * Cropped: shrink the crop frame width so aspect-ratio + max-height agree.
  */
-.project-media--max80:not(.project-cropped) {
+.project-media--max-vh:not(.project-cropped) {
   width: fit-content;
   max-width: 100%;
   margin-inline: auto;
 }
 
-.project-media--constrained.project-media--max80:not(.project-cropped) {
+.project-media--constrained.project-media--max-vh:not(.project-cropped) {
   width: fit-content;
   max-width: 80%;
 }
 
-.project-media--max80.project-cropped {
-  max-height: 80svh;
-  width: min(100%, calc(80svh * var(--project-image-ratio-num, 1)));
+.project-media--max-vh.project-cropped {
+  max-height: calc(var(--project-max-vh, 80) * 1svh);
+  width: min(100%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
   margin-inline: auto;
 }
 
-.project-media--constrained.project-media--max80.project-cropped {
-  width: min(80%, calc(80svh * var(--project-image-ratio-num, 1)));
+.project-media--constrained.project-media--max-vh.project-cropped {
+  width: min(80%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
 }
 
 .project-media__img {
@@ -1033,15 +1033,15 @@
   display: block;
 }
 
-.project-media__img--max80 {
+.project-media__img--max-vh {
   width: auto;
   max-width: 100cqw;
   height: auto;
-  max-height: 80svh;
+  max-height: calc(var(--project-max-vh, 80) * 1svh);
   object-fit: contain;
 }
 
-.project-media--constrained .project-media__img--max80 {
+.project-media--constrained .project-media__img--max-vh {
   max-width: 80cqw;
 }
 
@@ -1175,17 +1175,17 @@
     max-height: none;
   }
 
-  .project-media__img--max80 {
-    max-height: 75svh;
+  .project-media__img--max-vh {
+    max-height: calc(var(--project-max-vh, 80) * 1svh);
   }
 
-  .project-media--max80.project-cropped {
-    max-height: 75svh;
-    width: min(100%, calc(75svh * var(--project-image-ratio-num, 1)));
+  .project-media--max-vh.project-cropped {
+    max-height: calc(var(--project-max-vh, 80) * 1svh);
+    width: min(100%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
   }
 
-  .project-media--constrained.project-media--max80.project-cropped {
-    width: min(80%, calc(75svh * var(--project-image-ratio-num, 1)));
+  .project-media--constrained.project-media--max-vh.project-cropped {
+    width: min(80%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
   }
 
   .project-media__img--mobile-short {
