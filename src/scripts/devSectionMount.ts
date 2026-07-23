@@ -94,7 +94,14 @@ const buildInlineImageFigure = (
   img.alt = String(section.alt ?? '');
   img.className = 'project-media__img';
   img.loading = 'lazy';
-  figure.append(img);
+  if (hasCrop) {
+    const clip = document.createElement('div');
+    clip.className = 'project-crop-clip';
+    clip.append(img);
+    figure.append(clip);
+  } else {
+    figure.append(img);
+  }
   appendEditTriggers(figure);
   return figure;
 };

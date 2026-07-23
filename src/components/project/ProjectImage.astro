@@ -150,7 +150,13 @@ const editAttrs = editable
     {...(spacingAttrs ?? {})}
     data-dev-section-deletable={editable ? 'image' : undefined}
   >
-    <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+    {hasCrop ? (
+      <div class="project-crop-clip">
+        <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+      </div>
+    ) : (
+      <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+    )}
     {hasCaption && (
       <span
         class:list={['project-caption', 'project-image-grid__caption', captionClass]}
@@ -214,19 +220,37 @@ const editAttrs = editable
       style={normalized ? responsiveImageStyle(normalized) : undefined}
       {...editAttrs}
     >
-      <img
-        src={projectImage(src)}
-        alt={alt}
-        class:list={[
-          'project-media__img',
-          heightClass,
-          mobileShort && 'project-media__img--mobile-short',
-          max80 && 'project-media__img--max80',
-          fullHeight && 'project-media__img--full-height',
-          imgModifier && `project-media__img--${imgModifier}`,
-        ]}
-        loading={resolvedLoading}
-      />
+      {hasCrop ? (
+        <div class="project-crop-clip">
+          <img
+            src={projectImage(src)}
+            alt={alt}
+            class:list={[
+              'project-media__img',
+              heightClass,
+              mobileShort && 'project-media__img--mobile-short',
+              max80 && 'project-media__img--max80',
+              fullHeight && 'project-media__img--full-height',
+              imgModifier && `project-media__img--${imgModifier}`,
+            ]}
+            loading={resolvedLoading}
+          />
+        </div>
+      ) : (
+        <img
+          src={projectImage(src)}
+          alt={alt}
+          class:list={[
+            'project-media__img',
+            heightClass,
+            mobileShort && 'project-media__img--mobile-short',
+            max80 && 'project-media__img--max80',
+            fullHeight && 'project-media__img--full-height',
+            imgModifier && `project-media__img--${imgModifier}`,
+          ]}
+          loading={resolvedLoading}
+        />
+      )}
       {hasCaption && (
         <span
           class:list={['project-caption', 'project-image-grid__caption', captionClass]}

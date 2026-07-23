@@ -311,6 +311,43 @@
     });
   };
 
+  /** Prefer the crop/media frame so the handle tracks the visible box, not captions. */
+  const cropFrameForHandle = (root: HTMLElement): HTMLElement => {
+    if (
+      root.classList.contains('project-cropped')
+      || root.classList.contains('project-media')
+      || root.classList.contains('project-image')
+    ) {
+      return root;
+    }
+    return root.querySelector<HTMLElement>(
+      ':scope > .project-cropped, :scope > .project-media, :scope > figure.project-media',
+    ) ?? root;
+  };
+
+  const syncDragHandleAnchor = (root: HTMLElement) => {
+    const handle = root.querySelector<HTMLButtonElement>(`:scope > [${DRAG_HANDLE_ATTR}]`);
+    if (!handle) return;
+
+    const frame = cropFrameForHandle(root);
+    if (frame === root) {
+      handle.style.top = '50%';
+      return;
+    }
+
+    const rootRect = root.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    handle.style.top = `${frameRect.top - rootRect.top + frameRect.height / 2}px`;
+  };
+
+  const handleAnchorObserver = typeof ResizeObserver !== 'undefined'
+    ? new ResizeObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.target instanceof HTMLElement) syncDragHandleAnchor(entry.target);
+      });
+    })
+    : null;
+
   const mountDragHandle = (root: HTMLElement) => {
     let bridge = root.querySelector<HTMLElement>(`.${DRAG_BRIDGE_CLASS}`);
     if (!bridge) {
@@ -346,6 +383,8 @@
     handle.tabIndex = -1;
     wireSectionControlHover(root);
     wireDragHandle(root, handle);
+    syncDragHandleAnchor(root);
+    handleAnchorObserver?.observe(root);
   };
 
   const syncDragHandles = () => {
@@ -362,6 +401,7 @@
         handle.hidden = !reorderActive;
         handle.tabIndex = -1;
       }
+      syncDragHandleAnchor(root);
     });
 
     if (!documentKey) {
