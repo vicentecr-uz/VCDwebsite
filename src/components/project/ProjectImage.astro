@@ -26,6 +26,7 @@ import {
 } from '../../lib/imageCaptions';
 import {
   imageDevEditAttrs,
+  imageSourceDims,
   isPlaceholderSrc,
   joinMediaStyles,
   maxVhStyle,
@@ -43,8 +44,9 @@ interface Props {
   layout?: 'default' | 'conic';
   /** Saved per-viewport crop. Presence switches the image into a cropped frame. */
   variants?: ImageVariants;
-  /** @deprecated single-viewport crop; normalised into `variants`. */
-  crop?: { x?: number; y?: number; zoom?: number };
+  /** Natural pixel dimensions. Lets the frame resolve server-side. */
+  srcWidth?: number;
+  srcHeight?: number;
   /** Editing wiring: which project JSON + path to the image node. */
   document?: string;
   path?: (string | number)[];
@@ -84,7 +86,8 @@ const {
   kind = 'inline',
   layout = 'default',
   variants: suppliedVariants,
-  crop,
+  srcWidth,
+  srcHeight,
   document: documentKey,
   path,
   cropId,
@@ -113,9 +116,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, path, spacing);
 
 const isLead = kind === 'lead';
 const isPlaceholder = isPlaceholderSrc(src);
+const srcDims = imageSourceDims({ srcWidth, srcHeight });
 const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
   lead: isLead,
-  crop,
+  srcDims,
 });
 
 const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && path.length > 0;
@@ -123,7 +127,7 @@ const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
 const maxVh = resolveMaxVh({ maxVh: maxVhProp, max80 });
 const mediaStyle = joinMediaStyles(
-  normalized ? responsiveImageStyle(normalized) : undefined,
+  normalized ? responsiveImageStyle(normalized, srcDims) : undefined,
   maxVhStyle(maxVh),
 );
 const captions = resolveImageCaptions({ caption, captions: captionsProp });
@@ -162,7 +166,7 @@ const editAttrs = editable
       sectionId && 'section-block',
       stackClass,
     ]}
-    style={normalized ? responsiveImageStyle(normalized) : undefined}
+    style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
     {...editAttrs}
     {...(spacingAttrs ?? {})}
     data-dev-section-deletable={editable ? 'image' : undefined}
@@ -240,6 +244,11 @@ const editAttrs = editable
     >
       {hasCrop ? (
         <div class="project-crop-clip">
+          {/*
+            No --max-vh here: the cropped <img> is the cover bitmap, sized in px
+            by JS and drawn with object-fit:fill. A CSS max-height would clamp
+            that box and stretch the pixels. The height cap belongs on the clip.
+          */}
           <img
             src={projectImage(src)}
             alt={alt}
@@ -247,7 +256,6 @@ const editAttrs = editable
               'project-media__img',
               heightClass,
               mobileShort && 'project-media__img--mobile-short',
-              maxVh && 'project-media__img--max-vh',
               fullHeight && 'project-media__img--full-height',
               imgModifier && `project-media__img--${imgModifier}`,
             ]}

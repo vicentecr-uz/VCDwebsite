@@ -99,9 +99,9 @@
 .project-responsive-image {
   --project-image-ratio: var(--project-image-ratio-desktop);
   --project-image-ratio-num: var(--project-image-ratio-num-desktop, 1);
-  --tapico-crop-x: var(--project-image-x-desktop);
-  --tapico-crop-y: var(--project-image-y-desktop);
-  --tapico-crop-zoom: var(--project-image-zoom-desktop);
+  --project-content-w: var(--project-content-w-desktop, 1);
+  --project-content-cx: var(--project-content-cx-desktop, 0.5);
+  --project-content-cy: var(--project-content-cy-desktop, 0.5);
 }
 
 .project-cropped {
@@ -122,9 +122,9 @@
   .project-responsive-image {
     --project-image-ratio: var(--project-image-ratio-tablet);
     --project-image-ratio-num: var(--project-image-ratio-num-tablet, var(--project-image-ratio-num-desktop, 1));
-    --tapico-crop-x: var(--project-image-x-tablet);
-    --tapico-crop-y: var(--project-image-y-tablet);
-    --tapico-crop-zoom: var(--project-image-zoom-tablet);
+    --project-content-w: var(--project-content-w-tablet, var(--project-content-w-desktop, 1));
+    --project-content-cx: var(--project-content-cx-tablet, var(--project-content-cx-desktop, 0.5));
+    --project-content-cy: var(--project-content-cy-tablet, var(--project-content-cy-desktop, 0.5));
   }
 }
 
@@ -132,25 +132,37 @@
   .project-responsive-image {
     --project-image-ratio: var(--project-image-ratio-mobile);
     --project-image-ratio-num: var(--project-image-ratio-num-mobile, var(--project-image-ratio-num-tablet, var(--project-image-ratio-num-desktop, 1)));
-    --tapico-crop-x: var(--project-image-x-mobile);
-    --tapico-crop-y: var(--project-image-y-mobile);
-    --tapico-crop-zoom: var(--project-image-zoom-mobile);
+    --project-content-w: var(--project-content-w-mobile, var(--project-content-w-tablet, var(--project-content-w-desktop, 1)));
+    --project-content-cx: var(--project-content-cx-mobile, var(--project-content-cx-tablet, var(--project-content-cx-desktop, 0.5)));
+    --project-content-cy: var(--project-content-cy-mobile, var(--project-content-cy-tablet, var(--project-content-cy-desktop, 0.5)));
   }
 }
 
+/*
+  Frame/content placement, entirely in CSS — no JS sizing pass.
+
+  `width` percentages resolve against the frame, so `100% / w` makes the frame
+  span exactly `w` of the source width. `height: auto` means the box always
+  carries the natural ratio, so the bitmap can never be stretched — there is no
+  second dimension left to disagree with the first.
+
+  `transform` percentages resolve against the element's OWN box, so
+  `cx * -100%` is a fraction of the rendered image. That is what lets the same
+  stored values pick the same slice at any frame size.
+*/
 .project-cropped > img,
 .project-cropped > .project-crop-clip > img {
   position: absolute;
-  top: calc(50% + var(--tapico-crop-y));
-  left: calc(50% + var(--tapico-crop-x));
-  /* Cover width/height are set in px by JS so pan limits match the real bitmap. */
-  width: auto;
+  top: 50%;
+  left: 50%;
+  width: calc(100% / var(--project-content-w, 1));
   height: auto;
   max-width: none;
   min-height: 0;
-  object-fit: fill;
-  transform: translate(-50%, -50%) scale(var(--tapico-crop-zoom));
-  transform-origin: center;
+  transform: translate(
+    calc(var(--project-content-cx, 0.5) * -100%),
+    calc(var(--project-content-cy, 0.5) * -100%)
+  );
 }
 
 .project-media--placeholder.project-cropped,
@@ -627,6 +639,20 @@
   inset: auto;
   width: 100%;
   aspect-ratio: var(--project-image-ratio);
+}
+
+/*
+  With a below caption the figure is a flex column (frame + caption), so a
+  max-height on the figure is shared with the caption and squeezes the crop
+  frame off its authored aspect ratio. Cap the frame itself instead; the
+  caption then sits below the capped frame rather than eating into it.
+*/
+:is(.project-media, .project-image).project-media--max-vh.project-cropped:has(> .project-caption--below) {
+  max-height: none;
+}
+
+:is(.project-media, .project-image).project-media--max-vh.project-cropped:has(> .project-caption--below) > .project-crop-clip {
+  max-height: calc(var(--project-max-vh, 80) * 1svh);
 }
 
 /*

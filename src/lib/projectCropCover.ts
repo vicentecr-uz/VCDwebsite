@@ -139,19 +139,13 @@ function applyOriginalRatio(frame: HTMLElement, image: HTMLImageElement): void {
   );
 }
 
-function coverImageInFrame(frame: HTMLElement, image: HTMLImageElement): void {
-  const frameWidth = frame.clientWidth;
-  const frameHeight = frame.clientHeight;
-  if (!frameWidth || !frameHeight || !image.naturalWidth || !image.naturalHeight) return;
-
-  const scale = Math.max(
-    (frameWidth + 2) / image.naturalWidth,
-    (frameHeight + 2) / image.naturalHeight,
-  );
-  image.style.width = `${Math.ceil(image.naturalWidth * scale)}px`;
-  image.style.height = `${Math.ceil(image.naturalHeight * scale)}px`;
-}
-
+/**
+ * Content placement is pure CSS now (see `.project-cropped > … > img` in
+ * project.css) — nothing here sizes bitmaps. All that remains is publishing the
+ * natural ratio for frames whose aspect is `"original"` but whose node has no
+ * `srcWidth`/`srcHeight` yet, plus the match-height row solver, which genuinely
+ * needs measurement.
+ */
 export function refreshProjectCropCovers(root: ParentNode = document): void {
   if (refreshing) {
     refreshQueued = true;
@@ -163,10 +157,7 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
       const image = outer.querySelector<HTMLImageElement>(
         ':scope > img, :scope > .project-crop-clip > img',
       );
-      if (!image) return;
-      applyOriginalRatio(outer, image);
-      const clip = outer.querySelector<HTMLElement>(':scope > .project-crop-clip');
-      coverImageInFrame(clip ?? outer, image);
+      if (image) applyOriginalRatio(outer, image);
     });
 
     // Ratios first so match-height can read --project-image-original-ratio-num.
@@ -179,13 +170,6 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
     });
 
     layoutMatchHeightGrids(root);
-
-    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((item) => {
-      const frame = gridItemFrame(item);
-      const image = item.querySelector<HTMLImageElement>('.project-image-grid__image');
-      if (!image) return;
-      coverImageInFrame(frame, image);
-    });
   } finally {
     refreshing = false;
     if (refreshQueued) {

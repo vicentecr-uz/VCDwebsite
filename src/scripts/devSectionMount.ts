@@ -10,6 +10,7 @@ import {
 import {
   gridItemLayoutStyle,
   imageDevEditAttrs,
+  imageSourceDims,
   isPlaceholderSrc,
   joinMediaStyles,
   maxVhStyle,
@@ -72,7 +73,8 @@ const buildInlineImageFigure = (
 ) => {
   const src = String(section.src ?? '');
   const variants = section.variants as ImageVariants | undefined;
-  const { hasCrop, normalized } = resolveInlineImageCrop(src, variants);
+  const srcDims = imageSourceDims(section);
+  const { hasCrop, normalized } = resolveInlineImageCrop(src, variants, { srcDims });
   const cropId = String(section.id ?? 'image');
   const placeholder = isPlaceholderSrc(src);
   const constrained = section.constrained === true;
@@ -98,7 +100,7 @@ const buildInlineImageFigure = (
     placeholder && 'project-media--placeholder',
   ].filter(Boolean).join(' ');
   figure.style.cssText = joinMediaStyles(
-    normalized ? responsiveImageStyle(normalized) : undefined,
+    normalized ? responsiveImageStyle(normalized, srcDims) : undefined,
     maxVhStyle(maxVh),
   ) ?? '';
   applyDataAttrs(figure, editAttrs);
@@ -206,7 +208,8 @@ export function mountImageGridSection(
       {
         src: String(item.src ?? ''),
         variants: item.variants as ImageVariants | undefined,
-        crop: item.crop as { x?: number; y?: number; zoom?: number } | undefined,
+        srcWidth: item.srcWidth,
+        srcHeight: item.srcHeight,
       },
       defaultAspectRatio,
     );

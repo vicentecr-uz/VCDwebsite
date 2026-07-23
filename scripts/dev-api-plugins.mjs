@@ -85,15 +85,15 @@ export function resolveDevFieldTarget(slug, _viewId, fieldPath) {
 }
 
 const DEFAULT_IMAGE_VARIANTS = {
-  desktop: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
-  tablet: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
-  mobile: { aspectRatio: 'original', x: 0, y: 0, zoom: 1 },
+  desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
+  tablet: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
+  mobile: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
 };
 
 export const PLACEHOLDER_IMAGE_VARIANTS = {
-  desktop: { aspectRatio: '4:3', x: 0, y: 0, zoom: 1 },
-  tablet: { aspectRatio: '4:3', x: 0, y: 0, zoom: 1 },
-  mobile: { aspectRatio: '4:3', x: 0, y: 0, zoom: 1 },
+  desktop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
+  tablet: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
+  mobile: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
 };
 
 const STATIC_EDITABLE_DOCUMENTS = new Map([
@@ -123,6 +123,25 @@ export function draftMediaSrc(documentKey, filename) {
   return `draft:${documentKey}/${filename}`;
 }
 
+/**
+ * Natural dimensions for a freshly dropped draft image, stamped onto the node so
+ * frames resolve server-side (an `aspect: "original"` frame has no shape without
+ * them). Mirrors scripts/migrate-crop-rects.mjs, including the EXIF transpose:
+ * sharp reports stored dimensions, browsers honour the orientation flag.
+ */
+export async function readImageDims(documentKey, filename) {
+  try {
+    const { default: sharp } = await import('sharp');
+    const file = path.join(process.cwd(), 'src/content/drafts/media', documentKey, filename);
+    const { width, height, orientation } = await sharp(file).metadata();
+    if (!width || !height) return null;
+    const rotated = typeof orientation === 'number' && orientation >= 5 && orientation <= 8;
+    return rotated ? { srcWidth: height, srcHeight: width } : { srcWidth: width, srcHeight: height };
+  } catch {
+    return null;
+  }
+}
+
 export function sanitizeUploadFilename(filename) {
   const base = path.basename(String(filename || 'image.jpg'))
     .replace(/[^a-zA-Z0-9._ -]+/g, '')
@@ -147,7 +166,7 @@ export async function uniqueUploadFilename(directory, filename) {
   }
 }
 
-export function buildImageSection(documentKey, filenames) {
+export async function buildImageSection(documentKey, filenames) {
   const id = `image-${Date.now().toString(36)}`;
   return {
     type: 'image',
@@ -155,6 +174,7 @@ export function buildImageSection(documentKey, filenames) {
     src: draftMediaSrc(documentKey, filenames[0]),
     alt: '',
     spacing: 'section',
+    ...(await readImageDims(documentKey, filenames[0]) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   };
 }
@@ -171,14 +191,15 @@ export function buildPlaceholderImageSection() {
   };
 }
 
-export function buildImageGridSection(documentKey, filenames) {
+export async function buildImageGridSection(documentKey, filenames) {
   const id = `grid-${Date.now().toString(36)}`;
-  const items = filenames.map((filename, index) => ({
+  const items = await Promise.all(filenames.map(async (filename, index) => ({
     id: `item-${index + 1}-${Date.now().toString(36)}`,
     src: draftMediaSrc(documentKey, filename),
     alt: '',
+    ...(await readImageDims(documentKey, filename) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
-  }));
+  })));
   const visible = items.map((item) => item.id);
   return {
     type: 'imageGrid',
