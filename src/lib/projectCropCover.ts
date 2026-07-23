@@ -10,6 +10,10 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
       '--project-image-original-ratio',
       `${image.naturalWidth} / ${image.naturalHeight}`,
     );
+    frame.style.setProperty(
+      '--project-image-original-ratio-num',
+      String(image.naturalWidth / image.naturalHeight),
+    );
     const frameWidth = frame.clientWidth;
     const frameHeight = frame.clientHeight;
     if (!frameWidth || !frameHeight) return;
@@ -29,6 +33,10 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
     frame.style.setProperty(
       '--project-image-original-ratio',
       `${image.naturalWidth} / ${image.naturalHeight}`,
+    );
+    frame.style.setProperty(
+      '--project-image-original-ratio-num',
+      String(image.naturalWidth / image.naturalHeight),
     );
     const frameWidth = frame.clientWidth;
     const frameHeight = frame.clientHeight;

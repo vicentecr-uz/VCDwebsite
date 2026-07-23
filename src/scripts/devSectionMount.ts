@@ -72,16 +72,24 @@ const buildInlineImageFigure = (
   const { hasCrop, normalized } = resolveInlineImageCrop(src, variants);
   const cropId = String(section.id ?? 'image');
   const placeholder = isPlaceholderSrc(src);
+  const constrained = section.constrained === true;
+  const centered = section.centered === true || constrained;
+  const max80 = section.max80 === true;
   const editAttrs = imageDevEditAttrs(true, {
     documentKey,
     path: sectionPath,
     cropId,
     variants: normalized,
+    constrained,
+    centered,
+    max80,
   });
 
   const figure = document.createElement('figure');
   figure.className = [
     'project-media',
+    constrained && 'project-media--constrained',
+    max80 && 'project-media--max80',
     hasCrop && 'project-cropped project-responsive-image',
     'dev-image-edit-target',
     placeholder && 'project-media--placeholder',
@@ -92,7 +100,10 @@ const buildInlineImageFigure = (
   const img = document.createElement('img');
   img.src = projectImage(src);
   img.alt = String(section.alt ?? '');
-  img.className = 'project-media__img';
+  img.className = [
+    'project-media__img',
+    max80 && 'project-media__img--max80',
+  ].filter(Boolean).join(' ');
   img.loading = 'lazy';
   if (hasCrop) {
     const clip = document.createElement('div');
@@ -113,8 +124,13 @@ export function mountImageSection(
 ): HTMLElement {
   const spacing = String(section.spacing ?? 'section');
   const sectionPath = ['sections', index];
+  const constrained = section.constrained === true;
+  const max80 = section.max80 === true;
   const block = document.createElement('div');
-  block.className = spacingClassName(spacing);
+  block.className = [
+    spacingClassName(spacing),
+    (constrained || max80 || section.centered === true) && 'project-block--centered',
+  ].filter(Boolean).join(' ');
   block.setAttribute('data-dev-spacing-document', documentKey);
   block.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));
   block.setAttribute('data-dev-spacing-value', spacing);

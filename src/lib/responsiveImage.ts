@@ -193,6 +193,14 @@ export function normalizeImageVariants(
   return normalized;
 }
 
+/** Unitless width÷height for `calc()` (e.g. max-height width caps). */
+export function aspectRatioNumber(aspectRatio: string): number | null {
+  if (!aspectRatio || aspectRatio === 'original') return null;
+  const [widthRaw, heightRaw] = aspectRatio.split(':').map(Number);
+  if (!widthRaw || !heightRaw) return null;
+  return widthRaw / heightRaw;
+}
+
 export function responsiveImageStyle(
   variants: Record<ImageViewport, ImageVariant>,
 ): string {
@@ -201,8 +209,14 @@ export function responsiveImageStyle(
     const ratio = variant.aspectRatio === 'original'
       ? 'var(--project-image-original-ratio, 1 / 1)'
       : variant.aspectRatio.replace(':', ' / ');
+    const ratioNum = aspectRatioNumber(variant.aspectRatio);
     return [
       `--project-image-ratio-${viewport}:${ratio}`,
+      `--project-image-ratio-num-${viewport}:${
+        ratioNum === null
+          ? 'var(--project-image-original-ratio-num, 1)'
+          : String(ratioNum)
+      }`,
       `--project-image-x-${viewport}:${variant.x}%`,
       `--project-image-y-${viewport}:${variant.y}%`,
       `--project-image-zoom-${viewport}:${variant.zoom}`,

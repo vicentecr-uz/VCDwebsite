@@ -100,6 +100,8 @@ export interface ImageDevEditContext {
   constrained?: boolean;
   /** Centre the constrained block in its stack column. */
   centered?: boolean;
+  /** Cap rendered height at 80% of the viewport (max80). */
+  max80?: boolean;
 }
 
 export function imageDevEditAttrs(
@@ -139,6 +141,9 @@ export function imageDevEditAttrs(
   }
   if (typeof context.centered === 'boolean') {
     attrs['data-dev-centered'] = context.centered ? 'true' : 'false';
+  }
+  if (typeof context.max80 === 'boolean') {
+    attrs['data-dev-max80'] = context.max80 ? 'true' : 'false';
   }
 
   return attrs;
