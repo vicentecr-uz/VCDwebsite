@@ -365,6 +365,7 @@ import DevOverlay from '../DevOverlay.astro';
     const diskBaselines = new Map<string, {
       variants: Record<ImageViewport, CropState>;
       constrained: boolean;
+      cropped: boolean;
     }>();
     const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
 
@@ -377,6 +378,7 @@ import DevOverlay from '../DevOverlay.astro';
     const snapshotBaseline = (target: HTMLElement) => ({
       variants: readAppliedVariants(target),
       constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
+      cropped: target.classList.contains('project-cropped') || isGridTarget(target),
     });
 
     const closePanel = () => {
@@ -496,11 +498,31 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     /** First user crop change in this session — enable live page writes + frame classes. */
+    const ensureCropClip = (target: HTMLElement, image: HTMLImageElement) => {
+      if (isGridTarget(target)) return;
+      if (image.parentElement?.classList.contains('project-crop-clip')) return;
+      const clip = document.createElement('div');
+      clip.className = 'project-crop-clip';
+      image.replaceWith(clip);
+      clip.append(image);
+    };
+
+    const removeCropClipIfOwned = (image: HTMLImageElement) => {
+      const clip = image.parentElement;
+      if (!clip?.classList.contains('project-crop-clip')) return;
+      // Only unwrap when the clip has a single img (our live-edit wrapper).
+      if (clip.childElementCount !== 1) return;
+      clip.replaceWith(image);
+    };
+
     const beginLiveEdits = () => {
       if (!editingSession || liveApply) return;
       liveApply = true;
       if (!isGridTarget(editTarget)) {
         editTarget.classList.add('project-responsive-image', 'project-cropped');
+        // SSR cropped frames already wrap <img> in .project-crop-clip; live-first
+        // crop must add it or overflow:visible on .project-cropped lets zoom spill.
+        ensureCropClip(editTarget, editedImage);
       }
     };
 
@@ -563,6 +585,7 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingId, {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
+          cropped: targetWasCropped,
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
@@ -598,7 +621,16 @@ import DevOverlay from '../DevOverlay.astro';
           },
           revert: () => {
             if (persistCrop) {
-              if (isGridTarget(target) && !hadOwnVariants) {
+              if (!baseline.cropped && !isGridTarget(target)) {
+                target.classList.remove('project-cropped', 'project-responsive-image');
+                delete target.dataset.devImageVariants;
+                const image = target.querySelector<HTMLImageElement>('img');
+                if (image) {
+                  image.style.width = '';
+                  image.style.height = '';
+                  removeCropClipIfOwned(image);
+                }
+              } else if (isGridTarget(target) && !hadOwnVariants) {
                 applyVariantsToTarget(target, baseline.variants, { clearOwn: true });
               } else {
                 applyVariantsToTarget(target, baseline.variants);
@@ -616,6 +648,7 @@ import DevOverlay from '../DevOverlay.astro';
                 draftVariants = structuredClone(baseline.variants);
                 saved = { ...baseline.variants[selectedViewport] };
                 draft = { ...saved };
+                targetWasCropped = baseline.cropped;
                 renderDraft();
                 syncUseGridDefaultButton();
               }
@@ -649,6 +682,7 @@ import DevOverlay from '../DevOverlay.astro';
       delete editTarget.dataset.devImageVariants;
       editedImage.style.width = '';
       editedImage.style.height = '';
+      removeCropClipIfOwned(editedImage);
       if (isStandaloneMedia(editTarget)) {
         applyWidthConstrainLive(editTarget, savedConstrained);
         draftConstrained = savedConstrained;
