@@ -40,6 +40,12 @@ import DevOverlay from '../DevOverlay.astro';
       </select>
     </label>
 
+    <label class="tapico-crop-tuner__toggle" data-crop-width-constrain-wrap hidden>
+      <input type="checkbox" data-crop-width-constrain />
+      <span>Constrain width</span>
+      <span class="tapico-crop-tuner__toggle-hint">80% · centred</span>
+    </label>
+
     <div class="tapico-crop-tuner__stage">
       <div class="tapico-crop-tuner__preview" data-crop-preview>
         <div class="tapico-crop-tuner__preview-clip">
@@ -114,6 +120,8 @@ import DevOverlay from '../DevOverlay.astro';
     const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
     const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
     const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
+    const widthConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-width-constrain-wrap]');
+    const widthConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-width-constrain]');
     const viewportButtons = [
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-viewport]'),
     ];
@@ -135,6 +143,8 @@ import DevOverlay from '../DevOverlay.astro';
       !preview ||
       !previewImage ||
       !aspectRatioSelect ||
+      !widthConstrainWrap ||
+      !widthConstrainInput ||
       !viewportButtons.length ||
       !zoomInput ||
       !zoomOutput ||
@@ -250,8 +260,31 @@ import DevOverlay from '../DevOverlay.astro';
     let liveApply = false;
     let targetWasCropped = false;
     let savedSinceSelect = false;
+    let savedConstrained = false;
+    let draftConstrained = false;
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
+    const isStandaloneMedia = (target: HTMLElement) => (
+      target.classList.contains('project-media') && !isGridTarget(target)
+    );
+
+    const readConstrained = (target: HTMLElement) => target.dataset.devConstrained === 'true'
+      || target.classList.contains('project-media--constrained');
+
+    const applyWidthConstrainLive = (target: HTMLElement, constrained: boolean) => {
+      if (!isStandaloneMedia(target)) return;
+      target.classList.toggle('project-media--constrained', constrained);
+      target.dataset.devConstrained = constrained ? 'true' : 'false';
+      target.dataset.devCentered = constrained ? 'true' : 'false';
+      const block = target.closest('.project-block');
+      block?.classList.toggle('project-block--centered', constrained);
+    };
+
+    const syncWidthConstrainUi = () => {
+      const show = isStandaloneMedia(editTarget);
+      widthConstrainWrap.hidden = !show;
+      widthConstrainInput.checked = draftConstrained;
+    };
 
     const gridDefaultAspectFor = (target: HTMLElement) => (
       target.dataset.devGridDefaultAspect
@@ -329,7 +362,10 @@ import DevOverlay from '../DevOverlay.astro';
     let constrainByViewport = readConstraints();
     const constrainToFrame = () => constrainByViewport[selectedViewport];
     /** Disk / last globally-saved baseline per pending id (survives popup close). */
-    const diskBaselines = new Map<string, Record<ImageViewport, CropState>>();
+    const diskBaselines = new Map<string, {
+      variants: Record<ImageViewport, CropState>;
+      constrained: boolean;
+    }>();
     const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
 
     const pendingIdFor = (target: HTMLElement) => {
@@ -337,6 +373,11 @@ import DevOverlay from '../DevOverlay.astro';
       const imagePath = target.dataset.devImagePath || '[]';
       return `crop:${documentKey}:${imagePath}`;
     };
+
+    const snapshotBaseline = (target: HTMLElement) => ({
+      variants: readAppliedVariants(target),
+      constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
+    });
 
     const closePanel = () => {
       const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
@@ -514,19 +555,31 @@ import DevOverlay from '../DevOverlay.astro';
 
       draftVariants[selectedViewport] = { ...draft };
       const stagedVariants = structuredClone(draftVariants);
+      const stagedConstrained = draftConstrained;
+      const standalone = isStandaloneMedia(target);
+      const persistCrop = targetWasCropped || liveApply;
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
-        diskBaselines.set(pendingId, structuredClone(savedVariants));
+        diskBaselines.set(pendingId, {
+          variants: structuredClone(savedVariants),
+          constrained: savedConstrained,
+        });
       }
-      const baselineVariants = structuredClone(diskBaselines.get(pendingId)!);
+      const baseline = structuredClone(diskBaselines.get(pendingId)!);
       const hadOwnVariants = target.dataset.devHasOwnVariants === 'true';
 
-      applyVariantsToTarget(target, stagedVariants);
-      savedVariants = structuredClone(stagedVariants);
-      saved = { ...stagedVariants[selectedViewport] };
-      targetWasCropped = true;
+      if (persistCrop) {
+        applyVariantsToTarget(target, stagedVariants);
+        savedVariants = structuredClone(stagedVariants);
+        saved = { ...stagedVariants[selectedViewport] };
+        targetWasCropped = true;
+      }
+      if (standalone) {
+        applyWidthConstrainLive(target, stagedConstrained);
+        savedConstrained = stagedConstrained;
+      }
       savedSinceSelect = true;
-      if (isGridTarget(target)) {
+      if (isGridTarget(target) && persistCrop) {
         target.dataset.devHasOwnVariants = 'true';
         syncUseGridDefaultButton();
       }
@@ -538,24 +591,37 @@ import DevOverlay from '../DevOverlay.astro';
           payload: {
             document: documentKey,
             path: imagePath,
-            variants: stagedVariants,
+            ...(persistCrop ? { variants: stagedVariants } : {}),
+            ...(standalone
+              ? { constrained: stagedConstrained, centered: stagedConstrained }
+              : {}),
           },
           revert: () => {
-            if (isGridTarget(target) && !hadOwnVariants) {
-              applyVariantsToTarget(target, baselineVariants, { clearOwn: true });
-            } else {
-              applyVariantsToTarget(target, baselineVariants);
-              if (isGridTarget(target) && hadOwnVariants) {
-                target.dataset.devHasOwnVariants = 'true';
+            if (persistCrop) {
+              if (isGridTarget(target) && !hadOwnVariants) {
+                applyVariantsToTarget(target, baseline.variants, { clearOwn: true });
+              } else {
+                applyVariantsToTarget(target, baseline.variants);
+                if (isGridTarget(target) && hadOwnVariants) {
+                  target.dataset.devHasOwnVariants = 'true';
+                }
               }
             }
+            if (standalone) {
+              applyWidthConstrainLive(target, baseline.constrained);
+            }
             if (editTarget === target) {
-              savedVariants = structuredClone(baselineVariants);
-              draftVariants = structuredClone(baselineVariants);
-              saved = { ...baselineVariants[selectedViewport] };
-              draft = { ...saved };
-              renderDraft();
-              syncUseGridDefaultButton();
+              if (persistCrop) {
+                savedVariants = structuredClone(baseline.variants);
+                draftVariants = structuredClone(baseline.variants);
+                saved = { ...baseline.variants[selectedViewport] };
+                draft = { ...saved };
+                renderDraft();
+                syncUseGridDefaultButton();
+              }
+              savedConstrained = baseline.constrained;
+              draftConstrained = baseline.constrained;
+              syncWidthConstrainUi();
             }
           },
         },
@@ -583,6 +649,11 @@ import DevOverlay from '../DevOverlay.astro';
       delete editTarget.dataset.devImageVariants;
       editedImage.style.width = '';
       editedImage.style.height = '';
+      if (isStandaloneMedia(editTarget)) {
+        applyWidthConstrainLive(editTarget, savedConstrained);
+        draftConstrained = savedConstrained;
+        syncWidthConstrainUi();
+      }
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
@@ -603,10 +674,12 @@ import DevOverlay from '../DevOverlay.astro';
       selectedViewport = viewportForWidth();
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
-        diskBaselines.set(pendingId, readAppliedVariants(editTarget));
+        diskBaselines.set(pendingId, snapshotBaseline(editTarget));
       }
       savedVariants = readAppliedVariants(editTarget);
       draftVariants = structuredClone(savedVariants);
+      savedConstrained = isStandaloneMedia(target) ? readConstrained(target) : false;
+      draftConstrained = savedConstrained;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
       previewImage.src = editedImage.currentSrc || editedImage.src;
@@ -619,6 +692,7 @@ import DevOverlay from '../DevOverlay.astro';
       renderConstraint();
       renderDraft();
       syncUseGridDefaultButton();
+      syncWidthConstrainUi();
       if (live) {
         status.textContent = 'Editing this image. The page updates when you change the crop.';
       }
@@ -637,6 +711,11 @@ import DevOverlay from '../DevOverlay.astro';
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (panel && panel.dataset.devPanelKey !== 'image') return;
       revertFramelessTarget();
+      if (editTarget && isStandaloneMedia(editTarget) && !savedSinceSelect) {
+        applyWidthConstrainLive(editTarget, savedConstrained);
+        draftConstrained = savedConstrained;
+        syncWidthConstrainUi();
+      }
       editingSession = false;
       liveApply = false;
     }) as EventListener);
@@ -832,10 +911,27 @@ import DevOverlay from '../DevOverlay.astro';
         : `Crop unlocked on ${selectedViewport} — image edges may enter the frame.`;
     });
 
+    widthConstrainInput.addEventListener('change', () => {
+      if (!isStandaloneMedia(editTarget)) {
+        widthConstrainInput.checked = false;
+        return;
+      }
+      draftConstrained = widthConstrainInput.checked;
+      applyWidthConstrainLive(editTarget, draftConstrained);
+      status.textContent = draftConstrained
+        ? 'Width constrained to 80% (centred) — unsaved changes.'
+        : 'Full width — unsaved changes.';
+    });
+
     saveButton.addEventListener('click', saveDraft);
 
     revertButton.addEventListener('click', () => {
       draft = { ...saved };
+      draftConstrained = savedConstrained;
+      if (isStandaloneMedia(editTarget)) {
+        applyWidthConstrainLive(editTarget, draftConstrained);
+      }
+      syncWidthConstrainUi();
       renderDraft();
       status.textContent = 'Reverted to the last saved crop.';
     });
@@ -864,9 +960,12 @@ import DevOverlay from '../DevOverlay.astro';
 
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
-        diskBaselines.set(pendingId, structuredClone(savedVariants));
+        diskBaselines.set(pendingId, {
+          variants: structuredClone(savedVariants),
+          constrained: savedConstrained,
+        });
       }
-      const baselineVariants = structuredClone(diskBaselines.get(pendingId)!);
+      const baseline = structuredClone(diskBaselines.get(pendingId)!);
       const defaultVariants = gridDefaultVariantsFor(target);
 
       applyVariantsToTarget(target, defaultVariants, { clearOwn: true });
@@ -889,12 +988,12 @@ import DevOverlay from '../DevOverlay.astro';
             clearVariants: true,
           },
           revert: () => {
-            applyVariantsToTarget(target, baselineVariants);
+            applyVariantsToTarget(target, baseline.variants);
             target.dataset.devHasOwnVariants = 'true';
             if (editTarget === target) {
-              savedVariants = structuredClone(baselineVariants);
-              draftVariants = structuredClone(baselineVariants);
-              saved = { ...baselineVariants[selectedViewport] };
+              savedVariants = structuredClone(baseline.variants);
+              draftVariants = structuredClone(baseline.variants);
+              saved = { ...baseline.variants[selectedViewport] };
               draft = { ...saved };
               renderDraft();
               syncUseGridDefaultButton();
@@ -910,7 +1009,10 @@ import DevOverlay from '../DevOverlay.astro';
     window.addEventListener('vcd:dev-pending-committed', (() => {
       diskBaselines.clear();
       if (editTarget) {
-        diskBaselines.set(pendingIdFor(editTarget), structuredClone(savedVariants));
+        diskBaselines.set(pendingIdFor(editTarget), {
+          variants: structuredClone(savedVariants),
+          constrained: savedConstrained,
+        });
       }
     }) as EventListener);
 
@@ -982,6 +1084,35 @@ import DevOverlay from '../DevOverlay.astro';
   .tapico-crop-tuner__select select {
     width: 100%;
     cursor: pointer;
+  }
+
+  .tapico-crop-tuner__toggle {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.55em;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .tapico-crop-tuner__toggle[hidden] {
+    display: none;
+  }
+
+  .tapico-crop-tuner__toggle input {
+    width: 1em;
+    height: 1em;
+    margin: 0;
+    accent-color: var(--color-text);
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__toggle-hint {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    opacity: 0.8;
   }
 
   .tapico-crop-tuner__stage {

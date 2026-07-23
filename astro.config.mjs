@@ -111,67 +111,21 @@ function imageCropDevWriter() {
           }
 
           const data = await readDevDocument(targetInfo.relativeFile);
-
-          let target = data;
-          for (const part of targetInfo.path) {
-            if (
-              target === null ||
-              typeof target !== 'object' ||
-              !Object.prototype.hasOwnProperty.call(target, part)
-            ) {
-              send(404, { error: 'That image path no longer exists.' });
-              return;
-            }
-            target = target[part];
-          }
-          if (target === null || typeof target !== 'object' || Array.isArray(target)) {
-            send(404, { error: 'That image path does not point to an image.' });
+          const result = applyCropChange(data, body);
+          if (!result.ok) {
+            send(400, { error: result.error });
             return;
           }
 
-          if (body.clearVariants === true) {
-            delete target.variants;
-            delete target.crop;
-            await writeDevDocument(targetInfo.relativeFile, data);
-            send(200, { ok: true, document: documentKey, cleared: true });
-            return;
-          }
-
-          const requestedVariants = body.variants && typeof body.variants === 'object'
-            ? body.variants
-            : {};
-          /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
-          const variants = {};
-          for (const [viewport, requested] of Object.entries(requestedVariants)) {
-            const x = Number(requested?.x);
-            const y = Number(requested?.y);
-            const zoom = Number(requested?.zoom);
-            const aspectRatio = String(requested?.aspectRatio || '');
-            if (
-              !IMAGE_VIEWPORTS.has(viewport) ||
-              !isAllowedAspectRatio(aspectRatio) ||
-              ![x, y, zoom].every(Number.isFinite)
-            ) {
-              send(400, { error: 'Use supported viewports, aspect ratios and crop values.' });
-              return;
-            }
-            variants[viewport] = {
-              aspectRatio,
-              x: clampRound(x, -100, 100, 1),
-              y: clampRound(y, -100, 100, 1),
-              zoom: clampRound(zoom, 1, 1.5, 2),
-            };
-          }
-          if (!Object.keys(variants).length) {
-            send(400, { error: 'No crop data was provided.' });
-            return;
-          }
-
-          target.variants ||= {};
-          Object.assign(target.variants, variants);
-          delete target.crop;
           await writeDevDocument(targetInfo.relativeFile, data);
-          send(200, { ok: true, document: documentKey, variants });
+          send(200, {
+            ok: true,
+            document: documentKey,
+            ...(body.clearVariants === true ? { cleared: true } : {}),
+            ...(body.variants ? { variants: body.variants } : {}),
+            ...(typeof body.constrained === 'boolean' ? { constrained: body.constrained } : {}),
+            ...(typeof body.centered === 'boolean' ? { centered: body.centered } : {}),
+          });
         } catch {
           send(400, { error: 'Could not parse or write the crop.' });
         }
@@ -551,6 +505,26 @@ const resolvePathTarget = (data, fieldPath) => {
 };
 
 /**
+ * Apply standalone image width/centering flags onto a crop target node.
+ * @param {Record<string, unknown>} target
+ * @param {Record<string, unknown>} change
+ */
+const applyImageWidthFlags = (target, change) => {
+  let touched = false;
+  if (typeof change.constrained === 'boolean') {
+    if (change.constrained) target.constrained = true;
+    else delete target.constrained;
+    touched = true;
+  }
+  if (typeof change.centered === 'boolean') {
+    if (change.centered) target.centered = true;
+    else delete target.centered;
+    touched = true;
+  }
+  return touched;
+};
+
+/**
  * Apply one image-crop mutation onto an in-memory document node.
  * @returns {{ ok: true } | { ok: false, error: string }}
  */
@@ -567,40 +541,50 @@ const applyCropChange = (data, change) => {
   if (change.clearVariants === true) {
     delete target.variants;
     delete target.crop;
+    applyImageWidthFlags(target, change);
     return { ok: true };
   }
 
   const requestedVariants = change.variants && typeof change.variants === 'object'
     ? change.variants
-    : {};
-  /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
-  const variants = {};
-  for (const [viewport, requested] of Object.entries(requestedVariants)) {
-    const x = Number(requested?.x);
-    const y = Number(requested?.y);
-    const zoom = Number(requested?.zoom);
-    const aspectRatio = String(requested?.aspectRatio || '');
-    if (
-      !IMAGE_VIEWPORTS.has(viewport) ||
-      !isAllowedAspectRatio(aspectRatio) ||
-      ![x, y, zoom].every(Number.isFinite)
-    ) {
-      return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+    : null;
+  const hasWidthFlags = typeof change.constrained === 'boolean'
+    || typeof change.centered === 'boolean';
+
+  if (requestedVariants) {
+    /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */
+    const variants = {};
+    for (const [viewport, requested] of Object.entries(requestedVariants)) {
+      const x = Number(requested?.x);
+      const y = Number(requested?.y);
+      const zoom = Number(requested?.zoom);
+      const aspectRatio = String(requested?.aspectRatio || '');
+      if (
+        !IMAGE_VIEWPORTS.has(viewport) ||
+        !isAllowedAspectRatio(aspectRatio) ||
+        ![x, y, zoom].every(Number.isFinite)
+      ) {
+        return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+      }
+      variants[viewport] = {
+        aspectRatio,
+        x: clampRound(x, -100, 100, 1),
+        y: clampRound(y, -100, 100, 1),
+        zoom: clampRound(zoom, 1, 1.5, 2),
+      };
     }
-    variants[viewport] = {
-      aspectRatio,
-      x: clampRound(x, -100, 100, 1),
-      y: clampRound(y, -100, 100, 1),
-      zoom: clampRound(zoom, 1, 1.5, 2),
-    };
-  }
-  if (!Object.keys(variants).length) {
+    if (!Object.keys(variants).length) {
+      return { ok: false, error: 'No crop data was provided.' };
+    }
+
+    target.variants ||= {};
+    Object.assign(target.variants, variants);
+    delete target.crop;
+  } else if (!hasWidthFlags) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 
-  target.variants ||= {};
-  Object.assign(target.variants, variants);
-  delete target.crop;
+  applyImageWidthFlags(target, change);
   return { ok: true };
 };
 
