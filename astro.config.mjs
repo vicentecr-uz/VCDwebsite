@@ -521,6 +521,11 @@ const applyImageWidthFlags = (target, change) => {
     else delete target.centered;
     touched = true;
   }
+  if (typeof change.max80 === 'boolean') {
+    if (change.max80) target.max80 = true;
+    else delete target.max80;
+    touched = true;
+  }
   return touched;
 };
 
@@ -549,7 +554,8 @@ const applyCropChange = (data, change) => {
     ? change.variants
     : null;
   const hasWidthFlags = typeof change.constrained === 'boolean'
-    || typeof change.centered === 'boolean';
+    || typeof change.centered === 'boolean'
+    || typeof change.max80 === 'boolean';
 
   if (requestedVariants) {
     /** @type {Record<string, { aspectRatio: string, x: number, y: number, zoom: number }>} */

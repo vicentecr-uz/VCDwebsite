@@ -46,6 +46,12 @@ import DevOverlay from '../DevOverlay.astro';
       <span class="tapico-crop-tuner__toggle-hint">80% · centred</span>
     </label>
 
+    <label class="tapico-crop-tuner__toggle" data-crop-height-constrain-wrap hidden>
+      <input type="checkbox" data-crop-height-constrain />
+      <span>Constrain height</span>
+      <span class="tapico-crop-tuner__toggle-hint">80% · max view height</span>
+    </label>
+
     <div class="tapico-crop-tuner__stage">
       <div class="tapico-crop-tuner__preview" data-crop-preview>
         <div class="tapico-crop-tuner__preview-clip">
@@ -122,6 +128,8 @@ import DevOverlay from '../DevOverlay.astro';
     const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
     const widthConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-width-constrain-wrap]');
     const widthConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-width-constrain]');
+    const heightConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-height-constrain-wrap]');
+    const heightConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-height-constrain]');
     const viewportButtons = [
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-viewport]'),
     ];
@@ -145,6 +153,8 @@ import DevOverlay from '../DevOverlay.astro';
       !aspectRatioSelect ||
       !widthConstrainWrap ||
       !widthConstrainInput ||
+      !heightConstrainWrap ||
+      !heightConstrainInput ||
       !viewportButtons.length ||
       !zoomInput ||
       !zoomOutput ||
@@ -262,6 +272,8 @@ import DevOverlay from '../DevOverlay.astro';
     let savedSinceSelect = false;
     let savedConstrained = false;
     let draftConstrained = false;
+    let savedMax80 = false;
+    let draftMax80 = false;
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
     const isStandaloneMedia = (target: HTMLElement) => (
@@ -271,19 +283,32 @@ import DevOverlay from '../DevOverlay.astro';
     const readConstrained = (target: HTMLElement) => target.dataset.devConstrained === 'true'
       || target.classList.contains('project-media--constrained');
 
-    const applyWidthConstrainLive = (target: HTMLElement, constrained: boolean) => {
+    const readMax80 = (target: HTMLElement) => target.dataset.devMax80 === 'true'
+      || target.classList.contains('project-media--max80')
+      || !!target.querySelector('.project-media__img--max80');
+
+    const applyFrameFlagsLive = (
+      target: HTMLElement,
+      flags: { constrained: boolean; max80: boolean },
+    ) => {
       if (!isStandaloneMedia(target)) return;
-      target.classList.toggle('project-media--constrained', constrained);
-      target.dataset.devConstrained = constrained ? 'true' : 'false';
-      target.dataset.devCentered = constrained ? 'true' : 'false';
+      target.classList.toggle('project-media--constrained', flags.constrained);
+      target.dataset.devConstrained = flags.constrained ? 'true' : 'false';
+      target.dataset.devCentered = flags.constrained ? 'true' : 'false';
+      target.classList.toggle('project-media--max80', flags.max80);
+      target.dataset.devMax80 = flags.max80 ? 'true' : 'false';
+      const image = target.querySelector<HTMLImageElement>('img');
+      image?.classList.toggle('project-media__img--max80', flags.max80);
       const block = target.closest('.project-block');
-      block?.classList.toggle('project-block--centered', constrained);
+      block?.classList.toggle('project-block--centered', flags.constrained || flags.max80);
     };
 
     const syncWidthConstrainUi = () => {
       const show = isStandaloneMedia(editTarget);
       widthConstrainWrap.hidden = !show;
       widthConstrainInput.checked = draftConstrained;
+      heightConstrainWrap.hidden = !show;
+      heightConstrainInput.checked = draftMax80;
     };
 
     const gridDefaultAspectFor = (target: HTMLElement) => (
@@ -365,6 +390,7 @@ import DevOverlay from '../DevOverlay.astro';
     const diskBaselines = new Map<string, {
       variants: Record<ImageViewport, CropState>;
       constrained: boolean;
+      max80: boolean;
       cropped: boolean;
     }>();
     const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
@@ -378,6 +404,7 @@ import DevOverlay from '../DevOverlay.astro';
     const snapshotBaseline = (target: HTMLElement) => ({
       variants: readAppliedVariants(target),
       constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
+      max80: isStandaloneMedia(target) ? readMax80(target) : false,
       cropped: target.classList.contains('project-cropped') || isGridTarget(target),
     });
 
@@ -483,11 +510,23 @@ import DevOverlay from '../DevOverlay.astro';
       viewport: ImageViewport,
       crop: CropState,
     ) => {
+      const ratioNum = crop.aspectRatio === 'original'
+        ? null
+        : (() => {
+          const [widthRaw, heightRaw] = crop.aspectRatio.split(':').map(Number);
+          return widthRaw && heightRaw ? widthRaw / heightRaw : null;
+        })();
       target.style.setProperty(
         `--project-image-ratio-${viewport}`,
         crop.aspectRatio === 'original'
           ? 'var(--project-image-original-ratio, 1 / 1)'
           : crop.aspectRatio.replace(':', ' / '),
+      );
+      target.style.setProperty(
+        `--project-image-ratio-num-${viewport}`,
+        ratioNum === null
+          ? 'var(--project-image-original-ratio-num, 1)'
+          : String(ratioNum),
       );
       target.style.setProperty(`--project-image-x-${viewport}`, `${crop.x}%`);
       target.style.setProperty(`--project-image-y-${viewport}`, `${crop.y}%`);
@@ -542,6 +581,10 @@ import DevOverlay from '../DevOverlay.astro';
             '--project-image-original-ratio',
             `${editedImage.naturalWidth} / ${editedImage.naturalHeight}`,
           );
+          editTarget.style.setProperty(
+            '--project-image-original-ratio-num',
+            String(editedImage.naturalWidth / editedImage.naturalHeight),
+          );
         }
         setTargetVariant(editTarget, selectedViewport, draft);
         editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
@@ -578,6 +621,7 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants[selectedViewport] = { ...draft };
       const stagedVariants = structuredClone(draftVariants);
       const stagedConstrained = draftConstrained;
+      const stagedMax80 = draftMax80;
       const standalone = isStandaloneMedia(target);
       const persistCrop = targetWasCropped || liveApply;
       const pendingId = pendingIdFor(target);
@@ -585,6 +629,7 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingId, {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
+          max80: savedMax80,
           cropped: targetWasCropped,
         });
       }
@@ -598,8 +643,9 @@ import DevOverlay from '../DevOverlay.astro';
         targetWasCropped = true;
       }
       if (standalone) {
-        applyWidthConstrainLive(target, stagedConstrained);
+        applyFrameFlagsLive(target, { constrained: stagedConstrained, max80: stagedMax80 });
         savedConstrained = stagedConstrained;
+        savedMax80 = stagedMax80;
       }
       savedSinceSelect = true;
       if (isGridTarget(target) && persistCrop) {
@@ -616,7 +662,11 @@ import DevOverlay from '../DevOverlay.astro';
             path: imagePath,
             ...(persistCrop ? { variants: stagedVariants } : {}),
             ...(standalone
-              ? { constrained: stagedConstrained, centered: stagedConstrained }
+              ? {
+                constrained: stagedConstrained,
+                centered: stagedConstrained,
+                max80: stagedMax80,
+              }
               : {}),
           },
           revert: () => {
@@ -640,7 +690,10 @@ import DevOverlay from '../DevOverlay.astro';
               }
             }
             if (standalone) {
-              applyWidthConstrainLive(target, baseline.constrained);
+              applyFrameFlagsLive(target, {
+                constrained: baseline.constrained,
+                max80: baseline.max80,
+              });
             }
             if (editTarget === target) {
               if (persistCrop) {
@@ -654,6 +707,8 @@ import DevOverlay from '../DevOverlay.astro';
               }
               savedConstrained = baseline.constrained;
               draftConstrained = baseline.constrained;
+              savedMax80 = baseline.max80;
+              draftMax80 = baseline.max80;
               syncWidthConstrainUi();
             }
           },
@@ -684,8 +739,12 @@ import DevOverlay from '../DevOverlay.astro';
       editedImage.style.height = '';
       removeCropClipIfOwned(editedImage);
       if (isStandaloneMedia(editTarget)) {
-        applyWidthConstrainLive(editTarget, savedConstrained);
+        applyFrameFlagsLive(editTarget, {
+          constrained: savedConstrained,
+          max80: savedMax80,
+        });
         draftConstrained = savedConstrained;
+        draftMax80 = savedMax80;
         syncWidthConstrainUi();
       }
     };
@@ -714,6 +773,8 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants = structuredClone(savedVariants);
       savedConstrained = isStandaloneMedia(target) ? readConstrained(target) : false;
       draftConstrained = savedConstrained;
+      savedMax80 = isStandaloneMedia(target) ? readMax80(target) : false;
+      draftMax80 = savedMax80;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
       previewImage.src = editedImage.currentSrc || editedImage.src;
@@ -746,8 +807,12 @@ import DevOverlay from '../DevOverlay.astro';
       if (panel && panel.dataset.devPanelKey !== 'image') return;
       revertFramelessTarget();
       if (editTarget && isStandaloneMedia(editTarget) && !savedSinceSelect) {
-        applyWidthConstrainLive(editTarget, savedConstrained);
+        applyFrameFlagsLive(editTarget, {
+          constrained: savedConstrained,
+          max80: savedMax80,
+        });
         draftConstrained = savedConstrained;
+        draftMax80 = savedMax80;
         syncWidthConstrainUi();
       }
       editingSession = false;
@@ -951,10 +1016,28 @@ import DevOverlay from '../DevOverlay.astro';
         return;
       }
       draftConstrained = widthConstrainInput.checked;
-      applyWidthConstrainLive(editTarget, draftConstrained);
+      applyFrameFlagsLive(editTarget, {
+        constrained: draftConstrained,
+        max80: draftMax80,
+      });
       status.textContent = draftConstrained
         ? 'Width constrained to 80% (centred) — unsaved changes.'
         : 'Full width — unsaved changes.';
+    });
+
+    heightConstrainInput.addEventListener('change', () => {
+      if (!isStandaloneMedia(editTarget)) {
+        heightConstrainInput.checked = false;
+        return;
+      }
+      draftMax80 = heightConstrainInput.checked;
+      applyFrameFlagsLive(editTarget, {
+        constrained: draftConstrained,
+        max80: draftMax80,
+      });
+      status.textContent = draftMax80
+        ? 'Height constrained to 80% view height — unsaved changes.'
+        : 'Full height — unsaved changes.';
     });
 
     saveButton.addEventListener('click', saveDraft);
@@ -962,8 +1045,12 @@ import DevOverlay from '../DevOverlay.astro';
     revertButton.addEventListener('click', () => {
       draft = { ...saved };
       draftConstrained = savedConstrained;
+      draftMax80 = savedMax80;
       if (isStandaloneMedia(editTarget)) {
-        applyWidthConstrainLive(editTarget, draftConstrained);
+        applyFrameFlagsLive(editTarget, {
+          constrained: draftConstrained,
+          max80: draftMax80,
+        });
       }
       syncWidthConstrainUi();
       renderDraft();
@@ -997,6 +1084,8 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingId, {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
+          max80: savedMax80,
+          cropped: targetWasCropped,
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
@@ -1046,6 +1135,8 @@ import DevOverlay from '../DevOverlay.astro';
         diskBaselines.set(pendingIdFor(editTarget), {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
+          max80: savedMax80,
+          cropped: targetWasCropped,
         });
       }
     }) as EventListener);
