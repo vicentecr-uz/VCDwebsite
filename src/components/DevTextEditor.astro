@@ -643,7 +643,16 @@
       document.addEventListener('focusin', syncSpacingCaretSuppression);
       document.addEventListener('focusout', () => {
         // focusout fires before the next focus target is active
-        requestAnimationFrame(syncSpacingCaretSuppression);
+        requestAnimationFrame(() => {
+          syncSpacingCaretSuppression();
+          // Drop sticky section chrome when leaving a text field so the drag
+          // grip doesn't linger after click-away while controls-visible is set.
+          if (!isDevTextCaretActive()) {
+            document.querySelectorAll<HTMLElement>('.is-dev-section-controls-visible').forEach((el) => {
+              if (!el.matches(':hover')) el.classList.remove('is-dev-section-controls-visible');
+            });
+          }
+        });
       });
       document.addEventListener(
         'pointerdown',
@@ -791,6 +800,14 @@
     };
 
     const flushPendingEditsForDocument = async (documentKey: string) => {
+      // Keep JSON indices aligned with client reindexing before text writes.
+      if (pendingSectionInserts.some((entry) => entry.documentKey === documentKey)) {
+        await persistPendingSectionInserts();
+      }
+      if (pendingSectionDeletes.some((entry) => entry.documentKey === documentKey)) {
+        await persistPendingSectionDeletes();
+      }
+
       const dirtyText = dirtyTextStates().filter((state) => state.document === documentKey);
       const dirtySpacing = dirtySpacingStates().filter((state) => state.document === documentKey);
       if (!dirtyText.length && !dirtySpacing.length) return;
@@ -1064,27 +1081,98 @@
       };
     };
 
+    /**
+     * Enter / focus often leave the caret on the contenteditable root (the
+     * div) instead of inside a <p>. Our Enter handler requires a direct-child
+     * paragraph — without this, preventDefault runs and Return does nothing
+     * until a click places the caret in a <p> (or after save+reload).
+     */
+    const placeCaretInParagraph = (paragraph: HTMLElement, atStart: boolean) => {
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = document.createRange();
+      if (atStart) {
+        range.setStart(paragraph, 0);
+        range.collapse(true);
+      } else {
+        range.selectNodeContents(paragraph);
+        range.collapse(false);
+      }
+      selection.removeAllRanges();
+      selection.addRange(range);
+    };
+
+    const ensureParagraphSelection = (element: HTMLElement): HTMLParagraphElement | null => {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return null;
+      const range = selection.getRangeAt(0);
+      if (!element.contains(range.startContainer)) return null;
+
+      const startElement = range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+      const existing = startElement?.closest('p');
+      if (existing instanceof HTMLParagraphElement && existing.parentElement === element) {
+        return existing;
+      }
+
+      // Caret is on the root (or outside any <p>) — snap into a neighbour.
+      if (range.startContainer === element) {
+        const atOffset = element.childNodes[range.startOffset];
+        if (atOffset instanceof HTMLParagraphElement) {
+          placeCaretInParagraph(atOffset, true);
+          return atOffset;
+        }
+        const before = element.childNodes[range.startOffset - 1];
+        if (before instanceof HTMLParagraphElement) {
+          placeCaretInParagraph(before, false);
+          return before;
+        }
+      }
+
+      const paragraphs = [...element.querySelectorAll<HTMLParagraphElement>(':scope > p')];
+      if (paragraphs.length) {
+        const fallback = paragraphs[0];
+        placeCaretInParagraph(fallback, true);
+        return fallback;
+      }
+
+      const created = document.createElement('p');
+      created.append(document.createElement('br'));
+      element.append(created);
+      placeCaretInParagraph(created, true);
+      return created;
+    };
+
     const bindTextState = (state: EditableTextState) => {
       const { element } = state;
       element.addEventListener('input', updateActions);
+      if (state.kind === 'paragraphs') {
+        element.addEventListener('focus', () => {
+          // Defer so the browser finishes its own caret placement first.
+          requestAnimationFrame(() => ensureParagraphSelection(element));
+        });
+      }
       element.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter' || state.kind !== 'paragraphs') return;
         event.preventDefault();
 
+        const paragraph = ensureParagraphSelection(element);
+        if (!paragraph) return;
+
         const selection = window.getSelection();
         if (!selection?.rangeCount) return;
+        // Re-read after ensureParagraphSelection may have moved the caret.
         const range = selection.getRangeAt(0);
-        if (!element.contains(range.startContainer)) return;
-        const startElement = range.startContainer instanceof Element
-          ? range.startContainer
-          : range.startContainer.parentElement;
-        const paragraph = startElement?.closest('p');
-        if (!paragraph || paragraph.parentElement !== element) return;
+        if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
+          placeCaretInParagraph(paragraph, false);
+        }
+        const liveRange = selection.getRangeAt(0);
 
-        if (!range.collapsed) range.deleteContents();
+        if (!liveRange.collapsed) liveRange.deleteContents();
 
         const afterRange = document.createRange();
-        afterRange.setStart(range.startContainer, range.startOffset);
+        afterRange.setStart(liveRange.startContainer, liveRange.startOffset);
         afterRange.setEnd(paragraph, paragraph.childNodes.length);
         const trailing = afterRange.extractContents();
 
@@ -1236,7 +1324,9 @@
       updateActions();
       requestAnimationFrame(() => {
         built.textElement.focus();
-        if (built.textKind === 'text') {
+        if (built.textKind === 'paragraphs') {
+          ensureParagraphSelection(built.textElement);
+        } else if (built.textKind === 'text') {
           const selection = window.getSelection();
           const range = document.createRange();
           range.selectNodeContents(built.textElement);
@@ -1899,7 +1989,11 @@
       status.textContent = 'Saving…';
 
       try {
+        // Structural mutations first: client paths are already reindexed, so
+        // JSON must match before text/spacing writes (otherwise Save hits
+        // "editable text field no longer exists" after deleting a section).
         const insertedSections = await persistPendingSectionInserts();
+        await persistPendingSectionDeletes();
         for (const change of listingChanges) {
           const response = await fetch('/api/listing-order', {
             method: 'POST',
@@ -1979,7 +2073,6 @@
           state.savedValue = state.currentValue;
           syncSpacingControl(state);
         });
-        await persistPendingSectionDeletes();
         for (const change of sectionOrderChanges) {
           const response = await fetch('/api/content-section-order', {
             method: 'POST',
@@ -2060,10 +2153,16 @@
   /*
     Adaptive edit wash: tint toward the field’s own text color so focus/dirty
     stays readable on light page copy and dark embeds (e.g. Reddit comments).
+    Dirty + unfocused: wash only — a persistent dashed outline reads as a
+    tiny “grid” chrome icon at the top-left corner after click-away.
   */
   .is-dev-mode [data-dev-text-document]:focus,
   .is-dev-mode [data-dev-text-document].is-dev-text-dirty {
     background: color-mix(in srgb, currentColor 10%, transparent);
+  }
+
+  .is-dev-mode [data-dev-text-document]:focus,
+  .is-dev-mode [data-dev-text-document].is-dev-text-dirty:hover {
     outline-color: color-mix(in srgb, currentColor 45%, transparent);
   }
 
