@@ -508,7 +508,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     flipMovingElements = [];
 
     dropIndicator.classList.add('is-repositioning');
+    // Moving the drop slot changes content height above in-view nodes. Scroll
+    // anchoring would pin those nodes' viewport tops (deltaY ≈ 0), so downward
+    // FLIP skips and neighbors snap. Pin scrollY across the layout write.
+    const scrollYBefore = window.scrollY;
     syncPlacement(toIndex);
+    if (window.scrollY !== scrollYBefore) {
+      window.scrollTo(0, scrollYBefore);
+    }
     void dropIndicator.offsetHeight;
 
     const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.FLIP_REPOSITION_MS;
