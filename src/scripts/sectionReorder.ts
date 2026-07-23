@@ -203,6 +203,8 @@ export type ReorderClasses = {
   dropPreviewAbove?: string;
   dropPreviewBelow?: string;
   fadeGhost: string;
+  /** Optional lift card chrome (Tapico). Shadow fades with drop scale. */
+  liftBackdrop?: string;
 };
 
 export type ReorderHost = {
@@ -318,6 +320,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
   let dropAnimation: Animation | null = null;
+  let dropShadowAnimation: Animation | null = null;
+  let dropIndicatorFadeAnimation: Animation | null = null;
 
   const nowMs = () => performance.now();
 
@@ -688,15 +692,26 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (motionMs <= 0) {
       item.style.top = `${toTop}px`;
       item.style.left = `${toLeft}px`;
+      const backdropClass = host.classes.liftBackdrop;
+      if (backdropClass) {
+        const backdrop = item.querySelector<HTMLElement>(`:scope > .${backdropClass}`);
+        if (backdrop) backdrop.style.boxShadow = 'none';
+      }
+      applyIndicatorOpacity(0);
       item.classList.remove('is-dropping');
       return Promise.resolve();
     }
 
     dropAnimation?.cancel();
+    dropShadowAnimation?.cancel();
+    dropIndicatorFadeAnimation?.cancel();
     // WAAPI owns top/left/scale — suppress CSS transitions that would fight it.
     item.style.transition = 'none';
 
     const keyframes: Keyframe[] = [];
+    const shadowKeyframes: Keyframe[] = [];
+    const indicatorFadeKeyframes: Keyframe[] = [];
+    const indicatorFrom = state.indicatorOpacity;
     for (let i = 0; i <= DROP_ELASTIC_SAMPLES; i += 1) {
       const t = i / DROP_ELASTIC_SAMPLES;
       const elastic = easeOutElastic(t);
@@ -708,6 +723,19 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         transform: `scale(${fromScale + (toScale - fromScale) * scaleT})`,
         offset: t,
       });
+      // Same easeOutCubic as scale so the shadow eases out with the settle.
+      const shadowAlpha = 0.18 * (1 - scaleT);
+      shadowKeyframes.push({
+        boxShadow:
+          shadowAlpha < 0.002
+            ? 'none'
+            : `0 0.85em 2.4em rgba(0, 0, 0, ${shadowAlpha})`,
+        offset: t,
+      });
+      indicatorFadeKeyframes.push({
+        opacity: indicatorFrom * (1 - scaleT),
+        offset: t,
+      });
     }
 
     const animation = item.animate(keyframes, {
@@ -716,6 +744,39 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       fill: 'forwards',
     });
     dropAnimation = animation;
+
+    const backdropClass = host.classes.liftBackdrop;
+    const backdrop = backdropClass
+      ? item.querySelector<HTMLElement>(`:scope > .${backdropClass}`)
+      : null;
+    if (backdrop) {
+      backdrop.style.transition = 'opacity 200ms ease-out';
+      const shadowAnim = backdrop.animate(shadowKeyframes, {
+        duration: motionMs,
+        easing: 'linear',
+        fill: 'forwards',
+      });
+      dropShadowAnimation = shadowAnim;
+      shadowAnim.finished.catch(() => {}).then(() => {
+        if (dropShadowAnimation === shadowAnim) dropShadowAnimation = null;
+        backdrop.style.boxShadow = 'none';
+        shadowAnim.cancel();
+      });
+    }
+
+    // Drop indicator fades with the same easeOutCubic as scale + shadow.
+    body.style.transition = 'none';
+    const indicatorFadeAnim = body.animate(indicatorFadeKeyframes, {
+      duration: motionMs,
+      easing: 'linear',
+      fill: 'forwards',
+    });
+    dropIndicatorFadeAnimation = indicatorFadeAnim;
+    indicatorFadeAnim.finished.catch(() => {}).then(() => {
+      if (dropIndicatorFadeAnimation === indicatorFadeAnim) dropIndicatorFadeAnimation = null;
+      applyIndicatorOpacity(0);
+      indicatorFadeAnim.cancel();
+    });
 
     return animation.finished
       .catch(() => {
@@ -739,6 +800,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     releaseNeighbor();
     dropAnimation?.cancel();
     dropAnimation = null;
+    dropShadowAnimation?.cancel();
+    dropShadowAnimation = null;
+    dropIndicatorFadeAnimation?.cancel();
+    dropIndicatorFadeAnimation = null;
     indicatorAnim = { type: 'steady' };
     dropIndicator?.remove();
     dropIndicator = null;
