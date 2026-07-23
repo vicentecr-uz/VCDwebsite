@@ -321,6 +321,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let dropNeighborBelow: HTMLElement | null = null;
   let followPointer = true;
   let rafId = 0;
+  let flipGeneration = 0;
+  let flipRafId = 0;
   let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let flipMovingElements: HTMLElement[] = [];
   let activeFadeGhosts: HTMLElement[] = [];
@@ -343,11 +345,20 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     activeFadeGhosts = [];
   };
 
-  const clearActiveFlip = () => {
+  const cancelFlipSchedulers = () => {
     if (flipCleanupTimer) {
       clearTimeout(flipCleanupTimer);
       flipCleanupTimer = null;
     }
+    if (flipRafId) {
+      cancelAnimationFrame(flipRafId);
+      flipRafId = 0;
+    }
+  };
+
+  const clearActiveFlip = () => {
+    flipGeneration += 1;
+    cancelFlipSchedulers();
     flipMovingElements.forEach((el) => {
       el.classList.remove(host.classes.flipMoving);
       el.style.transition = '';
@@ -477,12 +488,25 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
     const items = host.getItems();
     const affected = getAffectedItems(items, fromIndex, toIndex);
+    // Include in-flight FLIP nodes so a fast re-target continues from their
+    // current visual position instead of snapping when they leave `affected`.
     const captureElements = [...new Set([...flipMovingElements, ...affected])];
     const firstRects = new Map(
       captureElements.map((el) => [el, el.getBoundingClientRect()]),
     );
 
-    clearActiveFlip();
+    // Invalidate any pending rAF/timeout from the previous relocate before we
+    // invert again — a stale rAF was clearing the new invert and causing snaps.
+    flipGeneration += 1;
+    const generation = flipGeneration;
+    cancelFlipSchedulers();
+    flipMovingElements.forEach((el) => {
+      el.classList.remove(host.classes.flipMoving);
+      el.style.transition = 'none';
+      el.style.transform = '';
+    });
+    flipMovingElements = [];
+
     dropIndicator.classList.add('is-repositioning');
     syncPlacement(toIndex);
     void dropIndicator.offsetHeight;
@@ -490,7 +514,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.FLIP_REPOSITION_MS;
     const moving: HTMLElement[] = [];
 
-    affected.forEach((el) => {
+    captureElements.forEach((el) => {
       const first = firstRects.get(el);
       if (!first) return;
       const deltaY = first.top - el.getBoundingClientRect().top;
@@ -510,13 +534,16 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       return;
     }
 
-    requestAnimationFrame(() => {
+    flipRafId = requestAnimationFrame(() => {
+      flipRafId = 0;
+      if (generation !== flipGeneration) return;
       moving.forEach((el) => {
         el.style.transition = `transform ${motionMs}ms ease-out`;
         el.style.transform = '';
       });
       flipCleanupTimer = setTimeout(() => {
         flipCleanupTimer = null;
+        if (generation !== flipGeneration) return;
         clearActiveFlip();
         dropIndicator?.classList.remove('is-repositioning');
       }, motionMs);
