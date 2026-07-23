@@ -77,6 +77,11 @@
     setDevSectionOutline,
     syncDevSectionOutlineSidebar,
   } from '../../scripts/devSectionOutlineSync';
+  import {
+    outlineAnchorId as sharedOutlineAnchorId,
+    reorderOutlinePreservingGroups,
+    type OutlineEntry as SharedOutlineEntry,
+  } from '../../lib/projectOutline';
   type OutlineGroup = {
     kind: 'group';
     id: string;
@@ -123,7 +128,7 @@
   };
 
   const outlineAnchorId = (entry: OutlineEntry) =>
-    entry.anchor?.trim() || entry.id;
+    sharedOutlineAnchorId(entry as SharedOutlineEntry);
 
   const deriveNavFromOutline = (outline: OutlineEntry[]): NavItem[] => {
     const nav: NavItem[] = [];
@@ -299,26 +304,11 @@
       return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
     };
 
-    const sortAnchorFor = (entry: OutlineEntry) => {
-      if (entry.kind === 'section') return outlineAnchorId(entry);
-      if (entry.anchor?.trim()) return entry.anchor.trim();
-      const index = outline.indexOf(entry);
-      for (let i = index + 1; i < outline.length; i += 1) {
-        const next = outline[i];
-        if (next.kind === 'group') break;
-        if (next.kind === 'section') return outlineAnchorId(next);
-      }
-      return entry.id;
-    };
-
     const sortOutlineByPageOrder = (entries: OutlineEntry[]) =>
-      [...entries].sort((a, b) => {
-        const diff = pageIndexForId(sortAnchorFor(a)) - pageIndexForId(sortAnchorFor(b));
-        if (diff !== 0) return diff;
-        if (a.kind === 'group' && b.kind === 'section') return -1;
-        if (a.kind === 'section' && b.kind === 'group') return 1;
-        return 0;
-      });
+      reorderOutlinePreservingGroups(
+        entries as SharedOutlineEntry[],
+        pageIndexForId,
+      ) as OutlineEntry[];
 
     const owningSectionForBlock = (block: HTMLElement) => {
       const blocks = editableBlocks();
@@ -331,7 +321,10 @@
       let group: OutlineGroup | null = null;
       let section: OutlineSection | null = null;
       for (const entry of sorted) {
-        const pageIndex = pageIndexForId(sortAnchorFor(entry));
+        const pageIndex =
+          entry.kind === 'group'
+            ? pageIndexForId(entry.anchor?.trim() || entry.id)
+            : pageIndexForId(outlineAnchorId(entry));
         if (pageIndex > blockIndex) break;
         if (entry.kind === 'group') {
           group = entry;
@@ -359,7 +352,10 @@
       let end = editableBlocks().length;
       for (let i = sectionPos + 1; i < sorted.length; i += 1) {
         const next = sorted[i];
-        const pageIndex = pageIndexForId(sortAnchorFor(next));
+        const pageIndex =
+          next.kind === 'group'
+            ? pageIndexForId(next.anchor?.trim() || next.id)
+            : pageIndexForId(outlineAnchorId(next));
         if (pageIndex > start) {
           end = pageIndex;
           break;
