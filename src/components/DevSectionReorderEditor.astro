@@ -11,10 +11,7 @@
     sectionOrderId,
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar } from '../scripts/devSectionOutlineSync';
-  import {
-    createReorderController,
-    prefersReducedMotion,
-  } from '../scripts/sectionReorder';
+  import { createReorderController } from '../scripts/sectionReorder';
 
   const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
   const DRAG_BRIDGE_CLASS = 'dev-section-drag-bridge';
@@ -31,8 +28,6 @@
   let dragHandle: HTMLElement | null = null;
   let dragPointerId: number | null = null;
   let liftBackdrop: HTMLElement | null = null;
-  let keyboardGrabItem: HTMLElement | null = null;
-  let keyboardGrabSnapshot: number[] | null = null;
   let grabOrderSnapshot: number[] | null = null;
   let baselineOrder: number[] | null = null;
   let documentKey = '';
@@ -48,13 +43,6 @@
 
   const getContentSections = () =>
     getSectionRootsInDomOrder().filter((el) => el !== dragItem && !isChromeNode(el));
-
-  const resolveSectionRoot = (element: HTMLElement | null): HTMLElement | null => {
-    if (!element) return null;
-    const items = getSectionRootsInDomOrder();
-    if (items.includes(element)) return element;
-    return items.find((item) => item === element || item.contains(element)) ?? null;
-  };
 
   const ordersMatch = (left: number[], right: number[]) =>
     JSON.stringify(left) === JSON.stringify(right);
@@ -166,22 +154,12 @@
 
   const scheduleUnpinSectionControls = (root: HTMLElement | null) => {
     if (!root) return;
-    if (
-      root.classList.contains('is-section-lifted-session')
-      || root.classList.contains('is-section-keyboard-grabbed')
-    ) {
-      return;
-    }
+    if (root.classList.contains('is-section-lifted-session')) return;
     const pending = hoverLeaveTimers.get(root);
     if (pending) clearTimeout(pending);
     hoverLeaveTimers.set(root, setTimeout(() => {
       hoverLeaveTimers.delete(root);
-      if (
-        root.classList.contains('is-section-lifted-session')
-        || root.classList.contains('is-section-keyboard-grabbed')
-      ) {
-        return;
-      }
+      if (root.classList.contains('is-section-lifted-session')) return;
       if (!root.matches(':hover')) {
         root.classList.remove('is-dev-section-controls-visible');
       }
@@ -193,25 +171,21 @@
     getSectionRootsInDomOrder().forEach((item) => {
       if (!isChromeNode(item)) item.classList.remove('is-section-drop-target');
     });
-    dragItem?.classList.remove('is-section-dragging', 'is-section-keyboard-grabbed');
-    dragItem?.setAttribute('aria-grabbed', 'false');
-    dragHandle?.setAttribute('aria-grabbed', 'false');
+    dragItem?.classList.remove('is-section-dragging');
   };
 
   const enterLift = (
     root: HTMLElement,
     handle: HTMLButtonElement,
     pointerId: number,
-    x: number,
     y: number,
-    options: { followPointer?: boolean } = {},
   ) => {
     if (controller.isActive()) return;
 
     dragItem = root;
     dragHandle = handle;
-    dragPointerId = pointerId >= 0 ? pointerId : null;
-    sessionButtonDown = pointerId >= 0;
+    dragPointerId = pointerId;
+    sessionButtonDown = true;
 
     const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
     let sourceIndex = sections.indexOf(root);
@@ -219,17 +193,13 @@
 
     grabOrderSnapshot = captureSectionOrder();
 
-    if (pointerId >= 0) {
-      try {
-        handle.setPointerCapture(pointerId);
-      } catch {
-        // Document listeners still track pointer position.
-      }
+    try {
+      handle.setPointerCapture(pointerId);
+    } catch {
+      // Document listeners still track pointer position.
     }
 
-    const followPointer = options.followPointer !== false;
-    const pointerY = followPointer ? y : root.getBoundingClientRect().top + root.getBoundingClientRect().height / 2;
-    controller.beginLift(root, handle, pointerY, sourceIndex, { followPointer });
+    controller.beginLift(root, handle, y, sourceIndex);
     attachLiftBackdrop(root);
 
     pinSectionControls(root);
@@ -285,24 +255,14 @@
     }
   };
 
-  const cancelReorder = (revertDom: boolean) => {
-    if (revertDom) {
-      const snapshot = keyboardGrabSnapshot ?? grabOrderSnapshot;
-      if (snapshot) restoreDomOrder(snapshot);
-    }
-    controller.destroy();
-    clearHostLiftChrome();
-    grabOrderSnapshot = null;
-  };
-
   const onSessionPointerUp = (event: PointerEvent) => {
-    if (!sessionButtonDown || !dragItem || keyboardGrabItem) return;
+    if (!sessionButtonDown || !dragItem) return;
     if (dragPointerId !== null && event.pointerId !== dragPointerId) return;
     void finishPointerSession();
   };
 
   const onSessionMouseUp = (event: MouseEvent) => {
-    if (!sessionButtonDown || !dragItem || keyboardGrabItem) return;
+    if (!sessionButtonDown || !dragItem) return;
     if (event.button !== 0) return;
     void finishPointerSession();
   };
@@ -322,11 +282,11 @@
   };
 
   document.addEventListener('pointermove', (event) => {
-    if (!keyboardGrabItem) controller.setPointerY(event.clientY);
+    controller.setPointerY(event.clientY);
   }, { capture: true, passive: true });
 
   document.addEventListener('mousemove', (event) => {
-    if (!keyboardGrabItem) controller.setPointerY(event.clientY);
+    controller.setPointerY(event.clientY);
   }, { capture: true, passive: true });
 
   const wireSectionControlHover = (root: HTMLElement) => {
@@ -340,15 +300,13 @@
     if (handle.dataset.devSectionDragWired === 'true') return;
     handle.dataset.devSectionDragWired = 'true';
 
-    handle.addEventListener('focus', () => pinSectionControls(root));
-    handle.addEventListener('blur', () => scheduleUnpinSectionControls(root));
     handle.addEventListener('click', (event) => event.preventDefault());
 
     handle.addEventListener('pointerdown', (event) => {
-      if (!reorderActive || keyboardGrabItem) return;
+      if (!reorderActive) return;
       if (event.button !== 0) return;
 
-      enterLift(root, handle, event.pointerId, event.clientX, event.clientY);
+      enterLift(root, handle, event.pointerId, event.clientY);
       event.preventDefault();
     });
   };
@@ -368,9 +326,9 @@
       handle.type = 'button';
       handle.className = 'dev-section-drag-handle';
       handle.setAttribute(DRAG_HANDLE_ATTR, '');
-      handle.setAttribute('aria-label', 'Reorder section');
+      handle.setAttribute('aria-label', 'Drag to reorder section');
       handle.setAttribute('title', 'Drag to reorder · Save to persist');
-      handle.setAttribute('aria-grabbed', 'false');
+      handle.tabIndex = -1;
       handle.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
           <circle cx="4.5" cy="3" r="1.1" fill="currentColor"/>
@@ -385,7 +343,7 @@
     }
 
     root.setAttribute('data-dev-section-reorderable', '');
-    handle.tabIndex = reorderActive ? 0 : -1;
+    handle.tabIndex = -1;
     wireSectionControlHover(root);
     wireDragHandle(root, handle);
   };
@@ -402,7 +360,7 @@
       const handle = root.querySelector<HTMLButtonElement>(`[${DRAG_HANDLE_ATTR}]`);
       if (handle) {
         handle.hidden = !reorderActive;
-        handle.tabIndex = reorderActive ? 0 : -1;
+        handle.tabIndex = -1;
       }
     });
 
@@ -412,81 +370,22 @@
     }
   };
 
-  const enterKeyboardLift = (root: HTMLElement, handle: HTMLButtonElement) => {
-    keyboardGrabItem = root;
-    keyboardGrabSnapshot = captureSectionOrder();
-    enterLift(root, handle, -1, 0, 0, { followPointer: false });
-    root.classList.add('is-section-keyboard-grabbed');
-    root.setAttribute('aria-grabbed', 'true');
-    handle.setAttribute('aria-grabbed', 'true');
-  };
-
-  const releaseKeyboardGrab = async (revert: boolean) => {
-    if (!keyboardGrabItem) return;
-    const root = keyboardGrabItem;
-    keyboardGrabItem = null;
-    sessionButtonDown = false;
-    unbindSessionPointerListeners();
-
-    if (revert && keyboardGrabSnapshot) {
-      cancelReorder(true);
-      keyboardGrabSnapshot = null;
-    } else {
-      dropInProgress = true;
-      try {
-        if (controller.isActive()) await controller.endDrop();
-        clearHostLiftChrome();
-        grabOrderSnapshot = null;
-        syncPending();
-      } finally {
-        dropInProgress = false;
-        keyboardGrabSnapshot = null;
-      }
-    }
-
-    setSectionDragging(false);
-    dragItem = null;
-    dragHandle = null;
-    dragPointerId = null;
-    root.classList.remove('is-section-lifted-session', 'is-section-keyboard-grabbed');
-    root.style.pointerEvents = '';
-    scheduleUnpinSectionControls(root);
-  };
-
-  const moveKeyboardGrab = (delta: number) => {
-    if (!keyboardGrabItem || !dragItem) return;
-    const state = controller.getState();
-    const max = getContentSections().length;
-    const next = Math.max(0, Math.min(state.targetIndex + delta, max));
-    controller.setTargetIndex(next);
-
-    const sections = getContentSections();
-    const scrollTarget = sections[next] ?? sections[next - 1];
-    scrollTarget?.scrollIntoView({
-      block: 'nearest',
-      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-    });
-  };
-
   const abortActiveSession = () => {
-    if (!controller.isActive() && !keyboardGrabItem && !dragItem) return;
-    const root = dragItem ?? keyboardGrabItem;
-    const snapshot = keyboardGrabSnapshot ?? grabOrderSnapshot;
+    if (!controller.isActive() && !dragItem) return;
+    const root = dragItem;
     sessionButtonDown = false;
     unbindSessionPointerListeners();
-    if (snapshot) restoreDomOrder(snapshot);
+    if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
     controller.destroy();
     clearHostLiftChrome();
     if (root) {
-      root.classList.remove('is-section-lifted-session', 'is-section-keyboard-grabbed');
+      root.classList.remove('is-section-lifted-session');
       root.style.pointerEvents = '';
     }
     setSectionDragging(false);
     dragItem = null;
     dragHandle = null;
     dragPointerId = null;
-    keyboardGrabItem = null;
-    keyboardGrabSnapshot = null;
     grabOrderSnapshot = null;
   };
 
@@ -497,7 +396,6 @@
       baselineOrder = captureSectionOrder();
     } else {
       abortActiveSession();
-      void releaseKeyboardGrab(true);
       dropZone()?.classList.remove('is-section-order-dirty');
     }
     syncDragHandles();
@@ -530,55 +428,10 @@
   });
 
   document.addEventListener('keydown', (event) => {
-    if (!reorderActive) return;
-    if (event.altKey || event.ctrlKey || event.metaKey) return;
-    if (event.repeat) return;
-
-    const target = event.target;
-    const handle = target instanceof HTMLElement
-      ? target.closest<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`)
-      : null;
-
-    if (keyboardGrabItem) {
-      if (event.key === ' ' || event.key === 'Enter') {
-        event.preventDefault();
-        event.stopPropagation();
-        void releaseKeyboardGrab(false);
-        return;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        void releaseKeyboardGrab(true);
-        return;
-      }
-
-      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-        event.preventDefault();
-        event.stopPropagation();
-        moveKeyboardGrab(-1);
-        return;
-      }
-
-      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-        event.preventDefault();
-        event.stopPropagation();
-        moveKeyboardGrab(1);
-        return;
-      }
-      return;
-    }
-
-    if (!handle || document.activeElement !== handle) return;
-
-    if (event.key === ' ' || event.key === 'Enter') {
-      event.preventDefault();
-      event.stopPropagation();
-      const root = resolveSectionRoot(handle);
-      if (!root) return;
-      enterKeyboardLift(root, handle as HTMLButtonElement);
-    }
+    if (!reorderActive || event.key !== 'Escape') return;
+    if (!controller.isActive() && !dragItem) return;
+    event.preventDefault();
+    abortActiveSession();
   });
 
   onDevModeChange();
@@ -604,9 +457,7 @@
   .is-dev-mode
     [data-dev-section-reorderable]:is(
       :hover,
-      :focus-within,
       .is-section-lifted-session,
-      .is-section-keyboard-grabbed,
       .is-dev-section-controls-visible
     ) {
     z-index: 60;
@@ -673,19 +524,14 @@
       :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
     )
     > .dev-section-drag-handle,
-  .is-dev-mode [data-dev-section-reorderable]:focus-within:not(:has(> .dev-gap-toolbar:focus-within))
-    > .dev-section-drag-handle,
   .is-dev-mode .dev-section-drag-handle:hover,
-  .is-dev-mode .dev-section-drag-handle:focus-visible,
-  .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle,
-  .is-dev-mode [data-dev-section-reorderable].is-section-keyboard-grabbed > .dev-section-drag-handle {
+  .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
     opacity: 1;
     pointer-events: auto;
     transition-delay: 0s;
   }
 
-  .is-dev-mode .dev-section-drag-handle:hover,
-  .is-dev-mode .dev-section-drag-handle:focus-visible {
+  .is-dev-mode .dev-section-drag-handle:hover {
     background: var(--color-surface-strong);
   }
 
@@ -763,11 +609,7 @@
   }
 
   html.is-section-reorder-dragging
-    [data-dev-section-reorderable]:is(
-      .is-section-lifted-session,
-      .is-section-keyboard-grabbed,
-      .is-section-dragging
-    )
+    [data-dev-section-reorderable]:is(.is-section-lifted-session, .is-section-dragging)
     > .dev-section-drag-handle {
     opacity: 1;
     pointer-events: auto;
@@ -776,14 +618,12 @@
   html.is-section-reorder-dragging
     [data-dev-section-reorderable]:not(
       .is-section-lifted-session,
-      .is-section-keyboard-grabbed,
       .is-section-dragging
     ):hover
     > .dev-section-drag-bridge,
   html.is-section-reorder-dragging
     [data-dev-section-reorderable]:not(
       .is-section-lifted-session,
-      .is-section-keyboard-grabbed,
       .is-section-dragging
     )
     > .dev-section-drag-handle {
