@@ -499,8 +499,9 @@
 
       asGroupInput.checked = Boolean(groupMarker);
       asSectionInput.checked = Boolean(sectionMarker);
-      groupLabelInput.value = groupMarker?.label || suggestGroupLabel();
-      sectionLabelInput.value = sectionMarker?.label || suggestSectionLabel(block);
+      // Only fill labels for active markers — suggestions appear when the box is checked.
+      groupLabelInput.value = groupMarker?.label || '';
+      sectionLabelInput.value = sectionMarker?.label || '';
       syncMarkerFields();
 
       const owned = owningSectionForBlock(block);
@@ -674,6 +675,25 @@
       }
     };
 
+    /**
+     * Insert marker entries at this block’s page position — never push to the
+     * end. Pushing made a re-added section inherit the last group in the file
+     * (e.g. Outcome), so untoggling Research could spawn duplicate groups.
+     */
+    const insertOutlineEntriesAtBlock = (anchorId: string, entries: OutlineEntry[]) => {
+      if (!entries.length) return;
+      const blockPage = pageIndexForId(anchorId);
+      let insertAt = outline.length;
+      for (let i = 0; i < outline.length; i += 1) {
+        const entryPage = pageIndexForId(outlineAnchorId(outline[i]));
+        if (entryPage > blockPage) {
+          insertAt = i;
+          break;
+        }
+      }
+      outline.splice(insertAt, 0, ...entries);
+    };
+
     const onApply = () => {
       if (!activeBlock) return;
       const index = blockContentIndex(activeBlock);
@@ -717,11 +737,12 @@
         applyBlockSectionId(activeBlock, anchorId);
         if (index !== null) pendingSectionIds[String(index)] = anchorId;
 
+        const newEntries: OutlineEntry[] = [];
         if (wantGroup) {
           const ids = collectUsedIds();
           ids.add(anchorId);
           const groupId = wantSection ? uniqueId(slugify(groupLabel), ids) : anchorId;
-          outline.push({
+          newEntries.push({
             kind: 'group',
             id: groupId,
             label: groupLabel,
@@ -731,13 +752,15 @@
         }
 
         if (wantSection) {
-          outline.push({
+          newEntries.push({
             kind: 'section',
             id: anchorId,
             label: sectionLabel,
             anchor: anchorId,
           });
         }
+
+        insertOutlineEntriesAtBlock(anchorId, newEntries);
       }
 
       if (!outlineOnly && activeBlock.dataset.devSectionTitle === 'true') {
@@ -780,14 +803,21 @@
 
     asGroupInput.addEventListener('change', () => {
       syncMarkerFields();
-      if (asGroupInput.checked && !groupLabelInput.value.trim()) {
-        groupLabelInput.value = suggestGroupLabel();
+      if (asGroupInput.checked) {
+        if (!groupLabelInput.value.trim()) groupLabelInput.value = suggestGroupLabel();
+      } else {
+        // Clear so a hidden leftover label cannot be mistaken for an active group.
+        groupLabelInput.value = '';
       }
     });
     asSectionInput.addEventListener('change', () => {
       syncMarkerFields();
-      if (asSectionInput.checked && !sectionLabelInput.value.trim() && activeBlock) {
-        sectionLabelInput.value = suggestSectionLabel(activeBlock);
+      if (asSectionInput.checked) {
+        if (!sectionLabelInput.value.trim() && activeBlock) {
+          sectionLabelInput.value = suggestSectionLabel(activeBlock);
+        }
+      } else {
+        sectionLabelInput.value = '';
       }
     });
 
@@ -816,6 +846,8 @@
     groupLabelInput.addEventListener('keydown', onLabelInputKeydown);
     sectionLabelInput.addEventListener('keydown', onLabelInputKeydown);
     hintSaveBtn.addEventListener('click', () => {
+      // Popover edits only land in `outline` via Apply — apply first if still open.
+      if (!popover.hidden && activeBlock) onApply();
       void persist();
     });
 
