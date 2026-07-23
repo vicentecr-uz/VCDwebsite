@@ -10,7 +10,7 @@
     getSectionRootsInDomOrder,
     sectionOrderId,
   } from '../scripts/devSectionPaths';
-  import { syncDevSectionOutlineSidebar } from '../scripts/devSectionOutlineSync';
+  import { syncDevSectionOutlineSidebar, getDevSectionOutline } from '../scripts/devSectionOutlineSync';
   import { createReorderController } from '../scripts/sectionReorder';
 
   const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
@@ -72,6 +72,11 @@
     const current = captureSectionOrder(zone);
     const pendingId = `section-order:${documentKey}`;
 
+    // Always rebuild sidebar from page order + sticky group membership,
+    // including when order returns to baseline (otherwise the sidebar sticks
+    // on the intermediate wrong state after a round-trip drag).
+    syncDevSectionOutlineSidebar();
+
     if (ordersMatch(baseline, current)) {
       zone.classList.remove('is-section-order-dirty');
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
@@ -86,6 +91,7 @@
         payload: {
           document: documentKey,
           order: current,
+          outline: getDevSectionOutline().map((entry) => ({ ...entry })),
         },
         revert: () => {
           restoreDomOrder(structuredClone(baseline));
@@ -94,7 +100,6 @@
         },
       },
     }));
-    syncDevSectionOutlineSidebar();
   };
 
   const controller = createReorderController({
