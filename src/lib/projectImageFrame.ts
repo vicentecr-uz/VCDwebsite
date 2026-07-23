@@ -96,6 +96,10 @@ export interface ImageDevEditContext {
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   gridDefaultAspect?: string;
   hasOwnVariants?: boolean;
+  /** Standalone image block width constraint (80% desktop). */
+  constrained?: boolean;
+  /** Centre the constrained block in its stack column. */
+  centered?: boolean;
 }
 
 export function imageDevEditAttrs(
@@ -129,6 +133,12 @@ export function imageDevEditAttrs(
   }
   if (context.hasOwnVariants) {
     attrs['data-dev-has-own-variants'] = 'true';
+  }
+  if (typeof context.constrained === 'boolean') {
+    attrs['data-dev-constrained'] = context.constrained ? 'true' : 'false';
+  }
+  if (typeof context.centered === 'boolean') {
+    attrs['data-dev-centered'] = context.centered ? 'true' : 'false';
   }
 
   return attrs;
