@@ -39,6 +39,8 @@
   const DROP_INDICATOR_ENTER_MS = 140;
   const FLIP_REPOSITION_MS = 350;
   const FADE_IN_DELAY_MS = 100;
+  const DROP_ANIMATION_MS = 350;
+  const DROP_SCALE_MS = 200;
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
 
   let reorderActive = false;
@@ -89,6 +91,8 @@
   let indicatorOpacityLevel = 1;
   let placedInsertIndex = 0;
   let repositionRunnerActive = false;
+  let dropInProgress = false;
+  let repositionIdleWaiters: Array<() => void> = [];
 
   const trackClientPosition = (event: MouseEvent | PointerEvent) => {
     lastClientX = event.clientX;
@@ -654,6 +658,22 @@
     });
   };
 
+  const notifyRepositionIdle = () => {
+    if (repositionRunnerActive || placedInsertIndex !== targetInsertIndex) return;
+    const waiters = repositionIdleWaiters;
+    repositionIdleWaiters = [];
+    waiters.forEach((resolve) => resolve());
+  };
+
+  const waitForRepositionIdle = () => new Promise<void>((resolve) => {
+    if (!repositionRunnerActive && placedInsertIndex === targetInsertIndex) {
+      resolve();
+      return;
+    }
+    repositionIdleWaiters.push(resolve);
+    void ensureRepositionRunner();
+  });
+
   const ensureRepositionRunner = async () => {
     if (repositionRunnerActive || !dropIndicator) return;
 
@@ -668,14 +688,14 @@
         const toIndex = targetInsertIndex;
 
         const fadeOutMs = prefersReducedMotion() ? 0 : DROP_INDICATOR_FADE_MS;
-        if (indicatorOpacityLevel > 0.05 && fadeOutMs > 0) {
-          await animateIndicatorBodyOpacity(0, fadeOutMs, runnerToken);
-          if (runnerToken !== repositionAnimationToken) return;
-        } else {
-          setIndicatorBodyOpacity(0);
-        }
+        const fadeOutPromise = indicatorOpacityLevel > 0.05 && fadeOutMs > 0
+          ? animateIndicatorBodyOpacity(0, fadeOutMs, runnerToken)
+          : Promise.resolve(setIndicatorBodyOpacity(0));
 
-        await performDomRepositionWithFlip(fromIndex, toIndex);
+        await Promise.all([
+          fadeOutPromise,
+          performDomRepositionWithFlip(fromIndex, toIndex),
+        ]);
         placedInsertIndex = toIndex;
 
         if (runnerToken !== repositionAnimationToken) return;
@@ -700,7 +720,67 @@
       if (placedInsertIndex !== targetInsertIndex && dropIndicator) {
         void ensureRepositionRunner();
       }
+      notifyRepositionIdle();
     }
+  };
+
+  const finalizeDropPlacement = async () => {
+    const finalIndex = resolveInsertIndex(liftedBlockCenterY());
+    targetInsertIndex = finalIndex;
+    syncedPreviewIndex = finalIndex;
+    cancelIndicatorOpacityAnimation();
+
+    if (!dropIndicator) return;
+
+    if (placedInsertIndex !== targetInsertIndex) {
+      setIndicatorBodyOpacity(0);
+      void ensureRepositionRunner();
+      await waitForRepositionIdle();
+    }
+
+    setIndicatorBodyOpacity(1);
+  };
+
+  const animateDropToSlot = () => {
+    if (!dragItem || !dropIndicator) return Promise.resolve();
+
+    const body = getIndicatorBody();
+    const targetRect = body?.getBoundingClientRect();
+    if (!targetRect) return Promise.resolve();
+
+    const motionMs = prefersReducedMotion() ? 0 : DROP_ANIMATION_MS;
+    const settleMs = prefersReducedMotion() ? 0 : DROP_SCALE_MS;
+
+    dragItem.classList.add('is-dropping');
+    void dragItem.offsetHeight;
+
+    if (motionMs <= 0 && settleMs <= 0) {
+      dragItem.classList.remove('is-lifted-raised');
+      dragItem.style.top = `${targetRect.top}px`;
+      dragItem.style.left = `${targetRect.left}px`;
+      dragItem.classList.remove('is-dropping');
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!dragItem) {
+            resolve();
+            return;
+          }
+
+          dragItem.classList.remove('is-lifted-raised');
+          dragItem.style.top = `${targetRect.top}px`;
+          dragItem.style.left = `${targetRect.left}px`;
+
+          setTimeout(() => {
+            dragItem?.classList.remove('is-dropping');
+            resolve();
+          }, Math.max(motionMs, settleMs));
+        });
+      });
+    });
   };
 
   const setDropPreviewIndex = async (nextIndex: number) => {
@@ -714,7 +794,11 @@
     if (!dropIndicator) return;
 
     if (clamped === targetInsertIndex && dropIndicator.classList.contains('is-visible')) {
-      syncDropPreviewPlacement(clamped);
+      if (placedInsertIndex !== clamped) {
+        void ensureRepositionRunner();
+      } else {
+        syncDropPreviewPlacement(clamped);
+      }
       return;
     }
 
@@ -843,7 +927,7 @@
     liftBackdrop?.remove();
     liftBackdrop = null;
     dragItem.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
-    dragItem.classList.remove('is-section-lifted', 'is-lifted-raised');
+    dragItem.classList.remove('is-section-lifted', 'is-lifted-raised', 'is-dropping');
     dragItem.style.position = '';
     dragItem.style.left = '';
     dragItem.style.top = '';
@@ -851,6 +935,7 @@
     dragItem.style.margin = '';
     dragItem.style.zIndex = '';
     dragItem.style.transformOrigin = '';
+    dragItem.style.removeProperty('transition');
     liftInitialTop = 0;
     liftGrabOffsetY = 0;
     liftCurrentTop = 0;
@@ -943,13 +1028,13 @@
     dragHandle?.style.setProperty('pointer-events', 'auto');
   };
 
-  const commitReorder = () => {
+  const commitReorder = async () => {
     if (!dragItem) return;
 
     if (interactionState === 'scrollMode' || interactionState === 'lifted') {
+      await finalizeDropPlacement();
+      await animateDropToSlot();
       if (targetInsertIndex !== sourceIndex) {
-        clearFixedLift();
-        removeDropIndicator();
         moveSectionToIndex(dragItem, targetInsertIndex);
       }
     }
@@ -968,7 +1053,8 @@
     grabOrderSnapshot = null;
   };
 
-  const finishPointerSession = () => {
+  const finishPointerSession = async () => {
+    if (dropInProgress) return;
     const root = dragItem;
     sessionButtonDown = false;
     stopSessionTick();
@@ -990,7 +1076,9 @@
     }
 
     if (interactionState === 'scrollMode' || interactionState === 'lifted') {
-      commitReorder();
+      dropInProgress = true;
+      await commitReorder();
+      dropInProgress = false;
     } else if (interactionState === 'dragMode') {
       teardownLiftChrome();
       syncPending();
@@ -1208,7 +1296,7 @@
     void setDropPreviewIndex(sourceIndex);
   };
 
-  const releaseKeyboardGrab = (revert: boolean) => {
+  const releaseKeyboardGrab = async (revert: boolean) => {
     if (!keyboardGrabItem) return;
     const root = keyboardGrabItem;
     keyboardGrabItem = null;
@@ -1221,7 +1309,9 @@
       cancelReorder(true);
       keyboardGrabSnapshot = null;
     } else {
-      commitReorder();
+      dropInProgress = true;
+      await commitReorder();
+      dropInProgress = false;
       keyboardGrabSnapshot = null;
     }
 
@@ -1477,8 +1567,25 @@
     transition: transform 200ms ease-out;
   }
 
+  .is-dev-mode .is-section-lifted.is-dropping {
+    transition:
+      top 350ms ease-out,
+      left 350ms ease-out,
+      transform 200ms ease-out;
+    transform: scale(1);
+  }
+
   .is-dev-mode .is-section-lifted.is-lifted-raised {
     transform: scale(1.02);
+  }
+
+  .is-dev-mode .is-section-lifted.is-lifted-raised.is-dropping {
+    transform: scale(1.02);
+  }
+
+  .is-dev-mode .is-section-lifted.is-dropping .dev-section-lift-backdrop {
+    box-shadow: none;
+    transition: box-shadow 200ms ease-out;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1499,6 +1606,11 @@
     border-radius: var(--radius-control-smooth, 0.35em);
     box-shadow: 0 0.6em 2em rgb(0 0 0 / 0.14);
     pointer-events: none;
+    transition: box-shadow 200ms ease-out;
+  }
+
+  .is-section-lifted.is-lifted-raised .dev-section-lift-backdrop {
+    box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 0.18);
   }
 
   html.is-section-reorder-dragging {
@@ -1624,9 +1736,14 @@
     will-change: transform;
   }
 
-  .dev-section-drop-indicator.is-repositioning,
-  .dev-section-drop-indicator.is-repositioning .dev-section-drop-indicator__body {
+  .dev-section-drop-indicator.is-repositioning {
     transition: none !important;
+  }
+
+  .dev-section-drop-indicator.is-repositioning .dev-section-drop-indicator__body {
+    transition-property: height, background-color, border-color;
+    transition-duration: 0s;
+    transition-timing-function: ease-out;
   }
 
   @media (prefers-reduced-motion: reduce) {
