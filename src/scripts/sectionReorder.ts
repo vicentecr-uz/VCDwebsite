@@ -225,7 +225,10 @@ export type ReorderClasses = {
   indicator: string;
   indicatorBody: string;
   flipMoving: string;
+  /** Lifted item class. Defaults to `is-lifted` (probe). Tapico uses `is-section-lifted`. */
+  lifted?: string;
   dropPreviewAbove?: string;
+  dropPreviewBelow?: string;
   fadeGhost: string;
 };
 
@@ -234,13 +237,31 @@ export type ReorderHost = {
   getDropZone: () => HTMLElement | null;
   getDragItem: () => HTMLElement | null;
   classes: ReorderClasses;
-  /** Measure gap rails for the insert slot (host owns margin model). */
+  /**
+   * Gaps that belong to the lifted item itself (captured once at lift).
+   * Defaults to visual neighbour gaps. Tapico overrides with margin-top.
+   */
+  measureLiftGaps?: (item: HTMLElement) => { top: string; bottom: string };
+  /**
+   * Measure gap rails for the insert slot (host owns margin model).
+   * Optional `marginTop` is applied as real CSS margin on the indicator
+   * (needed for margin-top spacing systems so collapse matches live sections).
+   */
   measureInsertGaps: (
     insertIndex: number,
     sourceIndex: number,
     liftGaps: { top: string; bottom: string },
-  ) => { top: string; bottom: string };
+  ) => { top: string; bottom: string; marginTop?: string };
   onStatus?: (text: string) => void;
+};
+
+export type BeginLiftOptions = {
+  /**
+   * When true (default), tick derives insert index from the lifted block center
+   * and runs scroll-hold + lift-follow. When false (keyboard), target is set only
+   * via `setTargetIndex` and the lift stays put.
+   */
+  followPointer?: boolean;
 };
 
 type IndicatorAnim =
@@ -271,11 +292,19 @@ const easeOut = (t: number) => 1 - (1 - t) ** 2;
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 
 export type ReorderController = {
-  beginLift: (item: HTMLElement, handle: HTMLElement, pointerY: number, sourceIndex: number) => void;
+  beginLift: (
+    item: HTMLElement,
+    handle: HTMLElement,
+    pointerY: number,
+    sourceIndex: number,
+    options?: BeginLiftOptions,
+  ) => void;
   setPointerY: (y: number) => void;
+  setTargetIndex: (index: number) => void;
   endDrop: () => Promise<void>;
   isActive: () => boolean;
   getState: () => Readonly<ReorderState>;
+  /** Tear down lift chrome without committing a move. */
   destroy: () => void;
 };
 
@@ -285,9 +314,12 @@ export type ReorderController = {
  */
 export const createReorderController = (host: ReorderHost): ReorderController => {
   const scrollDriver = createScrollDriver();
+  const liftedClass = host.classes.lifted ?? 'is-lifted';
   let state = idleState();
   let dropIndicator: HTMLElement | null = null;
   let dropNeighborAbove: HTMLElement | null = null;
+  let dropNeighborBelow: HTMLElement | null = null;
+  let followPointer = true;
   let rafId = 0;
   let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let flipMovingElements: HTMLElement[] = [];
@@ -328,17 +360,32 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (dropNeighborAbove && host.classes.dropPreviewAbove) {
       dropNeighborAbove.classList.remove(host.classes.dropPreviewAbove);
     }
+    if (dropNeighborBelow && host.classes.dropPreviewBelow) {
+      dropNeighborBelow.classList.remove(host.classes.dropPreviewBelow);
+    }
     dropNeighborAbove = null;
+    dropNeighborBelow = null;
   };
 
   const bindNeighbor = (insertIndex: number) => {
     releaseNeighbor();
-    if (!host.classes.dropPreviewAbove || insertIndex <= 0) return;
     const items = host.getItems();
-    const above = items[insertIndex - 1] ?? null;
-    if (!above) return;
-    dropNeighborAbove = above;
-    above.classList.add(host.classes.dropPreviewAbove);
+
+    if (host.classes.dropPreviewAbove && insertIndex > 0) {
+      const above = items[insertIndex - 1] ?? null;
+      if (above) {
+        dropNeighborAbove = above;
+        above.classList.add(host.classes.dropPreviewAbove);
+      }
+    }
+
+    if (host.classes.dropPreviewBelow && insertIndex < items.length) {
+      const below = items[insertIndex] ?? null;
+      if (below) {
+        dropNeighborBelow = below;
+        below.classList.add(host.classes.dropPreviewBelow);
+      }
+    }
   };
 
   const placeIndicatorBeforeIndex = (index: number) => {
@@ -365,6 +412,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     dropIndicator.style.setProperty('--gap-top', gaps.top);
     dropIndicator.style.setProperty('--gap-bottom', gaps.bottom);
     dropIndicator.style.setProperty('--gap-height', `${state.blockHeight}px`);
+    // Real margin (not an internal grid rail) so margin-top pages keep collapse.
+    dropIndicator.style.marginTop = gaps.marginTop ?? '';
   };
 
   const syncPlacement = (insertIndex: number) => {
@@ -560,21 +609,23 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const dtMs = Math.min(48, now - scrollDriver.getLastTickTime());
     scrollDriver.setLastTickTime(now);
 
-    scrollDriver.apply(dtMs, state.grabPointerY, state.pointerY);
+    if (followPointer) {
+      scrollDriver.apply(dtMs, state.grabPointerY, state.pointerY);
 
-    const ideal = computeIdealLiftTop({
-      lastClientY: state.pointerY,
-      grabPointerY: state.grabPointerY,
-      liftGrabOffsetY: state.grabOffsetY,
-      liftInitialTop: state.liftInitialTop,
-    });
-    state.liftTop = prefersReducedMotion()
-      ? ideal
-      : smoothToward(state.liftTop, ideal, dtMs, SCROLL_HOLD.LIFT_FOLLOW_SMOOTHING);
-    renderLift();
+      const ideal = computeIdealLiftTop({
+        lastClientY: state.pointerY,
+        grabPointerY: state.grabPointerY,
+        liftGrabOffsetY: state.grabOffsetY,
+        liftInitialTop: state.liftInitialTop,
+      });
+      state.liftTop = prefersReducedMotion()
+        ? ideal
+        : smoothToward(state.liftTop, ideal, dtMs, SCROLL_HOLD.LIFT_FOLLOW_SMOOTHING);
+      renderLift();
 
-    const centerY = state.liftTop + state.blockHeight / 2;
-    state.targetIndex = resolveInsertIndexFromY(host.getItems(), centerY);
+      const centerY = state.liftTop + state.blockHeight / 2;
+      state.targetIndex = resolveInsertIndexFromY(host.getItems(), centerY);
+    }
 
     if (state.targetIndex !== state.placedIndex) {
       relocateToTarget(state.targetIndex);
@@ -654,7 +705,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   };
 
   const clearLiftStyles = (item: HTMLElement) => {
-    item.classList.remove('is-lifted', 'is-lifted-raised', 'is-dropping');
+    item.classList.remove(liftedClass, 'is-lifted-raised', 'is-dropping');
     item.style.position = '';
     item.style.left = '';
     item.style.top = '';
@@ -666,10 +717,15 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   };
 
   return {
-    beginLift: (item, handle, pointerY, sourceIndex) => {
+    beginLift: (item, handle, pointerY, sourceIndex, options = {}) => {
       if (state.phase !== 'idle') return;
 
+      followPointer = options.followPointer !== false;
       const rect = item.getBoundingClientRect();
+      const liftGaps = host.measureLiftGaps?.(item) ?? {
+        top: measureGapAbove(item),
+        bottom: measureGapBelow(item),
+      };
       state = {
         phase: 'lifted',
         sourceIndex,
@@ -683,18 +739,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         liftLeft: rect.left,
         liftWidth: rect.width,
         blockHeight: measureBlockHeight(item),
-        gapTop: measureGapAbove(item),
-        gapBottom: measureGapBelow(item),
+        gapTop: liftGaps.top,
+        gapBottom: liftGaps.bottom,
         indicatorOpacity: 1,
       };
 
-      dropIndicator = createIndicator();
-      item.before(dropIndicator);
-      syncPlacement(sourceIndex);
-      dropIndicator.classList.add('is-visible');
-      applyIndicatorOpacity(1);
-
-      item.classList.add('is-lifted');
+      // Take the item out of flow before inserting the slot stand-in, so the
+      // indicator inherits the same collapse context the section had.
+      item.classList.add(liftedClass);
       item.classList.remove('is-lifted-raised');
       item.style.position = 'fixed';
       item.style.left = `${rect.left}px`;
@@ -703,6 +755,12 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       item.style.margin = '0';
       item.style.zIndex = '100';
       setLiftTransformOrigin(item, handle);
+
+      dropIndicator = createIndicator();
+      item.before(dropIndicator);
+      syncPlacement(sourceIndex);
+      dropIndicator.classList.add('is-visible');
+      applyIndicatorOpacity(1);
 
       if (prefersReducedMotion()) {
         item.classList.add('is-lifted-raised');
@@ -718,7 +776,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     },
 
     setPointerY: (y) => {
-      if (state.phase === 'lifted') state.pointerY = y;
+      if (state.phase === 'lifted' && followPointer) state.pointerY = y;
+    },
+
+    setTargetIndex: (index) => {
+      if (state.phase !== 'lifted') return;
+      const max = host.getItems().length;
+      state.targetIndex = Math.max(0, Math.min(index, max));
     },
 
     endDrop: async () => {
@@ -734,8 +798,12 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       dropIndicator?.classList.remove('is-repositioning');
       indicatorAnim = { type: 'steady' };
 
-      const centerY = state.liftTop + state.blockHeight / 2;
-      const finalIndex = resolveInsertIndexFromY(host.getItems(), centerY);
+      const finalIndex = followPointer
+        ? resolveInsertIndexFromY(
+          host.getItems(),
+          state.liftTop + state.blockHeight / 2,
+        )
+        : state.targetIndex;
       state.targetIndex = finalIndex;
 
       if (state.placedIndex !== finalIndex) {
@@ -752,6 +820,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       teardownChrome();
       clearLiftStyles(item);
+      followPointer = true;
       state = idleState();
       host.onStatus?.('Idle · insert —');
     },
@@ -764,6 +833,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       const item = host.getDragItem();
       teardownChrome();
       if (item) clearLiftStyles(item);
+      followPointer = true;
       state = idleState();
     },
   };
