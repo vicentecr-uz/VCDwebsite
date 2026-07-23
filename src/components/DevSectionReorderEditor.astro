@@ -92,7 +92,7 @@
   let placedInsertIndex = 0;
   let repositionRunnerActive = false;
   let dropInProgress = false;
-  let repositionIdleWaiters: Array<() => void> = [];
+  let activeFadeGhosts: HTMLElement[] = [];
 
   const trackClientPosition = (event: MouseEvent | PointerEvent) => {
     lastClientX = event.clientX;
@@ -396,6 +396,8 @@
 
   const removeDropIndicator = () => {
     releaseDropNeighbors();
+    activeFadeGhosts.forEach((ghost) => ghost.remove());
+    activeFadeGhosts = [];
     if (!dropIndicator) return;
     dropIndicator.remove();
     dropIndicator = null;
@@ -463,9 +465,6 @@
   };
 
   const bindDropNeighbors = () => {
-    releaseDropNeighbors();
-    if (!dropIndicator) return;
-
     const below = resolveDropNeighborBelow();
     if (below) {
       dropNeighborBelow = below;
@@ -483,6 +482,7 @@
   };
 
   const syncDropPreviewPlacement = (insertIndex: number) => {
+    releaseDropNeighbors();
     applyDropSlotMetrics(insertIndex);
     placeDropIndicatorBeforeIndex(insertIndex);
     bindDropNeighbors();
@@ -536,10 +536,84 @@
       clearTimeout(indicatorDelayTimer);
       indicatorDelayTimer = null;
     }
+    activeFadeGhosts.forEach((ghost) => ghost.remove());
+    activeFadeGhosts = [];
     const body = getIndicatorBody();
     if (!body) return;
     body.style.transition = '';
     syncIndicatorOpacityFromDom();
+  };
+
+  const spawnIndicatorFadeGhost = () => {
+    const body = getIndicatorBody();
+    if (!body || indicatorOpacityLevel <= 0.05) return null;
+
+    const rect = body.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+
+    const ghost = document.createElement('div');
+    ghost.className = `${DROP_INDICATOR_BODY_CLASS} is-drop-indicator-fade-ghost`;
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.opacity = String(indicatorOpacityLevel);
+    (dropZone() ?? document.body).appendChild(ghost);
+    activeFadeGhosts.push(ghost);
+    return ghost;
+  };
+
+  const ensureIndicatorVisibleAtTarget = () => {
+    if (!dropIndicator || dropInProgress) return;
+    if (placedInsertIndex !== targetInsertIndex) return;
+    if (indicatorOpacityLevel < 0.95) {
+      setIndicatorBodyOpacity(1);
+    }
+  };
+
+  const animateFadeGhost = (
+    ghost: HTMLElement,
+    durationMs: number,
+    repositionToken: number,
+  ) => {
+    if (durationMs <= 0) {
+      ghost.remove();
+      activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        if (repositionToken !== repositionAnimationToken) {
+          ghost.remove();
+          activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
+          resolve();
+          return;
+        }
+
+        const finish = () => {
+          ghost.remove();
+          activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
+          resolve();
+        };
+
+        const onEnd = (event: TransitionEvent) => {
+          if (event.propertyName !== 'opacity') return;
+          ghost.removeEventListener('transitionend', onEnd);
+          finish();
+        };
+
+        ghost.addEventListener('transitionend', onEnd);
+        ghost.style.transition = `opacity ${durationMs}ms ease-out`;
+        ghost.style.opacity = '0';
+
+        setTimeout(() => {
+          ghost.removeEventListener('transitionend', onEnd);
+          finish();
+        }, durationMs + 50);
+      });
+    });
   };
 
   const animateIndicatorBodyOpacity = (
@@ -659,20 +733,8 @@
   };
 
   const notifyRepositionIdle = () => {
-    if (repositionRunnerActive || placedInsertIndex !== targetInsertIndex) return;
-    const waiters = repositionIdleWaiters;
-    repositionIdleWaiters = [];
-    waiters.forEach((resolve) => resolve());
+    ensureIndicatorVisibleAtTarget();
   };
-
-  const waitForRepositionIdle = () => new Promise<void>((resolve) => {
-    if (!repositionRunnerActive && placedInsertIndex === targetInsertIndex) {
-      resolve();
-      return;
-    }
-    repositionIdleWaiters.push(resolve);
-    void ensureRepositionRunner();
-  });
 
   const ensureRepositionRunner = async () => {
     if (repositionRunnerActive || !dropIndicator) return;
@@ -688,9 +750,18 @@
         const toIndex = targetInsertIndex;
 
         const fadeOutMs = prefersReducedMotion() ? 0 : DROP_INDICATOR_FADE_MS;
-        const fadeOutPromise = indicatorOpacityLevel > 0.05 && fadeOutMs > 0
-          ? animateIndicatorBodyOpacity(0, fadeOutMs, runnerToken)
-          : Promise.resolve(setIndicatorBodyOpacity(0));
+        const shouldFadeOut = indicatorOpacityLevel > 0.05 && fadeOutMs > 0;
+        const fadeGhost = shouldFadeOut ? spawnIndicatorFadeGhost() : null;
+
+        if (fadeGhost) {
+          setIndicatorBodyOpacity(0);
+        }
+
+        const fadeOutPromise = fadeGhost
+          ? animateFadeGhost(fadeGhost, fadeOutMs, runnerToken)
+          : shouldFadeOut
+            ? animateIndicatorBodyOpacity(0, fadeOutMs, runnerToken)
+            : Promise.resolve(setIndicatorBodyOpacity(0));
 
         await Promise.all([
           fadeOutPromise,
@@ -714,6 +785,7 @@
         } else {
           setIndicatorBodyOpacity(1);
         }
+        ensureIndicatorVisibleAtTarget();
       }
     } finally {
       repositionRunnerActive = false;
@@ -724,20 +796,19 @@
     }
   };
 
-  const finalizeDropPlacement = async () => {
+  const finalizeDropPlacement = () => {
     const finalIndex = resolveInsertIndex(liftedBlockCenterY());
     targetInsertIndex = finalIndex;
     syncedPreviewIndex = finalIndex;
+    repositionAnimationToken += 1;
     cancelIndicatorOpacityAnimation();
+    clearActiveFlip();
+    dropIndicator?.classList.remove('is-repositioning');
 
     if (!dropIndicator) return;
 
-    if (placedInsertIndex !== targetInsertIndex) {
-      setIndicatorBodyOpacity(0);
-      void ensureRepositionRunner();
-      await waitForRepositionIdle();
-    }
-
+    syncDropPreviewPlacement(targetInsertIndex);
+    placedInsertIndex = targetInsertIndex;
     setIndicatorBodyOpacity(1);
   };
 
@@ -1484,6 +1555,7 @@
 
   .is-dev-mode [data-dev-project-drop-zone] {
     position: relative;
+    isolation: isolate;
   }
 
   .is-dev-mode [data-dev-project-drop-zone].is-section-order-dirty {
@@ -1613,6 +1685,12 @@
     box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 0.18);
   }
 
+  .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving {
+    position: relative;
+    z-index: 2;
+    will-change: transform;
+  }
+
   html.is-section-reorder-dragging {
     touch-action: none;
     user-select: none;
@@ -1730,12 +1808,6 @@
       border-color 90ms ease-out;
   }
 
-  .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving {
-    position: relative;
-    z-index: 1;
-    will-change: transform;
-  }
-
   .dev-section-drop-indicator.is-repositioning {
     transition: none !important;
   }
@@ -1744,6 +1816,18 @@
     transition-property: height, background-color, border-color;
     transition-duration: 0s;
     transition-timing-function: ease-out;
+  }
+
+  .dev-section-drop-indicator__body.is-drop-indicator-fade-ghost {
+    position: fixed;
+    margin: 0;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: -1;
+    overflow: hidden;
+    border: 1px dashed color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+    background: color-mix(in srgb, var(--color-surface-soft) 85%, transparent);
+    border-radius: var(--radius-control-smooth, 0.35em);
   }
 
   @media (prefers-reduced-motion: reduce) {
