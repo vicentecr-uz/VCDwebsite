@@ -150,6 +150,7 @@ export function mountImageGridSection(
   const columns = resolveImageGridColumns(section.columns as never);
   const constrained = resolveImageGridConstrained(section.constrained as never);
   const defaultAspectRatio = String(section.defaultAspectRatio ?? '4:3');
+  const matchHeight = section.matchHeight === true;
   const layouts = (section.layouts && typeof section.layouts === 'object')
     ? section.layouts as Record<string, { visible?: string[] }>
     : {};
@@ -164,15 +165,18 @@ export function mountImageGridSection(
   const grid = document.createElement('div');
   grid.className = [
     'project-image-grid',
+    matchHeight && 'project-image-grid--match-height',
     STACK_CLASS[spacing as SpacingValue] ?? null,
   ].filter(Boolean).join(' ');
   grid.style.cssText = `${imageGridColumnsStyle(columns)};${imageGridConstrainedStyle(constrained)};`;
+  grid.setAttribute('data-match-height', matchHeight ? 'true' : 'false');
   grid.setAttribute('data-dev-grid-target', 'grid');
   grid.setAttribute('data-dev-document', documentKey);
   grid.setAttribute('data-dev-grid-path', JSON.stringify(sectionPath));
   grid.setAttribute('data-dev-grid-columns', JSON.stringify(columns));
   grid.setAttribute('data-dev-grid-constrained', JSON.stringify(constrained));
   grid.setAttribute('data-dev-grid-default-aspect', defaultAspectRatio);
+  grid.setAttribute('data-dev-grid-match-height', matchHeight ? 'true' : 'false');
   grid.setAttribute('data-dev-grid-layouts', JSON.stringify(layouts));
   grid.setAttribute('data-dev-grid-items', JSON.stringify(editorItems));
   grid.setAttribute('data-dev-spacing-document', documentKey);
