@@ -78,6 +78,7 @@
   } from '../../scripts/devSectionOutlineSync';
   import {
     outlineAnchorId as sharedOutlineAnchorId,
+    insertOutlineEntriesAtPagePosition,
     reorderOutlinePreservingGroups,
     type OutlineEntry as SharedOutlineEntry,
   } from '../../lib/projectOutline';
@@ -731,16 +732,13 @@
      */
     const insertOutlineEntriesAtBlock = (anchorId: string, entries: OutlineEntry[]) => {
       if (!entries.length) return;
-      const blockPage = pageIndexForId(anchorId);
-      let insertAt = outline.length;
-      for (let i = 0; i < outline.length; i += 1) {
-        const entryPage = pageIndexForId(outlineAnchorId(outline[i]));
-        if (entryPage > blockPage) {
-          insertAt = i;
-          break;
-        }
-      }
-      outline.splice(insertAt, 0, ...entries);
+      const next = insertOutlineEntriesAtPagePosition(
+        outline,
+        anchorId,
+        entries as SharedOutlineEntry[],
+        pageIndexForId,
+      ) as OutlineEntry[];
+      replaceOutline(next);
     };
 
     const onApply = () => {

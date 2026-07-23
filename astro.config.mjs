@@ -1028,7 +1028,7 @@ const outlineAnchorId = (entry) => {
 };
 
 /** Keep project outline in sync with sectionTitle insert/delete in one write. */
-const syncOutlineForSectionMutation = (data, { action, section }) => {
+const syncOutlineForSectionMutation = (data, { action, section, index }) => {
   if (!data || typeof data !== 'object') return;
   if (!Array.isArray(data.outline)) data.outline = [];
 
@@ -1040,12 +1040,32 @@ const syncOutlineForSectionMutation = (data, { action, section }) => {
     data.outline = data.outline.filter(
       (entry) => outlineAnchorId(entry) !== anchor && entry?.id !== anchor,
     );
-    data.outline.push({
+
+    // Page order from sections[] (caller already spliced the new section in).
+    const pageIndexForId = (id) => {
+      if (!id || !Array.isArray(data.sections)) return Number.POSITIVE_INFINITY;
+      const idx = data.sections.findIndex((entry) => {
+        const sid = String(entry?.sectionId || entry?.id || '').trim();
+        return sid === id;
+      });
+      return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
+    };
+
+    const blockPage = typeof index === 'number' ? index : pageIndexForId(anchor);
+    const entry = {
       kind: 'section',
       id: anchor,
       label,
       anchor,
-    });
+    };
+    let insertAt = data.outline.length;
+    for (let i = 0; i < data.outline.length; i += 1) {
+      if (pageIndexForId(outlineAnchorId(data.outline[i])) > blockPage) {
+        insertAt = i;
+        break;
+      }
+    }
+    data.outline.splice(insertAt, 0, entry);
     return;
   }
 
@@ -1199,7 +1219,7 @@ function contentSectionDevWriter() {
           }
 
           data.sections.splice(index, 0, section);
-          syncOutlineForSectionMutation(data, { action: 'insert', section });
+          syncOutlineForSectionMutation(data, { action: 'insert', section, index });
 
           await writeContentJson(file, data);
           send(200, { ok: true, action: 'insert', index, id: section.id, type: section.type, section });
