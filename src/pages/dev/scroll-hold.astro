@@ -1,0 +1,328 @@
+---
+/**
+ * Dev-only probe: click-hold on the handle, move pointer → page scrolls.
+ * Isolates the scroll interaction from section reorder.
+ */
+import Layout from '../../layouts/Layout.astro';
+
+if (!import.meta.env.DEV) {
+  return Astro.redirect('/404');
+}
+---
+
+<Layout title="Scroll-hold probe (dev)">
+  <main class="probe">
+    <header class="probe__intro">
+      <h1>Scroll-hold probe</h1>
+      <p>
+        Grab the handle and move up or down while holding the button.
+        The card and handle stay pinned on screen; the page scrolls underneath.
+      </p>
+      <p class="probe__status" id="probe-status" aria-live="polite">Idle</p>
+      <p class="probe__links">
+        <a href="/dev/drop-indicator">Drop indicator probe</a>
+      </p>
+    </header>
+
+    <div class="probe__spacer" aria-hidden="true"></div>
+
+    <div class="probe__stage" id="probe-stage">
+      <button type="button" class="probe__handle" id="probe-handle" aria-label="Scroll driver handle">
+        <span class="probe__handle-dots" aria-hidden="true">⋮⋮</span>
+        <span class="probe__handle-label">Hold &amp; drag</span>
+      </button>
+      <div class="probe__card">
+        <p>Dummy block — pinned on grab; page scrolls beneath.</p>
+      </div>
+    </div>
+
+    <div class="probe__spacer probe__spacer--tail" aria-hidden="true"></div>
+  </main>
+</Layout>
+
+<script>
+  const handle = document.getElementById('probe-handle') as HTMLButtonElement | null;
+  const stage = document.getElementById('probe-stage') as HTMLElement | null;
+  const status = document.getElementById('probe-status');
+
+  const DEAD_ZONE_PX = 32;
+  const RAMP_PX = 100;
+  const MAX_SPEED = 22;
+  const VELOCITY_SMOOTHING = 0.1;
+
+  let active = false;
+  let pointerId: number | null = null;
+  let grabY = 0;
+  let clientY = 0;
+  let tickId = 0;
+  let placeholder: HTMLElement | null = null;
+  let scrollVelocity = 0;
+  let scrollRemainder = 0;
+  let lastTickTime = 0;
+
+  const setStatus = (text: string) => {
+    if (status) status.textContent = text;
+  };
+
+  const pinStage = () => {
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+
+    placeholder = document.createElement('div');
+    placeholder.className = 'probe__placeholder';
+    placeholder.style.height = `${rect.height}px`;
+    placeholder.setAttribute('aria-hidden', 'true');
+    stage.before(placeholder);
+
+    stage.classList.add('is-pinned');
+    stage.style.position = 'fixed';
+    stage.style.left = `${rect.left}px`;
+    stage.style.top = `${rect.top}px`;
+    stage.style.width = `${rect.width}px`;
+    stage.style.margin = '0';
+    stage.style.zIndex = '100';
+  };
+
+  const unpinStage = () => {
+    if (!stage) return;
+    stage.classList.remove('is-pinned');
+    stage.style.position = '';
+    stage.style.left = '';
+    stage.style.top = '';
+    stage.style.width = '';
+    stage.style.margin = '';
+    stage.style.zIndex = '';
+    placeholder?.remove();
+    placeholder = null;
+  };
+
+  const targetScrollVelocity = () => {
+    const delta = clientY - grabY;
+    const distance = Math.abs(delta);
+    if (distance < DEAD_ZONE_PX) return 0;
+
+    const beyond = distance - DEAD_ZONE_PX;
+    const t = Math.min(1, beyond / RAMP_PX);
+    // Cubic: target speed has G² continuity at the dead-zone edge.
+    const eased = t * t * t;
+    return (delta < 0 ? -1 : 1) * eased * MAX_SPEED;
+  };
+
+  const driveScroll = (dtMs: number) => {
+    const target = targetScrollVelocity();
+    const frameFactor = dtMs / (1000 / 60);
+    const blend = 1 - (1 - VELOCITY_SMOOTHING) ** frameFactor;
+    scrollVelocity += (target - scrollVelocity) * blend;
+
+    scrollRemainder += scrollVelocity * frameFactor;
+    if (Math.abs(scrollRemainder) < 0.5) return;
+
+    const step = scrollRemainder > 0
+      ? Math.floor(scrollRemainder)
+      : Math.ceil(scrollRemainder);
+    window.scrollBy(0, step);
+    scrollRemainder -= step;
+  };
+
+  const resetScrollDriver = () => {
+    scrollVelocity = 0;
+    scrollRemainder = 0;
+    lastTickTime = 0;
+  };
+
+  const tick = (now: number) => {
+    tickId = 0;
+    if (!active) return;
+    if (!lastTickTime) lastTickTime = now;
+    const dtMs = Math.min(48, now - lastTickTime);
+    lastTickTime = now;
+    driveScroll(dtMs);
+    tickId = requestAnimationFrame(tick);
+  };
+
+  const startTick = () => {
+    if (tickId) return;
+    tickId = requestAnimationFrame(tick);
+  };
+
+  const stopTick = () => {
+    if (!tickId) return;
+    cancelAnimationFrame(tickId);
+    tickId = 0;
+  };
+
+  const trackMove = (y: number) => {
+    clientY = y;
+  };
+
+  const onDocPointerMove = (event: PointerEvent) => {
+    if (!active || pointerId !== event.pointerId) return;
+    trackMove(event.clientY);
+  };
+
+  const onDocMouseMove = (event: MouseEvent) => {
+    if (!active) return;
+    trackMove(event.clientY);
+  };
+
+  const endSession = () => {
+    if (!active) return;
+    const id = pointerId;
+    active = false;
+    pointerId = null;
+    stopTick();
+    resetScrollDriver();
+    document.documentElement.classList.remove('is-probe-scrolling');
+    if (id != null) {
+      try {
+        handle?.releasePointerCapture(id);
+      } catch {
+        // Already released.
+      }
+    }
+    unpinStage();
+    setStatus('Idle');
+  };
+
+  const onDocPointerUp = (event: PointerEvent) => {
+    if (!active || pointerId !== event.pointerId) return;
+    endSession();
+  };
+
+  const onDocMouseUp = (event: MouseEvent) => {
+    if (!active || event.button !== 0) return;
+    endSession();
+  };
+
+  document.addEventListener('pointermove', (event) => {
+    trackMove(event.clientY);
+    onDocPointerMove(event);
+  }, { capture: true, passive: true });
+  document.addEventListener('mousemove', (event) => {
+    trackMove(event.clientY);
+    onDocMouseMove(event);
+  }, { capture: true, passive: true });
+  document.addEventListener('pointerup', onDocPointerUp, { capture: true });
+  document.addEventListener('mouseup', onDocMouseUp, { capture: true });
+
+  handle?.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    active = true;
+    pointerId = event.pointerId;
+    grabY = event.clientY;
+    clientY = event.clientY;
+    document.documentElement.classList.add('is-probe-scrolling');
+    resetScrollDriver();
+    pinStage();
+    setStatus(`Grabbing · scrollY ${Math.round(window.scrollY)}`);
+    try {
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // Document listeners still track position.
+    }
+    startTick();
+  });
+</script>
+
+<style>
+  .probe {
+    padding-block: 2em;
+    min-height: 100%;
+    background-color: var(--color-bg, #ffffff);
+    background-image:
+      radial-gradient(circle, color-mix(in srgb, var(--color-text-muted, #6f6b62) 48%, transparent) 1px, transparent 1px);
+    background-size: 1.25em 1.25em;
+    background-position: 0 0;
+  }
+
+  .probe__intro {
+    max-width: 36em;
+    margin-inline: auto;
+    padding-inline: 1em;
+  }
+
+  .probe__intro h1 {
+    font-size: 1.25em;
+    font-weight: 600;
+    margin-bottom: 0.5em;
+  }
+
+  .probe__status {
+    margin-top: 1em;
+    font-family: ui-monospace, monospace;
+    font-size: 0.85em;
+    color: var(--color-text-muted, #6f6b62);
+  }
+
+  .probe__links {
+    margin-top: 0.75em;
+    font-size: 0.9em;
+  }
+
+  .probe__spacer {
+    height: 70vh;
+  }
+
+  .probe__spacer--tail {
+    height: 120vh;
+  }
+
+  .probe__stage {
+    position: relative;
+    max-width: 40em;
+    margin-inline: auto;
+    padding-inline: 1em;
+  }
+
+  .probe__handle {
+    position: absolute;
+    top: 50%;
+    left: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+    border: 0;
+    border-radius: var(--radius-control, 0.7em);
+    background: var(--color-surface-soft, #f4f3f0);
+    padding: 0.45em 0.65em;
+    color: var(--color-text);
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    cursor: grab;
+    transform: translate(calc(-100% - 0.55em), -50%);
+    touch-action: none;
+  }
+
+  .probe__handle-dots {
+    letter-spacing: -0.15em;
+    font-weight: 700;
+  }
+
+  .probe__handle-label {
+    font-size: 0.85em;
+    font-weight: 500;
+  }
+
+  .probe__stage.is-pinned .probe__card {
+    box-shadow: 0 0.6em 2em rgb(0 0 0 / 0.12);
+  }
+
+  .probe__placeholder {
+    max-width: 40em;
+    margin-inline: auto;
+    padding-inline: 1em;
+    box-sizing: border-box;
+  }
+
+  html.is-probe-scrolling .probe__handle {
+    cursor: grabbing;
+  }
+
+  .probe__card {
+    padding: 2em;
+    border: 1px solid color-mix(in srgb, var(--color-text-muted, #6f6b62) 25%, transparent);
+    background: var(--color-bg, #fff);
+    border-radius: var(--radius-control-smooth, 0.35em);
+  }
+</style>
