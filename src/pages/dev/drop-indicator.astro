@@ -111,11 +111,11 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
   });
 
   document.addEventListener('pointermove', (event) => {
-    controller.setPointerY(event.clientY);
+    controller.setPointer(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
   document.addEventListener('mousemove', (event) => {
-    controller.setPointerY(event.clientY);
+    controller.setPointer(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
   let ending = false;
@@ -157,7 +157,7 @@ const blocks = Array.from({ length: BLOCK_COUNT }, (_, i) => i + 1);
 
       dragItem = root;
       document.documentElement.classList.add('is-probe-lifting');
-      controller.beginLift(root, handle, event.clientY, sourceIndex);
+      controller.beginLift(root, handle, event.clientX, event.clientY, sourceIndex);
 
       try {
         handle.setPointerCapture(event.pointerId);

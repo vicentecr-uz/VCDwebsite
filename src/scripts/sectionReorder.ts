@@ -21,7 +21,6 @@ export const SCROLL_HOLD = {
   RAMP_PX: 200,
   MAX_SCROLL_SPEED: 66,
   VELOCITY_SMOOTHING: 0.1,
-  LIFT_FOLLOW_SMOOTHING: 0.12,
 } as const;
 
 export const prefersReducedMotion = () =>
@@ -104,34 +103,6 @@ export const smoothToward = (
   return current + (ideal - current) * blend;
 };
 
-export type IdealLiftTopInput = {
-  lastClientY: number;
-  grabPointerY: number;
-  liftGrabOffsetY: number;
-  liftInitialTop: number;
-  deadZonePx?: number;
-};
-
-/** Hold lift fixed until scroll edge; then follow the pointer. */
-export const computeIdealLiftTop = ({
-  lastClientY,
-  grabPointerY,
-  liftGrabOffsetY,
-  liftInitialTop,
-  deadZonePx = SCROLL_HOLD.DEAD_ZONE_PX,
-}: IdealLiftTopInput) => {
-  const wantsDown = lastClientY > grabPointerY + deadZonePx;
-  const wantsUp = lastClientY < grabPointerY - deadZonePx;
-  const atTop = window.scrollY <= 0.5;
-  const atBottom = window.scrollY >= maxScrollY() - 0.5;
-
-  if ((atBottom && wantsDown) || (atTop && wantsUp)) {
-    return lastClientY - liftGrabOffsetY;
-  }
-
-  return liftInitialTop;
-};
-
 export type ScrollDriver = {
   reset: () => void;
   /** Apply one frame of edge-ramped, smoothed page scroll. */
@@ -208,8 +179,10 @@ export type ReorderState = {
   sourceIndex: number;
   targetIndex: number;
   placedIndex: number;
+  pointerX: number;
   pointerY: number;
   grabPointerY: number;
+  grabOffsetX: number;
   grabOffsetY: number;
   liftTop: number;
   liftInitialTop: number;
@@ -258,7 +231,7 @@ export type ReorderHost = {
 export type BeginLiftOptions = {
   /**
    * When true (default), tick derives insert index from the lifted block center
-   * and runs scroll-hold + lift-follow. When false, target is set only via
+   * and runs scroll-hold + 1:1 pointer follow. When false, target is set only via
    * `setTargetIndex` and the lift stays put.
    */
   followPointer?: boolean;
@@ -274,8 +247,10 @@ const idleState = (): ReorderState => ({
   sourceIndex: 0,
   targetIndex: 0,
   placedIndex: 0,
+  pointerX: 0,
   pointerY: 0,
   grabPointerY: 0,
+  grabOffsetX: 0,
   grabOffsetY: 0,
   liftTop: 0,
   liftInitialTop: 0,
@@ -295,11 +270,12 @@ export type ReorderController = {
   beginLift: (
     item: HTMLElement,
     handle: HTMLElement,
+    pointerX: number,
     pointerY: number,
     sourceIndex: number,
     options?: BeginLiftOptions,
   ) => void;
-  setPointerY: (y: number) => void;
+  setPointer: (x: number, y: number) => void;
   setTargetIndex: (index: number) => void;
   endDrop: () => Promise<void>;
   isActive: () => boolean;
@@ -623,6 +599,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const dragItem = host.getDragItem();
     if (!dragItem || state.phase === 'idle') return;
     dragItem.style.top = `${state.liftTop}px`;
+    dragItem.style.left = `${state.liftLeft}px`;
   };
 
   const tick = (now: number) => {
@@ -637,15 +614,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (followPointer) {
       scrollDriver.apply(dtMs, state.grabPointerY, state.pointerY);
 
-      const ideal = computeIdealLiftTop({
-        lastClientY: state.pointerY,
-        grabPointerY: state.grabPointerY,
-        liftGrabOffsetY: state.grabOffsetY,
-        liftInitialTop: state.liftInitialTop,
-      });
-      state.liftTop = prefersReducedMotion()
-        ? ideal
-        : smoothToward(state.liftTop, ideal, dtMs, SCROLL_HOLD.LIFT_FOLLOW_SMOOTHING);
+      // 1:1 with the pointer — scroll is still keyed off initial grab Y.
+      state.liftTop = state.pointerY - state.grabOffsetY;
+      state.liftLeft = state.pointerX - state.grabOffsetX;
       renderLift();
 
       const centerY = state.liftTop + state.blockHeight / 2;
@@ -742,7 +713,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   };
 
   return {
-    beginLift: (item, handle, pointerY, sourceIndex, options = {}) => {
+    beginLift: (item, handle, pointerX, pointerY, sourceIndex, options = {}) => {
       if (state.phase !== 'idle') return;
 
       followPointer = options.followPointer !== false;
@@ -756,8 +727,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         sourceIndex,
         targetIndex: sourceIndex,
         placedIndex: sourceIndex,
+        pointerX,
         pointerY,
         grabPointerY: pointerY,
+        grabOffsetX: pointerX - rect.left,
         grabOffsetY: pointerY - rect.top,
         liftTop: rect.top,
         liftInitialTop: rect.top,
@@ -800,8 +773,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       updateStatus();
     },
 
-    setPointerY: (y) => {
-      if (state.phase === 'lifted' && followPointer) state.pointerY = y;
+    setPointer: (x, y) => {
+      if (state.phase !== 'lifted' || !followPointer) return;
+      state.pointerX = x;
+      state.pointerY = y;
     },
 
     setTargetIndex: (index) => {
