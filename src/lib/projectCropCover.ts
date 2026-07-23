@@ -27,16 +27,38 @@ function readAspectNum(frame: HTMLElement, image: HTMLImageElement | null): numb
   return 1;
 }
 
+function gridItemFrame(item: HTMLElement): HTMLElement {
+  return item.querySelector<HTMLElement>(':scope > .project-image-grid__frame') ?? item;
+}
+
+function clearBelowSlotMinHeights(grid: HTMLElement): void {
+  grid.querySelectorAll<HTMLElement>('.project-image-grid__below-slot').forEach((slot) => {
+    slot.style.removeProperty('min-height');
+  });
+}
+
 function clearMatchHeightItemSizing(grid: HTMLElement): void {
   grid.querySelectorAll<HTMLElement>('.project-image-grid__item').forEach((item) => {
     item.style.removeProperty('width');
     item.style.removeProperty('flex');
   });
+  clearBelowSlotMinHeights(grid);
+}
+
+function measureBelowCaptionHeight(item: HTMLElement): number {
+  const caption = item.querySelector<HTMLElement>('.project-caption--below');
+  if (!caption || getComputedStyle(caption).display === 'none') return 0;
+  const styles = getComputedStyle(caption);
+  const marginTop = Number.parseFloat(styles.marginTop) || 0;
+  const marginBottom = Number.parseFloat(styles.marginBottom) || 0;
+  return caption.offsetHeight + marginTop + marginBottom;
 }
 
 /**
  * Scale each row so cells share one height while keeping their aspect ratios
  * (widths become proportional). Requires `data-match-height="true"`.
+ * Also equalizes `.project-image-grid__below-slot` min-heights so overlay
+ * siblings leave matching empty space under their frames.
  */
 export function layoutMatchHeightGrids(root: ParentNode = document): void {
   queryAllIncludingRoot(root, '.project-image-grid').forEach((grid) => {
@@ -71,8 +93,9 @@ export function layoutMatchHeightGrids(root: ParentNode = document): void {
     for (let i = 0; i < items.length; i += cols) {
       const row = items.slice(i, i + cols);
       const aspects = row.map((item) => {
+        const frame = gridItemFrame(item);
         const image = item.querySelector<HTMLImageElement>('.project-image-grid__image');
-        return readAspectNum(item, image);
+        return readAspectNum(frame, image);
       });
       const sum = aspects.reduce((acc, value) => acc + value, 0) || 1;
       const available = totalWidth - gap * Math.max(0, row.length - 1);
@@ -81,6 +104,22 @@ export function layoutMatchHeightGrids(root: ParentNode = document): void {
         const width = Math.max(0, available * (aspects[index] / sum));
         item.style.flex = '0 0 auto';
         item.style.width = `${width}px`;
+      });
+
+      // Clear then measure natural below-caption heights so siblings can match.
+      row.forEach((item) => {
+        const slot = item.querySelector<HTMLElement>(':scope > .project-image-grid__below-slot');
+        slot?.style.removeProperty('min-height');
+      });
+      const maxCaptionHeight = Math.max(0, ...row.map((item) => measureBelowCaptionHeight(item)));
+      row.forEach((item) => {
+        const slot = item.querySelector<HTMLElement>(':scope > .project-image-grid__below-slot');
+        if (!slot) return;
+        if (maxCaptionHeight > 0) {
+          slot.style.minHeight = `${maxCaptionHeight}px`;
+        } else {
+          slot.style.removeProperty('min-height');
+        }
       });
     }
 
@@ -120,26 +159,30 @@ export function refreshProjectCropCovers(root: ParentNode = document): void {
   }
   refreshing = true;
   try {
-    queryAllIncludingRoot(root, '.project-cropped').forEach((frame) => {
-      const image = frame.querySelector<HTMLImageElement>(
+    queryAllIncludingRoot(root, '.project-cropped').forEach((outer) => {
+      const image = outer.querySelector<HTMLImageElement>(
         ':scope > img, :scope > .project-crop-clip > img',
       );
       if (!image) return;
-      applyOriginalRatio(frame, image);
-      coverImageInFrame(frame, image);
+      applyOriginalRatio(outer, image);
+      const clip = outer.querySelector<HTMLElement>(':scope > .project-crop-clip');
+      coverImageInFrame(clip ?? outer, image);
     });
 
     // Ratios first so match-height can read --project-image-original-ratio-num.
-    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((frame) => {
-      const image = frame.querySelector<HTMLImageElement>('.project-image-grid__image');
+    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((item) => {
+      const frame = gridItemFrame(item);
+      const image = item.querySelector<HTMLImageElement>('.project-image-grid__image');
       if (!image) return;
+      applyOriginalRatio(item, image);
       applyOriginalRatio(frame, image);
     });
 
     layoutMatchHeightGrids(root);
 
-    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((frame) => {
-      const image = frame.querySelector<HTMLImageElement>('.project-image-grid__image');
+    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((item) => {
+      const frame = gridItemFrame(item);
+      const image = item.querySelector<HTMLImageElement>('.project-image-grid__image');
       if (!image) return;
       coverImageInFrame(frame, image);
     });
@@ -164,7 +207,7 @@ function observeCropFrames(root: ParentNode): void {
 
   queryAllIncludingRoot(
     root,
-    '.project-cropped, .project-image-grid, .project-image-grid__item',
+    '.project-cropped, .project-image-grid, .project-image-grid__item, .project-image-grid__frame',
   ).forEach((frame) => {
     if (frame.dataset.cropCoverObserved === 'true') return;
     frame.dataset.cropCoverObserved = 'true';

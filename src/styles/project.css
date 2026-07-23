@@ -154,7 +154,7 @@
 }
 
 .project-media--placeholder.project-cropped,
-.project-image-grid__item.project-media--placeholder {
+.project-image-grid__item.project-media--placeholder .project-image-grid__frame {
   outline: 1px dashed color-mix(in srgb, #b8b4ab 85%, transparent);
   outline-offset: -1px;
   background: #f3f1ec;
@@ -162,7 +162,7 @@
 
 /* Inner dashed inset tracks the crop frame aspect ratio (not the bitmap). */
 .project-media--placeholder.project-cropped::after,
-.project-image-grid__item.project-media--placeholder::after {
+.project-image-grid__item.project-media--placeholder .project-image-grid__frame::after {
   content: '';
   position: absolute;
   inset: 3%;
@@ -576,6 +576,60 @@
 }
 
 /*
+  Below image: in-flow body text under the media. Always visible; no overlay
+  corner / hover reveal. Uses --color-text for dark-mode readiness.
+  width:0 + min-width:100% keeps the caption from expanding fit-content
+  media (e.g. max-vh) past the image / frame width above it.
+*/
+.project-caption--below {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  display: block;
+  box-sizing: border-box;
+  margin: 0.5em 0 0;
+  width: 0;
+  min-width: 100%;
+  max-width: 100%;
+  font-size: 1.2rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.45;
+  text-align: left;
+  color: var(--color-text);
+  text-shadow: none;
+  opacity: 1;
+  pointer-events: none;
+  isolation: auto;
+  overflow-wrap: break-word;
+}
+
+.project-caption--below .project-caption-shadow {
+  display: none;
+}
+
+/* Single image / media: grow the block; keep crop aspect on the clip. */
+:is(.project-media, .project-image):has(> .project-caption--below) {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: visible;
+  min-width: 0;
+  max-width: 100%;
+}
+
+:is(.project-media, .project-image).project-cropped:has(> .project-caption--below) {
+  aspect-ratio: auto;
+}
+
+:is(.project-media, .project-image).project-cropped:has(> .project-caption--below) > .project-crop-clip {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  aspect-ratio: var(--project-image-ratio);
+}
+
+/*
   Per-breakpoint grid caption text. Kept global (not Astro-scoped) so
   dynamically created caption nodes from the Dev Mode tuner still hide
   correctly — otherwise all three labels stack and look “tripled”.
@@ -608,30 +662,30 @@
 
 /* Caption reveal: hover (default) vs always — per breakpoint via data attrs.
    Shared by grid cells and single ProjectImage frames. */
-.project-image-grid__caption {
+.project-image-grid__caption:not(.project-caption--below) {
   opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-:is(.project-image-grid__item, .project-media, .project-image):hover .project-image-grid__caption,
-:is(.project-image-grid__item, .project-media, .project-image):focus-within .project-image-grid__caption {
+:is(.project-image-grid__item, .project-image-grid__frame, .project-media, .project-image):hover .project-image-grid__caption:not(.project-caption--below),
+:is(.project-image-grid__item, .project-image-grid__frame, .project-media, .project-image):focus-within .project-image-grid__caption:not(.project-caption--below) {
   opacity: 1;
 }
 
 @media (min-width: 992px) {
-  .project-image-grid__caption[data-caption-reveal-desktop='always'] {
+  .project-image-grid__caption:not(.project-caption--below)[data-caption-reveal-desktop='always'] {
     opacity: 1;
   }
 }
 
 @media (max-width: 991px) and (min-width: 768px) {
-  .project-image-grid__caption[data-caption-reveal-tablet='always'] {
+  .project-image-grid__caption:not(.project-caption--below)[data-caption-reveal-tablet='always'] {
     opacity: 1;
   }
 
   /* No cursor: hover mode can’t work — hide unless set to always. */
   @media (hover: none) {
-    .project-image-grid__caption[data-caption-reveal-tablet='hover'] {
+    .project-image-grid__caption:not(.project-caption--below)[data-caption-reveal-tablet='hover'] {
       display: none;
     }
   }
@@ -639,18 +693,24 @@
 
 @media (max-width: 767px) {
   /* Override the global .project-caption mobile hide when always-visible. */
-  .project-image-grid__caption.project-caption[data-caption-reveal-mobile='always'] {
+  .project-image-grid__caption.project-caption:not(.project-caption--below)[data-caption-reveal-mobile='always'] {
     display: block;
     opacity: 1;
   }
 
-  .project-image-grid__caption[data-caption-reveal-mobile='hover'] {
+  .project-image-grid__caption:not(.project-caption--below)[data-caption-reveal-mobile='hover'] {
     display: none;
+  }
+
+  /* Below captions stay visible on mobile (global .project-caption hide). */
+  .project-caption.project-caption--below {
+    display: block;
+    opacity: 1;
   }
 }
 
 @media (min-width: 992px) and (hover: none) {
-  .project-image-grid__caption[data-caption-reveal-desktop='hover'] {
+  .project-image-grid__caption:not(.project-caption--below)[data-caption-reveal-desktop='hover'] {
     display: none;
   }
 }

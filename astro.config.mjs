@@ -734,7 +734,7 @@ const applyCaptionChange = (data, change) => {
     return { ok: true };
   }
 
-  const CAPTION_STYLES = new Set(['white', 'black', 'default']);
+  const CAPTION_STYLES = new Set(['white', 'black', 'below', 'default']);
   const CAPTION_POSITIONS = new Set(['bottom-left', 'top-left', 'bottom-right', 'top-right']);
   const CAPTION_REVEALS = new Set(['hover', 'always']);
   const rawStyle = String(change.captionStyle || 'white');

@@ -240,7 +240,15 @@ export function mountImageGridSection(
     img.alt = String(item.alt ?? '');
     img.className = 'project-image-grid__image';
     img.loading = 'lazy';
-    figure.append(img);
+
+    const frame = document.createElement('div');
+    frame.className = 'project-image-grid__frame';
+    frame.append(img);
+
+    const belowSlot = document.createElement('div');
+    belowSlot.className = 'project-image-grid__below-slot';
+
+    figure.append(frame, belowSlot);
     appendEditTriggers(figure);
     grid.append(figure);
   });

@@ -29,7 +29,7 @@ import {
       </select>
     </label>
 
-    <label class="project-caption-tuner__select">
+    <label class="project-caption-tuner__select" data-caption-overlay-only>
       <span>Location</span>
       <select data-caption-position>
         {IMAGE_CAPTION_POSITIONS.map((position) => (
@@ -38,7 +38,7 @@ import {
       </select>
     </label>
 
-    <label class="project-caption-tuner__select">
+    <label class="project-caption-tuner__select" data-caption-overlay-only>
       <span>Show caption</span>
       <select data-caption-reveal>
         {IMAGE_CAPTION_REVEALS.map((reveal) => (
@@ -66,10 +66,12 @@ import {
 
 <script>
   import {
+    BELOW_IMAGE_CAPTION_REVEALS,
     DEFAULT_IMAGE_CAPTION_POSITION,
     DEFAULT_IMAGE_CAPTION_REVEALS,
     imageCaptionStyleClass,
     imageCaptionsHaveText,
+    isBelowImageCaptionStyle,
     isImageCaptionReveal,
     matchImageCaptionViewport,
     resolveImageCaptionPosition,
@@ -85,6 +87,7 @@ import {
     type ImageCaptions,
   } from '../../lib/imageCaptions';
   import { captionCornerConflictsWithChrome } from '../../lib/devEditChrome';
+  import { refreshProjectCropCovers } from '../../lib/projectCropCover';
   import type { ImageViewport } from '../../lib/responsiveImage';
   import { IMAGE_VIEWPORTS } from '../../lib/responsiveImage';
 
@@ -186,37 +189,68 @@ import {
       };
     };
 
-    const ensureCaptionHost = (target: HTMLElement): HTMLElement => {
+    const ensureCaptionHost = (
+      target: HTMLElement,
+      captionStyle: ImageCaptionStyleId = 'white',
+    ): HTMLElement => {
       let host = target.querySelector<HTMLElement>('[data-project-image-caption]');
-      if (host) return host;
+      if (!host) {
+        host = document.createElement('span');
+        host.className = 'project-caption project-image-grid__caption';
+        host.dataset.projectImageCaption = '';
+        IMAGE_VIEWPORTS.forEach((viewport) => {
+          const bp = document.createElement('span');
+          bp.className = `project-image-grid__caption-bp project-image-grid__caption-bp--${viewport}`;
+          bp.dataset.captionBp = viewport;
+          host!.appendChild(bp);
+        });
+      }
 
-      host = document.createElement('span');
-      host.className = 'project-caption project-image-grid__caption';
-      host.dataset.projectImageCaption = '';
-      IMAGE_VIEWPORTS.forEach((viewport) => {
-        const bp = document.createElement('span');
-        bp.className = `project-image-grid__caption-bp project-image-grid__caption-bp--${viewport}`;
-        bp.dataset.captionBp = viewport;
-        host!.appendChild(bp);
-      });
-      const addButton = target.querySelector('.dev-caption-add-trigger');
-      if (addButton) addButton.before(host);
-      else target.appendChild(host);
+      const isGrid = target.classList.contains('project-image-grid__item');
+      if (isGrid) {
+        const frame = target.querySelector<HTMLElement>(':scope > .project-image-grid__frame');
+        const slot = target.querySelector<HTMLElement>(':scope > .project-image-grid__below-slot');
+        const parent = isBelowImageCaptionStyle(captionStyle) ? slot : frame;
+        if (parent && host.parentElement !== parent) {
+          parent.appendChild(host);
+        } else if (!parent) {
+          const addButton = target.querySelector('.dev-caption-add-trigger');
+          if (addButton) addButton.before(host);
+          else target.appendChild(host);
+        }
+      } else if (!host.isConnected) {
+        const addButton = target.querySelector('.dev-caption-add-trigger');
+        if (addButton) addButton.before(host);
+        else target.appendChild(host);
+      }
+
       return host;
     };
 
-    const syncCaptionChromeButton = (target: HTMLElement, captions: ImageCaptions) => {
+    const syncCaptionChromeButton = (
+      target: HTMLElement,
+      captions: ImageCaptions,
+      captionStyle?: ImageCaptionStyleId,
+    ) => {
       const button = target.querySelector<HTMLButtonElement>('.dev-caption-add-trigger');
       if (!button) return;
       const inDev = document.documentElement.classList.contains('is-dev-mode');
       const hasText = imageCaptionsHaveText(captions);
       const hasHost = Boolean(target.querySelector('[data-project-image-caption]'));
+      const style = resolveImageCaptionStyle(
+        captionStyle
+          ?? target.dataset.devCaptionStyle
+          ?? target.querySelector<HTMLElement>('[data-project-image-caption]')?.dataset.captionStyle,
+      );
       const position = resolveImageCaptionPosition(
         target.dataset.devCaptionPosition
           || target.querySelector<HTMLElement>('[data-project-image-caption]')?.dataset.captionPosition,
       );
-      // Same-corner chrome (e.g. Edit grid) overlapping this cell → Edit caption fallback.
-      const needsFallback = inDev && hasText && captionCornerConflictsWithChrome(target, position);
+      // Below captions aren't corner overlays — skip chrome conflict fallback.
+      const needsFallback = inDev
+        && hasText
+        && !isBelowImageCaptionStyle(style)
+        && captionCornerConflictsWithChrome(target, position);
 
       if (needsFallback) {
         button.hidden = false;
@@ -258,24 +292,29 @@ import {
       captionReveals: ImageCaptionReveals,
       options?: { retainEmptyHost?: boolean },
     ) => {
+      const effectiveReveals = isBelowImageCaptionStyle(captionStyle)
+        ? BELOW_IMAGE_CAPTION_REVEALS
+        : captionReveals;
+
       target.dataset.devCaptions = JSON.stringify(captions);
       target.dataset.devCaptionStyle = captionStyle;
       target.dataset.devCaptionPosition = captionPosition;
-      target.dataset.devCaptionReveals = JSON.stringify(captionReveals);
+      target.dataset.devCaptionReveals = JSON.stringify(effectiveReveals);
 
       const retainEmpty = options?.retainEmptyHost === true;
       if (!imageCaptionsHaveText(captions) && !retainEmpty) {
         target.querySelector('[data-project-image-caption]')?.remove();
-        syncCaptionChromeButton(target, captions);
+        syncCaptionChromeButton(target, captions, captionStyle);
+        refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
         return;
       }
 
-      const host = ensureCaptionHost(target);
+      const host = ensureCaptionHost(target, captionStyle);
       host.dataset.captionStyle = captionStyle;
       host.dataset.captionPosition = captionPosition;
-      host.dataset.captionRevealDesktop = captionReveals.desktop;
-      host.dataset.captionRevealTablet = captionReveals.tablet;
-      host.dataset.captionRevealMobile = captionReveals.mobile;
+      host.dataset.captionRevealDesktop = effectiveReveals.desktop;
+      host.dataset.captionRevealTablet = effectiveReveals.tablet;
+      host.dataset.captionRevealMobile = effectiveReveals.mobile;
       host.className = [
         'project-caption',
         'project-image-grid__caption',
@@ -292,7 +331,8 @@ import {
         }
       });
 
-      syncCaptionChromeButton(target, captions);
+      syncCaptionChromeButton(target, captions, captionStyle);
+      refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
     };
 
     /** Drop an empty caption shell once the user leaves the editor (not while typing). */
@@ -371,6 +411,13 @@ import {
       positionSelect.value = draftPosition;
       revealSelect.value = draftReveals[selectedViewport];
       textArea.value = draftCaptions[selectedViewport];
+      const overlayOnly = !isBelowImageCaptionStyle(draftStyle);
+      tuner.querySelectorAll<HTMLElement>('[data-caption-overlay-only]').forEach((el) => {
+        el.hidden = !overlayOnly;
+      });
+      status.textContent = isBelowImageCaptionStyle(draftStyle)
+        ? 'Below-image captions are always visible under the media (no location or hover settings).'
+        : 'Text and show-mode cascade down: desktop updates tablet and mobile; tablet updates mobile.';
       syncingUi = false;
       renderViewportButtons();
     };
@@ -407,7 +454,7 @@ import {
         return;
       }
 
-      const host = ensureCaptionHost(target);
+      const host = ensureCaptionHost(target, draftStyle);
       host.dataset.captionEditing = 'true';
       const liveViewport = matchImageCaptionViewport();
       host.querySelectorAll<HTMLElement>('[data-caption-bp]').forEach((node) => {
@@ -437,11 +484,15 @@ import {
         savedCaptions = structuredClone(state.captions);
         savedStyle = state.captionStyle;
         savedPosition = state.captionPosition;
-        savedReveals = structuredClone(state.captionReveals);
+        savedReveals = structuredClone(
+          isBelowImageCaptionStyle(state.captionStyle)
+            ? BELOW_IMAGE_CAPTION_REVEALS
+            : state.captionReveals,
+        );
         draftCaptions = structuredClone(state.captions);
         draftStyle = state.captionStyle;
         draftPosition = state.captionPosition;
-        draftReveals = structuredClone(state.captionReveals);
+        draftReveals = structuredClone(savedReveals);
       }
 
       if (options?.seedEmpty && !imageCaptionsHaveText(draftCaptions)) {
@@ -469,11 +520,15 @@ import {
     styleSelect.addEventListener('change', () => {
       if (syncingUi) return;
       draftStyle = resolveImageCaptionStyle(styleSelect.value);
+      if (isBelowImageCaptionStyle(draftStyle)) {
+        draftReveals = { ...BELOW_IMAGE_CAPTION_REVEALS };
+      }
       if (editTarget) {
         applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
           retainEmptyHost: true,
         });
       }
+      renderFields();
     });
 
     positionSelect.addEventListener('change', () => {
@@ -575,7 +630,9 @@ import {
       const stagedCaptions = structuredClone(draftCaptions);
       const stagedStyle = draftStyle;
       const stagedPosition = draftPosition;
-      const stagedReveals = structuredClone(draftReveals);
+      const stagedReveals = structuredClone(
+        isBelowImageCaptionStyle(draftStyle) ? BELOW_IMAGE_CAPTION_REVEALS : draftReveals,
+      );
       const target = editTarget;
 
       applyCaptionsToTarget(target, stagedCaptions, stagedStyle, stagedPosition, stagedReveals);

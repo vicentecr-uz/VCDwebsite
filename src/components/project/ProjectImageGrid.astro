@@ -18,6 +18,8 @@ import {
 import {
   imageCaptionStyleClass,
   imageCaptionsHaveText,
+  isBelowImageCaptionStyle,
+  BELOW_IMAGE_CAPTION_REVEALS,
   resolveImageCaptionPosition,
   resolveImageCaptionReveals,
   resolveImageCaptionStyle,
@@ -158,7 +160,10 @@ const editorItems = items.map((item, index) => ({
     const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
     const captionStyle = resolveImageCaptionStyle(item.captionStyle);
     const captionPosition = resolveImageCaptionPosition(item.captionPosition);
-    const captionReveals = resolveImageCaptionReveals(item.captionReveal);
+    const isBelowCaption = isBelowImageCaptionStyle(captionStyle);
+    const captionReveals = isBelowCaption
+      ? BELOW_IMAGE_CAPTION_REVEALS
+      : resolveImageCaptionReveals(item.captionReveal);
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
     const isPlaceholder = isPlaceholderSrc(item.src);
@@ -177,6 +182,21 @@ const editorItems = items.map((item, index) => ({
           hasOwnVariants,
         })
       : {};
+    const captionNode = hasCaption ? (
+      <span
+        class:list={['project-caption', 'project-image-grid__caption', captionClass]}
+        data-project-image-caption
+        data-caption-style={captionStyle}
+        data-caption-position={captionPosition}
+        data-caption-reveal-desktop={captionReveals.desktop}
+        data-caption-reveal-tablet={captionReveals.tablet}
+        data-caption-reveal-mobile={captionReveals.mobile}
+      >
+        <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
+        <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
+        <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
+      </span>
+    ) : null;
     return (
       <figure
         class:list={[
@@ -192,27 +212,18 @@ const editorItems = items.map((item, index) => ({
         data-grid-hidden-mobile={resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false'}
         {...editAttrs}
       >
-        <img
-          src={projectImage(item.src)}
-          alt={item.alt ?? ''}
-          class="project-image-grid__image"
-          loading="lazy"
-        />
-        {hasCaption && (
-          <span
-            class:list={['project-caption', 'project-image-grid__caption', captionClass]}
-            data-project-image-caption
-            data-caption-style={captionStyle}
-            data-caption-position={captionPosition}
-            data-caption-reveal-desktop={captionReveals.desktop}
-            data-caption-reveal-tablet={captionReveals.tablet}
-            data-caption-reveal-mobile={captionReveals.mobile}
-          >
-            <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
-            <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
-            <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
-          </span>
-        )}
+        <div class="project-image-grid__frame">
+          <img
+            src={projectImage(item.src)}
+            alt={item.alt ?? ''}
+            class="project-image-grid__image"
+            loading="lazy"
+          />
+          {!isBelowCaption && captionNode}
+        </div>
+        <div class="project-image-grid__below-slot">
+          {isBelowCaption && captionNode}
+        </div>
         {showDevEditing && (
           <button
             type="button"
@@ -284,11 +295,28 @@ const editorItems = items.map((item, index) => ({
 
   .project-image-grid__item {
     position: relative;
+    display: flex;
+    flex-direction: column;
     order: var(--project-image-grid-order-desktop, 0);
-    aspect-ratio: var(--project-image-ratio);
+    aspect-ratio: auto;
     margin: 0;
+    overflow: visible;
+    min-width: 0;
+  }
+
+  .project-image-grid__frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--project-image-ratio);
     overflow: hidden;
     min-width: 0;
+  }
+
+  .project-image-grid__below-slot {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
   }
 
   .project-image-grid--match-height .project-image-grid__item {
