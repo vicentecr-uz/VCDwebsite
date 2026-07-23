@@ -554,26 +554,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (!dropIndicator || state.placedIndex === toIndex) return;
 
     const fromIndex = state.placedIndex;
+    // Ghost the old slot, then show the new one immediately while neighbors
+    // FLIP. Hiding the indicator during FLIP made downward moves look dead —
+    // neighbors animate up under the lifted card with no visible gap cue.
     if (state.indicatorOpacity > 0.05 && !prefersReducedMotion()) {
       spawnFadeGhost();
     }
 
-    applyIndicatorOpacity(0);
     performFlipRelocate(fromIndex, toIndex);
     state.placedIndex = toIndex;
-
-    const delay = prefersReducedMotion() ? 0 : REORDER_TIMING.FADE_IN_DELAY_MS;
-    if (delay <= 0) {
-      indicatorAnim = {
-        type: 'fadeIn',
-        from: 0,
-        to: 1,
-        start: nowMs(),
-        duration: prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS,
-      };
-    } else {
-      indicatorAnim = { type: 'fadeInWait', until: nowMs() + delay };
-    }
+    applyIndicatorOpacity(1);
+    indicatorAnim = { type: 'steady' };
   };
 
   const advanceIndicatorAnim = (now: number) => {
