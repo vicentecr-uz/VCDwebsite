@@ -549,6 +549,11 @@
     /* Above sticky sidebar (2) and section-editor sidebar (20) so gutter
        drag handles stay visible/clickable before a lift starts. */
     z-index: 25;
+    /* Transparent outline always present so dirty can fade outline-color. */
+    border-radius: 0.15em;
+    outline: 2px dashed transparent;
+    outline-offset: 0.75em;
+    transition: outline-color 0.2s ease;
   }
 
   /* Lifted block is position:fixed inside this isolated context — raise
@@ -560,14 +565,10 @@
   /*
     Layout-dirty cue: thicker dashed outline only (no wash), offset outward
     so it sits clear of the content edge. outline-offset — not padding —
-    keeps layout/flow unchanged.
+    keeps layout/flow unchanged. Color fades in/out via the base transition.
   */
   .is-dev-mode [data-dev-project-drop-zone].is-section-order-dirty {
-    border-radius: 0.15em;
-    outline: 2px dashed color-mix(in srgb, currentColor 45%, transparent);
-    outline-offset: 0.75em;
-    background: transparent;
-    transition: outline-color 0.15s ease;
+    outline-color: color-mix(in srgb, currentColor 45%, transparent);
   }
 
   .dev-section-drag-bridge {
