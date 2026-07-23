@@ -136,8 +136,8 @@ function imageCropDevWriter() {
 
 /**
  * Dev-only writer for image-grid settings (per-breakpoint columns,
- * constrained width, default aspect, and visible/parking layouts with
- * waterfall inheritance).
+ * constrained width, default aspect, match-height, and visible/parking
+ * layouts with waterfall inheritance).
  *
  * @returns {import('vite').Plugin}
  */
@@ -270,6 +270,11 @@ function imageGridDevWriter() {
           node.columns = columns;
           node.constrained = constrained;
           node.defaultAspectRatio = defaultAspectRatio;
+          if (body.matchHeight === true) {
+            node.matchHeight = true;
+          } else {
+            delete node.matchHeight;
+          }
           if (Object.keys(layouts).length) {
             node.layouts = layouts;
           } else {
@@ -288,6 +293,7 @@ function imageGridDevWriter() {
             columns,
             constrained,
             defaultAspectRatio,
+            matchHeight: body.matchHeight === true,
             layouts,
           });
         } catch {
@@ -679,6 +685,11 @@ const applyGridChange = (data, change) => {
   target.columns = columns;
   target.constrained = constrained;
   target.defaultAspectRatio = defaultAspectRatio;
+  if (change.matchHeight === true) {
+    target.matchHeight = true;
+  } else {
+    delete target.matchHeight;
+  }
   if (Object.keys(layouts).length) {
     target.layouts = layouts;
   } else {

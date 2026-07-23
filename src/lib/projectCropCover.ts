@@ -1,54 +1,155 @@
 /** Size cropped project images to cover their frame (shared by SSR and dev inserts). */
+
+let refreshQueued = false;
+let refreshing = false;
+
+/** Include `root` itself when it matches — querySelectorAll only finds descendants. */
+function queryAllIncludingRoot(
+  root: ParentNode,
+  selector: string,
+): HTMLElement[] {
+  const matches: HTMLElement[] = [];
+  if (root instanceof HTMLElement && root.matches(selector)) {
+    matches.push(root);
+  }
+  root.querySelectorAll<HTMLElement>(selector).forEach((el) => matches.push(el));
+  return matches;
+}
+
+function readAspectNum(frame: HTMLElement, image: HTMLImageElement | null): number {
+  const fromCss = Number.parseFloat(
+    getComputedStyle(frame).getPropertyValue('--project-image-ratio-num'),
+  );
+  if (Number.isFinite(fromCss) && fromCss > 0) return fromCss;
+  if (image?.naturalWidth && image.naturalHeight) {
+    return image.naturalWidth / image.naturalHeight;
+  }
+  return 1;
+}
+
+function clearMatchHeightItemSizing(grid: HTMLElement): void {
+  grid.querySelectorAll<HTMLElement>('.project-image-grid__item').forEach((item) => {
+    item.style.removeProperty('width');
+    item.style.removeProperty('flex');
+  });
+}
+
+/**
+ * Scale each row so cells share one height while keeping their aspect ratios
+ * (widths become proportional). Requires `data-match-height="true"`.
+ */
+export function layoutMatchHeightGrids(root: ParentNode = document): void {
+  queryAllIncludingRoot(root, '.project-image-grid').forEach((grid) => {
+    if (grid.dataset.matchHeight !== 'true') {
+      // Always clear — leftover flex/width from a prior match-height pass
+      // breaks equal-column CSS grid (tuner refresh often roots on the grid itself).
+      clearMatchHeightItemSizing(grid);
+      delete grid.dataset.matchHeightLaidOut;
+      return;
+    }
+
+    const cols = Math.max(
+      1,
+      Math.round(Number.parseFloat(
+        getComputedStyle(grid).getPropertyValue('--project-image-grid-columns'),
+      ) || 2),
+    );
+    const gap = Number.parseFloat(getComputedStyle(grid).columnGap)
+      || Number.parseFloat(getComputedStyle(grid).gap)
+      || 0;
+    const totalWidth = grid.clientWidth;
+    if (!totalWidth) return;
+
+    const items = [...grid.querySelectorAll<HTMLElement>('.project-image-grid__item')]
+      .filter((item) => getComputedStyle(item).display !== 'none')
+      .sort((a, b) => {
+        const orderA = Number.parseFloat(getComputedStyle(a).order) || 0;
+        const orderB = Number.parseFloat(getComputedStyle(b).order) || 0;
+        return orderA - orderB;
+      });
+
+    for (let i = 0; i < items.length; i += cols) {
+      const row = items.slice(i, i + cols);
+      const aspects = row.map((item) => {
+        const image = item.querySelector<HTMLImageElement>('.project-image-grid__image');
+        return readAspectNum(item, image);
+      });
+      const sum = aspects.reduce((acc, value) => acc + value, 0) || 1;
+      const available = totalWidth - gap * Math.max(0, row.length - 1);
+
+      row.forEach((item, index) => {
+        const width = Math.max(0, available * (aspects[index] / sum));
+        item.style.flex = '0 0 auto';
+        item.style.width = `${width}px`;
+      });
+    }
+
+    grid.dataset.matchHeightLaidOut = 'true';
+  });
+}
+
+function applyOriginalRatio(frame: HTMLElement, image: HTMLImageElement): void {
+  if (!image.naturalWidth || !image.naturalHeight) return;
+  frame.style.setProperty(
+    '--project-image-original-ratio',
+    `${image.naturalWidth} / ${image.naturalHeight}`,
+  );
+  frame.style.setProperty(
+    '--project-image-original-ratio-num',
+    String(image.naturalWidth / image.naturalHeight),
+  );
+}
+
+function coverImageInFrame(frame: HTMLElement, image: HTMLImageElement): void {
+  const frameWidth = frame.clientWidth;
+  const frameHeight = frame.clientHeight;
+  if (!frameWidth || !frameHeight || !image.naturalWidth || !image.naturalHeight) return;
+
+  const scale = Math.max(
+    (frameWidth + 2) / image.naturalWidth,
+    (frameHeight + 2) / image.naturalHeight,
+  );
+  image.style.width = `${Math.ceil(image.naturalWidth * scale)}px`;
+  image.style.height = `${Math.ceil(image.naturalHeight * scale)}px`;
+}
+
 export function refreshProjectCropCovers(root: ParentNode = document): void {
-  root.querySelectorAll<HTMLElement>('.project-cropped').forEach((frame) => {
-    const image = frame.querySelector<HTMLImageElement>(
-      ':scope > img, :scope > .project-crop-clip > img',
-    );
-    if (!image?.naturalWidth || !image.naturalHeight) return;
+  if (refreshing) {
+    refreshQueued = true;
+    return;
+  }
+  refreshing = true;
+  try {
+    queryAllIncludingRoot(root, '.project-cropped').forEach((frame) => {
+      const image = frame.querySelector<HTMLImageElement>(
+        ':scope > img, :scope > .project-crop-clip > img',
+      );
+      if (!image) return;
+      applyOriginalRatio(frame, image);
+      coverImageInFrame(frame, image);
+    });
 
-    frame.style.setProperty(
-      '--project-image-original-ratio',
-      `${image.naturalWidth} / ${image.naturalHeight}`,
-    );
-    frame.style.setProperty(
-      '--project-image-original-ratio-num',
-      String(image.naturalWidth / image.naturalHeight),
-    );
-    const frameWidth = frame.clientWidth;
-    const frameHeight = frame.clientHeight;
-    if (!frameWidth || !frameHeight) return;
+    // Ratios first so match-height can read --project-image-original-ratio-num.
+    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((frame) => {
+      const image = frame.querySelector<HTMLImageElement>('.project-image-grid__image');
+      if (!image) return;
+      applyOriginalRatio(frame, image);
+    });
 
-    const coverScale = Math.max(
-      (frameWidth + 2) / image.naturalWidth,
-      (frameHeight + 2) / image.naturalHeight,
-    );
-    image.style.width = `${Math.ceil(image.naturalWidth * coverScale)}px`;
-    image.style.height = `${Math.ceil(image.naturalHeight * coverScale)}px`;
-  });
+    layoutMatchHeightGrids(root);
 
-  root.querySelectorAll<HTMLElement>('.project-image-grid__item').forEach((frame) => {
-    const image = frame.querySelector<HTMLImageElement>('.project-image-grid__image');
-    if (!image?.naturalWidth || !image.naturalHeight) return;
-
-    frame.style.setProperty(
-      '--project-image-original-ratio',
-      `${image.naturalWidth} / ${image.naturalHeight}`,
-    );
-    frame.style.setProperty(
-      '--project-image-original-ratio-num',
-      String(image.naturalWidth / image.naturalHeight),
-    );
-    const frameWidth = frame.clientWidth;
-    const frameHeight = frame.clientHeight;
-    if (!frameWidth || !frameHeight) return;
-
-    const scale = Math.max(
-      (frameWidth + 2) / image.naturalWidth,
-      (frameHeight + 2) / image.naturalHeight,
-    );
-    image.style.width = `${Math.ceil(image.naturalWidth * scale)}px`;
-    image.style.height = `${Math.ceil(image.naturalHeight * scale)}px`;
-  });
+    queryAllIncludingRoot(root, '.project-image-grid__item').forEach((frame) => {
+      const image = frame.querySelector<HTMLImageElement>('.project-image-grid__image');
+      if (!image) return;
+      coverImageInFrame(frame, image);
+    });
+  } finally {
+    refreshing = false;
+    if (refreshQueued) {
+      refreshQueued = false;
+      refreshProjectCropCovers(root);
+    }
+  }
 }
 
 let resizeBound = false;
@@ -61,7 +162,10 @@ function observeCropFrames(root: ParentNode): void {
     cropCoverObserver = new ResizeObserver(() => refreshProjectCropCovers());
   }
 
-  root.querySelectorAll<HTMLElement>('.project-cropped, .project-image-grid__item').forEach((frame) => {
+  queryAllIncludingRoot(
+    root,
+    '.project-cropped, .project-image-grid, .project-image-grid__item',
+  ).forEach((frame) => {
     if (frame.dataset.cropCoverObserved === 'true') return;
     frame.dataset.cropCoverObserved = 'true';
     cropCoverObserver!.observe(frame);

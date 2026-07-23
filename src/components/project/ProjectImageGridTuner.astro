@@ -70,6 +70,14 @@ import DevOverlay from '../DevOverlay.astro';
       </select>
     </label>
 
+    <label class="project-grid-tuner__toggle">
+      <input type="checkbox" data-grid-match-height />
+      <span>Match row height</span>
+    </label>
+    <p class="project-grid-tuner__toggle-hint">
+      Scale cells so each row shares one height; widths follow aspect ratios.
+    </p>
+
     <div class="project-grid-tuner__board">
       <p class="project-grid-tuner__board-label">Visible</p>
       <div
@@ -101,12 +109,14 @@ import DevOverlay from '../DevOverlay.astro';
     </div>
 
     <p class="project-grid-tuner__status" data-grid-status aria-live="polite">
-      Pick a grid to edit layout, columns, width, and default aspect.
+      Pick a grid to edit layout, columns, width, aspect, and match-height.
     </p>
   </div>
 </DevOverlay>
 
 <script>
+  import { refreshProjectCropCovers } from '../../lib/projectCropCover';
+
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
 
   interface GridItem {
@@ -129,6 +139,7 @@ import DevOverlay from '../DevOverlay.astro';
     const columnsSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-columns]');
     const constrainedSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-constrained]');
     const aspectSelect = tuner.querySelector<HTMLSelectElement>('[data-grid-aspect-ratio]');
+    const matchHeightInput = tuner.querySelector<HTMLInputElement>('[data-grid-match-height]');
     const visibleBoard = tuner.querySelector<HTMLElement>('[data-grid-visible]');
     const parkingBoard = tuner.querySelector<HTMLElement>('[data-grid-parking]');
     const parkingHint = tuner.querySelector<HTMLElement>('[data-grid-parking-hint]');
@@ -143,6 +154,7 @@ import DevOverlay from '../DevOverlay.astro';
       !columnsSelect ||
       !constrainedSelect ||
       !aspectSelect ||
+      !matchHeightInput ||
       !visibleBoard ||
       !parkingBoard ||
       !parkingHint ||
@@ -282,6 +294,9 @@ import DevOverlay from '../DevOverlay.astro';
     let draftConstrained = { ...savedConstrained };
     let savedAspect = editTarget.dataset.devGridDefaultAspect || '1:1';
     let draftAspect = savedAspect;
+    let savedMatchHeight = editTarget.dataset.devGridMatchHeight === 'true'
+      || editTarget.dataset.matchHeight === 'true';
+    let draftMatchHeight = savedMatchHeight;
     let savedLayouts = readLayouts(editTarget);
     let draftLayouts = cloneLayouts(savedLayouts);
     let liveApply = false;
@@ -290,6 +305,7 @@ import DevOverlay from '../DevOverlay.astro';
       columns: Record<ImageViewport, number>;
       constrained: Record<ImageViewport, number>;
       aspect: string;
+      matchHeight: boolean;
       layouts: GridLayouts;
     };
     const diskBaselines = new Map<string, GridBaseline>();
@@ -313,6 +329,8 @@ import DevOverlay from '../DevOverlay.astro';
       columns: readColumns(target),
       constrained: readConstrained(target),
       aspect: target.dataset.devGridDefaultAspect || '1:1',
+      matchHeight: target.dataset.devGridMatchHeight === 'true'
+        || target.dataset.matchHeight === 'true',
       layouts: readLayouts(target),
     });
 
@@ -324,11 +342,13 @@ import DevOverlay from '../DevOverlay.astro';
       draftColumns = { ...baseline.columns };
       draftConstrained = { ...baseline.constrained };
       draftAspect = baseline.aspect;
+      draftMatchHeight = baseline.matchHeight;
       draftLayouts = cloneLayouts(baseline.layouts);
       applyColumnsLive();
       applyConstrainedLive();
       applyAspectLive();
       applyLayoutsLive();
+      applyMatchHeightLive();
       liveApply = wasLive;
       editTarget = wasTarget;
     };
@@ -338,6 +358,15 @@ import DevOverlay from '../DevOverlay.astro';
         ? 'var(--project-image-original-ratio, 1 / 1)'
         : aspectRatio.replace(':', ' / ')
     );
+
+    const ratioNumCss = (aspectRatio: string) => {
+      if (aspectRatio === 'original') {
+        return 'var(--project-image-original-ratio-num, 1)';
+      }
+      const [widthRaw, heightRaw] = aspectRatio.split(':').map(Number);
+      if (!widthRaw || !heightRaw) return '1';
+      return String(widthRaw / heightRaw);
+    };
 
     const ensureViewportOverride = () => {
       const resolved = resolveVisible(itemIds, draftLayouts, selectedViewport);
@@ -378,6 +407,7 @@ import DevOverlay from '../DevOverlay.astro';
           if (item.dataset.devHasOwnVariants === 'true') return;
           VIEWPORTS.forEach((viewport) => {
             item.style.setProperty(`--project-image-ratio-${viewport}`, ratioCss(draftAspect));
+            item.style.setProperty(`--project-image-ratio-num-${viewport}`, ratioNumCss(draftAspect));
             item.style.setProperty(`--project-image-x-${viewport}`, '0%');
             item.style.setProperty(`--project-image-y-${viewport}`, '0%');
             item.style.setProperty(`--project-image-zoom-${viewport}`, '1');
@@ -388,6 +418,15 @@ import DevOverlay from '../DevOverlay.astro';
             mobile: { aspectRatio: draftAspect, x: 0, y: 0, zoom: 1 },
           });
         });
+      refreshProjectCropCovers(editTarget);
+    };
+
+    const applyMatchHeightLive = () => {
+      if (!liveApply) return;
+      editTarget.dataset.matchHeight = draftMatchHeight ? 'true' : 'false';
+      editTarget.dataset.devGridMatchHeight = draftMatchHeight ? 'true' : 'false';
+      editTarget.classList.toggle('project-image-grid--match-height', draftMatchHeight);
+      refreshProjectCropCovers(editTarget);
     };
 
     const applyLayoutsLive = () => {
@@ -545,11 +584,13 @@ import DevOverlay from '../DevOverlay.astro';
       columnsSelect.value = String(draftColumns[selectedViewport]);
       constrainedSelect.value = String(draftConstrained[selectedViewport]);
       aspectSelect.value = draftAspect;
+      matchHeightInput.checked = draftMatchHeight;
       renderBoard();
       applyColumnsLive();
       applyConstrainedLive();
       applyAspectLive();
       applyLayoutsLive();
+      applyMatchHeightLive();
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
@@ -568,6 +609,9 @@ import DevOverlay from '../DevOverlay.astro';
       draftConstrained = { ...savedConstrained };
       savedAspect = editTarget.dataset.devGridDefaultAspect || '1:1';
       draftAspect = savedAspect;
+      savedMatchHeight = editTarget.dataset.devGridMatchHeight === 'true'
+        || editTarget.dataset.matchHeight === 'true';
+      draftMatchHeight = savedMatchHeight;
       savedLayouts = readLayouts(editTarget);
       draftLayouts = cloneLayouts(savedLayouts);
       renderDraft();
@@ -594,6 +638,7 @@ import DevOverlay from '../DevOverlay.astro';
           columns: { ...savedColumns },
           constrained: { ...savedConstrained },
           aspect: savedAspect,
+          matchHeight: savedMatchHeight,
           layouts: cloneLayouts(savedLayouts),
         });
       }
@@ -604,15 +649,18 @@ import DevOverlay from '../DevOverlay.astro';
       applyConstrainedLive();
       applyAspectLive();
       applyLayoutsLive();
+      applyMatchHeightLive();
 
       savedColumns = { ...draftColumns };
       savedConstrained = { ...draftConstrained };
       savedAspect = draftAspect;
+      savedMatchHeight = draftMatchHeight;
       savedLayouts = cloneLayouts(draftLayouts);
 
       const stagedColumns = { ...draftColumns };
       const stagedConstrained = { ...draftConstrained };
       const stagedAspect = draftAspect;
+      const stagedMatchHeight = draftMatchHeight;
       const stagedLayouts = cloneLayouts(draftLayouts);
 
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
@@ -625,6 +673,7 @@ import DevOverlay from '../DevOverlay.astro';
             columns: stagedColumns,
             constrained: stagedConstrained,
             defaultAspectRatio: stagedAspect,
+            matchHeight: stagedMatchHeight,
             layouts: stagedLayouts,
           },
           revert: () => {
@@ -636,6 +685,8 @@ import DevOverlay from '../DevOverlay.astro';
               draftConstrained = { ...baseline.constrained };
               savedAspect = baseline.aspect;
               draftAspect = baseline.aspect;
+              savedMatchHeight = baseline.matchHeight;
+              draftMatchHeight = baseline.matchHeight;
               savedLayouts = cloneLayouts(baseline.layouts);
               draftLayouts = cloneLayouts(baseline.layouts);
               renderDraft();
@@ -696,6 +747,14 @@ import DevOverlay from '../DevOverlay.astro';
       status.textContent = 'Default aspect changed — unsaved changes.';
     });
 
+    matchHeightInput.addEventListener('change', () => {
+      draftMatchHeight = matchHeightInput.checked;
+      renderDraft();
+      status.textContent = draftMatchHeight
+        ? 'Match row height on — unsaved changes.'
+        : 'Match row height off — unsaved changes.';
+    });
+
     clearOverrideButton.addEventListener('click', () => {
       if (selectedViewport === 'desktop') return;
       delete draftLayouts[selectedViewport];
@@ -709,6 +768,7 @@ import DevOverlay from '../DevOverlay.astro';
       draftColumns = { ...savedColumns };
       draftConstrained = { ...savedConstrained };
       draftAspect = savedAspect;
+      draftMatchHeight = savedMatchHeight;
       draftLayouts = cloneLayouts(savedLayouts);
       renderDraft();
       status.textContent = 'Reverted to the last saved grid settings.';
@@ -721,6 +781,7 @@ import DevOverlay from '../DevOverlay.astro';
           columns: { ...savedColumns },
           constrained: { ...savedConstrained },
           aspect: savedAspect,
+          matchHeight: savedMatchHeight,
           layouts: cloneLayouts(savedLayouts),
         });
       }
@@ -790,6 +851,26 @@ import DevOverlay from '../DevOverlay.astro';
     padding: 0.45em 0.55em;
     color: var(--color-text);
     font: inherit;
+  }
+
+  .project-grid-tuner__toggle {
+    display: flex;
+    gap: 0.55em;
+    align-items: center;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .project-grid-tuner__toggle input {
+    margin: 0;
+  }
+
+  .project-grid-tuner__toggle-hint {
+    margin: -0.25em 0 0;
+    padding-left: 1.55em;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
   }
 
   .project-grid-tuner__board {

@@ -64,6 +64,11 @@ interface Props {
   constrained?: ImageGridConstrained;
   /** Per-breakpoint visible order. Smaller breakpoints inherit unless overridden. */
   layouts?: ImageGridLayouts;
+  /**
+   * Scale cells in each row to a shared height (widths follow aspect ratios).
+   * Best with defaultAspectRatio "original" or mixed aspect cells.
+   */
+  matchHeight?: boolean;
   /** Editing wiring: which project JSON + path to this grid section. */
   document?: string;
   basePath?: (string | number)[];
@@ -78,6 +83,7 @@ const {
   defaultAspectRatio = '1:1',
   constrained: constrainedProp,
   layouts: layoutsProp,
+  matchHeight = false,
   document: documentKey,
   basePath,
   spacing = 'section',
@@ -114,17 +120,20 @@ const editorItems = items.map((item, index) => ({
   id={sectionId}
   class:list={[
     'project-image-grid',
+    matchHeight && 'project-image-grid--match-height',
     stackClass,
     sectionId && 'section-block',
     showGridEditor && 'dev-grid-edit-target',
   ]}
   style={`${imageGridColumnsStyle(columns)};${imageGridConstrainedStyle(constrained)};`}
+  data-match-height={matchHeight ? 'true' : 'false'}
   data-dev-grid-target={showGridEditor ? 'grid' : undefined}
   data-dev-document={showGridEditor ? documentKey : undefined}
   data-dev-grid-path={showGridEditor ? JSON.stringify(basePath) : undefined}
   data-dev-grid-columns={showGridEditor ? JSON.stringify(columns) : undefined}
   data-dev-grid-constrained={showGridEditor ? JSON.stringify(constrained) : undefined}
   data-dev-grid-default-aspect={showGridEditor ? defaultAspectRatio : undefined}
+  data-dev-grid-match-height={showGridEditor ? (matchHeight ? 'true' : 'false') : undefined}
   data-dev-grid-layouts={showGridEditor ? JSON.stringify(layouts) : undefined}
   data-dev-grid-items={showGridEditor ? JSON.stringify(editorItems) : undefined}
   {...(spacingAttrs ?? {})}
@@ -251,6 +260,14 @@ const editorItems = items.map((item, index) => ({
     margin-inline: auto;
   }
 
+  /* Equal row height: flex + JS widths proportional to each cell’s aspect. */
+  .project-image-grid--match-height {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    grid-template-columns: none;
+  }
+
   @media (max-width: 991px) {
     .project-image-grid {
       --project-image-grid-columns: var(--project-image-grid-columns-tablet, var(--project-image-grid-columns-desktop, 2));
@@ -271,6 +288,11 @@ const editorItems = items.map((item, index) => ({
     aspect-ratio: var(--project-image-ratio);
     margin: 0;
     overflow: hidden;
+    min-width: 0;
+  }
+
+  .project-image-grid--match-height .project-image-grid__item {
+    max-width: 100%;
   }
 
   @media (min-width: 992px) {
