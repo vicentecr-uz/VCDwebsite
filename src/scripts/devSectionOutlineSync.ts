@@ -2,6 +2,7 @@ import {
   deriveNavFromOutline,
   normalizeOutline,
   outlineAnchorId,
+  insertOutlineEntriesAtPagePosition,
   reorderOutlinePreservingGroups,
   type OutlineEntry,
   type SectionNavGroup,
@@ -297,12 +298,19 @@ const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
       return;
     }
 
-    outline.push({
-      kind: 'section',
-      id: sectionId,
-      label,
-      anchor: sectionId,
-    });
+    const next = insertOutlineEntriesAtPagePosition(
+      outline,
+      sectionId,
+      [{
+        kind: 'section',
+        id: sectionId,
+        label,
+        anchor: sectionId,
+      }],
+      pageIndexForId,
+    );
+    outline.length = 0;
+    outline.push(...next);
     changed = true;
   } else if (detail.action === 'delete') {
     const sectionId = String(detail.sectionId || '').trim();

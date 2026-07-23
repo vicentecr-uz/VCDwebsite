@@ -207,6 +207,55 @@ export function reorderOutlinePreservingGroups(
 }
 
 /**
+ * Page index lookup from project `sections[]` (`sectionId` then `id`).
+ * Unknown ids sort after known blocks (same as DOM helpers).
+ */
+export function pageIndexFromSections(
+  sections: Array<{ sectionId?: string; id?: string } | null | undefined> | null | undefined,
+): (id: string) => number {
+  const order: string[] = [];
+  if (Array.isArray(sections)) {
+    for (const section of sections) {
+      if (!section || typeof section !== 'object') continue;
+      const sid = String(section.sectionId || section.id || '').trim();
+      if (sid) order.push(sid);
+    }
+  }
+  return (id: string) => {
+    if (!id) return Number.POSITIVE_INFINITY;
+    const idx = order.indexOf(id);
+    return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
+  };
+}
+
+/**
+ * Insert outline markers at this block’s page position — never only push to
+ * the end. Pushing made new sectionTitles appear last in the sidebar while
+ * the DOM block sat at the top (and re-added markers could inherit the wrong
+ * group).
+ */
+export function insertOutlineEntriesAtPagePosition(
+  outline: OutlineEntry[],
+  blockAnchorId: string,
+  entries: OutlineEntry[],
+  pageIndexForId: (id: string) => number,
+): OutlineEntry[] {
+  if (!entries.length) return normalizeOutline(outline);
+  const next = normalizeOutline(outline);
+  const blockPage = pageIndexForId(blockAnchorId);
+  let insertAt = next.length;
+  for (let i = 0; i < next.length; i += 1) {
+    const entryPage = pageIndexForId(outlineAnchorId(next[i]));
+    if (entryPage > blockPage) {
+      insertAt = i;
+      break;
+    }
+  }
+  next.splice(insertAt, 0, ...entries);
+  return next;
+}
+
+/**
  * Derive the sidebar tree from a flat outline.
  * Sections attach to the nearest preceding group; leading sections
  * before any group become top-level links.
@@ -286,20 +335,31 @@ export function outlineFromNav(nav: SectionNavItem[] | undefined | null): Outlin
   return outline;
 }
 
-/** Prefer `outline`; fall back to deriving from legacy `nav`. */
+/** Prefer `outline`; fall back to deriving from legacy `nav`.
+ * When `sections` is provided, reorder to page order so a pushed insert
+ * cannot leave sidebar markers below blocks that sit higher on the page.
+ */
 export function resolveProjectOutline(data: {
   outline?: OutlineEntry[] | null;
   nav?: SectionNavItem[] | null;
+  sections?: Array<{ sectionId?: string; id?: string } | null | undefined> | null;
 }): OutlineEntry[] {
-  if (Array.isArray(data.outline) && data.outline.length > 0) {
-    return normalizeOutline(data.outline);
+  const base =
+    Array.isArray(data.outline) && data.outline.length > 0
+      ? normalizeOutline(data.outline)
+      : outlineFromNav(data.nav);
+
+  if (!base.length || !Array.isArray(data.sections) || !data.sections.length) {
+    return base;
   }
-  return outlineFromNav(data.nav);
+
+  return reorderOutlinePreservingGroups(base, pageIndexFromSections(data.sections));
 }
 
 export function resolveProjectSectionLinks(data: {
   outline?: OutlineEntry[] | null;
   nav?: SectionNavItem[] | null;
+  sections?: Array<{ sectionId?: string; id?: string } | null | undefined> | null;
 }): SectionNavItem[] {
   return deriveNavFromOutline(resolveProjectOutline(data));
 }
