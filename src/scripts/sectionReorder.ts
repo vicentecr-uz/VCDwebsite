@@ -1,9 +1,9 @@
 /**
- * Shared timing, scroll math, gap measurement, and insert-index helpers
- * for section reorder (probe + DevSectionReorderEditor).
+ * Shared timing, scroll math, gap measurement, and tick-driven reorder session
+ * for section reorder (probe first; editor adopts in a later step).
  *
- * Step 1 of the tick-driven reconciler refactor: pure helpers only.
- * Host files still own DOM orchestration; step 2 will introduce state + render.
+ * One session owns state + a single rAF tick. Indicator opacity / FLIP / ghosts
+ * are advanced from that tick — no racing promise tokens.
  */
 
 export const REORDER_TIMING = {
@@ -193,6 +193,578 @@ export const createScrollDriver = (
     getLastTickTime: () => lastTickTime,
     setLastTickTime: (time) => {
       lastTickTime = time;
+    },
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Step 2: tick-driven reorder session (state + render)
+// ---------------------------------------------------------------------------
+
+export type ReorderPhase = 'idle' | 'lifted' | 'dropping';
+
+export type ReorderState = {
+  phase: ReorderPhase;
+  sourceIndex: number;
+  targetIndex: number;
+  placedIndex: number;
+  pointerY: number;
+  grabPointerY: number;
+  grabOffsetY: number;
+  liftTop: number;
+  liftInitialTop: number;
+  liftLeft: number;
+  liftWidth: number;
+  blockHeight: number;
+  gapTop: string;
+  gapBottom: string;
+  indicatorOpacity: number;
+};
+
+export type ReorderClasses = {
+  indicator: string;
+  indicatorBody: string;
+  flipMoving: string;
+  dropPreviewAbove?: string;
+  fadeGhost: string;
+};
+
+export type ReorderHost = {
+  getItems: () => HTMLElement[];
+  getDropZone: () => HTMLElement | null;
+  getDragItem: () => HTMLElement | null;
+  classes: ReorderClasses;
+  /** Measure gap rails for the insert slot (host owns margin model). */
+  measureInsertGaps: (
+    insertIndex: number,
+    sourceIndex: number,
+    liftGaps: { top: string; bottom: string },
+  ) => { top: string; bottom: string };
+  onStatus?: (text: string) => void;
+};
+
+type IndicatorAnim =
+  | { type: 'steady' }
+  | { type: 'fadeInWait'; until: number }
+  | { type: 'fadeIn'; from: number; to: number; start: number; duration: number };
+
+const idleState = (): ReorderState => ({
+  phase: 'idle',
+  sourceIndex: 0,
+  targetIndex: 0,
+  placedIndex: 0,
+  pointerY: 0,
+  grabPointerY: 0,
+  grabOffsetY: 0,
+  liftTop: 0,
+  liftInitialTop: 0,
+  liftLeft: 0,
+  liftWidth: 0,
+  blockHeight: 0,
+  gapTop: '0px',
+  gapBottom: '0px',
+  indicatorOpacity: 1,
+});
+
+const easeOut = (t: number) => 1 - (1 - t) ** 2;
+
+const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
+
+export type ReorderController = {
+  beginLift: (item: HTMLElement, handle: HTMLElement, pointerY: number, sourceIndex: number) => void;
+  setPointerY: (y: number) => void;
+  endDrop: () => Promise<void>;
+  isActive: () => boolean;
+  getState: () => Readonly<ReorderState>;
+  destroy: () => void;
+};
+
+/**
+ * Tick-driven reorder session. Probe (and later editor) provide host hooks;
+ * this owns placement, FLIP, indicator fade, scroll, and drop glide.
+ */
+export const createReorderController = (host: ReorderHost): ReorderController => {
+  const scrollDriver = createScrollDriver();
+  let state = idleState();
+  let dropIndicator: HTMLElement | null = null;
+  let dropNeighborAbove: HTMLElement | null = null;
+  let rafId = 0;
+  let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+  let flipMovingElements: HTMLElement[] = [];
+  let activeFadeGhosts: HTMLElement[] = [];
+  let indicatorAnim: IndicatorAnim = { type: 'steady' };
+  let lastStatusKey = '';
+
+  const nowMs = () => performance.now();
+
+  const getIndicatorBody = () =>
+    dropIndicator?.querySelector<HTMLElement>(`.${host.classes.indicatorBody}`) ?? null;
+
+  const applyIndicatorOpacity = (value: number) => {
+    state.indicatorOpacity = value;
+    const body = getIndicatorBody();
+    if (body) body.style.opacity = String(value);
+  };
+
+  const clearGhosts = () => {
+    activeFadeGhosts.forEach((ghost) => ghost.remove());
+    activeFadeGhosts = [];
+  };
+
+  const clearActiveFlip = () => {
+    if (flipCleanupTimer) {
+      clearTimeout(flipCleanupTimer);
+      flipCleanupTimer = null;
+    }
+    flipMovingElements.forEach((el) => {
+      el.classList.remove(host.classes.flipMoving);
+      el.style.transition = '';
+      el.style.transform = '';
+    });
+    flipMovingElements = [];
+  };
+
+  const releaseNeighbor = () => {
+    if (dropNeighborAbove && host.classes.dropPreviewAbove) {
+      dropNeighborAbove.classList.remove(host.classes.dropPreviewAbove);
+    }
+    dropNeighborAbove = null;
+  };
+
+  const bindNeighbor = (insertIndex: number) => {
+    releaseNeighbor();
+    if (!host.classes.dropPreviewAbove || insertIndex <= 0) return;
+    const items = host.getItems();
+    const above = items[insertIndex - 1] ?? null;
+    if (!above) return;
+    dropNeighborAbove = above;
+    above.classList.add(host.classes.dropPreviewAbove);
+  };
+
+  const placeIndicatorBeforeIndex = (index: number) => {
+    const zone = host.getDropZone();
+    const dragItem = host.getDragItem();
+    if (!zone || !dropIndicator) return;
+
+    if (index === state.sourceIndex && dragItem) {
+      dragItem.before(dropIndicator);
+      return;
+    }
+
+    const items = host.getItems();
+    if (index >= items.length) zone.append(dropIndicator);
+    else items[index].before(dropIndicator);
+  };
+
+  const applySlotMetrics = (insertIndex: number) => {
+    if (!dropIndicator) return;
+    const gaps = host.measureInsertGaps(insertIndex, state.sourceIndex, {
+      top: state.gapTop,
+      bottom: state.gapBottom,
+    });
+    dropIndicator.style.setProperty('--gap-top', gaps.top);
+    dropIndicator.style.setProperty('--gap-bottom', gaps.bottom);
+    dropIndicator.style.setProperty('--gap-height', `${state.blockHeight}px`);
+  };
+
+  const syncPlacement = (insertIndex: number) => {
+    releaseNeighbor();
+    applySlotMetrics(insertIndex);
+    placeIndicatorBeforeIndex(insertIndex);
+    bindNeighbor(insertIndex);
+  };
+
+  const createIndicator = () => {
+    const indicator = document.createElement('div');
+    indicator.className = host.classes.indicator;
+    indicator.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = host.classes.indicatorBody;
+    body.setAttribute('aria-hidden', 'true');
+    indicator.append(body);
+    return indicator;
+  };
+
+  const spawnFadeGhost = () => {
+    const body = getIndicatorBody();
+    if (!body || state.indicatorOpacity <= 0.05) return;
+
+    const rect = body.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const ghost = document.createElement('div');
+    ghost.className = `${host.classes.indicatorBody} ${host.classes.fadeGhost}`;
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.style.top = `${rect.top}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.opacity = String(state.indicatorOpacity);
+    (host.getDropZone() ?? document.body).appendChild(ghost);
+    activeFadeGhosts.push(ghost);
+
+    const duration = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS;
+    if (duration <= 0) {
+      ghost.remove();
+      activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      ghost.style.transition = `opacity ${duration}ms ease-out`;
+      ghost.style.opacity = '0';
+      setTimeout(() => {
+        ghost.remove();
+        activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
+      }, duration + 50);
+    });
+  };
+
+  const performFlipRelocate = (fromIndex: number, toIndex: number) => {
+    if (!dropIndicator || fromIndex === toIndex) {
+      syncPlacement(toIndex);
+      return;
+    }
+
+    const items = host.getItems();
+    const affected = getAffectedItems(items, fromIndex, toIndex);
+    const captureElements = [...new Set([...flipMovingElements, ...affected])];
+    const firstRects = new Map(
+      captureElements.map((el) => [el, el.getBoundingClientRect()]),
+    );
+
+    clearActiveFlip();
+    dropIndicator.classList.add('is-repositioning');
+    syncPlacement(toIndex);
+    void dropIndicator.offsetHeight;
+
+    const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.FLIP_REPOSITION_MS;
+    const moving: HTMLElement[] = [];
+
+    affected.forEach((el) => {
+      const first = firstRects.get(el);
+      if (!first) return;
+      const deltaY = first.top - el.getBoundingClientRect().top;
+      if (Math.abs(deltaY) < 0.5) return;
+      el.classList.add(host.classes.flipMoving);
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${deltaY}px)`;
+      moving.push(el);
+    });
+
+    flipMovingElements = moving;
+    void dropIndicator.offsetHeight;
+
+    if (!motionMs || moving.length === 0) {
+      clearActiveFlip();
+      dropIndicator.classList.remove('is-repositioning');
+      return;
+    }
+
+    requestAnimationFrame(() => {
+      moving.forEach((el) => {
+        el.style.transition = `transform ${motionMs}ms ease-out`;
+        el.style.transform = '';
+      });
+      flipCleanupTimer = setTimeout(() => {
+        flipCleanupTimer = null;
+        clearActiveFlip();
+        dropIndicator?.classList.remove('is-repositioning');
+      }, motionMs);
+    });
+  };
+
+  const relocateToTarget = (toIndex: number) => {
+    if (!dropIndicator || state.placedIndex === toIndex) return;
+
+    const fromIndex = state.placedIndex;
+    if (state.indicatorOpacity > 0.05 && !prefersReducedMotion()) {
+      spawnFadeGhost();
+    }
+
+    applyIndicatorOpacity(0);
+    performFlipRelocate(fromIndex, toIndex);
+    state.placedIndex = toIndex;
+
+    const delay = prefersReducedMotion() ? 0 : REORDER_TIMING.FADE_IN_DELAY_MS;
+    if (delay <= 0) {
+      indicatorAnim = {
+        type: 'fadeIn',
+        from: 0,
+        to: 1,
+        start: nowMs(),
+        duration: prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS,
+      };
+    } else {
+      indicatorAnim = { type: 'fadeInWait', until: nowMs() + delay };
+    }
+  };
+
+  const advanceIndicatorAnim = (now: number) => {
+    if (indicatorAnim.type === 'fadeInWait') {
+      if (now < indicatorAnim.until) return;
+      if (state.placedIndex !== state.targetIndex) {
+        indicatorAnim = { type: 'steady' };
+        return;
+      }
+      const duration = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS;
+      if (duration <= 0) {
+        applyIndicatorOpacity(1);
+        indicatorAnim = { type: 'steady' };
+        return;
+      }
+      indicatorAnim = {
+        type: 'fadeIn',
+        from: state.indicatorOpacity,
+        to: 1,
+        start: now,
+        duration,
+      };
+    }
+
+    if (indicatorAnim.type === 'fadeIn') {
+      if (state.placedIndex !== state.targetIndex) {
+        indicatorAnim = { type: 'steady' };
+        return;
+      }
+      const t = clamp01((now - indicatorAnim.start) / Math.max(1, indicatorAnim.duration));
+      const value = indicatorAnim.from
+        + (indicatorAnim.to - indicatorAnim.from) * easeOut(t);
+      applyIndicatorOpacity(value);
+      if (t >= 1) indicatorAnim = { type: 'steady' };
+    }
+  };
+
+  const updateStatus = () => {
+    if (!host.onStatus || state.phase === 'idle') return;
+    const key = `${state.sourceIndex}:${state.targetIndex}:${Math.round(window.scrollY)}`;
+    if (key === lastStatusKey) return;
+    lastStatusKey = key;
+    host.onStatus(
+      `Grabbing · insert ${state.targetIndex} / ${host.getItems().length}`,
+    );
+  };
+
+  const renderLift = () => {
+    const dragItem = host.getDragItem();
+    if (!dragItem || state.phase === 'idle') return;
+    dragItem.style.top = `${state.liftTop}px`;
+  };
+
+  const tick = (now: number) => {
+    rafId = 0;
+    if (state.phase !== 'lifted') return;
+
+    const lastTick = scrollDriver.getLastTickTime();
+    if (!lastTick) scrollDriver.setLastTickTime(now);
+    const dtMs = Math.min(48, now - scrollDriver.getLastTickTime());
+    scrollDriver.setLastTickTime(now);
+
+    scrollDriver.apply(dtMs, state.grabPointerY, state.pointerY);
+
+    const ideal = computeIdealLiftTop({
+      lastClientY: state.pointerY,
+      grabPointerY: state.grabPointerY,
+      liftGrabOffsetY: state.grabOffsetY,
+      liftInitialTop: state.liftInitialTop,
+    });
+    state.liftTop = prefersReducedMotion()
+      ? ideal
+      : smoothToward(state.liftTop, ideal, dtMs, SCROLL_HOLD.LIFT_FOLLOW_SMOOTHING);
+    renderLift();
+
+    const centerY = state.liftTop + state.blockHeight / 2;
+    state.targetIndex = resolveInsertIndexFromY(host.getItems(), centerY);
+
+    if (state.targetIndex !== state.placedIndex) {
+      relocateToTarget(state.targetIndex);
+    }
+
+    advanceIndicatorAnim(now);
+    updateStatus();
+
+    if (state.phase === 'lifted') {
+      rafId = requestAnimationFrame(tick);
+    }
+  };
+
+  const startTick = () => {
+    if (rafId) return;
+    rafId = requestAnimationFrame(tick);
+  };
+
+  const stopTick = () => {
+    if (!rafId) return;
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  };
+
+  const moveItemToIndex = (item: HTMLElement, insertIndex: number) => {
+    const zone = host.getDropZone();
+    if (!zone) return;
+    const items = host.getItems().filter((el) => el !== item);
+    if (insertIndex >= items.length) zone.append(item);
+    else items[insertIndex].before(item);
+  };
+
+  const animateDropToSlot = (item: HTMLElement) => {
+    const body = getIndicatorBody();
+    const targetRect = body?.getBoundingClientRect();
+    if (!targetRect) return Promise.resolve();
+
+    const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_ANIMATION_MS;
+    const settleMs = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_SCALE_MS;
+
+    item.classList.add('is-dropping');
+    void item.offsetHeight;
+
+    if (motionMs <= 0 && settleMs <= 0) {
+      item.classList.remove('is-lifted-raised');
+      item.style.top = `${targetRect.top}px`;
+      item.style.left = `${targetRect.left}px`;
+      item.classList.remove('is-dropping');
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          item.classList.remove('is-lifted-raised');
+          item.style.top = `${targetRect.top}px`;
+          item.style.left = `${targetRect.left}px`;
+          setTimeout(() => {
+            item.classList.remove('is-dropping');
+            resolve();
+          }, Math.max(motionMs, settleMs));
+        });
+      });
+    });
+  };
+
+  const teardownChrome = () => {
+    stopTick();
+    scrollDriver.reset();
+    clearActiveFlip();
+    clearGhosts();
+    releaseNeighbor();
+    indicatorAnim = { type: 'steady' };
+    dropIndicator?.remove();
+    dropIndicator = null;
+    lastStatusKey = '';
+  };
+
+  const clearLiftStyles = (item: HTMLElement) => {
+    item.classList.remove('is-lifted', 'is-lifted-raised', 'is-dropping');
+    item.style.position = '';
+    item.style.left = '';
+    item.style.top = '';
+    item.style.width = '';
+    item.style.margin = '';
+    item.style.zIndex = '';
+    item.style.transformOrigin = '';
+    item.style.removeProperty('transition');
+  };
+
+  return {
+    beginLift: (item, handle, pointerY, sourceIndex) => {
+      if (state.phase !== 'idle') return;
+
+      const rect = item.getBoundingClientRect();
+      state = {
+        phase: 'lifted',
+        sourceIndex,
+        targetIndex: sourceIndex,
+        placedIndex: sourceIndex,
+        pointerY,
+        grabPointerY: pointerY,
+        grabOffsetY: pointerY - rect.top,
+        liftTop: rect.top,
+        liftInitialTop: rect.top,
+        liftLeft: rect.left,
+        liftWidth: rect.width,
+        blockHeight: measureBlockHeight(item),
+        gapTop: measureGapAbove(item),
+        gapBottom: measureGapBelow(item),
+        indicatorOpacity: 1,
+      };
+
+      dropIndicator = createIndicator();
+      item.before(dropIndicator);
+      syncPlacement(sourceIndex);
+      dropIndicator.classList.add('is-visible');
+      applyIndicatorOpacity(1);
+
+      item.classList.add('is-lifted');
+      item.classList.remove('is-lifted-raised');
+      item.style.position = 'fixed';
+      item.style.left = `${rect.left}px`;
+      item.style.top = `${rect.top}px`;
+      item.style.width = `${rect.width}px`;
+      item.style.margin = '0';
+      item.style.zIndex = '100';
+      setLiftTransformOrigin(item, handle);
+
+      if (prefersReducedMotion()) {
+        item.classList.add('is-lifted-raised');
+      } else {
+        requestAnimationFrame(() => {
+          item.classList.add('is-lifted-raised');
+        });
+      }
+
+      scrollDriver.reset();
+      startTick();
+      updateStatus();
+    },
+
+    setPointerY: (y) => {
+      if (state.phase === 'lifted') state.pointerY = y;
+    },
+
+    endDrop: async () => {
+      if (state.phase !== 'lifted') return;
+      const item = host.getDragItem();
+      if (!item) return;
+
+      state.phase = 'dropping';
+      stopTick();
+      scrollDriver.reset();
+      clearGhosts();
+      clearActiveFlip();
+      dropIndicator?.classList.remove('is-repositioning');
+      indicatorAnim = { type: 'steady' };
+
+      const centerY = state.liftTop + state.blockHeight / 2;
+      const finalIndex = resolveInsertIndexFromY(host.getItems(), centerY);
+      state.targetIndex = finalIndex;
+
+      if (state.placedIndex !== finalIndex) {
+        syncPlacement(finalIndex);
+        state.placedIndex = finalIndex;
+      }
+      applyIndicatorOpacity(1);
+
+      await animateDropToSlot(item);
+
+      if (finalIndex !== state.sourceIndex) {
+        moveItemToIndex(item, finalIndex);
+      }
+
+      teardownChrome();
+      clearLiftStyles(item);
+      state = idleState();
+      host.onStatus?.('Idle · insert —');
+    },
+
+    isActive: () => state.phase === 'lifted' || state.phase === 'dropping',
+
+    getState: () => state,
+
+    destroy: () => {
+      const item = host.getDragItem();
+      teardownChrome();
+      if (item) clearLiftStyles(item);
+      state = idleState();
     },
   };
 };
