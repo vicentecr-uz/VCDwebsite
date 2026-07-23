@@ -557,9 +557,17 @@
     z-index: 70;
   }
 
+  /*
+    Layout-dirty cue: thicker dashed outline only (no wash), offset outward
+    so it sits clear of the content edge. outline-offset — not padding —
+    keeps layout/flow unchanged.
+  */
   .is-dev-mode [data-dev-project-drop-zone].is-section-order-dirty {
-    outline: 1px solid #6f6b62;
-    outline-offset: 0.35em;
+    border-radius: 0.15em;
+    outline: 2px dashed color-mix(in srgb, currentColor 45%, transparent);
+    outline-offset: 0.75em;
+    background: transparent;
+    transition: outline-color 0.15s ease;
   }
 
   .dev-section-drag-bridge {
@@ -662,7 +670,8 @@
     position: absolute;
     inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
     z-index: -1;
-    background: var(--color-bg, #ffffff);
+    /* Page background token — tracks light/dark when --color-bg changes. */
+    background: var(--color-bg);
     border-radius: var(--radius-control-smooth, 0.35em);
     /* Visibility is toggled with .is-visible so fade-out can wait until after settle. */
     opacity: 0;
@@ -679,7 +688,7 @@
   }
 
   /* Shadow fade-out on drop is WAAPI-synced with scale in sectionReorder.ts.
-     Opacity (white card) still fades after settle via .is-visible. */
+     Card opacity still fades after settle via .is-visible. */
 
   .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving {
     position: relative;
