@@ -225,6 +225,9 @@ const easingOptions = [
     let isAutoScrolling = false;
     /** Groups the user expanded via the header — stay open until they close them. */
     const pinnedOpenGroups = new WeakSet();
+    /** Groups the user collapsed via the header — stay closed only while
+     * scrollspy remains inside that group (cleared when leaving). */
+    const pinnedClosedGroups = new WeakSet();
     /** Section editor (level 2): keep all groups open; only highlight the active link. */
     let sectionEditorKeepOpen = false;
 
@@ -235,14 +238,18 @@ const easingOptions = [
     const activateSectionEditorSidebar = () => {
       sectionEditorKeepOpen = true;
       getNavGroups().forEach((group) => {
-        if (group instanceof HTMLDetailsElement) pinnedOpenGroups.add(group);
+        if (!(group instanceof HTMLDetailsElement)) return;
+        pinnedOpenGroups.add(group);
+        pinnedClosedGroups.delete(group);
       });
     };
 
     const deactivateSectionEditorSidebar = () => {
       sectionEditorKeepOpen = false;
       getNavGroups().forEach((group) => {
-        if (group instanceof HTMLDetailsElement) pinnedOpenGroups.delete(group);
+        if (!(group instanceof HTMLDetailsElement)) return;
+        pinnedOpenGroups.delete(group);
+        pinnedClosedGroups.delete(group);
       });
     };
     const navId = nav.dataset.navId || '';
@@ -1128,7 +1135,25 @@ const easingOptions = [
         .map((group) => ({ group, shouldOpen: true }));
       if (!batch.length) return;
       animateGroups(batch);
-      batch.forEach(({ group }) => pinnedOpenGroups.add(group));
+      batch.forEach(({ group }) => {
+        pinnedOpenGroups.add(group);
+        pinnedClosedGroups.delete(group);
+      });
+    };
+
+    /**
+     * When the active section's group is collapsed, highlight the group header
+     * so the user can still see which group they're in.
+     */
+    const syncActiveGroupHighlight = (activeGroup) => {
+      getNavGroups().forEach((group) => {
+        if (!(group instanceof HTMLDetailsElement)) return;
+        const summary = group.querySelector('.section-sidebar-nav__summary');
+        if (!(summary instanceof HTMLElement)) return;
+        const showGroupActive =
+          group === activeGroup && !groupIsVisuallyOpen(group);
+        summary.classList.toggle('is-active', showGroupActive);
+      });
     };
 
     const setActiveLink = (id) => {
@@ -1149,23 +1174,35 @@ const easingOptions = [
       if (sectionEditorKeepOpen) {
         if (activeGroup instanceof HTMLDetailsElement && !groupIsVisuallyOpen(activeGroup)) {
           pinnedOpenGroups.add(activeGroup);
+          pinnedClosedGroups.delete(activeGroup);
           animateGroup(activeGroup, true);
         }
+        syncActiveGroupHighlight(null);
         return;
       }
 
       /**
-       * Auto accordion: open the active link's group, close others — unless the
-       * user pinned a group open by expanding its header manually. Closing a
-       * pinned group clears the pin so scroll auto-behaviour resumes.
-       *
-       * Open/close animate in parallel so the next group title moves up while
-       * outgoing sub-links fade out and incoming ones fade in.
-       */
+     * Auto accordion: open the active link's group, close others — unless the
+     * user pinned a group open/closed via its header. A manual close only
+     * sticks while scrollspy stays inside that group; leaving clears the pin
+     * so scrolling back in opens it again. While closed, the group header
+     * carries the active highlight.
+     *
+     * Open/close animate in parallel so the next group title moves up while
+     * outgoing sub-links fade out and incoming ones fade in.
+     */
       const batch = [];
       getNavGroups().forEach((group) => {
         if (!(group instanceof HTMLDetailsElement)) return;
+        // Manual collapse only lasts for this visit inside the group.
+        if (pinnedClosedGroups.has(group) && group !== activeGroup) {
+          pinnedClosedGroups.delete(group);
+        }
         if (group === activeGroup) {
+          if (pinnedClosedGroups.has(group)) {
+            batch.push({ group, shouldOpen: false });
+            return;
+          }
           batch.push({ group, shouldOpen: true });
           return;
         }
@@ -1174,6 +1211,7 @@ const easingOptions = [
         }
       });
       if (batch.length) animateGroups(batch);
+      syncActiveGroupHighlight(activeGroup);
     };
 
     let ticking = false;
@@ -1211,9 +1249,19 @@ const easingOptions = [
         if (!(group instanceof HTMLDetailsElement)) return;
         event.preventDefault();
         const willBeOpen = !groupIsVisuallyOpen(group);
-        if (willBeOpen) pinnedOpenGroups.add(group);
-        else pinnedOpenGroups.delete(group);
+        if (willBeOpen) {
+          pinnedOpenGroups.add(group);
+          pinnedClosedGroups.delete(group);
+        } else {
+          pinnedOpenGroups.delete(group);
+          pinnedClosedGroups.add(group);
+        }
         animateGroup(group, willBeOpen);
+        const activeLink = nav.querySelector('.section-sidebar-nav__link.is-active');
+        const activeGroup = activeLink?.closest('.section-sidebar-nav__group') ?? null;
+        syncActiveGroupHighlight(
+          activeGroup instanceof HTMLDetailsElement ? activeGroup : null,
+        );
         return;
       }
 
@@ -1453,6 +1501,8 @@ const easingOptions = [
   }
 
   .section-sidebar-nav__summary {
+    position: relative;
+    isolation: isolate;
     display: flex;
     align-items: center;
     gap: 0.55em;
@@ -1464,7 +1514,8 @@ const easingOptions = [
     line-height: 1.25;
     cursor: pointer;
     user-select: none;
-    transition: background-color 0.18s ease;
+    background-color: transparent;
+    transition: color 0.55s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .section-sidebar-nav__summary::-webkit-details-marker {
@@ -1475,8 +1526,22 @@ const easingOptions = [
     content: '';
   }
 
-  .section-sidebar-nav__summary:hover {
-    background: var(--color-surface-soft, #f7f5f1);
+  /* Same soft fill as links — used for hover and collapsed-active group. */
+  .section-sidebar-nav__summary::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-color: var(--color-surface-soft, #f7f5f1);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .section-sidebar-nav__summary:hover::before,
+  .section-sidebar-nav__summary.is-active::before {
+    opacity: 1;
   }
 
   .section-sidebar-nav__summary svg {
@@ -1966,7 +2031,9 @@ const easingOptions = [
 
   @media (prefers-reduced-motion: reduce) {
     .section-sidebar-nav,
+    .section-sidebar-nav__summary,
     .section-sidebar-nav__summary svg,
+    .section-sidebar-nav__summary::before,
     .section-sidebar-nav__group-content,
     .section-sidebar-nav__link,
     .section-sidebar-nav__link::before {
