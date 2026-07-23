@@ -14,33 +14,40 @@
 
   const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
   const DRAG_BRIDGE_CLASS = 'dev-section-drag-bridge';
-  const HOME_CLASS = 'dev-section-reorder-home';
-  const GAP_CLASS = 'dev-section-reorder-gap';
+  const DROP_INDICATOR_CLASS = 'dev-section-drop-indicator';
+  const DROP_INDICATOR_BODY_CLASS = 'dev-section-drop-indicator__body';
+  const DROP_PREVIEW_BELOW_CLASS = 'is-drop-preview-below';
   const LIFT_BACKDROP_CLASS = 'dev-section-lift-backdrop';
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
+  const SPACER_CLASS = 'dev-section-reorder-spacer';
+
+  /** Drop indicator + animated insert preview during lift/scroll. */
+  const ENABLE_INSERT_PREVIEW = true;
 
   type InteractionState = 'idle' | 'lifted' | 'scrollMode' | 'dragMode';
 
   const HOVER_LEAVE_MS = 450;
-  const SCROLL_ACTIVATE_PX = 2;
-  const SCROLL_DRIVER_THRESHOLD_PX = 4;
-  const SCROLL_DRIVER_GAIN = 0.35;
-  const SCROLL_DRIVER_MAX = 28;
-  const BOUNDARY_PUSH_PX = 12;
+  const DEAD_ZONE_PX = 32;
+  const RAMP_PX = 200;
+  const MAX_SCROLL_SPEED = 66;
+  const VELOCITY_SMOOTHING = 0.1;
+  const LIFT_FOLLOW_SMOOTHING = 0.12;
   const AUTO_SCROLL_EDGE_PX = 96;
   const AUTO_SCROLL_MAX_SPEED = 18;
-  const GAP_EXIT_MS = 90;
-  const GAP_ENTER_MS = 140;
-  const HOME_FADE_MS = 90;
+  const DROP_INDICATOR_FADE_MS = 143;
+  const DROP_INDICATOR_EXIT_MS = 140;
+  const DROP_INDICATOR_ENTER_MS = 140;
+  const FLIP_REPOSITION_MS = 350;
+  const FADE_IN_DELAY_MS = 100;
+  const FLIP_MOVING_CLASS = 'is-section-flip-moving';
 
   let reorderActive = false;
   let interactionState: InteractionState = 'idle';
   let dragItem: HTMLElement | null = null;
   let dragHandle: HTMLElement | null = null;
   let dragPointerId: number | null = null;
-  let homePlaceholder: HTMLElement | null = null;
+  let dropIndicator: HTMLElement | null = null;
   let liftBackdrop: HTMLElement | null = null;
-  let gapElement: HTMLElement | null = null;
   let keyboardGrabItem: HTMLElement | null = null;
   let keyboardGrabSnapshot: number[] | null = null;
   let grabOrderSnapshot: number[] | null = null;
@@ -51,18 +58,37 @@
   let targetInsertIndex = 0;
   let liftedBlockHeight = 0;
   let liftAnchorY = 0;
+  let liftInitialTop = 0;
+  let liftGrabOffsetY = 0;
+  let liftCurrentTop = 0;
+  let liftGapTop = '0px';
+  let liftGapBottom = '0px';
+  let dropNeighborBelow: HTMLElement | null = null;
   let grabPointerX = 0;
   let grabPointerY = 0;
+  let dragPointerX = 0;
+  let dragPointerY = 0;
   let lastPointerY = 0;
-  let boundaryPushY = 0;
-  let gapAnimationToken = 0;
-  let gapAnimationTimer: ReturnType<typeof setTimeout> | null = null;
+  let dropIndicatorAnimationToken = 0;
+  let dropIndicatorAnimationTimer: ReturnType<typeof setTimeout> | null = null;
   let autoScrollRafId = 0;
   let sessionTickRafId = 0;
   let sessionPointerActive = false;
   let sessionButtonDown = false;
   let lastClientX = 0;
   let lastClientY = 0;
+  let scrollVelocity = 0;
+  let scrollRemainder = 0;
+  let lastSessionTickTime = 0;
+  let syncedPreviewIndex = -1;
+  let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
+  let flipMovingElements: HTMLElement[] = [];
+  let repositionAnimationToken = 0;
+  let indicatorOpacityAnimToken = 0;
+  let indicatorDelayTimer: ReturnType<typeof setTimeout> | null = null;
+  let indicatorOpacityLevel = 1;
+  let placedInsertIndex = 0;
+  let repositionRunnerActive = false;
 
   const trackClientPosition = (event: MouseEvent | PointerEvent) => {
     lastClientX = event.clientX;
@@ -72,18 +98,94 @@
   document.addEventListener('pointermove', trackClientPosition, { capture: true, passive: true });
   document.addEventListener('mousemove', trackClientPosition, { capture: true, passive: true });
 
-  const driveScrollFromPointer = () => {
-    const delta = dragPointerY - grabPointerY;
-    if (Math.abs(delta) < SCROLL_DRIVER_THRESHOLD_PX) return;
-
-    const speed = Math.min(
-      SCROLL_DRIVER_MAX,
-      Math.max(3, Math.abs(delta) * SCROLL_DRIVER_GAIN),
-    );
-    window.scrollBy(0, delta < 0 ? -speed : speed);
+  const resetScrollDriver = () => {
+    scrollVelocity = 0;
+    scrollRemainder = 0;
+    lastSessionTickTime = 0;
   };
 
-  const processSessionFrame = () => {
+  const maxScrollY = () =>
+    Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+
+  const targetScrollVelocity = () => {
+    const delta = lastClientY - grabPointerY;
+    const distance = Math.abs(delta);
+    if (distance < DEAD_ZONE_PX) return 0;
+
+    const beyond = distance - DEAD_ZONE_PX;
+    const t = Math.min(1, beyond / RAMP_PX);
+    const eased = t * t * t;
+    return (delta < 0 ? -1 : 1) * eased * MAX_SCROLL_SPEED;
+  };
+
+  const applySmoothedScroll = (dtMs: number) => {
+    const target = targetScrollVelocity();
+    const frameFactor = dtMs / (1000 / 60);
+    const blend = 1 - (1 - VELOCITY_SMOOTHING) ** frameFactor;
+    scrollVelocity += (target - scrollVelocity) * blend;
+
+    scrollRemainder += scrollVelocity * frameFactor;
+    if (Math.abs(scrollRemainder) < 0.5) return;
+
+    const step = scrollRemainder > 0
+      ? Math.floor(scrollRemainder)
+      : Math.ceil(scrollRemainder);
+    window.scrollBy(0, step);
+    scrollRemainder -= step;
+  };
+
+  const computeIdealLiftTop = () => {
+    const wantsDown = lastClientY > grabPointerY + DEAD_ZONE_PX;
+    const wantsUp = lastClientY < grabPointerY - DEAD_ZONE_PX;
+    const atTop = window.scrollY <= 0.5;
+    const atBottom = window.scrollY >= maxScrollY() - 0.5;
+
+    if ((atBottom && wantsDown) || (atTop && wantsUp)) {
+      return lastClientY - liftGrabOffsetY;
+    }
+
+    return liftInitialTop;
+  };
+
+  const applyLiftFollow = (dtMs: number) => {
+    if (!dragItem) return;
+
+    const ideal = computeIdealLiftTop();
+    if (prefersReducedMotion()) {
+      liftCurrentTop = ideal;
+    } else {
+      const frameFactor = dtMs / (1000 / 60);
+      const blend = 1 - (1 - LIFT_FOLLOW_SMOOTHING) ** frameFactor;
+      liftCurrentTop += (ideal - liftCurrentTop) * blend;
+    }
+
+    dragItem.style.top = `${liftCurrentTop}px`;
+  };
+
+  const liftedBlockCenterY = () => liftCurrentTop + liftedBlockHeight / 2;
+
+  const isDropPreviewAnimating = () =>
+    Boolean(dropIndicator?.classList.contains('is-fading-out')
+      || dropIndicator?.classList.contains('is-exiting'));
+
+  const syncScrollModePreview = () => {
+    if (!ENABLE_INSERT_PREVIEW || !dragItem || !dropIndicator) return;
+    if (isDropPreviewAnimating()) return;
+    const next = resolveInsertIndex(liftedBlockCenterY());
+    if (next === syncedPreviewIndex) return;
+    syncedPreviewIndex = next;
+    void setDropPreviewIndex(next);
+  };
+
+  const flushPendingPreview = () => {
+    if (!ENABLE_INSERT_PREVIEW || !dragItem || !dropIndicator || isDropPreviewAnimating()) return;
+    const next = resolveInsertIndex(liftedBlockCenterY());
+    if (next === targetInsertIndex && dropIndicator.classList.contains('is-visible')) return;
+    syncedPreviewIndex = next;
+    void setDropPreviewIndex(next);
+  };
+
+  const processSessionFrame = (dtMs: number) => {
     if (!dragItem || !sessionButtonDown) return;
 
     dragPointerX = lastClientX;
@@ -91,7 +193,9 @@
 
     if (interactionState === 'lifted' || interactionState === 'scrollMode') {
       interactionState = 'scrollMode';
-      driveScrollFromPointer();
+      applySmoothedScroll(dtMs);
+      applyLiftFollow(dtMs);
+      syncScrollModePreview();
       lastPointerY = lastClientY;
       return;
     }
@@ -102,9 +206,12 @@
     }
   };
 
-  const sessionTick = () => {
+  const sessionTick = (now: number) => {
     sessionTickRafId = 0;
-    processSessionFrame();
+    if (!lastSessionTickTime) lastSessionTickTime = now;
+    const dtMs = Math.min(48, now - lastSessionTickTime);
+    lastSessionTickTime = now;
+    processSessionFrame(dtMs);
     if (dragItem && sessionButtonDown) {
       sessionTickRafId = requestAnimationFrame(sessionTick);
     }
@@ -173,7 +280,8 @@
   const dropZone = () => getDropZone();
 
   const isChromeNode = (el: HTMLElement) =>
-    el.classList.contains(HOME_CLASS) || el.classList.contains(GAP_CLASS);
+    el.classList.contains(SPACER_CLASS)
+    || (ENABLE_INSERT_PREVIEW && el.classList.contains(DROP_INDICATOR_CLASS));
 
   const getContentSections = () =>
     getSectionRootsInDomOrder().filter((el) => el !== dragItem && !isChromeNode(el));
@@ -259,78 +367,401 @@
     else zone.insertBefore(item, before);
   };
 
-  const placeGapBeforeIndex = (index: number) => {
+  const placeDropIndicatorBeforeIndex = (index: number) => {
     const zone = dropZone();
-    if (!zone || !gapElement) return;
+    if (!zone || !dropIndicator) return;
 
-    const sections = getContentSections();
-    if (index >= sections.length) zone.append(gapElement);
-    else sections[index].before(gapElement);
-  };
-
-  const clearGapAnimationTimer = () => {
-    if (gapAnimationTimer) clearTimeout(gapAnimationTimer);
-    gapAnimationTimer = null;
-  };
-
-  const waitMs = (ms: number) => new Promise<void>((resolve) => {
-    gapAnimationTimer = setTimeout(resolve, ms);
-  });
-
-  const removeGapElement = () => {
-    if (!gapElement) return;
-    gapElement.remove();
-    gapElement = null;
-  };
-
-  const updateHomeSlot = () => {
-    if (!homePlaceholder) return;
-    const showHome = targetInsertIndex === sourceIndex;
-    homePlaceholder.classList.toggle('is-active', showHome);
-    homePlaceholder.style.transitionDuration = prefersReducedMotion() ? '0ms' : `${HOME_FADE_MS}ms`;
-  };
-
-  const setGapPreviewIndex = async (nextIndex: number) => {
-    const clamped = Math.max(0, Math.min(nextIndex, getContentSections().length));
-    if (clamped === targetInsertIndex && (clamped === sourceIndex || gapElement)) {
-      updateHomeSlot();
+    if (index === sourceIndex && dragItem) {
+      dragItem.before(dropIndicator);
       return;
     }
 
-    const token = ++gapAnimationToken;
-    clearGapAnimationTimer();
+    const sections = getContentSections();
+    if (index >= sections.length) zone.append(dropIndicator);
+    else sections[index].before(dropIndicator);
+  };
 
-    if (gapElement) {
-      if (prefersReducedMotion()) {
-        removeGapElement();
-      } else {
-        gapElement.classList.remove('is-entering');
-        gapElement.classList.add('is-exiting');
-        await waitMs(GAP_EXIT_MS);
-        if (token !== gapAnimationToken) return;
-        removeGapElement();
+  const clearDropIndicatorAnimationTimer = () => {
+    if (dropIndicatorAnimationTimer) clearTimeout(dropIndicatorAnimationTimer);
+    dropIndicatorAnimationTimer = null;
+  };
+
+  const waitMs = (ms: number) => new Promise<void>((resolve) => {
+    dropIndicatorAnimationTimer = setTimeout(resolve, ms);
+  });
+
+  const removeDropIndicator = () => {
+    releaseDropNeighbors();
+    if (!dropIndicator) return;
+    dropIndicator.remove();
+    dropIndicator = null;
+  };
+
+  const measureGapAbove = (el: HTMLElement) => {
+    const prev = el.previousElementSibling;
+    if (!(prev instanceof HTMLElement)) return getComputedStyle(el).marginTop;
+    const gap = el.getBoundingClientRect().top - prev.getBoundingClientRect().bottom;
+    if (gap <= 0) return getComputedStyle(el).marginTop;
+    return `${gap}px`;
+  };
+
+  const measureGapBelow = (el: HTMLElement) => {
+    const next = el.nextElementSibling;
+    if (!(next instanceof HTMLElement)) return getComputedStyle(el).marginBottom;
+    const gap = next.getBoundingClientRect().top - el.getBoundingClientRect().bottom;
+    if (gap <= 0) return getComputedStyle(el).marginBottom;
+    return `${gap}px`;
+  };
+
+  const captureInsertGapTop = (insertIndex: number) => {
+    const sections = getContentSections();
+    if (insertIndex < sections.length) {
+      return getComputedStyle(sections[insertIndex]).marginTop;
+    }
+    if (sections.length === 0) return '0px';
+
+    const probe = document.createElement('div');
+    probe.hidden = true;
+    probe.style.display = 'block';
+    sections[sections.length - 1].after(probe);
+    const gapTop = getComputedStyle(probe).marginTop;
+    probe.remove();
+    return gapTop;
+  };
+
+  const createDropIndicatorElement = () => {
+    const indicator = document.createElement('div');
+    indicator.className = DROP_INDICATOR_CLASS;
+    indicator.setAttribute('aria-hidden', 'true');
+    const body = document.createElement('div');
+    body.className = DROP_INDICATOR_BODY_CLASS;
+    body.setAttribute('aria-hidden', 'true');
+    indicator.append(body);
+    return indicator;
+  };
+
+  const resolveDropNeighborBelow = (): HTMLElement | null => {
+    if (!dropIndicator) return null;
+
+    let next = dropIndicator.nextElementSibling;
+    if (!(next instanceof HTMLElement)) return null;
+    if (next === dragItem) {
+      next = next.nextElementSibling;
+      if (!(next instanceof HTMLElement)) return null;
+    }
+    if (isChromeNode(next)) return null;
+    return next;
+  };
+
+  const releaseDropNeighbors = () => {
+    dropNeighborBelow?.classList.remove(DROP_PREVIEW_BELOW_CLASS);
+    dropNeighborBelow = null;
+  };
+
+  const bindDropNeighbors = () => {
+    releaseDropNeighbors();
+    if (!dropIndicator) return;
+
+    const below = resolveDropNeighborBelow();
+    if (below) {
+      dropNeighborBelow = below;
+      below.classList.add(DROP_PREVIEW_BELOW_CLASS);
+    }
+  };
+
+  const applyDropSlotMetrics = (insertIndex: number) => {
+    if (!dropIndicator) return;
+
+    const atSource = insertIndex === sourceIndex;
+    dropIndicator.style.setProperty('--gap-top', atSource ? liftGapTop : captureInsertGapTop(insertIndex));
+    dropIndicator.style.setProperty('--gap-bottom', atSource ? liftGapBottom : '0px');
+    dropIndicator.style.setProperty('--gap-height', `${liftedBlockHeight}px`);
+  };
+
+  const syncDropPreviewPlacement = (insertIndex: number) => {
+    applyDropSlotMetrics(insertIndex);
+    placeDropIndicatorBeforeIndex(insertIndex);
+    bindDropNeighbors();
+  };
+
+  const getAffectedSections = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return [];
+    const sections = getContentSections();
+    const start = Math.min(fromIndex, toIndex);
+    const end = Math.max(fromIndex, toIndex) - 1;
+    const affected: HTMLElement[] = [];
+    for (let i = start; i <= end && i < sections.length; i += 1) {
+      affected.push(sections[i]);
+    }
+    return affected;
+  };
+
+  const clearActiveFlip = () => {
+    if (flipCleanupTimer) {
+      clearTimeout(flipCleanupTimer);
+      flipCleanupTimer = null;
+    }
+    flipMovingElements.forEach((el) => {
+      el.classList.remove(FLIP_MOVING_CLASS);
+      el.style.transition = '';
+      el.style.transform = '';
+    });
+    flipMovingElements = [];
+  };
+
+  const getIndicatorBody = () =>
+    dropIndicator?.querySelector<HTMLElement>(`.${DROP_INDICATOR_BODY_CLASS}`) ?? null;
+
+  const setIndicatorBodyOpacity = (value: number) => {
+    const body = getIndicatorBody();
+    if (!body) return;
+    indicatorOpacityLevel = value;
+    body.style.opacity = String(value);
+  };
+
+  const syncIndicatorOpacityFromDom = () => {
+    const body = getIndicatorBody();
+    if (!body) return;
+    const computed = Number.parseFloat(getComputedStyle(body).opacity);
+    if (Number.isFinite(computed)) indicatorOpacityLevel = computed;
+  };
+
+  const cancelIndicatorOpacityAnimation = () => {
+    indicatorOpacityAnimToken += 1;
+    if (indicatorDelayTimer) {
+      clearTimeout(indicatorDelayTimer);
+      indicatorDelayTimer = null;
+    }
+    const body = getIndicatorBody();
+    if (!body) return;
+    body.style.transition = '';
+    syncIndicatorOpacityFromDom();
+  };
+
+  const animateIndicatorBodyOpacity = (
+    target: number,
+    durationMs: number,
+    repositionToken: number,
+  ) => {
+    const body = getIndicatorBody();
+    if (!body || durationMs <= 0) {
+      setIndicatorBodyOpacity(target);
+      return Promise.resolve();
+    }
+
+    const animToken = ++indicatorOpacityAnimToken;
+    const from = indicatorOpacityLevel;
+    body.style.transition = 'none';
+    body.style.opacity = String(from);
+
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        if (animToken !== indicatorOpacityAnimToken || repositionToken !== repositionAnimationToken) {
+          resolve();
+          return;
+        }
+
+        const finish = () => {
+          if (animToken !== indicatorOpacityAnimToken) return;
+          indicatorOpacityLevel = target;
+          resolve();
+        };
+
+        const onEnd = (event: TransitionEvent) => {
+          if (event.propertyName !== 'opacity') return;
+          body.removeEventListener('transitionend', onEnd);
+          finish();
+        };
+
+        body.addEventListener('transitionend', onEnd);
+        body.style.transition = `opacity ${durationMs}ms ease-out`;
+        body.style.opacity = String(target);
+
+        setTimeout(() => {
+          body.removeEventListener('transitionend', onEnd);
+          finish();
+        }, durationMs + 50);
+      });
+    });
+  };
+
+  const waitForIndicatorDelay = (ms: number, repositionToken: number) =>
+    new Promise<void>((resolve) => {
+      if (indicatorDelayTimer) clearTimeout(indicatorDelayTimer);
+      indicatorDelayTimer = setTimeout(() => {
+        indicatorDelayTimer = null;
+        if (repositionToken === repositionAnimationToken) resolve();
+      }, ms);
+    });
+
+  const performDomRepositionWithFlip = (fromIndex: number, toIndex: number) => {
+    if (!dropIndicator) return Promise.resolve();
+
+    if (fromIndex === toIndex) {
+      syncDropPreviewPlacement(toIndex);
+      return Promise.resolve();
+    }
+
+    const affected = getAffectedSections(fromIndex, toIndex);
+    const captureElements = [...new Set([...flipMovingElements, ...affected])];
+    const firstRects = new Map(
+      captureElements.map((el) => [el, el.getBoundingClientRect()]),
+    );
+
+    clearActiveFlip();
+
+    dropIndicator.classList.add('is-repositioning');
+    syncDropPreviewPlacement(toIndex);
+    void dropIndicator.offsetHeight;
+
+    const motionMs = prefersReducedMotion() ? 0 : FLIP_REPOSITION_MS;
+    const moving: HTMLElement[] = [];
+
+    affected.forEach((el) => {
+      const first = firstRects.get(el);
+      if (!first) return;
+      const deltaY = first.top - el.getBoundingClientRect().top;
+      if (Math.abs(deltaY) < 0.5) return;
+      el.classList.add(FLIP_MOVING_CLASS);
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${deltaY}px)`;
+      moving.push(el);
+    });
+
+    flipMovingElements = moving;
+    void dropIndicator.offsetHeight;
+
+    if (!motionMs || moving.length === 0) {
+      clearActiveFlip();
+      dropIndicator.classList.remove('is-repositioning');
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        moving.forEach((el) => {
+          el.style.transition = `transform ${motionMs}ms ease-out`;
+          el.style.transform = '';
+        });
+
+        flipCleanupTimer = setTimeout(() => {
+          flipCleanupTimer = null;
+          clearActiveFlip();
+          dropIndicator?.classList.remove('is-repositioning');
+          resolve();
+        }, motionMs);
+      });
+    });
+  };
+
+  const ensureRepositionRunner = async () => {
+    if (repositionRunnerActive || !dropIndicator) return;
+
+    repositionRunnerActive = true;
+    const runnerToken = ++repositionAnimationToken;
+
+    try {
+      while (placedInsertIndex !== targetInsertIndex) {
+        if (runnerToken !== repositionAnimationToken) return;
+
+        const fromIndex = placedInsertIndex;
+        const toIndex = targetInsertIndex;
+
+        const fadeOutMs = prefersReducedMotion() ? 0 : DROP_INDICATOR_FADE_MS;
+        if (indicatorOpacityLevel > 0.05 && fadeOutMs > 0) {
+          await animateIndicatorBodyOpacity(0, fadeOutMs, runnerToken);
+          if (runnerToken !== repositionAnimationToken) return;
+        } else {
+          setIndicatorBodyOpacity(0);
+        }
+
+        await performDomRepositionWithFlip(fromIndex, toIndex);
+        placedInsertIndex = toIndex;
+
+        if (runnerToken !== repositionAnimationToken) return;
+        if (placedInsertIndex !== targetInsertIndex) continue;
+
+        const fadeInDelayMs = prefersReducedMotion() ? 0 : FADE_IN_DELAY_MS;
+        if (fadeInDelayMs > 0) {
+          await waitForIndicatorDelay(fadeInDelayMs, runnerToken);
+          if (runnerToken !== repositionAnimationToken) return;
+          if (placedInsertIndex !== targetInsertIndex) continue;
+        }
+
+        const fadeInMs = prefersReducedMotion() ? 0 : DROP_INDICATOR_FADE_MS;
+        if (fadeInMs > 0) {
+          await animateIndicatorBodyOpacity(1, fadeInMs, runnerToken);
+        } else {
+          setIndicatorBodyOpacity(1);
+        }
       }
+    } finally {
+      repositionRunnerActive = false;
+      if (placedInsertIndex !== targetInsertIndex && dropIndicator) {
+        void ensureRepositionRunner();
+      }
+    }
+  };
+
+  const setDropPreviewIndex = async (nextIndex: number) => {
+    const clamped = Math.max(0, Math.min(nextIndex, getContentSections().length));
+
+    if (!ENABLE_INSERT_PREVIEW) {
+      targetInsertIndex = clamped;
+      return;
+    }
+
+    if (!dropIndicator) return;
+
+    if (clamped === targetInsertIndex && dropIndicator.classList.contains('is-visible')) {
+      syncDropPreviewPlacement(clamped);
+      return;
+    }
+
+    dropIndicatorAnimationToken += 1;
+    clearDropIndicatorAnimationTimer();
+
+    if (dropIndicator.classList.contains('is-visible')) {
+      targetInsertIndex = clamped;
+      syncedPreviewIndex = clamped;
+      void ensureRepositionRunner();
+      flushPendingPreview();
+      return;
+    }
+
+    const token = dropIndicatorAnimationToken;
+
+    if (!prefersReducedMotion()) {
+      dropIndicator.classList.add('is-fading-out');
+      await waitMs(DROP_INDICATOR_FADE_MS);
+      if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
+      dropIndicator.classList.remove('is-fading-out');
+      dropIndicator.classList.add('is-exiting');
+      await waitMs(DROP_INDICATOR_EXIT_MS);
+      if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
+      dropIndicator.classList.remove('is-visible', 'is-exiting');
+    } else {
+      dropIndicator.classList.remove('is-visible');
     }
 
     targetInsertIndex = clamped;
-    updateHomeSlot();
-
-    if (clamped === sourceIndex || interactionState === 'dragMode') return;
-
-    gapElement = document.createElement('div');
-    gapElement.className = GAP_CLASS;
-    gapElement.setAttribute('aria-hidden', 'true');
-    gapElement.style.setProperty('--gap-height', `${liftedBlockHeight}px`);
-    placeGapBeforeIndex(clamped);
+    syncedPreviewIndex = clamped;
+    syncDropPreviewPlacement(clamped);
 
     if (prefersReducedMotion()) {
-      gapElement.classList.add('is-entering');
+      dropIndicator.classList.add('is-visible');
+      flushPendingPreview();
       return;
     }
 
     requestAnimationFrame(() => {
-      if (token !== gapAnimationToken || !gapElement) return;
-      gapElement.classList.add('is-entering');
+      if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
+      void dropIndicator.offsetHeight;
+      requestAnimationFrame(() => {
+        if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
+        dropIndicator.classList.add('is-visible');
+        flushPendingPreview();
+      });
     });
   };
 
@@ -344,20 +775,44 @@
     return sections.length;
   };
 
-  const applyFixedLift = (root: HTMLElement) => {
+  const setLiftTransformOrigin = (root: HTMLElement, handle: HTMLElement | null) => {
+    if (!handle) {
+      root.style.transformOrigin = '';
+      return;
+    }
+    const rootRect = root.getBoundingClientRect();
+    const handleRect = handle.getBoundingClientRect();
+    const originX = handleRect.left + handleRect.width / 2 - rootRect.left;
+    const originY = handleRect.top + handleRect.height / 2 - rootRect.top;
+    root.style.transformOrigin = `${originX}px ${originY}px`;
+  };
+
+  const applyFixedLift = (root: HTMLElement, handle: HTMLElement) => {
     const rect = root.getBoundingClientRect();
-    const sectionStyle = getComputedStyle(root);
     liftedBlockHeight = measureBlockHeight(root);
     liftAnchorY = rect.top + rect.height / 2;
+    liftInitialTop = rect.top;
+    liftGrabOffsetY = grabPointerY - rect.top;
+    liftCurrentTop = rect.top;
+    liftGapTop = measureGapAbove(root);
+    liftGapBottom = measureGapBelow(root);
 
-    homePlaceholder = document.createElement('div');
-    homePlaceholder.className = `${HOME_CLASS} is-active`;
-    homePlaceholder.setAttribute('aria-hidden', 'true');
-    homePlaceholder.style.setProperty('--gap-height', `${liftedBlockHeight}px`);
-    // Keep sibling spacing so blocks below don't jump when the section leaves flow.
-    homePlaceholder.style.marginTop = sectionStyle.marginTop;
-    homePlaceholder.style.marginBottom = sectionStyle.marginBottom;
-    root.before(homePlaceholder);
+    if (ENABLE_INSERT_PREVIEW) {
+      dropIndicator = createDropIndicatorElement();
+      root.before(dropIndicator);
+      syncDropPreviewPlacement(sourceIndex);
+      placedInsertIndex = sourceIndex;
+      dropIndicator.classList.add('is-visible');
+      setIndicatorBodyOpacity(1);
+    } else {
+      dropIndicator = document.createElement('div');
+      dropIndicator.className = SPACER_CLASS;
+      dropIndicator.setAttribute('aria-hidden', 'true');
+      dropIndicator.style.height = `${liftedBlockHeight}px`;
+      dropIndicator.style.marginTop = liftGapTop;
+      dropIndicator.style.marginBottom = liftGapBottom;
+      root.before(dropIndicator);
+    }
 
     liftBackdrop = document.createElement('div');
     liftBackdrop.className = LIFT_BACKDROP_CLASS;
@@ -365,12 +820,22 @@
     root.prepend(liftBackdrop);
 
     root.classList.add('is-section-lifted');
+    root.classList.remove('is-lifted-raised');
     root.style.position = 'fixed';
     root.style.left = `${rect.left}px`;
     root.style.top = `${rect.top}px`;
     root.style.width = `${rect.width}px`;
     root.style.margin = '0';
     root.style.zIndex = '100';
+    setLiftTransformOrigin(root, handle);
+
+    if (prefersReducedMotion()) {
+      root.classList.add('is-lifted-raised');
+    } else {
+      requestAnimationFrame(() => {
+        root.classList.add('is-lifted-raised');
+      });
+    }
   };
 
   const clearFixedLift = () => {
@@ -378,21 +843,26 @@
     liftBackdrop?.remove();
     liftBackdrop = null;
     dragItem.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
-    dragItem.classList.remove('is-section-lifted');
+    dragItem.classList.remove('is-section-lifted', 'is-lifted-raised');
     dragItem.style.position = '';
     dragItem.style.left = '';
     dragItem.style.top = '';
     dragItem.style.width = '';
     dragItem.style.margin = '';
     dragItem.style.zIndex = '';
+    dragItem.style.transformOrigin = '';
+    liftInitialTop = 0;
+    liftGrabOffsetY = 0;
+    liftCurrentTop = 0;
   };
 
   const teardownLiftChrome = () => {
-    gapAnimationToken += 1;
-    clearGapAnimationTimer();
-    removeGapElement();
-    homePlaceholder?.remove();
-    homePlaceholder = null;
+    dropIndicatorAnimationToken += 1;
+    repositionAnimationToken += 1;
+    clearDropIndicatorAnimationTimer();
+    clearActiveFlip();
+    cancelIndicatorOpacityAnimation();
+    removeDropIndicator();
     clearFixedLift();
     getSectionRootsInDomOrder().forEach((item) => {
       if (!isChromeNode(item)) item.classList.remove('is-section-drop-target');
@@ -420,14 +890,16 @@
     sourceIndex = sections.indexOf(root);
     if (sourceIndex < 0) sourceIndex = 0;
     targetInsertIndex = sourceIndex;
+    placedInsertIndex = sourceIndex;
 
     lastClientX = x;
     lastClientY = y;
     grabPointerX = x;
     grabPointerY = y;
     lastPointerY = y;
-    boundaryPushY = y;
+    syncedPreviewIndex = sourceIndex;
     grabOrderSnapshot = captureSectionOrder();
+    resetScrollDriver();
 
     if (pointerId >= 0) {
       try {
@@ -437,8 +909,12 @@
       }
     }
 
-    applyFixedLift(root);
+    applyFixedLift(root, handle);
     pinSectionControls(root);
+    getSectionRootsInDomOrder().forEach((section) => {
+      if (isChromeNode(section) || section === root) return;
+      section.classList.remove('is-dev-section-controls-visible');
+    });
     setSectionDragging(true);
 
     root.classList.add('is-section-lifted-session');
@@ -456,11 +932,9 @@
     if (!dragItem || interactionState === 'dragMode') return;
     interactionState = 'dragMode';
 
-    gapAnimationToken += 1;
-    clearGapAnimationTimer();
-    removeGapElement();
-    homePlaceholder?.remove();
-    homePlaceholder = null;
+    dropIndicatorAnimationToken += 1;
+    clearDropIndicatorAnimationTimer();
+    removeDropIndicator();
 
     clearFixedLift();
     moveSectionToIndex(dragItem, targetInsertIndex);
@@ -475,9 +949,7 @@
     if (interactionState === 'scrollMode' || interactionState === 'lifted') {
       if (targetInsertIndex !== sourceIndex) {
         clearFixedLift();
-        homePlaceholder?.remove();
-        homePlaceholder = null;
-        removeGapElement();
+        removeDropIndicator();
         moveSectionToIndex(dragItem, targetInsertIndex);
       }
     }
@@ -500,6 +972,7 @@
     const root = dragItem;
     sessionButtonDown = false;
     stopSessionTick();
+    resetScrollDriver();
     stopAutoScroll();
     unbindSessionPointerListeners();
 
@@ -560,36 +1033,6 @@
     sessionPointerActive = false;
     document.removeEventListener('pointerup', onSessionPointerUp, { capture: true });
     document.removeEventListener('mouseup', onSessionMouseUp, { capture: true });
-  };
-
-  const maxScrollY = () =>
-    Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
-
-  const checkBoundaryDragMode = () => {
-    if (interactionState !== 'scrollMode') return;
-
-    const atTop = window.scrollY <= 0;
-    const atBottom = window.scrollY >= maxScrollY();
-    const movingUp = dragPointerY < lastPointerY;
-    const movingDown = dragPointerY > lastPointerY;
-
-    if (atTop && movingUp) {
-      boundaryPushY = Math.min(boundaryPushY, dragPointerY);
-      if (boundaryPushY - dragPointerY >= BOUNDARY_PUSH_PX) {
-        void enterDragMode();
-      }
-      return;
-    }
-
-    if (atBottom && movingDown) {
-      boundaryPushY = Math.max(boundaryPushY, dragPointerY);
-      if (dragPointerY - boundaryPushY >= BOUNDARY_PUSH_PX) {
-        void enterDragMode();
-      }
-      return;
-    }
-
-    boundaryPushY = dragPointerY;
   };
 
   const insertRelativeToHover = (
@@ -762,7 +1205,7 @@
     root.classList.add('is-section-keyboard-grabbed');
     root.setAttribute('aria-grabbed', 'true');
     handle.setAttribute('aria-grabbed', 'true');
-    void setGapPreviewIndex(sourceIndex);
+    void setDropPreviewIndex(sourceIndex);
   };
 
   const releaseKeyboardGrab = (revert: boolean) => {
@@ -771,6 +1214,7 @@
     keyboardGrabItem = null;
     sessionButtonDown = false;
     stopSessionTick();
+    resetScrollDriver();
     unbindSessionPointerListeners();
 
     if (revert && keyboardGrabSnapshot) {
@@ -795,7 +1239,7 @@
     if (!keyboardGrabItem || !dragItem) return;
     const max = getContentSections().length;
     const next = Math.max(0, Math.min(targetInsertIndex + delta, max));
-    void setGapPreviewIndex(next);
+    void setDropPreviewIndex(next);
 
     const sections = getContentSections();
     const scrollTarget = sections[next] ?? sections[next - 1];
@@ -808,6 +1252,7 @@
     const snapshot = keyboardGrabSnapshot ?? grabOrderSnapshot;
     sessionButtonDown = false;
     stopSessionTick();
+    resetScrollDriver();
     stopAutoScroll();
     unbindSessionPointerListeners();
     if (snapshot) restoreDomOrder(snapshot);
@@ -1024,8 +1469,22 @@
   }
 
   .is-dev-mode .is-section-lifted {
+    position: relative;
+    isolation: isolate;
     pointer-events: none;
     touch-action: none;
+    transform: scale(1);
+    transition: transform 200ms ease-out;
+  }
+
+  .is-dev-mode .is-section-lifted.is-lifted-raised {
+    transform: scale(1.02);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .is-dev-mode .is-section-lifted {
+      transition: none;
+    }
   }
 
   .is-dev-mode .is-section-lifted.is-section-lifted-session {
@@ -1035,7 +1494,7 @@
   .dev-section-lift-backdrop {
     position: absolute;
     inset: -0.75em;
-    z-index: 0;
+    z-index: -1;
     background: var(--color-bg, #ffffff);
     border-radius: var(--radius-control-smooth, 0.35em);
     box-shadow: 0 0.6em 2em rgb(0 0 0 / 0.14);
@@ -1050,8 +1509,37 @@
 
   html.is-section-reorder-dragging .dev-section-drag-handle {
     cursor: grabbing;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  html.is-section-reorder-dragging
+    [data-dev-section-reorderable]:is(
+      .is-section-lifted-session,
+      .is-section-keyboard-grabbed,
+      .is-section-dragging
+    )
+    > .dev-section-drag-handle {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  html.is-section-reorder-dragging
+    [data-dev-section-reorderable]:not(
+      .is-section-lifted-session,
+      .is-section-keyboard-grabbed,
+      .is-section-dragging
+    ):hover
+    > .dev-section-drag-bridge,
+  html.is-section-reorder-dragging
+    [data-dev-section-reorderable]:not(
+      .is-section-lifted-session,
+      .is-section-keyboard-grabbed,
+      .is-section-dragging
+    )
+    > .dev-section-drag-handle {
+    opacity: 0;
+    pointer-events: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -1060,15 +1548,58 @@
     }
   }
 
-  .is-dev-mode [data-dev-project-drop-zone] > .dev-section-reorder-gap {
-    margin: 0;
+  .is-dev-mode [data-dev-project-drop-zone] > .dev-section-drop-indicator {
+    margin-inline: 0;
   }
 
-  .dev-section-reorder-home {
-    height: var(--gap-height, 0);
+  .is-dev-mode [data-dev-project-drop-zone] > .is-drop-preview-below {
+    margin-top: 0 !important;
+  }
+
+  .dev-section-reorder-spacer {
+    box-sizing: border-box;
+    padding: 0;
+    border: 0;
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .dev-section-drop-indicator {
+    display: grid;
+    grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .dev-section-drop-indicator__body {
+    grid-row: 2;
+    min-height: 0;
+    height: 0;
     box-sizing: border-box;
     border: 1px dashed transparent;
     background: transparent;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transition:
+      height 140ms ease-out,
+      opacity 90ms ease-out,
+      background-color 90ms ease-out,
+      border-color 90ms ease-out;
+  }
+
+  .dev-section-drop-indicator.is-visible .dev-section-drop-indicator__body {
+    height: var(--gap-height, 0px);
+    opacity: 1;
+    border-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+    background: color-mix(in srgb, var(--color-surface-soft) 85%, transparent);
+  }
+
+  .dev-section-drop-indicator.is-fading-out .dev-section-drop-indicator__body {
     opacity: 0;
     transition:
       opacity 90ms ease-out,
@@ -1076,45 +1607,35 @@
       border-color 90ms ease-out;
   }
 
-  .dev-section-reorder-home.is-active {
-    opacity: 1;
-    border-color: color-mix(in srgb, var(--color-text-muted) 45%, transparent);
-    background: color-mix(in srgb, var(--color-surface-soft) 85%, transparent);
-  }
-
-  .dev-section-reorder-gap {
+  .dev-section-drop-indicator.is-visible.is-exiting .dev-section-drop-indicator__body,
+  .dev-section-drop-indicator.is-exiting .dev-section-drop-indicator__body {
     height: 0;
-    margin: 0;
     opacity: 0;
-    overflow: hidden;
-    box-sizing: border-box;
-    background: var(--color-bg, #ffffff);
     transition:
       height 140ms ease-out,
-      opacity 90ms ease-out;
+      opacity 90ms ease-out,
+      background-color 90ms ease-out,
+      border-color 90ms ease-out;
   }
 
-  .dev-section-reorder-gap.is-entering {
-    height: var(--gap-height, 0);
-    opacity: 1;
+  .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving {
+    position: relative;
+    z-index: 1;
+    will-change: transform;
   }
 
-  .dev-section-reorder-gap.is-exiting {
-    height: 0;
-    opacity: 0;
-    transition:
-      height 90ms ease-out,
-      opacity 90ms ease-out;
+  .dev-section-drop-indicator.is-repositioning,
+  .dev-section-drop-indicator.is-repositioning .dev-section-drop-indicator__body {
+    transition: none !important;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .dev-section-reorder-home,
-    .dev-section-reorder-gap {
+    .dev-section-drop-indicator__body {
       transition: none;
     }
 
-    .dev-section-reorder-gap.is-entering {
-      height: var(--gap-height, 0);
+    .dev-section-drop-indicator.is-visible .dev-section-drop-indicator__body {
+      height: var(--gap-height, 0px);
       opacity: 1;
     }
   }
