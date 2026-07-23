@@ -353,37 +353,76 @@
 
   /** Prefer the crop/media frame so the handle tracks the visible box, not captions. */
   const cropFrameForHandle = (root: HTMLElement): HTMLElement => {
-    if (
+    const media = (
       root.classList.contains('project-cropped')
       || root.classList.contains('project-media')
       || root.classList.contains('project-image')
-    ) {
-      return root;
-    }
-    return root.querySelector<HTMLElement>(
-      ':scope > .project-cropped, :scope > .project-media, :scope > figure.project-media',
-    ) ?? root;
+    )
+      ? root
+      : root.querySelector<HTMLElement>(
+        ':scope > .project-cropped, :scope > .project-media, :scope > figure.project-media',
+      ) ?? root;
+
+    // A below-image caption lives inside the figure, so the figure box is taller
+    // than the picture. Anchor to the crop frame so controls sit beside the
+    // image rather than beside the image-plus-caption.
+    return media.querySelector<HTMLElement>(':scope > .project-crop-clip') ?? media;
   };
 
+  /** Media element → its section root, so frame resizes can re-anchor the section. */
+  const anchorFrameOwners = new WeakMap<HTMLElement, HTMLElement>();
+
+  /**
+   * Publish the media box on the section root as custom properties.
+   *
+   * Section chrome (drag handle, delete) is positioned against the section,
+   * which spans the full column. But a block *is* its image: constrain the width
+   * or cap the height and the media becomes narrower than the column, leaving the
+   * controls stranded out in the margin. These vars let them track the media —
+   * and the caption already does, since it lives inside the figure.
+   */
   const syncDragHandleAnchor = (root: HTMLElement) => {
     const handle = root.querySelector<HTMLButtonElement>(`:scope > [${DRAG_HANDLE_ATTR}]`);
-    if (!handle) return;
-
     const frame = cropFrameForHandle(root);
+
     if (frame === root) {
-      handle.style.top = '50%';
+      handle?.style.removeProperty('top');
+      root.style.removeProperty('--dev-section-anchor-y');
+      root.style.removeProperty('--dev-section-inset');
+      root.style.removeProperty('--dev-section-inset-end');
       return;
     }
 
     const rootRect = root.getBoundingClientRect();
     const frameRect = frame.getBoundingClientRect();
-    handle.style.top = `${frameRect.top - rootRect.top + frameRect.height / 2}px`;
+
+    // Vertical centre of the media, not of the section — a below-caption adds
+    // height that the controls should not be centred on.
+    root.style.setProperty(
+      '--dev-section-anchor-y',
+      `${Math.round(frameRect.top - rootRect.top + frameRect.height / 2)}px`,
+    );
+    // Left and right measured separately: constrained media is centred today,
+    // but this stays correct if a block is ever aligned to one edge.
+    const insetStart = Math.max(0, Math.round(frameRect.left - rootRect.left));
+    const insetEnd = Math.max(0, Math.round(rootRect.right - frameRect.right));
+    root.style.setProperty('--dev-section-inset', `${insetStart}px`);
+    root.style.setProperty('--dev-section-inset-end', `${insetEnd}px`);
+
+    // The section is always full width, so only the frame resizing signals a
+    // change (e.g. switching max view height). Observe it too.
+    if (!anchorFrameOwners.has(frame)) {
+      anchorFrameOwners.set(frame, root);
+      handleAnchorObserver?.observe(frame);
+    }
   };
 
   const handleAnchorObserver = typeof ResizeObserver !== 'undefined'
     ? new ResizeObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.target instanceof HTMLElement) syncDragHandleAnchor(entry.target);
+        const target = entry.target;
+        if (!(target instanceof HTMLElement)) return;
+        syncDragHandleAnchor(anchorFrameOwners.get(target) ?? target);
       });
     })
     : null;
@@ -492,6 +531,29 @@
     syncDragHandles();
   });
 
+  /**
+   * Re-anchor when a tuner reshapes a frame. The ResizeObserver covers passive
+   * layout changes, but not a crop clip created mid-session (live-first crop) —
+   * that node is new and unobserved until the next sync. Editors announce frame
+   * changes here so the chrome never lags the image it belongs to.
+   */
+  window.addEventListener('vcd:dev-frame-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
+    const scope = event.detail?.target?.closest<HTMLElement>('[data-dev-spacing-document], .project-block');
+    if (scope) {
+      syncDragHandleAnchor(scope);
+      return;
+    }
+    getSectionRootsInDomOrder().forEach((root) => {
+      if (!isChromeNode(root)) syncDragHandleAnchor(root);
+    });
+  }) as EventListener);
+
+  window.addEventListener('resize', () => {
+    getSectionRootsInDomOrder().forEach((root) => {
+      if (!isChromeNode(root)) syncDragHandleAnchor(root);
+    });
+  });
+
   window.addEventListener('vcd:dev-pending-committed', () => {
     const zone = dropZone();
     if (!zone) return;
@@ -581,7 +643,7 @@
     position: absolute;
     top: 0;
     bottom: 0;
-    left: -4.5em;
+    left: calc(var(--dev-section-inset, 0px) - 4.5em);
     width: 4.5em;
     z-index: 2;
     pointer-events: none;
@@ -596,8 +658,9 @@
 
   .dev-section-drag-handle {
     position: absolute;
-    top: 50%;
-    left: 0;
+    /* Track the media box, not the full-width section — see syncDragHandleAnchor. */
+    top: var(--dev-section-anchor-y, 50%);
+    left: var(--dev-section-inset, 0px);
     z-index: 80;
     display: flex;
     align-items: center;

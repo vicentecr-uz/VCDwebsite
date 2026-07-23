@@ -333,6 +333,11 @@ import DevOverlay from '../DevOverlay.astro';
       else target.style.removeProperty('--project-max-vh');
     };
 
+    /** Tell section chrome (drag handle, delete) that this frame's box moved. */
+    const announceFrameChange = (target: HTMLElement) => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-frame-changed', { detail: { target } }));
+    };
+
     const applyFrameFlagsLive = (
       target: HTMLElement,
       flags: { constrained: boolean; maxVh: number | undefined },
@@ -351,6 +356,7 @@ import DevOverlay from '../DevOverlay.astro';
       image?.classList.remove('project-media__img--max80');
       const block = target.closest('.project-block');
       block?.classList.toggle('project-block--centered', flags.constrained || hasMaxVh);
+      announceFrameChange(target);
     };
 
     const syncWidthConstrainUi = () => {
@@ -594,6 +600,7 @@ import DevOverlay from '../DevOverlay.astro';
         }
         setTargetVariant(editTarget, selectedViewport, draft);
         editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
+        announceFrameChange(editTarget);
       }
       syncAspectRatioSelect();
       viewportButtons.forEach((button) => {
