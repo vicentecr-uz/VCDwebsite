@@ -1,7 +1,9 @@
 /** Size cropped project images to cover their frame (shared by SSR and dev inserts). */
 export function refreshProjectCropCovers(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('.project-cropped').forEach((frame) => {
-    const image = frame.querySelector<HTMLImageElement>(':scope > img');
+    const image = frame.querySelector<HTMLImageElement>(
+      ':scope > img, :scope > .project-crop-clip > img',
+    );
     if (!image?.naturalWidth || !image.naturalHeight) return;
 
     frame.style.setProperty(
@@ -60,7 +62,9 @@ function observeCropFrames(root: ParentNode): void {
 
 export function bindProjectCropCovers(root: ParentNode = document): void {
   refreshProjectCropCovers(root);
-  root.querySelectorAll<HTMLImageElement>('.project-cropped > img, .project-image-grid__image').forEach((image) => {
+  root.querySelectorAll<HTMLImageElement>(
+    '.project-cropped > img, .project-cropped > .project-crop-clip > img, .project-image-grid__image',
+  ).forEach((image) => {
     if (image.dataset.cropCoverBound === 'true') return;
     image.dataset.cropCoverBound = 'true';
     image.addEventListener('load', () => refreshProjectCropCovers(root));
