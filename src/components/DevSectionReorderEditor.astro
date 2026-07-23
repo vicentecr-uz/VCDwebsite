@@ -12,247 +12,39 @@
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar } from '../scripts/devSectionOutlineSync';
   import {
-    REORDER_TIMING,
-    SCROLL_HOLD,
-    computeIdealLiftTop,
-    createScrollDriver,
-    getAffectedItems,
-    measureBlockHeight,
-    measureGapAbove,
-    measureGapBelow,
+    createReorderController,
     prefersReducedMotion,
-    resolveInsertIndexFromY,
-    setLiftTransformOrigin,
-    smoothToward,
   } from '../scripts/sectionReorder';
 
   const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
   const DRAG_BRIDGE_CLASS = 'dev-section-drag-bridge';
   const DROP_INDICATOR_CLASS = 'dev-section-drop-indicator';
   const DROP_INDICATOR_BODY_CLASS = 'dev-section-drop-indicator__body';
-  const DROP_PREVIEW_BELOW_CLASS = 'is-drop-preview-below';
   const LIFT_BACKDROP_CLASS = 'dev-section-lift-backdrop';
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
-
-  /** Drop indicator + animated insert preview during lift/scroll. */
-  const ENABLE_INSERT_PREVIEW = true;
-
-  type InteractionState = 'idle' | 'lifted' | 'scrollMode' | 'dragMode';
-
-  const HOVER_LEAVE_MS = 450;
-  const AUTO_SCROLL_EDGE_PX = 96;
-  const AUTO_SCROLL_MAX_SPEED = 18;
-  const {
-    DROP_INDICATOR_FADE_MS,
-    DROP_INDICATOR_EXIT_MS,
-    DROP_INDICATOR_ENTER_MS,
-    FLIP_REPOSITION_MS,
-    FADE_IN_DELAY_MS,
-    DROP_ANIMATION_MS,
-    DROP_SCALE_MS,
-  } = REORDER_TIMING;
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
-  const scrollDriver = createScrollDriver();
+  const HOVER_LEAVE_MS = 450;
 
   let reorderActive = false;
-  let interactionState: InteractionState = 'idle';
   let dragItem: HTMLElement | null = null;
   let dragHandle: HTMLElement | null = null;
   let dragPointerId: number | null = null;
-  let dropIndicator: HTMLElement | null = null;
   let liftBackdrop: HTMLElement | null = null;
   let keyboardGrabItem: HTMLElement | null = null;
   let keyboardGrabSnapshot: number[] | null = null;
   let grabOrderSnapshot: number[] | null = null;
   let baselineOrder: number[] | null = null;
   let documentKey = '';
-
-  let sourceIndex = 0;
-  let targetInsertIndex = 0;
-  let liftedBlockHeight = 0;
-  let liftAnchorY = 0;
-  let liftInitialTop = 0;
-  let liftGrabOffsetY = 0;
-  let liftCurrentTop = 0;
-  let liftGapTop = '0px';
-  let liftGapBottom = '0px';
-  let dropNeighborBelow: HTMLElement | null = null;
-  let grabPointerX = 0;
-  let grabPointerY = 0;
-  let dragPointerX = 0;
-  let dragPointerY = 0;
-  let lastPointerY = 0;
-  let dropIndicatorAnimationToken = 0;
-  let dropIndicatorAnimationTimer: ReturnType<typeof setTimeout> | null = null;
-  let autoScrollRafId = 0;
-  let sessionTickRafId = 0;
   let sessionPointerActive = false;
   let sessionButtonDown = false;
-  let lastClientX = 0;
-  let lastClientY = 0;
-  let syncedPreviewIndex = -1;
-  let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
-  let flipMovingElements: HTMLElement[] = [];
-  let repositionAnimationToken = 0;
-  let indicatorOpacityAnimToken = 0;
-  let indicatorDelayTimer: ReturnType<typeof setTimeout> | null = null;
-  let indicatorOpacityLevel = 1;
-  let placedInsertIndex = 0;
-  let repositionRunnerActive = false;
   let dropInProgress = false;
-  let activeFadeGhosts: HTMLElement[] = [];
-
-  const trackClientPosition = (event: MouseEvent | PointerEvent) => {
-    lastClientX = event.clientX;
-    lastClientY = event.clientY;
-  };
-
-  document.addEventListener('pointermove', trackClientPosition, { capture: true, passive: true });
-  document.addEventListener('mousemove', trackClientPosition, { capture: true, passive: true });
-
-  const resetScrollDriver = () => {
-    scrollDriver.reset();
-  };
-
-  const applySmoothedScroll = (dtMs: number) => {
-    scrollDriver.apply(dtMs, grabPointerY, lastClientY);
-  };
-
-  const applyLiftFollow = (dtMs: number) => {
-    if (!dragItem) return;
-
-    const ideal = computeIdealLiftTop({
-      lastClientY,
-      grabPointerY,
-      liftGrabOffsetY,
-      liftInitialTop,
-    });
-    liftCurrentTop = prefersReducedMotion()
-      ? ideal
-      : smoothToward(liftCurrentTop, ideal, dtMs, SCROLL_HOLD.LIFT_FOLLOW_SMOOTHING);
-
-    dragItem.style.top = `${liftCurrentTop}px`;
-  };
-
-  const liftedBlockCenterY = () => liftCurrentTop + liftedBlockHeight / 2;
-
-  const isDropPreviewAnimating = () =>
-    Boolean(dropIndicator?.classList.contains('is-fading-out')
-      || dropIndicator?.classList.contains('is-exiting'));
-
-  const syncScrollModePreview = () => {
-    if (!ENABLE_INSERT_PREVIEW || !dragItem || !dropIndicator) return;
-    if (isDropPreviewAnimating()) return;
-    const next = resolveInsertIndex(liftedBlockCenterY());
-    if (next === syncedPreviewIndex) return;
-    syncedPreviewIndex = next;
-    void setDropPreviewIndex(next);
-  };
-
-  const flushPendingPreview = () => {
-    if (!ENABLE_INSERT_PREVIEW || !dragItem || !dropIndicator || isDropPreviewAnimating()) return;
-    const next = resolveInsertIndex(liftedBlockCenterY());
-    if (next === targetInsertIndex && dropIndicator.classList.contains('is-visible')) return;
-    syncedPreviewIndex = next;
-    void setDropPreviewIndex(next);
-  };
-
-  const processSessionFrame = (dtMs: number) => {
-    if (!dragItem || !sessionButtonDown) return;
-
-    dragPointerX = lastClientX;
-    dragPointerY = lastClientY;
-
-    if (interactionState === 'lifted' || interactionState === 'scrollMode') {
-      interactionState = 'scrollMode';
-      applySmoothedScroll(dtMs);
-      applyLiftFollow(dtMs);
-      syncScrollModePreview();
-      lastPointerY = lastClientY;
-      return;
-    }
-
-    if (interactionState === 'dragMode') {
-      updateDragModeHover(lastClientX, lastClientY);
-      lastPointerY = lastClientY;
-    }
-  };
-
-  const sessionTick = (now: number) => {
-    sessionTickRafId = 0;
-    const lastTick = scrollDriver.getLastTickTime();
-    if (!lastTick) scrollDriver.setLastTickTime(now);
-    const dtMs = Math.min(48, now - scrollDriver.getLastTickTime());
-    scrollDriver.setLastTickTime(now);
-    processSessionFrame(dtMs);
-    if (dragItem && sessionButtonDown) {
-      sessionTickRafId = requestAnimationFrame(sessionTick);
-    }
-  };
-
-  const startSessionTick = () => {
-    if (sessionTickRafId) return;
-    sessionTickRafId = requestAnimationFrame(sessionTick);
-  };
-
-  const stopSessionTick = () => {
-    if (!sessionTickRafId) return;
-    cancelAnimationFrame(sessionTickRafId);
-    sessionTickRafId = 0;
-  };
-
-  const stopScrollDriver = () => {
-    stopSessionTick();
-  };
-
-  const startScrollDriver = () => {
-    startSessionTick();
-  };
-
-  const stopAutoScroll = () => {
-    if (!autoScrollRafId) return;
-    cancelAnimationFrame(autoScrollRafId);
-    autoScrollRafId = 0;
-  };
-
-  const autoScrollStep = () => {
-    autoScrollRafId = 0;
-    if (!dragItem || interactionState !== 'dragMode') return;
-
-    const viewportHeight = window.innerHeight;
-    let scrollDelta = 0;
-
-    if (dragPointerY < AUTO_SCROLL_EDGE_PX) {
-      const depth = (AUTO_SCROLL_EDGE_PX - dragPointerY) / AUTO_SCROLL_EDGE_PX;
-      scrollDelta = -Math.max(2, Math.round(AUTO_SCROLL_MAX_SPEED * depth));
-    } else if (dragPointerY > viewportHeight - AUTO_SCROLL_EDGE_PX) {
-      const depth = (dragPointerY - (viewportHeight - AUTO_SCROLL_EDGE_PX)) / AUTO_SCROLL_EDGE_PX;
-      scrollDelta = Math.max(2, Math.round(AUTO_SCROLL_MAX_SPEED * depth));
-    }
-
-    if (scrollDelta !== 0) {
-      const prevScroll = window.scrollY;
-      window.scrollBy(0, scrollDelta);
-      if (window.scrollY !== prevScroll) {
-        updateDragModeHover(dragPointerX, dragPointerY);
-      }
-      autoScrollRafId = requestAnimationFrame(autoScrollStep);
-    }
-  };
-
-  const startAutoScroll = () => {
-    if (autoScrollRafId || interactionState !== 'dragMode') return;
-    autoScrollRafId = requestAnimationFrame(autoScrollStep);
-  };
-
-  const hoverLeaveTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
 
   const dropZone = () => getDropZone();
 
   const isChromeNode = (el: HTMLElement) =>
     el.classList.contains(SPACER_CLASS)
-    || (ENABLE_INSERT_PREVIEW && el.classList.contains(DROP_INDICATOR_CLASS));
+    || el.classList.contains(DROP_INDICATOR_CLASS);
 
   const getContentSections = () =>
     getSectionRootsInDomOrder().filter((el) => el !== dragItem && !isChromeNode(el));
@@ -279,8 +71,7 @@
 
     for (const id of order) {
       const root = rootsById.get(id);
-      if (!root) continue;
-      zone.append(root);
+      if (root) zone.append(root);
     }
   };
 
@@ -318,635 +109,43 @@
     syncDevSectionOutlineSidebar();
   };
 
-  const moveSectionToIndex = (item: HTMLElement, insertIndex: number) => {
-    const zone = dropZone();
-    if (!zone) return;
-
-    const others = getContentSections().filter((entry) => entry !== item);
-    const nextIndex = Math.max(0, Math.min(insertIndex, others.length));
-
-    if (nextIndex >= others.length) {
-      zone.append(item);
-      return;
-    }
-
-    const before = others[nextIndex];
-    const parent = before.parentElement;
-    if (parent) parent.insertBefore(item, before);
-    else zone.insertBefore(item, before);
-  };
-
-  const placeDropIndicatorBeforeIndex = (index: number) => {
-    const zone = dropZone();
-    if (!zone || !dropIndicator) return;
-
-    if (index === sourceIndex && dragItem) {
-      dragItem.before(dropIndicator);
-      return;
-    }
-
-    const sections = getContentSections();
-    if (index >= sections.length) zone.append(dropIndicator);
-    else sections[index].before(dropIndicator);
-  };
-
-  const clearDropIndicatorAnimationTimer = () => {
-    if (dropIndicatorAnimationTimer) clearTimeout(dropIndicatorAnimationTimer);
-    dropIndicatorAnimationTimer = null;
-  };
-
-  const waitMs = (ms: number) => new Promise<void>((resolve) => {
-    dropIndicatorAnimationTimer = setTimeout(resolve, ms);
+  const controller = createReorderController({
+    getItems: getContentSections,
+    getDropZone: dropZone,
+    getDragItem: () => dragItem,
+    classes: {
+      indicator: DROP_INDICATOR_CLASS,
+      indicatorBody: DROP_INDICATOR_BODY_CLASS,
+      flipMoving: FLIP_MOVING_CLASS,
+      lifted: 'is-section-lifted',
+      fadeGhost: 'is-drop-indicator-fade-ghost',
+    },
+    measureLiftGaps: (item) => ({
+      top: getComputedStyle(item).marginTop || '0px',
+      bottom: '0px',
+    }),
+    // Tapico spaces via margin-top. Put that margin on the indicator itself
+    // (not --gap-top) so collapse matches the live section and the dashed
+    // body lines up with the border box. Internal rails stay at 0.
+    measureInsertGaps: (_insertIndex, _sourceIndex, liftGaps) => ({
+      top: '0px',
+      bottom: '0px',
+      marginTop: liftGaps.top,
+    }),
   });
 
-  const removeDropIndicator = () => {
-    releaseDropNeighbors();
-    activeFadeGhosts.forEach((ghost) => ghost.remove());
-    activeFadeGhosts = [];
-    if (!dropIndicator) return;
-    dropIndicator.remove();
-    dropIndicator = null;
+  const removeLiftBackdrop = () => {
+    liftBackdrop?.remove();
+    liftBackdrop = null;
+    dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
   };
 
-  const captureInsertGapTop = (insertIndex: number) => {
-    const sections = getContentSections();
-    if (insertIndex < sections.length) {
-      return getComputedStyle(sections[insertIndex]).marginTop;
-    }
-    if (sections.length === 0) return '0px';
-
-    const probe = document.createElement('div');
-    probe.hidden = true;
-    probe.style.display = 'block';
-    sections[sections.length - 1].after(probe);
-    const gapTop = getComputedStyle(probe).marginTop;
-    probe.remove();
-    return gapTop;
-  };
-
-  const createDropIndicatorElement = () => {
-    const indicator = document.createElement('div');
-    indicator.className = DROP_INDICATOR_CLASS;
-    indicator.setAttribute('aria-hidden', 'true');
-    const body = document.createElement('div');
-    body.className = DROP_INDICATOR_BODY_CLASS;
-    body.setAttribute('aria-hidden', 'true');
-    indicator.append(body);
-    return indicator;
-  };
-
-  const resolveDropNeighborBelow = (): HTMLElement | null => {
-    if (!dropIndicator) return null;
-
-    let next = dropIndicator.nextElementSibling;
-    if (!(next instanceof HTMLElement)) return null;
-    if (next === dragItem) {
-      next = next.nextElementSibling;
-      if (!(next instanceof HTMLElement)) return null;
-    }
-    if (isChromeNode(next)) return null;
-    return next;
-  };
-
-  const releaseDropNeighbors = () => {
-    dropNeighborBelow?.classList.remove(DROP_PREVIEW_BELOW_CLASS);
-    dropNeighborBelow = null;
-  };
-
-  const bindDropNeighbors = () => {
-    const below = resolveDropNeighborBelow();
-    if (below) {
-      dropNeighborBelow = below;
-      below.classList.add(DROP_PREVIEW_BELOW_CLASS);
-    }
-  };
-
-  const applyDropSlotMetrics = (insertIndex: number) => {
-    if (!dropIndicator) return;
-
-    const atSource = insertIndex === sourceIndex;
-    dropIndicator.style.setProperty('--gap-top', atSource ? liftGapTop : captureInsertGapTop(insertIndex));
-    dropIndicator.style.setProperty('--gap-bottom', atSource ? liftGapBottom : '0px');
-    dropIndicator.style.setProperty('--gap-height', `${liftedBlockHeight}px`);
-  };
-
-  const syncDropPreviewPlacement = (insertIndex: number) => {
-    releaseDropNeighbors();
-    applyDropSlotMetrics(insertIndex);
-    placeDropIndicatorBeforeIndex(insertIndex);
-    bindDropNeighbors();
-  };
-
-  const getAffectedSections = (fromIndex: number, toIndex: number) =>
-    getAffectedItems(getContentSections(), fromIndex, toIndex);
-
-  const clearActiveFlip = () => {
-    if (flipCleanupTimer) {
-      clearTimeout(flipCleanupTimer);
-      flipCleanupTimer = null;
-    }
-    flipMovingElements.forEach((el) => {
-      el.classList.remove(FLIP_MOVING_CLASS);
-      el.style.transition = '';
-      el.style.transform = '';
-    });
-    flipMovingElements = [];
-  };
-
-  const getIndicatorBody = () =>
-    dropIndicator?.querySelector<HTMLElement>(`.${DROP_INDICATOR_BODY_CLASS}`) ?? null;
-
-  const setIndicatorBodyOpacity = (value: number) => {
-    const body = getIndicatorBody();
-    if (!body) return;
-    indicatorOpacityLevel = value;
-    body.style.opacity = String(value);
-  };
-
-  const syncIndicatorOpacityFromDom = () => {
-    const body = getIndicatorBody();
-    if (!body) return;
-    const computed = Number.parseFloat(getComputedStyle(body).opacity);
-    if (Number.isFinite(computed)) indicatorOpacityLevel = computed;
-  };
-
-  const cancelIndicatorOpacityAnimation = () => {
-    indicatorOpacityAnimToken += 1;
-    if (indicatorDelayTimer) {
-      clearTimeout(indicatorDelayTimer);
-      indicatorDelayTimer = null;
-    }
-    activeFadeGhosts.forEach((ghost) => ghost.remove());
-    activeFadeGhosts = [];
-    const body = getIndicatorBody();
-    if (!body) return;
-    body.style.transition = '';
-    syncIndicatorOpacityFromDom();
-  };
-
-  const spawnIndicatorFadeGhost = () => {
-    const body = getIndicatorBody();
-    if (!body || indicatorOpacityLevel <= 0.05) return null;
-
-    const rect = body.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-
-    const ghost = document.createElement('div');
-    ghost.className = `${DROP_INDICATOR_BODY_CLASS} is-drop-indicator-fade-ghost`;
-    ghost.setAttribute('aria-hidden', 'true');
-    ghost.style.top = `${rect.top}px`;
-    ghost.style.left = `${rect.left}px`;
-    ghost.style.width = `${rect.width}px`;
-    ghost.style.height = `${rect.height}px`;
-    ghost.style.opacity = String(indicatorOpacityLevel);
-    (dropZone() ?? document.body).appendChild(ghost);
-    activeFadeGhosts.push(ghost);
-    return ghost;
-  };
-
-  const ensureIndicatorVisibleAtTarget = () => {
-    if (!dropIndicator || dropInProgress) return;
-    if (placedInsertIndex !== targetInsertIndex) return;
-    if (indicatorOpacityLevel < 0.95) {
-      setIndicatorBodyOpacity(1);
-    }
-  };
-
-  const animateFadeGhost = (
-    ghost: HTMLElement,
-    durationMs: number,
-    repositionToken: number,
-  ) => {
-    if (durationMs <= 0) {
-      ghost.remove();
-      activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        if (repositionToken !== repositionAnimationToken) {
-          ghost.remove();
-          activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
-          resolve();
-          return;
-        }
-
-        const finish = () => {
-          ghost.remove();
-          activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
-          resolve();
-        };
-
-        const onEnd = (event: TransitionEvent) => {
-          if (event.propertyName !== 'opacity') return;
-          ghost.removeEventListener('transitionend', onEnd);
-          finish();
-        };
-
-        ghost.addEventListener('transitionend', onEnd);
-        ghost.style.transition = `opacity ${durationMs}ms ease-out`;
-        ghost.style.opacity = '0';
-
-        setTimeout(() => {
-          ghost.removeEventListener('transitionend', onEnd);
-          finish();
-        }, durationMs + 50);
-      });
-    });
-  };
-
-  const animateIndicatorBodyOpacity = (
-    target: number,
-    durationMs: number,
-    repositionToken: number,
-  ) => {
-    const body = getIndicatorBody();
-    if (!body || durationMs <= 0) {
-      setIndicatorBodyOpacity(target);
-      return Promise.resolve();
-    }
-
-    const animToken = ++indicatorOpacityAnimToken;
-    const from = indicatorOpacityLevel;
-    body.style.transition = 'none';
-    body.style.opacity = String(from);
-
-    return new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        if (animToken !== indicatorOpacityAnimToken || repositionToken !== repositionAnimationToken) {
-          resolve();
-          return;
-        }
-
-        const finish = () => {
-          if (animToken !== indicatorOpacityAnimToken) return;
-          indicatorOpacityLevel = target;
-          resolve();
-        };
-
-        const onEnd = (event: TransitionEvent) => {
-          if (event.propertyName !== 'opacity') return;
-          body.removeEventListener('transitionend', onEnd);
-          finish();
-        };
-
-        body.addEventListener('transitionend', onEnd);
-        body.style.transition = `opacity ${durationMs}ms ease-out`;
-        body.style.opacity = String(target);
-
-        setTimeout(() => {
-          body.removeEventListener('transitionend', onEnd);
-          finish();
-        }, durationMs + 50);
-      });
-    });
-  };
-
-  const waitForIndicatorDelay = (ms: number, repositionToken: number) =>
-    new Promise<void>((resolve) => {
-      if (indicatorDelayTimer) clearTimeout(indicatorDelayTimer);
-      indicatorDelayTimer = setTimeout(() => {
-        indicatorDelayTimer = null;
-        if (repositionToken === repositionAnimationToken) resolve();
-      }, ms);
-    });
-
-  const performDomRepositionWithFlip = (fromIndex: number, toIndex: number) => {
-    if (!dropIndicator) return Promise.resolve();
-
-    if (fromIndex === toIndex) {
-      syncDropPreviewPlacement(toIndex);
-      return Promise.resolve();
-    }
-
-    const affected = getAffectedSections(fromIndex, toIndex);
-    const captureElements = [...new Set([...flipMovingElements, ...affected])];
-    const firstRects = new Map(
-      captureElements.map((el) => [el, el.getBoundingClientRect()]),
-    );
-
-    clearActiveFlip();
-
-    dropIndicator.classList.add('is-repositioning');
-    syncDropPreviewPlacement(toIndex);
-    void dropIndicator.offsetHeight;
-
-    const motionMs = prefersReducedMotion() ? 0 : FLIP_REPOSITION_MS;
-    const moving: HTMLElement[] = [];
-
-    affected.forEach((el) => {
-      const first = firstRects.get(el);
-      if (!first) return;
-      const deltaY = first.top - el.getBoundingClientRect().top;
-      if (Math.abs(deltaY) < 0.5) return;
-      el.classList.add(FLIP_MOVING_CLASS);
-      el.style.transition = 'none';
-      el.style.transform = `translateY(${deltaY}px)`;
-      moving.push(el);
-    });
-
-    flipMovingElements = moving;
-    void dropIndicator.offsetHeight;
-
-    if (!motionMs || moving.length === 0) {
-      clearActiveFlip();
-      dropIndicator.classList.remove('is-repositioning');
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        moving.forEach((el) => {
-          el.style.transition = `transform ${motionMs}ms ease-out`;
-          el.style.transform = '';
-        });
-
-        flipCleanupTimer = setTimeout(() => {
-          flipCleanupTimer = null;
-          clearActiveFlip();
-          dropIndicator?.classList.remove('is-repositioning');
-          resolve();
-        }, motionMs);
-      });
-    });
-  };
-
-  const notifyRepositionIdle = () => {
-    ensureIndicatorVisibleAtTarget();
-  };
-
-  const ensureRepositionRunner = async () => {
-    if (repositionRunnerActive || !dropIndicator) return;
-
-    repositionRunnerActive = true;
-    const runnerToken = ++repositionAnimationToken;
-
-    try {
-      while (placedInsertIndex !== targetInsertIndex) {
-        if (runnerToken !== repositionAnimationToken) return;
-
-        const fromIndex = placedInsertIndex;
-        const toIndex = targetInsertIndex;
-
-        const fadeOutMs = prefersReducedMotion() ? 0 : DROP_INDICATOR_FADE_MS;
-        const shouldFadeOut = indicatorOpacityLevel > 0.05 && fadeOutMs > 0;
-        const fadeGhost = shouldFadeOut ? spawnIndicatorFadeGhost() : null;
-
-        if (fadeGhost) {
-          setIndicatorBodyOpacity(0);
-        }
-
-        const fadeOutPromise = fadeGhost
-          ? animateFadeGhost(fadeGhost, fadeOutMs, runnerToken)
-          : shouldFadeOut
-            ? animateIndicatorBodyOpacity(0, fadeOutMs, runnerToken)
-            : Promise.resolve(setIndicatorBodyOpacity(0));
-
-        await Promise.all([
-          fadeOutPromise,
-          performDomRepositionWithFlip(fromIndex, toIndex),
-        ]);
-        placedInsertIndex = toIndex;
-
-        if (runnerToken !== repositionAnimationToken) return;
-        if (placedInsertIndex !== targetInsertIndex) continue;
-
-        const fadeInDelayMs = prefersReducedMotion() ? 0 : FADE_IN_DELAY_MS;
-        if (fadeInDelayMs > 0) {
-          await waitForIndicatorDelay(fadeInDelayMs, runnerToken);
-          if (runnerToken !== repositionAnimationToken) return;
-          if (placedInsertIndex !== targetInsertIndex) continue;
-        }
-
-        const fadeInMs = prefersReducedMotion() ? 0 : DROP_INDICATOR_FADE_MS;
-        if (fadeInMs > 0) {
-          await animateIndicatorBodyOpacity(1, fadeInMs, runnerToken);
-        } else {
-          setIndicatorBodyOpacity(1);
-        }
-        ensureIndicatorVisibleAtTarget();
-      }
-    } finally {
-      repositionRunnerActive = false;
-      if (placedInsertIndex !== targetInsertIndex && dropIndicator) {
-        void ensureRepositionRunner();
-      }
-      notifyRepositionIdle();
-    }
-  };
-
-  const finalizeDropPlacement = () => {
-    const finalIndex = resolveInsertIndex(liftedBlockCenterY());
-    targetInsertIndex = finalIndex;
-    syncedPreviewIndex = finalIndex;
-    repositionAnimationToken += 1;
-    cancelIndicatorOpacityAnimation();
-    clearActiveFlip();
-    dropIndicator?.classList.remove('is-repositioning');
-
-    if (!dropIndicator) return;
-
-    syncDropPreviewPlacement(targetInsertIndex);
-    placedInsertIndex = targetInsertIndex;
-    setIndicatorBodyOpacity(1);
-  };
-
-  const animateDropToSlot = () => {
-    if (!dragItem || !dropIndicator) return Promise.resolve();
-
-    const body = getIndicatorBody();
-    const targetRect = body?.getBoundingClientRect();
-    if (!targetRect) return Promise.resolve();
-
-    const motionMs = prefersReducedMotion() ? 0 : DROP_ANIMATION_MS;
-    const settleMs = prefersReducedMotion() ? 0 : DROP_SCALE_MS;
-
-    dragItem.classList.add('is-dropping');
-    void dragItem.offsetHeight;
-
-    if (motionMs <= 0 && settleMs <= 0) {
-      dragItem.classList.remove('is-lifted-raised');
-      dragItem.style.top = `${targetRect.top}px`;
-      dragItem.style.left = `${targetRect.left}px`;
-      dragItem.classList.remove('is-dropping');
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!dragItem) {
-            resolve();
-            return;
-          }
-
-          dragItem.classList.remove('is-lifted-raised');
-          dragItem.style.top = `${targetRect.top}px`;
-          dragItem.style.left = `${targetRect.left}px`;
-
-          setTimeout(() => {
-            dragItem?.classList.remove('is-dropping');
-            resolve();
-          }, Math.max(motionMs, settleMs));
-        });
-      });
-    });
-  };
-
-  const setDropPreviewIndex = async (nextIndex: number) => {
-    const clamped = Math.max(0, Math.min(nextIndex, getContentSections().length));
-
-    if (!ENABLE_INSERT_PREVIEW) {
-      targetInsertIndex = clamped;
-      return;
-    }
-
-    if (!dropIndicator) return;
-
-    if (clamped === targetInsertIndex && dropIndicator.classList.contains('is-visible')) {
-      if (placedInsertIndex !== clamped) {
-        void ensureRepositionRunner();
-      } else {
-        syncDropPreviewPlacement(clamped);
-      }
-      return;
-    }
-
-    dropIndicatorAnimationToken += 1;
-    clearDropIndicatorAnimationTimer();
-
-    if (dropIndicator.classList.contains('is-visible')) {
-      targetInsertIndex = clamped;
-      syncedPreviewIndex = clamped;
-      void ensureRepositionRunner();
-      flushPendingPreview();
-      return;
-    }
-
-    const token = dropIndicatorAnimationToken;
-
-    if (!prefersReducedMotion()) {
-      dropIndicator.classList.add('is-fading-out');
-      await waitMs(DROP_INDICATOR_FADE_MS);
-      if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
-      dropIndicator.classList.remove('is-fading-out');
-      dropIndicator.classList.add('is-exiting');
-      await waitMs(DROP_INDICATOR_EXIT_MS);
-      if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
-      dropIndicator.classList.remove('is-visible', 'is-exiting');
-    } else {
-      dropIndicator.classList.remove('is-visible');
-    }
-
-    targetInsertIndex = clamped;
-    syncedPreviewIndex = clamped;
-    syncDropPreviewPlacement(clamped);
-
-    if (prefersReducedMotion()) {
-      dropIndicator.classList.add('is-visible');
-      flushPendingPreview();
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
-      void dropIndicator.offsetHeight;
-      requestAnimationFrame(() => {
-        if (token !== dropIndicatorAnimationToken || !dropIndicator) return;
-        dropIndicator.classList.add('is-visible');
-        flushPendingPreview();
-      });
-    });
-  };
-
-  const resolveInsertIndex = (clientY: number) =>
-    resolveInsertIndexFromY(getContentSections(), clientY);
-
-  const applyFixedLift = (root: HTMLElement, handle: HTMLElement) => {
-    const rect = root.getBoundingClientRect();
-    liftedBlockHeight = measureBlockHeight(root);
-    liftAnchorY = rect.top + rect.height / 2;
-    liftInitialTop = rect.top;
-    liftGrabOffsetY = grabPointerY - rect.top;
-    liftCurrentTop = rect.top;
-    liftGapTop = measureGapAbove(root);
-    liftGapBottom = measureGapBelow(root);
-
-    if (ENABLE_INSERT_PREVIEW) {
-      dropIndicator = createDropIndicatorElement();
-      root.before(dropIndicator);
-      syncDropPreviewPlacement(sourceIndex);
-      placedInsertIndex = sourceIndex;
-      dropIndicator.classList.add('is-visible');
-      setIndicatorBodyOpacity(1);
-    } else {
-      dropIndicator = document.createElement('div');
-      dropIndicator.className = SPACER_CLASS;
-      dropIndicator.setAttribute('aria-hidden', 'true');
-      dropIndicator.style.height = `${liftedBlockHeight}px`;
-      dropIndicator.style.marginTop = liftGapTop;
-      dropIndicator.style.marginBottom = liftGapBottom;
-      root.before(dropIndicator);
-    }
-
+  const attachLiftBackdrop = (root: HTMLElement) => {
+    removeLiftBackdrop();
     liftBackdrop = document.createElement('div');
     liftBackdrop.className = LIFT_BACKDROP_CLASS;
     liftBackdrop.setAttribute('aria-hidden', 'true');
     root.prepend(liftBackdrop);
-
-    root.classList.add('is-section-lifted');
-    root.classList.remove('is-lifted-raised');
-    root.style.position = 'fixed';
-    root.style.left = `${rect.left}px`;
-    root.style.top = `${rect.top}px`;
-    root.style.width = `${rect.width}px`;
-    root.style.margin = '0';
-    root.style.zIndex = '100';
-    setLiftTransformOrigin(root, handle);
-
-    if (prefersReducedMotion()) {
-      root.classList.add('is-lifted-raised');
-    } else {
-      requestAnimationFrame(() => {
-        root.classList.add('is-lifted-raised');
-      });
-    }
-  };
-
-  const clearFixedLift = () => {
-    if (!dragItem) return;
-    liftBackdrop?.remove();
-    liftBackdrop = null;
-    dragItem.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
-    dragItem.classList.remove('is-section-lifted', 'is-lifted-raised', 'is-dropping');
-    dragItem.style.position = '';
-    dragItem.style.left = '';
-    dragItem.style.top = '';
-    dragItem.style.width = '';
-    dragItem.style.margin = '';
-    dragItem.style.zIndex = '';
-    dragItem.style.transformOrigin = '';
-    dragItem.style.removeProperty('transition');
-    liftInitialTop = 0;
-    liftGrabOffsetY = 0;
-    liftCurrentTop = 0;
-  };
-
-  const teardownLiftChrome = () => {
-    dropIndicatorAnimationToken += 1;
-    repositionAnimationToken += 1;
-    clearDropIndicatorAnimationTimer();
-    clearActiveFlip();
-    cancelIndicatorOpacityAnimation();
-    removeDropIndicator();
-    clearFixedLift();
-    getSectionRootsInDomOrder().forEach((item) => {
-      if (!isChromeNode(item)) item.classList.remove('is-section-drop-target');
-    });
-    dragItem?.classList.remove('is-section-dragging', 'is-section-keyboard-grabbed');
-    dragItem?.setAttribute('aria-grabbed', 'false');
-    dragHandle?.setAttribute('aria-grabbed', 'false');
   };
 
   const setSectionDragging = (active: boolean) => {
@@ -956,212 +155,7 @@
     }
   };
 
-  const enterLift = (root: HTMLElement, handle: HTMLButtonElement, pointerId: number, x: number, y: number) => {
-    dragItem = root;
-    dragHandle = handle;
-    dragPointerId = pointerId >= 0 ? pointerId : null;
-    interactionState = 'lifted';
-    sessionButtonDown = pointerId >= 0;
-
-    const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
-    sourceIndex = sections.indexOf(root);
-    if (sourceIndex < 0) sourceIndex = 0;
-    targetInsertIndex = sourceIndex;
-    placedInsertIndex = sourceIndex;
-
-    lastClientX = x;
-    lastClientY = y;
-    grabPointerX = x;
-    grabPointerY = y;
-    lastPointerY = y;
-    syncedPreviewIndex = sourceIndex;
-    grabOrderSnapshot = captureSectionOrder();
-    resetScrollDriver();
-
-    if (pointerId >= 0) {
-      try {
-        handle.setPointerCapture(pointerId);
-      } catch {
-        // RAF session tick still tracks pointer position.
-      }
-    }
-
-    applyFixedLift(root, handle);
-    pinSectionControls(root);
-    getSectionRootsInDomOrder().forEach((section) => {
-      if (isChromeNode(section) || section === root) return;
-      section.classList.remove('is-dev-section-controls-visible');
-    });
-    setSectionDragging(true);
-
-    root.classList.add('is-section-lifted-session');
-    bindSessionPointerListeners();
-    startSessionTick();
-  };
-
-  const enterScrollMode = () => {
-    if (interactionState !== 'lifted') return;
-    interactionState = 'scrollMode';
-    startScrollDriver();
-  };
-
-  const enterDragMode = async () => {
-    if (!dragItem || interactionState === 'dragMode') return;
-    interactionState = 'dragMode';
-
-    dropIndicatorAnimationToken += 1;
-    clearDropIndicatorAnimationTimer();
-    removeDropIndicator();
-
-    clearFixedLift();
-    moveSectionToIndex(dragItem, targetInsertIndex);
-    dragItem.classList.add('is-section-dragging');
-    dragItem.style.pointerEvents = 'none';
-    dragHandle?.style.setProperty('pointer-events', 'auto');
-  };
-
-  const commitReorder = async () => {
-    if (!dragItem) return;
-
-    if (interactionState === 'scrollMode' || interactionState === 'lifted') {
-      await finalizeDropPlacement();
-      await animateDropToSlot();
-      if (targetInsertIndex !== sourceIndex) {
-        moveSectionToIndex(dragItem, targetInsertIndex);
-      }
-    }
-
-    teardownLiftChrome();
-    grabOrderSnapshot = null;
-    syncPending();
-  };
-
-  const cancelReorder = (revertDom: boolean) => {
-    if (revertDom) {
-      const snapshot = keyboardGrabSnapshot ?? grabOrderSnapshot;
-      if (snapshot) restoreDomOrder(snapshot);
-    }
-    teardownLiftChrome();
-    grabOrderSnapshot = null;
-  };
-
-  const finishPointerSession = async () => {
-    if (dropInProgress) return;
-    const root = dragItem;
-    sessionButtonDown = false;
-    stopSessionTick();
-    resetScrollDriver();
-    stopAutoScroll();
-    unbindSessionPointerListeners();
-
-    if (dragHandle && dragPointerId != null) {
-      try {
-        dragItem?.releasePointerCapture(dragPointerId);
-      } catch {
-        // Pointer may already be released.
-      }
-      try {
-        dragHandle.releasePointerCapture(dragPointerId);
-      } catch {
-        // Pointer may already be released.
-      }
-    }
-
-    if (interactionState === 'scrollMode' || interactionState === 'lifted') {
-      dropInProgress = true;
-      await commitReorder();
-      dropInProgress = false;
-    } else if (interactionState === 'dragMode') {
-      teardownLiftChrome();
-      syncPending();
-    }
-
-    setSectionDragging(false);
-    dragItem = null;
-    dragHandle = null;
-    dragPointerId = null;
-    interactionState = 'idle';
-
-    if (root) {
-      root.classList.remove('is-section-lifted-session');
-      root.style.pointerEvents = '';
-      scheduleUnpinSectionControls(root);
-    }
-  };
-
-  const onSessionPointerUp = (event: PointerEvent) => {
-    if (!sessionButtonDown || !dragItem) return;
-    if (dragPointerId !== null && event.pointerId !== dragPointerId) return;
-    finishPointerSession();
-  };
-
-  const onSessionMouseUp = (event: MouseEvent) => {
-    if (!sessionButtonDown || !dragItem) return;
-    if (event.button !== 0) return;
-    finishPointerSession();
-  };
-
-  const bindSessionPointerListeners = () => {
-    if (sessionPointerActive) return;
-    sessionPointerActive = true;
-    document.addEventListener('pointerup', onSessionPointerUp, { capture: true });
-    document.addEventListener('mouseup', onSessionMouseUp, { capture: true });
-  };
-
-  const unbindSessionPointerListeners = () => {
-    if (!sessionPointerActive) return;
-    sessionPointerActive = false;
-    document.removeEventListener('pointerup', onSessionPointerUp, { capture: true });
-    document.removeEventListener('mouseup', onSessionMouseUp, { capture: true });
-  };
-
-  const insertRelativeToHover = (
-    item: HTMLElement,
-    hoverItem: HTMLElement,
-    clientY: number,
-  ) => {
-    const others = getContentSections().filter((entry) => entry !== item);
-    const hoverRoot = resolveSectionRoot(hoverItem);
-    if (!hoverRoot) return;
-
-    let refIndex = others.indexOf(hoverRoot);
-    if (refIndex < 0) return;
-
-    const rect = hoverRoot.getBoundingClientRect();
-    const before = clientY < rect.top + rect.height / 2;
-    if (!before) refIndex += 1;
-
-    moveSectionToIndex(item, refIndex);
-  };
-
-  const hoverItemAtPoint = (clientX: number, clientY: number) => {
-    const stack = document.elementsFromPoint(clientX, clientY);
-    for (const node of stack) {
-      if (!(node instanceof HTMLElement)) continue;
-      if (dragItem && (node === dragItem || dragItem.contains(node))) continue;
-      if (isChromeNode(node)) continue;
-
-      const item = node.closest<HTMLElement>('[data-dev-section-reorderable]');
-      const root = resolveSectionRoot(item);
-      if (root && root !== dragItem) return root;
-    }
-    return null;
-  };
-
-  const updateDragModeHover = (clientX: number, clientY: number) => {
-    if (!dragItem) return;
-    const hoverItem = hoverItemAtPoint(clientX, clientY);
-    getContentSections().forEach((item) => item.classList.remove('is-section-drop-target'));
-    if (!hoverItem || hoverItem === dragItem) return;
-    hoverItem.classList.add('is-section-drop-target');
-    insertRelativeToHover(dragItem, hoverItem, clientY);
-  };
-
-  const handlePointerMove = (clientX: number, clientY: number) => {
-    lastClientX = clientX;
-    lastClientY = clientY;
-    processSessionFrame();
-  };
+  const hoverLeaveTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
 
   const pinSectionControls = (root: HTMLElement) => {
     const pending = hoverLeaveTimers.get(root);
@@ -1193,6 +187,147 @@
       }
     }, HOVER_LEAVE_MS));
   };
+
+  const clearHostLiftChrome = () => {
+    removeLiftBackdrop();
+    getSectionRootsInDomOrder().forEach((item) => {
+      if (!isChromeNode(item)) item.classList.remove('is-section-drop-target');
+    });
+    dragItem?.classList.remove('is-section-dragging', 'is-section-keyboard-grabbed');
+    dragItem?.setAttribute('aria-grabbed', 'false');
+    dragHandle?.setAttribute('aria-grabbed', 'false');
+  };
+
+  const enterLift = (
+    root: HTMLElement,
+    handle: HTMLButtonElement,
+    pointerId: number,
+    x: number,
+    y: number,
+    options: { followPointer?: boolean } = {},
+  ) => {
+    if (controller.isActive()) return;
+
+    dragItem = root;
+    dragHandle = handle;
+    dragPointerId = pointerId >= 0 ? pointerId : null;
+    sessionButtonDown = pointerId >= 0;
+
+    const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
+    let sourceIndex = sections.indexOf(root);
+    if (sourceIndex < 0) sourceIndex = 0;
+
+    grabOrderSnapshot = captureSectionOrder();
+
+    if (pointerId >= 0) {
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {
+        // Document listeners still track pointer position.
+      }
+    }
+
+    const followPointer = options.followPointer !== false;
+    const pointerY = followPointer ? y : root.getBoundingClientRect().top + root.getBoundingClientRect().height / 2;
+    controller.beginLift(root, handle, pointerY, sourceIndex, { followPointer });
+    attachLiftBackdrop(root);
+
+    pinSectionControls(root);
+    getSectionRootsInDomOrder().forEach((section) => {
+      if (isChromeNode(section) || section === root) return;
+      section.classList.remove('is-dev-section-controls-visible');
+    });
+    setSectionDragging(true);
+    root.classList.add('is-section-lifted-session');
+    bindSessionPointerListeners();
+  };
+
+  const finishPointerSession = async () => {
+    if (dropInProgress || !dragItem) return;
+    if (!controller.isActive() && !sessionButtonDown) return;
+
+    const root = dragItem;
+    sessionButtonDown = false;
+    unbindSessionPointerListeners();
+
+    if (dragHandle && dragPointerId != null) {
+      try {
+        dragItem?.releasePointerCapture(dragPointerId);
+      } catch {
+        // Pointer may already be released.
+      }
+      try {
+        dragHandle.releasePointerCapture(dragPointerId);
+      } catch {
+        // Pointer may already be released.
+      }
+    }
+
+    dropInProgress = true;
+    try {
+      if (controller.isActive()) {
+        await controller.endDrop();
+      }
+      clearHostLiftChrome();
+      grabOrderSnapshot = null;
+      syncPending();
+    } finally {
+      dropInProgress = false;
+      setSectionDragging(false);
+      dragItem = null;
+      dragHandle = null;
+      dragPointerId = null;
+      if (root) {
+        root.classList.remove('is-section-lifted-session');
+        root.style.pointerEvents = '';
+        scheduleUnpinSectionControls(root);
+      }
+    }
+  };
+
+  const cancelReorder = (revertDom: boolean) => {
+    if (revertDom) {
+      const snapshot = keyboardGrabSnapshot ?? grabOrderSnapshot;
+      if (snapshot) restoreDomOrder(snapshot);
+    }
+    controller.destroy();
+    clearHostLiftChrome();
+    grabOrderSnapshot = null;
+  };
+
+  const onSessionPointerUp = (event: PointerEvent) => {
+    if (!sessionButtonDown || !dragItem || keyboardGrabItem) return;
+    if (dragPointerId !== null && event.pointerId !== dragPointerId) return;
+    void finishPointerSession();
+  };
+
+  const onSessionMouseUp = (event: MouseEvent) => {
+    if (!sessionButtonDown || !dragItem || keyboardGrabItem) return;
+    if (event.button !== 0) return;
+    void finishPointerSession();
+  };
+
+  const bindSessionPointerListeners = () => {
+    if (sessionPointerActive) return;
+    sessionPointerActive = true;
+    document.addEventListener('pointerup', onSessionPointerUp, { capture: true });
+    document.addEventListener('mouseup', onSessionMouseUp, { capture: true });
+  };
+
+  const unbindSessionPointerListeners = () => {
+    if (!sessionPointerActive) return;
+    sessionPointerActive = false;
+    document.removeEventListener('pointerup', onSessionPointerUp, { capture: true });
+    document.removeEventListener('mouseup', onSessionMouseUp, { capture: true });
+  };
+
+  document.addEventListener('pointermove', (event) => {
+    if (!keyboardGrabItem) controller.setPointerY(event.clientY);
+  }, { capture: true, passive: true });
+
+  document.addEventListener('mousemove', (event) => {
+    if (!keyboardGrabItem) controller.setPointerY(event.clientY);
+  }, { capture: true, passive: true });
 
   const wireSectionControlHover = (root: HTMLElement) => {
     if (root.dataset.devSectionControlsWired === 'true') return;
@@ -1280,12 +415,10 @@
   const enterKeyboardLift = (root: HTMLElement, handle: HTMLButtonElement) => {
     keyboardGrabItem = root;
     keyboardGrabSnapshot = captureSectionOrder();
-    enterLift(root, handle, -1, 0, 0);
-    interactionState = 'scrollMode';
+    enterLift(root, handle, -1, 0, 0, { followPointer: false });
     root.classList.add('is-section-keyboard-grabbed');
     root.setAttribute('aria-grabbed', 'true');
     handle.setAttribute('aria-grabbed', 'true');
-    void setDropPreviewIndex(sourceIndex);
   };
 
   const releaseKeyboardGrab = async (revert: boolean) => {
@@ -1293,8 +426,6 @@
     const root = keyboardGrabItem;
     keyboardGrabItem = null;
     sessionButtonDown = false;
-    stopSessionTick();
-    resetScrollDriver();
     unbindSessionPointerListeners();
 
     if (revert && keyboardGrabSnapshot) {
@@ -1302,16 +433,21 @@
       keyboardGrabSnapshot = null;
     } else {
       dropInProgress = true;
-      await commitReorder();
-      dropInProgress = false;
-      keyboardGrabSnapshot = null;
+      try {
+        if (controller.isActive()) await controller.endDrop();
+        clearHostLiftChrome();
+        grabOrderSnapshot = null;
+        syncPending();
+      } finally {
+        dropInProgress = false;
+        keyboardGrabSnapshot = null;
+      }
     }
 
     setSectionDragging(false);
     dragItem = null;
     dragHandle = null;
     dragPointerId = null;
-    interactionState = 'idle';
     root.classList.remove('is-section-lifted-session', 'is-section-keyboard-grabbed');
     root.style.pointerEvents = '';
     scheduleUnpinSectionControls(root);
@@ -1319,28 +455,30 @@
 
   const moveKeyboardGrab = (delta: number) => {
     if (!keyboardGrabItem || !dragItem) return;
+    const state = controller.getState();
     const max = getContentSections().length;
-    const next = Math.max(0, Math.min(targetInsertIndex + delta, max));
-    void setDropPreviewIndex(next);
+    const next = Math.max(0, Math.min(state.targetIndex + delta, max));
+    controller.setTargetIndex(next);
 
     const sections = getContentSections();
     const scrollTarget = sections[next] ?? sections[next - 1];
-    scrollTarget?.scrollIntoView({ block: 'nearest', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    scrollTarget?.scrollIntoView({
+      block: 'nearest',
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+    });
   };
 
   const abortActiveSession = () => {
-    if (interactionState === 'idle' && !keyboardGrabItem) return;
+    if (!controller.isActive() && !keyboardGrabItem && !dragItem) return;
     const root = dragItem ?? keyboardGrabItem;
     const snapshot = keyboardGrabSnapshot ?? grabOrderSnapshot;
     sessionButtonDown = false;
-    stopSessionTick();
-    resetScrollDriver();
-    stopAutoScroll();
     unbindSessionPointerListeners();
     if (snapshot) restoreDomOrder(snapshot);
-    teardownLiftChrome();
+    controller.destroy();
+    clearHostLiftChrome();
     if (root) {
-      root.classList.remove('is-section-lifted-session');
+      root.classList.remove('is-section-lifted-session', 'is-section-keyboard-grabbed');
       root.style.pointerEvents = '';
     }
     setSectionDragging(false);
@@ -1350,7 +488,6 @@
     keyboardGrabItem = null;
     keyboardGrabSnapshot = null;
     grabOrderSnapshot = null;
-    interactionState = 'idle';
   };
 
   const setReorderActive = (active: boolean) => {
@@ -1360,7 +497,7 @@
       baselineOrder = captureSectionOrder();
     } else {
       abortActiveSession();
-      releaseKeyboardGrab(true);
+      void releaseKeyboardGrab(true);
       dropZone()?.classList.remove('is-section-order-dirty');
     }
     syncDragHandles();
@@ -1406,14 +543,14 @@
       if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();
         event.stopPropagation();
-        releaseKeyboardGrab(false);
+        void releaseKeyboardGrab(false);
         return;
       }
 
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        releaseKeyboardGrab(true);
+        void releaseKeyboardGrab(true);
         return;
       }
 
@@ -1440,12 +577,13 @@
       event.stopPropagation();
       const root = resolveSectionRoot(handle);
       if (!root) return;
-      enterKeyboardLift(root, handle);
+      enterKeyboardLift(root, handle as HTMLButtonElement);
     }
   });
 
   onDevModeChange();
 </script>
+
 
 <style is:global>
   .is-dev-mode .section-sidebar-nav {
