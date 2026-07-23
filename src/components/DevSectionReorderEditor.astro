@@ -178,6 +178,7 @@
     root: HTMLElement,
     handle: HTMLButtonElement,
     pointerId: number,
+    x: number,
     y: number,
   ) => {
     if (controller.isActive()) return;
@@ -199,7 +200,7 @@
       // Document listeners still track pointer position.
     }
 
-    controller.beginLift(root, handle, y, sourceIndex);
+    controller.beginLift(root, handle, x, y, sourceIndex);
     attachLiftBackdrop(root);
 
     pinSectionControls(root);
@@ -282,11 +283,11 @@
   };
 
   document.addEventListener('pointermove', (event) => {
-    controller.setPointerY(event.clientY);
+    controller.setPointer(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
   document.addEventListener('mousemove', (event) => {
-    controller.setPointerY(event.clientY);
+    controller.setPointer(event.clientX, event.clientY);
   }, { capture: true, passive: true });
 
   const wireSectionControlHover = (root: HTMLElement) => {
@@ -306,7 +307,7 @@
       if (!reorderActive) return;
       if (event.button !== 0) return;
 
-      enterLift(root, handle, event.pointerId, event.clientY);
+      enterLift(root, handle, event.pointerId, event.clientX, event.clientY);
       event.preventDefault();
     });
   };
