@@ -8,6 +8,7 @@ export function projectStackClass(
   const classes: string[] = [];
   if (spacing === 'related') classes.push('project-stack--related');
   else if (spacing === 'group') classes.push('project-stack--group');
+  else if (spacing === 'section') classes.push('project-stack--section');
   else if (spacing === 'major') classes.push('project-stack--major');
   else if (spacing === 'none') classes.push('project-stack--none');
   if (options?.precedeRelated) classes.push('project-stack--precede-related');
@@ -23,6 +24,23 @@ export function resolveProjectSpacing(
   if (spacing) return spacing;
   if (tightTop) return 'related';
   return 'section';
+}
+
+/**
+ * Page-top (index 0) default is flush (none). Missing/`section` default was the
+ * between-sibling gap token — on the first block that rendered as 0 via `* + *`.
+ * Explicit related/group/major/none are kept; explicit section means page-top 8em.
+ */
+export function resolveStackSpacingForIndex(
+  index: number,
+  spacing?: ProjectStackSpacing,
+  tightTop?: boolean,
+): ProjectStackSpacing {
+  if (index === 0) {
+    if (spacing === undefined && !tightTop) return 'none';
+    return resolveProjectSpacing(spacing, tightTop);
+  }
+  return resolveProjectSpacing(spacing, tightTop);
 }
 
 /**

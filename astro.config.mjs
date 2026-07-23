@@ -1152,6 +1152,10 @@ function contentSectionDevWriter() {
           }
 
           let section;
+          const requestedSpacing = String(body.spacing || '');
+          const insertSpacing = EDITABLE_SPACING_VALUES.has(requestedSpacing)
+            ? requestedSpacing
+            : (index === 0 ? 'none' : 'section');
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
             section = {
@@ -1159,7 +1163,7 @@ function contentSectionDevWriter() {
               id,
               sectionId: id,
               title: 'Section title',
-              spacing: 'section',
+              spacing: insertSpacing,
               tightBottom: false,
             };
           } else if (type === 'bodyText') {
@@ -1167,7 +1171,7 @@ function contentSectionDevWriter() {
             section = {
               type: 'bodyText',
               id,
-              spacing: 'section',
+              spacing: insertSpacing,
               paragraphs: [''],
             };
           } else if (type === 'image') {
@@ -1176,14 +1180,17 @@ function contentSectionDevWriter() {
               return;
             }
             section = buildImageSection(documentKey, filenames.slice(0, 1));
+            if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageGrid') {
             if (!filenames.length) {
               send(400, { error: 'At least one image file is required.' });
               return;
             }
             section = buildImageGridSection(documentKey, filenames);
+            if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();
+            if (section && typeof section === 'object') section.spacing = insertSpacing;
           }
 
           if (!section) {

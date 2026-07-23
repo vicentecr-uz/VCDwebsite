@@ -319,7 +319,18 @@ const menuLinks = headerSettings.menuLinks;
       });
     };
 
-    const openMenu = () => {
+    const openMenu = (event?: Event) => {
+      // If a higher layer (e.g. page-top gap chips) is under the pointer, don't expand.
+      if (event instanceof MouseEvent) {
+        document.dispatchEvent(
+          new CustomEvent('dev:sync-gap-proximity', {
+            detail: { clientX: event.clientX, clientY: event.clientY },
+          }),
+        );
+        const hit = document.elementFromPoint(event.clientX, event.clientY);
+        if (hit?.closest('.dev-gap-toolbar')) return;
+      }
+
       clearCloseTimer();
       trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
@@ -346,8 +357,8 @@ const menuLinks = headerSettings.menuLinks;
       trigger.dataset.menuCloseTimer = String(closeTimer);
     };
 
-    trigger.addEventListener('mouseenter', openMenu);
-    trigger.addEventListener('focusin', openMenu);
+    trigger.addEventListener('mouseenter', (event) => openMenu(event));
+    trigger.addEventListener('focusin', () => openMenu());
     trigger.addEventListener('mouseleave', closeMenu);
     trigger.addEventListener('focusout', (event) => {
       if (!trigger.contains(event.relatedTarget as Node | null)) {
@@ -635,7 +646,8 @@ const menuLinks = headerSettings.menuLinks;
     --header-menu-link-size: 1.2em;
     position: sticky;
     top: 0;
-    /* Above project gap toolbars / section-nav editor (40–41); below format bar (90+). */
+    /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
+       Below format bar (90+) and section drag lift (70). */
     z-index: 50;
     padding: 1em 0;
     transition: opacity 0.35s ease;
