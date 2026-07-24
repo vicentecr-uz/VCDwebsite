@@ -622,6 +622,8 @@ import DevOverlay from '../DevOverlay.astro';
         ? draft.aspect
         : formatAspectRatio(draft.aspect);
       readout.textContent = `${ratioLabel} · shows ${Math.round(draft.w * 100)}% of width · centre ${draft.cx.toFixed(3)}, ${draft.cy.toFixed(3)}`;
+      // Frame edits reshape the clip; keep the on-page surface glued to it.
+      syncPageStageBox();
     };
 
     const saveDraft = () => {
@@ -773,6 +775,7 @@ import DevOverlay from '../DevOverlay.astro';
       const image = target.querySelector<HTMLImageElement>('img');
       if (!image) return;
 
+      unmountPageStage();
       resizeObserver?.unobserve(editTarget);
       editTarget = target;
       editedImage = image;
@@ -809,8 +812,213 @@ import DevOverlay from '../DevOverlay.astro';
       syncUseGridDefaultButton();
       syncWidthConstrainUi();
       if (live) {
-        status.textContent = 'Editing this image. The page updates when you change the crop.';
+        mountPageStage();
+        status.textContent = viewportGateOk()
+          ? 'Editing this image — drag on the page to reposition, scroll to zoom, pull the handles to reshape.'
+          : 'Editing this image. The page updates when you change the crop.';
       }
+    };
+
+    /* ── On-page crop surface ──────────────────────────────────────────
+       Mounted only while this panel is editing a target — never on hover.
+       Drag pans the content, wheel zooms around the pointer, edge/corner
+       handles reshape the frame, and a faded ghost shows the source
+       outside the frame. Gated to the real viewport: editing the tablet
+       crop from a desktop window keeps the modal preview as the surface,
+       since the page cannot display that variant. */
+    let pageStage: {
+      ghost: HTMLElement;
+      ghostImg: HTMLImageElement;
+      stage: HTMLElement;
+      target: HTMLElement;
+    } | null = null;
+
+    const PAGE_RESIZE_DIRS: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
+
+    const pageFrameFor = (target: HTMLElement): HTMLElement => (
+      target.querySelector<HTMLElement>(':scope > .project-crop-clip')
+      ?? target.querySelector<HTMLElement>(':scope > .project-image-grid__frame')
+      ?? target
+    );
+
+    const viewportGateOk = () => selectedViewport === viewportForWidth();
+
+    const syncPageStageBox = () => {
+      if (!pageStage) return;
+      const { target, ghost, stage } = pageStage;
+      const frame = pageFrameFor(target);
+      // Uncropped targets have no frame node yet — overlay the bitmap itself
+      // (its box is what the first edit will turn into the frame).
+      const ref = frame === target
+        ? (target.querySelector<HTMLElement>('img') ?? target)
+        : frame;
+      const box = ref === target
+        ? { left: 0, top: 0, width: target.clientWidth, height: target.clientHeight }
+        : { left: ref.offsetLeft, top: ref.offsetTop, width: ref.offsetWidth, height: ref.offsetHeight };
+      for (const el of [ghost, stage]) {
+        el.style.left = `${box.left}px`;
+        el.style.top = `${box.top}px`;
+        el.style.width = `${box.width}px`;
+        el.style.height = `${box.height}px`;
+      }
+    };
+
+    const unmountPageStage = () => {
+      if (!pageStage) return;
+      pageStage.ghost.remove();
+      pageStage.stage.remove();
+      pageStage.target.classList.remove('dev-crop-stage-host');
+      pageStage = null;
+    };
+
+    /** Capture can throw once a pointer is gone (fast release, pen lift). */
+    const capturePointer = (el: HTMLElement, pointerId: number) => {
+      try {
+        el.setPointerCapture(pointerId);
+      } catch {
+        // Drag still works off the shared pointer-id state.
+      }
+    };
+
+    const wirePageStage = (stage: HTMLElement) => {
+      let panPointer: number | null = null;
+      let panStartX = 0;
+      let panStartY = 0;
+      let panOriginX = 0.5;
+      let panOriginY = 0.5;
+      let panAxis: 'x' | 'y' | null = null;
+
+      stage.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        if ((event.target as HTMLElement | null)?.closest?.('[data-page-resize]')) return;
+        event.preventDefault();
+        panPointer = event.pointerId;
+        panStartX = event.clientX;
+        panStartY = event.clientY;
+        panOriginX = draft.cx;
+        panOriginY = draft.cy;
+        panAxis = null;
+        stage.classList.add('is-dragging');
+        capturePointer(stage, event.pointerId);
+      });
+
+      stage.addEventListener('pointermove', (event) => {
+        if (panPointer !== event.pointerId) return;
+        const bounds = stage.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        const deltaX = event.clientX - panStartX;
+        const deltaY = event.clientY - panStartY;
+        if (event.shiftKey && !panAxis && Math.hypot(deltaX, deltaY) >= 3) {
+          panAxis = Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y';
+        } else if (!event.shiftKey) {
+          panAxis = null;
+        }
+        beginLiveEdits();
+        // One frame-width of travel spans `w` of the source; content follows
+        // the pointer, so the anchor point moves opposite.
+        const nextX = panOriginX - (deltaX / bounds.width) * draft.w;
+        const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft);
+        draft.cx = panAxis === 'y' ? panOriginX : nextX;
+        draft.cy = panAxis === 'x' ? panOriginY : nextY;
+        renderDraft();
+        status.textContent = panAxis
+          ? `${panAxis.toUpperCase()} axis locked — unsaved changes.`
+          : 'Unsaved changes.';
+      });
+
+      const endPan = (event: PointerEvent) => {
+        if (panPointer !== event.pointerId) return;
+        panPointer = null;
+        stage.classList.remove('is-dragging');
+        if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+      };
+      stage.addEventListener('pointerup', endPan);
+      stage.addEventListener('pointercancel', endPan);
+
+      stage.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        const bounds = stage.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        // Keep the source point under the pointer fixed while `w` changes.
+        const fx = (event.clientX - bounds.left) / bounds.width;
+        const fy = (event.clientY - bounds.top) / bounds.height;
+        const sourceX = draft.cx + (fx - 0.5) * draft.w;
+        const sourceY = draft.cy + (fy - 0.5) * contentH(draft);
+        const maxW = coverW(draft.aspect);
+        beginLiveEdits();
+        const factor = Math.exp(-event.deltaY * 0.0022);
+        draft.w = clamp(draft.w / factor, maxW / 1.5, maxW);
+        draft.cx = sourceX - (fx - 0.5) * draft.w;
+        draft.cy = sourceY - (fy - 0.5) * contentH(draft);
+        renderDraft();
+        status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+      }, { passive: false });
+
+      stage.querySelectorAll<HTMLElement>('[data-page-resize]').forEach((handle) => {
+        handle.addEventListener('pointerdown', (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          event.stopPropagation();
+          const dir = handle.dataset.pageResize as ResizeDir | undefined;
+          if (!dir) return;
+          const bounds = stage.getBoundingClientRect();
+          resizePointerId = event.pointerId;
+          resizeDir = dir;
+          startX = event.clientX;
+          startY = event.clientY;
+          resizeStartWidth = bounds.width;
+          resizeStartHeight = bounds.height;
+          stage.classList.add('is-resizing');
+          capturePointer(handle, event.pointerId);
+        });
+        handle.addEventListener('pointermove', (event) => {
+          if (resizePointerId !== event.pointerId) return;
+          applyResizeFromPointer(event.clientX, event.clientY);
+        });
+        const endResize = (event: PointerEvent) => {
+          if (resizePointerId !== event.pointerId) return;
+          resizePointerId = null;
+          resizeDir = null;
+          stage.classList.remove('is-resizing');
+          if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+        };
+        handle.addEventListener('pointerup', endResize);
+        handle.addEventListener('pointercancel', endResize);
+      });
+    };
+
+    const mountPageStage = () => {
+      unmountPageStage();
+      if (!editingSession || !viewportGateOk()) return;
+      const target = editTarget;
+
+      const ghost = document.createElement('div');
+      ghost.className = 'dev-crop-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      const ghostImg = document.createElement('img');
+      ghostImg.alt = '';
+      ghostImg.draggable = false;
+      ghostImg.src = editedImage.currentSrc || editedImage.src;
+      ghost.append(ghostImg);
+
+      const stage = document.createElement('div');
+      stage.className = 'dev-crop-stage';
+      PAGE_RESIZE_DIRS.forEach((dir) => {
+        const handle = document.createElement('span');
+        handle.className = `dev-crop-stage__handle dev-crop-stage__handle--${dir}`;
+        handle.dataset.pageResize = dir;
+        handle.setAttribute('aria-hidden', 'true');
+        stage.append(handle);
+      });
+
+      target.classList.add('dev-crop-stage-host');
+      // Ghost first so the clip (later in DOM order) paints over the shared
+      // region — only the content outside the frame reads as faded.
+      target.prepend(ghost);
+      target.append(stage);
+      pageStage = { ghost, ghostImg, stage, target };
+      wirePageStage(stage);
+      syncPageStageBox();
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
@@ -825,6 +1033,7 @@ import DevOverlay from '../DevOverlay.astro';
     window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (panel && panel.dataset.devPanelKey !== 'image') return;
+      unmountPageStage();
       revertFramelessTarget();
       if (editTarget && isStandaloneMedia(editTarget) && !savedSinceSelect) {
         applyFrameFlagsLive(editTarget, {
@@ -852,7 +1061,11 @@ import DevOverlay from '../DevOverlay.astro';
         draft = { ...draftVariants[selectedViewport] };
         renderConstraint();
         renderDraft();
-        status.textContent = `Editing the ${selectedViewport} display crop.`;
+        // The page can only mirror the crop of the breakpoint it is showing.
+        if (editingSession) mountPageStage();
+        status.textContent = viewportGateOk()
+          ? `Editing the ${selectedViewport} display crop.`
+          : `Editing the ${selectedViewport} display crop — use the preview above; the page shows the ${viewportForWidth()} crop.`;
       });
     });
 

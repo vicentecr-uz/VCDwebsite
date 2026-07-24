@@ -188,6 +188,131 @@
   position: relative;
 }
 
+/*
+  On-page crop surface — mounted by the crop tuner only while its panel is
+  open on that image (never on hover). Nodes are created dynamically, so these
+  rules live here rather than in the component's scoped styles.
+*/
+.is-dev-mode .dev-crop-stage-host {
+  position: relative;
+}
+
+/* Faded full bitmap behind the frame: prepended so the clip paints over the
+   shared region — only the content outside the frame reads as ghosted. */
+.is-dev-mode .dev-crop-ghost {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.is-dev-mode .dev-crop-ghost > img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: calc(100% / var(--project-content-w, 1));
+  height: auto;
+  max-width: none;
+  opacity: 0.25;
+  transform: translate(
+    calc(var(--project-content-cx, 0.5) * -100%),
+    calc(var(--project-content-cy, 0.5) * -100%)
+  );
+}
+
+/* Interaction layer over the frame: pan, wheel zoom, resize handles. Sits
+   below the section drag handle (80) and delete (70). */
+.is-dev-mode .dev-crop-stage {
+  position: absolute;
+  z-index: 60;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  outline: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);
+  outline-offset: -1px;
+}
+
+.is-dev-mode .dev-crop-stage.is-dragging {
+  cursor: grabbing;
+}
+
+.is-dev-mode .dev-crop-stage__handle {
+  position: absolute;
+  box-sizing: border-box;
+  width: 0.7em;
+  height: 0.7em;
+  border: 1px solid rgb(26 26 26 / 0.75);
+  border-radius: 1px;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.7);
+}
+
+/* Generous hit area without growing the visual chip. */
+.is-dev-mode .dev-crop-stage__handle::before {
+  content: '';
+  position: absolute;
+  inset: -0.45em;
+}
+
+.is-dev-mode .dev-crop-stage__handle--n,
+.is-dev-mode .dev-crop-stage__handle--s {
+  left: 50%;
+  cursor: ns-resize;
+}
+
+.is-dev-mode .dev-crop-stage__handle--n {
+  top: 0;
+  transform: translate(-50%, -50%);
+}
+
+.is-dev-mode .dev-crop-stage__handle--s {
+  bottom: 0;
+  transform: translate(-50%, 50%);
+}
+
+.is-dev-mode .dev-crop-stage__handle--e,
+.is-dev-mode .dev-crop-stage__handle--w {
+  top: 50%;
+  cursor: ew-resize;
+}
+
+.is-dev-mode .dev-crop-stage__handle--e {
+  right: 0;
+  transform: translate(50%, -50%);
+}
+
+.is-dev-mode .dev-crop-stage__handle--w {
+  left: 0;
+  transform: translate(-50%, -50%);
+}
+
+.is-dev-mode .dev-crop-stage__handle--ne {
+  top: 0;
+  right: 0;
+  transform: translate(50%, -50%);
+  cursor: nesw-resize;
+}
+
+.is-dev-mode .dev-crop-stage__handle--nw {
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  cursor: nwse-resize;
+}
+
+.is-dev-mode .dev-crop-stage__handle--se {
+  right: 0;
+  bottom: 0;
+  transform: translate(50%, 50%);
+  cursor: nwse-resize;
+}
+
+.is-dev-mode .dev-crop-stage__handle--sw {
+  bottom: 0;
+  left: 0;
+  transform: translate(-50%, 50%);
+  cursor: nesw-resize;
+}
+
 .dev-image-edit-trigger {
   position: absolute;
   top: 0.75em;
