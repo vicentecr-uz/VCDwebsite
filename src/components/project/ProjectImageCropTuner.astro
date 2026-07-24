@@ -352,7 +352,11 @@ import DevOverlay from '../DevOverlay.astro';
       target.dataset.devMaxVh = hasMaxVh ? String(flags.maxVh) : '';
       setMaxVhVar(target, flags.maxVh);
       const image = target.querySelector<HTMLImageElement>('img');
-      image?.classList.toggle('project-media__img--max-vh', hasMaxVh);
+      // The img-level class belongs on UNCROPPED images only — it carries a
+      // max-height + object-fit:contain that would clamp and letterbox the
+      // cover bitmap of a cropped frame (the frame CSS handles max-vh there).
+      const cropped = target.classList.contains('project-cropped');
+      image?.classList.toggle('project-media__img--max-vh', hasMaxVh && !cropped);
       image?.classList.remove('project-media__img--max80');
       const block = target.closest('.project-block');
       block?.classList.toggle('project-block--centered', flags.constrained || hasMaxVh);
@@ -576,6 +580,9 @@ import DevOverlay from '../DevOverlay.astro';
         // SSR cropped frames already wrap <img> in .project-crop-clip; live-first
         // crop must add it or overflow:visible on .project-cropped lets zoom spill.
         ensureCropClip(editTarget, editedImage);
+        // An uncropped max-vh image legitimately carries the img-level class from
+        // SSR; now that the target is cropped it would clamp the cover bitmap.
+        editedImage.classList.remove('project-media__img--max-vh', 'project-media__img--max80');
       }
     };
 

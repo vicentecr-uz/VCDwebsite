@@ -110,7 +110,9 @@ const buildInlineImageFigure = (
   img.alt = String(section.alt ?? '');
   img.className = [
     'project-media__img',
-    maxVh && 'project-media__img--max-vh',
+    // Cropped frames size the bitmap via the crop CSS; the img-level max-vh
+    // class would clamp and letterbox it (uncropped images still need it).
+    maxVh && !hasCrop && 'project-media__img--max-vh',
   ].filter(Boolean).join(' ');
   img.loading = 'lazy';
   if (hasCrop) {
