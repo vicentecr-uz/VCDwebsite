@@ -1030,9 +1030,7 @@ import DevOverlay from '../DevOverlay.astro';
       if (target) selectTarget(target, true);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
-      const panel = event.detail?.panel as HTMLElement | undefined;
-      if (panel && panel.dataset.devPanelKey !== 'image') return;
+    const teardownEditSession = () => {
       unmountPageStage();
       revertFramelessTarget();
       if (editTarget && isStandaloneMedia(editTarget) && !savedSinceSelect) {
@@ -1046,6 +1044,21 @@ import DevOverlay from '../DevOverlay.astro';
       }
       editingSession = false;
       liveApply = false;
+    };
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      if (panel && panel.dataset.devPanelKey !== 'image') return;
+      teardownEditSession();
+    }) as EventListener);
+
+    // Escape hides every panel without per-panel close events, and Alt+D can
+    // exit dev mode with the panel open. Both must tear the page surface down,
+    // or the orphaned ghost loses its dev-only styling and renders as a
+    // full-size in-flow duplicate of the image.
+    window.addEventListener('vcd:dev-panels-closed', teardownEditSession);
+    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (event.detail?.active === false) teardownEditSession();
     }) as EventListener);
 
     // Prime the preview canvas without mutating the live page image.

@@ -197,6 +197,14 @@
   position: relative;
 }
 
+/* Backstop: every rule above is dev-gated, so an orphaned surface outside dev
+   mode would render as plain in-flow content (the ghost as a full-size
+   duplicate image). If any exit path ever misses the teardown, hide it. */
+html:not(.is-dev-mode) .dev-crop-ghost,
+html:not(.is-dev-mode) .dev-crop-stage {
+  display: none;
+}
+
 /* Faded full bitmap behind the frame: prepended so the clip paints over the
    shared region — only the content outside the frame reads as ghosted. */
 .is-dev-mode .dev-crop-ghost {
