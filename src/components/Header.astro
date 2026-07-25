@@ -839,16 +839,18 @@ const menuLinks = headerSettings.menuLinks;
        area centres inside a 1em box, leaving 0.1515em of air above the cap
        and — as it happens, the same — below the baseline. That air is why a
        full-height logo read as hanging below the text. Trimming it leaves a
-       box that is exactly cap-to-baseline, which is the box to match.
+       box whose bottom edge is the baseline, which is what the logo sits on.
        Re-measure these if the typeface ever changes. */
-    --wordmark-cap: 0.697;
     --wordmark-trim: 0.1515em;
 
-    /* Logo = the wordmark's cap height, so its top edge sits on the cap line
-       and its bottom edge on the baseline. Because the row below is trimmed to
-       the same measure, the logo also fills the row — leaving only the
-       header's own --space-unit padding above and below it. */
-    --header-logo-size: calc(var(--header-wordmark-size) * var(--wordmark-cap));
+    /* Two spacing units, so the mark reads at a deliberate size rather than
+       being dictated by the type. That makes it taller than the wordmark's
+       cap height (0.697em), so the row is aligned to flex-end instead: the
+       logo's bottom edge and the text's baseline share the row's bottom, and
+       the logo simply rises above the cap line. The logo is the tallest thing
+       in the row, so the header's own --space-unit padding is the only space
+       above and below it. */
+    --header-logo-size: calc(var(--space-unit) * 2);
     position: sticky;
     top: 0;
     /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
@@ -876,7 +878,10 @@ const menuLinks = headerSettings.menuLinks;
      which lives outside the row. Tree order already puts the row above the bg. */
   .site-header__row {
     display: flex;
-    align-items: center;
+    /* Bottom-aligned, not centred: the wordmark's box is trimmed so its bottom
+       edge is the baseline, so this puts the baseline and the logo's bottom
+       edge on the same line even though the logo is the taller of the two. */
+    align-items: flex-end;
     justify-content: space-between;
     position: relative;
   }
