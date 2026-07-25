@@ -319,7 +319,7 @@ const spacingScale = [
   { token: '--space-group', value: '4em', use: 'Same chapter, new beat (e.g. press → community)' },
   { token: '--space-section', value: '8em', use: 'Gap between imagery and narrative text' },
   { token: '--space-major', value: '12em', use: 'Major section / chapter break' },
-  { token: '1em', value: '1em', use: 'Default gutter + grid gap' },
+  { token: '--space-unit', value: '1rem (0.75rem ≤ 40em)', use: 'Core unit: gutter, header/footer padding, grid gaps' },
 ];
 
 const layoutRules = [
@@ -330,13 +330,13 @@ const layoutRules = [
   },
   {
     name: 'Fluid site gutter',
-    value: 'max(1em, calc((100% - 60em) / 2))',
+    value: 'max(var(--space-unit), calc((100% - 60em) / 2))',
     why: 'Keeps content comfortable at every size while preserving edge breathing room.',
   },
   {
     name: 'Core unit',
-    value: '1em',
-    why: 'Use 1em steps before introducing custom values so pages feel related.',
+    value: '--space-unit — 1rem, 0.75rem below 40em',
+    why: 'Build gutter, chrome padding and gaps on the unit before introducing custom values. Phones step it down together so nothing drifts out of sync.',
   },
   {
     name: 'Page transition',

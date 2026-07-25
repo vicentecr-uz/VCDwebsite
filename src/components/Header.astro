@@ -148,7 +148,7 @@ const menuLinks = headerSettings.menuLinks;
       <a
         href={linkHref}
         class="header-link hover:opacity-60 transition-opacity duration-200"
-        style="font-family: var(--font-sans); font-size: 2.4em; line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
+        style="font-family: var(--font-sans); font-size: var(--header-wordmark-size); line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
       >
         {title}
       </a>
@@ -829,13 +829,15 @@ const menuLinks = headerSettings.menuLinks;
 
 <style>
   .site-header {
+    --header-wordmark-size: 2.4em;
     --header-menu-link-size: 1.2em;
+    --header-logo-size: 2rem;
     position: sticky;
     top: 0;
     /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
        Below format bar (90+) and section drag lift (70). */
     z-index: 50;
-    padding: 1em 0;
+    padding: var(--space-unit) 0;
     transition: opacity 0.35s ease;
   }
 
@@ -896,7 +898,7 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   .header-trigger {
-    --hitbox-pad: 1em;
+    --hitbox-pad: var(--space-unit);
     --menu-gap: 0.7em;
     --menu-reveal: 0;
     --menu-link-color-duration: 0.45s;
@@ -917,7 +919,7 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger__sizer:not(.header-trigger__sizer--logo) {
     font-family: var(--font-sans);
-    font-size: 2.4em;
+    font-size: var(--header-wordmark-size);
     line-height: 1;
     font-weight: 700;
     letter-spacing: -0.05ch;
@@ -951,7 +953,7 @@ const menuLinks = headerSettings.menuLinks;
   .header-trigger__panel-bg {
     --feather: 7em;
     --panel-bottom-radius: 7em;
-    --panel-bottom-pad: 1em;
+    --panel-bottom-pad: var(--space-unit);
     position: absolute;
     z-index: 1;
     opacity: 0;
@@ -1151,7 +1153,7 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger__wordmark {
     font-family: var(--font-sans);
-    font-size: 2.4em;
+    font-size: var(--header-wordmark-size);
     line-height: 1;
     font-weight: 700;
     letter-spacing: -0.05ch;
@@ -1237,8 +1239,8 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   .header-trigger__logo {
-    height: 2rem;
-    width: 2rem;
+    height: var(--header-logo-size);
+    width: var(--header-logo-size);
     display: block;
     background-color: var(--color-text);
     transition: background-color 0.18s ease;
@@ -1298,6 +1300,27 @@ const menuLinks = headerSettings.menuLinks;
     transition:
       opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s),
       color var(--menu-link-color-hover-duration, 0.15s) ease;
+  }
+
+  /* Phone: wordmark, menu and logo step down so the header reads as chrome
+     rather than as the page's largest element. Matches the --space-unit
+     breakpoint in global.css. */
+  @media (max-width: 40em) {
+    .site-header {
+      --header-wordmark-size: 1.75em;
+      --header-menu-link-size: 1.05em;
+      --header-logo-size: 1.5rem;
+    }
+
+    .header-trigger {
+      --menu-gap: 0.55em;
+    }
+
+    /* Panel is shorter now — scale the fade so it stays proportional. */
+    .header-trigger__panel-bg {
+      --feather: 5em;
+      --panel-bottom-radius: 5em;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
