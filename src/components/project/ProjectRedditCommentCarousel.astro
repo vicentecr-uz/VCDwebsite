@@ -162,7 +162,7 @@ const copies = [0, 1, 2] as const;
     --rcb-pad-y: 0.75em;
     --rcb-fade: 1.25em;
     /* One “page” of the board; peeks of the next band fade at the edge. */
-    --rcb-viewport-max: min(20em, 52svh);
+    --rcb-viewport-max: min(20em, calc(var(--rcb-vh-safe, 1svh) * 52));
 
     position: relative;
     border-radius: 0.75em;
@@ -275,7 +275,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 52em) {
     .reddit-comment-board__shell {
       --rcb-cols: 2;
-      --rcb-viewport-max: min(32em, 65svh);
+      --rcb-viewport-max: min(32em, calc(var(--rcb-vh-safe, 1svh) * 65));
     }
 
     .reddit-comment-board__cols {
@@ -300,7 +300,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 36em) {
     .reddit-comment-board__shell {
       --rcb-cols: 1;
-      --rcb-viewport-max: min(26em, 60svh);
+      --rcb-viewport-max: min(26em, calc(var(--rcb-vh-safe, 1svh) * 60));
     }
 
     .reddit-comment-board__col {
@@ -319,6 +319,28 @@ const copies = [0, 1, 2] as const;
 </style>
 
 <script>
+  /**
+   * Mobile Edge/iOS doesn't reliably honour `svh`, so the board's max-height
+   * can still drift with the address-bar show/hide and shove the page below
+   * it. Lock a JS-computed `1%` unit instead: captured once on load, only
+   * ever recomputed on a genuine width change (rotation/resize), never on
+   * the height-only resizes toolbar toggling fires.
+   */
+  const setRcbSafeVh = () => {
+    document.documentElement.style.setProperty('--rcb-vh-safe', `${window.innerHeight * 0.01}px`);
+  };
+  if (!(window as unknown as { __rcbVhBound?: boolean }).__rcbVhBound) {
+    (window as unknown as { __rcbVhBound?: boolean }).__rcbVhBound = true;
+    let lastVhWidth = window.innerWidth;
+    setRcbSafeVh();
+    window.addEventListener('resize', () => {
+      if (window.innerWidth === lastVhWidth) return;
+      lastVhWidth = window.innerWidth;
+      setRcbSafeVh();
+    });
+    window.addEventListener('orientationchange', setRcbSafeVh);
+  }
+
   const initRedditCommentBoard = (root: HTMLElement) => {
     const viewport = root.querySelector<HTMLElement>('[data-reddit-board-viewport]');
     const track = root.querySelector<HTMLElement>('[data-reddit-board-track]');
