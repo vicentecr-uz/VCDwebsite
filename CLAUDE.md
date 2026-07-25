@@ -11,7 +11,7 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - Spacing unit: `var(--space-unit)` consistently across header, grid, footer, gaps — `1rem` at every breakpoint, stepping down to `0.75rem` below `40em` (phones). Defined in `global.css`; use it rather than a literal `1em`. Use inline `style=` not Tailwind arbitrary values for guaranteed rendering
 - Mobile breakpoint: `40em` (640px) — where `--space-unit` tightens and the header (wordmark, menu links, logo) steps down via `--header-wordmark-size` / `--header-menu-link-size` / `--header-logo-size`
 - Font: Hanken Grotesk (Google Fonts, weights 300–900)
-- Background: `#ffffff`
+- Background: `--color-bg` (`#ffffff`). Every surface meant to read as "the page" — page background, header background (`.site-header__bg`), nav menu panel background and its menu backdrop — must reference this one token, never a literal white. They are stacked and expected to blend seamlessly, so when dark mode lands they have to move together.
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
 - Dev server: port 4321
 - **Dev session:** `bun run dev:session` starts Astro dev server (port 4321); `dev:session:stop` / `dev:session:status`. One Cursor chat owns the session — reuse servers, don't duplicate. See `.cursor/rules/dev-session.mdc`.

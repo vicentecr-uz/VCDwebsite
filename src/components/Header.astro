@@ -856,7 +856,7 @@ const menuLinks = headerSettings.menuLinks;
   .site-header__bg {
     position: absolute;
     inset: 0;
-    background-color: #ffffff;
+    background-color: var(--color-bg);
     z-index: 0;
     pointer-events: none;
   }
@@ -880,7 +880,7 @@ const menuLinks = headerSettings.menuLinks;
   .header-menu-backdrop {
     position: fixed;
     inset: 0;
-    background-color: rgba(255, 255, 255, 0.9);
+    background-color: color-mix(in srgb, var(--color-bg) 90%, transparent);
     opacity: 0;
     transition:
       opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1)
@@ -957,12 +957,19 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger__panel-bg {
     --feather: 7em;
-    /* Outward (away-from-centre) feather. Sized to the gutter so the soft edge
-       never reaches past the viewport — an overhang on the right-hand trigger
-       would add horizontal scroll. Below the 62em wrapper breakpoint the gutter
-       is 1em, the panel edge already sits on the viewport edge, and there is no
-       line to hide, so this collapses to 0. */
-    --feather-outer: clamp(0px, calc((100vw - 60em) / 2 - 2em), var(--feather));
+    /* Outward (away-from-centre) feather. Sized to the room the wrapper gutter
+       leaves outside the panel, so the soft edge never reaches past the
+       viewport — an overhang on the right-hand trigger would add horizontal
+       scroll. Mirrors the #site-wrapper gutter formula, less the --space-unit
+       the panel already sticks out by (--hitbox-pad) and 1em of slack, since
+       100vw counts a classic scrollbar that the wrapper's width does not.
+       Until the gutter opens past --space-unit the panel edge sits on the
+       viewport edge, there is no line to hide, and this collapses to 0. */
+    --feather-outer: clamp(
+      0px,
+      calc((100vw - 60em) / 2 - var(--space-unit) - 1em),
+      var(--feather)
+    );
     --panel-bottom-radius: 7em;
     --panel-bottom-pad: var(--space-unit);
     position: absolute;
@@ -978,7 +985,7 @@ const menuLinks = headerSettings.menuLinks;
   .header-trigger__panel-bg::before {
     content: '';
     position: absolute;
-    background: #ffffff;
+    background: var(--color-bg);
     -webkit-mask-composite: source-in;
     mask-composite: intersect;
   }
@@ -991,7 +998,7 @@ const menuLinks = headerSettings.menuLinks;
     top: 0;
     bottom: 0;
     width: var(--feather-outer);
-    background: #ffffff;
+    background: var(--color-bg);
     -webkit-mask-composite: source-in;
     mask-composite: intersect;
   }
