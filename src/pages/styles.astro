@@ -319,7 +319,14 @@ const spacingScale = [
   { token: '--space-group', value: '4em', use: 'Same chapter, new beat (e.g. press → community)' },
   { token: '--space-section', value: '8em', use: 'Gap between imagery and narrative text' },
   { token: '--space-major', value: '12em', use: 'Major section / chapter break' },
-  { token: '--space-unit', value: '1rem (0.75rem ≤ 40em)', use: 'Core unit: gutter, header/footer padding, grid gaps' },
+  // `value` is injected straight into the sample bar's width/height, so it has
+  // to stay a valid CSS length. Referencing the token keeps the bar honest —
+  // it renders whatever the unit currently is at this breakpoint.
+  {
+    token: '--space-unit',
+    value: 'var(--space-unit)',
+    use: 'Core unit: gutter, header/footer padding, grid gaps — 1rem, 0.75rem below 40em',
+  },
 ];
 
 const layoutRules = [
@@ -748,6 +755,36 @@ const sectionLinks = savedOutline.length
     font-family: ui-monospace, monospace;
   }
 
+  /* This page prints technical strings — file paths, prop lists, CSS values —
+     that carry no natural break opportunity, so each sets a min-content width
+     as wide as the whole string. Grid and flex items default to a min size of
+     auto and refuse to shrink below that, which pushed the page wider than the
+     viewport on a phone. `anywhere` (not `break-word`) is the one that also
+     lowers min-content, so the tracks can actually shrink. */
+  .meta-values,
+  .meta-values code,
+  .intro-copy code,
+  .token-value,
+  .token-name,
+  .token-note,
+  .meta-label,
+  .section-note,
+  .preview-note,
+  .component-card__head p,
+  .component-card__head h4,
+  .component-group__title {
+    overflow-wrap: anywhere;
+  }
+
+  .component-meta-grid > *,
+  .token-grid > *,
+  .spacing-row > *,
+  .spacing-row__samples > *,
+  .type-card__meta > *,
+  .token-row__top > * {
+    min-width: 0;
+  }
+
   .stack {
     display: flex;
     flex-direction: column;
@@ -1046,7 +1083,7 @@ const sectionLinks = savedOutline.length
     .component-meta-grid,
     .spacing-row,
     .spacing-row__samples {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
 
     .component-preview :global(.project-context-grid--preview),
@@ -1060,7 +1097,7 @@ const sectionLinks = savedOutline.length
     .component-meta-grid,
     .spacing-row,
     .spacing-row__samples {
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>
