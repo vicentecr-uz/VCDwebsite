@@ -147,7 +147,7 @@ const menuLinks = headerSettings.menuLinks;
     <div class="site-header__row">
       <a
         href={linkHref}
-        class="header-link hover:opacity-60 transition-opacity duration-200"
+        class="header-link header-link--wordmark hover:opacity-60 transition-opacity duration-200"
         style="font-family: var(--font-sans); font-size: var(--header-wordmark-size); line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
       >
         {title}
@@ -831,14 +831,24 @@ const menuLinks = headerSettings.menuLinks;
   .site-header {
     --header-wordmark-size: 2.4em;
     --header-menu-link-size: 1.2em;
-    /* Logo fills the header row so the only space above and below it is the
-       header's own --space-unit padding. The wordmark sets the row height and
-       carries line-height: 1, so its line box is exactly its font-size — and
-       both it and the logo resolve their em against the same 16px header
-       font-size, so matching the token matches the height. Any larger value
-       also holds the invariant (the logo would set the row height itself);
-       equal is the smallest that does. */
-    --header-logo-size: var(--header-wordmark-size);
+
+    /* Hanken Grotesk, read from the font's own tables (unitsPerEm 1000):
+       cap height 697, ascender 1000, descender 303, line gap 0. The hhea,
+       OS/2 typo and OS/2 win metrics are identical, so every browser builds
+       the line box the same way. With line-height: 1 that 1.303em content
+       area centres inside a 1em box, leaving 0.1515em of air above the cap
+       and — as it happens, the same — below the baseline. That air is why a
+       full-height logo read as hanging below the text. Trimming it leaves a
+       box that is exactly cap-to-baseline, which is the box to match.
+       Re-measure these if the typeface ever changes. */
+    --wordmark-cap: 0.697;
+    --wordmark-trim: 0.1515em;
+
+    /* Logo = the wordmark's cap height, so its top edge sits on the cap line
+       and its bottom edge on the baseline. Because the row below is trimmed to
+       the same measure, the logo also fills the row — leaving only the
+       header's own --space-unit padding above and below it. */
+    --header-logo-size: calc(var(--header-wordmark-size) * var(--wordmark-cap));
     position: sticky;
     top: 0;
     /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
@@ -869,6 +879,12 @@ const menuLinks = headerSettings.menuLinks;
     align-items: center;
     justify-content: space-between;
     position: relative;
+  }
+
+  /* Fallback header (no nav menu): no hidden sizer here, so the wordmark link
+     itself sets the row — trim both ends. */
+  .header-link--wordmark {
+    margin-block: calc(-1 * var(--wordmark-trim));
   }
 
   /* ── Homepage nav menu ── */
@@ -929,6 +945,10 @@ const menuLinks = headerSettings.menuLinks;
     line-height: 1;
     font-weight: 700;
     letter-spacing: -0.05ch;
+    /* The hidden sizer is what sets the header row height. Trim it to
+       cap-to-baseline so the row is the text's optical height rather than its
+       em box, and the logo can fill the row without overhanging the type. */
+    margin-block: calc(-1 * var(--wordmark-trim));
   }
 
   .header-trigger__sizer--logo {
@@ -1271,6 +1291,10 @@ const menuLinks = headerSettings.menuLinks;
     line-height: 1;
     font-weight: 700;
     letter-spacing: -0.05ch;
+    /* Top only: pulls the caps onto the row's top edge. The box below keeps
+       its descender space, so --menu-gap still measures from where it was
+       tuned and the menu does not shift relative to the wordmark. */
+    margin-top: calc(-1 * var(--wordmark-trim));
   }
 
   .header-menu__link {
