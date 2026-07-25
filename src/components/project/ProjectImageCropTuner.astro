@@ -294,6 +294,10 @@ import DevOverlay from '../DevOverlay.astro';
     // Write draft → live page. Stays false on open; flips on the first real crop edit.
     let liveApply = false;
     let targetWasCropped = false;
+    /** Grid cells inheriting the grid default must go back to inheriting on cancel. */
+    let targetHadOwnVariants = false;
+    /** Rendered value of data-dev-image-variants, for a lossless cancel. */
+    let targetVariantsAttr: string | null = null;
     let savedSinceSelect = false;
     let savedConstrained = false;
     let draftConstrained = false;
@@ -672,6 +676,7 @@ import DevOverlay from '../DevOverlay.astro';
       savedSinceSelect = true;
       if (isGridTarget(target) && persistCrop) {
         target.dataset.devHasOwnVariants = 'true';
+        targetHadOwnVariants = true;
         syncUseGridDefaultButton();
       }
 
@@ -753,22 +758,58 @@ import DevOverlay from '../DevOverlay.astro';
       : new ResizeObserver(refreshCover);
     resizeObserver?.observe(preview);
 
-    const revertFramelessTarget = () => {
-      if (!editTarget || targetWasCropped || savedSinceSelect || isGridTarget(editTarget)) return;
+    /** Take the crop frame back off a target that had none before this session. */
+    const stripLiveCropFrame = () => {
+      if (!editTarget || isGridTarget(editTarget)) return;
       editTarget.classList.remove('project-cropped', 'project-responsive-image');
-      delete editTarget.dataset.devImageVariants;
-      editedImage.style.width = '';
-      editedImage.style.height = '';
+      // Restore the attribute rather than dropping it, so a cancelled session
+      // leaves the target byte-identical to how it was rendered.
+      if (targetVariantsAttr === null) delete editTarget.dataset.devImageVariants;
+      else editTarget.dataset.devImageVariants = targetVariantsAttr;
       removeCropClipIfOwned(editedImage);
-      if (isStandaloneMedia(editTarget)) {
-        applyFrameFlagsLive(editTarget, {
+    };
+
+    /**
+     * Snap the page back to the last saved crop — the single "cancel" shared by
+     * the Revert button, the panel close control, the Edit image toggle and
+     * Escape. "Saved" means the last tuner Save (staged into the pending batch),
+     * or the state read off the page when this target was selected; so saving
+     * and then cancelling without touching anything is a no-op.
+     */
+    const revertToSaved = () => {
+      const target = editTarget;
+      if (!target) return;
+
+      draftVariants = structuredClone(savedVariants);
+      saved = { ...savedVariants[selectedViewport] };
+      draft = { ...saved };
+      draftConstrained = savedConstrained;
+      draftMaxVh = savedMaxVh;
+
+      if (liveApply || savedSinceSelect) {
+        if (targetWasCropped || savedSinceSelect) {
+          // Restore every breakpoint, not just the one on screen — the session
+          // may have edited others via the viewport chips.
+          applyVariantsToTarget(
+            target,
+            savedVariants,
+            isGridTarget(target) && !targetHadOwnVariants ? { clearOwn: true } : undefined,
+          );
+        } else {
+          stripLiveCropFrame();
+        }
+      }
+
+      // Order matters: the img-level max-vh class is only correct once the
+      // frame classes above have settled (it must stay off cropped images).
+      if (isStandaloneMedia(target)) {
+        applyFrameFlagsLive(target, {
           constrained: savedConstrained,
           maxVh: savedMaxVh,
         });
-        draftConstrained = savedConstrained;
-        draftMaxVh = savedMaxVh;
-        syncWidthConstrainUi();
       }
+      syncWidthConstrainUi();
+      liveApply = false;
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
@@ -785,6 +826,8 @@ import DevOverlay from '../DevOverlay.astro';
       // Preview-only until the user actually changes the crop.
       liveApply = false;
       targetWasCropped = target.classList.contains('project-cropped') || isGridTarget(target);
+      targetHadOwnVariants = target.dataset.devHasOwnVariants === 'true';
+      targetVariantsAttr = target.dataset.devImageVariants ?? null;
       savedSinceSelect = false;
 
       selectedViewport = viewportForWidth();
@@ -1032,18 +1075,9 @@ import DevOverlay from '../DevOverlay.astro';
 
     const teardownEditSession = () => {
       unmountPageStage();
-      revertFramelessTarget();
-      if (editTarget && isStandaloneMedia(editTarget) && !savedSinceSelect) {
-        applyFrameFlagsLive(editTarget, {
-          constrained: savedConstrained,
-          maxVh: savedMaxVh,
-        });
-        draftConstrained = savedConstrained;
-        draftMaxVh = savedMaxVh;
-        syncWidthConstrainUi();
-      }
+      // Closing is a cancel: unsaved crop edits never survive the panel.
+      revertToSaved();
       editingSession = false;
-      liveApply = false;
     };
 
     window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
@@ -1297,17 +1331,10 @@ import DevOverlay from '../DevOverlay.astro';
     saveButton.addEventListener('click', saveDraft);
 
     revertButton.addEventListener('click', () => {
-      draft = { ...saved };
-      draftConstrained = savedConstrained;
-      draftMaxVh = savedMaxVh;
-      if (isStandaloneMedia(editTarget)) {
-        applyFrameFlagsLive(editTarget, {
-          constrained: draftConstrained,
-          maxVh: draftMaxVh,
-        });
-      }
-      syncWidthConstrainUi();
+      revertToSaved();
       renderDraft();
+      // The frame may have changed shape; re-glue the on-page surface to it.
+      if (editingSession) mountPageStage();
       status.textContent = 'Reverted to the last saved crop.';
     });
 
