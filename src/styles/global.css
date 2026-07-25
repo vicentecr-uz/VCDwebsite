@@ -30,6 +30,20 @@
   --space-group: 4em;
   --space-section: 8em;
   --space-major: 12em;
+
+  /* Core spacing unit — site gutter, header/footer padding, grid gaps.
+     rem (not em) so it is the same distance wherever it is used, including
+     inside elements with a scaled font-size. Tightened on phones below. */
+  --space-unit: 1rem;
+}
+
+/* Phone: edge space is at a premium, so the core unit steps down.
+   Everything built on --space-unit (gutter, header, footer, grid gaps)
+   tightens together. */
+@media (max-width: 40em) {
+  :root {
+    --space-unit: 0.75rem;
+  }
 }
 
 /* Pre-hydration radius softening for browsers without native corner-shape (Safari/Firefox).
@@ -60,7 +74,7 @@ body {
 }
 
 #site-wrapper {
-  padding-inline: max(1em, calc((100% - 60em) / 2));
+  padding-inline: max(var(--space-unit), calc((100% - 60em) / 2));
 }
 
 img {

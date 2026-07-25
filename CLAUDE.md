@@ -8,7 +8,8 @@ Astro + Bun + Tailwind CSS v4 + GSAP portfolio site for Vicente Cruz (industrial
 Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kingfisher. He references the live Webflow site frequently for design decisions and has a strong design eye — precise aesthetic calls on font weight, letter spacing, spacing systems, and transitions.
 
 ## Key conventions
-- Spacing unit: `1em` consistently across header, grid, footer, gaps — use inline `style=` not Tailwind arbitrary values for guaranteed rendering
+- Spacing unit: `var(--space-unit)` consistently across header, grid, footer, gaps — `1rem` at every breakpoint, stepping down to `0.75rem` below `40em` (phones). Defined in `global.css`; use it rather than a literal `1em`. Use inline `style=` not Tailwind arbitrary values for guaranteed rendering
+- Mobile breakpoint: `40em` (640px) — where `--space-unit` tightens and the header (wordmark, menu links, logo) steps down via `--header-wordmark-size` / `--header-menu-link-size` / `--header-logo-size`
 - Font: Hanken Grotesk (Google Fonts, weights 300–900)
 - Background: `#ffffff`
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
