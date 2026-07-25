@@ -171,6 +171,10 @@ const menuLinks = headerSettings.menuLinks;
 )}
 
 <script>
+  // Touch / no-hover devices open the menu on tap instead of on hover.
+  const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
+  const isTapMode = () => tapModeMq.matches;
+
   const header = document.querySelector('.site-header');
   if (header) {
     let lastY = window.scrollY;
@@ -248,6 +252,7 @@ const menuLinks = headerSettings.menuLinks;
         delete trigger.dataset.menuCloseTimer;
       }
       trigger.classList.remove('is-menu-open');
+      delete trigger.dataset.menuOpen;
       trigger.style.setProperty('--panel-bg-duration', '0s');
       trigger.style.setProperty('--panel-bg-delay', '0s');
       trigger.style.setProperty('--menu-reveal', '0');
@@ -334,12 +339,15 @@ const menuLinks = headerSettings.menuLinks;
       clearCloseTimer();
       trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
+      trigger.dataset.menuOpen = 'true';
       setMenuBackdropVisible(true);
       setOpenStagger();
       setPanelReveal(true);
+      trigger.dispatchEvent(new CustomEvent('header:trigger-open'));
     };
 
     const closeMenu = () => {
+      delete trigger.dataset.menuOpen;
       document
         .querySelector('.site-header--nav-menu')
         ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
@@ -355,17 +363,85 @@ const menuLinks = headerSettings.menuLinks;
         }
       }, closeLayoutMs);
       trigger.dataset.menuCloseTimer = String(closeTimer);
+      trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
     };
 
-    trigger.addEventListener('mouseenter', (event) => openMenu(event));
-    trigger.addEventListener('focusin', () => openMenu());
-    trigger.addEventListener('mouseleave', closeMenu);
+    const isOpen = () => trigger.dataset.menuOpen === 'true';
+
+    // Tapping a link focuses it in some mobile browsers; ignore that focus so it
+    // doesn't open the menu before the click handler can toggle it.
+    let lastPointerDownAt = -Infinity;
+    const isPointerDrivenFocus = () => performance.now() - lastPointerDownAt < 700;
+
+    trigger.addEventListener('pointerdown', () => {
+      lastPointerDownAt = performance.now();
+    });
+
+    trigger.addEventListener('mouseenter', (event) => {
+      if (isTapMode()) return;
+      openMenu(event);
+    });
+    trigger.addEventListener('mouseleave', () => {
+      if (isTapMode()) return;
+      closeMenu();
+    });
+    trigger.addEventListener('focusin', () => {
+      if (isTapMode() && isPointerDrivenFocus()) return;
+      openMenu();
+    });
     trigger.addEventListener('focusout', (event) => {
       if (!trigger.contains(event.relatedTarget as Node | null)) {
         closeMenu();
       }
     });
+
+    // Tap mode: first tap opens, tap outside (or on the panel background) closes.
+    // While open, the wordmark / logo works as the home link it looks like.
+    // Capture phase: the page-transition script listens on the anchor itself and
+    // bails on defaultPrevented, so we have to get in before it.
+    trigger.addEventListener(
+      'click',
+      (event) => {
+        if (!isTapMode()) return;
+
+        const target = event.target as Element | null;
+        if (target?.closest('.header-menu__link')) return;
+
+        if (!isOpen()) {
+          event.preventDefault();
+          openMenu();
+          return;
+        }
+
+        if (target?.closest('.header-trigger__brand-link')) return;
+
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && trigger.contains(active)) active.blur();
+        closeMenu();
+      },
+      true,
+    );
+
+    document.addEventListener('click', (event) => {
+      if (!isTapMode() || !isOpen()) return;
+      if (trigger.contains(event.target as Node | null)) return;
+
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && trigger.contains(active)) active.blur();
+      closeMenu();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !isOpen()) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && trigger.contains(active)) active.blur();
+      closeMenu();
+    });
   });
+
+  // Switching between hover and tap (rotation, devtools emulation, external
+  // pointer) leaves stale open state behind — reset it.
+  tapModeMq.addEventListener('change', () => forceCloseMenus());
 
   // Leave menu open during the exit fade (pointer is still over it). Close only when
   // the page is actually unloaded / restored from bfcache so swipe-back isn't stuck open.
@@ -487,7 +563,9 @@ const menuLinks = headerSettings.menuLinks;
     };
 
     const isWordmarkHoverActive = () =>
-      startTrigger.matches(':hover') || startTrigger.contains(document.activeElement);
+      (startTrigger as HTMLElement).dataset.menuOpen === 'true' ||
+      startTrigger.matches(':hover') ||
+      startTrigger.contains(document.activeElement);
 
     const syncWordmarkHover = () => {
       if (wordmarkAnimating) return;
@@ -557,6 +635,10 @@ const menuLinks = headerSettings.menuLinks;
         onWordmarkPointerInactive();
       }
     });
+
+    // Tap mode has no hover to follow — swap with the menu itself.
+    startTrigger.addEventListener('header:trigger-open', onWordmarkPointerActive);
+    startTrigger.addEventListener('header:trigger-close', onWordmarkPointerInactive);
 
     // Instant wordmark reset when menu force-closes (pagehide / bfcache).
     document.addEventListener('header:force-close', () => {
@@ -695,6 +777,14 @@ const menuLinks = headerSettings.menuLinks;
   .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
     opacity: 1;
     transition-delay: 0s;
+  }
+
+  /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
+     whatever sits under it. */
+  @media (hover: none), (pointer: coarse) {
+    .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
+      pointer-events: auto;
+    }
   }
 
   .site-header--nav-menu .site-header__row {
