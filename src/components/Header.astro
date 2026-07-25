@@ -452,6 +452,110 @@ const menuLinks = headerSettings.menuLinks;
     forceCloseMenus();
   });
 
+  // Kerning for the split wordmark.
+  //
+  // Each letter sits in its own inline <span> so it can be animated on its own.
+  // Chromium and Gecko usually shape straight through those boundaries so the
+  // font's kerning survives; WebKit doesn't, and a char carrying a non-zero
+  // margin can stop it anywhere. Rather than predict which of those applies —
+  // it varies by engine and even by layout path — measure the word twice: once
+  // as one unsplit text node (always fully shaped, so it's ground truth) and
+  // once as the live spans, then feed the residual back as per-char margins.
+  //
+  // Self-correcting by construction: where the engine already kerns, the
+  // residual is zero and nothing is written; where it doesn't, this supplies
+  // exactly the advance it dropped. Applying a margin can itself change whether
+  // the engine shapes across that boundary, so re-measure and settle rather
+  // than trusting one pass. Everything comes from the loaded font, so there's
+  // no per-pair table and it follows whatever the page name happens to be.
+  const KERN_MAX_PASSES = 3;
+  const KERN_TOLERANCE_PX = 0.02;
+
+  /** Correctly-shaped left offset of every character, via one unsplit text node. */
+  const measureShapedOffsets = (wordmark: HTMLElement, text: string) => {
+    const style = getComputedStyle(wordmark);
+    const probe = document.createElement('span');
+    Object.assign(probe.style, {
+      position: 'absolute',
+      top: '-9999px',
+      left: '0',
+      visibility: 'hidden',
+      whiteSpace: 'nowrap',
+      fontFamily: style.fontFamily,
+      fontSize: style.fontSize,
+      fontWeight: style.fontWeight,
+      fontStyle: style.fontStyle,
+      fontKerning: style.fontKerning,
+      fontFeatureSettings: style.fontFeatureSettings,
+      letterSpacing: style.letterSpacing,
+    });
+    probe.textContent = text;
+    document.body.appendChild(probe);
+
+    const textNode = probe.firstChild;
+    const origin = probe.getBoundingClientRect().left;
+    const offsets: number[] = [];
+    if (textNode) {
+      for (let i = 0; i < text.length; i++) {
+        const range = document.createRange();
+        range.setStart(textNode, i);
+        range.setEnd(textNode, i + 1);
+        offsets.push(range.getBoundingClientRect().left - origin);
+      }
+    }
+    probe.remove();
+    return offsets;
+  };
+
+  const applyWordmarkKerning = () => {
+    document.querySelectorAll<HTMLElement>('.header-trigger__wordmark').forEach((wordmark) => {
+      const chars = [...wordmark.querySelectorAll<HTMLElement>('.header-trigger__char')];
+      if (chars.length < 2) return;
+
+      // An unrendered wordmark measures as zero and would poison every residual.
+      if (!wordmark.getBoundingClientRect().width) return;
+
+      const text = chars.map((char) => char.textContent ?? '').join('');
+      const target = measureShapedOffsets(wordmark, text);
+      // Range offsets are per code unit; a surrogate pair would desync them
+      // from the per-character spans, so only proceed when they line up.
+      if (target.length !== chars.length) return;
+
+      const fontSize = parseFloat(getComputedStyle(wordmark).fontSize) || 1;
+      // Read back in px — margins are written in em, so the inline style's own
+      // number is the wrong unit to resume from on a re-run.
+      const applied = chars.map((char) => parseFloat(getComputedStyle(char).marginLeft) || 0);
+
+      for (let pass = 0; pass < KERN_MAX_PASSES; pass++) {
+        const origin = wordmark.getBoundingClientRect().left;
+        const residual = chars.map(
+          (char, i) => target[i] - (char.getBoundingClientRect().left - origin),
+        );
+        // Margins accumulate down the line, so each char only needs the part of
+        // its residual that its predecessor didn't already account for.
+        let settled = true;
+        for (let i = 1; i < chars.length; i++) {
+          const correction = residual[i] - residual[i - 1];
+          if (Math.abs(correction) < KERN_TOLERANCE_PX) continue;
+          applied[i] += correction;
+          settled = false;
+        }
+        if (settled) break;
+
+        for (let i = 1; i < chars.length; i++) {
+          // em so it survives a resize without re-measuring. Cleared rather than
+          // set to 0 so an untouched boundary stays shapeable by the engine.
+          chars[i].style.marginLeft = applied[i] ? `${applied[i] / fontSize}em` : '';
+        }
+      }
+    });
+  };
+
+  // Metrics are only final once the real face is in — fallback measurements
+  // would be corrected on swap anyway, so just wait.
+  void document.fonts?.ready.then(applyWordmarkKerning);
+  document.fonts?.addEventListener('loadingdone', applyWordmarkKerning);
+
   const startTrigger = document.querySelector('.header-trigger--start');
   const wordmarkStack = startTrigger?.querySelector('.header-trigger__wordmark-stack');
 
