@@ -831,7 +831,14 @@ const menuLinks = headerSettings.menuLinks;
   .site-header {
     --header-wordmark-size: 2.4em;
     --header-menu-link-size: 1.2em;
-    --header-logo-size: 2rem;
+    /* Logo fills the header row so the only space above and below it is the
+       header's own --space-unit padding. The wordmark sets the row height and
+       carries line-height: 1, so its line box is exactly its font-size — and
+       both it and the logo resolve their em against the same 16px header
+       font-size, so matching the token matches the height. Any larger value
+       also holds the invariant (the logo would set the row height itself);
+       equal is the smallest that does. */
+    --header-logo-size: var(--header-wordmark-size);
     position: sticky;
     top: 0;
     /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
@@ -1309,7 +1316,6 @@ const menuLinks = headerSettings.menuLinks;
     .site-header {
       --header-wordmark-size: 1.75em;
       --header-menu-link-size: 1.05em;
-      --header-logo-size: 1.5rem;
     }
 
     .header-trigger {
