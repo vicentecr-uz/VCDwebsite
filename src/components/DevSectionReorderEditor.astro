@@ -11,7 +11,7 @@
     sectionOrderId,
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar, getDevSectionOutline } from '../scripts/devSectionOutlineSync';
-  import { createReorderController } from '../scripts/sectionReorder';
+  import { createReorderController, REORDER_TIMING } from '../scripts/sectionReorder';
 
   const DRAG_HANDLE_ATTR = 'data-dev-section-drag-handle';
   const DRAG_BRIDGE_CLASS = 'dev-section-drag-bridge';
@@ -19,7 +19,8 @@
   const DROP_INDICATOR_BODY_CLASS = 'dev-section-drop-indicator__body';
   const LIFT_BACKDROP_CLASS = 'dev-section-lift-backdrop';
   const LIFT_BACKDROP_VISIBLE_CLASS = 'is-visible';
-  const LIFT_BACKDROP_FADE_MS = 200;
+  // Shared with the controller, which holds the drop slot back behind this fade.
+  const LIFT_BACKDROP_FADE_MS = REORDER_TIMING.LIFT_CARD_FADE_MS;
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
@@ -35,7 +36,12 @@
   let documentKey = '';
   let sessionPointerActive = false;
   let sessionButtonDown = false;
-  let dropInProgress = false;
+  // A drop keeps running (settle glide, then card fade) after the controller
+  // goes idle, so a re-grab can start while the previous session is still
+  // finishing. Tag each lift so that tail only tears down chrome it still owns.
+  let sessionSeq = 0;
+  let activeSessionId = 0;
+  let droppingSessionId = 0;
 
   const dropZone = () => getDropZone();
 
@@ -203,6 +209,31 @@
     }, HOVER_LEAVE_MS));
   };
 
+  /**
+   * The drop slot stands in for the lifted block, so its card has to hug the
+   * same media box. The slot lives outside the section, so the anchor vars
+   * can't be inherited — copy them across for the session.
+   */
+  const syncSlotMediaInset = (root: HTMLElement) => {
+    const indicator = dropZone()?.querySelector<HTMLElement>(`.${DROP_INDICATOR_CLASS}`);
+    if (!indicator) return;
+    indicator.style.setProperty(
+      '--dev-section-inset',
+      root.style.getPropertyValue('--dev-section-inset') || '0px',
+    );
+    indicator.style.setProperty(
+      '--dev-section-inset-end',
+      root.style.getPropertyValue('--dev-section-inset-end') || '0px',
+    );
+  };
+
+  const releaseSessionRoot = (root: HTMLElement | null) => {
+    if (!root) return;
+    root.classList.remove('is-section-lifted-session');
+    root.style.pointerEvents = '';
+    scheduleUnpinSectionControls(root);
+  };
+
   const clearHostLiftChrome = () => {
     removeLiftBackdrop();
     getSectionRootsInDomOrder().forEach((item) => {
@@ -218,16 +249,29 @@
     x: number,
     y: number,
   ) => {
-    if (controller.isActive()) return;
+    // A settling block is still grabbable: the same handle catches it mid-drop
+    // and lifts it again from where it is; another block's handle lands the
+    // settling one in its slot right away and lifts the new one. Only a block
+    // that is actively held (not settling) blocks a second lift.
+    const previous = dragItem;
+    let resumed = false;
+    if (controller.isActive()) {
+      if (root === previous) {
+        if (!controller.resumeLift(root, handle, x, y)) return;
+        resumed = true;
+      } else if (!controller.settleNow()) {
+        return;
+      } else {
+        releaseSessionRoot(previous);
+      }
+    }
 
     dragItem = root;
     dragHandle = handle;
     dragPointerId = pointerId;
     sessionButtonDown = true;
-
-    const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
-    let sourceIndex = sections.indexOf(root);
-    if (sourceIndex < 0) sourceIndex = 0;
+    sessionSeq += 1;
+    activeSessionId = sessionSeq;
 
     grabOrderSnapshot = captureSectionOrder();
 
@@ -237,8 +281,15 @@
       // Document listeners still track pointer position.
     }
 
-    controller.beginLift(root, handle, x, y, sourceIndex);
-    attachLiftBackdrop(root);
+    if (!resumed) {
+      const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
+      let sourceIndex = sections.indexOf(root);
+      if (sourceIndex < 0) sourceIndex = 0;
+
+      controller.beginLift(root, handle, x, y, sourceIndex);
+      attachLiftBackdrop(root);
+      syncSlotMediaInset(root);
+    }
 
     pinSectionControls(root);
     getSectionRootsInDomOrder().forEach((section) => {
@@ -251,10 +302,11 @@
   };
 
   const finishPointerSession = async () => {
-    if (dropInProgress || !dragItem) return;
+    if (!dragItem || droppingSessionId === activeSessionId) return;
     if (!controller.isActive() && !sessionButtonDown) return;
 
     const root = dragItem;
+    const sessionId = activeSessionId;
     sessionButtonDown = false;
     unbindSessionPointerListeners();
 
@@ -271,26 +323,30 @@
       }
     }
 
-    dropInProgress = true;
+    droppingSessionId = sessionId;
     try {
       if (controller.isActive()) {
         await controller.endDrop();
       }
-      // Card stays visible through the settle; fade it only after the block lands.
-      await fadeOutLiftBackdrop();
-      clearHostLiftChrome();
-      grabOrderSnapshot = null;
+      // A re-grab (mid-settle or during the fade) owns the lift chrome now —
+      // leave its card alone and only publish the order this session committed.
+      if (sessionId === activeSessionId) {
+        // Card stays visible through the settle; fade it only after it lands.
+        await fadeOutLiftBackdrop();
+      }
+      if (sessionId === activeSessionId) {
+        clearHostLiftChrome();
+        grabOrderSnapshot = null;
+      }
       syncPending();
     } finally {
-      dropInProgress = false;
-      setSectionDragging(false);
-      dragItem = null;
-      dragHandle = null;
-      dragPointerId = null;
-      if (root) {
-        root.classList.remove('is-section-lifted-session');
-        root.style.pointerEvents = '';
-        scheduleUnpinSectionControls(root);
+      if (droppingSessionId === sessionId) droppingSessionId = 0;
+      if (sessionId === activeSessionId) {
+        setSectionDragging(false);
+        dragItem = null;
+        dragHandle = null;
+        dragPointerId = null;
+        releaseSessionRoot(root);
       }
     }
   };
@@ -492,6 +548,9 @@
   const abortActiveSession = () => {
     if (!controller.isActive() && !dragItem) return;
     const root = dragItem;
+    // Retire the session so an in-flight drop tail can't tear down after us.
+    activeSessionId = 0;
+    droppingSessionId = 0;
     sessionButtonDown = false;
     unbindSessionPointerListeners();
     if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
@@ -739,6 +798,12 @@
     --section-lift-card-inset: 0.75em;
     position: absolute;
     inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
+    /* Hug the media box, not the full-width section: a constrained or
+       height-capped image is narrower than its column, and the card belongs to
+       the image, not the empty gutter beside it. Vars from syncDragHandleAnchor;
+       0 for full-width blocks, so those are unchanged. */
+    left: calc(var(--dev-section-inset, 0px) - var(--section-lift-card-inset, 0.75em));
+    right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.75em));
     z-index: -1;
     /* Page background token — tracks light/dark when --color-bg changes. */
     background: var(--color-bg);
@@ -763,9 +828,27 @@
   .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving {
     position: relative;
     /* Below the lifted card (100), above static sections, so upward FLIP
-       into the vacated slot stays visible around the drag proxy. */
+       into the vacated slot stays visible around the drag proxy. Also puts the
+       moving block over the drop indicator, which sits at z-index auto. */
     z-index: 90;
     will-change: transform;
+  }
+
+  /* A neighbour on the move carries the same card as the lifted block, so it
+     reads as a solid sheet sliding past and the gap indicator never shows
+     through it. No elevation shadow — these slide under the lifted block,
+     not with it. */
+  .is-dev-mode [data-dev-section-reorderable].is-section-flip-moving::before {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
+    /* Same media hug as the lift card. */
+    left: calc(var(--dev-section-inset, 0px) - var(--section-lift-card-inset, 0.75em));
+    right: calc(var(--dev-section-inset-end, 0px) - var(--section-lift-card-inset, 0.75em));
+    z-index: -1;
+    background: var(--color-bg);
+    border-radius: var(--radius-control-smooth, 0.35em);
+    pointer-events: none;
   }
 
   html.is-section-reorder-dragging {
@@ -870,12 +953,25 @@
       opacity 90ms ease-out;
   }
 
-  /* Visual card matches lift backdrop inset; layout box stays section-sized
-     so drop glide targets the real content top/left. */
+  /* Visual card tracks the lift backdrop inset, pulled a touch inside it so the
+     dashed line sits within the card it stands in for. Layout box stays
+     section-sized so drop glide targets the real content top/left. */
   .dev-section-drop-indicator__body::after {
     content: '';
     position: absolute;
-    inset: calc(-1 * var(--section-lift-card-inset, 0.75em));
+    inset: calc(-1 * var(--section-lift-card-inset, 0.75em) + var(--section-slot-card-inset, 2px));
+    /* Mirrors the lifted block's media hug — vars copied onto the indicator in
+       enterLift, since the slot lives outside the section it stands in for. */
+    left: calc(
+      var(--dev-section-inset, 0px)
+      - var(--section-lift-card-inset, 0.75em)
+      + var(--section-slot-card-inset, 2px)
+    );
+    right: calc(
+      var(--dev-section-inset-end, 0px)
+      - var(--section-lift-card-inset, 0.75em)
+      + var(--section-slot-card-inset, 2px)
+    );
     box-sizing: border-box;
     border: 1px dashed transparent;
     border-radius: var(--radius-control-smooth, 0.35em);
