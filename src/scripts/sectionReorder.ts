@@ -429,8 +429,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     }
 
     const items = host.getItems();
-    if (index >= items.length) zone.append(dropIndicator);
-    else items[index].before(dropIndicator);
+    if (index < items.length) items[index].before(dropIndicator);
+    else if (items.length) items[items.length - 1].after(dropIndicator);
+    else zone.append(dropIndicator);
   };
 
   const applySlotMetrics = (insertIndex: number) => {
@@ -694,8 +695,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const zone = host.getDropZone();
     if (!zone) return;
     const items = host.getItems().filter((el) => el !== item);
-    if (insertIndex >= items.length) zone.append(item);
-    else items[insertIndex].before(item);
+    // Land after the last item, not at the end of the zone — the zone can hold
+    // trailing non-item children (scripts, the scroll finale) that stay last.
+    if (insertIndex < items.length) items[insertIndex].before(item);
+    else if (items.length) items[items.length - 1].after(item);
+    else zone.append(item);
   };
 
   /**

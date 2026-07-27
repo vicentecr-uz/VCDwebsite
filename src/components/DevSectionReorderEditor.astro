@@ -32,6 +32,9 @@
   let dragPointerId: number | null = null;
   let liftBackdrop: HTMLElement | null = null;
   let grabOrderSnapshot: number[] | null = null;
+  // Every drop-zone child at grab time, so an abort puts the page back exactly —
+  // sections and the non-section children they were dragged past alike.
+  let grabNodeSnapshot: ChildNode[] | null = null;
   let baselineOrder: number[] | null = null;
   let documentKey = '';
   let sessionPointerActive = false;
@@ -55,20 +58,48 @@
   const ordersMatch = (left: number[], right: number[]) =>
     JSON.stringify(left) === JSON.stringify(right);
 
+  /**
+   * Refill the slots the snapshot's nodes currently occupy, in snapshot order.
+   * Appending each node to the drop zone instead would strand every other child
+   * (component scripts, the scroll finale) in front of the whole project.
+   */
+  const restoreNodeOrder = (nodes: ChildNode[]) => {
+    const zone = dropZone();
+    if (!zone) return;
+
+    const wanted = new Set(nodes.filter((node) => node.parentNode === zone));
+    const slots = [...zone.childNodes]
+      .filter((node) => wanted.has(node))
+      .map((node) => zone.insertBefore(document.createComment(''), node));
+
+    let slotIndex = 0;
+    for (const node of nodes) {
+      if (!wanted.has(node)) continue;
+      const slot = slots[slotIndex];
+      if (!slot) break;
+      slotIndex += 1;
+      zone.insertBefore(node, slot);
+    }
+
+    slots.forEach((slot) => slot.remove());
+  };
+
+  /** Snapshot restore by section id — the save bar's baseline outlives its nodes. */
   const restoreDomOrder = (order: number[]) => {
     const zone = dropZone();
     if (!zone) return;
 
     const rootsById = new Map<number, HTMLElement>();
-    getSectionRootsInDomOrder().forEach((root) => {
+    getSectionRootsInDomOrder(zone).forEach((root) => {
       const id = sectionOrderId(root);
       if (id !== null) rootsById.set(id, root);
     });
 
-    for (const id of order) {
-      const root = rootsById.get(id);
-      if (root) zone.append(root);
-    }
+    restoreNodeOrder(
+      order
+        .map((id) => rootsById.get(id))
+        .filter((root): root is HTMLElement => Boolean(root)),
+    );
   };
 
   const syncPending = () => {
@@ -274,6 +305,7 @@
     activeSessionId = sessionSeq;
 
     grabOrderSnapshot = captureSectionOrder();
+    grabNodeSnapshot = [...(dropZone()?.childNodes ?? [])];
 
     try {
       handle.setPointerCapture(pointerId);
@@ -337,6 +369,7 @@
       if (sessionId === activeSessionId) {
         clearHostLiftChrome();
         grabOrderSnapshot = null;
+        grabNodeSnapshot = null;
       }
       syncPending();
     } finally {
@@ -553,7 +586,8 @@
     droppingSessionId = 0;
     sessionButtonDown = false;
     unbindSessionPointerListeners();
-    if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
+    if (grabNodeSnapshot) restoreNodeOrder(grabNodeSnapshot);
+    else if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
     controller.destroy();
     clearHostLiftChrome();
     if (root) {
@@ -565,6 +599,7 @@
     dragHandle = null;
     dragPointerId = null;
     grabOrderSnapshot = null;
+    grabNodeSnapshot = null;
   };
 
   const setReorderActive = (active: boolean) => {
