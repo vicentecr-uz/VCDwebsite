@@ -12,6 +12,8 @@ export const REORDER_TIMING = {
   DROP_INDICATOR_ENTER_MS: 140,
   FLIP_REPOSITION_MS: 350,
   FADE_IN_DELAY_MS: 100,
+  /** Lift card fade; the drop slot holds off revealing until this has landed. */
+  LIFT_CARD_FADE_MS: 200,
   /** Drop settle via easeOutElastic (sampled WAAPI keyframes). */
   DROP_ANIMATION_MS: 700,
 } as const;
@@ -290,6 +292,22 @@ export type ReorderController = {
     sourceIndex: number,
     options?: BeginLiftOptions,
   ) => void;
+  /**
+   * Catch a settling block mid-drop and lift it again from where it currently
+   * is. Returns false when there is no settle to interrupt.
+   */
+  resumeLift: (
+    item: HTMLElement,
+    handle: HTMLElement,
+    pointerX: number,
+    pointerY: number,
+  ) => boolean;
+  /**
+   * End a settle immediately, committing the move and dropping the block into
+   * its slot without the glide. Frees the controller for another block's lift.
+   * Returns false when there is no settle to finish.
+   */
+  settleNow: () => boolean;
   setPointer: (x: number, y: number) => void;
   setTargetIndex: (index: number) => void;
   endDrop: () => Promise<void>;
@@ -322,6 +340,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let dropAnimation: Animation | null = null;
   let dropShadowAnimation: Animation | null = null;
   let dropIndicatorFadeAnimation: Animation | null = null;
+  let dropPositionRaf = 0;
+  /**
+   * Bumped whenever a settle is superseded (re-lift, destroy). The drop's async
+   * tails commit position and teardown, so they check this before touching an
+   * item that a newer session already owns.
+   */
+  let dropRun = 0;
 
   const nowMs = () => performance.now();
 
@@ -564,8 +589,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
     performFlipRelocate(fromIndex, toIndex);
     state.placedIndex = toIndex;
-    applyIndicatorOpacity(1);
-    indicatorAnim = { type: 'steady' };
+    // Relocating during the opening delay must not jump the slot in early —
+    // leave that fade in charge and let it finish on its own schedule.
+    if (indicatorAnim.type === 'steady') applyIndicatorOpacity(1);
   };
 
   const advanceIndicatorAnim = (now: number) => {
@@ -672,16 +698,63 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     else items[insertIndex].before(item);
   };
 
-  const animateDropToSlot = (item: HTMLElement) => {
+  /**
+   * Glide the block into the slot, re-reading the slot every frame and holding
+   * the start point in page coordinates. The block paints viewport-fixed, but
+   * both ends of the travel belong to the page — scroll during a drop and the
+   * block rides along with the slot instead of landing at a stale viewport spot.
+   */
+  const glideDropPosition = (
+    item: HTMLElement,
+    body: HTMLElement,
+    motionMs: number,
+    run: number,
+  ) => new Promise<void>((resolve) => {
+    const itemRect = item.getBoundingClientRect();
+    const fromPageTop = (Number.parseFloat(item.style.top) || itemRect.top) + window.scrollY;
+    const fromPageLeft = (Number.parseFloat(item.style.left) || itemRect.left) + window.scrollX;
+    const start = nowMs();
+    let landed = false;
+
+    const step = (now: number) => {
+      dropPositionRaf = 0;
+      if (run !== dropRun) {
+        resolve();
+        return;
+      }
+
+      const t = clamp01((now - start) / motionMs);
+      const pos = 1 + (easeOutElastic(t) - 1) * DROP_ELASTIC_AMPLITUDE;
+      const fromTop = fromPageTop - window.scrollY;
+      const fromLeft = fromPageLeft - window.scrollX;
+      const target = body.getBoundingClientRect();
+
+      item.style.top = `${fromTop + (target.top - fromTop) * pos}px`;
+      item.style.left = `${fromLeft + (target.left - fromLeft) * pos}px`;
+
+      // Past the glide the loop keeps pinning the block to the slot, so a scroll
+      // during the slot's fade-out can't pull them apart before the commit.
+      if (t >= 1 && !landed) {
+        landed = true;
+        resolve();
+      }
+      dropPositionRaf = requestAnimationFrame(step);
+    };
+
+    step(start);
+  });
+
+  const cancelDropPositionGlide = () => {
+    if (!dropPositionRaf) return;
+    cancelAnimationFrame(dropPositionRaf);
+    dropPositionRaf = 0;
+  };
+
+  const animateDropToSlot = (item: HTMLElement, run: number) => {
     const body = getIndicatorBody();
-    const targetRect = body?.getBoundingClientRect();
-    if (!targetRect) return Promise.resolve();
+    if (!body) return Promise.resolve();
 
     const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_ANIMATION_MS;
-    const fromTop = Number.parseFloat(item.style.top) || item.getBoundingClientRect().top;
-    const fromLeft = Number.parseFloat(item.style.left) || item.getBoundingClientRect().left;
-    const toTop = targetRect.top;
-    const toLeft = targetRect.left;
     const fromScale = 1.02;
     const toScale = 1;
 
@@ -690,14 +763,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     void item.offsetHeight;
 
     if (motionMs <= 0) {
-      item.style.top = `${toTop}px`;
-      item.style.left = `${toLeft}px`;
+      const targetRect = body.getBoundingClientRect();
+      item.style.top = `${targetRect.top}px`;
+      item.style.left = `${targetRect.left}px`;
       const backdropClass = host.classes.liftBackdrop;
       if (backdropClass) {
         const backdrop = item.querySelector<HTMLElement>(`:scope > .${backdropClass}`);
         if (backdrop) backdrop.style.boxShadow = 'none';
       }
-      applyIndicatorOpacity(0);
       item.classList.remove('is-dropping');
       return Promise.resolve();
     }
@@ -705,21 +778,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     dropAnimation?.cancel();
     dropShadowAnimation?.cancel();
     dropIndicatorFadeAnimation?.cancel();
-    // WAAPI owns top/left/scale — suppress CSS transitions that would fight it.
+    cancelDropPositionGlide();
+    // WAAPI owns scale, the rAF glide owns top/left — suppress CSS transitions
+    // that would fight either.
     item.style.transition = 'none';
 
-    const keyframes: Keyframe[] = [];
+    const scaleKeyframes: Keyframe[] = [];
     const shadowKeyframes: Keyframe[] = [];
-    const indicatorFadeKeyframes: Keyframe[] = [];
-    const indicatorFrom = state.indicatorOpacity;
     for (let i = 0; i <= DROP_ELASTIC_SAMPLES; i += 1) {
       const t = i / DROP_ELASTIC_SAMPLES;
-      const elastic = easeOutElastic(t);
-      const pos = 1 + (elastic - 1) * DROP_ELASTIC_AMPLITUDE;
       const scaleT = easeOutCubic(t);
-      keyframes.push({
-        top: `${fromTop + (toTop - fromTop) * pos}px`,
-        left: `${fromLeft + (toLeft - fromLeft) * pos}px`,
+      scaleKeyframes.push({
         transform: `scale(${fromScale + (toScale - fromScale) * scaleT})`,
         offset: t,
       });
@@ -732,13 +801,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
             : `0 0.85em 2.4em rgba(0, 0, 0, ${shadowAlpha})`,
         offset: t,
       });
-      indicatorFadeKeyframes.push({
-        opacity: indicatorFrom * (1 - scaleT),
-        offset: t,
-      });
     }
 
-    const animation = item.animate(keyframes, {
+    const animation = item.animate(scaleKeyframes, {
       duration: motionMs,
       easing: 'linear',
       fill: 'forwards',
@@ -758,42 +823,58 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       });
       dropShadowAnimation = shadowAnim;
       shadowAnim.finished.catch(() => {}).then(() => {
+        if (run !== dropRun) return;
         if (dropShadowAnimation === shadowAnim) dropShadowAnimation = null;
         backdrop.style.boxShadow = 'none';
         shadowAnim.cancel();
       });
     }
 
-    // Drop indicator fades with the same easeOutCubic as scale + shadow.
+    // The slot holds full through the whole settle — see fadeOutIndicator.
     body.style.transition = 'none';
-    const indicatorFadeAnim = body.animate(indicatorFadeKeyframes, {
-      duration: motionMs,
-      easing: 'linear',
-      fill: 'forwards',
-    });
-    dropIndicatorFadeAnimation = indicatorFadeAnim;
-    indicatorFadeAnim.finished.catch(() => {}).then(() => {
-      if (dropIndicatorFadeAnimation === indicatorFadeAnim) dropIndicatorFadeAnimation = null;
-      applyIndicatorOpacity(0);
-      indicatorFadeAnim.cancel();
-    });
 
-    return animation.finished
-      .catch(() => {
-        // Cancelled (destroy / new drop) — still commit if this item is live.
-      })
-      .then(() => {
-        if (dropAnimation === animation) dropAnimation = null;
-        item.style.top = `${toTop}px`;
-        item.style.left = `${toLeft}px`;
-        item.style.removeProperty('transition');
-        animation.cancel();
-        item.classList.remove('is-dropping');
-      });
+    return glideDropPosition(item, body, motionMs, run).then(() => {
+      // A re-lift already caught this block mid-settle — leave its position.
+      if (run !== dropRun) return;
+      if (dropAnimation === animation) dropAnimation = null;
+      item.style.removeProperty('transition');
+      animation.cancel();
+      item.classList.remove('is-dropping');
+    });
+  };
+
+  /**
+   * Fade the slot away once the card has fully landed — size and shadow both
+   * finished. Runs before the block commits, since removing the slot is what
+   * gives the block its space back.
+   */
+  const fadeOutIndicator = (run: number) => {
+    const body = getIndicatorBody();
+    if (!body || state.indicatorOpacity <= 0.01) return Promise.resolve();
+
+    const duration = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS;
+    if (duration <= 0) {
+      applyIndicatorOpacity(0);
+      return Promise.resolve();
+    }
+
+    const fadeAnim = body.animate(
+      [{ opacity: state.indicatorOpacity }, { opacity: 0 }],
+      { duration, easing: 'ease-out', fill: 'forwards' },
+    );
+    dropIndicatorFadeAnimation = fadeAnim;
+
+    return fadeAnim.finished.catch(() => {}).then(() => {
+      if (run !== dropRun) return;
+      if (dropIndicatorFadeAnimation === fadeAnim) dropIndicatorFadeAnimation = null;
+      applyIndicatorOpacity(0);
+      fadeAnim.cancel();
+    });
   };
 
   const teardownChrome = () => {
     stopTick();
+    cancelDropPositionGlide();
     scrollDriver.reset();
     clearActiveFlip();
     clearGhosts();
@@ -819,6 +900,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     item.style.margin = '';
     item.style.zIndex = '';
     item.style.transformOrigin = '';
+    // A mid-drop re-lift pins the settle's scale inline; never outlive the lift.
+    item.style.removeProperty('transform');
     item.style.removeProperty('transition');
   };
 
@@ -849,7 +932,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         blockHeight: measureBlockHeight(item),
         gapTop: liftGaps.top,
         gapBottom: liftGaps.bottom,
-        indicatorOpacity: 1,
+        indicatorOpacity: 0,
       };
 
       // Take the item out of flow before inserting the slot stand-in, so the
@@ -867,8 +950,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       dropIndicator = createIndicator();
       item.before(dropIndicator);
       syncPlacement(sourceIndex);
+      // `is-visible` holds the vacated space open straight away, but the slot
+      // waits out the lift card's fade before painting itself in.
       dropIndicator.classList.add('is-visible');
-      applyIndicatorOpacity(1);
+      applyIndicatorOpacity(0);
+      indicatorAnim = {
+        type: 'fadeInWait',
+        until: nowMs() + REORDER_TIMING.LIFT_CARD_FADE_MS,
+      };
 
       if (prefersReducedMotion()) {
         item.classList.add('is-lifted-raised');
@@ -881,6 +970,112 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       scrollDriver.reset();
       startTick();
       updateStatus();
+    },
+
+    resumeLift: (item, handle, pointerX, pointerY) => {
+      if (state.phase !== 'dropping' || host.getDragItem() !== item) return false;
+
+      // Retire the settle's pending tails before cancelling it, so they can't
+      // commit the drop position over the lift we're about to restore.
+      dropRun += 1;
+      cancelDropPositionGlide();
+
+      // Read the animated values off computed style: getBoundingClientRect
+      // would fold in the settle's scale, and top/left are the unscaled box.
+      const computed = getComputedStyle(item);
+      const currentTop = Number.parseFloat(computed.top) || state.liftTop;
+      const currentLeft = Number.parseFloat(computed.left) || state.liftLeft;
+      const currentTransform = computed.transform;
+
+      const backdropClass = host.classes.liftBackdrop;
+      const backdrop = backdropClass
+        ? item.querySelector<HTMLElement>(`:scope > .${backdropClass}`)
+        : null;
+      const body = getIndicatorBody();
+      // Cancelling reverts each property to its CSS value, so everything the
+      // settle was animating down would snap back to full. Read the in-flight
+      // values first, pin them, then release to CSS next frame so scale, card
+      // shadow and drop slot all ease back up from where the settle got to.
+      const currentShadow = backdrop ? getComputedStyle(backdrop).boxShadow : '';
+      const currentIndicatorOpacity = body
+        ? Number.parseFloat(getComputedStyle(body).opacity)
+        : 1;
+
+      dropAnimation?.cancel();
+      dropAnimation = null;
+      dropShadowAnimation?.cancel();
+      dropShadowAnimation = null;
+      dropIndicatorFadeAnimation?.cancel();
+      dropIndicatorFadeAnimation = null;
+
+      item.style.top = `${currentTop}px`;
+      item.style.left = `${currentLeft}px`;
+      item.style.removeProperty('transition');
+      item.classList.remove('is-dropping');
+      if (currentTransform && currentTransform !== 'none') {
+        item.style.transform = currentTransform;
+      }
+      item.classList.add('is-lifted-raised');
+
+      if (backdrop) {
+        // Restores the CSS transition the settle replaced (opacity + shadow).
+        backdrop.style.removeProperty('transition');
+        if (currentShadow && currentShadow !== 'none') {
+          backdrop.style.boxShadow = currentShadow;
+        }
+      }
+      if (body) body.style.removeProperty('transition');
+      applyIndicatorOpacity(Number.isFinite(currentIndicatorOpacity) ? currentIndicatorOpacity : 1);
+      indicatorAnim = { type: 'steady' };
+
+      requestAnimationFrame(() => {
+        item.style.removeProperty('transform');
+        backdrop?.style.removeProperty('box-shadow');
+        applyIndicatorOpacity(1);
+      });
+
+      state.phase = 'lifted';
+      state.pointerX = pointerX;
+      state.pointerY = pointerY;
+      // Scroll-hold measures from the new grab, not the original one.
+      state.grabPointerY = pointerY;
+      state.grabOffsetX = pointerX - currentLeft;
+      state.grabOffsetY = pointerY - currentTop;
+      state.liftTop = currentTop;
+      state.liftLeft = currentLeft;
+      state.targetIndex = state.placedIndex;
+      setLiftTransformOrigin(item, handle);
+
+      scrollDriver.reset();
+      startTick();
+      updateStatus();
+      return true;
+    },
+
+    settleNow: () => {
+      if (state.phase !== 'dropping') return false;
+      const item = host.getDragItem();
+      if (!item) return false;
+
+      // Retire the settle's tails — the commit happens here instead.
+      dropRun += 1;
+      cancelDropPositionGlide();
+      dropAnimation?.cancel();
+      dropAnimation = null;
+      dropShadowAnimation?.cancel();
+      dropShadowAnimation = null;
+      dropIndicatorFadeAnimation?.cancel();
+      dropIndicatorFadeAnimation = null;
+
+      if (state.targetIndex !== state.sourceIndex) {
+        moveItemToIndex(item, state.targetIndex);
+      }
+      teardownChrome();
+      clearLiftStyles(item);
+      followPointer = true;
+      state = idleState();
+      host.onStatus?.('Idle · insert —');
+      return true;
     },
 
     setPointer: (x, y) => {
@@ -900,12 +1095,15 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       const item = host.getDragItem();
       if (!item) return;
 
+      dropRun += 1;
+      const run = dropRun;
       state.phase = 'dropping';
       stopTick();
       scrollDriver.reset();
       clearGhosts();
       clearActiveFlip();
       dropIndicator?.classList.remove('is-repositioning');
+      const openingFadePending = indicatorAnim.type !== 'steady';
       indicatorAnim = { type: 'steady' };
 
       const finalIndex = followPointer
@@ -920,9 +1118,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         syncPlacement(finalIndex);
         state.placedIndex = finalIndex;
       }
-      applyIndicatorOpacity(1);
+      // Dropped before the opening fade landed: carry on from where it got to
+      // rather than popping the slot to full for the settle.
+      if (!openingFadePending) applyIndicatorOpacity(1);
 
-      await animateDropToSlot(item);
+      await animateDropToSlot(item, run);
+
+      // Caught mid-settle: the block is lifted again and owns the chrome now.
+      if (run !== dropRun) return;
+
+      await fadeOutIndicator(run);
+      if (run !== dropRun) return;
 
       if (finalIndex !== state.sourceIndex) {
         moveItemToIndex(item, finalIndex);
@@ -941,6 +1147,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
     destroy: () => {
       const item = host.getDragItem();
+      dropRun += 1;
       teardownChrome();
       if (item) clearLiftStyles(item);
       followPointer = true;
