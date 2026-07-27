@@ -65,14 +65,50 @@ export const getAffectedItems = (
   return affected;
 };
 
-/** Insert index from a Y position against item midpoints. */
-export const resolveInsertIndexFromY = (items: HTMLElement[], clientY: number) => {
-  for (let i = 0; i < items.length; i += 1) {
-    const rect = items[i].getBoundingClientRect();
-    const mid = rect.top + rect.height / 2;
-    if (clientY < mid) return i;
+/** Share of a neighbour's height, centred on it, that yields to the lifted block. */
+export const NEIGHBOR_HIT_BAND = 0.5;
+
+/** Travel under this is subpixel noise — hold the direction rather than flip it. */
+const TRAVEL_EPSILON_PX = 0.5;
+
+/**
+ * Insert index from a Y position. A neighbour gives way as soon as the lifted
+ * block's centre touches the middle {@link NEIGHBOR_HIT_BAND} of it, rather than
+ * having to pass its midpoint — a tall neighbour would otherwise need half its
+ * own height of travel before anything moved.
+ *
+ * That hitbox is a trigger, not a partition: sitting inside a band satisfies the
+ * test from both sides, so the walk only runs in the direction of travel and
+ * starts from the slot the block already holds. `direction` 0 — a block that has
+ * not moved yet — walks both ways, settling wherever the two agree.
+ */
+export const resolveInsertIndexFromY = (
+  items: HTMLElement[],
+  clientY: number,
+  currentIndex = 0,
+  direction = 0,
+) => {
+  const inset = (rect: DOMRect) => (rect.height * (1 - NEIGHBOR_HIT_BAND)) / 2;
+
+  let index = Math.max(0, Math.min(currentIndex, items.length));
+
+  if (direction >= 0) {
+    while (index < items.length) {
+      const rect = items[index].getBoundingClientRect();
+      if (clientY < rect.top + inset(rect)) break;
+      index += 1;
+    }
   }
-  return items.length;
+
+  if (direction <= 0) {
+    while (index > 0) {
+      const rect = items[index - 1].getBoundingClientRect();
+      if (clientY > rect.bottom - inset(rect)) break;
+      index -= 1;
+    }
+  }
+
+  return index;
 };
 
 export const setLiftTransformOrigin = (
@@ -337,6 +373,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let activeFadeGhosts: HTMLElement[] = [];
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
+  /**
+   * Which way the lifted block is travelling through the page, held across the
+   * still frames between moves so a pause never re-opens the other direction.
+   * Measured in document space: hold at an edge and the pointer stops moving
+   * while the block keeps travelling under auto-scroll.
+   */
+  let travelDirection = 0;
+  let lastTravelY: number | null = null;
   let dropAnimation: Animation | null = null;
   let dropShadowAnimation: Animation | null = null;
   let dropIndicatorFadeAnimation: Animation | null = null;
@@ -665,7 +709,20 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       renderLift();
 
       const centerY = state.liftTop + state.blockHeight / 2;
-      state.targetIndex = resolveInsertIndexFromY(host.getItems(), centerY);
+      const travelY = centerY + window.scrollY;
+      if (lastTravelY !== null && Math.abs(travelY - lastTravelY) > TRAVEL_EPSILON_PX) {
+        travelDirection = Math.sign(travelY - lastTravelY);
+        lastTravelY = travelY;
+      } else if (lastTravelY === null) {
+        lastTravelY = travelY;
+      }
+
+      state.targetIndex = resolveInsertIndexFromY(
+        host.getItems(),
+        centerY,
+        state.placedIndex,
+        travelDirection,
+      );
     }
 
     if (state.targetIndex !== state.placedIndex) {
@@ -972,6 +1029,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       }
 
       scrollDriver.reset();
+      travelDirection = 0;
+      lastTravelY = null;
       startTick();
       updateStatus();
     },
@@ -1051,6 +1110,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       setLiftTransformOrigin(item, handle);
 
       scrollDriver.reset();
+      travelDirection = 0;
+      lastTravelY = null;
       startTick();
       updateStatus();
       return true;
@@ -1110,10 +1171,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       const openingFadePending = indicatorAnim.type !== 'steady';
       indicatorAnim = { type: 'steady' };
 
+      // Same seed and direction the last tick used, so the block lands in the
+      // slot the indicator is showing rather than re-deciding on drop.
       const finalIndex = followPointer
         ? resolveInsertIndexFromY(
           host.getItems(),
           state.liftTop + state.blockHeight / 2,
+          state.placedIndex,
+          travelDirection,
         )
         : state.targetIndex;
       state.targetIndex = finalIndex;
