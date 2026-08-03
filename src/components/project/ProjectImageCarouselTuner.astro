@@ -956,7 +956,8 @@ import DevOverlay from '../DevOverlay.astro';
   .project-carousel-tuner__visible,
   .project-carousel-tuner__parking {
     display: grid;
-    gap: 0.35em;
+    /* Row gap must clear the Remove label under each thumb. */
+    gap: 0.55em 0.45em;
     min-height: 3.2em;
     padding: 0.4em;
     border-radius: var(--radius-control);
@@ -964,11 +965,12 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .project-carousel-tuner__visible {
-    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
+    /* Wide enough that "Remove" fits under each thumb without colliding. */
+    grid-template-columns: repeat(auto-fill, minmax(3.75em, 1fr));
   }
 
   .project-carousel-tuner__parking {
-    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(3.75em, 1fr));
     border: 1px dashed color-mix(in srgb, var(--color-text-muted) 45%, transparent);
   }
 
@@ -987,7 +989,9 @@ import DevOverlay from '../DevOverlay.astro';
 
   .project-carousel-tuner__thumb-wrap {
     display: grid;
-    gap: 0.2em;
+    grid-template-rows: auto auto;
+    gap: 0.15em;
+    min-width: 0;
   }
 
   .project-carousel-tuner__thumb {
@@ -1014,17 +1018,22 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .project-carousel-tuner__remove {
+    box-sizing: border-box;
+    width: 100%;
     margin: 0;
-    padding: 0.15em 0.25em;
+    padding: 0.1em 0;
     border: 0;
     border-radius: 0.2em;
     background: transparent;
     color: var(--color-text-muted);
     font: inherit;
-    font-size: 0.62rem;
+    font-size: 0.58rem;
     line-height: 1.2;
     cursor: pointer;
-    text-align: left;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .project-carousel-tuner__remove:hover {
