@@ -162,6 +162,21 @@ function bindDrag(carousel: Carousel): void {
   track.addEventListener('pointercancel', endDrag);
 }
 
+const registry = new Map<HTMLElement, Carousel>();
+
+/**
+ * Re-read the settings the tuner writes onto the block, then re-measure. The
+ * axis can flip under us, so the track's own height override is cleared first.
+ */
+function refreshSettings(carousel: Carousel): void {
+  carousel.axis = carousel.block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
+  carousel.heightMode = carousel.block.dataset.heightMode || 'dynamic';
+  carousel.track.style.removeProperty('height');
+  applyHeight(carousel);
+  renderDots(carousel);
+  scrollToIndex(carousel, carousel.active, false);
+}
+
 function initCarousel(block: HTMLElement): void {
   if (block.dataset.carouselInitialized === 'true') return;
   const track = block.querySelector<HTMLElement>('[data-carousel-track]');
@@ -181,6 +196,7 @@ function initCarousel(block: HTMLElement): void {
     active: 0,
   };
 
+  registry.set(block, carousel);
   block.dataset.activeIndex = '0';
   renderDots(carousel);
   renderCaptions(carousel);
@@ -225,6 +241,18 @@ function initCarousel(block: HTMLElement): void {
   });
 }
 
+let refreshBound = false;
+
 export function bindProjectImageCarousels(root: ParentNode = document): void {
   root.querySelectorAll<HTMLElement>('[data-project-image-carousel]').forEach(initCarousel);
+  if (refreshBound) return;
+  refreshBound = true;
+  // Dev tuner writes orientation/height mode onto the block, then fires this.
+  window.addEventListener('vcd:carousel-refresh', ((event: CustomEvent) => {
+    const only = event.detail?.block as HTMLElement | undefined;
+    registry.forEach((carousel, block) => {
+      if (only && block !== only) return;
+      refreshSettings(carousel);
+    });
+  }) as EventListener);
 }

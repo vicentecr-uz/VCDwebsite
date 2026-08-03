@@ -723,6 +723,58 @@ const applyGridChange = (data, change) => {
   return { ok: true };
 };
 
+const CAROUSEL_ORIENTATIONS = new Set(['horizontal', 'vertical']);
+const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest', 'max']);
+/** Matches MAX_VH_PERCENTS in src/lib/projectImageFrame.ts. */
+const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
+
+/**
+ * Apply one image-carousel settings mutation onto an in-memory document node.
+ * Items are left alone — only block-level settings are written here.
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+const applyCarouselChange = (data, change) => {
+  const fieldPath = change.path;
+  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+    return { ok: false, error: 'That carousel is not editable.' };
+  }
+  const target = resolvePathTarget(data, fieldPath);
+  if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+    return { ok: false, error: 'That carousel path no longer exists.' };
+  }
+
+  const orientation = String(change.orientation || '');
+  if (!CAROUSEL_ORIENTATIONS.has(orientation)) {
+    return { ok: false, error: 'Use a horizontal or vertical carousel.' };
+  }
+
+  const heightMode = String(change.heightMode || '');
+  if (!CAROUSEL_HEIGHT_MODES.has(heightMode)) {
+    return { ok: false, error: 'Use a supported carousel height mode.' };
+  }
+
+  target.orientation = orientation;
+  target.heightMode = heightMode;
+
+  if (heightMode === 'max') {
+    const maxHeightVh = Math.round(Number(change.maxHeightVh));
+    if (!CAROUSEL_MAX_VH.has(maxHeightVh)) {
+      return { ok: false, error: 'Use a supported max height.' };
+    }
+    target.maxHeightVh = maxHeightVh;
+  } else {
+    delete target.maxHeightVh;
+  }
+
+  if (change.scrollPinned === true) {
+    target.scrollPinned = true;
+  } else {
+    delete target.scrollPinned;
+  }
+
+  return { ok: true };
+};
+
 /**
  * Apply one image-caption mutation onto an in-memory document node.
  * @returns {{ ok: true } | { ok: false, error: string }}
@@ -858,12 +910,14 @@ function contentBatchDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
                     const crops = Array.isArray(body.crops) ? body.crops : [];
           const grids = Array.isArray(body.grids) ? body.grids : [];
+          const carousels = Array.isArray(body.carousels) ? body.carousels : [];
           const captions = Array.isArray(body.captions) ? body.captions : [];
           const textChanges = Array.isArray(body.text) ? body.text : [];
           const spacingChanges = Array.isArray(body.spacing) ? body.spacing : [];
           if (
             !crops.length &&
             !grids.length &&
+            !carousels.length &&
             !captions.length &&
             !textChanges.length &&
             !spacingChanges.length
@@ -872,14 +926,14 @@ function contentBatchDevWriter() {
             return;
           }
 
-          /** @type {Map<string, { crops: any[], grids: any[], captions: any[], text: any[], spacing: any[] }>} */
+          /** @type {Map<string, { crops: any[], grids: any[], carousels: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const resolveBatchChange = (documentKey, fieldPath) => {
             const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             if (!target?.relativeFile) return null;
             let group = grouped.get(target.relativeFile);
             if (!group) {
-              group = { crops: [], grids: [], captions: [], text: [], spacing: [] };
+              group = { crops: [], grids: [], carousels: [], captions: [], text: [], spacing: [] };
               grouped.set(target.relativeFile, group);
             }
             return { group, path: target.path };
@@ -902,6 +956,15 @@ function contentBatchDevWriter() {
               return;
             }
             resolved.group.grids.push({ ...change, path: resolved.path });
+          }
+          for (const change of carousels) {
+            const documentKey = String(change?.document || '');
+            const resolved = resolveBatchChange(documentKey, change?.path);
+            if (!resolved) {
+              send(400, { error: 'That carousel is not editable.' });
+              return;
+            }
+            resolved.group.carousels.push({ ...change, path: resolved.path });
           }
           for (const change of captions) {
             const documentKey = String(change?.document || '');
@@ -973,6 +1036,13 @@ function contentBatchDevWriter() {
                 return;
               }
             }
+            for (const change of group.carousels) {
+              const result = applyCarouselChange(data, change);
+              if (!result.ok) {
+                send(400, { error: result.error });
+                return;
+              }
+            }
             for (const change of group.captions) {
               const result = applyCaptionChange(data, change);
               if (!result.ok) {
@@ -1037,6 +1107,7 @@ function contentBatchDevWriter() {
             ok: true,
             crops: crops.length,
             grids: grids.length,
+            carousels: carousels.length,
             captions: captions.length,
             text: textChanges.length,
             spacing: spacingChanges.length,
