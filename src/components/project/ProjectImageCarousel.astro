@@ -32,6 +32,10 @@ import {
   resolveGridItemCrop,
   resolveMaxVh,
 } from '../../lib/projectImageFrame';
+import {
+  carouselDotAppearance,
+  carouselDotGeometry,
+} from '../../lib/projectImageCarousel';
 
 interface Item {
   id?: string;
@@ -119,6 +123,9 @@ const resolvedItems = items.map((item, index) => {
 });
 
 const hasBelowCaption = resolvedItems.some((entry) => entry.isBelowCaption && entry.hasCaption);
+
+/** First paint starts on image 1 — same maths the client re-runs on scroll. */
+const dotGeometry = carouselDotGeometry(0, items.length);
 
 const editorItems = resolvedItems.map((entry) => ({
   id: entry.id,
@@ -276,20 +283,32 @@ const blockStyle = [
     </div>
 
     <div class="project-image-carousel__dots" data-carousel-dots hidden={items.length < 2}>
-      <div class="project-image-carousel__dot-window" data-carousel-dot-window>
-        <div class="project-image-carousel__dot-strip" data-carousel-dot-strip>
-          {items.map((_, index) => (
-            <button
-              type="button"
-              class="project-image-carousel__dot"
-              data-carousel-dot
-              data-carousel-index={index}
-              data-dot-state="out"
-              aria-label={`Go to image ${index + 1}`}
-            >
-              <span class="project-image-carousel__dot-mark"></span>
-            </button>
-          ))}
+      <div
+        class="project-image-carousel__dot-window"
+        data-carousel-dot-window
+        style={`--project-carousel-dot-count:${dotGeometry.span}`}
+      >
+        <div
+          class="project-image-carousel__dot-strip"
+          data-carousel-dot-strip
+          style={`--project-carousel-dot-offset:${dotGeometry.first}`}
+        >
+          {items.map((_, index) => {
+            const { activeness, scale } = carouselDotAppearance(index, 0, dotGeometry.centre);
+            return (
+              <button
+                type="button"
+                class="project-image-carousel__dot"
+                data-carousel-dot
+                data-carousel-index={index}
+                style={`--project-carousel-dot-activeness:${activeness};--project-carousel-dot-scale:${scale}`}
+                aria-current={index === 0 ? 'true' : 'false'}
+                aria-label={`Go to image ${index + 1}`}
+              >
+                <span class="project-image-carousel__dot-mark"></span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

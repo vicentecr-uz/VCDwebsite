@@ -350,18 +350,16 @@
 }
 
 /*
-  Cap the height by capping frame *width* against the cell's aspect ratio —
+  Height caps work by capping frame *width* against the cell's aspect ratio —
   a max-height alone would crop, since the frame drives its own height.
+  The block cap (heightMode "max") and an image's own Max view height both
+  apply; the smaller one wins. 1000 stands in for "no cap".
 */
-.project-image-carousel[data-height-mode='max'] .project-image-grid__frame {
-  max-width: calc(var(--project-carousel-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1));
-  margin-inline: auto;
-}
-
-/* Per-image cap, set from the crop tuner's Max view height. Wins over the
-   block-level cap by source order (both are equally specific). */
-.project-image-carousel__slide[data-max-vh]:not([data-max-vh='']) > .project-image-grid__frame {
-  max-width: calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1));
+.project-image-carousel__slide > .project-image-grid__frame {
+  max-width: calc(
+    min(var(--project-carousel-max-vh, 1000), var(--project-max-vh, 1000))
+    * 1svh * var(--project-image-ratio-num, 1)
+  );
   margin-inline: auto;
 }
 
@@ -465,13 +463,11 @@
   width: calc(var(--project-carousel-dot-count, 3) * var(--project-carousel-dot-slot));
   height: var(--project-carousel-dot-slot);
   overflow: hidden;
-  transition: width 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .project-image-carousel__dot-strip {
   display: flex;
   transform: translateX(calc(var(--project-carousel-dot-offset, 0) * var(--project-carousel-dot-slot) * -1));
-  transition: transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .project-image-carousel__dot {
@@ -486,33 +482,17 @@
   cursor: pointer;
 }
 
+/* Fill and scale interpolate off the scroll position — see renderDots. */
 .project-image-carousel__dot-mark {
   width: var(--project-carousel-dot-size);
   height: var(--project-carousel-dot-size);
   border-radius: 50%;
-  background: var(--color-surface-strong);
-  transition:
-    background-color 240ms ease,
-    transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1),
-    opacity 320ms ease;
-}
-
-.project-image-carousel__dot[data-dot-state='active'] .project-image-carousel__dot-mark {
-  background: var(--color-text-soft);
-}
-
-/* Scale only — the inactive fill is light enough without fading it further. */
-.project-image-carousel__dot[data-dot-state='edge'] .project-image-carousel__dot-mark {
-  transform: scale(0.6);
-}
-
-.project-image-carousel__dot[data-dot-state='out'] {
-  pointer-events: none;
-}
-
-.project-image-carousel__dot[data-dot-state='out'] .project-image-carousel__dot-mark {
-  transform: scale(0.4);
-  opacity: 0;
+  background: color-mix(
+    in srgb,
+    var(--color-text-soft) calc(var(--project-carousel-dot-activeness, 0) * 100%),
+    var(--color-surface-strong)
+  );
+  transform: scale(var(--project-carousel-dot-scale, 1));
 }
 
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__dots {
@@ -524,7 +504,6 @@
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__dot-window {
   width: var(--project-carousel-dot-slot);
   height: calc(var(--project-carousel-dot-count, 3) * var(--project-carousel-dot-slot));
-  transition: height 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__dot-strip {
@@ -550,10 +529,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .project-image-carousel.is-carousel-ready .project-image-carousel__track,
-  .project-image-carousel__dot-window,
-  .project-image-carousel__dot-strip,
-  .project-image-carousel__dot-mark {
+  .project-image-carousel.is-carousel-ready .project-image-carousel__track {
     transition-duration: 1ms;
   }
 }

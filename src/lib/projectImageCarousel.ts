@@ -18,6 +18,8 @@ interface Carousel {
   axis: Axis;
   heightMode: string;
   active: number;
+  /** Fractional slide position — drives the dots between snap points. */
+  progress: number;
 }
 
 const scrollPos = (carousel: Carousel) => (
@@ -45,30 +47,60 @@ function activeIndexFor(carousel: Carousel): number {
   return best;
 }
 
+/** Fractional position between slide offsets, for continuous dot tracking. */
+function progressFor(carousel: Carousel): number {
+  const position = scrollPos(carousel);
+  const offsets = carousel.slides.map((slide) => slideOffset(carousel, slide));
+  if (offsets.length < 2 || position <= offsets[0]) return 0;
+  for (let i = 0; i < offsets.length - 1; i += 1) {
+    if (position >= offsets[i + 1]) continue;
+    const span = offsets[i + 1] - offsets[i];
+    return span > 0 ? i + (position - offsets[i]) / span : i;
+  }
+  return offsets.length - 1;
+}
+
 /**
  * Five slots at most: three full-size dots centred on the active one, plus a
  * shrunken preview dot at each end while there are more images that way.
+ * `progress` is fractional, so the window slides with the images rather than
+ * jumping when one snaps into place. Shared with SSR so the first paint matches.
  */
+export function carouselDotGeometry(progress: number, count: number) {
+  const centre = Math.min(Math.max(progress, 1), Math.max(count - 2, 1));
+  const first = Math.max(0, centre - 2);
+  const last = Math.min(count - 1, centre + 2);
+  return { centre, first, span: last - first + 1 };
+}
+
+/** `activeness` 0–1 mixes the fill; `scale` shrinks toward the window edges. */
+export function carouselDotAppearance(index: number, progress: number, centre: number) {
+  const fromCentre = Math.abs(index - centre);
+  return {
+    activeness: Math.max(0, 1 - Math.abs(index - progress)),
+    scale: fromCentre <= 1
+      ? 1
+      : Math.max(0, 1 - 0.4 * Math.min(fromCentre - 1, 1) - 1.2 * Math.max(0, fromCentre - 2)),
+  };
+}
+
 function renderDots(carousel: Carousel): void {
   const { dots, dotStrip, dotWindow } = carousel;
   const count = dots.length;
   if (!count || !dotStrip || !dotWindow) return;
 
-  const centre = Math.min(Math.max(carousel.active, 1), Math.max(count - 2, 1));
-  const first = Math.max(0, centre - 2);
-  const last = Math.min(count - 1, centre + 2);
+  const { centre, first, span } = carouselDotGeometry(carousel.progress, count);
+  const activeIndex = Math.round(carousel.progress);
 
   dots.forEach((dot, index) => {
-    let state = 'out';
-    if (index === carousel.active) state = 'active';
-    else if (index >= centre - 1 && index <= centre + 1) state = 'near';
-    else if (index === first || index === last) state = 'edge';
-    dot.dataset.dotState = state;
-    dot.setAttribute('aria-current', index === carousel.active ? 'true' : 'false');
+    const { activeness, scale } = carouselDotAppearance(index, carousel.progress, centre);
+    dot.style.setProperty('--project-carousel-dot-activeness', activeness.toFixed(3));
+    dot.style.setProperty('--project-carousel-dot-scale', scale.toFixed(3));
+    dot.setAttribute('aria-current', index === activeIndex ? 'true' : 'false');
   });
 
-  dotWindow.style.setProperty('--project-carousel-dot-count', String(last - first + 1));
-  dotStrip.style.setProperty('--project-carousel-dot-offset', String(first));
+  dotWindow.style.setProperty('--project-carousel-dot-count', span.toFixed(4));
+  dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
 }
 
 function renderCaptions(carousel: Carousel): void {
@@ -100,11 +132,12 @@ function applyHeight(carousel: Carousel): void {
 }
 
 function sync(carousel: Carousel): void {
+  carousel.progress = progressFor(carousel);
+  renderDots(carousel);
   const next = activeIndexFor(carousel);
   if (next !== carousel.active) {
     carousel.active = next;
     carousel.block.dataset.activeIndex = String(next);
-    renderDots(carousel);
     renderCaptions(carousel);
   }
   applyHeight(carousel);
@@ -175,8 +208,9 @@ function refreshSettings(carousel: Carousel): void {
   carousel.heightMode = carousel.block.dataset.heightMode || 'dynamic';
   carousel.track.style.removeProperty('height');
   applyHeight(carousel);
-  renderDots(carousel);
   scrollToIndex(carousel, carousel.active, false);
+  carousel.progress = progressFor(carousel);
+  renderDots(carousel);
 }
 
 function initCarousel(block: HTMLElement): void {
@@ -196,6 +230,7 @@ function initCarousel(block: HTMLElement): void {
     axis: block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal',
     heightMode: block.dataset.heightMode || 'dynamic',
     active: 0,
+    progress: 0,
   };
 
   registry.set(block, carousel);
