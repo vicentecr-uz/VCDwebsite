@@ -246,19 +246,16 @@ import {
         host.dataset.carouselItemId = id;
         if (target.dataset.carouselParked === 'true') host.dataset.carouselParked = 'true';
         else delete host.dataset.carouselParked;
-        const moved = host.parentElement !== slot;
-        if (moved) slot.appendChild(host);
-        const active = Number(carousel.dataset.activeIndex || 0);
-        const slideIndex = Number(target.dataset.carouselIndex || 0);
-        host.classList.toggle('is-active', !host.dataset.carouselParked && slideIndex === active);
-        if (moved) {
-          window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
-        }
+        if (host.parentElement !== slot) slot.appendChild(host);
       } else if (target.classList.contains('project-image-grid__item')) {
         delete host.dataset.carouselCaption;
         delete host.dataset.carouselItemId;
         delete host.dataset.carouselParked;
         host.classList.remove('is-active');
+        host.style.removeProperty('opacity');
+        host.style.removeProperty('width');
+        host.style.removeProperty('max-width');
+        host.style.removeProperty('pointer-events');
         // Carousel nests the frame under a width-capped surface.
         const frame = target.querySelector<HTMLElement>('.project-image-grid__frame');
         const slot = target.querySelector<HTMLElement>('.project-image-grid__below-slot');
@@ -269,13 +266,6 @@ import {
           const addButton = target.querySelector('.dev-caption-add-trigger');
           if (addButton) addButton.before(host);
           else target.appendChild(host);
-        }
-        // Hide an empty carousel caption slot once the last below-caption leaves it.
-        if (carousel) {
-          const captionSlot = carousel.querySelector<HTMLElement>('[data-carousel-caption-slot]');
-          if (captionSlot && !captionSlot.querySelector('[data-carousel-caption]')) {
-            captionSlot.hidden = true;
-          }
         }
       } else if (!host.isConnected) {
         const addButton = target.querySelector('.dev-caption-add-trigger');
@@ -366,9 +356,8 @@ import {
         const existing = findCaptionHost(target);
         existing?.remove();
         const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
-        const captionSlot = carousel?.querySelector<HTMLElement>('[data-carousel-caption-slot]');
-        if (captionSlot && !captionSlot.querySelector('[data-carousel-caption]')) {
-          captionSlot.hidden = true;
+        if (carousel) {
+          window.dispatchEvent(new CustomEvent('vcd:carousel-sync-captions', { detail: { block: carousel } }));
         }
         syncCaptionChromeButton(target, captions, captionStyle);
         refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
@@ -400,6 +389,11 @@ import {
         }
       });
 
+      const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-sync-captions', { detail: { block: carousel } }));
+      }
+
       syncCaptionChromeButton(target, captions, captionStyle);
       refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
     };
@@ -422,9 +416,8 @@ import {
       disableInlineEditing(target);
       findCaptionHost(target)?.remove();
       const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
-      const captionSlot = carousel?.querySelector<HTMLElement>('[data-carousel-caption-slot]');
-      if (captionSlot && !captionSlot.querySelector('[data-carousel-caption]')) {
-        captionSlot.hidden = true;
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-sync-captions', { detail: { block: carousel } }));
       }
       if (editTarget === target) {
         draftCaptions = { desktop: '', tablet: '', mobile: '' };
