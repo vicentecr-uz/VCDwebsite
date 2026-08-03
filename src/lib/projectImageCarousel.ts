@@ -172,13 +172,27 @@ function captionHeightForSlide(carousel: Carousel, slideIndex: number): number {
   const trim = canTrimTextBoxToCap()
     ? 0
     : Number(caption.dataset.capTrim || 0);
-  return Math.max(0, Math.round(caption.scrollHeight - trim));
+  return Math.max(0, caption.scrollHeight - trim);
+}
+
+/** Lerp a per-slide value across fractional scroll progress (same basis as dots). */
+function lerpByProgress(carousel: Carousel, valueAt: (index: number) => number): number {
+  const count = carousel.slides.length;
+  if (count <= 0) return 0;
+  if (count === 1) return valueAt(0);
+  const progress = Math.min(Math.max(carousel.progress, 0), count - 1);
+  const left = Math.floor(progress);
+  const right = Math.min(left + 1, count - 1);
+  const t = progress - left;
+  if (t <= 0 || left === right) return valueAt(left);
+  if (t >= 1) return valueAt(right);
+  return valueAt(left) * (1 - t) + valueAt(right) * t;
 }
 
 /**
  * Scroll-linked caption opacity (with a mid-swipe gap), per-image caption
- * widths so fading copy doesn't jump, and a eased slot height toward the
- * nearest slide's caption — same 420ms curve as follow-each-image track height.
+ * widths so fading copy doesn't jump, and caption-slot height lerped with
+ * scroll — same continuous progress as the track / dots.
  */
 function syncCaptions(carousel: Carousel): void {
   const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
@@ -218,20 +232,19 @@ function syncCaptions(carousel: Carousel): void {
     caption.style.pointerEvents = opacity > 0.5 || editing ? 'auto' : 'none';
   });
 
-  // Discrete target (nearest slide), CSS-transitioned — mirrors track height.
-  const targetIndex = editingId
-    ? Number(
-      carousel.slides.find((slide) => slide.dataset.gridItemId === editingId)?.dataset.carouselIndex,
+  const targetHeight = editingId
+    ? captionHeightForSlide(
+      carousel,
+      Number(
+        carousel.slides.find((slide) => slide.dataset.gridItemId === editingId)?.dataset.carouselIndex,
+      ),
     )
-    : Math.round(carousel.progress);
-  const targetHeight = Number.isFinite(targetIndex)
-    ? captionHeightForSlide(carousel, targetIndex)
-    : 0;
+    : lerpByProgress(carousel, (index) => captionHeightForSlide(carousel, index));
   slot.hidden = false;
-  slot.style.height = `${targetHeight}px`;
+  slot.style.height = `${Math.round(targetHeight)}px`;
 }
 
-/** Ease the track to the active slide's height (or pin it to the tallest). */
+/** Track height follows scroll in dynamic mode; tallest pins to the max slide. */
 function applyHeight(carousel: Carousel): void {
   const { block, track, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
@@ -239,13 +252,14 @@ function applyHeight(carousel: Carousel): void {
     return;
   }
 
-  const measure = (slide: HTMLElement) => {
+  const measure = (slide: HTMLElement | undefined) => {
+    if (!slide) return 0;
     const frame = slide.querySelector<HTMLElement>('[data-carousel-frame]') ?? slide;
     return frame.getBoundingClientRect().height;
   };
 
   const size = heightMode === 'dynamic'
-    ? measure(carousel.slides[carousel.active] ?? carousel.slides[0])
+    ? lerpByProgress(carousel, (index) => measure(carousel.slides[index]))
     : Math.max(0, ...carousel.slides.map(measure));
   if (!size) return;
   block.style.setProperty('--project-carousel-track-size', `${Math.round(size)}px`);
@@ -402,8 +416,7 @@ function initCarousel(block: HTMLElement): void {
   renderDots(carousel);
   syncCaptions(carousel);
   applyHeight(carousel);
-  // Only ease height once the first measurement has landed, so there is no
-  // opening slide-down from `auto` / caption slot.
+  // Mark ready after the first measurement so consumers can gate on it.
   requestAnimationFrame(() => block.classList.add('is-carousel-ready'));
   // Cap metrics can shift once webfonts settle — remeasure trim + slot height.
   if (document.fonts?.ready) {
