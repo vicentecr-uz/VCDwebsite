@@ -1067,12 +1067,17 @@
       revertPendingSectionDeletes();
       revertDirtyEdits();
       revertAllPending();
+      // Image inserts are already on disk — undo them via the delete API.
+      void revertPersistedMediaInserts().catch(() => {
+        // Best-effort; bar/status will refresh either way.
+      });
       hideFormatBar();
       updateActions();
     });
 
     window.addEventListener('vcd:before-reload', (event) => {
-      const dirtyCount = unsavedChangeCount();
+      // Persisted media inserts survive reload (already written) — don't warn for them.
+      const dirtyCount = unsavedChangeCount() - persistedMediaInserts.length;
       if (!dirtyCount) return;
 
       const message = dirtyCount === 1
@@ -1086,8 +1091,10 @@
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
+      // Include persistedMediaInserts: already on disk, but still reversible until Save.
       const dirtyCount = dirtyText.length + dirtySpacing.length + pendingMedia.size
-        + pendingSectionDeletes.length + pendingSectionInserts.length;
+        + pendingSectionDeletes.length + pendingSectionInserts.length
+        + persistedMediaInserts.length;
 
       textStates.forEach((state) => {
         state.element.classList.toggle(
@@ -2085,12 +2092,19 @@
       const dirtySpacing = dirtySpacingStates();
       const pendingChanges = [...pendingMedia.values()];
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
+      const mediaInsertPending = persistedMediaInserts.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
       const imageChanges = pendingChanges.filter(
         (change) => change.kind !== 'listing-order' && change.kind !== 'section-order',
       );
-      if (!dirtyText.length && !dirtySpacing.length && !pendingChanges.length && !structuralPending) return;
+      if (
+        !dirtyText.length
+        && !dirtySpacing.length
+        && !pendingChanges.length
+        && !structuralPending
+        && !mediaInsertPending
+      ) return;
       saveButton.disabled = true;
       revertButton.disabled = true;
       status.textContent = 'Saving…';
