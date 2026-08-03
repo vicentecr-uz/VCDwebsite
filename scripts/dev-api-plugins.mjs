@@ -191,6 +191,48 @@ export function buildPlaceholderImageSection() {
   };
 }
 
+export function isPlaceholderImageSrc(src) {
+  const value = String(src || '');
+  return value === 'placeholder.svg' || value.endsWith('/placeholder.svg');
+}
+
+/** Replace a placeholder image section's src/dims with an uploaded draft file.
+ *  Crop variants stay as authored on the placeholder (frame size / position).
+ *  Pass `variants` to stamp the frame the editor was previewing (e.g. from DOM). */
+export async function fillPlaceholderImageSection(section, documentKey, filename, variants) {
+  if (!section || typeof section !== 'object' || Array.isArray(section)) {
+    throw new Error('That section cannot be filled.');
+  }
+  if (String(section.type || '') !== 'image' && String(section.type || '') !== 'placeholder') {
+    throw new Error('Only image placeholders can be filled.');
+  }
+  if (!isPlaceholderImageSrc(section.src)) {
+    throw new Error('That image is not a placeholder.');
+  }
+  const dims = await readImageDims(documentKey, filename);
+  section.type = 'image';
+  section.src = draftMediaSrc(documentKey, filename);
+  if (dims) {
+    section.srcWidth = dims.srcWidth;
+    section.srcHeight = dims.srcHeight;
+  } else {
+    delete section.srcWidth;
+    delete section.srcHeight;
+  }
+  if (variants && typeof variants === 'object' && !Array.isArray(variants) && Object.keys(variants).length) {
+    section.variants = structuredClone(variants);
+  } else if (
+    !section.variants
+    || typeof section.variants !== 'object'
+    || Array.isArray(section.variants)
+    || !Object.keys(section.variants).length
+  ) {
+    section.variants = structuredClone(PLACEHOLDER_IMAGE_VARIANTS);
+  }
+  if (String(section.alt || '') === 'Placeholder') section.alt = '';
+  return section;
+}
+
 export async function buildImageGridSection(documentKey, filenames) {
   const id = `grid-${Date.now().toString(36)}`;
   const items = await Promise.all(filenames.map(async (filename, index) => ({
