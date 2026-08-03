@@ -6,7 +6,9 @@ import { defineConfig } from 'astro/config';
 import tailwindcss from '@tailwindcss/vite';
 import {
   buildImageGridSection,
+  buildImageGridSectionFromSrcs,
   buildImageSection,
+  buildImageSectionFromSrcs,
   buildPlaceholderImageSection,
   draftMediaDevServer,
   fillPlaceholderImageSection,
@@ -23,6 +25,10 @@ import {
   uploadDevWriter,
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
+import {
+  assetsDevWriter,
+  removeMediaItemFromDocument,
+} from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
@@ -1326,15 +1332,17 @@ function contentSectionDevWriter() {
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
-                    const relativeFile = resolveEditableDocument(documentKey);
+          const relativeFile = resolveEditableDocument(documentKey);
           const action = body.action === 'delete'
             ? 'delete'
             : body.action === 'fillPlaceholder'
               ? 'fillPlaceholder'
-              : 'insert';
+              : body.action === 'removeMediaItem'
+                ? 'removeMediaItem'
+                : 'insert';
           const index = Number(body.index);
 
-          if (!relativeFile || !Number.isInteger(index) || index < 0) {
+          if (!relativeFile) {
             send(400, { error: 'That section cannot be updated.' });
             return;
           }
@@ -1343,6 +1351,32 @@ function contentSectionDevWriter() {
           const data = JSON.parse(await readFile(file, 'utf8'));
           if (!Array.isArray(data.sections)) {
             send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+            return;
+          }
+
+          if (action === 'removeMediaItem') {
+            const itemId = String(body.itemId || '').trim();
+            const fieldPath = Array.isArray(body.path) ? body.path : [];
+            try {
+              const section = removeMediaItemFromDocument(data, fieldPath, itemId);
+              await writeContentJson(file, data);
+              send(200, {
+                ok: true,
+                action: 'removeMediaItem',
+                itemId,
+                path: fieldPath,
+                section,
+              });
+            } catch (error) {
+              send(400, {
+                error: error instanceof Error ? error.message : 'Could not remove that image.',
+              });
+            }
+            return;
+          }
+
+          if (!Number.isInteger(index) || index < 0) {
+            send(400, { error: 'That section cannot be updated.' });
             return;
           }
 
@@ -1371,13 +1405,16 @@ function contentSectionDevWriter() {
           const filenames = Array.isArray(body.filenames)
             ? body.filenames.map((value) => String(value || '').trim()).filter(Boolean)
             : [];
+          const srcs = Array.isArray(body.srcs)
+            ? body.srcs.map((value) => String(value || '').trim()).filter(Boolean)
+            : [];
 
           if (action === 'fillPlaceholder') {
             if (index >= data.sections.length) {
               send(400, { error: 'The sections list is out of date. Refresh and try again.' });
               return;
             }
-            if (!filenames.length) {
+            if (!filenames.length && !srcs.length) {
               send(400, { error: 'An image file is required.' });
               return;
             }
@@ -1390,7 +1427,13 @@ function contentSectionDevWriter() {
               ? body.variants
               : undefined;
             try {
-              await fillPlaceholderImageSection(existing, documentKey, filenames[0], variants);
+              await fillPlaceholderImageSection(
+                existing,
+                documentKey,
+                filenames[0] || '',
+                variants,
+                srcs[0] || '',
+              );
             } catch (error) {
               send(400, {
                 error: error instanceof Error ? error.message : 'Could not fill that placeholder.',
@@ -1438,18 +1481,22 @@ function contentSectionDevWriter() {
               paragraphs: [''],
             };
           } else if (type === 'image') {
-            if (!filenames.length) {
+            if (!srcs.length && !filenames.length) {
               send(400, { error: 'An image file is required.' });
               return;
             }
-            section = await buildImageSection(documentKey, filenames.slice(0, 1));
+            section = srcs.length
+              ? await buildImageSectionFromSrcs(srcs.slice(0, 1))
+              : await buildImageSection(documentKey, filenames.slice(0, 1));
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'imageGrid') {
-            if (!filenames.length) {
+            if (!srcs.length && !filenames.length) {
               send(400, { error: 'At least one image file is required.' });
               return;
             }
-            section = await buildImageGridSection(documentKey, filenames);
+            section = srcs.length
+              ? await buildImageGridSectionFromSrcs(srcs)
+              : await buildImageGridSection(documentKey, filenames);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();
@@ -1875,6 +1922,7 @@ export default defineConfig({
       contentHmrGate(),
       draftMediaDevServer(),
       uploadDevWriter(),
+      assetsDevWriter(),
       projectCreateDevWriter(),
       projectDeleteDevWriter(),
       projectRenameDevWriter(),

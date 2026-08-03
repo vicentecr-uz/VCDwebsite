@@ -16,6 +16,7 @@ const { documentKey } = Astro.props;
     <div class="dev-image-drop-dialog__drop" data-dev-image-dropzone>
       <p class="dev-image-drop-dialog__drop-label">Drop images here</p>
       <button type="button" data-dev-image-choose>Choose from Finder</button>
+      <button type="button" data-dev-image-choose-assets>Choose from asset manager</button>
       <input type="file" accept="image/*" multiple hidden data-dev-image-file-input />
     </div>
     <p class="dev-image-drop-dialog__count" data-dev-image-picker-count hidden></p>
@@ -39,10 +40,13 @@ const { documentKey } = Astro.props;
   const dropzone = document.querySelector('[data-dev-image-dropzone]');
   const fileInput = document.querySelector('[data-dev-image-file-input]');
   const chooseButton = document.querySelector('[data-dev-image-choose]');
+  const chooseAssetsButton = document.querySelector('[data-dev-image-choose-assets]');
   const pickButtons = picker?.querySelectorAll('[data-dev-image-pick]') ?? [];
   const placeholderButton = document.querySelector('[data-dev-image-placeholder]');
 
   let pendingFiles = [];
+  /** @type {string[]} */
+  let pendingSrcs = [];
   let pendingInsertIndex = 0;
   let dragDepth = 0;
   /** @type {HTMLElement | null} */
@@ -151,13 +155,23 @@ const { documentKey } = Astro.props;
   };
 
   const syncPickerState = () => {
-    const count = pendingFiles.length;
+    const fileCount = pendingFiles.length;
+    const srcCount = pendingSrcs.length;
+    const count = fileCount || srcCount;
     if (pickerCount instanceof HTMLElement) {
       pickerCount.hidden = count === 0;
-      pickerCount.textContent = `${count} file${count === 1 ? '' : 's'} selected`;
+      pickerCount.textContent = srcCount
+        ? `${srcCount} asset${srcCount === 1 ? '' : 's'} selected`
+        : `${fileCount} file${fileCount === 1 ? '' : 's'} selected`;
     }
     pickButtons.forEach((button) => {
-      button.disabled = count === 0;
+      if (!(button instanceof HTMLButtonElement)) return;
+      const type = button.getAttribute('data-dev-image-pick');
+      if (srcCount > 0) {
+        button.disabled = type === 'image' ? srcCount !== 1 : srcCount < 1;
+        return;
+      }
+      button.disabled = fileCount === 0;
     });
     if (placeholderButton instanceof HTMLButtonElement) {
       placeholderButton.disabled = count > 0;
@@ -197,7 +211,7 @@ const { documentKey } = Astro.props;
     return result.filenames;
   };
 
-  const insertSection = async (type, filenames = []) => {
+  const insertSection = async (type, filenames = [], srcs = []) => {
     await flushPendingEdits(documentKey);
     const response = await fetch('/api/content-section', {
       method: 'POST',
@@ -206,7 +220,7 @@ const { documentKey } = Astro.props;
         document: documentKey,
         index: pendingInsertIndex,
         type,
-        filenames,
+        ...(srcs.length ? { srcs } : { filenames }),
       }),
     });
     const result = await response.json();
@@ -227,9 +241,22 @@ const { documentKey } = Astro.props;
       },
     }));
     pendingFiles = [];
+    pendingSrcs = [];
     syncPickerState();
     if (picker instanceof HTMLDialogElement) picker.close();
   };
+
+  const pickFromAssetManager = () => new Promise((resolve, reject) => {
+    window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
+      detail: {
+        documentKey,
+        project: documentKey,
+        mode: 'pick',
+        resolve,
+        reject,
+      },
+    }));
+  });
 
   const readImageDimsFromFile = (file) => new Promise((resolve) => {
     const url = URL.createObjectURL(file);
@@ -322,6 +349,7 @@ const { documentKey } = Astro.props;
 
   const setPendingFiles = (files) => {
     pendingFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    pendingSrcs = [];
     syncPickerState();
   };
 
@@ -403,9 +431,15 @@ const { documentKey } = Astro.props;
   pickButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const type = button.getAttribute('data-dev-image-pick');
-      if (!type || !pendingFiles.length) return;
+      if (!type) return;
       void (async () => {
         try {
+          if (pendingSrcs.length) {
+            const srcs = type === 'image' ? pendingSrcs.slice(0, 1) : pendingSrcs;
+            await insertSection(type, [], srcs);
+            return;
+          }
+          if (!pendingFiles.length) return;
           const filenames = await uploadFiles(pendingFiles);
           await insertSection(type, filenames);
         } catch (error) {
@@ -427,6 +461,31 @@ const { documentKey } = Astro.props;
 
   chooseButton?.addEventListener('click', () => {
     if (fileInput instanceof HTMLInputElement) fileInput.click();
+  });
+
+  chooseAssetsButton?.addEventListener('click', () => {
+    void (async () => {
+      try {
+        if (picker instanceof HTMLDialogElement && picker.open) picker.close();
+        const result = await pickFromAssetManager();
+        const srcs = Array.isArray(result?.srcs) ? result.srcs.filter(Boolean) : [];
+        const type = result?.type === 'imageGrid' ? 'imageGrid' : 'image';
+        if (!srcs.length) return;
+        pendingFiles = [];
+        pendingSrcs = srcs;
+        await insertSection(type, [], type === 'image' ? srcs.slice(0, 1) : srcs);
+      } catch (error) {
+        if (error instanceof Error && error.message === 'cancelled') {
+          if (picker instanceof HTMLDialogElement) {
+            syncPickerState();
+            picker.showModal();
+          }
+          return;
+        }
+        window.alert(error instanceof Error ? error.message : 'Could not add images.');
+        if (picker instanceof HTMLDialogElement) picker.showModal();
+      }
+    })();
   });
 
   fileInput?.addEventListener('change', () => {
@@ -455,6 +514,7 @@ const { documentKey } = Astro.props;
   picker?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
     if (picker instanceof HTMLDialogElement) picker.close();
     pendingFiles = [];
+    pendingSrcs = [];
     syncPickerState();
   });
 
