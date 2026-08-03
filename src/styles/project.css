@@ -349,8 +349,13 @@
   transition: height 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.project-image-carousel[data-height-mode='max'] .project-image-carousel__track {
-  max-height: calc(var(--project-carousel-max-vh, 80) * 1svh);
+/*
+  Cap the height by capping frame *width* against the cell's aspect ratio —
+  a max-height alone would crop, since the frame drives its own height.
+*/
+.project-image-carousel[data-height-mode='max'] .project-image-grid__frame {
+  max-width: calc(var(--project-carousel-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1));
+  margin-inline: auto;
 }
 
 .project-image-carousel__track.is-dragging {
@@ -704,7 +709,8 @@ html:not(.is-dev-mode) .dev-crop-stage {
   pointer-events: auto;
 }
 
-.dev-grid-edit-target {
+.dev-grid-edit-target,
+.dev-carousel-edit-target {
   position: relative;
 }
 
@@ -735,7 +741,9 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 .dev-grid-edit-target:hover > .dev-grid-edit-trigger,
-.dev-grid-edit-target:focus-within > .dev-grid-edit-trigger {
+.dev-grid-edit-target:focus-within > .dev-grid-edit-trigger,
+.dev-carousel-edit-target:hover > .dev-grid-edit-trigger,
+.dev-carousel-edit-target:focus-within > .dev-grid-edit-trigger {
   opacity: 1;
   pointer-events: auto;
 }
