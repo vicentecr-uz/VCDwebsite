@@ -779,6 +779,29 @@ const applyCarouselChange = (data, change) => {
     delete target.scrollPinned;
   }
 
+  // Visible order — items themselves stay put so crop paths remain stable.
+  if (Object.prototype.hasOwnProperty.call(change, 'visible')) {
+    const itemIds = Array.isArray(target.items)
+      ? target.items.map((item, index) => String(item?.id || `item-${index}`))
+      : [];
+    const knownIds = new Set(itemIds);
+    const requested = Array.isArray(change.visible) ? change.visible : [];
+    const seen = new Set();
+    const visible = [];
+    for (const rawId of requested) {
+      const id = String(rawId || '');
+      if (!knownIds.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      visible.push(id);
+    }
+    // Default = every item in array order — omit the field when nothing's parked
+    // and the order matches, so JSON stays quiet until someone rearranges.
+    const isDefault = visible.length === itemIds.length
+      && visible.every((id, index) => id === itemIds[index]);
+    if (isDefault) delete target.visible;
+    else target.visible = visible;
+  }
+
   return { ok: true };
 };
 

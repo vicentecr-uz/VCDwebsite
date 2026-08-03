@@ -73,6 +73,8 @@ interface Props {
   /** Advance slides as the page scrolls past a pinned block. Not wired yet. */
   scrollPinned?: boolean;
   dotsPlacement?: CarouselDotsPlacement;
+  /** Visible item ids in display order. Omitted ids are parked (hidden). */
+  visible?: string[];
   defaultAspectRatio?: string;
   constrained?: ImageGridConstrained;
   document?: string;
@@ -88,6 +90,7 @@ const {
   maxHeightVh,
   scrollPinned = false,
   dotsPlacement = 'outside',
+  visible: visibleProp,
   defaultAspectRatio = 'original',
   constrained: constrainedProp,
   document: documentKey,
@@ -104,6 +107,21 @@ const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(bas
 const stackClass = projectStackClass(spacing);
 const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
 
+const knownIds = new Set(itemIds);
+const visibleIds = (() => {
+  if (!Array.isArray(visibleProp)) return [...itemIds];
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const raw of visibleProp) {
+    const id = String(raw || '');
+    if (!knownIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  return next;
+})();
+const parkedIds = itemIds.filter((id) => !visibleIds.includes(id));
+
 const resolvedItems = items.map((item, index) => {
   const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
   const captionStyle = resolveImageCaptionStyle(item.captionStyle);
@@ -111,6 +129,7 @@ const resolvedItems = items.map((item, index) => {
   return {
     item,
     id: itemIds[index],
+    itemIndex: index,
     crop: resolveGridItemCrop(item, defaultAspectRatio),
     captions,
     captionStyle,
@@ -124,10 +143,17 @@ const resolvedItems = items.map((item, index) => {
   };
 });
 
-const hasBelowCaption = resolvedItems.some((entry) => entry.isBelowCaption && entry.hasCaption);
+const byId = new Map(resolvedItems.map((entry) => [entry.id, entry]));
+/** Visible first (display order), then parked — crop paths still use itemIndex. */
+const orderedEntries = [...visibleIds, ...parkedIds]
+  .map((id) => byId.get(id))
+  .filter((entry): entry is (typeof resolvedItems)[number] => !!entry);
+const visibleCount = visibleIds.length;
+
+const hasBelowCaption = orderedEntries.some((entry) => entry.isBelowCaption && entry.hasCaption);
 
 /** First paint starts on image 1 — same maths the client re-runs on scroll. */
-const dotGeometry = carouselDotGeometry(0, items.length);
+const dotGeometry = carouselDotGeometry(0, visibleCount);
 
 const editorItems = resolvedItems.map((entry) => ({
   id: entry.id,
@@ -168,6 +194,7 @@ const blockStyle = [
   data-dev-carousel-constrained={showDevEditing ? JSON.stringify(constrained) : undefined}
   data-dev-carousel-default-aspect={showDevEditing ? defaultAspectRatio : undefined}
   data-dev-carousel-items={showDevEditing ? JSON.stringify(editorItems) : undefined}
+  data-dev-carousel-visible={showDevEditing ? JSON.stringify(visibleIds) : undefined}
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={showDevEditing ? 'imageCarousel' : undefined}
 >
@@ -190,15 +217,17 @@ const blockStyle = [
       tabindex="0"
       role="group"
       aria-roledescription="carousel"
-      aria-label={`Image carousel, ${items.length} images`}
+      aria-label={`Image carousel, ${visibleCount} images`}
     >
-      {resolvedItems.map((entry, index) => {
-        const { item, id, crop, captions, captionStyle, captionPosition, captionReveals } = entry;
+      {orderedEntries.map((entry) => {
+        const { item, id, itemIndex, crop, captions, captionStyle, captionPosition, captionReveals } = entry;
+        const parked = !visibleIds.includes(id);
+        const displayIndex = visibleIds.indexOf(id);
         const isPlaceholder = isPlaceholderSrc(item.src);
         const editAttrs = showDevEditing
           ? imageDevEditAttrs(true, {
               documentKey: documentKey!,
-              path: [...basePath!, 'items', index],
+              path: [...basePath!, 'items', itemIndex],
               cropId: id,
               variants: crop.variants,
               caption: item.caption,
@@ -222,11 +251,13 @@ const blockStyle = [
             ]}
             style={`${crop.style}${entry.maxVh ? `;--project-max-vh:${entry.maxVh}` : ''}`}
             data-carousel-slide
-            data-carousel-index={index}
+            data-carousel-index={parked ? undefined : displayIndex}
+            data-carousel-parked={parked ? 'true' : undefined}
             data-max-vh={entry.maxVh ? String(entry.maxVh) : undefined}
             data-grid-item-id={id}
             aria-roledescription="slide"
-            aria-label={`${index + 1} of ${items.length}`}
+            aria-label={parked ? undefined : `${displayIndex + 1} of ${visibleCount}`}
+            aria-hidden={parked ? 'true' : undefined}
             {...editAttrs}
           >
             <div class="project-image-grid__frame" data-carousel-frame>
@@ -234,7 +265,7 @@ const blockStyle = [
                 src={projectImage(item.src)}
                 alt={item.alt ?? ''}
                 class="project-image-grid__image"
-                loading={index === 0 ? 'eager' : 'lazy'}
+                loading={displayIndex === 0 ? 'eager' : 'lazy'}
               />
               {!entry.isBelowCaption && entry.hasCaption && (
                 <span
@@ -284,7 +315,7 @@ const blockStyle = [
       })}
     </div>
 
-    <div class="project-image-carousel__dots" data-carousel-dots hidden={items.length < 2}>
+    <div class="project-image-carousel__dots" data-carousel-dots hidden={visibleCount < 2}>
       <div
         class="project-image-carousel__dot-window"
         data-carousel-dot-window
@@ -295,17 +326,25 @@ const blockStyle = [
           data-carousel-dot-strip
           style={`--project-carousel-dot-offset:${dotGeometry.first}`}
         >
-          {items.map((_, index) => {
-            const { activeness, scale } = carouselDotAppearance(index, 0, dotGeometry.centre);
+          {orderedEntries.map((entry) => {
+            const parked = !visibleIds.includes(entry.id);
+            const displayIndex = visibleIds.indexOf(entry.id);
+            const { activeness, scale } = parked
+              ? { activeness: 0, scale: 0 }
+              : carouselDotAppearance(displayIndex, 0, dotGeometry.centre);
             return (
               <button
                 type="button"
                 class="project-image-carousel__dot"
                 data-carousel-dot
-                data-carousel-index={index}
+                data-carousel-index={parked ? undefined : displayIndex}
+                data-carousel-item-id={entry.id}
+                data-carousel-parked={parked ? 'true' : undefined}
                 style={`--project-carousel-dot-activeness:${activeness};--project-carousel-dot-scale:${scale}`}
-                aria-current={index === 0 ? 'true' : 'false'}
-                aria-label={`Go to image ${index + 1}`}
+                aria-current={!parked && displayIndex === 0 ? 'true' : 'false'}
+                aria-label={parked ? undefined : `Go to image ${displayIndex + 1}`}
+                aria-hidden={parked ? 'true' : undefined}
+                tabindex={parked ? -1 : 0}
               >
                 <span class="project-image-carousel__dot-mark"></span>
               </button>
@@ -318,7 +357,10 @@ const blockStyle = [
 
   {hasBelowCaption && (
     <div class="project-image-carousel__caption-slot" data-carousel-caption-slot>
-      {resolvedItems.map((entry, index) => (
+      {orderedEntries.map((entry) => {
+        const parked = !visibleIds.includes(entry.id);
+        const displayIndex = visibleIds.indexOf(entry.id);
+        return (
         <span
           class:list={[
             'project-caption',
@@ -326,7 +368,9 @@ const blockStyle = [
             imageCaptionStyleClass(entry.captionStyle),
           ]}
           data-carousel-caption
-          data-carousel-index={index}
+          data-carousel-index={parked ? undefined : displayIndex}
+          data-carousel-item-id={entry.id}
+          data-carousel-parked={parked ? 'true' : undefined}
           data-project-image-caption
           data-caption-style={entry.captionStyle}
           data-caption-reveal-desktop="always"
@@ -337,7 +381,8 @@ const blockStyle = [
           <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{entry.captions.tablet}</span>
           <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{entry.captions.mobile}</span>
         </span>
-      ))}
+        );
+      })}
     </div>
   )}
 </div>

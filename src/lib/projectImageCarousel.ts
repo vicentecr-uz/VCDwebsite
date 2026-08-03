@@ -199,18 +199,49 @@ function bindDrag(carousel: Carousel): void {
 
 const registry = new Map<HTMLElement, Carousel>();
 
+const isParked = (el: HTMLElement) => el.dataset.carouselParked === 'true';
+
+/** Visible slides/dots/captions only — parked ones stay in the DOM for the tuner. */
+function collectVisible(carousel: Carousel): void {
+  carousel.slides = [...carousel.block.querySelectorAll<HTMLElement>('[data-carousel-slide]')]
+    .filter((slide) => !isParked(slide));
+  carousel.dots = [...carousel.block.querySelectorAll<HTMLElement>('[data-carousel-dot]')]
+    .filter((dot) => !isParked(dot));
+  carousel.captions = [...carousel.block.querySelectorAll<HTMLElement>('[data-carousel-caption]')]
+    .filter((caption) => !isParked(caption));
+
+  carousel.slides.forEach((slide, index) => {
+    slide.dataset.carouselIndex = String(index);
+  });
+  carousel.dots.forEach((dot, index) => {
+    dot.dataset.carouselIndex = String(index);
+    dot.setAttribute('aria-label', `Go to image ${index + 1}`);
+  });
+  carousel.captions.forEach((caption, index) => {
+    caption.dataset.carouselIndex = String(index);
+  });
+
+  const dotsRoot = carousel.block.querySelector<HTMLElement>('[data-carousel-dots]');
+  if (dotsRoot) dotsRoot.hidden = carousel.slides.length < 2;
+}
+
 /**
  * Re-read the settings the tuner writes onto the block, then re-measure. The
  * axis can flip under us, so the track's own height override is cleared first.
+ * Also re-collects slides after a live reorder/park.
  */
 function refreshSettings(carousel: Carousel): void {
   carousel.axis = carousel.block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
   carousel.heightMode = carousel.block.dataset.heightMode || 'dynamic';
+  collectVisible(carousel);
+  carousel.active = Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
   applyHeight(carousel);
   scrollToIndex(carousel, carousel.active, false);
   carousel.progress = progressFor(carousel);
+  carousel.block.dataset.activeIndex = String(carousel.active);
   renderDots(carousel);
+  renderCaptions(carousel);
 }
 
 function initCarousel(block: HTMLElement): void {
@@ -222,16 +253,17 @@ function initCarousel(block: HTMLElement): void {
   const carousel: Carousel = {
     block,
     track,
-    slides: [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')],
+    slides: [],
     dotStrip: block.querySelector<HTMLElement>('[data-carousel-dot-strip]'),
     dotWindow: block.querySelector<HTMLElement>('[data-carousel-dot-window]'),
-    dots: [...block.querySelectorAll<HTMLElement>('[data-carousel-dot]')],
-    captions: [...block.querySelectorAll<HTMLElement>('[data-carousel-caption]')],
+    dots: [],
+    captions: [],
     axis: block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal',
     heightMode: block.dataset.heightMode || 'dynamic',
     active: 0,
     progress: 0,
   };
+  collectVisible(carousel);
 
   registry.set(block, carousel);
   block.dataset.activeIndex = '0';
