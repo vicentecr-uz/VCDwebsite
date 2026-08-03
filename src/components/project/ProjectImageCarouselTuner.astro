@@ -27,13 +27,13 @@ import DevOverlay from '../DevOverlay.astro';
       <select data-carousel-height-mode>
         <option value="dynamic">Follow each image</option>
         <option value="tallest">Pin to tallest</option>
-        <option value="max">Max height</option>
       </select>
     </label>
 
-    <label class="project-carousel-tuner__select" data-carousel-max-row hidden>
+    <label class="project-carousel-tuner__select">
       <span>Max height</span>
       <select data-carousel-max-vh>
+        <option value="">Off</option>
         <option value="90">90% of screen</option>
         <option value="80">80% of screen</option>
         <option value="70">70% of screen</option>
@@ -66,13 +66,13 @@ import DevOverlay from '../DevOverlay.astro';
 
 <script>
   type Orientation = 'horizontal' | 'vertical';
-  type HeightMode = 'dynamic' | 'tallest' | 'max';
+  type HeightMode = 'dynamic' | 'tallest';
   type DotsPlacement = 'outside' | 'over' | 'hidden';
 
   interface Settings {
     orientation: Orientation;
     heightMode: HeightMode;
-    maxHeightVh: number;
+    maxHeightVh: number | null;
     scrollPinned: boolean;
     dotsPlacement: DotsPlacement;
   }
@@ -87,7 +87,6 @@ import DevOverlay from '../DevOverlay.astro';
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-carousel-orientation]'),
     ];
     const heightSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-height-mode]');
-    const maxRow = tuner.querySelector<HTMLElement>('[data-carousel-max-row]');
     const maxSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-max-vh]');
     const pinnedInput = tuner.querySelector<HTMLInputElement>('[data-carousel-scroll-pinned]');
     const dotsSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-dots-placement]');
@@ -98,7 +97,6 @@ import DevOverlay from '../DevOverlay.astro';
     if (
       !orientationButtons.length ||
       !heightSelect ||
-      !maxRow ||
       !maxSelect ||
       !pinnedInput ||
       !dotsSelect ||
@@ -112,9 +110,8 @@ import DevOverlay from '../DevOverlay.astro';
       const rawMax = Math.round(Number(target.dataset.devCarouselMaxVh));
       return {
         orientation: target.dataset.devCarouselOrientation === 'vertical' ? 'vertical' : 'horizontal',
-        heightMode: (['dynamic', 'tallest', 'max'] as HeightMode[])
-          .find((mode) => mode === target.dataset.devCarouselHeightMode) ?? 'dynamic',
-        maxHeightVh: MAX_VH_STEPS.includes(rawMax) ? rawMax : 80,
+        heightMode: target.dataset.devCarouselHeightMode === 'tallest' ? 'tallest' : 'dynamic',
+        maxHeightVh: MAX_VH_STEPS.includes(rawMax) ? rawMax : null,
         scrollPinned: target.dataset.devCarouselScrollPinned === 'true',
         dotsPlacement: (['outside', 'over', 'hidden'] as DotsPlacement[])
           .find((placement) => placement === target.dataset.devCarouselDotsPlacement) ?? 'outside',
@@ -149,7 +146,7 @@ import DevOverlay from '../DevOverlay.astro';
       target.dataset.devCarouselOrientation = settings.orientation;
       target.dataset.devCarouselHeightMode = settings.heightMode;
       target.dataset.devCarouselScrollPinned = settings.scrollPinned ? 'true' : 'false';
-      if (settings.heightMode === 'max') {
+      if (settings.maxHeightVh) {
         target.style.setProperty('--project-carousel-max-vh', String(settings.maxHeightVh));
         target.dataset.devCarouselMaxVh = String(settings.maxHeightVh);
       } else {
@@ -171,8 +168,7 @@ import DevOverlay from '../DevOverlay.astro';
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       heightSelect.value = draft.heightMode;
-      maxSelect.value = String(draft.maxHeightVh);
-      maxRow.hidden = draft.heightMode !== 'max';
+      maxSelect.value = draft.maxHeightVh ? String(draft.maxHeightVh) : '';
       pinnedInput.checked = draft.scrollPinned;
       dotsSelect.value = draft.dotsPlacement;
       applyLive();
@@ -221,7 +217,7 @@ import DevOverlay from '../DevOverlay.astro';
             path: carouselPath,
             orientation: staged.orientation,
             heightMode: staged.heightMode,
-            maxHeightVh: staged.maxHeightVh,
+            maxHeightVh: staged.maxHeightVh ?? 0,
             scrollPinned: staged.scrollPinned,
             dotsPlacement: staged.dotsPlacement,
           },
@@ -273,9 +269,11 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     maxSelect.addEventListener('change', () => {
-      draft.maxHeightVh = Number(maxSelect.value) || 80;
+      draft.maxHeightVh = Number(maxSelect.value) || null;
       renderDraft();
-      status.textContent = `Capped at ${draft.maxHeightVh}% of the screen — unsaved changes.`;
+      status.textContent = draft.maxHeightVh
+        ? `Capped at ${draft.maxHeightVh}% of the screen — unsaved changes.`
+        : 'Height cap off — unsaved changes.';
     });
 
     dotsSelect.addEventListener('change', () => {
