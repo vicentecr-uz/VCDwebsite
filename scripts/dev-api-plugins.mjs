@@ -167,7 +167,7 @@ export async function uniqueUploadFilename(directory, filename) {
 }
 
 export async function buildImageSection(documentKey, filenames) {
-  const id = `image-${Date.now().toString(36)}`;
+  const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   return {
     type: 'image',
     id,
@@ -184,7 +184,7 @@ export async function buildImageSectionFromSrcs(srcs) {
   const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
   const src = normalizeAssetSrc(srcs[0]);
   if (!src) throw new Error('An image file is required.');
-  const id = `image-${Date.now().toString(36)}`;
+  const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   return {
     type: 'image',
     id,

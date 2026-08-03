@@ -166,9 +166,8 @@ const { documentKey } = Astro.props;
     }
     pickButtons.forEach((button) => {
       if (!(button instanceof HTMLButtonElement)) return;
-      const type = button.getAttribute('data-dev-image-pick');
       if (srcCount > 0) {
-        button.disabled = type === 'image' ? srcCount !== 1 : srcCount < 1;
+        button.disabled = srcCount < 1;
         return;
       }
       button.disabled = fileCount === 0;
@@ -213,33 +212,47 @@ const { documentKey } = Astro.props;
 
   const insertSection = async (type, filenames = [], srcs = []) => {
     await flushPendingEdits(documentKey);
-    const response = await fetch('/api/content-section', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        document: documentKey,
-        index: pendingInsertIndex,
-        type,
-        ...(srcs.length ? { srcs } : { filenames }),
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Could not insert images.');
-    window.dispatchEvent(new CustomEvent('vcd:dev-section-inserted', {
-      detail: {
-        documentKey,
-        index: pendingInsertIndex,
-        section: result.section,
-      },
-    }));
-    window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
-      detail: {
-        action: 'insert',
-        index: pendingInsertIndex,
-        type,
-        section: result.section ?? { type },
-      },
-    }));
+
+    const payloads = type === 'image' && (srcs.length > 1 || filenames.length > 1)
+      ? (srcs.length
+          ? srcs.map((src) => ({ type: 'image', srcs: [src] }))
+          : filenames.map((filename) => ({ type: 'image', filenames: [filename] })))
+      : [{
+          type,
+          ...(srcs.length ? { srcs } : filenames.length ? { filenames } : {}),
+        }];
+
+    let index = pendingInsertIndex;
+    for (const payload of payloads) {
+      const response = await fetch('/api/content-section', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          document: documentKey,
+          index,
+          ...payload,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not insert images.');
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-inserted', {
+        detail: {
+          documentKey,
+          index,
+          section: result.section,
+        },
+      }));
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+        detail: {
+          action: 'insert',
+          index,
+          type: payload.type,
+          section: result.section ?? { type: payload.type },
+        },
+      }));
+      index += 1;
+    }
+
     pendingFiles = [];
     pendingSrcs = [];
     syncPickerState();
@@ -435,8 +448,7 @@ const { documentKey } = Astro.props;
       void (async () => {
         try {
           if (pendingSrcs.length) {
-            const srcs = type === 'image' ? pendingSrcs.slice(0, 1) : pendingSrcs;
-            await insertSection(type, [], srcs);
+            await insertSection(type, [], pendingSrcs);
             return;
           }
           if (!pendingFiles.length) return;
@@ -473,7 +485,7 @@ const { documentKey } = Astro.props;
         if (!srcs.length) return;
         pendingFiles = [];
         pendingSrcs = srcs;
-        await insertSection(type, [], type === 'image' ? srcs.slice(0, 1) : srcs);
+        await insertSection(type, [], srcs);
       } catch (error) {
         if (error instanceof Error && error.message === 'cancelled') {
           if (picker instanceof HTMLDialogElement) {
