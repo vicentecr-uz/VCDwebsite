@@ -5,6 +5,13 @@
  * page keeps its own scroll on the cross axis.
  */
 
+import {
+  matchCarouselViewport,
+  resolveCarouselSettings,
+  type CarouselSettingsSource,
+  type ImageViewport,
+} from './projectImageCarouselSettings';
+
 type Axis = 'horizontal' | 'vertical';
 
 interface Carousel {
@@ -20,6 +27,8 @@ interface Carousel {
   active: number;
   /** Fractional slide position — drives the dots between snap points. */
   progress: number;
+  /** Last viewport whose breakpoint settings were applied. */
+  viewport: ImageViewport;
 }
 
 const scrollPos = (carousel: Carousel) => (
@@ -339,6 +348,90 @@ const registry = new Map<HTMLElement, Carousel>();
 
 const isParked = (el: HTMLElement) => el.dataset.carouselParked === 'true';
 
+function readSettingsSource(block: HTMLElement): CarouselSettingsSource {
+  try {
+    const raw = block.dataset.carouselSettings || block.dataset.devCarouselSettings || '{}';
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed as CarouselSettingsSource : {};
+  } catch {
+    return {};
+  }
+}
+
+function itemIdsForBlock(block: HTMLElement): string[] {
+  return [...block.querySelectorAll<HTMLElement>('[data-carousel-slide][data-grid-item-id]')]
+    .map((slide) => slide.dataset.gridItemId || '')
+    .filter(Boolean);
+}
+
+/**
+ * Apply the resolved settings for one viewport onto live data-attrs / parking.
+ * Used on resize and when the tuner previews a breakpoint.
+ */
+export function applyCarouselViewportSettings(
+  block: HTMLElement,
+  viewport: ImageViewport = matchCarouselViewport(),
+): void {
+  const itemIds = itemIdsForBlock(block);
+  const resolved = resolveCarouselSettings(readSettingsSource(block), itemIds);
+  const live = resolved.byViewport[viewport];
+
+  block.dataset.orientation = resolved.orientation;
+  block.dataset.heightMode = live.heightMode;
+  block.dataset.scrollPinned = live.scrollPinned ? 'true' : 'false';
+  block.dataset.dotsPlacement = live.dotsPlacement;
+  block.dataset.devCarouselOrientation = resolved.orientation;
+  block.dataset.devCarouselHeightMode = live.heightMode;
+  block.dataset.devCarouselScrollPinned = live.scrollPinned ? 'true' : 'false';
+  block.dataset.devCarouselDotsPlacement = live.dotsPlacement;
+  block.dataset.devCarouselVisible = JSON.stringify(live.visible);
+  if (live.maxHeightVh) {
+    block.style.setProperty('--project-carousel-max-vh', String(live.maxHeightVh));
+    block.dataset.devCarouselMaxVh = String(live.maxHeightVh);
+  } else {
+    block.style.removeProperty('--project-carousel-max-vh');
+    block.dataset.devCarouselMaxVh = '';
+  }
+
+  const visibleSet = new Set(live.visible);
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]');
+  const strip = block.querySelector<HTMLElement>('[data-carousel-dot-strip]');
+  const captionSlot = block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+  const order = [
+    ...live.visible,
+    ...itemIds.filter((id) => !visibleSet.has(id)),
+  ];
+
+  order.forEach((id) => {
+    const parked = !visibleSet.has(id);
+    const slide = block.querySelector<HTMLElement>(`[data-carousel-slide][data-grid-item-id="${CSS.escape(id)}"]`);
+    if (slide && track) {
+      if (parked) slide.dataset.carouselParked = 'true';
+      else delete slide.dataset.carouselParked;
+      track.append(slide);
+    }
+    const dot = block.querySelector<HTMLElement>(`[data-carousel-dot][data-carousel-item-id="${CSS.escape(id)}"]`);
+    if (dot && strip) {
+      if (parked) {
+        dot.dataset.carouselParked = 'true';
+        dot.setAttribute('aria-hidden', 'true');
+        dot.tabIndex = -1;
+      } else {
+        delete dot.dataset.carouselParked;
+        dot.removeAttribute('aria-hidden');
+        dot.tabIndex = 0;
+      }
+      strip.append(dot);
+    }
+    const caption = block.querySelector<HTMLElement>(`[data-carousel-caption][data-carousel-item-id="${CSS.escape(id)}"]`);
+    if (caption && captionSlot) {
+      if (parked) caption.dataset.carouselParked = 'true';
+      else delete caption.dataset.carouselParked;
+      captionSlot.append(caption);
+    }
+  });
+}
+
 /** Visible slides/dots/captions only — parked ones stay in the DOM for the tuner. */
 function collectVisible(carousel: Carousel): void {
   carousel.slides = [...carousel.block.querySelectorAll<HTMLElement>('[data-carousel-slide]')]
@@ -389,11 +482,24 @@ function refreshSettings(carousel: Carousel): void {
   syncCaptions(carousel);
 }
 
+function syncViewportSettings(carousel: Carousel, force = false): void {
+  // Tuner preview owns the attrs while open — don't fight it on resize.
+  if (carousel.block.dataset.carouselTunerPreview === 'true' && !force) return;
+  const viewport = matchCarouselViewport();
+  if (!force && viewport === carousel.viewport) return;
+  carousel.viewport = viewport;
+  applyCarouselViewportSettings(carousel.block, viewport);
+  refreshSettings(carousel);
+}
+
 function initCarousel(block: HTMLElement): void {
   if (block.dataset.carouselInitialized === 'true') return;
   const track = block.querySelector<HTMLElement>('[data-carousel-track]');
   if (!track) return;
   block.dataset.carouselInitialized = 'true';
+
+  const viewport = matchCarouselViewport();
+  applyCarouselViewportSettings(block, viewport);
 
   const carousel: Carousel = {
     block,
@@ -407,6 +513,7 @@ function initCarousel(block: HTMLElement): void {
     heightMode: block.dataset.heightMode || 'dynamic',
     active: 0,
     progress: 0,
+    viewport,
   };
   collectVisible(carousel);
 
@@ -452,10 +559,15 @@ function initCarousel(block: HTMLElement): void {
   bindDrag(carousel);
 
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(() => applyHeight(carousel));
+    const observer = new ResizeObserver(() => {
+      syncViewportSettings(carousel);
+      applyHeight(carousel);
+    });
     observer.observe(track);
+    observer.observe(block);
     carousel.slides.forEach((slide) => observer.observe(slide));
   }
+  window.addEventListener('resize', () => syncViewportSettings(carousel), { passive: true });
   block.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
     if (image.complete) return;
     image.addEventListener('load', () => applyHeight(carousel), { once: true });

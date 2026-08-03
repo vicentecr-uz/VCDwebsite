@@ -98,7 +98,7 @@ import DevOverlay from '../DevOverlay.astro';
 
     <label class="tapico-crop-tuner__control">
       <span>Zoom</span>
-      <input data-crop-zoom type="range" min="1" max="1.5" step="0.01" value="1" />
+      <input data-crop-zoom type="range" min="1" max="1.5" step="0.005" value="1" />
       <output data-crop-zoom-output>100%</output>
     </label>
 
@@ -638,7 +638,7 @@ import DevOverlay from '../DevOverlay.astro';
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       const zoom = zoomOf(draft);
-      zoomInput.value = zoom.toFixed(2);
+      zoomInput.value = zoom.toFixed(3);
       zoomOutput.value = `${Math.round(zoom * 100)}%`;
       const ratioLabel = PRESET_ASPECT_RATIOS.has(draft.aspect)
         ? draft.aspect
@@ -877,7 +877,7 @@ import DevOverlay from '../DevOverlay.astro';
       if (live) {
         mountPageStage();
         status.textContent = viewportGateOk()
-          ? 'Editing this image — drag on the page to reposition, scroll to zoom, pull the handles to reshape.'
+          ? 'Editing this image — drag or two-finger swipe to pan, pinch/scroll to zoom, pull the handles to reshape.'
           : 'Editing this image. The page updates when you change the crop.';
       }
     };
@@ -964,39 +964,159 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
-    const wirePageStage = (stage: HTMLElement) => {
+    /*
+      Trackpad wheel arrives in uneven chunks. A flat low gain feels precise but
+      sluggish; a flat high gain covers ground but jumps. Blend by delta size:
+      slow nudges stay fine, quicker flicks use the original full sensitivity.
+    */
+    const WHEEL_ZOOM_GAIN_FINE = 0.00085;
+    const WHEEL_ZOOM_GAIN_FAST = 0.0022;
+    const WHEEL_PAN_GAIN_FINE = 0.38;
+    const WHEEL_PAN_GAIN_FAST = 1;
+    const WHEEL_GAIN_KNEE = 28;
+    const POINTER_PAN_GAIN = 1;
+    const PINCH_ZOOM_EXPONENT = 1;
+
+    /** Smoothstep blend from fine → fast gain based on |delta|. */
+    const wheelGainFor = (delta: number, fine: number, fast: number) => {
+      const t = Math.min(1, Math.abs(delta) / WHEEL_GAIN_KNEE);
+      const blend = t * t * (3 - 2 * t);
+      return fine + (fast - fine) * blend;
+    };
+
+    /** Zoom around a client point — keeps that source location under the pointer. */
+    const zoomAtClientPoint = (clientX: number, clientY: number, factor: number, bounds: DOMRect) => {
+      if (!bounds.width || !bounds.height) return;
+      const fx = (clientX - bounds.left) / bounds.width;
+      const fy = (clientY - bounds.top) / bounds.height;
+      const sourceX = draft.cx + (fx - 0.5) * draft.w;
+      const sourceY = draft.cy + (fy - 0.5) * contentH(draft);
+      const maxW = coverW(draft.aspect);
+      beginLiveEdits();
+      draft.w = clamp(draft.w / factor, maxW / 1.5, maxW);
+      draft.cx = sourceX - (fx - 0.5) * draft.w;
+      draft.cy = sourceY - (fy - 0.5) * contentH(draft);
+      renderDraft();
+    };
+
+    /**
+     * Shared pan / pinch / wheel gestures for the page crop stage and the
+     * modal preview. One finger (or non-ctrl wheel) pans; pinch / ctrl-wheel
+     * zooms; two-finger move pans while pinching.
+     */
+    const wireCropGestures = (
+      surface: HTMLElement,
+      options?: { stopPropagation?: boolean; ignoreSelector?: string },
+    ) => {
+      const pointers = new Map<number, { x: number; y: number }>();
       let panPointer: number | null = null;
       let panStartX = 0;
       let panStartY = 0;
       let panOriginX = 0.5;
       let panOriginY = 0.5;
       let panAxis: 'x' | 'y' | null = null;
+      let pinch: {
+        startDist: number;
+        startW: number;
+        startCx: number;
+        startCy: number;
+        startMidX: number;
+        startMidY: number;
+        sourceX: number;
+        sourceY: number;
+      } | null = null;
 
-      stage.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0) return;
-        if ((event.target as HTMLElement | null)?.closest?.('[data-page-resize]')) return;
+      const pointList = () => [...pointers.values()];
+
+      const beginPinch = (bounds: DOMRect) => {
+        const [a, b] = pointList();
+        if (!a || !b || !bounds.width || !bounds.height) return;
+        const startDist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (startDist < 8) return;
+        const startMidX = (a.x + b.x) / 2;
+        const startMidY = (a.y + b.y) / 2;
+        const fx = (startMidX - bounds.left) / bounds.width;
+        const fy = (startMidY - bounds.top) / bounds.height;
+        pinch = {
+          startDist,
+          startW: draft.w,
+          startCx: draft.cx,
+          startCy: draft.cy,
+          startMidX,
+          startMidY,
+          sourceX: draft.cx + (fx - 0.5) * draft.w,
+          sourceY: draft.cy + (fy - 0.5) * contentH(draft),
+        };
+        panPointer = null;
+        surface.classList.add('is-dragging');
+      };
+
+      const applyPinch = (bounds: DOMRect) => {
+        if (!pinch || !bounds.width || !bounds.height) return;
+        const [a, b] = pointList();
+        if (!a || !b) return;
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (dist < 8) return;
+        const midX = (a.x + b.x) / 2;
+        const midY = (a.y + b.y) / 2;
+        const maxW = coverW(draft.aspect);
+        // Fingers apart → zoom in (smaller w); midpoint tracks with the gesture.
+        const scale = Math.pow(pinch.startDist / dist, PINCH_ZOOM_EXPONENT);
+        const newW = clamp(pinch.startW * scale, maxW / 1.5, maxW);
+        const fx = (midX - bounds.left) / bounds.width;
+        const fy = (midY - bounds.top) / bounds.height;
+        beginLiveEdits();
+        draft.w = newW;
+        draft.cx = pinch.sourceX - (fx - 0.5) * draft.w;
+        draft.cy = pinch.sourceY - (fy - 0.5) * contentH(draft);
+        renderDraft();
+        status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+      };
+
+      surface.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 && event.pointerType === 'mouse') return;
+        if (
+          options?.ignoreSelector
+          && (event.target as HTMLElement | null)?.closest?.(options.ignoreSelector)
+        ) return;
         event.preventDefault();
-        // Keep the carousel track from starting a swipe and stealing capture.
-        event.stopPropagation();
+        if (options?.stopPropagation) event.stopPropagation();
+
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        capturePointer(surface, event.pointerId);
+
+        if (pointers.size >= 2) {
+          beginPinch(surface.getBoundingClientRect());
+          return;
+        }
+
+        pinch = null;
         panPointer = event.pointerId;
         panStartX = event.clientX;
         panStartY = event.clientY;
         panOriginX = draft.cx;
         panOriginY = draft.cy;
         panAxis = null;
-        stage.classList.add('is-dragging');
-        capturePointer(stage, event.pointerId);
+        surface.classList.add('is-dragging');
       });
 
-      stage.addEventListener('pointermove', (event) => {
-        if (panPointer !== event.pointerId) return;
-        // Guard: if capture was stolen, buttons may already be up.
-        if (event.buttons === 0) {
-          panPointer = null;
-          stage.classList.remove('is-dragging');
+      surface.addEventListener('pointermove', (event) => {
+        if (!pointers.has(event.pointerId)) return;
+        pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+        if (pointers.size >= 2) {
+          if (!pinch) beginPinch(surface.getBoundingClientRect());
+          applyPinch(surface.getBoundingClientRect());
           return;
         }
-        const bounds = stage.getBoundingClientRect();
+
+        if (panPointer !== event.pointerId) return;
+        if (event.pointerType === 'mouse' && event.buttons === 0) {
+          panPointer = null;
+          surface.classList.remove('is-dragging');
+          return;
+        }
+        const bounds = surface.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
         const deltaX = event.clientX - panStartX;
         const deltaY = event.clientY - panStartY;
@@ -1006,10 +1126,8 @@ import DevOverlay from '../DevOverlay.astro';
           panAxis = null;
         }
         beginLiveEdits();
-        // One frame-width of travel spans `w` of the source; content follows
-        // the pointer, so the anchor point moves opposite.
-        const nextX = panOriginX - (deltaX / bounds.width) * draft.w;
-        const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft);
+        const nextX = panOriginX - (deltaX / bounds.width) * draft.w * POINTER_PAN_GAIN;
+        const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft) * POINTER_PAN_GAIN;
         draft.cx = panAxis === 'y' ? panOriginX : nextX;
         draft.cy = panAxis === 'x' ? panOriginY : nextY;
         renderDraft();
@@ -1018,38 +1136,73 @@ import DevOverlay from '../DevOverlay.astro';
           : 'Unsaved changes.';
       });
 
-      const endPan = (event: PointerEvent) => {
-        if (panPointer !== event.pointerId) return;
+      const endPointer = (event: PointerEvent) => {
+        if (!pointers.has(event.pointerId)) return;
+        pointers.delete(event.pointerId);
+        if (surface.hasPointerCapture(event.pointerId)) {
+          surface.releasePointerCapture(event.pointerId);
+        }
+
+        if (pointers.size >= 2) {
+          beginPinch(surface.getBoundingClientRect());
+          return;
+        }
+
+        pinch = null;
+        if (pointers.size === 1) {
+          // Drop back to one-finger pan with the remaining contact.
+          const [id, point] = [...pointers.entries()][0];
+          panPointer = id;
+          panStartX = point.x;
+          panStartY = point.y;
+          panOriginX = draft.cx;
+          panOriginY = draft.cy;
+          panAxis = null;
+          surface.classList.add('is-dragging');
+          return;
+        }
+
         panPointer = null;
-        stage.classList.remove('is-dragging');
-        if (stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
+        surface.classList.remove('is-dragging');
       };
-      stage.addEventListener('pointerup', endPan);
-      stage.addEventListener('pointercancel', endPan);
-      stage.addEventListener('lostpointercapture', (event) => {
-        if (panPointer !== event.pointerId) return;
-        panPointer = null;
-        stage.classList.remove('is-dragging');
+      surface.addEventListener('pointerup', endPointer);
+      surface.addEventListener('pointercancel', endPointer);
+      surface.addEventListener('lostpointercapture', (event) => {
+        if (!pointers.has(event.pointerId)) return;
+        endPointer(event);
       });
 
-      stage.addEventListener('wheel', (event) => {
+      surface.addEventListener('wheel', (event) => {
         event.preventDefault();
-        const bounds = stage.getBoundingClientRect();
+        const bounds = surface.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
-        // Keep the source point under the pointer fixed while `w` changes.
-        const fx = (event.clientX - bounds.left) / bounds.width;
-        const fy = (event.clientY - bounds.top) / bounds.height;
-        const sourceX = draft.cx + (fx - 0.5) * draft.w;
-        const sourceY = draft.cy + (fy - 0.5) * contentH(draft);
-        const maxW = coverW(draft.aspect);
+
+        // Trackpad pinch (and ctrl+wheel) zooms; two-finger swipe pans.
+        if (event.ctrlKey) {
+          const gain = wheelGainFor(event.deltaY, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
+          const factor = Math.exp(-event.deltaY * gain);
+          zoomAtClientPoint(event.clientX, event.clientY, factor, bounds);
+          status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+          return;
+        }
+
+        // Wheel deltas use scroll semantics (opposite pointer-drag). Natural
+        // two-finger swipe pans the image with the fingers.
+        const panGainX = wheelGainFor(event.deltaX, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
+        const panGainY = wheelGainFor(event.deltaY, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
         beginLiveEdits();
-        const factor = Math.exp(-event.deltaY * 0.0022);
-        draft.w = clamp(draft.w / factor, maxW / 1.5, maxW);
-        draft.cx = sourceX - (fx - 0.5) * draft.w;
-        draft.cy = sourceY - (fy - 0.5) * contentH(draft);
+        draft.cx += (event.deltaX / bounds.width) * draft.w * panGainX;
+        draft.cy += (event.deltaY / bounds.height) * contentH(draft) * panGainY;
         renderDraft();
-        status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+        status.textContent = 'Unsaved changes.';
       }, { passive: false });
+    };
+
+    const wirePageStage = (stage: HTMLElement) => {
+      wireCropGestures(stage, {
+        stopPropagation: true,
+        ignoreSelector: '[data-page-resize]',
+      });
 
       stage.querySelectorAll<HTMLElement>('[data-page-resize]').forEach((handle) => {
         handle.addEventListener('pointerdown', (event) => {
@@ -1205,12 +1358,8 @@ import DevOverlay from '../DevOverlay.astro';
       status.textContent = 'Unsaved changes.';
     });
 
-    let pointerId: number | null = null;
     let startX = 0;
     let startY = 0;
-    let originX = 0;
-    let originY = 0;
-    let lockedAxis: 'x' | 'y' | null = null;
     let resizePointerId: number | null = null;
     let resizeDir: ResizeDir | null = null;
     let resizeStartWidth = 0;
@@ -1288,55 +1437,7 @@ import DevOverlay from '../DevOverlay.astro';
       handle.addEventListener('pointercancel', endResize);
     });
 
-    preview.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      if ((event.target as HTMLElement | null)?.closest?.('[data-crop-resize]')) return;
-      event.preventDefault();
-      pointerId = event.pointerId;
-      startX = event.clientX;
-      startY = event.clientY;
-      originX = draft.cx;
-      originY = draft.cy;
-      lockedAxis = null;
-      preview.classList.add('is-dragging');
-      preview.setPointerCapture(event.pointerId);
-    });
-
-    preview.addEventListener('pointermove', (event) => {
-      if (pointerId !== event.pointerId) return;
-      const bounds = preview.getBoundingClientRect();
-      const deltaX = event.clientX - startX;
-      const deltaY = event.clientY - startY;
-
-      if (event.shiftKey && !lockedAxis && Math.hypot(deltaX, deltaY) >= 3) {
-        lockedAxis = Math.abs(deltaX) >= Math.abs(deltaY) ? 'x' : 'y';
-      } else if (!event.shiftKey) {
-        lockedAxis = null;
-      }
-
-      // Dragging the content right moves the source point under the frame centre
-      // LEFT, hence the negative. The frame spans `w` of the source width, so one
-      // frame-width of travel is `w` of the source.
-      const nextX = originX - (deltaX / bounds.width) * draft.w;
-      const nextY = originY - (deltaY / bounds.height) * contentH(draft);
-      beginLiveEdits();
-      draft.cx = lockedAxis === 'y' ? originX : nextX;
-      draft.cy = lockedAxis === 'x' ? originY : nextY;
-      renderDraft();
-      status.textContent = lockedAxis
-        ? `${lockedAxis.toUpperCase()} axis locked — unsaved changes.`
-        : 'Unsaved changes.';
-    });
-
-    const endDrag = (event: PointerEvent) => {
-      if (pointerId !== event.pointerId) return;
-      pointerId = null;
-      preview.classList.remove('is-dragging');
-      if (preview.hasPointerCapture(event.pointerId)) preview.releasePointerCapture(event.pointerId);
-    };
-
-    preview.addEventListener('pointerup', endDrag);
-    preview.addEventListener('pointercancel', endDrag);
+    wireCropGestures(preview, { ignoreSelector: '[data-crop-resize]' });
 
     centerXButton.addEventListener('click', () => {
       beginLiveEdits();
