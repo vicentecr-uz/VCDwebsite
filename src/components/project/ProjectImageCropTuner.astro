@@ -931,7 +931,11 @@ import DevOverlay from '../DevOverlay.astro';
       pageStage.ghost.remove();
       pageStage.stage.remove();
       const carousel = pageStage.target.closest('[data-project-image-carousel]');
+      const track = pageStage.target.closest<HTMLElement>('[data-carousel-track]');
       pageStage.target.classList.remove('dev-crop-stage-host');
+      // Drop the height lock after the host class, so the tallest-mode
+      // auto-height can see every sibling again on the next refresh.
+      track?.style.removeProperty('--project-carousel-crop-lock-height');
       pageStage = null;
       // Slides un-isolate — put the carousel back on the one just cropped.
       if (carousel) {
@@ -1078,6 +1082,16 @@ import DevOverlay from '../DevOverlay.astro';
         handle.setAttribute('aria-hidden', 'true');
         stage.append(handle);
       });
+
+      // Lock track height while siblings are still measurable — isolation
+      // hides them, and pin-to-tallest would otherwise collapse.
+      const track = target.closest<HTMLElement>('[data-carousel-track]');
+      if (track) {
+        const lockHeight = Math.round(track.getBoundingClientRect().height);
+        if (lockHeight > 0) {
+          track.style.setProperty('--project-carousel-crop-lock-height', `${lockHeight}px`);
+        }
+      }
 
       target.classList.add('dev-crop-stage-host');
       // Ghost first so the clip (later in DOM order) paints over the shared
