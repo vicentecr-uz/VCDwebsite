@@ -900,7 +900,8 @@ import DevOverlay from '../DevOverlay.astro';
 
     const pageFrameFor = (target: HTMLElement): HTMLElement => (
       target.querySelector<HTMLElement>(':scope > .project-crop-clip')
-      ?? target.querySelector<HTMLElement>(':scope > .project-image-grid__frame')
+      // Carousel wraps the frame in `.project-image-carousel__surface`.
+      ?? target.querySelector<HTMLElement>('.project-image-grid__frame')
       ?? target
     );
 
@@ -915,9 +916,20 @@ import DevOverlay from '../DevOverlay.astro';
       const ref = frame === target
         ? (target.querySelector<HTMLElement>('img') ?? target)
         : frame;
+      // Use viewport rects so a positioned surface (carousel width cap) between
+      // the slide and frame does not zero-out offsetLeft/offsetTop.
       const box = ref === target
         ? { left: 0, top: 0, width: target.clientWidth, height: target.clientHeight }
-        : { left: ref.offsetLeft, top: ref.offsetTop, width: ref.offsetWidth, height: ref.offsetHeight };
+        : (() => {
+          const targetRect = target.getBoundingClientRect();
+          const refRect = ref.getBoundingClientRect();
+          return {
+            left: refRect.left - targetRect.left + target.scrollLeft,
+            top: refRect.top - targetRect.top + target.scrollTop,
+            width: refRect.width,
+            height: refRect.height,
+          };
+        })();
       for (const el of [ghost, stage]) {
         el.style.left = `${box.left}px`;
         el.style.top = `${box.top}px`;
