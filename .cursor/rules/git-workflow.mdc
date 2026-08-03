@@ -5,11 +5,22 @@ alwaysApply: true
 
 # Git workflow & localhost preview
 
-**One local checkout = one branch in the browser.** `localhost:4321` serves whatever branch is checked out in this repo folder. The user controls preview via Cursor’s **Checkout branch** on a chat — not by agents switching branches silently.
+**One local checkout = one branch in the browser.** `localhost:4321` serves whatever branch is checked out in this repo folder. The user controls preview via Cursor’s **Checkout branch** on a chat — not by agents switching to *unrelated* branches silently.
 
-## Never checkout without permission
+## New feature work → new branch off `main`
 
-- Do **not** run `git checkout`, `git switch`, or create a branch that checks out locally unless the user explicitly asks (e.g. they clicked Checkout branch in that chat, or said “check out …”).
+**Default for VCDwebsite (Cursor and Claude):** start feature / fix work on a **new branch based on latest `main`**, not on `main` itself.
+
+1. Before the first edit: `git fetch origin` (when network allows), then `git switch main && git pull` if needed so local `main` is current.
+2. Create and check out the feature branch: `git switch -c feat/<short-name>` (or the name Anto gives).
+3. Call `SetActiveBranch` so this chat’s UI tracks that branch.
+4. Say which branch you’re on when it matters.
+
+This *is* permission to create/switch to **that feature branch for this chat’s work**. Do **not** wait for Anto to say “make a branch” for ordinary new features.
+
+## Do not steal the preview for unrelated work
+
+- Do **not** switch this checkout to some other chat’s branch, or to an unrelated feature, without Anto asking (e.g. Checkout branch, or “check out …”).
 - Before any git operation, run `git branch --show-current` and mention which branch you’re on if it matters.
 
 ## Parallel work (other chats / features)

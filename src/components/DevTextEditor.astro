@@ -203,9 +203,11 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'caption' | 'listing-order' | 'section-order';
+      kind: 'crop' | 'grid' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill';
       payload: Record<string, unknown>;
       revert: () => void;
+      /** Live section root for placeholder fills — index is read from it at Save. */
+      root?: HTMLElement;
     };
 
     type PendingSectionDelete = {
@@ -908,6 +910,7 @@
       if (pendingSectionDeletes.some((entry) => entry.documentKey === documentKey)) {
         await persistPendingSectionDeletes();
       }
+      await persistPlaceholderFills(documentKey);
 
       const dirtyText = dirtyTextStates().filter((state) => state.document === documentKey);
       const dirtySpacing = dirtySpacingStates().filter((state) => state.document === documentKey);
@@ -1611,6 +1614,122 @@
       updateActions();
     };
 
+    const findSectionRootByIndex = (index: number) => {
+      for (const block of document.querySelectorAll<HTMLElement>(
+        '[data-dev-spacing-document][data-dev-spacing-path]',
+      )) {
+        try {
+          const path = JSON.parse(block.dataset.devSpacingPath || '[]');
+          if (
+            path[0] === 'sections'
+            && path[1] === index
+            && path.at(-1) === 'spacing'
+          ) {
+            return block;
+          }
+        } catch {
+          // Ignore malformed paths.
+        }
+      }
+      return null;
+    };
+
+    const replaceMediaSectionInPlace = (
+      section: Record<string, unknown>,
+      documentKey: string,
+      index: number,
+    ): HTMLElement | null => {
+      const pageUsesDocument =
+        spacingStates.some((state) => state.document === documentKey)
+        || textStates.some((state) => state.document === documentKey);
+      if (!pageUsesDocument) return null;
+
+      const existing = findSectionRootByIndex(index);
+      if (!existing) return null;
+
+      detachSectionStates(existing);
+      const deletableIdx = deletableSections.indexOf(existing);
+      if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
+
+      const root = mountInsertedSection(section, documentKey, index);
+      existing.replaceWith(root);
+
+      const spacingState = mountSpacingControl(root);
+      if (spacingState) {
+        spacingStates.push(spacingState);
+        wireSectionAddMenu(spacingState);
+      }
+      mountDeleteButton(root);
+      deletableSections.push(root);
+      initMountedSectionCovers(root);
+      syncDevModeOnSection(root, document.documentElement.classList.contains('is-dev-mode'));
+
+      const persisted = persistedMediaInserts.find((entry) => entry.root === existing);
+      if (persisted) {
+        persisted.root = root;
+        persisted.section = section;
+      }
+
+      syncPageTopSpacingControls();
+      updateActions();
+      return root;
+    };
+
+    const sectionIndexFromRoot = (root: HTMLElement | undefined) => {
+      if (!root) return null;
+      try {
+        const path = JSON.parse(root.dataset.devSpacingPath || '[]');
+        if (
+          Array.isArray(path)
+          && path[0] === 'sections'
+          && typeof path[1] === 'number'
+        ) {
+          return path[1];
+        }
+      } catch {
+        // Ignore malformed paths.
+      }
+      return null;
+    };
+
+    const persistPlaceholderFills = async (documentKey?: string) => {
+      const fills = [...pendingMedia.values()].filter((change) => {
+        if (change.kind !== 'placeholder-fill') return false;
+        if (!documentKey) return true;
+        return String(change.payload.document || '') === documentKey;
+      });
+      for (const change of fills) {
+        const index = sectionIndexFromRoot(change.root);
+        const filenames = Array.isArray(change.payload.filenames)
+          ? change.payload.filenames.map((value) => String(value || '').trim()).filter(Boolean)
+          : [];
+        if (typeof index !== 'number' || !filenames.length) {
+          throw new Error('Could not save a placeholder fill.');
+        }
+        const variants = (
+          change.payload.variants
+          && typeof change.payload.variants === 'object'
+          && !Array.isArray(change.payload.variants)
+        )
+          ? change.payload.variants
+          : undefined;
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: change.payload.document,
+            action: 'fillPlaceholder',
+            index,
+            filenames,
+            ...(variants ? { variants } : {}),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not save the placeholder fill.');
+        pendingMedia.delete(change.id);
+      }
+    };
+
     window.addEventListener('vcd:dev-flush-pending-edits', ((event: CustomEvent<{
       documentKey?: string;
       resolve?: () => void;
@@ -1638,6 +1757,72 @@
       mountMediaSectionInPlace(section, documentKey, index);
     }) as EventListener);
 
+    window.addEventListener('vcd:dev-placeholder-fill-pending', ((event: CustomEvent<{
+      documentKey?: string;
+      index?: number;
+      filenames?: string[];
+      previousSection?: Record<string, unknown>;
+      section?: Record<string, unknown>;
+    }>) => {
+      const {
+        documentKey,
+        index,
+        filenames,
+        previousSection,
+        section,
+      } = event.detail ?? {};
+      if (
+        !documentKey
+        || typeof index !== 'number'
+        || !section
+        || !previousSection
+        || !Array.isArray(filenames)
+        || !filenames.length
+      ) {
+        return;
+      }
+
+      const id = `placeholder-fill:${documentKey}:${index}`;
+      const existing = pendingMedia.get(id);
+      const baseline = (
+        existing
+        && typeof existing.payload.previousSection === 'object'
+        && existing.payload.previousSection
+        && !Array.isArray(existing.payload.previousSection)
+      )
+        ? existing.payload.previousSection as Record<string, unknown>
+        : previousSection;
+
+      const root = replaceMediaSectionInPlace(section, documentKey, index);
+      if (!root) return;
+
+      const pendingId = id;
+      const variants = (
+        section.variants
+        && typeof section.variants === 'object'
+        && !Array.isArray(section.variants)
+      )
+        ? structuredClone(section.variants)
+        : undefined;
+      pendingMedia.set(pendingId, {
+        id: pendingId,
+        kind: 'placeholder-fill',
+        root,
+        payload: {
+          document: documentKey,
+          filenames: [...filenames],
+          previousSection: baseline,
+          ...(variants ? { variants } : {}),
+        },
+        revert: () => {
+          const current = pendingMedia.get(pendingId);
+          const liveIndex = sectionIndexFromRoot(current?.root) ?? index;
+          replaceMediaSectionInPlace(baseline, documentKey, liveIndex);
+        },
+      });
+      updateActions();
+    }) as EventListener);
+
     const syncDeleteButtons = (enabled: boolean) => {
       deletableSections.forEach((element) => {
         const button = element.querySelector<HTMLButtonElement>(':scope > [data-dev-section-delete]');
@@ -1653,7 +1838,8 @@
           && detail.kind !== 'grid'
           && detail.kind !== 'caption'
           && detail.kind !== 'listing-order'
-          && detail.kind !== 'section-order')
+          && detail.kind !== 'section-order'
+          && detail.kind !== 'placeholder-fill')
       ) {
         return;
       }
@@ -2087,8 +2273,13 @@
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
+      const placeholderFills = pendingChanges.filter((change) => change.kind === 'placeholder-fill');
       const imageChanges = pendingChanges.filter(
-        (change) => change.kind !== 'listing-order' && change.kind !== 'section-order',
+        (change) => (
+          change.kind !== 'listing-order'
+          && change.kind !== 'section-order'
+          && change.kind !== 'placeholder-fill'
+        ),
       );
       if (!dirtyText.length && !dirtySpacing.length && !pendingChanges.length && !structuralPending) return;
       saveButton.disabled = true;
@@ -2101,6 +2292,9 @@
         // "editable text field no longer exists" after deleting a section).
         const insertedSections = await persistPendingSectionInserts();
         await persistPendingSectionDeletes();
+        if (placeholderFills.length) {
+          await persistPlaceholderFills();
+        }
         for (const change of listingChanges) {
           const response = await fetch('/api/listing-order', {
             method: 'POST',

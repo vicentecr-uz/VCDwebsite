@@ -7,7 +7,7 @@ const { documentKey } = Astro.props;
 ---
 
 <div class="dev-image-drop" data-dev-image-drop hidden>
-  <p>Drop images to add</p>
+  <p data-dev-image-drop-label>Drop images to add</p>
 </div>
 
 <dialog class="dev-image-drop-dialog" data-dev-image-picker data-document-key={documentKey}>
@@ -29,6 +29,7 @@ const { documentKey } = Astro.props;
 </dialog>
 
 <script>
+  import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
 
   const dropZone = document.querySelector('[data-dev-project-drop-zone]');
   const overlay = document.querySelector('[data-dev-image-drop]');
@@ -44,10 +45,79 @@ const { documentKey } = Astro.props;
   let pendingFiles = [];
   let pendingInsertIndex = 0;
   let dragDepth = 0;
+  /** @type {HTMLElement | null} */
+  let activePlaceholder = null;
+
+  const dropLabel = overlay instanceof HTMLElement
+    ? overlay.querySelector('[data-dev-image-drop-label]')
+    : null;
+
+  const clearPlaceholderTarget = () => {
+    if (activePlaceholder) delete activePlaceholder.dataset.devDropTarget;
+    activePlaceholder = null;
+    document.documentElement.removeAttribute('data-dev-placeholder-drop');
+    if (dropLabel instanceof HTMLElement) dropLabel.textContent = 'Drop images to add';
+  };
 
   const clearDragState = () => {
     document.documentElement.removeAttribute('data-dev-image-drag');
     if (overlay instanceof HTMLElement) delete overlay.dataset.active;
+    clearPlaceholderTarget();
+  };
+
+  const standalonePlaceholderAtPoint = (clientX, clientY) => {
+    const hit = document.elementFromPoint(clientX, clientY);
+    if (!(hit instanceof Element)) return null;
+    const figure = hit.closest('.project-media--placeholder');
+    if (!(figure instanceof HTMLElement)) return null;
+    // Grid-item placeholders stay out of scope — fill full image blocks only.
+    if (figure.closest('.project-image-grid')) return null;
+    return figure;
+  };
+
+  const sectionIndexFromPlaceholder = (figure) => {
+    try {
+      const imagePath = JSON.parse(figure.dataset.devImagePath || '[]');
+      if (
+        Array.isArray(imagePath)
+        && imagePath[0] === 'sections'
+        && typeof imagePath[1] === 'number'
+        && imagePath.length === 2
+      ) {
+        return imagePath[1];
+      }
+    } catch {
+      // Fall through to spacing path on the section root.
+    }
+    const root = figure.closest('[data-dev-spacing-path]');
+    if (!(root instanceof HTMLElement)) return null;
+    try {
+      const spacingPath = JSON.parse(root.dataset.devSpacingPath || '[]');
+      if (
+        Array.isArray(spacingPath)
+        && spacingPath[0] === 'sections'
+        && typeof spacingPath[1] === 'number'
+      ) {
+        return spacingPath[1];
+      }
+    } catch {
+      // Ignore malformed paths.
+    }
+    return null;
+  };
+
+  const setPlaceholderTarget = (figure) => {
+    if (activePlaceholder === figure) return;
+    if (activePlaceholder) delete activePlaceholder.dataset.devDropTarget;
+    activePlaceholder = figure;
+    if (figure) {
+      figure.dataset.devDropTarget = 'true';
+      document.documentElement.dataset.devPlaceholderDrop = 'true';
+      if (dropLabel instanceof HTMLElement) dropLabel.textContent = 'Drop to fill placeholder';
+    } else {
+      document.documentElement.removeAttribute('data-dev-placeholder-drop');
+      if (dropLabel instanceof HTMLElement) dropLabel.textContent = 'Drop images to add';
+    }
   };
 
   const syncVisibility = () => {
@@ -161,6 +231,86 @@ const { documentKey } = Astro.props;
     if (picker instanceof HTMLDialogElement) picker.close();
   };
 
+  const readImageDimsFromFile = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      resolve({
+        srcWidth: image.naturalWidth || undefined,
+        srcHeight: image.naturalHeight || undefined,
+      });
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({});
+    };
+    image.src = url;
+  });
+
+  const capturePlaceholderSection = (figure) => {
+    const root = figure.closest('[data-dev-spacing-document]');
+    let variants = {};
+    try {
+      variants = JSON.parse(figure.dataset.devImageVariants || '{}');
+    } catch {
+      variants = {};
+    }
+    const img = figure.querySelector('img');
+    /** @type {Record<string, unknown>} */
+    const section = {
+      type: 'image',
+      id: figure.dataset.devCropId || 'placeholder',
+      src: 'placeholder.svg',
+      alt: img?.getAttribute('alt') || 'Placeholder',
+      spacing: root instanceof HTMLElement
+        ? (root.dataset.devSpacingValue || 'section')
+        : 'section',
+      variants,
+    };
+    if (root instanceof HTMLElement && root.id) section.sectionId = root.id;
+    return section;
+  };
+
+  const fillPlaceholder = async (figure, file) => {
+    const index = sectionIndexFromPlaceholder(figure);
+    if (typeof index !== 'number') {
+      throw new Error('Could not find which placeholder to fill.');
+    }
+    await flushPendingEdits(documentKey);
+    const previousSection = capturePlaceholderSection(figure);
+    const filenames = await uploadFiles([file]);
+    const dims = await readImageDimsFromFile(file);
+    const alt = String(previousSection.alt || '');
+    const variants = (
+      previousSection.variants
+      && typeof previousSection.variants === 'object'
+      && !Array.isArray(previousSection.variants)
+      && Object.keys(previousSection.variants).length > 0
+    )
+      ? structuredClone(previousSection.variants)
+      : structuredClone(PLACEHOLDER_IMAGE_VARIANTS);
+    const section = {
+      ...previousSection,
+      type: 'image',
+      src: `draft:${documentKey}/${filenames[0]}`,
+      alt: alt === 'Placeholder' ? '' : alt,
+      // Keep the placeholder frame — fill is cover-in-frame, not a new crop.
+      variants,
+      ...(dims.srcWidth ? { srcWidth: dims.srcWidth } : {}),
+      ...(dims.srcHeight ? { srcHeight: dims.srcHeight } : {}),
+    };
+    window.dispatchEvent(new CustomEvent('vcd:dev-placeholder-fill-pending', {
+      detail: {
+        documentKey,
+        index,
+        filenames,
+        previousSection,
+        section,
+      },
+    }));
+  };
+
   const openPicker = (clientY) => {
     if (typeof clientY === 'number') {
       pendingInsertIndex = insertIndexForY(clientY);
@@ -175,9 +325,24 @@ const { documentKey } = Astro.props;
     syncPickerState();
   };
 
-  const handleFiles = (files, clientY) => {
+  const handleFiles = (files, clientY, clientX) => {
     const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
     if (!images.length) return;
+
+    const placeholder = typeof clientX === 'number'
+      ? standalonePlaceholderAtPoint(clientX, clientY)
+      : null;
+    if (placeholder) {
+      void (async () => {
+        try {
+          await fillPlaceholder(placeholder, images[0]);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not fill placeholder.');
+        }
+      })();
+      return;
+    }
+
     pendingInsertIndex = insertIndexForY(clientY);
     if (images.length === 1) {
       pendingFiles = images;
@@ -208,6 +373,17 @@ const { documentKey } = Astro.props;
     prevent(event);
   };
 
+  const onDragOver = (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    prevent(event);
+    const placeholder = standalonePlaceholderAtPoint(event.clientX, event.clientY);
+    setPlaceholderTarget(placeholder);
+    if (overlay instanceof HTMLElement) {
+      if (placeholder) delete overlay.dataset.active;
+      else overlay.dataset.active = 'true';
+    }
+  };
+
   const onDragLeave = () => {
     dragDepth = Math.max(0, dragDepth - 1);
     if (dragDepth === 0) clearDragState();
@@ -216,11 +392,12 @@ const { documentKey } = Astro.props;
   const onDrop = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     event.preventDefault();
+    const { clientX, clientY } = event;
+    const transfer = event.dataTransfer;
     dragDepth = 0;
     clearDragState();
-    const transfer = event.dataTransfer;
     if (!transfer?.files?.length) return;
-    handleFiles(transfer.files, event.clientY);
+    handleFiles(transfer.files, clientY, clientX);
   };
 
   pickButtons.forEach((button) => {
@@ -283,7 +460,7 @@ const { documentKey } = Astro.props;
 
   const root = dropZone ?? document.body;
   root.addEventListener('dragenter', onDragEnter);
-  root.addEventListener('dragover', prevent);
+  root.addEventListener('dragover', onDragOver);
   root.addEventListener('dragleave', onDragLeave);
   root.addEventListener('drop', onDrop);
 
@@ -322,6 +499,19 @@ const { documentKey } = Astro.props;
 
   .dev-image-drop[data-active='true'] {
     opacity: 1;
+  }
+
+  html.is-dev-mode[data-dev-placeholder-drop='true'] .dev-image-drop {
+    opacity: 0;
+  }
+
+  html.is-dev-mode .project-media--placeholder[data-dev-drop-target='true'] {
+    outline-color: #6f6a60;
+    background: #ebe7df;
+  }
+
+  html.is-dev-mode .project-media--placeholder[data-dev-drop-target='true']::after {
+    border-color: #6f6a60;
   }
 
   .dev-image-drop-dialog {
