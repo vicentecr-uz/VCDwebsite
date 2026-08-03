@@ -2,6 +2,10 @@
 import { projectImage } from '../../lib/images';
 import {
   responsiveImageStyle,
+  imageGridConstrainedStyle,
+  imageHasWidthConstraint,
+  resolveImageGridConstrained,
+  type ImageGridConstrained,
   type ImageVariants,
 } from '../../lib/responsiveImage';
 import {
@@ -53,8 +57,8 @@ interface Props {
   cropId?: string;
   /** Stack rhythm before this block (parent-owned). */
   spacing?: ProjectStackSpacing;
-  /** Simple / inline media props */
-  constrained?: boolean;
+  /** Per-breakpoint width constraint (30–90%, or 100 / omitted for full width). */
+  constrained?: ImageGridConstrained;
   centered?: boolean;
   mobileHeight?: '35' | '40' | '50' | '60';
   loading?: 'eager' | 'lazy';
@@ -92,7 +96,7 @@ const {
   path,
   cropId,
   spacing = 'section',
-  constrained = false,
+  constrained: constrainedProp = false,
   centered = false,
   mobileHeight,
   loading,
@@ -122,6 +126,9 @@ const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
   srcDims,
 });
 
+const resolvedConstrained = resolveImageGridConstrained(constrainedProp);
+const constrainedStyle = imageGridConstrainedStyle(resolvedConstrained);
+const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
 const editable = import.meta.env.DEV && !!documentKey && Array.isArray(path) && path.length > 0;
 const resolvedLoading = loading ?? (isLead ? 'eager' : 'lazy');
 const heightClass = mobileHeight ? `project-media__img--h${mobileHeight}` : '';
@@ -129,6 +136,7 @@ const maxVh = resolveMaxVh({ maxVh: maxVhProp, max80 });
 const mediaStyle = joinMediaStyles(
   normalized ? responsiveImageStyle(normalized, srcDims) : undefined,
   maxVhStyle(maxVh),
+  !isLead ? constrainedStyle : undefined,
 );
 const captions = resolveImageCaptions({ caption, captions: captionsProp });
 const captionStyle = resolveImageCaptionStyle(captionStyleProp);
@@ -150,7 +158,7 @@ const editAttrs = editable
       captionStyle: captionStyleProp,
       captionPosition: captionPositionProp,
       captionReveal,
-      ...(isLead ? {} : { constrained, centered, maxVh }),
+      ...(isLead ? {} : { constrained: constrainedProp, centered, maxVh }),
     })
   : {};
 ---
@@ -222,7 +230,7 @@ const editAttrs = editable
     id={sectionId}
     class:list={[
       'project-block',
-      (centered || constrained || maxVh) && 'project-block--centered',
+      (centered || hasWidthConstraint || maxVh) && 'project-block--centered',
       hideMobile && 'project-hide-mobile',
       sectionId && 'section-block',
       stackClass,
@@ -233,7 +241,7 @@ const editAttrs = editable
     <figure
       class:list={[
         'project-media',
-        constrained && 'project-media--constrained',
+        hasWidthConstraint && 'project-media--constrained',
         maxVh && 'project-media--max-vh',
         hasCrop && 'project-cropped project-responsive-image',
         isPlaceholder && 'project-media--placeholder',

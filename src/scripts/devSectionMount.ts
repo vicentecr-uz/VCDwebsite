@@ -2,6 +2,7 @@ import { projectImage } from '../lib/images';
 import {
   imageGridColumnsStyle,
   imageGridConstrainedStyle,
+  imageHasWidthConstraint,
   responsiveImageStyle,
   resolveImageGridColumns,
   resolveImageGridConstrained,
@@ -77,15 +78,16 @@ const buildInlineImageFigure = (
   const { hasCrop, normalized } = resolveInlineImageCrop(src, variants, { srcDims });
   const cropId = String(section.id ?? 'image');
   const placeholder = isPlaceholderSrc(src);
-  const constrained = section.constrained === true;
-  const centered = section.centered === true || constrained;
+  const resolvedConstrained = resolveImageGridConstrained(section.constrained as never);
+  const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
+  const centered = section.centered === true || hasWidthConstraint;
   const maxVh = resolveMaxVh(section);
   const editAttrs = imageDevEditAttrs(true, {
     documentKey,
     path: sectionPath,
     cropId,
     variants: normalized,
-    constrained,
+    constrained: section.constrained as never,
     centered,
     maxVh,
   });
@@ -93,7 +95,7 @@ const buildInlineImageFigure = (
   const figure = document.createElement('figure');
   figure.className = [
     'project-media',
-    constrained && 'project-media--constrained',
+    hasWidthConstraint && 'project-media--constrained',
     maxVh && 'project-media--max-vh',
     hasCrop && 'project-cropped project-responsive-image',
     'dev-image-edit-target',
@@ -102,6 +104,7 @@ const buildInlineImageFigure = (
   figure.style.cssText = joinMediaStyles(
     normalized ? responsiveImageStyle(normalized, srcDims) : undefined,
     maxVhStyle(maxVh),
+    imageGridConstrainedStyle(resolvedConstrained),
   ) ?? '';
   applyDataAttrs(figure, editAttrs);
 
@@ -134,12 +137,13 @@ export function mountImageSection(
 ): HTMLElement {
   const spacing = String(section.spacing ?? 'section');
   const sectionPath = ['sections', index];
-  const constrained = section.constrained === true;
+  const resolvedConstrained = resolveImageGridConstrained(section.constrained as never);
+  const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
   const maxVh = resolveMaxVh(section);
   const block = document.createElement('div');
   block.className = [
     spacingClassName(spacing),
-    (constrained || maxVh || section.centered === true) && 'project-block--centered',
+    (hasWidthConstraint || maxVh || section.centered === true) && 'project-block--centered',
   ].filter(Boolean).join(' ');
   block.setAttribute('data-dev-spacing-document', documentKey);
   block.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));

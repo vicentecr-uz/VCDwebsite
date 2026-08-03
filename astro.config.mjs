@@ -528,6 +528,42 @@ const applyImageWidthFlags = (target, change) => {
     if (change.constrained) target.constrained = true;
     else delete target.constrained;
     touched = true;
+  } else if (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained)) {
+    const requestedConstrained = change.constrained;
+    /** @type {Record<string, number>} */
+    const constrained = {};
+    for (const viewport of IMAGE_VIEWPORTS) {
+      const raw = requestedConstrained[viewport];
+      if (raw === true) {
+        constrained[viewport] = 80;
+        continue;
+      }
+      if (raw === false || raw === null || raw === undefined) {
+        constrained[viewport] = 100;
+        continue;
+      }
+      const n = Math.round(Number(raw));
+      if (!Number.isFinite(n) || n >= 100) {
+        constrained[viewport] = 100;
+        continue;
+      }
+      const stepped = Math.round(n / 10) * 10;
+      if (stepped < 30 || stepped > 90) {
+        constrained[viewport] = 100;
+        continue;
+      }
+      constrained[viewport] = stepped;
+    }
+    const allFull = IMAGE_VIEWPORTS.every((viewport) => constrained[viewport] === 100);
+    const allEighty = IMAGE_VIEWPORTS.every((viewport) => constrained[viewport] === 80);
+    if (allFull) {
+      delete target.constrained;
+    } else if (allEighty) {
+      target.constrained = true;
+    } else {
+      target.constrained = constrained;
+    }
+    touched = true;
   }
   if (typeof change.centered === 'boolean') {
     if (change.centered) target.centered = true;
@@ -574,6 +610,7 @@ const applyCropChange = (data, change) => {
     ? change.variants
     : null;
   const hasWidthFlags = typeof change.constrained === 'boolean'
+    || (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained))
     || typeof change.centered === 'boolean'
     || Object.prototype.hasOwnProperty.call(change, 'maxVh')
     || typeof change.max80 === 'boolean';

@@ -2,7 +2,9 @@ import {
   imageGridItemLayoutStyle,
   normalizeImageVariants,
   responsiveImageStyle,
+  resolveImageGridConstrained,
   resolveImageGridLayouts,
+  type ImageGridConstrained,
   type ImageGridLayouts,
   type ImageSourceDims,
   type ImageVariant,
@@ -145,8 +147,8 @@ export interface ImageDevEditContext {
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   gridDefaultAspect?: string;
   hasOwnVariants?: boolean;
-  /** Standalone image block width constraint (80% desktop). */
-  constrained?: boolean;
+  /** Standalone image block width constraint (per-breakpoint % or legacy boolean). */
+  constrained?: ImageGridConstrained;
   /** Centre the constrained block in its stack column. */
   centered?: boolean;
   /** Cap rendered height at N% of the viewport (`maxVh`). */
@@ -185,8 +187,11 @@ export function imageDevEditAttrs(
   if (context.hasOwnVariants) {
     attrs['data-dev-has-own-variants'] = 'true';
   }
-  if (typeof context.constrained === 'boolean') {
-    attrs['data-dev-constrained'] = context.constrained ? 'true' : 'false';
+  if (context.constrained !== undefined && context.constrained !== false) {
+    const resolved = resolveImageGridConstrained(context.constrained);
+    attrs['data-dev-constrained'] = JSON.stringify(resolved);
+  } else if (context.constrained === false) {
+    attrs['data-dev-constrained'] = JSON.stringify(resolveImageGridConstrained(false));
   }
   if (typeof context.centered === 'boolean') {
     attrs['data-dev-centered'] = context.centered ? 'true' : 'false';
