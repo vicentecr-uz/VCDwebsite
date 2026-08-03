@@ -33,10 +33,23 @@ port_in_use() {
   lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
 }
 
+lan_ip() {
+  # Prefer the active Wi‑Fi / Ethernet interface so phone URLs match the LAN.
+  ipconfig getifaddr en0 2>/dev/null \
+    || ipconfig getifaddr en1 2>/dev/null \
+    || true
+}
+
 print_urls() {
+  local ip
+  ip="$(lan_ip)"
+
   echo ""
   echo "  Site:  http://localhost:${ASTRO_PORT}"
   echo "  Admin: http://localhost:${ASTRO_PORT}/admin"
+  if [[ -n "$ip" ]]; then
+    echo "  Phone: http://${ip}:${ASTRO_PORT}"
+  fi
   echo ""
   echo "  Logs: tail -f .dev-session/astro.log .dev-session/decap.log"
 }
@@ -172,7 +185,9 @@ cmd_start() {
   fi
 
   echo "Starting dev session..."
-  start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev
+  # --host is also set in astro.config.mjs (server.host); keep the flag so a
+  # bare restart still binds even if config is temporarily wrong.
+  start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev -- --host
   start_process "Decap" "$DECAP_PID" "$DECAP_LOG" "$BUN" x decap-server
 
   echo ""

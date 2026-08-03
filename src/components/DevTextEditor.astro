@@ -2456,34 +2456,49 @@
 </script>
 
 <style is:global>
+  /*
+    Hover/focus ring is a ::before layer at opacity 0 — never mount outline on the
+    field itself (browsers flash real outlines for a frame). Opacity eases in on
+    hover; entering/exiting gates block the ring during dev-mode transitions.
+  */
   .is-dev-mode [data-dev-text-document] {
+    position: relative;
     border-radius: 0.15em;
     cursor: text;
-    outline: 1px dashed transparent;
-    outline-offset: 0.2em;
-    background: transparent;
-    transition: outline-color 0.15s ease, background-color 0.15s ease;
+    outline: none;
   }
 
-  .is-dev-mode [data-dev-text-document]:hover,
-  .is-dev-mode [data-dev-text-document]:focus {
-    outline-color: color-mix(in srgb, currentColor 40%, transparent);
+  .is-dev-mode [data-dev-text-document]::before {
+    content: '';
+    position: absolute;
+    inset: -0.2em;
+    border: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
+    border-radius: inherit;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting):not(.is-dev-mode-settling)
+    [data-dev-text-document]:is(:hover, :focus)::before {
+    opacity: 1;
+  }
+
+  html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting):not(.is-dev-mode-settling)
+    [data-dev-text-document]:is(:focus, .is-dev-text-dirty:hover)::before {
+    border-color: color-mix(in srgb, currentColor 45%, transparent);
   }
 
   /*
     Adaptive edit wash: tint toward the field’s own text color so focus/dirty
     stays readable on light page copy and dark embeds (e.g. Reddit comments).
-    Dirty + unfocused: wash only — a persistent dashed outline reads as a
+    Dirty + unfocused: wash only — a persistent dashed ring reads as a
     tiny “grid” chrome icon at the top-left corner after click-away.
   */
-  .is-dev-mode [data-dev-text-document]:focus,
-  .is-dev-mode [data-dev-text-document].is-dev-text-dirty {
+  html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting):not(.is-dev-mode-settling)
+    [data-dev-text-document]:is(:focus, .is-dev-text-dirty) {
     background: color-mix(in srgb, currentColor 10%, transparent);
-  }
-
-  .is-dev-mode [data-dev-text-document]:focus,
-  .is-dev-mode [data-dev-text-document].is-dev-text-dirty:hover {
-    outline-color: color-mix(in srgb, currentColor 45%, transparent);
+    transition: background-color 0.15s ease;
   }
 
   /*
@@ -2970,11 +2985,15 @@
     align-items: center;
     justify-content: center;
     border: 0;
+    /* Same chip scale as .dev-image-edit-trigger — --radius-control is em-based. */
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
     backdrop-filter: blur(8px);
     padding: 0.45em 0.55em;
     color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
     box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
     cursor: pointer;
     opacity: 0;
@@ -2982,7 +3001,8 @@
     transform: translate(calc(100% + 0.55em), -50%);
     transition:
       opacity 0.15s ease 0.35s,
-      background-color 0.15s ease 0s;
+      background-color 0.15s ease 0s,
+      box-shadow 0.15s ease 0s;
   }
 
   .dev-section-delete[hidden] {
@@ -3017,6 +3037,7 @@
   .dev-section-delete:hover,
   .dev-section-delete:focus-visible {
     background: var(--color-surface-strong);
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
   /* Keep delete out of the way while editing text (same as gap toolbar). */

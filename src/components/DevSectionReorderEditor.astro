@@ -705,11 +705,7 @@
     /* Above sticky sidebar (2) and section-editor sidebar (20) so gutter
        drag handles stay visible/clickable before a lift starts. */
     z-index: 25;
-    /* Transparent outline always present so dirty can fade outline-color. */
     border-radius: 0.15em;
-    outline: 2px dashed transparent;
-    outline-offset: 0.75em;
-    transition: outline-color 0.2s ease;
   }
 
   /* Lifted block is position:fixed inside this isolated context — raise
@@ -725,12 +721,13 @@
   }
 
   /*
-    Layout-dirty cue: thicker dashed outline only (no wash), offset outward
-    so it sits clear of the content edge. outline-offset — not padding —
-    keeps layout/flow unchanged. Color fades in/out via the base transition.
+    Layout-dirty cue only — no always-on transparent outline (mounting it flashes
+    dark for a frame). Dev-mode enter cue is DevModeController ::after.
   */
   .is-dev-mode [data-dev-project-drop-zone].is-section-order-dirty {
-    outline-color: color-mix(in srgb, currentColor 45%, transparent);
+    outline: 2px dashed color-mix(in srgb, currentColor 45%, transparent);
+    outline-offset: 0.75em;
+    transition: outline-color 0.2s ease;
   }
 
   .dev-section-drag-bridge {
@@ -760,11 +757,15 @@
     align-items: center;
     justify-content: center;
     border: 0;
+    /* Same chip scale as .dev-image-edit-trigger — --radius-control is em-based. */
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
     backdrop-filter: blur(8px);
     padding: 0.45em 0.55em;
     color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
     box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
     cursor: grab;
     opacity: 0;
@@ -772,7 +773,8 @@
     transform: translate(calc(-100% - 0.55em), -50%);
     transition:
       opacity 0.15s ease 0.35s,
-      background-color 0.15s ease 0s;
+      background-color 0.15s ease 0s,
+      box-shadow 0.15s ease 0s;
     touch-action: none;
   }
 
@@ -792,8 +794,10 @@
     transition-delay: 0s;
   }
 
-  .is-dev-mode .dev-section-drag-handle:hover {
+  .is-dev-mode .dev-section-drag-handle:hover,
+  .is-dev-mode .dev-section-drag-handle:focus-visible {
     background: var(--color-surface-strong);
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
   .is-dev-mode .is-section-lifted {
