@@ -9,6 +9,7 @@ import {
   buildImageSection,
   buildPlaceholderImageSection,
   draftMediaDevServer,
+  fillPlaceholderImageSection,
   listingOrderDevWriter,
   sectionOrderDevWriter,
   projectCreateDevWriter,
@@ -1161,7 +1162,11 @@ function contentSectionDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
                     const relativeFile = resolveEditableDocument(documentKey);
-          const action = body.action === 'delete' ? 'delete' : 'insert';
+          const action = body.action === 'delete'
+            ? 'delete'
+            : body.action === 'fillPlaceholder'
+              ? 'fillPlaceholder'
+              : 'insert';
           const index = Number(body.index);
 
           if (!relativeFile || !Number.isInteger(index) || index < 0) {
@@ -1201,6 +1206,43 @@ function contentSectionDevWriter() {
           const filenames = Array.isArray(body.filenames)
             ? body.filenames.map((value) => String(value || '').trim()).filter(Boolean)
             : [];
+
+          if (action === 'fillPlaceholder') {
+            if (index >= data.sections.length) {
+              send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+              return;
+            }
+            if (!filenames.length) {
+              send(400, { error: 'An image file is required.' });
+              return;
+            }
+            const existing = data.sections[index];
+            const variants = (
+              body.variants
+              && typeof body.variants === 'object'
+              && !Array.isArray(body.variants)
+            )
+              ? body.variants
+              : undefined;
+            try {
+              await fillPlaceholderImageSection(existing, documentKey, filenames[0], variants);
+            } catch (error) {
+              send(400, {
+                error: error instanceof Error ? error.message : 'Could not fill that placeholder.',
+              });
+              return;
+            }
+            await writeContentJson(file, data);
+            send(200, {
+              ok: true,
+              action: 'fillPlaceholder',
+              index,
+              id: existing.id,
+              type: existing.type,
+              section: existing,
+            });
+            return;
+          }
 
           if (!INSERTABLE_SECTION_TYPES.has(type) || index > data.sections.length) {
             send(400, { error: 'That section cannot be inserted.' });
