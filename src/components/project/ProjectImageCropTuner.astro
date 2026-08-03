@@ -308,6 +308,13 @@ import DevOverlay from '../DevOverlay.astro';
     const isStandaloneMedia = (target: HTMLElement) => (
       target.classList.contains('project-media') && !isGridTarget(target)
     );
+    /** Carousel slides get Max view height too — width constrain stays block-level. */
+    const isCarouselItem = (target: HTMLElement) => (
+      target.classList.contains('project-image-carousel__slide')
+    );
+    const supportsMaxVh = (target: HTMLElement) => (
+      isStandaloneMedia(target) || isCarouselItem(target)
+    );
     const MAX_VH_ALLOWED = new Set([90, 80, 70, 60, 50, 40, 30]);
     const normalizeMaxVh = (value: unknown): number | undefined => {
       if (value === true) return 80;
@@ -346,6 +353,17 @@ import DevOverlay from '../DevOverlay.astro';
       target: HTMLElement,
       flags: { constrained: boolean; maxVh: number | undefined },
     ) => {
+      if (isCarouselItem(target)) {
+        if (flags.maxVh) target.dataset.maxVh = String(flags.maxVh);
+        else delete target.dataset.maxVh;
+        target.dataset.devMaxVh = flags.maxVh ? String(flags.maxVh) : '';
+        setMaxVhVar(target, flags.maxVh);
+        announceFrameChange(target);
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', {
+          detail: { block: target.closest('[data-project-image-carousel]') },
+        }));
+        return;
+      }
       if (!isStandaloneMedia(target)) return;
       target.classList.toggle('project-media--constrained', flags.constrained);
       target.dataset.devConstrained = flags.constrained ? 'true' : 'false';
@@ -371,7 +389,7 @@ import DevOverlay from '../DevOverlay.astro';
       const show = isStandaloneMedia(editTarget);
       widthConstrainWrap.hidden = !show;
       widthConstrainInput.checked = draftConstrained;
-      heightConstrainWrap.hidden = !show;
+      heightConstrainWrap.hidden = !supportsMaxVh(editTarget);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
     };
 
@@ -468,7 +486,7 @@ import DevOverlay from '../DevOverlay.astro';
     const snapshotBaseline = (target: HTMLElement) => ({
       variants: readAppliedVariants(target),
       constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
-      maxVh: isStandaloneMedia(target) ? readMaxVh(target) : undefined,
+      maxVh: supportsMaxVh(target) ? readMaxVh(target) : undefined,
       cropped: target.classList.contains('project-cropped') || isGridTarget(target),
     });
 
@@ -649,6 +667,7 @@ import DevOverlay from '../DevOverlay.astro';
       const stagedConstrained = draftConstrained;
       const stagedMaxVh = draftMaxVh;
       const standalone = isStandaloneMedia(target);
+      const carouselItem = isCarouselItem(target);
       const persistCrop = targetWasCropped || liveApply;
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
@@ -668,7 +687,7 @@ import DevOverlay from '../DevOverlay.astro';
         saved = { ...stagedVariants[selectedViewport] };
         targetWasCropped = true;
       }
-      if (standalone) {
+      if (standalone || carouselItem) {
         applyFrameFlagsLive(target, { constrained: stagedConstrained, maxVh: stagedMaxVh });
         savedConstrained = stagedConstrained;
         savedMaxVh = stagedMaxVh;
@@ -695,6 +714,7 @@ import DevOverlay from '../DevOverlay.astro';
                 maxVh: stagedMaxVh ?? 0,
               }
               : {}),
+            ...(carouselItem ? { maxVh: stagedMaxVh ?? 0 } : {}),
           },
           revert: () => {
             if (persistCrop) {
@@ -716,7 +736,7 @@ import DevOverlay from '../DevOverlay.astro';
                 }
               }
             }
-            if (standalone) {
+            if (standalone || carouselItem) {
               applyFrameFlagsLive(target, {
                 constrained: baseline.constrained,
                 maxVh: baseline.maxVh,
@@ -839,7 +859,7 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants = structuredClone(savedVariants);
       savedConstrained = isStandaloneMedia(target) ? readConstrained(target) : false;
       draftConstrained = savedConstrained;
-      savedMaxVh = isStandaloneMedia(target) ? readMaxVh(target) : undefined;
+      savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
       draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
