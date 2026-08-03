@@ -161,7 +161,7 @@ import {
       } catch {
         // Keep defaults.
       }
-      const host = target.querySelector<HTMLElement>('[data-project-image-caption]');
+      const host = findCaptionHost(target);
       if (host && !imageCaptionsHaveText(captions)) {
         const fromDom: Partial<ImageCaptions> = {};
         IMAGE_VIEWPORTS.forEach((viewport) => {
@@ -189,11 +189,39 @@ import {
       };
     };
 
+    /**
+     * Carousel below-captions live in a shared slot under the dots (outside the
+     * slide), so look there before scanning the image target itself.
+     */
+    const findCaptionHost = (target: HTMLElement): HTMLElement | null => {
+      const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
+      const id = target.dataset.gridItemId;
+      if (carousel && id) {
+        const fromSlot = carousel.querySelector<HTMLElement>(
+          `[data-carousel-caption-slot] [data-carousel-item-id="${CSS.escape(id)}"]`,
+        );
+        if (fromSlot) return fromSlot;
+      }
+      return target.querySelector<HTMLElement>('[data-project-image-caption]');
+    };
+
+    const ensureCarouselCaptionSlot = (carousel: HTMLElement): HTMLElement => {
+      let slot = carousel.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+      if (!slot) {
+        slot = document.createElement('div');
+        slot.className = 'project-image-carousel__caption-slot';
+        slot.dataset.carouselCaptionSlot = '';
+        carousel.append(slot);
+      }
+      slot.hidden = false;
+      return slot;
+    };
+
     const ensureCaptionHost = (
       target: HTMLElement,
       captionStyle: ImageCaptionStyleId = 'white',
     ): HTMLElement => {
-      let host = target.querySelector<HTMLElement>('[data-project-image-caption]');
+      let host = findCaptionHost(target);
       if (!host) {
         host = document.createElement('span');
         host.className = 'project-caption project-image-grid__caption';
@@ -206,18 +234,48 @@ import {
         });
       }
 
-      const isGrid = target.classList.contains('project-image-grid__item');
-      if (isGrid) {
-        // Carousel nests frame/slot under a width-capped surface — don't require direct children.
+      const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
+      const isCarouselSlide = !!carousel && target.classList.contains('project-image-carousel__slide');
+      const isBelow = isBelowImageCaptionStyle(captionStyle);
+
+      if (isCarouselSlide && isBelow && carousel) {
+        // Under the dots / media row — never inside the slide (that recentres the image).
+        const slot = ensureCarouselCaptionSlot(carousel);
+        const id = target.dataset.gridItemId || '';
+        host.dataset.carouselCaption = '';
+        host.dataset.carouselItemId = id;
+        if (target.dataset.carouselParked === 'true') host.dataset.carouselParked = 'true';
+        else delete host.dataset.carouselParked;
+        const moved = host.parentElement !== slot;
+        if (moved) slot.appendChild(host);
+        const active = Number(carousel.dataset.activeIndex || 0);
+        const slideIndex = Number(target.dataset.carouselIndex || 0);
+        host.classList.toggle('is-active', !host.dataset.carouselParked && slideIndex === active);
+        if (moved) {
+          window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
+        }
+      } else if (target.classList.contains('project-image-grid__item')) {
+        delete host.dataset.carouselCaption;
+        delete host.dataset.carouselItemId;
+        delete host.dataset.carouselParked;
+        host.classList.remove('is-active');
+        // Carousel nests the frame under a width-capped surface.
         const frame = target.querySelector<HTMLElement>('.project-image-grid__frame');
         const slot = target.querySelector<HTMLElement>('.project-image-grid__below-slot');
-        const parent = isBelowImageCaptionStyle(captionStyle) ? slot : frame;
+        const parent = isBelow ? slot : frame;
         if (parent && host.parentElement !== parent) {
           parent.appendChild(host);
         } else if (!parent) {
           const addButton = target.querySelector('.dev-caption-add-trigger');
           if (addButton) addButton.before(host);
           else target.appendChild(host);
+        }
+        // Hide an empty carousel caption slot once the last below-caption leaves it.
+        if (carousel) {
+          const captionSlot = carousel.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+          if (captionSlot && !captionSlot.querySelector('[data-carousel-caption]')) {
+            captionSlot.hidden = true;
+          }
         }
       } else if (!host.isConnected) {
         const addButton = target.querySelector('.dev-caption-add-trigger');
@@ -237,15 +295,16 @@ import {
       if (!button) return;
       const inDev = document.documentElement.classList.contains('is-dev-mode');
       const hasText = imageCaptionsHaveText(captions);
-      const hasHost = Boolean(target.querySelector('[data-project-image-caption]'));
+      const host = findCaptionHost(target);
+      const hasHost = Boolean(host);
       const style = resolveImageCaptionStyle(
         captionStyle
           ?? target.dataset.devCaptionStyle
-          ?? target.querySelector<HTMLElement>('[data-project-image-caption]')?.dataset.captionStyle,
+          ?? host?.dataset.captionStyle,
       );
       const position = resolveImageCaptionPosition(
         target.dataset.devCaptionPosition
-          || target.querySelector<HTMLElement>('[data-project-image-caption]')?.dataset.captionPosition,
+          || host?.dataset.captionPosition,
       );
       // Below captions aren't corner overlays — skip chrome conflict fallback.
       const needsFallback = inDev
@@ -304,7 +363,13 @@ import {
 
       const retainEmpty = options?.retainEmptyHost === true;
       if (!imageCaptionsHaveText(captions) && !retainEmpty) {
-        target.querySelector('[data-project-image-caption]')?.remove();
+        const existing = findCaptionHost(target);
+        existing?.remove();
+        const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
+        const captionSlot = carousel?.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+        if (captionSlot && !captionSlot.querySelector('[data-carousel-caption]')) {
+          captionSlot.hidden = true;
+        }
         syncCaptionChromeButton(target, captions, captionStyle);
         refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
         return;
@@ -316,10 +381,13 @@ import {
       host.dataset.captionRevealDesktop = effectiveReveals.desktop;
       host.dataset.captionRevealTablet = effectiveReveals.tablet;
       host.dataset.captionRevealMobile = effectiveReveals.mobile;
+      const isCarouselBelow = host.hasAttribute('data-carousel-caption');
+      const wasActive = host.classList.contains('is-active');
       host.className = [
         'project-caption',
-        'project-image-grid__caption',
+        isCarouselBelow ? 'project-image-carousel__caption' : 'project-image-grid__caption',
         imageCaptionStyleClass(captionStyle),
+        isCarouselBelow && wasActive ? 'is-active' : '',
       ]
         .filter(Boolean)
         .join(' ');
@@ -352,7 +420,12 @@ import {
           })();
       if (imageCaptionsHaveText(captions)) return false;
       disableInlineEditing(target);
-      target.querySelector('[data-project-image-caption]')?.remove();
+      findCaptionHost(target)?.remove();
+      const carousel = target.closest<HTMLElement>('[data-project-image-carousel]');
+      const captionSlot = carousel?.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+      if (captionSlot && !captionSlot.querySelector('[data-carousel-caption]')) {
+        captionSlot.hidden = true;
+      }
       if (editTarget === target) {
         draftCaptions = { desktop: '', tablet: '', mobile: '' };
         target.dataset.devCaptions = JSON.stringify(draftCaptions);
@@ -438,7 +511,7 @@ import {
 
     const disableInlineEditing = (target: HTMLElement | null) => {
       if (!target) return;
-      const host = target.querySelector<HTMLElement>('[data-project-image-caption]');
+      const host = findCaptionHost(target);
       if (!host) return;
       host.dataset.captionEditing = 'false';
       host.querySelectorAll<HTMLElement>('[data-caption-bp]').forEach((node) => {
@@ -451,7 +524,7 @@ import {
         if (candidate !== target) disableInlineEditing(candidate);
       });
 
-      if (!imageCaptionsHaveText(draftCaptions) && !target.querySelector('[data-project-image-caption]')) {
+      if (!imageCaptionsHaveText(draftCaptions) && !findCaptionHost(target)) {
         return;
       }
 

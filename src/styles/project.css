@@ -539,9 +539,20 @@
   transform: translateY(calc(var(--project-carousel-dot-offset, 0) * var(--project-carousel-dot-slot) * -1));
 }
 
-/* ── Caption below the dots — only the active slide's is shown ── */
+/*
+  Caption below the dots (and below the media row when dots sit beside a
+  vertical track). Outside the slide/track so image vertical alignment is
+  unchanged — only the active slide's caption is shown.
+*/
 .project-image-carousel__caption-slot {
   display: grid;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.project-image-carousel__caption-slot[hidden] {
+  display: none;
 }
 
 .project-image-carousel__caption {
@@ -551,7 +562,14 @@
   pointer-events: none;
 }
 
-.project-image-carousel__caption.is-active {
+/* Beat `.project-caption--below { opacity: 1 }` so only the active slide shows. */
+.project-image-carousel__caption.project-caption--below {
+  opacity: 0;
+}
+
+.project-image-carousel__caption.is-active,
+.project-image-carousel__caption.project-caption--below.is-active,
+.project-image-carousel__caption[data-caption-editing='true'] {
   opacity: 1;
   pointer-events: auto;
 }
