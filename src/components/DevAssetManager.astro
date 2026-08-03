@@ -1,0 +1,655 @@
+---
+interface Props {
+  documentKey: string;
+}
+
+const { documentKey } = Astro.props;
+---
+
+<dialog class="dev-asset-manager" data-dev-asset-manager data-document-key={documentKey}>
+  <div class="dev-asset-manager__panel">
+    <header class="dev-asset-manager__header">
+      <h2>Asset Manager</h2>
+      <button type="button" data-asset-close aria-label="Close">Close</button>
+    </header>
+
+    <div class="dev-asset-manager__body">
+      <aside class="dev-asset-manager__sidebar">
+        <p class="dev-asset-manager__sidebar-label">Projects</p>
+        <div class="dev-asset-manager__projects" data-asset-projects></div>
+        <hr class="dev-asset-manager__divider" />
+        <p class="dev-asset-manager__sidebar-label">Filter</p>
+        <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
+          <button type="button" data-asset-filter="all" class="is-active">All</button>
+          <button type="button" data-asset-filter="onPage">On page</button>
+          <button type="button" data-asset-filter="library">Library only</button>
+        </div>
+      </aside>
+
+      <section class="dev-asset-manager__main">
+        <p class="dev-asset-manager__status" data-asset-status aria-live="polite">Loading…</p>
+        <div class="dev-asset-manager__grid" data-asset-grid></div>
+      </section>
+    </div>
+
+    <footer class="dev-asset-manager__footer">
+      <p class="dev-asset-manager__count" data-asset-count></p>
+      <div class="dev-asset-manager__actions">
+        <button type="button" data-asset-pick="image" disabled>Single image</button>
+        <button type="button" data-asset-pick="imageGrid" disabled>Image grid</button>
+        <button type="button" data-asset-cancel>Cancel</button>
+      </div>
+    </footer>
+  </div>
+</dialog>
+
+<script>
+  const UNASSIGNED = '__unassigned__';
+
+  /** @typedef {{
+   *   id: string,
+   *   src: string,
+   *   url: string,
+   *   projectSlug: string,
+   *   onPage: boolean,
+   *   filename: string,
+   * }} Asset */
+
+  const dialog = document.querySelector('[data-dev-asset-manager]');
+  const documentKey = dialog instanceof HTMLElement ? (dialog.dataset.documentKey || '') : '';
+  const projectsEl = document.querySelector('[data-asset-projects]');
+  const gridEl = document.querySelector('[data-asset-grid]');
+  const statusEl = document.querySelector('[data-asset-status]');
+  const countEl = document.querySelector('[data-asset-count]');
+  const filterButtons = document.querySelectorAll('[data-asset-filter]');
+  const pickButtons = document.querySelectorAll('[data-asset-pick]');
+  const closeButton = document.querySelector('[data-asset-close]');
+  const cancelButton = document.querySelector('[data-asset-cancel]');
+
+  /** @type {Asset[]} */
+  let assets = [];
+  /** @type {Array<{ slug: string, title: string }>} */
+  let projects = [];
+  let selectedProject = documentKey || '';
+  /** @type {'all' | 'onPage' | 'library'} */
+  let filter = 'all';
+  /** @type {Set<string>} */
+  const selected = new Set();
+  /** @type {((value: { srcs: string[], type: string }) => void) | null} */
+  let resolvePick = null;
+  /** @type {((reason?: Error) => void) | null} */
+  let rejectPick = null;
+  let pickMode = false;
+
+  const setStatus = (message) => {
+    if (statusEl instanceof HTMLElement) statusEl.textContent = message;
+  };
+
+  const syncPickButtons = () => {
+    const count = selected.size;
+    pickButtons.forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      const type = button.getAttribute('data-asset-pick');
+      if (type === 'image') button.disabled = count < 1;
+      else if (type === 'imageGrid') button.disabled = count < 1;
+      button.hidden = !pickMode;
+    });
+    if (countEl instanceof HTMLElement) {
+      countEl.textContent = count
+        ? `${count} selected`
+        : pickMode
+          ? 'Select one or more images'
+          : '';
+    }
+  };
+
+  const visibleAssets = () => {
+    return assets.filter((asset) => {
+      if (selectedProject && asset.projectSlug !== selectedProject) return false;
+      if (filter === 'onPage' && !asset.onPage) return false;
+      if (filter === 'library' && asset.onPage) return false;
+      return true;
+    });
+  };
+
+  const setAssetManagerOpen = (open) => {
+    document.documentElement.classList.toggle('is-dev-asset-manager-open', open);
+    if (open) {
+      document.dispatchEvent(new CustomEvent('dev:clear-gap-proximity'));
+    }
+  };
+
+  const renderProjects = () => {
+    if (!(projectsEl instanceof HTMLElement)) return;
+    projectsEl.replaceChildren();
+    for (const project of projects) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dev-asset-manager__project';
+      button.dataset.assetProject = project.slug;
+      button.classList.toggle('is-active', project.slug === selectedProject);
+      button.classList.toggle('is-current-page', project.slug === documentKey);
+      if (project.slug === documentKey) {
+        button.title = `${project.title} (this page)`;
+      }
+
+      const label = document.createElement('span');
+      label.className = 'dev-asset-manager__project-label';
+      label.textContent = project.title;
+      button.append(label);
+
+      button.addEventListener('click', () => {
+        selectedProject = project.slug;
+        selected.clear();
+        renderProjects();
+        renderGrid();
+        syncPickButtons();
+      });
+      projectsEl.append(button);
+    }
+  };
+
+  const renderGrid = () => {
+    if (!(gridEl instanceof HTMLElement)) return;
+    const list = visibleAssets();
+    gridEl.replaceChildren();
+
+    if (!list.length) {
+      setStatus(filter === 'library'
+        ? 'No library-only images for this project.'
+        : filter === 'onPage'
+          ? 'No on-page images for this project.'
+          : 'No images for this project yet.');
+      return;
+    }
+
+    setStatus(`${list.length} image${list.length === 1 ? '' : 's'}`);
+
+    for (const asset of list) {
+      const card = document.createElement('div');
+      card.className = 'dev-asset-manager__card';
+      card.dataset.assetId = asset.id;
+      card.classList.toggle('is-selected', selected.has(asset.id));
+      card.classList.toggle('is-library', !asset.onPage);
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'dev-asset-manager__thumb';
+      button.title = asset.filename;
+      button.setAttribute('aria-label', `${asset.filename}${asset.onPage ? '' : ' (library only)'}`);
+      button.setAttribute('aria-pressed', selected.has(asset.id) ? 'true' : 'false');
+
+      const img = document.createElement('img');
+      img.src = asset.url;
+      img.alt = '';
+      img.loading = 'lazy';
+      button.append(img);
+
+      const badge = document.createElement('span');
+      badge.className = 'dev-asset-manager__badge';
+      badge.textContent = asset.onPage ? 'On page' : 'Library';
+      card.append(badge);
+
+      const trash = document.createElement('button');
+      trash.type = 'button';
+      trash.className = 'dev-asset-manager__trash';
+      trash.title = 'Delete forever';
+      trash.setAttribute('aria-label', `Delete ${asset.filename} forever`);
+      trash.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 2h4l.5 1H14v1.5H2V3h3.5L6 2zm1 4.5v5h1.5v-5H7zm2.5 0v5H11v-5H9.5zM3.5 4.5h9l-.7 9.2a1 1 0 0 1-1 .8H5.2a1 1 0 0 1-1-.8L3.5 4.5z"/></svg>`;
+
+      button.addEventListener('click', () => {
+        if (!pickMode) {
+          if (selected.has(asset.id)) selected.delete(asset.id);
+          else {
+            selected.clear();
+            selected.add(asset.id);
+          }
+        } else if (selected.has(asset.id)) {
+          selected.delete(asset.id);
+        } else {
+          selected.add(asset.id);
+        }
+        renderGrid();
+        syncPickButtons();
+      });
+
+      trash.addEventListener('click', (event) => {
+        event.stopPropagation();
+        void deleteAsset(asset);
+      });
+
+      card.append(button, trash);
+      gridEl.append(card);
+    }
+  };
+
+  const loadAssets = async () => {
+    setStatus('Loading…');
+    const response = await fetch('/api/assets');
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Could not load assets.');
+    projects = Array.isArray(payload.projects) ? payload.projects : [];
+    assets = Array.isArray(payload.assets) ? payload.assets : [];
+
+    if (!selectedProject || !projects.some((project) => project.slug === selectedProject)) {
+      selectedProject = documentKey && projects.some((project) => project.slug === documentKey)
+        ? documentKey
+        : (projects.find((project) => project.slug !== UNASSIGNED)?.slug || projects[0]?.slug || '');
+    }
+
+    renderProjects();
+    renderGrid();
+    syncPickButtons();
+  };
+
+  const deleteAsset = async (asset) => {
+    const ok = window.confirm(`Delete “${asset.filename}” forever?\n\nThis removes the file from disk and any places it appears on the site.`);
+    if (!ok) return;
+    try {
+      const response = await fetch('/api/assets', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ src: asset.src }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Could not delete that asset.');
+      selected.delete(asset.id);
+      await loadAssets();
+      setStatus(`Deleted ${asset.filename}.`);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not delete that asset.');
+    }
+  };
+
+  const closeDialog = (cancelled = true) => {
+    if (dialog instanceof HTMLDialogElement && dialog.open) dialog.close();
+    if (cancelled && rejectPick) {
+      const reject = rejectPick;
+      resolvePick = null;
+      rejectPick = null;
+      reject(new Error('cancelled'));
+    }
+  };
+
+  const confirmPick = (type) => {
+    // Iterate the Set so order matches click selection, not grid order.
+    const byId = new Map(assets.map((asset) => [asset.id, asset]));
+    const srcs = [...selected]
+      .map((id) => byId.get(id)?.src)
+      .filter(Boolean);
+    if (!srcs.length) return;
+    if (type === 'imageGrid' && srcs.length < 1) return;
+    const resolve = resolvePick;
+    resolvePick = null;
+    rejectPick = null;
+    if (dialog instanceof HTMLDialogElement && dialog.open) dialog.close();
+    resolve?.({ srcs, type });
+  };
+
+  filterButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const next = button.getAttribute('data-asset-filter');
+      if (next !== 'all' && next !== 'onPage' && next !== 'library') return;
+      filter = next;
+      filterButtons.forEach((entry) => {
+        entry.classList.toggle('is-active', entry.getAttribute('data-asset-filter') === filter);
+      });
+      selected.clear();
+      renderGrid();
+      syncPickButtons();
+    });
+  });
+
+  pickButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const type = button.getAttribute('data-asset-pick');
+      if (type === 'image' || type === 'imageGrid') confirmPick(type);
+    });
+  });
+
+  closeButton?.addEventListener('click', () => closeDialog(true));
+  cancelButton?.addEventListener('click', () => closeDialog(true));
+
+  dialog?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeDialog(true);
+  });
+
+  dialog?.addEventListener('close', () => {
+    setAssetManagerOpen(false);
+  });
+
+  window.addEventListener('vcd:dev-asset-manager-open', ((event) => {
+    const detail = event.detail ?? {};
+    if (detail.documentKey && detail.documentKey !== documentKey) return;
+
+    if (rejectPick) {
+      rejectPick(new Error('cancelled'));
+      resolvePick = null;
+      rejectPick = null;
+    }
+
+    pickMode = detail.mode !== 'browse';
+    resolvePick = typeof detail.resolve === 'function' ? detail.resolve : null;
+    rejectPick = typeof detail.reject === 'function' ? detail.reject : null;
+    selected.clear();
+    selectedProject = detail.project || documentKey || selectedProject;
+    filter = 'all';
+    filterButtons.forEach((entry) => {
+      entry.classList.toggle('is-active', entry.getAttribute('data-asset-filter') === 'all');
+    });
+    syncPickButtons();
+
+    if (dialog instanceof HTMLDialogElement) {
+      dialog.showModal();
+      setAssetManagerOpen(true);
+    }
+    void loadAssets().catch((error) => {
+      setStatus(error instanceof Error ? error.message : 'Could not load assets.');
+    });
+  }));
+</script>
+
+<style is:global>
+  .dev-asset-manager {
+    border: 0;
+    padding: 0;
+    margin: auto;
+    background: transparent;
+    max-width: calc(100vw - 2em);
+    max-height: calc(100vh - 2em);
+  }
+
+  .dev-asset-manager:not([open]) {
+    display: none !important;
+  }
+
+  .dev-asset-manager::backdrop {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(8px);
+  }
+
+  /* Gap proximity still tracks pointermove under the modal backdrop — suppress it. */
+  html.is-dev-asset-manager-open .dev-gap-toolbar__add,
+  html.is-dev-asset-manager-open .dev-gap-toolbar__spacing {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  .dev-asset-manager__panel {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    width: min(56em, calc(100vw - 2em));
+    height: min(36em, calc(100vh - 2em));
+    border: 1px solid #ddd;
+    border-radius: 0.5em;
+    background: #fff;
+    overflow: hidden;
+  }
+
+  .dev-asset-manager__header,
+  .dev-asset-manager__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75em;
+    padding: 0.65em 0.85em;
+    border-bottom: 1px solid #eee;
+  }
+
+  .dev-asset-manager__footer {
+    border-bottom: 0;
+    border-top: 1px solid #eee;
+  }
+
+  .dev-asset-manager__header h2 {
+    margin: 0;
+    font-size: 0.92em;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  .dev-asset-manager__body {
+    display: grid;
+    grid-template-columns: 11em 1fr;
+    min-height: 0;
+  }
+
+  .dev-asset-manager__sidebar {
+    display: grid;
+    align-content: start;
+    gap: 0.35em;
+    padding: 0.7em;
+    border-right: 1px solid #eee;
+    background: #fafafa;
+    overflow: auto;
+  }
+
+  .dev-asset-manager__sidebar-label {
+    margin: 0;
+    color: #777;
+    font-size: 0.65em;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .dev-asset-manager__projects {
+    display: grid;
+    gap: 0.15em;
+  }
+
+  .dev-asset-manager__project,
+  .dev-asset-manager__filters button,
+  .dev-asset-manager__header button,
+  .dev-asset-manager__actions button {
+    padding: 0.3em 0.5em;
+    border: 1px solid transparent;
+    border-radius: 0.3em;
+    background: transparent;
+    font: inherit;
+    font-size: 0.78em;
+    line-height: 1.25;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .dev-asset-manager__project {
+    display: flex;
+    align-items: center;
+    gap: 0.4em;
+  }
+
+  .dev-asset-manager__project::before {
+    content: '';
+    width: 0.22em;
+    height: 0.22em;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: transparent;
+  }
+
+  .dev-asset-manager__project.is-current-page::before {
+    background: var(--color-text-muted);
+  }
+
+  .dev-asset-manager__project-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .dev-asset-manager__project.is-active,
+  .dev-asset-manager__filters button.is-active {
+    border-color: #ccc;
+    background: #fff;
+  }
+
+  .dev-asset-manager__divider {
+    width: 100%;
+    margin: 0.35em 0;
+    border: 0;
+    border-top: 1px solid #e5e5e5;
+  }
+
+  .dev-asset-manager__filters {
+    display: grid;
+    gap: 0.15em;
+  }
+
+  .dev-asset-manager__main {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    min-height: 0;
+    padding: 0.7em;
+    gap: 0.5em;
+  }
+
+  .dev-asset-manager__status,
+  .dev-asset-manager__count {
+    margin: 0;
+    color: #555;
+    font-size: 0.78em;
+  }
+
+  .dev-asset-manager__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7.5em, 1fr));
+    grid-auto-rows: min-content;
+    gap: 0.65em;
+    align-content: start;
+    align-items: start;
+    justify-items: stretch;
+    overflow: auto;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .dev-asset-manager__card {
+    position: relative;
+    width: 100%;
+    /* In-flow square sizer — aspect-ratio alone fails here when the only
+       children are abspos (max-content height = 0), so many rows share the
+       panel height and look like stacked strips. padding-bottom % is always
+       relative to width. */
+    height: auto;
+    max-height: none;
+    border: 1px solid #ddd;
+    border-radius: 0.35em;
+    overflow: hidden;
+    background: #f3f3f3;
+  }
+
+  .dev-asset-manager__card::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-bottom: 100%;
+  }
+
+  .dev-asset-manager__card.is-selected {
+    outline: 2px solid #222;
+    outline-offset: 1px;
+  }
+
+  .dev-asset-manager__thumb {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .dev-asset-manager__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .dev-asset-manager__badge {
+    position: absolute;
+    z-index: 1;
+    top: 0.35em;
+    left: 0.35em;
+    padding: 0.12em 0.35em;
+    border-radius: 0.25em;
+    background: rgba(255, 255, 255, 0.9);
+    color: #333;
+    font-size: 0.6em;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+  }
+
+  .dev-asset-manager__card.is-library .dev-asset-manager__badge {
+    background: rgba(34, 34, 34, 0.82);
+    color: #fff;
+  }
+
+  .dev-asset-manager__trash {
+    position: absolute;
+    z-index: 1;
+    right: 0.3em;
+    bottom: 0.3em;
+    display: grid;
+    place-items: center;
+    width: 1.55em;
+    height: 1.55em;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 0.3em;
+    background: rgba(255, 255, 255, 0.92);
+    color: #444;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+
+  .dev-asset-manager__card:hover .dev-asset-manager__trash,
+  .dev-asset-manager__card:focus-within .dev-asset-manager__trash,
+  .dev-asset-manager__trash:focus-visible {
+    opacity: 1;
+  }
+
+  .dev-asset-manager__trash:hover {
+    color: #b00000;
+    border-color: #d8a0a0;
+  }
+
+  .dev-asset-manager__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35em;
+  }
+
+  .dev-asset-manager__actions button,
+  .dev-asset-manager__header button {
+    border-color: #ccc;
+    background: #f7f7f7;
+  }
+
+  .dev-asset-manager__actions button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  @media (max-width: 40em) {
+    .dev-asset-manager__body {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
+
+    .dev-asset-manager__sidebar {
+      border-right: 0;
+      border-bottom: 1px solid #eee;
+    }
+
+    .dev-asset-manager__panel {
+      height: min(90vh, calc(100vh - 2em));
+    }
+  }
+</style>

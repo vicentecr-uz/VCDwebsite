@@ -99,7 +99,7 @@ import DevOverlay from '../DevOverlay.astro';
     </div>
 
     <p class="project-grid-tuner__hint">
-      Larger breakpoints waterfall down. Editing tablet/mobile creates an override for that width only.
+      Parking hides an image at this width only. Use Remove on a thumb to drop it from the grid while keeping the file in the asset manager.
     </p>
 
     <div class="project-grid-tuner__actions">
@@ -455,7 +455,75 @@ import DevOverlay from '../DevOverlay.astro';
       });
     };
 
+    const removeFromPage = async (id: string) => {
+      if (itemIds.length <= 1) {
+        status.textContent = 'Keep at least one image, or delete the whole section.';
+        return;
+      }
+      const ok = window.confirm(
+        'Remove this image from the page?\n\nIt stays in the asset manager so you can reuse it later.',
+      );
+      if (!ok) return;
+
+      const target = editTarget;
+      const documentKey = target.dataset.devDocument || '';
+      let gridPath: Array<string | number> = [];
+      try {
+        gridPath = JSON.parse(target.dataset.devGridPath || '[]');
+      } catch {
+        gridPath = [];
+      }
+      if (!documentKey || !gridPath.length) {
+        status.textContent = 'This grid is not wired for saving.';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: documentKey,
+            action: 'removeMediaItem',
+            path: gridPath,
+            itemId: id,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not remove that image.');
+
+        catalog = catalog.filter((item) => item.id !== id);
+        itemIds = catalog.map((item) => item.id);
+        target.dataset.devGridItems = JSON.stringify(catalog);
+
+        for (const viewport of VIEWPORTS) {
+          const visible = draftLayouts[viewport]?.visible;
+          if (!Array.isArray(visible)) continue;
+          draftLayouts[viewport] = {
+            visible: visible.filter((entry) => entry !== id),
+          };
+        }
+        savedLayouts = cloneLayouts(draftLayouts);
+        target.dataset.devGridLayouts = JSON.stringify(draftLayouts);
+
+        target.querySelectorAll(`[data-grid-item-id="${CSS.escape(id)}"]`).forEach((node) => {
+          node.remove();
+        });
+
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+          detail: { id: pendingIdFor(target) },
+        }));
+        renderDraft();
+        status.textContent = 'Removed from page — file kept in asset manager.';
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not remove that image.';
+      }
+    };
+
     const makeThumb = (item: GridItem) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'project-grid-tuner__thumb-wrap';
+
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'project-grid-tuner__thumb';
@@ -480,7 +548,21 @@ import DevOverlay from '../DevOverlay.astro';
         visibleBoard.classList.remove('is-drop-target');
         parkingBoard.classList.remove('is-drop-target');
       });
-      return button;
+
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'project-grid-tuner__remove';
+      removeButton.title = 'Remove from page (keep in asset manager)';
+      removeButton.setAttribute('aria-label', `Remove ${item.alt || item.id} from page`);
+      removeButton.textContent = 'Remove';
+      removeButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        void removeFromPage(item.id);
+      });
+
+      wrap.append(button, removeButton);
+      return wrap;
     };
 
     const insertIdAt = (list: string[], id: string, beforeId: string | null) => {
@@ -891,7 +973,7 @@ import DevOverlay from '../DevOverlay.astro';
   .project-grid-tuner__visible,
   .project-grid-tuner__parking {
     display: grid;
-    gap: 0.35em;
+    gap: 0.55em 0.45em;
     min-height: 3.2em;
     padding: 0.4em;
     border-radius: var(--radius-control);
@@ -910,7 +992,7 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   .project-grid-tuner__parking {
-    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(3.75em, 1fr));
     border: 1px dashed color-mix(in srgb, var(--color-text-muted) 45%, transparent);
   }
 
@@ -925,6 +1007,13 @@ import DevOverlay from '../DevOverlay.astro';
     font-size: 0.72rem;
     line-height: 1.3;
     pointer-events: none;
+  }
+
+  .project-grid-tuner__thumb-wrap {
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 0.15em;
+    min-width: 0;
   }
 
   .project-grid-tuner__thumb {
@@ -948,6 +1037,29 @@ import DevOverlay from '../DevOverlay.astro';
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .project-grid-tuner__remove {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: 0.1em 0;
+    border: 0;
+    border-radius: 0.2em;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: 0.58rem;
+    line-height: 1.2;
+    cursor: pointer;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-grid-tuner__remove:hover {
+    color: #b00000;
   }
 
   .project-grid-tuner__hint,

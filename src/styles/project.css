@@ -945,11 +945,26 @@ html:not(.is-dev-mode) .dev-crop-stage {
 
 /* ── Media ──────────────────────────────────────────────────── */
 .project-media {
-  width: 100%;
+  --project-image-grid-width: var(--project-image-grid-width-desktop, 100%);
+  width: var(--project-image-grid-width);
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 .project-media--constrained {
-  width: 80%;
+  width: var(--project-image-grid-width, 80%);
+}
+
+@media (max-width: 991px) {
+  .project-media {
+    --project-image-grid-width: var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%));
+  }
+}
+
+@media (max-width: 767px) {
+  .project-media {
+    --project-image-grid-width: var(--project-image-grid-width-mobile, var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%)));
+  }
 }
 
 /*
@@ -966,7 +981,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
 
 .project-media--constrained.project-media--max-vh:not(.project-cropped) {
   width: fit-content;
-  max-width: 80%;
+  max-width: var(--project-image-grid-width, 80%);
 }
 
 .project-media--max-vh.project-cropped {
@@ -976,7 +991,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 .project-media--constrained.project-media--max-vh.project-cropped {
-  width: min(80%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
+  width: min(var(--project-image-grid-width, 80%), calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
 }
 
 .project-media__img {
@@ -1343,8 +1358,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
     font-size: 2em;
   }
 
-  .project-prose,
-  .project-media--constrained {
+  .project-prose {
     width: 100%;
   }
 
@@ -1696,7 +1710,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 .project-media--constrained .project-media__img--max-vh {
-  max-width: 80cqw;
+  max-width: min(100cqw, var(--project-image-grid-width, 80%));
 }
 
 .project-media__img--full-height {
@@ -1839,7 +1853,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   }
 
   .project-media--constrained.project-media--max-vh.project-cropped {
-    width: min(80%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
+    width: min(var(--project-image-grid-width, 80%), calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
   }
 
   .project-media__img--mobile-short {

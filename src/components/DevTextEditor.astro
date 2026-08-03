@@ -655,7 +655,11 @@
      * otherwise stack two toolbars and the lower one steals clicks.
      */
     const syncSpacingProximity = (clientX: number, clientY: number) => {
-      if (!document.documentElement.classList.contains('is-dev-mode') || isDevTextCaretActive()) {
+      if (
+        !document.documentElement.classList.contains('is-dev-mode')
+        || isDevTextCaretActive()
+        || document.documentElement.classList.contains('is-dev-asset-manager-open')
+      ) {
         spacingStates.forEach(({ control }) => {
           if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
         });
@@ -724,6 +728,12 @@
       document.addEventListener('dev:sync-gap-proximity', ((event: CustomEvent<{ clientX: number; clientY: number }>) => {
         syncSpacingProximity(event.detail.clientX, event.detail.clientY);
       }) as EventListener);
+      document.addEventListener('dev:clear-gap-proximity', () => {
+        spacingStates.forEach(({ control }) => {
+          if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
+        });
+        document.documentElement.classList.remove('is-page-top-gap-above-header');
+      });
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control, element }) => {
           if (element.classList.contains('is-dev-spacing-dirty')) {

@@ -167,7 +167,7 @@ export async function uniqueUploadFilename(directory, filename) {
 }
 
 export async function buildImageSection(documentKey, filenames) {
-  const id = `image-${Date.now().toString(36)}`;
+  const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   return {
     type: 'image',
     id,
@@ -175,6 +175,23 @@ export async function buildImageSection(documentKey, filenames) {
     alt: '',
     spacing: 'section',
     ...(await readImageDims(documentKey, filenames[0]) ?? {}),
+    variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
+  };
+}
+
+/** Build an image section from an existing canonical src token (draft: or public filename). */
+export async function buildImageSectionFromSrcs(srcs) {
+  const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
+  const src = normalizeAssetSrc(srcs[0]);
+  if (!src) throw new Error('An image file is required.');
+  const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  return {
+    type: 'image',
+    id,
+    src,
+    alt: '',
+    spacing: 'section',
+    ...(await readImageDimsFromSrc(src) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   };
 }
@@ -199,7 +216,7 @@ export function isPlaceholderImageSrc(src) {
 /** Replace a placeholder image section's src/dims with an uploaded draft file.
  *  Crop variants stay as authored on the placeholder (frame size / position).
  *  Pass `variants` to stamp the frame the editor was previewing (e.g. from DOM). */
-export async function fillPlaceholderImageSection(section, documentKey, filename, variants) {
+export async function fillPlaceholderImageSection(section, documentKey, filename, variants, existingSrc) {
   if (!section || typeof section !== 'object' || Array.isArray(section)) {
     throw new Error('That section cannot be filled.');
   }
@@ -209,9 +226,22 @@ export async function fillPlaceholderImageSection(section, documentKey, filename
   if (!isPlaceholderImageSrc(section.src)) {
     throw new Error('That image is not a placeholder.');
   }
-  const dims = await readImageDims(documentKey, filename);
+
+  let src = '';
+  /** @type {{ srcWidth: number, srcHeight: number } | null} */
+  let dims = null;
+  if (existingSrc) {
+    const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
+    src = normalizeAssetSrc(existingSrc);
+    if (!src) throw new Error('An image file is required.');
+    dims = await readImageDimsFromSrc(src);
+  } else {
+    src = draftMediaSrc(documentKey, filename);
+    dims = await readImageDims(documentKey, filename);
+  }
+
   section.type = 'image';
-  section.src = draftMediaSrc(documentKey, filename);
+  section.src = src;
   if (dims) {
     section.srcWidth = dims.srcWidth;
     section.srcHeight = dims.srcHeight;
@@ -247,6 +277,34 @@ export async function buildImageGridSection(documentKey, filenames) {
     type: 'imageGrid',
     id,
     columns: Math.min(2, Math.max(1, filenames.length)),
+    defaultAspectRatio: '4:3',
+    spacing: 'section',
+    items,
+    layouts: {
+      desktop: { visible: [...visible] },
+      mobile: { visible: [...visible] },
+    },
+  };
+}
+
+/** Build an image grid from existing canonical src tokens (draft: or public filenames). */
+export async function buildImageGridSectionFromSrcs(srcs) {
+  const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
+  const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
+  if (!tokens.length) throw new Error('At least one image file is required.');
+  const id = `grid-${Date.now().toString(36)}`;
+  const items = await Promise.all(tokens.map(async (src, index) => ({
+    id: `item-${index + 1}-${Date.now().toString(36)}`,
+    src,
+    alt: '',
+    ...(await readImageDimsFromSrc(src) ?? {}),
+    variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
+  })));
+  const visible = items.map((item) => item.id);
+  return {
+    type: 'imageGrid',
+    id,
+    columns: Math.min(2, Math.max(1, tokens.length)),
     defaultAspectRatio: '4:3',
     spacing: 'section',
     items,
