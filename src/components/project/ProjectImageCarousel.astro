@@ -294,8 +294,6 @@ const blockStyle = [
                   </span>
                 )}
               </div>
-              {/* Host for live below-caption edits; shared slot below still shows the active one. */}
-              <div class="project-image-grid__below-slot"></div>
               {showDevEditing && (
                 <button
                   type="button"
@@ -365,17 +363,27 @@ const blockStyle = [
     </div>
   </div>
 
-  {hasBelowCaption && (
-    <div class="project-image-carousel__caption-slot" data-carousel-caption-slot>
-      {orderedEntries.map((entry) => {
-        const parked = !visibleIds.includes(entry.id);
-        const displayIndex = visibleIds.indexOf(entry.id);
-        return (
+  {/*
+    Below-image captions live here — after media+dots — so they never add
+    height inside a slide and cannot push/recenter the visible image.
+    Always present so live caption edits have a host without a reload.
+  */}
+  <div
+    class="project-image-carousel__caption-slot"
+    data-carousel-caption-slot
+    hidden={!hasBelowCaption}
+  >
+    {orderedEntries.map((entry) => {
+      if (!entry.isBelowCaption || !entry.hasCaption) return null;
+      const parked = !visibleIds.includes(entry.id);
+      const displayIndex = visibleIds.indexOf(entry.id);
+      return (
         <span
           class:list={[
             'project-caption',
             'project-image-carousel__caption',
             imageCaptionStyleClass(entry.captionStyle),
+            !parked && displayIndex === 0 && 'is-active',
           ]}
           data-carousel-caption
           data-carousel-index={parked ? undefined : displayIndex}
@@ -391,10 +399,9 @@ const blockStyle = [
           <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{entry.captions.tablet}</span>
           <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{entry.captions.mobile}</span>
         </span>
-        );
-      })}
-    </div>
-  )}
+      );
+    })}
+  </div>
 </div>
 
 <script>
