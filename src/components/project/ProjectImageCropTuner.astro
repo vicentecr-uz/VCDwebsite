@@ -930,8 +930,13 @@ import DevOverlay from '../DevOverlay.astro';
       if (!pageStage) return;
       pageStage.ghost.remove();
       pageStage.stage.remove();
+      const carousel = pageStage.target.closest('[data-project-image-carousel]');
       pageStage.target.classList.remove('dev-crop-stage-host');
       pageStage = null;
+      // Slides un-isolate — put the carousel back on the one just cropped.
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
+      }
     };
 
     /** Capture can throw once a pointer is gone (fast release, pen lift). */
@@ -1082,6 +1087,10 @@ import DevOverlay from '../DevOverlay.astro';
       pageStage = { ghost, ghostImg, stage, target };
       wirePageStage(stage);
       syncPageStageBox();
+      const carousel = target.closest('[data-project-image-carousel]');
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
+      }
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
@@ -1334,7 +1343,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     maxVhSelect.addEventListener('change', () => {
-      if (!isStandaloneMedia(editTarget)) {
+      if (!supportsMaxVh(editTarget)) {
         maxVhSelect.value = '';
         return;
       }

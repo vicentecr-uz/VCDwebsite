@@ -365,6 +365,23 @@
   margin-inline: auto;
 }
 
+/*
+  Cropping inside a scroller: the track clips on both axes, so the crop stage's
+  handles get cut off at the frame edges. While a stage is mounted, drop the
+  clipping and isolate the slide being cropped — the stage is positioned inside
+  its own host, so it stays glued without a reposition pass.
+*/
+.is-dev-mode .project-image-carousel__track:has(> .dev-crop-stage-host) {
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+.is-dev-mode
+  .project-image-carousel__track:has(> .dev-crop-stage-host)
+  > .project-image-carousel__slide:not(.dev-crop-stage-host) {
+  display: none;
+}
+
 .project-image-carousel__track.is-dragging {
   cursor: grabbing;
 }

@@ -34,6 +34,8 @@ function activeIndexFor(carousel: Carousel): number {
   let best = 0;
   let bestDistance = Infinity;
   carousel.slides.forEach((slide, index) => {
+    // Dev cropping isolates one slide; hidden ones all report offset 0.
+    if (!slide.offsetWidth && !slide.offsetHeight) return;
     const distance = Math.abs(slideOffset(carousel, slide) - position);
     if (distance < bestDistance) {
       bestDistance = distance;
