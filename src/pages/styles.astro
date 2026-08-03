@@ -203,7 +203,7 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectSectionTitle.astro',
     props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3), showTitle?, hideWhenSidebarVisible?',
     usedOn: ['Tapico'],
-    checklist: 'Default precede-related so body after a heading sits at 1em; per-breakpoint show/hide when sidebar is active.',
+    checklist: 'Default precede-related so body after a heading sits at --space-unit; per-breakpoint show/hide when sidebar is active.',
     preview: 'section-title',
   },
   {
@@ -315,18 +315,18 @@ const typographyScale = [
 ];
 
 const spacingScale = [
-  { token: '--space-related', value: '1em', use: 'Continuous / related blocks in a project stack' },
-  { token: '--space-group', value: '4em', use: 'Same chapter, new beat (e.g. press → community)' },
-  { token: '--space-section', value: '8em', use: 'Gap between imagery and narrative text' },
-  { token: '--space-major', value: '12em', use: 'Major section / chapter break' },
   // `value` is injected straight into the sample bar's width/height, so it has
   // to stay a valid CSS length. Referencing the token keeps the bar honest —
   // it renders whatever the unit currently is at this breakpoint.
   {
     token: '--space-unit',
     value: 'var(--space-unit)',
-    use: 'Core unit: gutter, header/footer padding, grid gaps — 1rem, 0.75rem below 40em',
+    use: 'Core unit: gutter, header/footer padding, grid gaps, related stack step — 1rem, 0.75rem below 40em',
   },
+  { token: '--space-related', value: 'var(--space-related)', use: 'Continuous / related blocks (= --space-unit)' },
+  { token: '--space-group', value: '4em', use: 'Same chapter, new beat (e.g. press → community)' },
+  { token: '--space-section', value: '8em', use: 'Gap between imagery and narrative text' },
+  { token: '--space-major', value: '12em', use: 'Major section / chapter break' },
 ];
 
 const layoutRules = [
