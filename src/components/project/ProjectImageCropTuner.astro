@@ -118,7 +118,15 @@ import DevOverlay from '../DevOverlay.astro';
 </DevOverlay>
 
 <script>
+  import {
+    imageGridConstrainedStyle,
+    imageHasWidthConstraint,
+    resolveImageGridConstrained,
+    type ImageGridConstrainPercent,
+  } from '../../lib/responsiveImage';
+
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
+  type ConstrainedByViewport = Record<ImageViewport, ImageGridConstrainPercent>;
 
   /**
    * Frame + content. `aspect` shapes the box; `cx`/`cy`/`w` say which part of
@@ -299,8 +307,8 @@ import DevOverlay from '../DevOverlay.astro';
     /** Rendered value of data-dev-image-variants, for a lossless cancel. */
     let targetVariantsAttr: string | null = null;
     let savedSinceSelect = false;
-    let savedConstrained = false;
-    let draftConstrained = false;
+    let savedConstrained: ConstrainedByViewport = resolveImageGridConstrained(false);
+    let draftConstrained: ConstrainedByViewport = resolveImageGridConstrained(false);
     let savedMaxVh: number | undefined;
     let draftMaxVh: number | undefined;
 
@@ -323,8 +331,34 @@ import DevOverlay from '../DevOverlay.astro';
       return MAX_VH_ALLOWED.has(n) ? n : undefined;
     };
 
-    const readConstrained = (target: HTMLElement) => target.dataset.devConstrained === 'true'
-      || target.classList.contains('project-media--constrained');
+    const readConstrainedFromTarget = (target: HTMLElement): ConstrainedByViewport => {
+      const raw = target.dataset.devConstrained;
+      if (raw) {
+        try {
+          if (raw.startsWith('{')) {
+            return resolveImageGridConstrained(JSON.parse(raw) as never);
+          }
+          if (raw === 'true') return resolveImageGridConstrained(true);
+          if (raw === 'false') return resolveImageGridConstrained(false);
+        } catch {
+          // fall through
+        }
+      }
+      if (target.classList.contains('project-media--constrained')) {
+        return resolveImageGridConstrained(true);
+      }
+      return resolveImageGridConstrained(false);
+    };
+
+    const applyConstrainedStyle = (target: HTMLElement, constrained: ConstrainedByViewport) => {
+      for (const part of imageGridConstrainedStyle(constrained).split(';')) {
+        const colon = part.indexOf(':');
+        if (colon < 0) continue;
+        const key = part.slice(0, colon).trim();
+        const value = part.slice(colon + 1).trim();
+        if (key && value) target.style.setProperty(key, value);
+      }
+    };
 
     const readMaxVh = (target: HTMLElement): number | undefined => {
       const fromData = normalizeMaxVh(target.dataset.devMaxVh);
@@ -351,7 +385,7 @@ import DevOverlay from '../DevOverlay.astro';
 
     const applyFrameFlagsLive = (
       target: HTMLElement,
-      flags: { constrained: boolean; maxVh: number | undefined },
+      flags: { constrained: ConstrainedByViewport; maxVh: number | undefined },
     ) => {
       if (isCarouselItem(target)) {
         if (flags.maxVh) target.dataset.maxVh = String(flags.maxVh);
@@ -365,9 +399,11 @@ import DevOverlay from '../DevOverlay.astro';
         return;
       }
       if (!isStandaloneMedia(target)) return;
-      target.classList.toggle('project-media--constrained', flags.constrained);
-      target.dataset.devConstrained = flags.constrained ? 'true' : 'false';
-      target.dataset.devCentered = flags.constrained ? 'true' : 'false';
+      const hasConstraint = imageHasWidthConstraint(flags.constrained);
+      applyConstrainedStyle(target, flags.constrained);
+      target.classList.toggle('project-media--constrained', hasConstraint);
+      target.dataset.devConstrained = JSON.stringify(flags.constrained);
+      target.dataset.devCentered = hasConstraint ? 'true' : 'false';
       const hasMaxVh = !!flags.maxVh;
       target.classList.toggle('project-media--max-vh', hasMaxVh);
       target.classList.remove('project-media--max80');
@@ -381,14 +417,14 @@ import DevOverlay from '../DevOverlay.astro';
       image?.classList.toggle('project-media__img--max-vh', hasMaxVh && !cropped);
       image?.classList.remove('project-media__img--max80');
       const block = target.closest('.project-block');
-      block?.classList.toggle('project-block--centered', flags.constrained || hasMaxVh);
+      block?.classList.toggle('project-block--centered', hasConstraint || hasMaxVh);
       announceFrameChange(target);
     };
 
     const syncWidthConstrainUi = () => {
       const show = isStandaloneMedia(editTarget);
       widthConstrainWrap.hidden = !show;
-      widthConstrainInput.checked = draftConstrained;
+      widthConstrainInput.checked = draftConstrained[selectedViewport] < 100;
       heightConstrainWrap.hidden = !supportsMaxVh(editTarget);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
     };
@@ -471,7 +507,7 @@ import DevOverlay from '../DevOverlay.astro';
     /** Disk / last globally-saved baseline per pending id (survives popup close). */
     const diskBaselines = new Map<string, {
       variants: Record<ImageViewport, CropState>;
-      constrained: boolean;
+      constrained: ConstrainedByViewport;
       maxVh: number | undefined;
       cropped: boolean;
     }>();
@@ -485,7 +521,7 @@ import DevOverlay from '../DevOverlay.astro';
 
     const snapshotBaseline = (target: HTMLElement) => ({
       variants: readAppliedVariants(target),
-      constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
+      constrained: isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false),
       maxVh: supportsMaxVh(target) ? readMaxVh(target) : undefined,
       cropped: target.classList.contains('project-cropped') || isGridTarget(target),
     });
@@ -689,7 +725,7 @@ import DevOverlay from '../DevOverlay.astro';
       }
       if (standalone || carouselItem) {
         applyFrameFlagsLive(target, { constrained: stagedConstrained, maxVh: stagedMaxVh });
-        savedConstrained = stagedConstrained;
+        savedConstrained = { ...stagedConstrained };
         savedMaxVh = stagedMaxVh;
       }
       savedSinceSelect = true;
@@ -710,7 +746,7 @@ import DevOverlay from '../DevOverlay.astro';
             ...(standalone
               ? {
                 constrained: stagedConstrained,
-                centered: stagedConstrained,
+                centered: imageHasWidthConstraint(stagedConstrained),
                 maxVh: stagedMaxVh ?? 0,
               }
               : {}),
@@ -752,8 +788,8 @@ import DevOverlay from '../DevOverlay.astro';
                 renderDraft();
                 syncUseGridDefaultButton();
               }
-              savedConstrained = baseline.constrained;
-              draftConstrained = baseline.constrained;
+              savedConstrained = { ...baseline.constrained };
+              draftConstrained = { ...baseline.constrained };
               savedMaxVh = baseline.maxVh;
               draftMaxVh = baseline.maxVh;
               syncWidthConstrainUi();
@@ -803,7 +839,7 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants = structuredClone(savedVariants);
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
-      draftConstrained = savedConstrained;
+      draftConstrained = { ...savedConstrained };
       draftMaxVh = savedMaxVh;
 
       if (liveApply || savedSinceSelect) {
@@ -857,8 +893,8 @@ import DevOverlay from '../DevOverlay.astro';
       }
       savedVariants = readAppliedVariants(editTarget);
       draftVariants = structuredClone(savedVariants);
-      savedConstrained = isStandaloneMedia(target) ? readConstrained(target) : false;
-      draftConstrained = savedConstrained;
+      savedConstrained = isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false);
+      draftConstrained = { ...savedConstrained };
       savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
       draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
@@ -1336,6 +1372,7 @@ import DevOverlay from '../DevOverlay.astro';
         draft = { ...draftVariants[selectedViewport] };
         renderConstraint();
         renderDraft();
+        syncWidthConstrainUi();
         // The page can only mirror the crop of the breakpoint it is showing.
         if (editingSession) mountPageStage();
         status.textContent = viewportGateOk()
@@ -1479,14 +1516,18 @@ import DevOverlay from '../DevOverlay.astro';
         widthConstrainInput.checked = false;
         return;
       }
-      draftConstrained = widthConstrainInput.checked;
+      draftConstrained = {
+        ...draftConstrained,
+        [selectedViewport]: widthConstrainInput.checked ? 80 : 100,
+      };
       applyFrameFlagsLive(editTarget, {
         constrained: draftConstrained,
         maxVh: draftMaxVh,
       });
-      status.textContent = draftConstrained
-        ? 'Width constrained to 80% (centred) — unsaved changes.'
-        : 'Full width — unsaved changes.';
+      const percent = draftConstrained[selectedViewport];
+      status.textContent = percent < 100
+        ? `Width constrained to ${percent}% on ${selectedViewport} — unsaved changes.`
+        : `Full width on ${selectedViewport} — unsaved changes.`;
     });
 
     maxVhSelect.addEventListener('change', () => {

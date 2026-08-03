@@ -137,6 +137,13 @@ export function imageGridConstrainedStyle(
     .join(';');
 }
 
+/** True when any breakpoint uses less than full column width. */
+export function imageHasWidthConstraint(
+  constrained: Record<ImageViewport, ImageGridConstrainPercent>,
+): boolean {
+  return VIEWPORTS.some((viewport) => constrained[viewport] < 100);
+}
+
 const sanitizeVisibleIds = (itemIds: string[], visible: string[] | undefined): string[] => {
   const known = new Set(itemIds);
   const seen = new Set<string>();
