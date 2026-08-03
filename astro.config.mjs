@@ -724,7 +724,7 @@ const applyGridChange = (data, change) => {
 };
 
 const CAROUSEL_ORIENTATIONS = new Set(['horizontal', 'vertical']);
-const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest', 'max']);
+const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest']);
 const CAROUSEL_DOTS_PLACEMENTS = new Set(['outside', 'over', 'hidden']);
 /** Matches MAX_VH_PERCENTS in src/lib/projectImageFrame.ts. */
 const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
@@ -764,12 +764,11 @@ const applyCarouselChange = (data, change) => {
   if (dotsPlacement === 'outside') delete target.dotsPlacement;
   else target.dotsPlacement = dotsPlacement;
 
-  if (heightMode === 'max') {
-    const maxHeightVh = Math.round(Number(change.maxHeightVh));
-    if (!CAROUSEL_MAX_VH.has(maxHeightVh)) {
-      return { ok: false, error: 'Use a supported max height.' };
-    }
+  const maxHeightVh = Math.round(Number(change.maxHeightVh));
+  if (CAROUSEL_MAX_VH.has(maxHeightVh)) {
     target.maxHeightVh = maxHeightVh;
+  } else if (change.maxHeightVh && change.maxHeightVh !== 0) {
+    return { ok: false, error: 'Use a supported max height.' };
   } else {
     delete target.maxHeightVh;
   }

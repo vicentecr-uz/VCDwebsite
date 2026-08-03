@@ -56,10 +56,10 @@ export type CarouselOrientation = 'horizontal' | 'vertical';
 
 /**
  * `dynamic` — block height eases to the active slide.
- * `tallest`  — block is pinned to the tallest slide.
- * `max`      — block is capped at `maxHeightVh` (% of svh).
+ * `tallest` — block is pinned to the tallest slide.
+ * Either can carry a `maxHeightVh` ceiling on top.
  */
-export type CarouselHeightMode = 'dynamic' | 'tallest' | 'max';
+export type CarouselHeightMode = 'dynamic' | 'tallest';
 
 /** Dots below/left of the images, overlaid on them, or not shown at all. */
 export type CarouselDotsPlacement = 'outside' | 'over' | 'hidden';
@@ -68,7 +68,7 @@ interface Props {
   items: Item[];
   orientation?: CarouselOrientation;
   heightMode?: CarouselHeightMode;
-  /** Cap as % of svh — only used when `heightMode` is `max`. */
+  /** Block-wide ceiling as % of svh. Independent of `heightMode`. */
   maxHeightVh?: number;
   /** Advance slides as the page scrolls past a pinned block. Not wired yet. */
   scrollPinned?: boolean;
@@ -96,6 +96,8 @@ const {
   sectionId,
 } = Astro.props;
 
+/** Legacy `max` meant "tallest, capped" — the cap is its own setting now. */
+const resolvedHeightMode = heightMode === 'dynamic' ? 'dynamic' : 'tallest';
 const constrained = resolveImageGridConstrained(constrainedProp);
 const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
@@ -135,7 +137,7 @@ const editorItems = resolvedItems.map((entry) => ({
 
 const blockStyle = [
   imageGridConstrainedStyle(constrained),
-  heightMode === 'max' && maxHeightVh ? `--project-carousel-max-vh:${maxHeightVh}` : '',
+  maxHeightVh ? `--project-carousel-max-vh:${maxHeightVh}` : '',
 ]
   .filter(Boolean)
   .join(';');
@@ -152,14 +154,14 @@ const blockStyle = [
   style={blockStyle}
   data-project-image-carousel
   data-orientation={orientation}
-  data-height-mode={heightMode}
+  data-height-mode={resolvedHeightMode}
   data-scroll-pinned={scrollPinned ? 'true' : 'false'}
   data-dots-placement={dotsPlacement}
   data-dev-carousel-target={showDevEditing ? 'carousel' : undefined}
   data-dev-document={showDevEditing ? documentKey : undefined}
   data-dev-carousel-path={showDevEditing ? JSON.stringify(basePath) : undefined}
   data-dev-carousel-orientation={showDevEditing ? orientation : undefined}
-  data-dev-carousel-height-mode={showDevEditing ? heightMode : undefined}
+  data-dev-carousel-height-mode={showDevEditing ? resolvedHeightMode : undefined}
   data-dev-carousel-max-vh={showDevEditing ? String(maxHeightVh ?? '') : undefined}
   data-dev-carousel-scroll-pinned={showDevEditing ? (scrollPinned ? 'true' : 'false') : undefined}
   data-dev-carousel-dots-placement={showDevEditing ? dotsPlacement : undefined}
