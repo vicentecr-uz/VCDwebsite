@@ -203,7 +203,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill';
       payload: Record<string, unknown>;
       revert: () => void;
       /** Live section root for placeholder fills — index is read from it at Save. */
@@ -1843,6 +1843,7 @@
         !detail?.id ||
         (detail.kind !== 'crop'
           && detail.kind !== 'grid'
+          && detail.kind !== 'carousel'
           && detail.kind !== 'caption'
           && detail.kind !== 'listing-order'
           && detail.kind !== 'section-order'
@@ -2329,6 +2330,9 @@
                 .map((change) => change.payload),
               grids: imageChanges
                 .filter((change) => change.kind === 'grid')
+                .map((change) => change.payload),
+              carousels: imageChanges
+                .filter((change) => change.kind === 'carousel')
                 .map((change) => change.payload),
               captions: imageChanges
                 .filter((change) => change.kind === 'caption')

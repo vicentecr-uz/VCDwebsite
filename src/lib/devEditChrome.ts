@@ -22,7 +22,11 @@ export function captionCornerConflictsWithChrome(
   imageTarget: HTMLElement,
   captionPosition: ImageCaptionPositionId,
 ): boolean {
-  const imageRect = imageTarget.getBoundingClientRect();
+  // Prefer the visible crop/image frame — carousel slides are full track width.
+  const frame = imageTarget.querySelector<HTMLElement>(
+    '.project-image-grid__frame, .project-crop-clip',
+  );
+  const imageRect = (frame ?? imageTarget).getBoundingClientRect();
   if (imageRect.width <= 0 || imageRect.height <= 0) return false;
 
   for (const chrome of document.querySelectorAll<HTMLElement>(

@@ -723,6 +723,88 @@ const applyGridChange = (data, change) => {
   return { ok: true };
 };
 
+const CAROUSEL_ORIENTATIONS = new Set(['horizontal', 'vertical']);
+const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest']);
+const CAROUSEL_DOTS_PLACEMENTS = new Set(['outside', 'over', 'hidden']);
+/** Matches MAX_VH_PERCENTS in src/lib/projectImageFrame.ts. */
+const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
+
+/**
+ * Apply one image-carousel settings mutation onto an in-memory document node.
+ * Items are left alone — only block-level settings are written here.
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+const applyCarouselChange = (data, change) => {
+  const fieldPath = change.path;
+  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+    return { ok: false, error: 'That carousel is not editable.' };
+  }
+  const target = resolvePathTarget(data, fieldPath);
+  if (target === null || typeof target !== 'object' || Array.isArray(target)) {
+    return { ok: false, error: 'That carousel path no longer exists.' };
+  }
+
+  const orientation = String(change.orientation || '');
+  if (!CAROUSEL_ORIENTATIONS.has(orientation)) {
+    return { ok: false, error: 'Use a horizontal or vertical carousel.' };
+  }
+
+  const heightMode = String(change.heightMode || '');
+  if (!CAROUSEL_HEIGHT_MODES.has(heightMode)) {
+    return { ok: false, error: 'Use a supported carousel height mode.' };
+  }
+
+  const dotsPlacement = String(change.dotsPlacement || 'outside');
+  if (!CAROUSEL_DOTS_PLACEMENTS.has(dotsPlacement)) {
+    return { ok: false, error: 'Use a supported position-dot placement.' };
+  }
+
+  target.orientation = orientation;
+  target.heightMode = heightMode;
+  if (dotsPlacement === 'outside') delete target.dotsPlacement;
+  else target.dotsPlacement = dotsPlacement;
+
+  const maxHeightVh = Math.round(Number(change.maxHeightVh));
+  if (CAROUSEL_MAX_VH.has(maxHeightVh)) {
+    target.maxHeightVh = maxHeightVh;
+  } else if (change.maxHeightVh && change.maxHeightVh !== 0) {
+    return { ok: false, error: 'Use a supported max height.' };
+  } else {
+    delete target.maxHeightVh;
+  }
+
+  if (change.scrollPinned === true) {
+    target.scrollPinned = true;
+  } else {
+    delete target.scrollPinned;
+  }
+
+  // Visible order — items themselves stay put so crop paths remain stable.
+  if (Object.prototype.hasOwnProperty.call(change, 'visible')) {
+    const itemIds = Array.isArray(target.items)
+      ? target.items.map((item, index) => String(item?.id || `item-${index}`))
+      : [];
+    const knownIds = new Set(itemIds);
+    const requested = Array.isArray(change.visible) ? change.visible : [];
+    const seen = new Set();
+    const visible = [];
+    for (const rawId of requested) {
+      const id = String(rawId || '');
+      if (!knownIds.has(id) || seen.has(id)) continue;
+      seen.add(id);
+      visible.push(id);
+    }
+    // Default = every item in array order — omit the field when nothing's parked
+    // and the order matches, so JSON stays quiet until someone rearranges.
+    const isDefault = visible.length === itemIds.length
+      && visible.every((id, index) => id === itemIds[index]);
+    if (isDefault) delete target.visible;
+    else target.visible = visible;
+  }
+
+  return { ok: true };
+};
+
 /**
  * Apply one image-caption mutation onto an in-memory document node.
  * @returns {{ ok: true } | { ok: false, error: string }}
@@ -858,12 +940,14 @@ function contentBatchDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
                     const crops = Array.isArray(body.crops) ? body.crops : [];
           const grids = Array.isArray(body.grids) ? body.grids : [];
+          const carousels = Array.isArray(body.carousels) ? body.carousels : [];
           const captions = Array.isArray(body.captions) ? body.captions : [];
           const textChanges = Array.isArray(body.text) ? body.text : [];
           const spacingChanges = Array.isArray(body.spacing) ? body.spacing : [];
           if (
             !crops.length &&
             !grids.length &&
+            !carousels.length &&
             !captions.length &&
             !textChanges.length &&
             !spacingChanges.length
@@ -872,14 +956,14 @@ function contentBatchDevWriter() {
             return;
           }
 
-          /** @type {Map<string, { crops: any[], grids: any[], captions: any[], text: any[], spacing: any[] }>} */
+          /** @type {Map<string, { crops: any[], grids: any[], carousels: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const resolveBatchChange = (documentKey, fieldPath) => {
             const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             if (!target?.relativeFile) return null;
             let group = grouped.get(target.relativeFile);
             if (!group) {
-              group = { crops: [], grids: [], captions: [], text: [], spacing: [] };
+              group = { crops: [], grids: [], carousels: [], captions: [], text: [], spacing: [] };
               grouped.set(target.relativeFile, group);
             }
             return { group, path: target.path };
@@ -902,6 +986,15 @@ function contentBatchDevWriter() {
               return;
             }
             resolved.group.grids.push({ ...change, path: resolved.path });
+          }
+          for (const change of carousels) {
+            const documentKey = String(change?.document || '');
+            const resolved = resolveBatchChange(documentKey, change?.path);
+            if (!resolved) {
+              send(400, { error: 'That carousel is not editable.' });
+              return;
+            }
+            resolved.group.carousels.push({ ...change, path: resolved.path });
           }
           for (const change of captions) {
             const documentKey = String(change?.document || '');
@@ -973,6 +1066,13 @@ function contentBatchDevWriter() {
                 return;
               }
             }
+            for (const change of group.carousels) {
+              const result = applyCarouselChange(data, change);
+              if (!result.ok) {
+                send(400, { error: result.error });
+                return;
+              }
+            }
             for (const change of group.captions) {
               const result = applyCaptionChange(data, change);
               if (!result.ok) {
@@ -1037,6 +1137,7 @@ function contentBatchDevWriter() {
             ok: true,
             crops: crops.length,
             grids: grids.length,
+            carousels: carousels.length,
             captions: captions.length,
             text: textChanges.length,
             spacing: spacingChanges.length,
@@ -1056,6 +1157,8 @@ function contentBatchDevWriter() {
  * @returns {import('vite').Plugin}
  */
 const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle', 'image', 'imageGrid', 'placeholder']);
+/** Insertable types plus ones that only exist by conversion but must stay deletable. */
+const DELETABLE_SECTION_TYPES = new Set([...INSERTABLE_SECTION_TYPES, 'imageCarousel']);
 
 const outlineAnchorId = (entry) => {
   if (!entry || typeof entry !== 'object') return '';
@@ -1191,7 +1294,7 @@ function contentSectionDevWriter() {
               existing && typeof existing === 'object' && !Array.isArray(existing)
                 ? String(existing.type || '')
                 : '';
-            if (!INSERTABLE_SECTION_TYPES.has(existingType)) {
+            if (!DELETABLE_SECTION_TYPES.has(existingType)) {
               send(400, { error: 'That section type cannot be deleted here.' });
               return;
             }

@@ -293,6 +293,292 @@
   );
 }
 
+/*
+  Image carousel — one slide at a time on a native scroll-snap track, so a
+  trackpad swipe only moves it while the pointer is over the block. Global for
+  the same reason the grid rules are: dev inserts mount these client-side.
+*/
+.project-image-carousel {
+  --project-image-carousel-width: var(--project-image-grid-width-desktop, 100%);
+  /* rem, not em — the block inherits different font sizes per section. */
+  --project-carousel-dot-size: 0.4rem;
+  --project-carousel-dot-slot: 0.9rem;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: var(--project-image-carousel-width);
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+@media (max-width: 991px) {
+  .project-image-carousel {
+    --project-image-carousel-width: var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%));
+  }
+}
+
+@media (max-width: 767px) {
+  .project-image-carousel {
+    --project-image-carousel-width: var(--project-image-grid-width-mobile, var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%)));
+  }
+}
+
+.project-image-carousel__track {
+  display: flex;
+  /* Follow-each-image: top-align — the block's top edge can't move with the
+     page, so shrinking from the bottom is the only honest direction. */
+  align-items: flex-start;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* Height is owned by JS in `dynamic`; `tallest` leaves it auto. */
+  height: var(--project-carousel-track-size, auto);
+}
+
+/* Pin-to-tallest: shorter slides sit in the leftover space on both sides. */
+.project-image-carousel[data-height-mode='tallest'] .project-image-carousel__track {
+  align-items: center;
+}
+
+.project-image-carousel__track::-webkit-scrollbar {
+  display: none;
+}
+
+.project-image-carousel__track:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+}
+
+/*
+  Height caps work by capping frame *width* against the cell's aspect ratio —
+  a max-height alone would crop, since the frame drives its own height.
+  The block cap (heightMode "max") and an image's own Max view height both
+  apply; the smaller one wins. 1000 stands in for "no cap".
+*/
+/*
+  Width cap on the surface (not the full slide) so overlay captions and Edit
+  image / Add caption chrome sit on the visible image, not the white track cell.
+*/
+.project-image-carousel__surface {
+  position: relative;
+  width: 100%;
+  max-width: calc(
+    min(var(--project-carousel-max-vh, 1000), var(--project-max-vh, 1000))
+    * 1svh * var(--project-image-ratio-num, 1)
+  );
+  margin-inline: auto;
+  min-width: 0;
+}
+
+/*
+  Cropping inside a scroller: the track clips on both axes, so the crop stage's
+  handles get cut off at the frame edges. While a stage is mounted, drop the
+  clipping and isolate the slide being cropped — the stage is positioned inside
+  its own host, so it stays glued without a reposition pass.
+*/
+.is-dev-mode .project-image-carousel__track:has(> .dev-crop-stage-host) {
+  overflow: visible;
+  scroll-snap-type: none;
+  /* Isolation hides sibling slides; without this, pin-to-tallest collapses
+     to the crop host's height and the image jumps to the top. */
+  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-size, auto));
+  transition: none;
+}
+
+.is-dev-mode
+  .project-image-carousel__track:has(> .dev-crop-stage-host)
+  > .project-image-carousel__slide:not(.dev-crop-stage-host) {
+  display: none;
+}
+
+.project-image-carousel__track.is-dragging {
+  cursor: grabbing;
+}
+
+.project-image-carousel__slide[data-carousel-parked='true'],
+.project-image-carousel__dot[data-carousel-parked='true'],
+.project-image-carousel__caption[data-carousel-parked='true'] {
+  display: none;
+}
+
+.project-image-carousel__slide {
+  flex: 0 0 100%;
+  align-self: flex-start;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.project-image-carousel[data-height-mode='tallest'] .project-image-carousel__slide {
+  align-self: center;
+}
+
+/* Vertical: the track scrolls on Y and the dots move to the left rail. */
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__track {
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: auto;
+}
+
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__slide {
+  flex: 0 0 auto;
+  width: 100%;
+}
+
+/* Wraps the track so overlaid dots can anchor to the images, not the block. */
+.project-image-carousel__media {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__media {
+  flex-direction: row-reverse;
+  align-items: stretch;
+  gap: calc(var(--space-unit) * 0.75);
+}
+
+/* ── Position dots ───────────────────────────────────────── */
+.project-image-carousel__dots {
+  display: flex;
+  justify-content: center;
+  padding-block: calc(var(--space-unit) * 0.6);
+}
+
+.project-image-carousel[data-dots-placement='hidden'] .project-image-carousel__dots {
+  display: none;
+}
+
+.project-image-carousel[data-dots-placement='over'] .project-image-carousel__dots {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.project-image-carousel[data-dots-placement='over'] .project-image-carousel__dot {
+  pointer-events: auto;
+}
+
+.project-image-carousel[data-orientation='vertical'][data-dots-placement='over'] .project-image-carousel__dots {
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 0;
+  align-items: center;
+  padding-inline: calc(var(--space-unit) * 0.5);
+}
+
+.project-image-carousel__dots[hidden] {
+  display: none;
+}
+
+.project-image-carousel__dot-window {
+  position: relative;
+  width: calc(var(--project-carousel-dot-count, 3) * var(--project-carousel-dot-slot));
+  height: var(--project-carousel-dot-slot);
+  overflow: hidden;
+}
+
+.project-image-carousel__dot-strip {
+  display: flex;
+  transform: translateX(calc(var(--project-carousel-dot-offset, 0) * var(--project-carousel-dot-slot) * -1));
+}
+
+.project-image-carousel__dot {
+  display: grid;
+  place-items: center;
+  flex: 0 0 var(--project-carousel-dot-slot);
+  height: var(--project-carousel-dot-slot);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+/* Fill and scale interpolate off the scroll position — see renderDots. */
+.project-image-carousel__dot-mark {
+  width: var(--project-carousel-dot-size);
+  height: var(--project-carousel-dot-size);
+  border-radius: 50%;
+  background: color-mix(
+    in srgb,
+    var(--color-text-soft) calc(var(--project-carousel-dot-activeness, 0) * 100%),
+    var(--color-surface-strong)
+  );
+  transform: scale(var(--project-carousel-dot-scale, 1));
+}
+
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__dots {
+  align-items: center;
+  padding-block: 0;
+  padding-inline: calc(var(--space-unit) * 0.25);
+}
+
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__dot-window {
+  width: var(--project-carousel-dot-slot);
+  height: calc(var(--project-carousel-dot-count, 3) * var(--project-carousel-dot-slot));
+}
+
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__dot-strip {
+  flex-direction: column;
+  transform: translateY(calc(var(--project-carousel-dot-offset, 0) * var(--project-carousel-dot-slot) * -1));
+}
+
+/*
+  Caption below the dots (and below the media row when dots sit beside a
+  vertical track). Outside the slide/track so image vertical alignment is
+  unchanged.
+
+  Opacity and slot height are scroll-linked in JS (opacity has a mid-swipe
+  gap; height lerps between neighbouring slides). Each caption keeps its own
+  image's width so it doesn't jump mid-fade.
+
+  overflow:visible so a fading-in caption isn't clipped while the slot height
+  is still catching up.
+*/
+.project-image-carousel__caption-slot {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 0;
+  overflow: visible;
+}
+
+.project-image-carousel__caption,
+.project-image-carousel__caption.project-caption--below {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  display: block;
+  box-sizing: border-box;
+  /* Width comes from JS (that slide's surface). Override below-caption shrink trick. */
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+  /*
+    Trim the block-start to the font cap height so dots↔caption padding
+    matches image↔dots (measured to the cap line, not the line-box top).
+  */
+  text-box-trim: trim-start;
+  text-box-edge: cap alphabetic;
+  text-box: trim-start cap alphabetic;
+}
+
 /* ── Development image-editing affordance ────────────────── */
 .dev-image-edit-target {
   position: relative;
@@ -502,7 +788,8 @@ html:not(.is-dev-mode) .dev-crop-stage {
   pointer-events: auto;
 }
 
-.dev-grid-edit-target {
+.dev-grid-edit-target,
+.dev-carousel-edit-target {
   position: relative;
 }
 
@@ -533,7 +820,9 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 .dev-grid-edit-target:hover > .dev-grid-edit-trigger,
-.dev-grid-edit-target:focus-within > .dev-grid-edit-trigger {
+.dev-grid-edit-target:focus-within > .dev-grid-edit-trigger,
+.dev-carousel-edit-target:hover > .dev-grid-edit-trigger,
+.dev-carousel-edit-target:focus-within > .dev-grid-edit-trigger {
   opacity: 1;
   pointer-events: auto;
 }

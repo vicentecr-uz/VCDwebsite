@@ -1,0 +1,413 @@
+---
+import { projectImage } from '../../lib/images';
+import {
+  imageGridConstrainedStyle,
+  resolveImageGridConstrained,
+  type ImageGridConstrained,
+  type ImageVariants,
+} from '../../lib/responsiveImage';
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
+import {
+  imageCaptionStyleClass,
+  imageCaptionsHaveText,
+  isBelowImageCaptionStyle,
+  BELOW_IMAGE_CAPTION_REVEALS,
+  resolveImageCaptionPosition,
+  resolveImageCaptionReveals,
+  resolveImageCaptionStyle,
+  resolveImageCaptions,
+  type ImageCaptionPositionId,
+  type ImageCaptionReveal,
+  type ImageCaptionReveals,
+  type ImageCaptionStyleId,
+  type ImageCaptions,
+} from '../../lib/imageCaptions';
+import {
+  imageDevEditAttrs,
+  isPlaceholderSrc,
+  resolveGridItemCrop,
+  resolveMaxVh,
+} from '../../lib/projectImageFrame';
+import {
+  carouselDotAppearance,
+  carouselDotGeometry,
+} from '../../lib/projectImageCarousel';
+
+interface Item {
+  id?: string;
+  src: string;
+  alt?: string;
+  caption?: string;
+  captions?: Partial<ImageCaptions> | string;
+  captionStyle?: ImageCaptionStyleId;
+  captionPosition?: ImageCaptionPositionId;
+  captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
+  variants?: ImageVariants;
+  /** Per-image cap as % of svh — same control as a standalone image. */
+  maxVh?: number;
+}
+
+/** Track axis. Dots sit below (horizontal) or to the left (vertical). */
+export type CarouselOrientation = 'horizontal' | 'vertical';
+
+/**
+ * `dynamic` — block height eases to the active slide.
+ * `tallest` — block is pinned to the tallest slide.
+ * Either can carry a `maxHeightVh` ceiling on top.
+ */
+export type CarouselHeightMode = 'dynamic' | 'tallest';
+
+/** Dots below/left of the images, overlaid on them, or not shown at all. */
+export type CarouselDotsPlacement = 'outside' | 'over' | 'hidden';
+
+interface Props {
+  items: Item[];
+  orientation?: CarouselOrientation;
+  heightMode?: CarouselHeightMode;
+  /** Block-wide ceiling as % of svh. Independent of `heightMode`. */
+  maxHeightVh?: number;
+  /** Advance slides as the page scrolls past a pinned block. Not wired yet. */
+  scrollPinned?: boolean;
+  dotsPlacement?: CarouselDotsPlacement;
+  /** Visible item ids in display order. Omitted ids are parked (hidden). */
+  visible?: string[];
+  defaultAspectRatio?: string;
+  constrained?: ImageGridConstrained;
+  document?: string;
+  basePath?: (string | number)[];
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+}
+
+const {
+  items,
+  orientation = 'horizontal',
+  heightMode = 'dynamic',
+  maxHeightVh,
+  scrollPinned = false,
+  dotsPlacement = 'outside',
+  visible: visibleProp,
+  defaultAspectRatio = 'original',
+  constrained: constrainedProp,
+  document: documentKey,
+  basePath,
+  spacing = 'section',
+  sectionId,
+} = Astro.props;
+
+/** Legacy `max` meant "tallest, capped" — the cap is its own setting now. */
+const resolvedHeightMode = heightMode === 'dynamic' ? 'dynamic' : 'tallest';
+const constrained = resolveImageGridConstrained(constrainedProp);
+const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
+const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
+const stackClass = projectStackClass(spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
+
+const knownIds = new Set(itemIds);
+const visibleIds = (() => {
+  if (!Array.isArray(visibleProp)) return [...itemIds];
+  const seen = new Set<string>();
+  const next: string[] = [];
+  for (const raw of visibleProp) {
+    const id = String(raw || '');
+    if (!knownIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    next.push(id);
+  }
+  return next;
+})();
+const parkedIds = itemIds.filter((id) => !visibleIds.includes(id));
+
+const resolvedItems = items.map((item, index) => {
+  const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
+  const captionStyle = resolveImageCaptionStyle(item.captionStyle);
+  const isBelowCaption = isBelowImageCaptionStyle(captionStyle);
+  return {
+    item,
+    id: itemIds[index],
+    itemIndex: index,
+    crop: resolveGridItemCrop(item, defaultAspectRatio),
+    captions,
+    captionStyle,
+    captionPosition: resolveImageCaptionPosition(item.captionPosition),
+    captionReveals: isBelowCaption
+      ? BELOW_IMAGE_CAPTION_REVEALS
+      : resolveImageCaptionReveals(item.captionReveal),
+    isBelowCaption,
+    hasCaption: imageCaptionsHaveText(captions),
+    maxVh: resolveMaxVh(item),
+  };
+});
+
+const byId = new Map(resolvedItems.map((entry) => [entry.id, entry]));
+/** Visible first (display order), then parked — crop paths still use itemIndex. */
+const orderedEntries = [...visibleIds, ...parkedIds]
+  .map((id) => byId.get(id))
+  .filter((entry): entry is (typeof resolvedItems)[number] => !!entry);
+const visibleCount = visibleIds.length;
+
+const hasBelowCaption = orderedEntries.some((entry) => entry.isBelowCaption && entry.hasCaption);
+
+/** First paint starts on image 1 — same maths the client re-runs on scroll. */
+const dotGeometry = carouselDotGeometry(0, visibleCount);
+
+const editorItems = resolvedItems.map((entry) => ({
+  id: entry.id,
+  src: projectImage(entry.item.src),
+  alt: entry.item.alt ?? '',
+}));
+
+const blockStyle = [
+  imageGridConstrainedStyle(constrained),
+  maxHeightVh ? `--project-carousel-max-vh:${maxHeightVh}` : '',
+]
+  .filter(Boolean)
+  .join(';');
+---
+
+<div
+  id={sectionId}
+  class:list={[
+    'project-image-carousel',
+    stackClass,
+    sectionId && 'section-block',
+    showDevEditing && 'dev-carousel-edit-target',
+  ]}
+  style={blockStyle}
+  data-project-image-carousel
+  data-orientation={orientation}
+  data-height-mode={resolvedHeightMode}
+  data-scroll-pinned={scrollPinned ? 'true' : 'false'}
+  data-dots-placement={dotsPlacement}
+  data-dev-carousel-target={showDevEditing ? 'carousel' : undefined}
+  data-dev-document={showDevEditing ? documentKey : undefined}
+  data-dev-carousel-path={showDevEditing ? JSON.stringify(basePath) : undefined}
+  data-dev-carousel-orientation={showDevEditing ? orientation : undefined}
+  data-dev-carousel-height-mode={showDevEditing ? resolvedHeightMode : undefined}
+  data-dev-carousel-max-vh={showDevEditing ? String(maxHeightVh ?? '') : undefined}
+  data-dev-carousel-scroll-pinned={showDevEditing ? (scrollPinned ? 'true' : 'false') : undefined}
+  data-dev-carousel-dots-placement={showDevEditing ? dotsPlacement : undefined}
+  data-dev-carousel-constrained={showDevEditing ? JSON.stringify(constrained) : undefined}
+  data-dev-carousel-default-aspect={showDevEditing ? defaultAspectRatio : undefined}
+  data-dev-carousel-items={showDevEditing ? JSON.stringify(editorItems) : undefined}
+  data-dev-carousel-visible={showDevEditing ? JSON.stringify(visibleIds) : undefined}
+  {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={showDevEditing ? 'imageCarousel' : undefined}
+>
+  {showDevEditing && (
+    <button
+      type="button"
+      class="dev-grid-edit-trigger"
+      data-dev-edit-trigger="carousel"
+      data-dev-corner="top-left"
+      data-dev-mode-only
+      hidden
+    >
+      Edit carousel
+    </button>
+  )}
+  <div class="project-image-carousel__media">
+    <div
+      class="project-image-carousel__track"
+      data-carousel-track
+      tabindex="0"
+      role="group"
+      aria-roledescription="carousel"
+      aria-label={`Image carousel, ${visibleCount} images`}
+    >
+      {orderedEntries.map((entry) => {
+        const { item, id, itemIndex, crop, captions, captionStyle, captionPosition, captionReveals } = entry;
+        const parked = !visibleIds.includes(id);
+        const displayIndex = visibleIds.indexOf(id);
+        const isPlaceholder = isPlaceholderSrc(item.src);
+        const editAttrs = showDevEditing
+          ? imageDevEditAttrs(true, {
+              documentKey: documentKey!,
+              path: [...basePath!, 'items', itemIndex],
+              cropId: id,
+              variants: crop.variants,
+              caption: item.caption,
+              captions: item.captions,
+              captionStyle: item.captionStyle,
+              captionPosition: item.captionPosition,
+              captionReveal: item.captionReveal,
+              gridDefaultAspect: defaultAspectRatio,
+              hasOwnVariants: crop.hasOwnVariants,
+              maxVh: entry.maxVh,
+            })
+          : {};
+        return (
+          <figure
+            class:list={[
+              'project-image-carousel__slide',
+              'project-image-grid__item',
+              'project-responsive-image',
+              isPlaceholder && 'project-media--placeholder',
+              showDevEditing && 'dev-image-edit-target',
+            ]}
+            style={`${crop.style}${entry.maxVh ? `;--project-max-vh:${entry.maxVh}` : ''}`}
+            data-carousel-slide
+            data-carousel-index={parked ? undefined : displayIndex}
+            data-carousel-parked={parked ? 'true' : undefined}
+            data-max-vh={entry.maxVh ? String(entry.maxVh) : undefined}
+            data-grid-item-id={id}
+            aria-roledescription="slide"
+            aria-label={parked ? undefined : `${displayIndex + 1} of ${visibleCount}`}
+            aria-hidden={parked ? 'true' : undefined}
+            {...editAttrs}
+          >
+            {/*
+              Surface carries the max-height width cap so the visible image and
+              overlay chrome share one box — the full-width slide is only the
+              scroll/snap cell. Buttons sit beside the frame (not inside it) so
+              overflow:hidden on the crop frame does not clip them.
+            */}
+            <div class="project-image-carousel__surface">
+              <div class="project-image-grid__frame" data-carousel-frame>
+                <img
+                  src={projectImage(item.src)}
+                  alt={item.alt ?? ''}
+                  class="project-image-grid__image"
+                  loading={displayIndex === 0 ? 'eager' : 'lazy'}
+                />
+                {!entry.isBelowCaption && entry.hasCaption && (
+                  <span
+                    class:list={[
+                      'project-caption',
+                      'project-image-grid__caption',
+                      imageCaptionStyleClass(captionStyle),
+                    ]}
+                    data-project-image-caption
+                    data-caption-style={captionStyle}
+                    data-caption-position={captionPosition}
+                    data-caption-reveal-desktop={captionReveals.desktop}
+                    data-caption-reveal-tablet={captionReveals.tablet}
+                    data-caption-reveal-mobile={captionReveals.mobile}
+                  >
+                    <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
+                    <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
+                    <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
+                  </span>
+                )}
+              </div>
+              {showDevEditing && (
+                <button
+                  type="button"
+                  class="dev-caption-add-trigger"
+                  data-dev-edit-trigger="caption"
+                  data-caption-action="add"
+                  data-dev-mode-only
+                  hidden
+                >
+                  Add caption
+                </button>
+              )}
+              {showDevEditing && (
+                <button
+                  type="button"
+                  class="dev-image-edit-trigger"
+                  data-dev-edit-trigger="image"
+                  data-dev-mode-only
+                  hidden
+                >
+                  Edit image
+                </button>
+              )}
+            </div>
+          </figure>
+        );
+      })}
+    </div>
+
+    <div class="project-image-carousel__dots" data-carousel-dots hidden={visibleCount < 2}>
+      <div
+        class="project-image-carousel__dot-window"
+        data-carousel-dot-window
+        style={`--project-carousel-dot-count:${dotGeometry.span}`}
+      >
+        <div
+          class="project-image-carousel__dot-strip"
+          data-carousel-dot-strip
+          style={`--project-carousel-dot-offset:${dotGeometry.first}`}
+        >
+          {orderedEntries.map((entry) => {
+            const parked = !visibleIds.includes(entry.id);
+            const displayIndex = visibleIds.indexOf(entry.id);
+            const { activeness, scale } = parked
+              ? { activeness: 0, scale: 0 }
+              : carouselDotAppearance(displayIndex, 0, dotGeometry.centre);
+            return (
+              <button
+                type="button"
+                class="project-image-carousel__dot"
+                data-carousel-dot
+                data-carousel-index={parked ? undefined : displayIndex}
+                data-carousel-item-id={entry.id}
+                data-carousel-parked={parked ? 'true' : undefined}
+                style={`--project-carousel-dot-activeness:${activeness};--project-carousel-dot-scale:${scale}`}
+                aria-current={!parked && displayIndex === 0 ? 'true' : 'false'}
+                aria-label={parked ? undefined : `Go to image ${displayIndex + 1}`}
+                aria-hidden={parked ? 'true' : undefined}
+                tabindex={parked ? -1 : 0}
+              >
+                <span class="project-image-carousel__dot-mark"></span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {/*
+    Below-image captions live here — after media+dots — so they never add
+    height inside a slide and cannot push/recenter the visible image.
+    Always present so live caption edits have a host without a reload.
+  */}
+  <div
+    class="project-image-carousel__caption-slot"
+    data-carousel-caption-slot
+    hidden={!hasBelowCaption}
+  >
+    {orderedEntries.map((entry) => {
+      if (!entry.isBelowCaption || !entry.hasCaption) return null;
+      const parked = !visibleIds.includes(entry.id);
+      const displayIndex = visibleIds.indexOf(entry.id);
+      return (
+        <span
+          class:list={[
+            'project-caption',
+            'project-image-carousel__caption',
+            imageCaptionStyleClass(entry.captionStyle),
+            !parked && displayIndex === 0 && 'is-active',
+          ]}
+          data-carousel-caption
+          data-carousel-index={parked ? undefined : displayIndex}
+          data-carousel-item-id={entry.id}
+          data-carousel-parked={parked ? 'true' : undefined}
+          data-project-image-caption
+          data-caption-style={entry.captionStyle}
+          data-caption-reveal-desktop="always"
+          data-caption-reveal-tablet="always"
+          data-caption-reveal-mobile="always"
+        >
+          <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{entry.captions.desktop}</span>
+          <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{entry.captions.tablet}</span>
+          <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{entry.captions.mobile}</span>
+        </span>
+      );
+    })}
+  </div>
+</div>
+
+<script>
+  import { bindProjectCropCovers } from '../../lib/projectCropCover';
+  import { bindProjectImageCarousels } from '../../lib/projectImageCarousel';
+
+  bindProjectCropCovers();
+  bindProjectImageCarousels();
+</script>
