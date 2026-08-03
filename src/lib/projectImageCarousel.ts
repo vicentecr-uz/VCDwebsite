@@ -103,10 +103,43 @@ function renderDots(carousel: Carousel): void {
   dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
 }
 
+/** Active below-caption follows the active slide (by item id, not caption order). */
 function renderCaptions(carousel: Carousel): void {
-  carousel.captions.forEach((caption, index) => {
-    caption.classList.toggle('is-active', index === carousel.active);
+  const activeSlide = carousel.slides[carousel.active];
+  const activeId = activeSlide?.dataset.gridItemId || '';
+  let hasActive = false;
+  carousel.captions.forEach((caption) => {
+    const match = !!activeId && caption.dataset.carouselItemId === activeId;
+    caption.classList.toggle('is-active', match);
+    if (match) hasActive = true;
   });
+
+  const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+  if (!slot) return;
+  const editing = carousel.captions.some((caption) => caption.dataset.captionEditing === 'true');
+  // Collapse the slot when the active image has no below-caption — block height
+  // should drop back to media+dots only.
+  slot.hidden = !hasActive && !editing;
+}
+
+/**
+ * Match the caption column to the active image's visible surface width (and
+ * centre it the same way), so a below-caption reads as an extension of that
+ * image's left/right edges — not the full carousel block.
+ */
+function syncCaptionLayout(carousel: Carousel): void {
+  const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+  if (!slot || slot.hidden) return;
+  const activeSlide = carousel.slides[carousel.active];
+  if (!activeSlide) return;
+  const surface = activeSlide.querySelector<HTMLElement>('.project-image-carousel__surface')
+    ?? activeSlide.querySelector<HTMLElement>('[data-carousel-frame]')
+    ?? activeSlide;
+  const width = Math.round(surface.getBoundingClientRect().width);
+  if (width <= 0) return;
+  slot.style.width = `${width}px`;
+  slot.style.maxWidth = `${width}px`;
+  slot.style.marginInline = 'auto';
 }
 
 /** Ease the block to the active slide's height (or pin it to the tallest). */
@@ -114,6 +147,7 @@ function applyHeight(carousel: Carousel): void {
   const { block, track, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
     block.style.removeProperty('--project-carousel-track-size');
+    syncCaptionLayout(carousel);
     return;
   }
 
@@ -129,6 +163,7 @@ function applyHeight(carousel: Carousel): void {
   block.style.setProperty('--project-carousel-track-size', `${Math.round(size)}px`);
   // Vertical tracks need a bounded height before they can scroll at all.
   if (axis === 'vertical') track.style.height = `${Math.round(size)}px`;
+  syncCaptionLayout(carousel);
 }
 
 function sync(carousel: Carousel): void {
@@ -219,8 +254,13 @@ function collectVisible(carousel: Carousel): void {
     dot.dataset.carouselIndex = String(index);
     dot.setAttribute('aria-label', `Go to image ${index + 1}`);
   });
-  carousel.captions.forEach((caption, index) => {
-    caption.dataset.carouselIndex = String(index);
+  // Captions are sparse (only below-caption slides) — index them by their slide.
+  const slideIndexById = new Map(
+    carousel.slides.map((slide, index) => [slide.dataset.gridItemId || '', index]),
+  );
+  carousel.captions.forEach((caption) => {
+    const slideIndex = slideIndexById.get(caption.dataset.carouselItemId || '');
+    if (slideIndex !== undefined) caption.dataset.carouselIndex = String(slideIndex);
   });
 
   const dotsRoot = carousel.block.querySelector<HTMLElement>('[data-carousel-dots]');
@@ -238,12 +278,14 @@ function refreshSettings(carousel: Carousel): void {
   collectVisible(carousel);
   carousel.active = Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
-  applyHeight(carousel);
-  scrollToIndex(carousel, carousel.active, false);
-  carousel.progress = progressFor(carousel);
   carousel.block.dataset.activeIndex = String(carousel.active);
   renderDots(carousel);
   renderCaptions(carousel);
+  applyHeight(carousel);
+  scrollToIndex(carousel, carousel.active, false);
+  carousel.progress = progressFor(carousel);
+  // Caption width depends on the settled slide geometry after scroll.
+  syncCaptionLayout(carousel);
 }
 
 function initCarousel(block: HTMLElement): void {
