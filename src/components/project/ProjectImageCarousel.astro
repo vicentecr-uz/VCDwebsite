@@ -215,6 +215,12 @@ const blockStyle = [
     </button>
   )}
   <div class="project-image-carousel__media">
+    {/*
+      Clip shell for dynamic height — must wrap only the track. If the height
+      constraint sits on `__media` (which also holds the dots), flex shrinks the
+      scrollport as height lerps and iOS snap lands on the wrong offset.
+    */}
+    <div class="project-image-carousel__clip" data-carousel-clip>
     <div
       class="project-image-carousel__track"
       data-carousel-track
@@ -325,6 +331,7 @@ const blockStyle = [
           </figure>
         );
       })}
+    </div>
     </div>
 
     <div class="project-image-carousel__dots" data-carousel-dots hidden={visibleCount < 2}>

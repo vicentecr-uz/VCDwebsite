@@ -261,11 +261,18 @@ function syncCaptions(carousel: Carousel): void {
   slot.style.height = `${Math.round(targetHeight)}px`;
 }
 
-/** Track height follows scroll in dynamic mode; tallest pins to the max slide. */
+/**
+ * Dynamic height: lerp the visible clip (`--project-carousel-track-size` on
+ * `[data-carousel-clip]`) while the scrollport stays at the tallest slide
+ * (`--project-carousel-track-port-size`). The clip must not wrap the dots —
+ * putting the height on `__media` flex-shrunk the track and broke iOS snap.
+ */
 function applyHeight(carousel: Carousel): void {
   const { block, track, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
     block.style.removeProperty('--project-carousel-track-size');
+    block.style.removeProperty('--project-carousel-track-port-size');
+    track.style.removeProperty('height');
     return;
   }
 
@@ -275,13 +282,24 @@ function applyHeight(carousel: Carousel): void {
     return frame.getBoundingClientRect().height;
   };
 
+  const sizes = carousel.slides.map(measure);
+  const tallest = Math.max(0, ...sizes);
   const size = heightMode === 'dynamic'
-    ? lerpByProgress(carousel, (index) => measure(carousel.slides[index]))
-    : Math.max(0, ...carousel.slides.map(measure));
-  if (!size) return;
-  block.style.setProperty('--project-carousel-track-size', `${Math.round(size)}px`);
+    ? lerpByProgress(carousel, (index) => sizes[index] ?? 0)
+    : tallest;
+  if (!size && !tallest) return;
+
+  block.style.setProperty('--project-carousel-track-size', `${Math.round(size || tallest)}px`);
+  if (axis === 'horizontal') {
+    // Stable scrollport so mandatory snap can finish without a JS re-scroll.
+    block.style.setProperty('--project-carousel-track-port-size', `${Math.round(tallest || size)}px`);
+    track.style.removeProperty('height');
+    return;
+  }
+
+  block.style.removeProperty('--project-carousel-track-port-size');
   // Vertical tracks need a bounded height before they can scroll at all.
-  if (axis === 'vertical') track.style.height = `${Math.round(size)}px`;
+  track.style.height = `${Math.round(size || tallest)}px`;
 }
 
 function sync(carousel: Carousel): void {
@@ -350,6 +368,39 @@ function bindDrag(carousel: Carousel): void {
 
   track.addEventListener('pointerup', endDrag);
   track.addEventListener('pointercancel', endDrag);
+}
+
+/**
+ * Last-resort correction if native snap leaves us in the inter-slide gap.
+ * Instant only — a second smooth scrollTo is what felt like slow-then-speed-up.
+ */
+function bindTouchSnap(carousel: Carousel): void {
+  const { track } = carousel;
+  let touching = false;
+
+  const settle = () => {
+    if (touching) return;
+    const index = activeIndexFor(carousel);
+    const slide = carousel.slides[index];
+    if (!slide) return;
+    const delta = Math.abs(scrollPos(carousel) - slideOffset(carousel, slide));
+    if (delta <= 2) return;
+    scrollToIndex(carousel, index, false);
+  };
+
+  track.addEventListener('touchstart', () => {
+    touching = true;
+  }, { passive: true });
+
+  track.addEventListener('touchend', () => {
+    touching = false;
+  }, { passive: true });
+
+  track.addEventListener('touchcancel', () => {
+    touching = false;
+  }, { passive: true });
+
+  track.addEventListener('scrollend', settle, { passive: true });
 }
 
 const registry = new Map<HTMLElement, Carousel>();
@@ -480,6 +531,7 @@ function refreshSettings(carousel: Carousel): void {
   collectVisible(carousel);
   carousel.active = Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
+  carousel.block.style.removeProperty('--project-carousel-track-port-size');
   carousel.block.dataset.activeIndex = String(carousel.active);
   carousel.progress = progressFor(carousel);
   renderDots(carousel);
@@ -565,6 +617,7 @@ function initCarousel(block: HTMLElement): void {
   });
 
   bindDrag(carousel);
+  bindTouchSnap(carousel);
 
   if (typeof ResizeObserver !== 'undefined') {
     const observer = new ResizeObserver(() => {

@@ -336,9 +336,20 @@
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
   overscroll-behavior-x: contain;
+  /*
+    Leave touch-action at auto so a vertical finger swipe can scroll the page.
+    pan-x locked the gesture to the carousel and forced users to start off-image
+    to move down the page; trackpads aren't bound the same way.
+  */
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  /* Height is owned by JS in `dynamic`; `tallest` leaves it auto. */
-  height: var(--project-carousel-track-size, auto);
+  /*
+    Horizontal dynamic height clips via `__clip`, not the scrollport — resizing
+    this track mid-swipe kills iOS snap momentum. Port height stays at the
+    tallest slide via --project-carousel-track-port-size.
+  */
+  height: auto;
+  flex-shrink: 0;
 }
 
 /* Pin-to-tallest: shorter slides sit in the leftover space on both sides. */
@@ -382,12 +393,17 @@
   clipping and isolate the slide being cropped — the stage is positioned inside
   its own host, so it stays glued without a reposition pass.
 */
+.is-dev-mode .project-image-carousel__clip:has(.dev-crop-stage-host) {
+  overflow: visible;
+  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-size, auto));
+}
+
 .is-dev-mode .project-image-carousel__track:has(> .dev-crop-stage-host) {
   overflow: visible;
   scroll-snap-type: none;
   /* Isolation hides sibling slides; without this, pin-to-tallest collapses
      to the crop host's height and the image jumps to the top. */
-  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-size, auto));
+  height: var(--project-carousel-crop-lock-height, var(--project-carousel-track-port-size, var(--project-carousel-track-size, auto)));
   transition: none;
 }
 
@@ -418,6 +434,21 @@
   align-self: center;
 }
 
+/* Dynamic horizontal: clip shell lerps; scrollport stays at tallest. */
+.project-image-carousel__clip {
+  position: relative;
+  min-width: 0;
+}
+
+.project-image-carousel[data-height-mode='dynamic']:not([data-orientation='vertical']) .project-image-carousel__clip {
+  height: var(--project-carousel-track-size, auto);
+  overflow: hidden;
+}
+
+.project-image-carousel[data-height-mode='dynamic']:not([data-orientation='vertical']) .project-image-carousel__track {
+  height: var(--project-carousel-track-port-size, auto);
+}
+
 /* Vertical: the track scrolls on Y and the dots move to the left rail. */
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__track {
   flex: 1 1 auto;
@@ -427,6 +458,8 @@
   scroll-snap-type: y mandatory;
   overscroll-behavior-y: contain;
   overscroll-behavior-x: auto;
+  /* Y-scrollport still needs an explicit bound. */
+  height: var(--project-carousel-track-size, auto);
 }
 
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__slide {
