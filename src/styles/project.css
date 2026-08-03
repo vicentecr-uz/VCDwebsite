@@ -358,6 +358,13 @@
   margin-inline: auto;
 }
 
+/* Per-image cap, set from the crop tuner's Max view height. Wins over the
+   block-level cap by source order (both are equally specific). */
+.project-image-carousel__slide[data-max-vh]:not([data-max-vh='']) > .project-image-grid__frame {
+  max-width: calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1));
+  margin-inline: auto;
+}
+
 .project-image-carousel__track.is-dragging {
   cursor: grabbing;
 }
@@ -370,12 +377,6 @@
 }
 
 /* Vertical: the track scrolls on Y and the dots move to the left rail. */
-.project-image-carousel[data-orientation='vertical'] {
-  flex-direction: row-reverse;
-  align-items: stretch;
-  gap: calc(var(--space-unit) * 0.75);
-}
-
 .project-image-carousel[data-orientation='vertical'] .project-image-carousel__track {
   flex: 1 1 auto;
   flex-direction: column;
@@ -391,11 +392,51 @@
   width: 100%;
 }
 
+/* Wraps the track so overlaid dots can anchor to the images, not the block. */
+.project-image-carousel__media {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.project-image-carousel[data-orientation='vertical'] .project-image-carousel__media {
+  flex-direction: row-reverse;
+  align-items: stretch;
+  gap: calc(var(--space-unit) * 0.75);
+}
+
 /* ── Position dots ───────────────────────────────────────── */
 .project-image-carousel__dots {
   display: flex;
   justify-content: center;
   padding-block: calc(var(--space-unit) * 0.6);
+}
+
+.project-image-carousel[data-dots-placement='hidden'] .project-image-carousel__dots {
+  display: none;
+}
+
+.project-image-carousel[data-dots-placement='over'] .project-image-carousel__dots {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.project-image-carousel[data-dots-placement='over'] .project-image-carousel__dot {
+  pointer-events: auto;
+}
+
+.project-image-carousel[data-orientation='vertical'][data-dots-placement='over'] .project-image-carousel__dots {
+  top: 0;
+  right: auto;
+  bottom: 0;
+  left: 0;
+  align-items: center;
+  padding-inline: calc(var(--space-unit) * 0.5);
 }
 
 .project-image-carousel__dots[hidden] {
@@ -432,7 +473,7 @@
   width: var(--project-carousel-dot-size);
   height: var(--project-carousel-dot-size);
   border-radius: 50%;
-  background: var(--color-surface-soft);
+  background: var(--color-surface-strong);
   transition:
     background-color 240ms ease,
     transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1),

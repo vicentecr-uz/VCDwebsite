@@ -13,9 +13,14 @@ import DevOverlay from '../DevOverlay.astro';
       <button type="button" data-carousel-orientation="horizontal">Left to right</button>
       <button type="button" data-carousel-orientation="vertical">Up to down</button>
     </div>
-    <p class="project-carousel-tuner__hint">
-      Position dots sit under the images when horizontal, on the left when vertical.
-    </p>
+    <label class="project-carousel-tuner__select">
+      <span>Position dots</span>
+      <select data-carousel-dots-placement>
+        <option value="outside">Beside images</option>
+        <option value="over">Over images</option>
+        <option value="hidden">Hidden</option>
+      </select>
+    </label>
 
     <label class="project-carousel-tuner__select">
       <span>Block height</span>
@@ -62,12 +67,14 @@ import DevOverlay from '../DevOverlay.astro';
 <script>
   type Orientation = 'horizontal' | 'vertical';
   type HeightMode = 'dynamic' | 'tallest' | 'max';
+  type DotsPlacement = 'outside' | 'over' | 'hidden';
 
   interface Settings {
     orientation: Orientation;
     heightMode: HeightMode;
     maxHeightVh: number;
     scrollPinned: boolean;
+    dotsPlacement: DotsPlacement;
   }
 
   const MAX_VH_STEPS = [90, 80, 70, 60, 50, 40, 30];
@@ -83,6 +90,7 @@ import DevOverlay from '../DevOverlay.astro';
     const maxRow = tuner.querySelector<HTMLElement>('[data-carousel-max-row]');
     const maxSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-max-vh]');
     const pinnedInput = tuner.querySelector<HTMLInputElement>('[data-carousel-scroll-pinned]');
+    const dotsSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-dots-placement]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-save]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-revert]');
     const status = tuner.querySelector<HTMLElement>('[data-carousel-status]');
@@ -93,6 +101,7 @@ import DevOverlay from '../DevOverlay.astro';
       !maxRow ||
       !maxSelect ||
       !pinnedInput ||
+      !dotsSelect ||
       !saveButton ||
       !revertButton ||
       !status ||
@@ -107,6 +116,8 @@ import DevOverlay from '../DevOverlay.astro';
           .find((mode) => mode === target.dataset.devCarouselHeightMode) ?? 'dynamic',
         maxHeightVh: MAX_VH_STEPS.includes(rawMax) ? rawMax : 80,
         scrollPinned: target.dataset.devCarouselScrollPinned === 'true',
+        dotsPlacement: (['outside', 'over', 'hidden'] as DotsPlacement[])
+          .find((placement) => placement === target.dataset.devCarouselDotsPlacement) ?? 'outside',
       };
     };
 
@@ -133,6 +144,8 @@ import DevOverlay from '../DevOverlay.astro';
       target.dataset.orientation = settings.orientation;
       target.dataset.heightMode = settings.heightMode;
       target.dataset.scrollPinned = settings.scrollPinned ? 'true' : 'false';
+      target.dataset.dotsPlacement = settings.dotsPlacement;
+      target.dataset.devCarouselDotsPlacement = settings.dotsPlacement;
       target.dataset.devCarouselOrientation = settings.orientation;
       target.dataset.devCarouselHeightMode = settings.heightMode;
       target.dataset.devCarouselScrollPinned = settings.scrollPinned ? 'true' : 'false';
@@ -161,6 +174,7 @@ import DevOverlay from '../DevOverlay.astro';
       maxSelect.value = String(draft.maxHeightVh);
       maxRow.hidden = draft.heightMode !== 'max';
       pinnedInput.checked = draft.scrollPinned;
+      dotsSelect.value = draft.dotsPlacement;
       applyLive();
     };
 
@@ -209,6 +223,7 @@ import DevOverlay from '../DevOverlay.astro';
             heightMode: staged.heightMode,
             maxHeightVh: staged.maxHeightVh,
             scrollPinned: staged.scrollPinned,
+            dotsPlacement: staged.dotsPlacement,
           },
           revert: () => {
             applyToTarget(target, baseline);
@@ -261,6 +276,12 @@ import DevOverlay from '../DevOverlay.astro';
       draft.maxHeightVh = Number(maxSelect.value) || 80;
       renderDraft();
       status.textContent = `Capped at ${draft.maxHeightVh}% of the screen — unsaved changes.`;
+    });
+
+    dotsSelect.addEventListener('change', () => {
+      draft.dotsPlacement = dotsSelect.value as DotsPlacement;
+      renderDraft();
+      status.textContent = 'Position dots moved — unsaved changes.';
     });
 
     pinnedInput.addEventListener('change', () => {
