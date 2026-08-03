@@ -343,7 +343,82 @@ import DevOverlay from '../DevOverlay.astro';
       return without;
     };
 
+    const settingsEqual = (a: Settings, b: Settings) => (
+      a.orientation === b.orientation
+      && a.heightMode === b.heightMode
+      && a.maxHeightVh === b.maxHeightVh
+      && a.scrollPinned === b.scrollPinned
+      && a.dotsPlacement === b.dotsPlacement
+      && a.visible.length === b.visible.length
+      && a.visible.every((id, index) => id === b.visible[index])
+    );
+
+    /** Stage the current draft into the page Save bar (does not close the panel). */
+    const stageDraft = (message: string) => {
+      const target = editTarget;
+      const documentKey = target.dataset.devDocument;
+      let carouselPath: Array<string | number> = [];
+      try {
+        carouselPath = JSON.parse(target.dataset.devCarouselPath || '[]');
+      } catch {
+        carouselPath = [];
+      }
+      if (!documentKey || !Array.isArray(carouselPath) || !carouselPath.length) {
+        status.textContent = 'This carousel is not wired for saving.';
+        return false;
+      }
+
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        // Fallback — selectTarget normally freezes this on open.
+        diskBaselines.set(pendingId, cloneSettings(saved));
+      }
+      const baseline = cloneSettings(diskBaselines.get(pendingId)!);
+
+      liveApply = true;
+      applyLive();
+      const staged = cloneSettings(draft);
+
+      // Identical to disk → drop the pending entry instead of staging a no-op.
+      if (settingsEqual(staged, baseline)) {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+          detail: { id: pendingId },
+        }));
+        status.textContent = message;
+        return true;
+      }
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'carousel',
+          payload: {
+            document: documentKey,
+            path: carouselPath,
+            orientation: staged.orientation,
+            heightMode: staged.heightMode,
+            maxHeightVh: staged.maxHeightVh ?? 0,
+            scrollPinned: staged.scrollPinned,
+            dotsPlacement: staged.dotsPlacement,
+            visible: staged.visible,
+          },
+          revert: () => {
+            applyToTarget(target, baseline);
+            if (editTarget === target) {
+              saved = cloneSettings(baseline);
+              draft = cloneSettings(baseline);
+              renderDraft();
+            }
+          },
+        },
+      }));
+
+      status.textContent = message;
+      return true;
+    };
+
     const moveItem = (id: string, destination: 'visible' | 'parking', beforeId: string | null) => {
+      const previous = [...draft.visible];
       if (destination === 'parking') {
         if (draft.visible.length <= 1 && draft.visible.includes(id)) {
           status.textContent = 'Keep at least one image in the carousel.';
@@ -353,10 +428,18 @@ import DevOverlay from '../DevOverlay.astro';
       } else {
         draft.visible = insertIdAt(draft.visible, id, beforeId);
       }
+      if (
+        previous.length === draft.visible.length
+        && previous.every((entry, index) => entry === draft.visible[index])
+      ) {
+        return;
+      }
       renderDraft();
-      status.textContent = destination === 'parking'
-        ? 'Image parked — unsaved changes.'
-        : 'Images rearranged — unsaved changes.';
+      stageDraft(
+        destination === 'parking'
+          ? 'Image parked — use Save in the page bar to write to disk.'
+          : 'Images rearranged — use Save in the page bar to write to disk.',
+      );
     };
 
     const bindDropZone = (zone: HTMLElement, destination: 'visible' | 'parking') => {
@@ -376,10 +459,24 @@ import DevOverlay from '../DevOverlay.astro';
         if (!id) return;
         const overThumb = (event.target as HTMLElement | null)
           ?.closest<HTMLElement>('.project-carousel-tuner__thumb');
-        const beforeId = destination === 'visible' && overThumb && overThumb.dataset.carouselItemId !== id
-          ? overThumb.dataset.carouselItemId || null
-          : null;
-        moveItem(id, destination, beforeId);
+
+        // Dropped back on itself — leave it where it was.
+        if (overThumb?.dataset.carouselItemId === id) return;
+
+        if (destination === 'parking') {
+          moveItem(id, 'parking', null);
+          return;
+        }
+
+        // Dropped on another thumb → insert before it.
+        if (overThumb) {
+          moveItem(id, 'visible', overThumb.dataset.carouselItemId || null);
+          return;
+        }
+
+        // Empty board: keep position if already visible; append if un-parking.
+        if (draft.visible.includes(id)) return;
+        moveItem(id, 'visible', null);
       });
     };
 
@@ -433,55 +530,10 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const saveDraft = () => {
-      const target = editTarget;
-      const documentKey = target.dataset.devDocument;
-      let carouselPath: Array<string | number> = [];
-      try {
-        carouselPath = JSON.parse(target.dataset.devCarouselPath || '[]');
-      } catch {
-        carouselPath = [];
+      if (stageDraft('Staged — use Save in the page bar to write to disk.')) {
+        saved = cloneSettings(draft);
+        closePanel();
       }
-      if (!documentKey || !Array.isArray(carouselPath) || !carouselPath.length) {
-        status.textContent = 'This carousel is not wired for saving.';
-        return;
-      }
-
-      const pendingId = pendingIdFor(target);
-      if (!diskBaselines.has(pendingId)) diskBaselines.set(pendingId, cloneSettings(saved));
-      const baseline = cloneSettings(diskBaselines.get(pendingId)!);
-
-      liveApply = true;
-      applyLive();
-      saved = cloneSettings(draft);
-      const staged = cloneSettings(draft);
-
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-        detail: {
-          id: pendingId,
-          kind: 'carousel',
-          payload: {
-            document: documentKey,
-            path: carouselPath,
-            orientation: staged.orientation,
-            heightMode: staged.heightMode,
-            maxHeightVh: staged.maxHeightVh ?? 0,
-            scrollPinned: staged.scrollPinned,
-            dotsPlacement: staged.dotsPlacement,
-            visible: staged.visible,
-          },
-          revert: () => {
-            applyToTarget(target, baseline);
-            if (editTarget === target) {
-              saved = cloneSettings(baseline);
-              draft = cloneSettings(baseline);
-              renderDraft();
-            }
-          },
-        },
-      }));
-
-      status.textContent = 'Staged — use Save in the page bar to write to disk.';
-      closePanel();
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
@@ -543,7 +595,8 @@ import DevOverlay from '../DevOverlay.astro';
     revertButton.addEventListener('click', () => {
       draft = cloneSettings(saved);
       renderDraft();
-      status.textContent = 'Reverted to the last saved carousel settings.';
+      // Re-stage or clear so the page bar matches the panel.
+      stageDraft('Reverted to the last saved carousel settings.');
     });
 
     window.addEventListener('vcd:dev-pending-committed', (() => {
