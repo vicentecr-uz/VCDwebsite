@@ -208,8 +208,9 @@ import {
 
       const isGrid = target.classList.contains('project-image-grid__item');
       if (isGrid) {
-        const frame = target.querySelector<HTMLElement>(':scope > .project-image-grid__frame');
-        const slot = target.querySelector<HTMLElement>(':scope > .project-image-grid__below-slot');
+        // Carousel nests frame/slot under a width-capped surface — don't require direct children.
+        const frame = target.querySelector<HTMLElement>('.project-image-grid__frame');
+        const slot = target.querySelector<HTMLElement>('.project-image-grid__below-slot');
         const parent = isBelowImageCaptionStyle(captionStyle) ? slot : frame;
         if (parent && host.parentElement !== parent) {
           parent.appendChild(host);

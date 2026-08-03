@@ -260,56 +260,66 @@ const blockStyle = [
             aria-hidden={parked ? 'true' : undefined}
             {...editAttrs}
           >
-            <div class="project-image-grid__frame" data-carousel-frame>
-              <img
-                src={projectImage(item.src)}
-                alt={item.alt ?? ''}
-                class="project-image-grid__image"
-                loading={displayIndex === 0 ? 'eager' : 'lazy'}
-              />
-              {!entry.isBelowCaption && entry.hasCaption && (
-                <span
-                  class:list={[
-                    'project-caption',
-                    'project-image-grid__caption',
-                    imageCaptionStyleClass(captionStyle),
-                  ]}
-                  data-project-image-caption
-                  data-caption-style={captionStyle}
-                  data-caption-position={captionPosition}
-                  data-caption-reveal-desktop={captionReveals.desktop}
-                  data-caption-reveal-tablet={captionReveals.tablet}
-                  data-caption-reveal-mobile={captionReveals.mobile}
+            {/*
+              Surface carries the max-height width cap so the visible image and
+              overlay chrome share one box — the full-width slide is only the
+              scroll/snap cell. Buttons sit beside the frame (not inside it) so
+              overflow:hidden on the crop frame does not clip them.
+            */}
+            <div class="project-image-carousel__surface">
+              <div class="project-image-grid__frame" data-carousel-frame>
+                <img
+                  src={projectImage(item.src)}
+                  alt={item.alt ?? ''}
+                  class="project-image-grid__image"
+                  loading={displayIndex === 0 ? 'eager' : 'lazy'}
+                />
+                {!entry.isBelowCaption && entry.hasCaption && (
+                  <span
+                    class:list={[
+                      'project-caption',
+                      'project-image-grid__caption',
+                      imageCaptionStyleClass(captionStyle),
+                    ]}
+                    data-project-image-caption
+                    data-caption-style={captionStyle}
+                    data-caption-position={captionPosition}
+                    data-caption-reveal-desktop={captionReveals.desktop}
+                    data-caption-reveal-tablet={captionReveals.tablet}
+                    data-caption-reveal-mobile={captionReveals.mobile}
+                  >
+                    <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
+                    <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
+                    <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
+                  </span>
+                )}
+              </div>
+              {/* Host for live below-caption edits; shared slot below still shows the active one. */}
+              <div class="project-image-grid__below-slot"></div>
+              {showDevEditing && (
+                <button
+                  type="button"
+                  class="dev-caption-add-trigger"
+                  data-dev-edit-trigger="caption"
+                  data-caption-action="add"
+                  data-dev-mode-only
+                  hidden
                 >
-                  <span class="project-image-grid__caption-bp project-image-grid__caption-bp--desktop" data-caption-bp="desktop">{captions.desktop}</span>
-                  <span class="project-image-grid__caption-bp project-image-grid__caption-bp--tablet" data-caption-bp="tablet">{captions.tablet}</span>
-                  <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
-                </span>
+                  Add caption
+                </button>
+              )}
+              {showDevEditing && (
+                <button
+                  type="button"
+                  class="dev-image-edit-trigger"
+                  data-dev-edit-trigger="image"
+                  data-dev-mode-only
+                  hidden
+                >
+                  Edit image
+                </button>
               )}
             </div>
-            {showDevEditing && (
-              <button
-                type="button"
-                class="dev-caption-add-trigger"
-                data-dev-edit-trigger="caption"
-                data-caption-action="add"
-                data-dev-mode-only
-                hidden
-              >
-                Add caption
-              </button>
-            )}
-            {showDevEditing && (
-              <button
-                type="button"
-                class="dev-image-edit-trigger"
-                data-dev-edit-trigger="image"
-                data-dev-mode-only
-                hidden
-              >
-                Edit image
-              </button>
-            )}
           </figure>
         );
       })}
