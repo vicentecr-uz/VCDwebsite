@@ -964,6 +964,8 @@ import DevOverlay from '../DevOverlay.astro';
         if (event.button !== 0) return;
         if ((event.target as HTMLElement | null)?.closest?.('[data-page-resize]')) return;
         event.preventDefault();
+        // Keep the carousel track from starting a swipe and stealing capture.
+        event.stopPropagation();
         panPointer = event.pointerId;
         panStartX = event.clientX;
         panStartY = event.clientY;
@@ -976,6 +978,12 @@ import DevOverlay from '../DevOverlay.astro';
 
       stage.addEventListener('pointermove', (event) => {
         if (panPointer !== event.pointerId) return;
+        // Guard: if capture was stolen, buttons may already be up.
+        if (event.buttons === 0) {
+          panPointer = null;
+          stage.classList.remove('is-dragging');
+          return;
+        }
         const bounds = stage.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
         const deltaX = event.clientX - panStartX;
@@ -1006,6 +1014,11 @@ import DevOverlay from '../DevOverlay.astro';
       };
       stage.addEventListener('pointerup', endPan);
       stage.addEventListener('pointercancel', endPan);
+      stage.addEventListener('lostpointercapture', (event) => {
+        if (panPointer !== event.pointerId) return;
+        panPointer = null;
+        stage.classList.remove('is-dragging');
+      });
 
       stage.addEventListener('wheel', (event) => {
         event.preventDefault();
@@ -1030,6 +1043,7 @@ import DevOverlay from '../DevOverlay.astro';
         handle.addEventListener('pointerdown', (event) => {
           if (event.button !== 0) return;
           event.preventDefault();
+          // Bubble past the stage pan handler and the carousel track swipe.
           event.stopPropagation();
           const dir = handle.dataset.pageResize as ResizeDir | undefined;
           if (!dir) return;
