@@ -84,6 +84,16 @@ export function carouselDotAppearance(index: number, progress: number, centre: n
   };
 }
 
+/**
+ * Scroll-linked below-caption opacity. Fully gone by `fadeEnd` of the way to
+ * the neighbour, so mid-swipe has a gap where neither caption is visible
+ * (unlike dots, which crossfade through the midpoint).
+ */
+export function carouselCaptionOpacity(slideIndex: number, progress: number, fadeEnd = 0.35): number {
+  if (fadeEnd <= 0) return Math.abs(progress - slideIndex) < 0.5 ? 1 : 0;
+  return Math.max(0, 1 - Math.abs(progress - slideIndex) / fadeEnd);
+}
+
 function renderDots(carousel: Carousel): void {
   const { dots, dotStrip, dotWindow } = carousel;
   const count = dots.length;
@@ -103,100 +113,78 @@ function renderDots(carousel: Carousel): void {
   dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
 }
 
-const CAPTION_FADE_MS = 240;
+function slideForCaption(carousel: Carousel, caption: HTMLElement): HTMLElement | undefined {
+  const id = caption.dataset.carouselItemId || '';
+  return carousel.slides.find((slide) => slide.dataset.gridItemId === id);
+}
 
-/** Clear a leaving caption after its fade, then collapse the slot if empty. */
-function finishLeavingCaption(carousel: Carousel, caption: HTMLElement): void {
-  if (!caption.classList.contains('is-leaving')) return;
-  caption.classList.remove('is-leaving');
-  const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
-  if (!slot) return;
-  const keep = carousel.captions.some((node) => (
-    node.classList.contains('is-active')
-    || node.classList.contains('is-leaving')
-    || node.dataset.captionEditing === 'true'
-  ));
-  slot.hidden = !keep;
+function surfaceWidthForSlide(slide: HTMLElement): number {
+  const surface = slide.querySelector<HTMLElement>('.project-image-carousel__surface')
+    ?? slide.querySelector<HTMLElement>('[data-carousel-frame]')
+    ?? slide;
+  return Math.round(surface.getBoundingClientRect().width);
+}
+
+function captionHeightForSlide(carousel: Carousel, slideIndex: number): number {
+  const slide = carousel.slides[slideIndex];
+  if (!slide) return 0;
+  const id = slide.dataset.gridItemId || '';
+  const caption = carousel.captions.find((node) => node.dataset.carouselItemId === id);
+  if (!caption) return 0;
+  return Math.round(caption.scrollHeight);
 }
 
 /**
- * Crossfade below-captions by slide id: outgoing fades out in place, incoming
- * fades in. If nothing replaces it, the slot collapses after the fade so the
- * block height eases back down.
+ * Scroll-linked caption opacity (with a mid-swipe gap), per-image caption
+ * widths so fading copy doesn't jump, and a eased slot height toward the
+ * nearest slide's caption — same 420ms curve as follow-each-image track height.
  */
-function renderCaptions(carousel: Carousel): void {
-  const activeSlide = carousel.slides[carousel.active];
-  const activeId = activeSlide?.dataset.gridItemId || '';
-  const next = activeId
-    ? carousel.captions.find((caption) => caption.dataset.carouselItemId === activeId)
-    : undefined;
+function syncCaptions(carousel: Carousel): void {
   const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
   if (!slot) return;
 
-  const editing = carousel.captions.some((caption) => caption.dataset.captionEditing === 'true');
-  if (next || editing) slot.hidden = false;
+  const editingId = carousel.captions.find((caption) => caption.dataset.captionEditing === 'true')
+    ?.dataset.carouselItemId;
 
   carousel.captions.forEach((caption) => {
-    const shouldShow = caption === next || caption.dataset.captionEditing === 'true';
-    if (shouldShow) {
-      const entering = !caption.classList.contains('is-active');
-      caption.classList.remove('is-leaving');
-      caption.classList.add('is-active');
-      // display:none → block skips transitions; seed opacity 0 then release.
-      if (entering) {
-        caption.style.opacity = '0';
-        requestAnimationFrame(() => {
-          caption.style.removeProperty('opacity');
-        });
+    const slide = slideForCaption(carousel, caption);
+    const slideIndex = slide ? Number(slide.dataset.carouselIndex) : Number(caption.dataset.carouselIndex);
+    if (!Number.isFinite(slideIndex)) return;
+
+    if (slide) {
+      const width = surfaceWidthForSlide(slide);
+      if (width > 0) {
+        // Own image width — never retarget to the neighbour mid-fade.
+        caption.style.width = `${width}px`;
+        caption.style.maxWidth = `${width}px`;
       }
-      return;
     }
-    if (!caption.classList.contains('is-active') && !caption.classList.contains('is-leaving')) {
-      return;
-    }
-    // Fade out in place; keep `.is-leaving` in the grid so height holds until done.
-    caption.classList.remove('is-active');
-    caption.classList.add('is-leaving');
-    const onEnd = (event: TransitionEvent) => {
-      if (event.propertyName !== 'opacity') return;
-      caption.removeEventListener('transitionend', onEnd);
-      finishLeavingCaption(carousel, caption);
-    };
-    caption.addEventListener('transitionend', onEnd);
-    window.setTimeout(() => finishLeavingCaption(carousel, caption), CAPTION_FADE_MS + 50);
+
+    const editing = editingId != null && caption.dataset.carouselItemId === editingId;
+    const opacity = editing ? 1 : carouselCaptionOpacity(slideIndex, carousel.progress);
+    caption.style.opacity = opacity.toFixed(3);
+    caption.classList.toggle('is-active', opacity > 0.5 || editing);
+    caption.style.pointerEvents = opacity > 0.5 || editing ? 'auto' : 'none';
   });
 
-  if (!next && !editing && !carousel.captions.some((caption) => caption.classList.contains('is-leaving'))) {
-    slot.hidden = true;
-  }
+  // Discrete target (nearest slide), CSS-transitioned — mirrors track height.
+  const targetIndex = editingId
+    ? Number(
+      carousel.slides.find((slide) => slide.dataset.gridItemId === editingId)?.dataset.carouselIndex,
+    )
+    : Math.round(carousel.progress);
+  const targetHeight = Number.isFinite(targetIndex)
+    ? captionHeightForSlide(carousel, targetIndex)
+    : 0;
+  slot.hidden = false;
+  slot.style.height = `${targetHeight}px`;
 }
 
-/**
- * Match the caption column to the active image's visible surface width (and
- * centre it the same way), so a below-caption reads as an extension of that
- * image's left/right edges — not the full carousel block.
- */
-function syncCaptionLayout(carousel: Carousel): void {
-  const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
-  if (!slot || slot.hidden) return;
-  const activeSlide = carousel.slides[carousel.active];
-  if (!activeSlide) return;
-  const surface = activeSlide.querySelector<HTMLElement>('.project-image-carousel__surface')
-    ?? activeSlide.querySelector<HTMLElement>('[data-carousel-frame]')
-    ?? activeSlide;
-  const width = Math.round(surface.getBoundingClientRect().width);
-  if (width <= 0) return;
-  slot.style.width = `${width}px`;
-  slot.style.maxWidth = `${width}px`;
-  slot.style.marginInline = 'auto';
-}
-
-/** Ease the block to the active slide's height (or pin it to the tallest). */
+/** Ease the track to the active slide's height (or pin it to the tallest). */
 function applyHeight(carousel: Carousel): void {
   const { block, track, heightMode, axis } = carousel;
   if (heightMode === 'tallest' && axis === 'horizontal') {
     block.style.removeProperty('--project-carousel-track-size');
-    syncCaptionLayout(carousel);
     return;
   }
 
@@ -212,7 +200,6 @@ function applyHeight(carousel: Carousel): void {
   block.style.setProperty('--project-carousel-track-size', `${Math.round(size)}px`);
   // Vertical tracks need a bounded height before they can scroll at all.
   if (axis === 'vertical') track.style.height = `${Math.round(size)}px`;
-  syncCaptionLayout(carousel);
 }
 
 function sync(carousel: Carousel): void {
@@ -222,8 +209,8 @@ function sync(carousel: Carousel): void {
   if (next !== carousel.active) {
     carousel.active = next;
     carousel.block.dataset.activeIndex = String(next);
-    renderCaptions(carousel);
   }
+  syncCaptions(carousel);
   applyHeight(carousel);
 }
 
@@ -328,13 +315,13 @@ function refreshSettings(carousel: Carousel): void {
   carousel.active = Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
   carousel.block.dataset.activeIndex = String(carousel.active);
+  carousel.progress = progressFor(carousel);
   renderDots(carousel);
-  renderCaptions(carousel);
+  syncCaptions(carousel);
   applyHeight(carousel);
   scrollToIndex(carousel, carousel.active, false);
   carousel.progress = progressFor(carousel);
-  // Caption width depends on the settled slide geometry after scroll.
-  syncCaptionLayout(carousel);
+  syncCaptions(carousel);
 }
 
 function initCarousel(block: HTMLElement): void {
@@ -360,11 +347,12 @@ function initCarousel(block: HTMLElement): void {
 
   registry.set(block, carousel);
   block.dataset.activeIndex = '0';
+  carousel.progress = progressFor(carousel);
   renderDots(carousel);
-  renderCaptions(carousel);
+  syncCaptions(carousel);
   applyHeight(carousel);
   // Only ease height once the first measurement has landed, so there is no
-  // opening slide-down from `auto`.
+  // opening slide-down from `auto` / caption slot.
   requestAnimationFrame(() => block.classList.add('is-carousel-ready'));
 
   let frame = 0;
@@ -415,6 +403,15 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     registry.forEach((carousel, block) => {
       if (only && block !== only) return;
       refreshSettings(carousel);
+    });
+  }) as EventListener);
+  // Caption edits — recollect + resync without resetting scroll position.
+  window.addEventListener('vcd:carousel-sync-captions', ((event: CustomEvent) => {
+    const only = event.detail?.block as HTMLElement | undefined;
+    registry.forEach((carousel, block) => {
+      if (only && block !== only) return;
+      collectVisible(carousel);
+      syncCaptions(carousel);
     });
   }) as EventListener);
 }
