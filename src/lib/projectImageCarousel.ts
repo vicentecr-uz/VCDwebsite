@@ -125,13 +125,54 @@ function surfaceWidthForSlide(slide: HTMLElement): number {
   return Math.round(surface.getBoundingClientRect().width);
 }
 
+let textBoxTrimSupported: boolean | null = null;
+const canTrimTextBoxToCap = () => {
+  if (textBoxTrimSupported == null) {
+    textBoxTrimSupported = typeof CSS !== 'undefined'
+      && typeof CSS.supports === 'function'
+      && CSS.supports('text-box-trim', 'trim-start');
+  }
+  return textBoxTrimSupported;
+};
+
+const capMeasureCanvas = typeof document !== 'undefined'
+  ? document.createElement('canvas')
+  : null;
+
+/**
+ * Space from the line-box top down to the capital-letter cap line — used when
+ * `text-box-trim` isn't available so dots↔caption padding can still land on caps.
+ */
+function measureCapTrimPx(el: HTMLElement): number {
+  const ctx = capMeasureCanvas?.getContext('2d');
+  if (!ctx) return 0;
+  const style = getComputedStyle(el);
+  ctx.font = style.font;
+  const metrics = ctx.measureText('H');
+  const fontAscent = metrics.fontBoundingBoxAscent;
+  const fontDescent = metrics.fontBoundingBoxDescent;
+  const cap = metrics.actualBoundingBoxAscent;
+  if (![fontAscent, fontDescent, cap].every(Number.isFinite)) return 0;
+
+  const fontSize = Number.parseFloat(style.fontSize) || 16;
+  let lineHeight = Number.parseFloat(style.lineHeight);
+  if (!Number.isFinite(lineHeight)) lineHeight = fontSize * 1.45;
+  const halfLeading = Math.max(0, (lineHeight - (fontAscent + fontDescent)) / 2);
+  return Math.max(0, halfLeading + (fontAscent - cap));
+}
+
 function captionHeightForSlide(carousel: Carousel, slideIndex: number): number {
   const slide = carousel.slides[slideIndex];
   if (!slide) return 0;
   const id = slide.dataset.gridItemId || '';
   const caption = carousel.captions.find((node) => node.dataset.carouselItemId === id);
   if (!caption) return 0;
-  return Math.round(caption.scrollHeight);
+  // text-box-trim already shrinks the box to the cap; the canvas fallback pulls
+  // the glyph up with a negative top, so subtract that trim from reserved height.
+  const trim = canTrimTextBoxToCap()
+    ? 0
+    : Number(caption.dataset.capTrim || 0);
+  return Math.max(0, Math.round(caption.scrollHeight - trim));
 }
 
 /**
@@ -145,6 +186,7 @@ function syncCaptions(carousel: Carousel): void {
 
   const editingId = carousel.captions.find((caption) => caption.dataset.captionEditing === 'true')
     ?.dataset.carouselItemId;
+  const trimSupported = canTrimTextBoxToCap();
 
   carousel.captions.forEach((caption) => {
     const slide = slideForCaption(carousel, caption);
@@ -158,6 +200,15 @@ function syncCaptions(carousel: Carousel): void {
         caption.style.width = `${width}px`;
         caption.style.maxWidth = `${width}px`;
       }
+    }
+
+    if (trimSupported) {
+      caption.style.removeProperty('top');
+      delete caption.dataset.capTrim;
+    } else {
+      const trim = measureCapTrimPx(caption);
+      caption.dataset.capTrim = trim.toFixed(2);
+      caption.style.top = `${-trim}px`;
     }
 
     const editing = editingId != null && caption.dataset.carouselItemId === editingId;
@@ -354,6 +405,13 @@ function initCarousel(block: HTMLElement): void {
   // Only ease height once the first measurement has landed, so there is no
   // opening slide-down from `auto` / caption slot.
   requestAnimationFrame(() => block.classList.add('is-carousel-ready'));
+  // Cap metrics can shift once webfonts settle — remeasure trim + slot height.
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(() => {
+      if (!registry.has(block)) return;
+      syncCaptions(carousel);
+    }).catch(() => {});
+  }
 
   let frame = 0;
   track.addEventListener('scroll', () => {
