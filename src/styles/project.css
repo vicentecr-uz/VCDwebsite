@@ -547,13 +547,17 @@
   Opacity is scroll-linked in JS (with a mid-swipe gap). Each caption keeps
   its own image's width so it doesn't jump mid-fade. Slot height is set in JS
   toward the nearest slide's caption and eased like follow-each-image.
+
+  overflow:visible so a fading-in caption isn't clipped while the slot height
+  is still catching up — mid-swipe opacity is already 0 before height collapses,
+  so shrinking doesn't paint over the following section.
 */
 .project-image-carousel__caption-slot {
   position: relative;
   box-sizing: border-box;
   width: 100%;
   height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .project-image-carousel.is-carousel-ready .project-image-carousel__caption-slot {
