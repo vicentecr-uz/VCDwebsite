@@ -829,7 +829,6 @@ const menuLinks = headerSettings.menuLinks;
 
 <style>
   .site-header {
-    --header-wordmark-size: 2.4em;
     --header-menu-link-size: 1.2em;
 
     /* Hanken Grotesk, read from the font's own tables (unitsPerEm 1000):
@@ -839,18 +838,20 @@ const menuLinks = headerSettings.menuLinks;
        area centres inside a 1em box, leaving 0.1515em of air above the cap
        and — as it happens, the same — below the baseline. That air is why a
        full-height logo read as hanging below the text. Trimming it leaves a
-       box whose bottom edge is the baseline, which is what the logo sits on.
-       Re-measure these if the typeface ever changes. */
+       box that is exactly cap-to-baseline. Re-measure if the typeface changes. */
+    --wordmark-cap: 0.697;
     --wordmark-trim: 0.1515em;
 
-    /* Two spacing units, so the mark reads at a deliberate size rather than
-       being dictated by the type. That makes it taller than the wordmark's
-       cap height (0.697em), so the row is aligned to flex-end instead: the
-       logo's bottom edge and the text's baseline share the row's bottom, and
-       the logo simply rises above the cap line. The logo is the tallest thing
-       in the row, so the header's own --space-unit padding is the only space
-       above and below it. */
-    --header-logo-size: calc(var(--space-unit) * 2);
+    /* Logo sets the row at 1.75 spacing units. The wordmark's cap-to-baseline
+       measure is a touch shorter (--wordmark-in-logo) and centred on the logo,
+       so the air above the caps and below the baseline match. The logo is the
+       tallest thing in the row, so the header's --space-unit padding is the
+       only space above and below it. */
+    --wordmark-in-logo: 0.92;
+    --header-logo-size: calc(var(--space-unit) * 1.75);
+    --header-wordmark-size: calc(
+      var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
+    );
     position: sticky;
     top: 0;
     /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
@@ -878,10 +879,9 @@ const menuLinks = headerSettings.menuLinks;
      which lives outside the row. Tree order already puts the row above the bg. */
   .site-header__row {
     display: flex;
-    /* Bottom-aligned, not centred: the wordmark's box is trimmed so its bottom
-       edge is the baseline, so this puts the baseline and the logo's bottom
-       edge on the same line even though the logo is the taller of the two. */
-    align-items: flex-end;
+    /* Logo is taller than the trimmed wordmark; centre so the inset above
+       the caps equals the inset below the baseline. */
+    align-items: center;
     justify-content: space-between;
     position: relative;
   }
@@ -1450,7 +1450,8 @@ const menuLinks = headerSettings.menuLinks;
      breakpoint in global.css. */
   @media (max-width: 40em) {
     .site-header {
-      --header-wordmark-size: 1.75em;
+      /* Wordmark follows --header-logo-size (1.75 × --space-unit), which
+         already steps down with --space-unit below 40em. */
       --header-menu-link-size: 1.05em;
     }
 
