@@ -542,13 +542,17 @@
 /*
   Caption below the dots (and below the media row when dots sit beside a
   vertical track). Outside the slide/track so image vertical alignment is
-  unchanged. Width/left are synced in JS to the active image surface.
+  unchanged. Width is synced in JS to the active image surface.
+
+  Stacked in one grid cell so caption→caption can crossfade; outgoing
+  `.is-leaving` keeps height until opacity finishes, then the slot collapses
+  when nothing replaces it. No extra margin-top — dots already own equal
+  padding-block above/below, so image↔dots and dots↔caption match.
 */
 .project-image-carousel__caption-slot {
-  display: block;
+  display: grid;
   box-sizing: border-box;
   min-width: 0;
-  /* Width is measured from the active image surface in JS. */
   width: 100%;
   margin-inline: auto;
 }
@@ -557,27 +561,40 @@
   display: none;
 }
 
-.project-image-carousel__caption {
+.project-image-carousel__caption,
+.project-image-carousel__caption.project-caption--below {
+  grid-area: 1 / 1;
   display: none;
   opacity: 0;
+  transition: opacity 240ms ease;
   pointer-events: none;
+  /* Dots already pad equally above/below — don't double the gap under them. */
+  margin-top: 0;
+}
+
+/* Only active/leaving captions occupy the cell (idle ones must not size it). */
+.project-image-carousel__caption.is-active,
+.project-image-carousel__caption.is-leaving,
+.project-image-carousel__caption[data-caption-editing='true'] {
+  display: block;
 }
 
 .project-image-carousel__caption.is-active,
+.project-image-carousel__caption.project-caption--below.is-active,
 .project-image-carousel__caption[data-caption-editing='true'] {
-  display: block;
   opacity: 1;
   pointer-events: auto;
 }
 
-/* Only the in-flow active caption contributes height; others must not reserve space. */
-.project-image-carousel__caption.project-caption--below:not(.is-active):not([data-caption-editing='true']) {
-  display: none;
+.project-image-carousel__caption.is-leaving,
+.project-image-carousel__caption.project-caption--below.is-leaving {
   opacity: 0;
+  pointer-events: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .project-image-carousel.is-carousel-ready .project-image-carousel__track {
+  .project-image-carousel.is-carousel-ready .project-image-carousel__track,
+  .project-image-carousel__caption {
     transition-duration: 1ms;
   }
 }
