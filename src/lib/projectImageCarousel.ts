@@ -103,23 +103,72 @@ function renderDots(carousel: Carousel): void {
   dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
 }
 
-/** Active below-caption follows the active slide (by item id, not caption order). */
+const CAPTION_FADE_MS = 240;
+
+/** Clear a leaving caption after its fade, then collapse the slot if empty. */
+function finishLeavingCaption(carousel: Carousel, caption: HTMLElement): void {
+  if (!caption.classList.contains('is-leaving')) return;
+  caption.classList.remove('is-leaving');
+  const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+  if (!slot) return;
+  const keep = carousel.captions.some((node) => (
+    node.classList.contains('is-active')
+    || node.classList.contains('is-leaving')
+    || node.dataset.captionEditing === 'true'
+  ));
+  slot.hidden = !keep;
+}
+
+/**
+ * Crossfade below-captions by slide id: outgoing fades out in place, incoming
+ * fades in. If nothing replaces it, the slot collapses after the fade so the
+ * block height eases back down.
+ */
 function renderCaptions(carousel: Carousel): void {
   const activeSlide = carousel.slides[carousel.active];
   const activeId = activeSlide?.dataset.gridItemId || '';
-  let hasActive = false;
-  carousel.captions.forEach((caption) => {
-    const match = !!activeId && caption.dataset.carouselItemId === activeId;
-    caption.classList.toggle('is-active', match);
-    if (match) hasActive = true;
-  });
-
+  const next = activeId
+    ? carousel.captions.find((caption) => caption.dataset.carouselItemId === activeId)
+    : undefined;
   const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
   if (!slot) return;
+
   const editing = carousel.captions.some((caption) => caption.dataset.captionEditing === 'true');
-  // Collapse the slot when the active image has no below-caption — block height
-  // should drop back to media+dots only.
-  slot.hidden = !hasActive && !editing;
+  if (next || editing) slot.hidden = false;
+
+  carousel.captions.forEach((caption) => {
+    const shouldShow = caption === next || caption.dataset.captionEditing === 'true';
+    if (shouldShow) {
+      const entering = !caption.classList.contains('is-active');
+      caption.classList.remove('is-leaving');
+      caption.classList.add('is-active');
+      // display:none → block skips transitions; seed opacity 0 then release.
+      if (entering) {
+        caption.style.opacity = '0';
+        requestAnimationFrame(() => {
+          caption.style.removeProperty('opacity');
+        });
+      }
+      return;
+    }
+    if (!caption.classList.contains('is-active') && !caption.classList.contains('is-leaving')) {
+      return;
+    }
+    // Fade out in place; keep `.is-leaving` in the grid so height holds until done.
+    caption.classList.remove('is-active');
+    caption.classList.add('is-leaving');
+    const onEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== 'opacity') return;
+      caption.removeEventListener('transitionend', onEnd);
+      finishLeavingCaption(carousel, caption);
+    };
+    caption.addEventListener('transitionend', onEnd);
+    window.setTimeout(() => finishLeavingCaption(carousel, caption), CAPTION_FADE_MS + 50);
+  });
+
+  if (!next && !editing && !carousel.captions.some((caption) => caption.classList.contains('is-leaving'))) {
+    slot.hidden = true;
+  }
 }
 
 /**
