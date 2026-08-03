@@ -728,10 +728,62 @@ const CAROUSEL_HEIGHT_MODES = new Set(['dynamic', 'tallest']);
 const CAROUSEL_DOTS_PLACEMENTS = new Set(['outside', 'over', 'hidden']);
 /** Matches MAX_VH_PERCENTS in src/lib/projectImageFrame.ts. */
 const CAROUSEL_MAX_VH = new Set([90, 80, 70, 60, 50, 40, 30]);
+const CAROUSEL_BREAKPOINTS = new Set(['tablet', 'mobile']);
+
+const sanitizeCarouselVisibleIds = (itemIds, requested) => {
+  const knownIds = new Set(itemIds);
+  const seen = new Set();
+  const visible = [];
+  for (const rawId of Array.isArray(requested) ? requested : []) {
+    const id = String(rawId || '');
+    if (!knownIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    visible.push(id);
+  }
+  return visible.length ? visible : [...itemIds];
+};
+
+const parseCarouselBreakpointOverride = (raw, itemIds) => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { ok: false, error: 'Use a supported carousel breakpoint override.' };
+  }
+  const out = {};
+  if (Object.prototype.hasOwnProperty.call(raw, 'heightMode')) {
+    const heightMode = String(raw.heightMode || '');
+    if (!CAROUSEL_HEIGHT_MODES.has(heightMode)) {
+      return { ok: false, error: 'Use a supported carousel height mode.' };
+    }
+    out.heightMode = heightMode;
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'dotsPlacement')) {
+    const dotsPlacement = String(raw.dotsPlacement || 'outside');
+    if (!CAROUSEL_DOTS_PLACEMENTS.has(dotsPlacement)) {
+      return { ok: false, error: 'Use a supported position-dot placement.' };
+    }
+    out.dotsPlacement = dotsPlacement;
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'maxHeightVh')) {
+    const maxHeightVh = Math.round(Number(raw.maxHeightVh));
+    if (CAROUSEL_MAX_VH.has(maxHeightVh)) out.maxHeightVh = maxHeightVh;
+    else if (raw.maxHeightVh === null || raw.maxHeightVh === 0 || raw.maxHeightVh === '') {
+      out.maxHeightVh = null;
+    } else {
+      return { ok: false, error: 'Use a supported max height.' };
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'scrollPinned')) {
+    out.scrollPinned = raw.scrollPinned === true;
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'visible')) {
+    out.visible = sanitizeCarouselVisibleIds(itemIds, raw.visible);
+  }
+  return { ok: true, value: out };
+};
 
 /**
  * Apply one image-carousel settings mutation onto an in-memory document node.
  * Items are left alone — only block-level settings are written here.
+ * Desktop values stay on top-level fields; tablet/mobile land in `breakpoints`.
  * @returns {{ ok: true } | { ok: false, error: string }}
  */
 const applyCarouselChange = (data, change) => {
@@ -744,12 +796,16 @@ const applyCarouselChange = (data, change) => {
     return { ok: false, error: 'That carousel path no longer exists.' };
   }
 
+  const itemIds = Array.isArray(target.items)
+    ? target.items.map((item, index) => String(item?.id || `item-${index}`))
+    : [];
+
   const orientation = String(change.orientation || '');
   if (!CAROUSEL_ORIENTATIONS.has(orientation)) {
     return { ok: false, error: 'Use a horizontal or vertical carousel.' };
   }
 
-  const heightMode = String(change.heightMode || '');
+  const heightMode = String(change.heightMode || 'dynamic');
   if (!CAROUSEL_HEIGHT_MODES.has(heightMode)) {
     return { ok: false, error: 'Use a supported carousel height mode.' };
   }
@@ -760,7 +816,8 @@ const applyCarouselChange = (data, change) => {
   }
 
   target.orientation = orientation;
-  target.heightMode = heightMode;
+  if (heightMode === 'dynamic') delete target.heightMode;
+  else target.heightMode = heightMode;
   if (dotsPlacement === 'outside') delete target.dotsPlacement;
   else target.dotsPlacement = dotsPlacement;
 
@@ -773,33 +830,38 @@ const applyCarouselChange = (data, change) => {
     delete target.maxHeightVh;
   }
 
-  if (change.scrollPinned === true) {
-    target.scrollPinned = true;
-  } else {
-    delete target.scrollPinned;
-  }
+  if (change.scrollPinned === true) target.scrollPinned = true;
+  else delete target.scrollPinned;
 
-  // Visible order — items themselves stay put so crop paths remain stable.
+  // Desktop visible order — items themselves stay put so crop paths remain stable.
   if (Object.prototype.hasOwnProperty.call(change, 'visible')) {
-    const itemIds = Array.isArray(target.items)
-      ? target.items.map((item, index) => String(item?.id || `item-${index}`))
-      : [];
-    const knownIds = new Set(itemIds);
-    const requested = Array.isArray(change.visible) ? change.visible : [];
-    const seen = new Set();
-    const visible = [];
-    for (const rawId of requested) {
-      const id = String(rawId || '');
-      if (!knownIds.has(id) || seen.has(id)) continue;
-      seen.add(id);
-      visible.push(id);
-    }
-    // Default = every item in array order — omit the field when nothing's parked
-    // and the order matches, so JSON stays quiet until someone rearranges.
+    const visible = sanitizeCarouselVisibleIds(itemIds, change.visible);
     const isDefault = visible.length === itemIds.length
       && visible.every((id, index) => id === itemIds[index]);
     if (isDefault) delete target.visible;
     else target.visible = visible;
+  }
+
+  // Sparse tablet/mobile overrides (settings below orientation).
+  if (Object.prototype.hasOwnProperty.call(change, 'breakpoints')) {
+    const rawBreakpoints = change.breakpoints;
+    if (rawBreakpoints == null) {
+      delete target.breakpoints;
+    } else if (typeof rawBreakpoints !== 'object' || Array.isArray(rawBreakpoints)) {
+      return { ok: false, error: 'Use a supported carousel breakpoints map.' };
+    } else {
+      const next = {};
+      for (const key of Object.keys(rawBreakpoints)) {
+        if (!CAROUSEL_BREAKPOINTS.has(key)) {
+          return { ok: false, error: 'Use tablet or mobile carousel breakpoints.' };
+        }
+        const parsed = parseCarouselBreakpointOverride(rawBreakpoints[key], itemIds);
+        if (!parsed.ok) return parsed;
+        if (Object.keys(parsed.value).length) next[key] = parsed.value;
+      }
+      if (Object.keys(next).length) target.breakpoints = next;
+      else delete target.breakpoints;
+    }
   }
 
   return { ok: true };

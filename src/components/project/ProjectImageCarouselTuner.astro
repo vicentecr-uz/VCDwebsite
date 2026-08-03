@@ -13,6 +13,17 @@ import DevOverlay from '../DevOverlay.astro';
       <button type="button" data-carousel-orientation="horizontal">Left to right</button>
       <button type="button" data-carousel-orientation="vertical">Up to down</button>
     </div>
+
+    <div class="project-carousel-tuner__viewports" aria-label="Display width">
+      <button type="button" data-carousel-viewport="desktop">Desktop</button>
+      <button type="button" data-carousel-viewport="tablet">Tablet</button>
+      <button type="button" data-carousel-viewport="mobile">Mobile</button>
+    </div>
+
+    <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden>
+      Inheriting from larger breakpoint — change a setting to create an override.
+    </p>
+
     <label class="project-carousel-tuner__select">
       <span>Position dots</span>
       <select data-carousel-dots-placement>
@@ -68,12 +79,17 @@ import DevOverlay from '../DevOverlay.astro';
         data-carousel-drop="parking"
       >
         <span class="project-carousel-tuner__parking-hint" data-carousel-parking-hint>
-          Drag images here to omit them from the carousel
+          Drag images here to omit them at this breakpoint
         </span>
       </div>
     </div>
 
+    <p class="project-carousel-tuner__hint">
+      Larger breakpoints waterfall down. Editing tablet/mobile creates an override for that width only.
+    </p>
+
     <div class="project-carousel-tuner__actions">
+      <button type="button" data-carousel-clear-override hidden>Clear override</button>
       <button type="button" data-carousel-revert>Revert changes</button>
       <button type="button" data-carousel-save>Save changes</button>
     </div>
@@ -85,9 +101,19 @@ import DevOverlay from '../DevOverlay.astro';
 </DevOverlay>
 
 <script>
-  type Orientation = 'horizontal' | 'vertical';
-  type HeightMode = 'dynamic' | 'tallest';
-  type DotsPlacement = 'outside' | 'over' | 'hidden';
+  import { applyCarouselViewportSettings } from '../../lib/projectImageCarousel';
+  import {
+    IMAGE_VIEWPORTS,
+    matchCarouselViewport,
+    resolveCarouselSettings,
+    serializeCarouselSettings,
+    type CarouselDotsPlacement,
+    type CarouselHeightMode,
+    type CarouselOrientation,
+    type CarouselSettingsSource,
+    type ImageViewport,
+    type ResolvedCarouselBreakpoint,
+  } from '../../lib/projectImageCarouselSettings';
 
   interface CatalogItem {
     id: string;
@@ -95,13 +121,9 @@ import DevOverlay from '../DevOverlay.astro';
     alt: string;
   }
 
-  interface Settings {
-    orientation: Orientation;
-    heightMode: HeightMode;
-    maxHeightVh: number | null;
-    scrollPinned: boolean;
-    dotsPlacement: DotsPlacement;
-    visible: string[];
+  interface Draft {
+    orientation: CarouselOrientation;
+    byViewport: Record<ImageViewport, ResolvedCarouselBreakpoint>;
   }
 
   const MAX_VH_STEPS = [90, 80, 70, 60, 50, 40, 30];
@@ -113,6 +135,10 @@ import DevOverlay from '../DevOverlay.astro';
     const orientationButtons = [
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-carousel-orientation]'),
     ];
+    const viewportButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-carousel-viewport]'),
+    ];
+    const inheritNote = tuner.querySelector<HTMLElement>('[data-carousel-inherit]');
     const heightSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-height-mode]');
     const maxSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-max-vh]');
     const pinnedInput = tuner.querySelector<HTMLInputElement>('[data-carousel-scroll-pinned]');
@@ -120,23 +146,27 @@ import DevOverlay from '../DevOverlay.astro';
     const visibleBoard = tuner.querySelector<HTMLElement>('[data-carousel-visible]');
     const parkingBoard = tuner.querySelector<HTMLElement>('[data-carousel-parking]');
     const parkingHint = tuner.querySelector<HTMLElement>('[data-carousel-parking-hint]');
+    const clearOverrideButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-clear-override]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-save]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-revert]');
     const status = tuner.querySelector<HTMLElement>('[data-carousel-status]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-carousel-target]');
     if (
-      !orientationButtons.length ||
-      !heightSelect ||
-      !maxSelect ||
-      !pinnedInput ||
-      !dotsSelect ||
-      !visibleBoard ||
-      !parkingBoard ||
-      !parkingHint ||
-      !saveButton ||
-      !revertButton ||
-      !status ||
-      !initialTarget
+      !orientationButtons.length
+      || !viewportButtons.length
+      || !inheritNote
+      || !heightSelect
+      || !maxSelect
+      || !pinnedInput
+      || !dotsSelect
+      || !visibleBoard
+      || !parkingBoard
+      || !parkingHint
+      || !clearOverrideButton
+      || !saveButton
+      || !revertButton
+      || !status
+      || !initialTarget
     ) return;
 
     const readCatalog = (target: HTMLElement): CatalogItem[] => {
@@ -155,49 +185,65 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
-    const readVisible = (target: HTMLElement, catalog: CatalogItem[]): string[] => {
-      const itemIds = catalog.map((item) => item.id);
-      const known = new Set(itemIds);
+    const readSource = (target: HTMLElement): CarouselSettingsSource => {
       try {
-        const parsed = JSON.parse(target.dataset.devCarouselVisible || 'null');
-        if (Array.isArray(parsed)) {
-          const seen = new Set<string>();
-          const next: string[] = [];
-          for (const raw of parsed) {
-            const id = String(raw || '');
-            if (!known.has(id) || seen.has(id)) continue;
-            seen.add(id);
-            next.push(id);
-          }
-          return next;
-        }
+        const parsed = JSON.parse(
+          target.dataset.devCarouselSettings || target.dataset.carouselSettings || '{}',
+        );
+        if (parsed && typeof parsed === 'object') return parsed as CarouselSettingsSource;
       } catch {
-        // fall through
+        // fall through to legacy attrs
       }
-      return [...itemIds];
-    };
-
-    const readSettings = (target: HTMLElement, catalog: CatalogItem[]): Settings => {
       const rawMax = Math.round(Number(target.dataset.devCarouselMaxVh));
       return {
         orientation: target.dataset.devCarouselOrientation === 'vertical' ? 'vertical' : 'horizontal',
         heightMode: target.dataset.devCarouselHeightMode === 'tallest' ? 'tallest' : 'dynamic',
-        maxHeightVh: MAX_VH_STEPS.includes(rawMax) ? rawMax : null,
+        maxHeightVh: MAX_VH_STEPS.includes(rawMax) ? rawMax : undefined,
         scrollPinned: target.dataset.devCarouselScrollPinned === 'true',
-        dotsPlacement: (['outside', 'over', 'hidden'] as DotsPlacement[])
+        dotsPlacement: (['outside', 'over', 'hidden'] as CarouselDotsPlacement[])
           .find((placement) => placement === target.dataset.devCarouselDotsPlacement) ?? 'outside',
-        visible: readVisible(target, catalog),
+        visible: (() => {
+          try {
+            return JSON.parse(target.dataset.devCarouselVisible || 'null');
+          } catch {
+            return undefined;
+          }
+        })(),
       };
     };
+
+    const cloneDraft = (draft: Draft): Draft => ({
+      orientation: draft.orientation,
+      byViewport: {
+        desktop: { ...draft.byViewport.desktop, visible: [...draft.byViewport.desktop.visible] },
+        tablet: { ...draft.byViewport.tablet, visible: [...draft.byViewport.tablet.visible] },
+        mobile: { ...draft.byViewport.mobile, visible: [...draft.byViewport.mobile.visible] },
+      },
+    });
+
+    const draftFromSource = (source: CarouselSettingsSource, ids: string[]): Draft => {
+      const resolved = resolveCarouselSettings(source, ids);
+      return {
+        orientation: resolved.orientation,
+        byViewport: resolved.byViewport,
+      };
+    };
+
+    const parentViewport = (viewport: ImageViewport): ImageViewport | null => (
+      viewport === 'mobile' ? 'tablet' : viewport === 'tablet' ? 'desktop' : null
+    );
 
     let editTarget = initialTarget;
     let catalog = readCatalog(editTarget);
     let itemIds = catalog.map((item) => item.id);
-    let saved = readSettings(editTarget, catalog);
-    let draft = { ...saved, visible: [...saved.visible] };
+    let selectedViewport: ImageViewport = matchCarouselViewport();
+    let saved = draftFromSource(readSource(editTarget), itemIds);
+    let draft = cloneDraft(saved);
     let liveApply = false;
     let dragItemId: string | null = null;
-    const diskBaselines = new Map<string, Settings>();
+    const diskBaselines = new Map<string, Draft>();
+
+    const bp = () => draft.byViewport[selectedViewport];
 
     const pendingIdFor = (target: HTMLElement) => {
       const documentKey = target.dataset.devDocument || '';
@@ -212,12 +258,52 @@ import DevOverlay from '../DevOverlay.astro';
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
 
-    const cloneSettings = (settings: Settings): Settings => ({
-      ...settings,
-      visible: [...settings.visible],
-    });
+    /** Ensure tablet/mobile has its own override before mutating a field. */
+    const ensureOverride = () => {
+      if (selectedViewport === 'desktop') return;
+      const current = bp();
+      if (current.overridden) return;
+      const parent = parentViewport(selectedViewport)!;
+      const inherited = draft.byViewport[parent];
+      draft.byViewport[selectedViewport] = {
+        heightMode: inherited.heightMode,
+        maxHeightVh: inherited.maxHeightVh,
+        scrollPinned: inherited.scrollPinned,
+        dotsPlacement: inherited.dotsPlacement,
+        visible: [...inherited.visible],
+        overridden: true,
+      };
+    };
 
-    /** Reorder slides/dots/captions in the live DOM to match draft.visible. */
+    const clearOverride = () => {
+      if (selectedViewport === 'desktop') return;
+      const parent = parentViewport(selectedViewport)!;
+      const inherited = draft.byViewport[parent];
+      draft.byViewport[selectedViewport] = {
+        heightMode: inherited.heightMode,
+        maxHeightVh: inherited.maxHeightVh,
+        scrollPinned: inherited.scrollPinned,
+        dotsPlacement: inherited.dotsPlacement,
+        visible: [...inherited.visible],
+        overridden: false,
+      };
+      // Mobile inherits from tablet — if we cleared tablet, refresh mobile when it wasn't overridden.
+      if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
+        draft.byViewport.mobile = {
+          ...draft.byViewport.tablet,
+          visible: [...draft.byViewport.tablet.visible],
+          overridden: false,
+        };
+      }
+    };
+
+    const writeSettingsJson = (target: HTMLElement, next: Draft) => {
+      const source = serializeCarouselSettings(next.orientation, next.byViewport, itemIds);
+      const json = JSON.stringify(source);
+      target.dataset.carouselSettings = json;
+      target.dataset.devCarouselSettings = json;
+    };
+
     const applyLayoutLive = (target: HTMLElement, visible: string[]) => {
       const visibleSet = new Set(visible);
       const track = target.querySelector<HTMLElement>('[data-carousel-track]');
@@ -275,29 +361,36 @@ import DevOverlay from '../DevOverlay.astro';
       target.dataset.devCarouselVisible = JSON.stringify(visible);
     };
 
-    const applyToTarget = (target: HTMLElement, settings: Settings) => {
-      target.dataset.orientation = settings.orientation;
-      target.dataset.heightMode = settings.heightMode;
-      target.dataset.scrollPinned = settings.scrollPinned ? 'true' : 'false';
-      target.dataset.dotsPlacement = settings.dotsPlacement;
-      target.dataset.devCarouselDotsPlacement = settings.dotsPlacement;
-      target.dataset.devCarouselOrientation = settings.orientation;
-      target.dataset.devCarouselHeightMode = settings.heightMode;
-      target.dataset.devCarouselScrollPinned = settings.scrollPinned ? 'true' : 'false';
-      if (settings.maxHeightVh) {
-        target.style.setProperty('--project-carousel-max-vh', String(settings.maxHeightVh));
-        target.dataset.devCarouselMaxVh = String(settings.maxHeightVh);
+    const applyToTarget = (target: HTMLElement, next: Draft, viewport: ImageViewport) => {
+      const live = next.byViewport[viewport];
+      writeSettingsJson(target, next);
+      target.dataset.carouselTunerPreview = 'true';
+      target.dataset.orientation = next.orientation;
+      target.dataset.heightMode = live.heightMode;
+      target.dataset.scrollPinned = live.scrollPinned ? 'true' : 'false';
+      target.dataset.dotsPlacement = live.dotsPlacement;
+      target.dataset.devCarouselDotsPlacement = live.dotsPlacement;
+      target.dataset.devCarouselOrientation = next.orientation;
+      target.dataset.devCarouselHeightMode = live.heightMode;
+      target.dataset.devCarouselScrollPinned = live.scrollPinned ? 'true' : 'false';
+      if (live.maxHeightVh) {
+        target.style.setProperty('--project-carousel-max-vh', String(live.maxHeightVh));
+        target.dataset.devCarouselMaxVh = String(live.maxHeightVh);
       } else {
         target.style.removeProperty('--project-carousel-max-vh');
         target.dataset.devCarouselMaxVh = '';
       }
-      applyLayoutLive(target, settings.visible);
+      applyLayoutLive(target, live.visible);
       window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: target } }));
+    };
+
+    const clearTunerPreview = (target: HTMLElement) => {
+      delete target.dataset.carouselTunerPreview;
     };
 
     const applyLive = () => {
       if (!liveApply) return;
-      applyToTarget(editTarget, draft);
+      applyToTarget(editTarget, draft, selectedViewport);
     };
 
     const makeThumb = (item: CatalogItem) => {
@@ -343,17 +436,21 @@ import DevOverlay from '../DevOverlay.astro';
       return without;
     };
 
-    const settingsEqual = (a: Settings, b: Settings) => (
-      a.orientation === b.orientation
-      && a.heightMode === b.heightMode
-      && a.maxHeightVh === b.maxHeightVh
-      && a.scrollPinned === b.scrollPinned
-      && a.dotsPlacement === b.dotsPlacement
-      && a.visible.length === b.visible.length
-      && a.visible.every((id, index) => id === b.visible[index])
-    );
+    const draftsEqual = (a: Draft, b: Draft) => {
+      if (a.orientation !== b.orientation) return false;
+      return IMAGE_VIEWPORTS.every((viewport) => {
+        const left = a.byViewport[viewport];
+        const right = b.byViewport[viewport];
+        return left.overridden === right.overridden
+          && left.heightMode === right.heightMode
+          && left.maxHeightVh === right.maxHeightVh
+          && left.scrollPinned === right.scrollPinned
+          && left.dotsPlacement === right.dotsPlacement
+          && left.visible.length === right.visible.length
+          && left.visible.every((id, index) => id === right.visible[index]);
+      });
+    };
 
-    /** Stage the current draft into the page Save bar (does not close the panel). */
     const stageDraft = (message: string) => {
       const target = editTarget;
       const documentKey = target.dataset.devDocument;
@@ -370,17 +467,16 @@ import DevOverlay from '../DevOverlay.astro';
 
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
-        // Fallback — selectTarget normally freezes this on open.
-        diskBaselines.set(pendingId, cloneSettings(saved));
+        diskBaselines.set(pendingId, cloneDraft(saved));
       }
-      const baseline = cloneSettings(diskBaselines.get(pendingId)!);
+      const baseline = cloneDraft(diskBaselines.get(pendingId)!);
 
       liveApply = true;
       applyLive();
-      const staged = cloneSettings(draft);
+      const staged = cloneDraft(draft);
+      const source = serializeCarouselSettings(staged.orientation, staged.byViewport, itemIds);
 
-      // Identical to disk → drop the pending entry instead of staging a no-op.
-      if (settingsEqual(staged, baseline)) {
+      if (draftsEqual(staged, baseline)) {
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
           detail: { id: pendingId },
         }));
@@ -395,18 +491,19 @@ import DevOverlay from '../DevOverlay.astro';
           payload: {
             document: documentKey,
             path: carouselPath,
-            orientation: staged.orientation,
-            heightMode: staged.heightMode,
-            maxHeightVh: staged.maxHeightVh ?? 0,
-            scrollPinned: staged.scrollPinned,
-            dotsPlacement: staged.dotsPlacement,
-            visible: staged.visible,
+            orientation: source.orientation,
+            heightMode: source.heightMode ?? 'dynamic',
+            maxHeightVh: source.maxHeightVh ?? 0,
+            scrollPinned: source.scrollPinned === true,
+            dotsPlacement: source.dotsPlacement ?? 'outside',
+            visible: source.visible ?? [...itemIds],
+            breakpoints: source.breakpoints ?? null,
           },
           revert: () => {
-            applyToTarget(target, baseline);
+            applyToTarget(target, baseline, selectedViewport);
             if (editTarget === target) {
-              saved = cloneSettings(baseline);
-              draft = cloneSettings(baseline);
+              saved = cloneDraft(baseline);
+              draft = cloneDraft(baseline);
               renderDraft();
             }
           },
@@ -418,21 +515,31 @@ import DevOverlay from '../DevOverlay.astro';
     };
 
     const moveItem = (id: string, destination: 'visible' | 'parking', beforeId: string | null) => {
-      const previous = [...draft.visible];
+      ensureOverride();
+      const current = bp();
+      const previous = [...current.visible];
       if (destination === 'parking') {
-        if (draft.visible.length <= 1 && draft.visible.includes(id)) {
+        if (current.visible.length <= 1 && current.visible.includes(id)) {
           status.textContent = 'Keep at least one image in the carousel.';
           return;
         }
-        draft.visible = draft.visible.filter((entry) => entry !== id);
+        current.visible = current.visible.filter((entry) => entry !== id);
       } else {
-        draft.visible = insertIdAt(draft.visible, id, beforeId);
+        current.visible = insertIdAt(current.visible, id, beforeId);
       }
       if (
-        previous.length === draft.visible.length
-        && previous.every((entry, index) => entry === draft.visible[index])
+        previous.length === current.visible.length
+        && previous.every((entry, index) => entry === current.visible[index])
       ) {
         return;
+      }
+      // Keep mobile in sync when it still inherits from tablet.
+      if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
+        draft.byViewport.mobile = {
+          ...draft.byViewport.tablet,
+          visible: [...draft.byViewport.tablet.visible],
+          overridden: false,
+        };
       }
       renderDraft();
       stageDraft(
@@ -460,7 +567,6 @@ import DevOverlay from '../DevOverlay.astro';
         const overThumb = (event.target as HTMLElement | null)
           ?.closest<HTMLElement>('.project-carousel-tuner__thumb');
 
-        // Dropped back on itself — leave it where it was.
         if (overThumb?.dataset.carouselItemId === id) return;
 
         if (destination === 'parking') {
@@ -468,14 +574,12 @@ import DevOverlay from '../DevOverlay.astro';
           return;
         }
 
-        // Dropped on another thumb → insert before it.
         if (overThumb) {
           moveItem(id, 'visible', overThumb.dataset.carouselItemId || null);
           return;
         }
 
-        // Empty board: keep position if already visible; append if un-parking.
-        if (draft.visible.includes(id)) return;
+        if (bp().visible.includes(id)) return;
         moveItem(id, 'visible', null);
       });
     };
@@ -485,9 +589,10 @@ import DevOverlay from '../DevOverlay.astro';
 
     const renderBoard = () => {
       const byId = new Map(catalog.map((item) => [item.id, item]));
-      const visibleSet = new Set(draft.visible);
+      const visible = bp().visible;
+      const visibleSet = new Set(visible);
       visibleBoard.replaceChildren(
-        ...draft.visible
+        ...visible
           .map((id) => byId.get(id))
           .filter((item): item is CatalogItem => !!item)
           .map(makeThumb),
@@ -506,32 +611,45 @@ import DevOverlay from '../DevOverlay.astro';
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
-      heightSelect.value = draft.heightMode;
-      maxSelect.value = draft.maxHeightVh ? String(draft.maxHeightVh) : '';
-      pinnedInput.checked = draft.scrollPinned;
-      dotsSelect.value = draft.dotsPlacement;
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.carouselViewport === selectedViewport;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      const live = bp();
+      heightSelect.value = live.heightMode;
+      maxSelect.value = live.maxHeightVh ? String(live.maxHeightVh) : '';
+      pinnedInput.checked = live.scrollPinned;
+      dotsSelect.value = live.dotsPlacement;
+      const showInherit = selectedViewport !== 'desktop' && !live.overridden;
+      inheritNote.hidden = !showInherit;
+      clearOverrideButton.hidden = selectedViewport === 'desktop' || !live.overridden;
       renderBoard();
       applyLive();
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
+      if (editTarget && editTarget !== target) clearTunerPreview(editTarget);
       editTarget = target;
       liveApply = live;
       catalog = readCatalog(target);
       itemIds = catalog.map((item) => item.id);
+      selectedViewport = matchCarouselViewport();
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
-        diskBaselines.set(pendingId, cloneSettings(readSettings(target, catalog)));
+        diskBaselines.set(pendingId, draftFromSource(readSource(target), itemIds));
       }
-      saved = readSettings(target, catalog);
-      draft = cloneSettings(saved);
+      saved = draftFromSource(readSource(target), itemIds);
+      draft = cloneDraft(saved);
       renderDraft();
-      if (live) status.textContent = 'Editing this carousel. Drag thumbnails to rearrange or park.';
+      if (live) {
+        status.textContent = 'Editing this carousel. Pick a breakpoint, then drag thumbnails to rearrange or park.';
+      }
     };
 
     const saveDraft = () => {
       if (stageDraft('Staged — use Save in the page bar to write to disk.')) {
-        saved = cloneSettings(draft);
+        saved = cloneDraft(draft);
         closePanel();
       }
     };
@@ -545,14 +663,20 @@ import DevOverlay from '../DevOverlay.astro';
 
     window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
       const trigger = event.detail?.trigger as HTMLElement | undefined;
-      if (trigger?.dataset.devEditTrigger === 'carousel') liveApply = false;
+      if (trigger?.dataset.devEditTrigger !== 'carousel') return;
+      liveApply = false;
+      // Keep staged JSON on the block, but drop preview so the live window bp wins.
+      writeSettingsJson(editTarget, draft);
+      clearTunerPreview(editTarget);
+      applyCarouselViewportSettings(editTarget, matchCarouselViewport());
+      window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: editTarget } }));
     }) as EventListener);
 
     selectTarget(initialTarget, false);
 
     orientationButtons.forEach((button) => {
       button.addEventListener('click', () => {
-        const orientation = button.dataset.carouselOrientation as Orientation | undefined;
+        const orientation = button.dataset.carouselOrientation as CarouselOrientation | undefined;
         if (!orientation || orientation === draft.orientation) return;
         draft.orientation = orientation;
         renderDraft();
@@ -562,46 +686,77 @@ import DevOverlay from '../DevOverlay.astro';
       });
     });
 
+    viewportButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const viewport = button.dataset.carouselViewport as ImageViewport | undefined;
+        if (!viewport || viewport === selectedViewport) return;
+        selectedViewport = viewport;
+        renderDraft();
+        status.textContent = `Editing ${viewport} settings.`;
+      });
+    });
+
     heightSelect.addEventListener('change', () => {
-      draft.heightMode = heightSelect.value as HeightMode;
+      ensureOverride();
+      bp().heightMode = heightSelect.value as CarouselHeightMode;
+      if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
+        draft.byViewport.mobile.heightMode = bp().heightMode;
+      }
       renderDraft();
       status.textContent = 'Block height changed — unsaved changes.';
     });
 
     maxSelect.addEventListener('change', () => {
-      draft.maxHeightVh = Number(maxSelect.value) || null;
+      ensureOverride();
+      bp().maxHeightVh = Number(maxSelect.value) || null;
+      if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
+        draft.byViewport.mobile.maxHeightVh = bp().maxHeightVh;
+      }
       renderDraft();
-      status.textContent = draft.maxHeightVh
-        ? `Capped at ${draft.maxHeightVh}% of the screen — unsaved changes.`
+      status.textContent = bp().maxHeightVh
+        ? `Capped at ${bp().maxHeightVh}% of the screen — unsaved changes.`
         : 'Height cap off — unsaved changes.';
     });
 
     dotsSelect.addEventListener('change', () => {
-      draft.dotsPlacement = dotsSelect.value as DotsPlacement;
+      ensureOverride();
+      bp().dotsPlacement = dotsSelect.value as CarouselDotsPlacement;
+      if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
+        draft.byViewport.mobile.dotsPlacement = bp().dotsPlacement;
+      }
       renderDraft();
       status.textContent = 'Position dots moved — unsaved changes.';
     });
 
     pinnedInput.addEventListener('change', () => {
-      draft.scrollPinned = pinnedInput.checked;
+      ensureOverride();
+      bp().scrollPinned = pinnedInput.checked;
+      if (selectedViewport === 'tablet' && !draft.byViewport.mobile.overridden) {
+        draft.byViewport.mobile.scrollPinned = bp().scrollPinned;
+      }
       renderDraft();
-      status.textContent = draft.scrollPinned
+      status.textContent = bp().scrollPinned
         ? 'Scroll advance on — saved, but not wired up yet.'
         : 'Scroll advance off — unsaved changes.';
+    });
+
+    clearOverrideButton.addEventListener('click', () => {
+      clearOverride();
+      renderDraft();
+      stageDraft(`Cleared ${selectedViewport} override — use Save in the page bar to write to disk.`);
     });
 
     saveButton.addEventListener('click', saveDraft);
 
     revertButton.addEventListener('click', () => {
-      draft = cloneSettings(saved);
+      draft = cloneDraft(saved);
       renderDraft();
-      // Re-stage or clear so the page bar matches the panel.
       stageDraft('Reverted to the last saved carousel settings.');
     });
 
     window.addEventListener('vcd:dev-pending-committed', (() => {
       diskBaselines.clear();
-      if (editTarget) diskBaselines.set(pendingIdFor(editTarget), cloneSettings(saved));
+      if (editTarget) diskBaselines.set(pendingIdFor(editTarget), cloneDraft(saved));
     }) as EventListener);
 
     window.addEventListener('vcd:dev-pending-reverted', (() => {
@@ -623,13 +778,22 @@ import DevOverlay from '../DevOverlay.astro';
     max-width: 24em;
   }
 
-  .project-carousel-tuner__segmented {
+  .project-carousel-tuner__segmented,
+  .project-carousel-tuner__viewports {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
     gap: 0.4em;
   }
 
-  .project-carousel-tuner__segmented button {
+  .project-carousel-tuner__segmented {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .project-carousel-tuner__viewports {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .project-carousel-tuner__segmented button,
+  .project-carousel-tuner__viewports button {
     border: 0;
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
@@ -640,9 +804,17 @@ import DevOverlay from '../DevOverlay.astro';
     cursor: pointer;
   }
 
-  .project-carousel-tuner__segmented button.is-active {
+  .project-carousel-tuner__segmented button.is-active,
+  .project-carousel-tuner__viewports button.is-active {
     background: var(--color-text);
     color: var(--color-bg);
+  }
+
+  .project-carousel-tuner__inherit {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
   }
 
   .project-carousel-tuner__select {

@@ -36,6 +36,14 @@ import {
   carouselDotAppearance,
   carouselDotGeometry,
 } from '../../lib/projectImageCarousel';
+import {
+  resolveCarouselSettings,
+  serializeCarouselSettings,
+  type CarouselBreakpointOverride,
+  type CarouselDotsPlacement,
+  type CarouselHeightMode,
+  type CarouselOrientation,
+} from '../../lib/projectImageCarouselSettings';
 
 interface Item {
   id?: string;
@@ -51,18 +59,7 @@ interface Item {
   maxVh?: number;
 }
 
-/** Track axis. Dots sit below (horizontal) or to the left (vertical). */
-export type CarouselOrientation = 'horizontal' | 'vertical';
-
-/**
- * `dynamic` — block height eases to the active slide.
- * `tallest` — block is pinned to the tallest slide.
- * Either can carry a `maxHeightVh` ceiling on top.
- */
-export type CarouselHeightMode = 'dynamic' | 'tallest';
-
-/** Dots below/left of the images, overlaid on them, or not shown at all. */
-export type CarouselDotsPlacement = 'outside' | 'over' | 'hidden';
+export type { CarouselOrientation, CarouselHeightMode, CarouselDotsPlacement };
 
 interface Props {
   items: Item[];
@@ -75,6 +72,8 @@ interface Props {
   dotsPlacement?: CarouselDotsPlacement;
   /** Visible item ids in display order. Omitted ids are parked (hidden). */
   visible?: string[];
+  /** Sparse tablet/mobile overrides for settings below orientation. */
+  breakpoints?: Partial<Record<'tablet' | 'mobile', CarouselBreakpointOverride>>;
   defaultAspectRatio?: string;
   constrained?: ImageGridConstrained;
   document?: string;
@@ -91,6 +90,7 @@ const {
   scrollPinned = false,
   dotsPlacement = 'outside',
   visible: visibleProp,
+  breakpoints,
   defaultAspectRatio = 'original',
   constrained: constrainedProp,
   document: documentKey,
@@ -99,27 +99,29 @@ const {
   sectionId,
 } = Astro.props;
 
-/** Legacy `max` meant "tallest, capped" — the cap is its own setting now. */
-const resolvedHeightMode = heightMode === 'dynamic' ? 'dynamic' : 'tallest';
 const constrained = resolveImageGridConstrained(constrainedProp);
 const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
 const stackClass = projectStackClass(spacing);
 const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
 
-const knownIds = new Set(itemIds);
-const visibleIds = (() => {
-  if (!Array.isArray(visibleProp)) return [...itemIds];
-  const seen = new Set<string>();
-  const next: string[] = [];
-  for (const raw of visibleProp) {
-    const id = String(raw || '');
-    if (!knownIds.has(id) || seen.has(id)) continue;
-    seen.add(id);
-    next.push(id);
-  }
-  return next;
-})();
+/** SSR paints the desktop resolution; the client swaps on resize. */
+const resolved = resolveCarouselSettings({
+  orientation,
+  heightMode,
+  maxHeightVh,
+  scrollPinned,
+  dotsPlacement,
+  visible: visibleProp,
+  breakpoints,
+}, itemIds);
+const live = resolved.byViewport.desktop;
+const settingsJson = serializeCarouselSettings(
+  resolved.orientation,
+  resolved.byViewport,
+  itemIds,
+);
+const visibleIds = live.visible;
 const parkedIds = itemIds.filter((id) => !visibleIds.includes(id));
 
 const resolvedItems = items.map((item, index) => {
@@ -163,7 +165,7 @@ const editorItems = resolvedItems.map((entry) => ({
 
 const blockStyle = [
   imageGridConstrainedStyle(constrained),
-  maxHeightVh ? `--project-carousel-max-vh:${maxHeightVh}` : '',
+  live.maxHeightVh ? `--project-carousel-max-vh:${live.maxHeightVh}` : '',
 ]
   .filter(Boolean)
   .join(';');
@@ -179,22 +181,24 @@ const blockStyle = [
   ]}
   style={blockStyle}
   data-project-image-carousel
-  data-orientation={orientation}
-  data-height-mode={resolvedHeightMode}
-  data-scroll-pinned={scrollPinned ? 'true' : 'false'}
-  data-dots-placement={dotsPlacement}
+  data-carousel-settings={JSON.stringify(settingsJson)}
+  data-orientation={resolved.orientation}
+  data-height-mode={live.heightMode}
+  data-scroll-pinned={live.scrollPinned ? 'true' : 'false'}
+  data-dots-placement={live.dotsPlacement}
   data-dev-carousel-target={showDevEditing ? 'carousel' : undefined}
   data-dev-document={showDevEditing ? documentKey : undefined}
   data-dev-carousel-path={showDevEditing ? JSON.stringify(basePath) : undefined}
-  data-dev-carousel-orientation={showDevEditing ? orientation : undefined}
-  data-dev-carousel-height-mode={showDevEditing ? resolvedHeightMode : undefined}
-  data-dev-carousel-max-vh={showDevEditing ? String(maxHeightVh ?? '') : undefined}
-  data-dev-carousel-scroll-pinned={showDevEditing ? (scrollPinned ? 'true' : 'false') : undefined}
-  data-dev-carousel-dots-placement={showDevEditing ? dotsPlacement : undefined}
+  data-dev-carousel-orientation={showDevEditing ? resolved.orientation : undefined}
+  data-dev-carousel-height-mode={showDevEditing ? live.heightMode : undefined}
+  data-dev-carousel-max-vh={showDevEditing ? String(live.maxHeightVh ?? '') : undefined}
+  data-dev-carousel-scroll-pinned={showDevEditing ? (live.scrollPinned ? 'true' : 'false') : undefined}
+  data-dev-carousel-dots-placement={showDevEditing ? live.dotsPlacement : undefined}
   data-dev-carousel-constrained={showDevEditing ? JSON.stringify(constrained) : undefined}
   data-dev-carousel-default-aspect={showDevEditing ? defaultAspectRatio : undefined}
   data-dev-carousel-items={showDevEditing ? JSON.stringify(editorItems) : undefined}
   data-dev-carousel-visible={showDevEditing ? JSON.stringify(visibleIds) : undefined}
+  data-dev-carousel-settings={showDevEditing ? JSON.stringify(settingsJson) : undefined}
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={showDevEditing ? 'imageCarousel' : undefined}
 >
