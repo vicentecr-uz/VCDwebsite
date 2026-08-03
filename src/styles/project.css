@@ -325,17 +325,22 @@
 
 .project-image-carousel__track {
   display: flex;
-  /* Centred, so a shorter slide gives up space above and below in equal
-     measure and the block contracts around the image rather than off its top. */
-  align-items: center;
+  /* Follow-each-image: top-align — the block's top edge can't move with the
+     page, so shrinking from the bottom is the only honest direction. */
+  align-items: flex-start;
   width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  /* Height is owned by JS in `dynamic`/`max`; `tallest` leaves it auto. */
+  /* Height is owned by JS in `dynamic`; `tallest` leaves it auto. */
   height: var(--project-carousel-track-size, auto);
+}
+
+/* Pin-to-tallest: shorter slides sit in the leftover space on both sides. */
+.project-image-carousel[data-height-mode='tallest'] .project-image-carousel__track {
+  align-items: center;
 }
 
 .project-image-carousel__track::-webkit-scrollbar {
@@ -394,9 +399,13 @@
 
 .project-image-carousel__slide {
   flex: 0 0 100%;
-  align-self: center;
+  align-self: flex-start;
   scroll-snap-align: start;
   scroll-snap-stop: always;
+}
+
+.project-image-carousel[data-height-mode='tallest'] .project-image-carousel__slide {
+  align-self: center;
 }
 
 /* Vertical: the track scrolls on Y and the dots move to the left rail. */
