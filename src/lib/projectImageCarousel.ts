@@ -202,6 +202,11 @@ function lerpByProgress(carousel: Carousel, valueAt: (index: number) => number):
  * Scroll-linked caption opacity (with a mid-swipe gap), per-image caption
  * widths so fading copy doesn't jump, and caption-slot height lerped with
  * scroll — same continuous progress as the track / dots.
+ *
+ * Dev mode may leave `data-caption-editing` on after Save so the caption stays
+ * contenteditable. Only pin opacity/slot height while that slide is still the
+ * nearest one — otherwise a staged caption stays stuck at full opacity and
+ * stacks on its neighbour until a full reload.
  */
 function syncCaptions(carousel: Carousel): void {
   const slot = carousel.block.querySelector<HTMLElement>('[data-carousel-caption-slot]');
@@ -209,6 +214,13 @@ function syncCaptions(carousel: Carousel): void {
 
   const editingId = carousel.captions.find((caption) => caption.dataset.captionEditing === 'true')
     ?.dataset.carouselItemId;
+  const editingSlideIndex = editingId
+    ? Number(
+      carousel.slides.find((slide) => slide.dataset.gridItemId === editingId)?.dataset.carouselIndex,
+    )
+    : NaN;
+  const pinEditing = Number.isFinite(editingSlideIndex)
+    && Math.abs(carousel.progress - editingSlideIndex) < 0.5;
   const trimSupported = canTrimTextBoxToCap();
 
   carousel.captions.forEach((caption) => {
@@ -235,19 +247,15 @@ function syncCaptions(carousel: Carousel): void {
     }
 
     const editing = editingId != null && caption.dataset.carouselItemId === editingId;
-    const opacity = editing ? 1 : carouselCaptionOpacity(slideIndex, carousel.progress);
+    const pin = editing && pinEditing;
+    const opacity = pin ? 1 : carouselCaptionOpacity(slideIndex, carousel.progress);
     caption.style.opacity = opacity.toFixed(3);
-    caption.classList.toggle('is-active', opacity > 0.5 || editing);
-    caption.style.pointerEvents = opacity > 0.5 || editing ? 'auto' : 'none';
+    caption.classList.toggle('is-active', opacity > 0.5 || pin);
+    caption.style.pointerEvents = opacity > 0.5 || pin ? 'auto' : 'none';
   });
 
-  const targetHeight = editingId
-    ? captionHeightForSlide(
-      carousel,
-      Number(
-        carousel.slides.find((slide) => slide.dataset.gridItemId === editingId)?.dataset.carouselIndex,
-      ),
-    )
+  const targetHeight = pinEditing
+    ? captionHeightForSlide(carousel, editingSlideIndex)
     : lerpByProgress(carousel, (index) => captionHeightForSlide(carousel, index));
   slot.hidden = false;
   slot.style.height = `${Math.round(targetHeight)}px`;

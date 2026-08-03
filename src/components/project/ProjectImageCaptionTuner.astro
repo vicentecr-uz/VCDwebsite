@@ -205,6 +205,23 @@ import {
       return target.querySelector<HTMLElement>('[data-project-image-caption]');
     };
 
+    /**
+     * Below-carousel captions sit outside the slide, so `closest` on the caption
+     * cannot reach `[data-dev-image-target]`. Resolve via item id instead.
+     */
+    const resolveCaptionEditTarget = (captionNode: HTMLElement): HTMLElement | null => {
+      const nested = captionNode.closest<HTMLElement>('[data-dev-image-target]');
+      if (nested) return nested;
+
+      const id = captionNode.dataset.carouselItemId;
+      const carousel = captionNode.closest<HTMLElement>('[data-project-image-carousel]');
+      if (!carousel || !id) return null;
+
+      return carousel.querySelector<HTMLElement>(
+        `[data-dev-image-target][data-grid-item-id="${CSS.escape(id)}"]`,
+      );
+    };
+
     const ensureCarouselCaptionSlot = (carousel: HTMLElement): HTMLElement => {
       let slot = carousel.querySelector<HTMLElement>('[data-carousel-caption-slot]');
       if (!slot) {
@@ -298,11 +315,20 @@ import {
         target.dataset.devCaptionPosition
           || host?.dataset.captionPosition,
       );
-      // Below captions aren't corner overlays — skip chrome conflict fallback.
+      const isBelow = isBelowImageCaptionStyle(style);
+      const isCarouselSlide = target.classList.contains('project-image-carousel__slide');
+      const liveHasText = captions[matchImageCaptionViewport()].length > 0;
+      // Offer Edit when the caption can't be clicked in-place:
+      // - carousel below-captions live outside the slide
+      // - sparse BP text (e.g. mobile-only) leaves the live viewport empty
+      // - overlay corner conflicts with Edit image / Edit grid chrome
       const needsFallback = inDev
         && hasText
-        && !isBelowImageCaptionStyle(style)
-        && captionCornerConflictsWithChrome(target, position);
+        && (
+          (isBelow && isCarouselSlide)
+          || !liveHasText
+          || (!isBelow && captionCornerConflictsWithChrome(target, position))
+        );
 
       if (needsFallback) {
         button.hidden = false;
@@ -504,6 +530,14 @@ import {
       }
     };
 
+    const notifyCarouselCaptions = (target: HTMLElement | null) => {
+      const carousel = target?.closest<HTMLElement>('[data-project-image-carousel]');
+      if (!carousel) return;
+      // Recollect hosts after style moves (overlay → below slot) and re-apply
+      // scroll-linked opacity once data-caption-editing flips.
+      window.dispatchEvent(new CustomEvent('vcd:carousel-sync-captions', { detail: { block: carousel } }));
+    };
+
     const disableInlineEditing = (target: HTMLElement | null) => {
       if (!target) return;
       const host = findCaptionHost(target);
@@ -512,6 +546,7 @@ import {
       host.querySelectorAll<HTMLElement>('[data-caption-bp]').forEach((node) => {
         node.removeAttribute('contenteditable');
       });
+      notifyCarouselCaptions(target);
     };
 
     const enableInlineEditing = (target: HTMLElement) => {
@@ -539,6 +574,7 @@ import {
           node.removeAttribute('contenteditable');
         }
       });
+      notifyCarouselCaptions(target);
     };
 
     const selectTarget = (target: HTMLElement, options?: { focusText?: boolean; seedEmpty?: boolean }) => {
@@ -815,7 +851,7 @@ import {
         if (node.closest('[data-dev-panel-key="caption"]')) return;
         const captionNode = node.closest<HTMLElement>('[data-project-image-caption]');
         if (!captionNode) return;
-        const target = captionNode.closest<HTMLElement>('[data-dev-image-target]');
+        const target = resolveCaptionEditTarget(captionNode);
         if (!target) return;
 
         selectTarget(target);
