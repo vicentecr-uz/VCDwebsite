@@ -308,6 +308,13 @@ import DevOverlay from '../DevOverlay.astro';
     const isStandaloneMedia = (target: HTMLElement) => (
       target.classList.contains('project-media') && !isGridTarget(target)
     );
+    /** Carousel slides get Max view height too — width constrain stays block-level. */
+    const isCarouselItem = (target: HTMLElement) => (
+      target.classList.contains('project-image-carousel__slide')
+    );
+    const supportsMaxVh = (target: HTMLElement) => (
+      isStandaloneMedia(target) || isCarouselItem(target)
+    );
     const MAX_VH_ALLOWED = new Set([90, 80, 70, 60, 50, 40, 30]);
     const normalizeMaxVh = (value: unknown): number | undefined => {
       if (value === true) return 80;
@@ -346,6 +353,17 @@ import DevOverlay from '../DevOverlay.astro';
       target: HTMLElement,
       flags: { constrained: boolean; maxVh: number | undefined },
     ) => {
+      if (isCarouselItem(target)) {
+        if (flags.maxVh) target.dataset.maxVh = String(flags.maxVh);
+        else delete target.dataset.maxVh;
+        target.dataset.devMaxVh = flags.maxVh ? String(flags.maxVh) : '';
+        setMaxVhVar(target, flags.maxVh);
+        announceFrameChange(target);
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', {
+          detail: { block: target.closest('[data-project-image-carousel]') },
+        }));
+        return;
+      }
       if (!isStandaloneMedia(target)) return;
       target.classList.toggle('project-media--constrained', flags.constrained);
       target.dataset.devConstrained = flags.constrained ? 'true' : 'false';
@@ -371,7 +389,7 @@ import DevOverlay from '../DevOverlay.astro';
       const show = isStandaloneMedia(editTarget);
       widthConstrainWrap.hidden = !show;
       widthConstrainInput.checked = draftConstrained;
-      heightConstrainWrap.hidden = !show;
+      heightConstrainWrap.hidden = !supportsMaxVh(editTarget);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
     };
 
@@ -468,7 +486,7 @@ import DevOverlay from '../DevOverlay.astro';
     const snapshotBaseline = (target: HTMLElement) => ({
       variants: readAppliedVariants(target),
       constrained: isStandaloneMedia(target) ? readConstrained(target) : false,
-      maxVh: isStandaloneMedia(target) ? readMaxVh(target) : undefined,
+      maxVh: supportsMaxVh(target) ? readMaxVh(target) : undefined,
       cropped: target.classList.contains('project-cropped') || isGridTarget(target),
     });
 
@@ -649,6 +667,7 @@ import DevOverlay from '../DevOverlay.astro';
       const stagedConstrained = draftConstrained;
       const stagedMaxVh = draftMaxVh;
       const standalone = isStandaloneMedia(target);
+      const carouselItem = isCarouselItem(target);
       const persistCrop = targetWasCropped || liveApply;
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
@@ -668,7 +687,7 @@ import DevOverlay from '../DevOverlay.astro';
         saved = { ...stagedVariants[selectedViewport] };
         targetWasCropped = true;
       }
-      if (standalone) {
+      if (standalone || carouselItem) {
         applyFrameFlagsLive(target, { constrained: stagedConstrained, maxVh: stagedMaxVh });
         savedConstrained = stagedConstrained;
         savedMaxVh = stagedMaxVh;
@@ -695,6 +714,7 @@ import DevOverlay from '../DevOverlay.astro';
                 maxVh: stagedMaxVh ?? 0,
               }
               : {}),
+            ...(carouselItem ? { maxVh: stagedMaxVh ?? 0 } : {}),
           },
           revert: () => {
             if (persistCrop) {
@@ -716,7 +736,7 @@ import DevOverlay from '../DevOverlay.astro';
                 }
               }
             }
-            if (standalone) {
+            if (standalone || carouselItem) {
               applyFrameFlagsLive(target, {
                 constrained: baseline.constrained,
                 maxVh: baseline.maxVh,
@@ -839,7 +859,7 @@ import DevOverlay from '../DevOverlay.astro';
       draftVariants = structuredClone(savedVariants);
       savedConstrained = isStandaloneMedia(target) ? readConstrained(target) : false;
       draftConstrained = savedConstrained;
-      savedMaxVh = isStandaloneMedia(target) ? readMaxVh(target) : undefined;
+      savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
       draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
@@ -880,7 +900,8 @@ import DevOverlay from '../DevOverlay.astro';
 
     const pageFrameFor = (target: HTMLElement): HTMLElement => (
       target.querySelector<HTMLElement>(':scope > .project-crop-clip')
-      ?? target.querySelector<HTMLElement>(':scope > .project-image-grid__frame')
+      // Carousel wraps the frame in `.project-image-carousel__surface`.
+      ?? target.querySelector<HTMLElement>('.project-image-grid__frame')
       ?? target
     );
 
@@ -895,9 +916,20 @@ import DevOverlay from '../DevOverlay.astro';
       const ref = frame === target
         ? (target.querySelector<HTMLElement>('img') ?? target)
         : frame;
+      // Use viewport rects so a positioned surface (carousel width cap) between
+      // the slide and frame does not zero-out offsetLeft/offsetTop.
       const box = ref === target
         ? { left: 0, top: 0, width: target.clientWidth, height: target.clientHeight }
-        : { left: ref.offsetLeft, top: ref.offsetTop, width: ref.offsetWidth, height: ref.offsetHeight };
+        : (() => {
+          const targetRect = target.getBoundingClientRect();
+          const refRect = ref.getBoundingClientRect();
+          return {
+            left: refRect.left - targetRect.left + target.scrollLeft,
+            top: refRect.top - targetRect.top + target.scrollTop,
+            width: refRect.width,
+            height: refRect.height,
+          };
+        })();
       for (const el of [ghost, stage]) {
         el.style.left = `${box.left}px`;
         el.style.top = `${box.top}px`;
@@ -910,8 +942,17 @@ import DevOverlay from '../DevOverlay.astro';
       if (!pageStage) return;
       pageStage.ghost.remove();
       pageStage.stage.remove();
+      const carousel = pageStage.target.closest('[data-project-image-carousel]');
+      const track = pageStage.target.closest<HTMLElement>('[data-carousel-track]');
       pageStage.target.classList.remove('dev-crop-stage-host');
+      // Drop the height lock after the host class, so the tallest-mode
+      // auto-height can see every sibling again on the next refresh.
+      track?.style.removeProperty('--project-carousel-crop-lock-height');
       pageStage = null;
+      // Slides un-isolate — put the carousel back on the one just cropped.
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
+      }
     };
 
     /** Capture can throw once a pointer is gone (fast release, pen lift). */
@@ -935,6 +976,8 @@ import DevOverlay from '../DevOverlay.astro';
         if (event.button !== 0) return;
         if ((event.target as HTMLElement | null)?.closest?.('[data-page-resize]')) return;
         event.preventDefault();
+        // Keep the carousel track from starting a swipe and stealing capture.
+        event.stopPropagation();
         panPointer = event.pointerId;
         panStartX = event.clientX;
         panStartY = event.clientY;
@@ -947,6 +990,12 @@ import DevOverlay from '../DevOverlay.astro';
 
       stage.addEventListener('pointermove', (event) => {
         if (panPointer !== event.pointerId) return;
+        // Guard: if capture was stolen, buttons may already be up.
+        if (event.buttons === 0) {
+          panPointer = null;
+          stage.classList.remove('is-dragging');
+          return;
+        }
         const bounds = stage.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
         const deltaX = event.clientX - panStartX;
@@ -977,6 +1026,11 @@ import DevOverlay from '../DevOverlay.astro';
       };
       stage.addEventListener('pointerup', endPan);
       stage.addEventListener('pointercancel', endPan);
+      stage.addEventListener('lostpointercapture', (event) => {
+        if (panPointer !== event.pointerId) return;
+        panPointer = null;
+        stage.classList.remove('is-dragging');
+      });
 
       stage.addEventListener('wheel', (event) => {
         event.preventDefault();
@@ -1001,6 +1055,7 @@ import DevOverlay from '../DevOverlay.astro';
         handle.addEventListener('pointerdown', (event) => {
           if (event.button !== 0) return;
           event.preventDefault();
+          // Bubble past the stage pan handler and the carousel track swipe.
           event.stopPropagation();
           const dir = handle.dataset.pageResize as ResizeDir | undefined;
           if (!dir) return;
@@ -1054,6 +1109,16 @@ import DevOverlay from '../DevOverlay.astro';
         stage.append(handle);
       });
 
+      // Lock track height while siblings are still measurable — isolation
+      // hides them, and pin-to-tallest would otherwise collapse.
+      const track = target.closest<HTMLElement>('[data-carousel-track]');
+      if (track) {
+        const lockHeight = Math.round(track.getBoundingClientRect().height);
+        if (lockHeight > 0) {
+          track.style.setProperty('--project-carousel-crop-lock-height', `${lockHeight}px`);
+        }
+      }
+
       target.classList.add('dev-crop-stage-host');
       // Ghost first so the clip (later in DOM order) paints over the shared
       // region — only the content outside the frame reads as faded.
@@ -1062,6 +1127,10 @@ import DevOverlay from '../DevOverlay.astro';
       pageStage = { ghost, ghostImg, stage, target };
       wirePageStage(stage);
       syncPageStageBox();
+      const carousel = target.closest('[data-project-image-carousel]');
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
+      }
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
@@ -1314,7 +1383,7 @@ import DevOverlay from '../DevOverlay.astro';
     });
 
     maxVhSelect.addEventListener('change', () => {
-      if (!isStandaloneMedia(editTarget)) {
+      if (!supportsMaxVh(editTarget)) {
         maxVhSelect.value = '';
         return;
       }

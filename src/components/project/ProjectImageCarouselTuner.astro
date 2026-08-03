@@ -1,0 +1,791 @@
+---
+import DevOverlay from '../DevOverlay.astro';
+---
+
+<DevOverlay
+  title="Edit carousel"
+  storageKey="project-image-carousel"
+  panelKey="carousel"
+  defaultHidden
+>
+  <div class="project-carousel-tuner" data-project-image-carousel-tuner>
+    <div class="project-carousel-tuner__segmented" aria-label="Direction">
+      <button type="button" data-carousel-orientation="horizontal">Left to right</button>
+      <button type="button" data-carousel-orientation="vertical">Up to down</button>
+    </div>
+    <label class="project-carousel-tuner__select">
+      <span>Position dots</span>
+      <select data-carousel-dots-placement>
+        <option value="outside">Beside images</option>
+        <option value="over">Over images</option>
+        <option value="hidden">Hidden</option>
+      </select>
+    </label>
+
+    <label class="project-carousel-tuner__select">
+      <span>Block height</span>
+      <select data-carousel-height-mode>
+        <option value="dynamic">Follow each image</option>
+        <option value="tallest">Pin to tallest</option>
+      </select>
+    </label>
+
+    <label class="project-carousel-tuner__select">
+      <span>Max height</span>
+      <select data-carousel-max-vh>
+        <option value="">Off</option>
+        <option value="90">90% of screen</option>
+        <option value="80">80% of screen</option>
+        <option value="70">70% of screen</option>
+        <option value="60">60% of screen</option>
+        <option value="50">50% of screen</option>
+        <option value="40">40% of screen</option>
+        <option value="30">30% of screen</option>
+      </select>
+    </label>
+
+    <label class="project-carousel-tuner__toggle">
+      <input type="checkbox" data-carousel-scroll-pinned />
+      <span>Advance on page scroll</span>
+    </label>
+    <p class="project-carousel-tuner__hint project-carousel-tuner__hint--indent">
+      Pins the block mid-viewport and steps through every image as the reader
+      scrolls. Saved, but not wired up yet — swipe still drives the carousel.
+    </p>
+
+    <div class="project-carousel-tuner__board">
+      <p class="project-carousel-tuner__board-label">Visible</p>
+      <div
+        class="project-carousel-tuner__visible"
+        data-carousel-visible
+        data-carousel-drop="visible"
+      ></div>
+
+      <p class="project-carousel-tuner__board-label">Parking lot</p>
+      <div
+        class="project-carousel-tuner__parking"
+        data-carousel-parking
+        data-carousel-drop="parking"
+      >
+        <span class="project-carousel-tuner__parking-hint" data-carousel-parking-hint>
+          Drag images here to omit them from the carousel
+        </span>
+      </div>
+    </div>
+
+    <div class="project-carousel-tuner__actions">
+      <button type="button" data-carousel-revert>Revert changes</button>
+      <button type="button" data-carousel-save>Save changes</button>
+    </div>
+
+    <p class="project-carousel-tuner__status" data-carousel-status aria-live="polite">
+      Pick a carousel to edit its direction, height, and images.
+    </p>
+  </div>
+</DevOverlay>
+
+<script>
+  type Orientation = 'horizontal' | 'vertical';
+  type HeightMode = 'dynamic' | 'tallest';
+  type DotsPlacement = 'outside' | 'over' | 'hidden';
+
+  interface CatalogItem {
+    id: string;
+    src: string;
+    alt: string;
+  }
+
+  interface Settings {
+    orientation: Orientation;
+    heightMode: HeightMode;
+    maxHeightVh: number | null;
+    scrollPinned: boolean;
+    dotsPlacement: DotsPlacement;
+    visible: string[];
+  }
+
+  const MAX_VH_STEPS = [90, 80, 70, 60, 50, 40, 30];
+
+  const initProjectImageCarouselTuner = (tuner: HTMLElement) => {
+    if (tuner.dataset.initialized === 'true') return;
+    tuner.dataset.initialized = 'true';
+
+    const orientationButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-carousel-orientation]'),
+    ];
+    const heightSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-height-mode]');
+    const maxSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-max-vh]');
+    const pinnedInput = tuner.querySelector<HTMLInputElement>('[data-carousel-scroll-pinned]');
+    const dotsSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-dots-placement]');
+    const visibleBoard = tuner.querySelector<HTMLElement>('[data-carousel-visible]');
+    const parkingBoard = tuner.querySelector<HTMLElement>('[data-carousel-parking]');
+    const parkingHint = tuner.querySelector<HTMLElement>('[data-carousel-parking-hint]');
+    const saveButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-save]');
+    const revertButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-revert]');
+    const status = tuner.querySelector<HTMLElement>('[data-carousel-status]');
+    const initialTarget = document.querySelector<HTMLElement>('[data-dev-carousel-target]');
+    if (
+      !orientationButtons.length ||
+      !heightSelect ||
+      !maxSelect ||
+      !pinnedInput ||
+      !dotsSelect ||
+      !visibleBoard ||
+      !parkingBoard ||
+      !parkingHint ||
+      !saveButton ||
+      !revertButton ||
+      !status ||
+      !initialTarget
+    ) return;
+
+    const readCatalog = (target: HTMLElement): CatalogItem[] => {
+      try {
+        const parsed = JSON.parse(target.dataset.devCarouselItems || '[]');
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+          .map((item) => ({
+            id: String(item?.id || ''),
+            src: String(item?.src || ''),
+            alt: String(item?.alt || ''),
+          }))
+          .filter((item) => item.id && item.src);
+      } catch {
+        return [];
+      }
+    };
+
+    const readVisible = (target: HTMLElement, catalog: CatalogItem[]): string[] => {
+      const itemIds = catalog.map((item) => item.id);
+      const known = new Set(itemIds);
+      try {
+        const parsed = JSON.parse(target.dataset.devCarouselVisible || 'null');
+        if (Array.isArray(parsed)) {
+          const seen = new Set<string>();
+          const next: string[] = [];
+          for (const raw of parsed) {
+            const id = String(raw || '');
+            if (!known.has(id) || seen.has(id)) continue;
+            seen.add(id);
+            next.push(id);
+          }
+          return next;
+        }
+      } catch {
+        // fall through
+      }
+      return [...itemIds];
+    };
+
+    const readSettings = (target: HTMLElement, catalog: CatalogItem[]): Settings => {
+      const rawMax = Math.round(Number(target.dataset.devCarouselMaxVh));
+      return {
+        orientation: target.dataset.devCarouselOrientation === 'vertical' ? 'vertical' : 'horizontal',
+        heightMode: target.dataset.devCarouselHeightMode === 'tallest' ? 'tallest' : 'dynamic',
+        maxHeightVh: MAX_VH_STEPS.includes(rawMax) ? rawMax : null,
+        scrollPinned: target.dataset.devCarouselScrollPinned === 'true',
+        dotsPlacement: (['outside', 'over', 'hidden'] as DotsPlacement[])
+          .find((placement) => placement === target.dataset.devCarouselDotsPlacement) ?? 'outside',
+        visible: readVisible(target, catalog),
+      };
+    };
+
+    let editTarget = initialTarget;
+    let catalog = readCatalog(editTarget);
+    let itemIds = catalog.map((item) => item.id);
+    let saved = readSettings(editTarget, catalog);
+    let draft = { ...saved, visible: [...saved.visible] };
+    let liveApply = false;
+    let dragItemId: string | null = null;
+    const diskBaselines = new Map<string, Settings>();
+
+    const pendingIdFor = (target: HTMLElement) => {
+      const documentKey = target.dataset.devDocument || '';
+      const carouselPath = target.dataset.devCarouselPath || '[]';
+      return `carousel:${documentKey}:${carouselPath}`;
+    };
+
+    const closePanel = () => {
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panel || panel.hidden) return;
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+    };
+
+    const cloneSettings = (settings: Settings): Settings => ({
+      ...settings,
+      visible: [...settings.visible],
+    });
+
+    /** Reorder slides/dots/captions in the live DOM to match draft.visible. */
+    const applyLayoutLive = (target: HTMLElement, visible: string[]) => {
+      const visibleSet = new Set(visible);
+      const track = target.querySelector<HTMLElement>('[data-carousel-track]');
+      const strip = target.querySelector<HTMLElement>('[data-carousel-dot-strip]');
+      const captionSlot = target.querySelector<HTMLElement>('[data-carousel-caption-slot]');
+      if (!track) return;
+
+      const slidesById = new Map(
+        [...target.querySelectorAll<HTMLElement>('[data-carousel-slide][data-grid-item-id]')]
+          .map((slide) => [slide.dataset.gridItemId || '', slide]),
+      );
+      const dotsById = new Map(
+        [...target.querySelectorAll<HTMLElement>('[data-carousel-dot][data-carousel-item-id]')]
+          .map((dot) => [dot.dataset.carouselItemId || '', dot]),
+      );
+      const captionsById = new Map(
+        [...target.querySelectorAll<HTMLElement>('[data-carousel-caption][data-carousel-item-id]')]
+          .map((caption) => [caption.dataset.carouselItemId || '', caption]),
+      );
+
+      const order = [
+        ...visible,
+        ...itemIds.filter((id) => !visibleSet.has(id)),
+      ];
+
+      order.forEach((id) => {
+        const parked = !visibleSet.has(id);
+        const slide = slidesById.get(id);
+        if (slide) {
+          if (parked) slide.dataset.carouselParked = 'true';
+          else delete slide.dataset.carouselParked;
+          track.append(slide);
+        }
+        const dot = dotsById.get(id);
+        if (dot && strip) {
+          if (parked) {
+            dot.dataset.carouselParked = 'true';
+            dot.setAttribute('aria-hidden', 'true');
+            dot.tabIndex = -1;
+          } else {
+            delete dot.dataset.carouselParked;
+            dot.removeAttribute('aria-hidden');
+            dot.tabIndex = 0;
+          }
+          strip.append(dot);
+        }
+        const caption = captionsById.get(id);
+        if (caption && captionSlot) {
+          if (parked) caption.dataset.carouselParked = 'true';
+          else delete caption.dataset.carouselParked;
+          captionSlot.append(caption);
+        }
+      });
+
+      target.dataset.devCarouselVisible = JSON.stringify(visible);
+    };
+
+    const applyToTarget = (target: HTMLElement, settings: Settings) => {
+      target.dataset.orientation = settings.orientation;
+      target.dataset.heightMode = settings.heightMode;
+      target.dataset.scrollPinned = settings.scrollPinned ? 'true' : 'false';
+      target.dataset.dotsPlacement = settings.dotsPlacement;
+      target.dataset.devCarouselDotsPlacement = settings.dotsPlacement;
+      target.dataset.devCarouselOrientation = settings.orientation;
+      target.dataset.devCarouselHeightMode = settings.heightMode;
+      target.dataset.devCarouselScrollPinned = settings.scrollPinned ? 'true' : 'false';
+      if (settings.maxHeightVh) {
+        target.style.setProperty('--project-carousel-max-vh', String(settings.maxHeightVh));
+        target.dataset.devCarouselMaxVh = String(settings.maxHeightVh);
+      } else {
+        target.style.removeProperty('--project-carousel-max-vh');
+        target.dataset.devCarouselMaxVh = '';
+      }
+      applyLayoutLive(target, settings.visible);
+      window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: target } }));
+    };
+
+    const applyLive = () => {
+      if (!liveApply) return;
+      applyToTarget(editTarget, draft);
+    };
+
+    const makeThumb = (item: CatalogItem) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'project-carousel-tuner__thumb';
+      button.draggable = true;
+      button.dataset.carouselItemId = item.id;
+      button.title = item.alt || item.id;
+      button.setAttribute('aria-label', item.alt || item.id);
+      const image = document.createElement('img');
+      image.src = item.src;
+      image.alt = '';
+      image.draggable = false;
+      button.append(image);
+      button.addEventListener('dragstart', (event) => {
+        dragItemId = item.id;
+        button.classList.add('is-dragging');
+        event.dataTransfer?.setData('text/plain', item.id);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      });
+      button.addEventListener('dragend', () => {
+        dragItemId = null;
+        button.classList.remove('is-dragging');
+        visibleBoard.classList.remove('is-drop-target');
+        parkingBoard.classList.remove('is-drop-target');
+      });
+      return button;
+    };
+
+    const insertIdAt = (list: string[], id: string, beforeId: string | null) => {
+      const without = list.filter((entry) => entry !== id);
+      if (!beforeId) {
+        without.push(id);
+        return without;
+      }
+      const index = without.indexOf(beforeId);
+      if (index < 0) {
+        without.push(id);
+        return without;
+      }
+      without.splice(index, 0, id);
+      return without;
+    };
+
+    const settingsEqual = (a: Settings, b: Settings) => (
+      a.orientation === b.orientation
+      && a.heightMode === b.heightMode
+      && a.maxHeightVh === b.maxHeightVh
+      && a.scrollPinned === b.scrollPinned
+      && a.dotsPlacement === b.dotsPlacement
+      && a.visible.length === b.visible.length
+      && a.visible.every((id, index) => id === b.visible[index])
+    );
+
+    /** Stage the current draft into the page Save bar (does not close the panel). */
+    const stageDraft = (message: string) => {
+      const target = editTarget;
+      const documentKey = target.dataset.devDocument;
+      let carouselPath: Array<string | number> = [];
+      try {
+        carouselPath = JSON.parse(target.dataset.devCarouselPath || '[]');
+      } catch {
+        carouselPath = [];
+      }
+      if (!documentKey || !Array.isArray(carouselPath) || !carouselPath.length) {
+        status.textContent = 'This carousel is not wired for saving.';
+        return false;
+      }
+
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        // Fallback — selectTarget normally freezes this on open.
+        diskBaselines.set(pendingId, cloneSettings(saved));
+      }
+      const baseline = cloneSettings(diskBaselines.get(pendingId)!);
+
+      liveApply = true;
+      applyLive();
+      const staged = cloneSettings(draft);
+
+      // Identical to disk → drop the pending entry instead of staging a no-op.
+      if (settingsEqual(staged, baseline)) {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+          detail: { id: pendingId },
+        }));
+        status.textContent = message;
+        return true;
+      }
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'carousel',
+          payload: {
+            document: documentKey,
+            path: carouselPath,
+            orientation: staged.orientation,
+            heightMode: staged.heightMode,
+            maxHeightVh: staged.maxHeightVh ?? 0,
+            scrollPinned: staged.scrollPinned,
+            dotsPlacement: staged.dotsPlacement,
+            visible: staged.visible,
+          },
+          revert: () => {
+            applyToTarget(target, baseline);
+            if (editTarget === target) {
+              saved = cloneSettings(baseline);
+              draft = cloneSettings(baseline);
+              renderDraft();
+            }
+          },
+        },
+      }));
+
+      status.textContent = message;
+      return true;
+    };
+
+    const moveItem = (id: string, destination: 'visible' | 'parking', beforeId: string | null) => {
+      const previous = [...draft.visible];
+      if (destination === 'parking') {
+        if (draft.visible.length <= 1 && draft.visible.includes(id)) {
+          status.textContent = 'Keep at least one image in the carousel.';
+          return;
+        }
+        draft.visible = draft.visible.filter((entry) => entry !== id);
+      } else {
+        draft.visible = insertIdAt(draft.visible, id, beforeId);
+      }
+      if (
+        previous.length === draft.visible.length
+        && previous.every((entry, index) => entry === draft.visible[index])
+      ) {
+        return;
+      }
+      renderDraft();
+      stageDraft(
+        destination === 'parking'
+          ? 'Image parked — use Save in the page bar to write to disk.'
+          : 'Images rearranged — use Save in the page bar to write to disk.',
+      );
+    };
+
+    const bindDropZone = (zone: HTMLElement, destination: 'visible' | 'parking') => {
+      zone.addEventListener('dragover', (event) => {
+        if (!dragItemId) return;
+        event.preventDefault();
+        zone.classList.add('is-drop-target');
+        if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      });
+      zone.addEventListener('dragleave', (event) => {
+        if (event.target === zone) zone.classList.remove('is-drop-target');
+      });
+      zone.addEventListener('drop', (event) => {
+        event.preventDefault();
+        zone.classList.remove('is-drop-target');
+        const id = dragItemId || event.dataTransfer?.getData('text/plain');
+        if (!id) return;
+        const overThumb = (event.target as HTMLElement | null)
+          ?.closest<HTMLElement>('.project-carousel-tuner__thumb');
+
+        // Dropped back on itself — leave it where it was.
+        if (overThumb?.dataset.carouselItemId === id) return;
+
+        if (destination === 'parking') {
+          moveItem(id, 'parking', null);
+          return;
+        }
+
+        // Dropped on another thumb → insert before it.
+        if (overThumb) {
+          moveItem(id, 'visible', overThumb.dataset.carouselItemId || null);
+          return;
+        }
+
+        // Empty board: keep position if already visible; append if un-parking.
+        if (draft.visible.includes(id)) return;
+        moveItem(id, 'visible', null);
+      });
+    };
+
+    bindDropZone(visibleBoard, 'visible');
+    bindDropZone(parkingBoard, 'parking');
+
+    const renderBoard = () => {
+      const byId = new Map(catalog.map((item) => [item.id, item]));
+      const visibleSet = new Set(draft.visible);
+      visibleBoard.replaceChildren(
+        ...draft.visible
+          .map((id) => byId.get(id))
+          .filter((item): item is CatalogItem => !!item)
+          .map(makeThumb),
+      );
+      const parked = itemIds
+        .filter((id) => !visibleSet.has(id))
+        .map((id) => byId.get(id))
+        .filter((item): item is CatalogItem => !!item);
+      parkingBoard.replaceChildren(parkingHint, ...parked.map(makeThumb));
+      parkingHint.hidden = parked.length > 0;
+    };
+
+    const renderDraft = () => {
+      orientationButtons.forEach((button) => {
+        const active = button.dataset.carouselOrientation === draft.orientation;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      heightSelect.value = draft.heightMode;
+      maxSelect.value = draft.maxHeightVh ? String(draft.maxHeightVh) : '';
+      pinnedInput.checked = draft.scrollPinned;
+      dotsSelect.value = draft.dotsPlacement;
+      renderBoard();
+      applyLive();
+    };
+
+    const selectTarget = (target: HTMLElement, live: boolean) => {
+      editTarget = target;
+      liveApply = live;
+      catalog = readCatalog(target);
+      itemIds = catalog.map((item) => item.id);
+      const pendingId = pendingIdFor(target);
+      if (!diskBaselines.has(pendingId)) {
+        diskBaselines.set(pendingId, cloneSettings(readSettings(target, catalog)));
+      }
+      saved = readSettings(target, catalog);
+      draft = cloneSettings(saved);
+      renderDraft();
+      if (live) status.textContent = 'Editing this carousel. Drag thumbnails to rearrange or park.';
+    };
+
+    const saveDraft = () => {
+      if (stageDraft('Staged — use Save in the page bar to write to disk.')) {
+        saved = cloneSettings(draft);
+        closePanel();
+      }
+    };
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
+      const trigger = event.detail?.trigger as HTMLElement | undefined;
+      if (trigger?.dataset.devEditTrigger !== 'carousel') return;
+      const target = trigger.closest<HTMLElement>('[data-dev-carousel-target]');
+      if (target) selectTarget(target, true);
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const trigger = event.detail?.trigger as HTMLElement | undefined;
+      if (trigger?.dataset.devEditTrigger === 'carousel') liveApply = false;
+    }) as EventListener);
+
+    selectTarget(initialTarget, false);
+
+    orientationButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const orientation = button.dataset.carouselOrientation as Orientation | undefined;
+        if (!orientation || orientation === draft.orientation) return;
+        draft.orientation = orientation;
+        renderDraft();
+        status.textContent = orientation === 'vertical'
+          ? 'Scrolls up to down — unsaved changes.'
+          : 'Scrolls left to right — unsaved changes.';
+      });
+    });
+
+    heightSelect.addEventListener('change', () => {
+      draft.heightMode = heightSelect.value as HeightMode;
+      renderDraft();
+      status.textContent = 'Block height changed — unsaved changes.';
+    });
+
+    maxSelect.addEventListener('change', () => {
+      draft.maxHeightVh = Number(maxSelect.value) || null;
+      renderDraft();
+      status.textContent = draft.maxHeightVh
+        ? `Capped at ${draft.maxHeightVh}% of the screen — unsaved changes.`
+        : 'Height cap off — unsaved changes.';
+    });
+
+    dotsSelect.addEventListener('change', () => {
+      draft.dotsPlacement = dotsSelect.value as DotsPlacement;
+      renderDraft();
+      status.textContent = 'Position dots moved — unsaved changes.';
+    });
+
+    pinnedInput.addEventListener('change', () => {
+      draft.scrollPinned = pinnedInput.checked;
+      renderDraft();
+      status.textContent = draft.scrollPinned
+        ? 'Scroll advance on — saved, but not wired up yet.'
+        : 'Scroll advance off — unsaved changes.';
+    });
+
+    saveButton.addEventListener('click', saveDraft);
+
+    revertButton.addEventListener('click', () => {
+      draft = cloneSettings(saved);
+      renderDraft();
+      // Re-stage or clear so the page bar matches the panel.
+      stageDraft('Reverted to the last saved carousel settings.');
+    });
+
+    window.addEventListener('vcd:dev-pending-committed', (() => {
+      diskBaselines.clear();
+      if (editTarget) diskBaselines.set(pendingIdFor(editTarget), cloneSettings(saved));
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-pending-reverted', (() => {
+      diskBaselines.clear();
+    }) as EventListener);
+  };
+
+  document
+    .querySelectorAll<HTMLElement>('[data-project-image-carousel-tuner]')
+    .forEach(initProjectImageCarouselTuner);
+</script>
+
+<style>
+  .project-carousel-tuner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.7em;
+    min-width: 18em;
+    max-width: 24em;
+  }
+
+  .project-carousel-tuner__segmented {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.4em;
+  }
+
+  .project-carousel-tuner__segmented button {
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+    padding: 0.45em 0.4em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .project-carousel-tuner__segmented button.is-active {
+    background: var(--color-text);
+    color: var(--color-bg);
+  }
+
+  .project-carousel-tuner__select {
+    display: grid;
+    grid-template-columns: 7.5em 1fr;
+    gap: 0.5em;
+    align-items: center;
+    font-size: 0.85rem;
+  }
+
+  .project-carousel-tuner__select[hidden] {
+    display: none;
+  }
+
+  .project-carousel-tuner__select select {
+    width: 100%;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    font: inherit;
+  }
+
+  .project-carousel-tuner__toggle {
+    display: flex;
+    gap: 0.55em;
+    align-items: center;
+    font-size: 0.85rem;
+    cursor: pointer;
+  }
+
+  .project-carousel-tuner__toggle input {
+    margin: 0;
+  }
+
+  .project-carousel-tuner__board {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45em;
+  }
+
+  .project-carousel-tuner__board-label {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .project-carousel-tuner__visible,
+  .project-carousel-tuner__parking {
+    display: grid;
+    gap: 0.35em;
+    min-height: 3.2em;
+    padding: 0.4em;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 45%, transparent);
+  }
+
+  .project-carousel-tuner__visible {
+    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
+  }
+
+  .project-carousel-tuner__parking {
+    grid-template-columns: repeat(auto-fill, minmax(2.4em, 1fr));
+    border: 1px dashed color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+  }
+
+  .project-carousel-tuner__visible.is-drop-target,
+  .project-carousel-tuner__parking.is-drop-target {
+    background: color-mix(in srgb, var(--color-text) 8%, var(--color-surface-soft));
+  }
+
+  .project-carousel-tuner__parking-hint {
+    grid-column: 1 / -1;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.3;
+    pointer-events: none;
+  }
+
+  .project-carousel-tuner__thumb {
+    position: relative;
+    aspect-ratio: 1;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0.2em;
+    overflow: hidden;
+    cursor: grab;
+    background: var(--color-surface-soft);
+  }
+
+  .project-carousel-tuner__thumb.is-dragging {
+    opacity: 0.45;
+  }
+
+  .project-carousel-tuner__thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .project-carousel-tuner__hint,
+  .project-carousel-tuner__status {
+    margin: 0;
+    color: var(--color-text-muted);
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .project-carousel-tuner__hint--indent {
+    margin-top: -0.25em;
+    padding-left: 1.55em;
+  }
+
+  .project-carousel-tuner__status {
+    font-size: 0.75rem;
+  }
+
+  .project-carousel-tuner__actions {
+    display: flex;
+    gap: 0.45em;
+    flex-wrap: wrap;
+  }
+
+  .project-carousel-tuner__actions button {
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-strong) 70%, transparent);
+    padding: 0.5em 0.7em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .project-carousel-tuner__actions button[data-carousel-save] {
+    background: var(--color-text);
+    color: var(--color-bg);
+    margin-left: auto;
+  }
+</style>
