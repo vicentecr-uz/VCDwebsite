@@ -164,6 +164,8 @@ function bindDrag(carousel: Carousel): void {
   track.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
     if ((event.target as HTMLElement).closest('button, a, [contenteditable="true"]')) return;
+    // Crop stage owns the pointer — don't steal capture mid-pan.
+    if ((event.target as HTMLElement).closest('.dev-crop-stage, .dev-crop-stage-host')) return;
     dragging = true;
     moved = 0;
     start = carousel.axis === 'vertical' ? event.clientY : event.clientX;
