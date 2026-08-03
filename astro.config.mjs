@@ -1056,6 +1056,8 @@ function contentBatchDevWriter() {
  * @returns {import('vite').Plugin}
  */
 const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle', 'image', 'imageGrid', 'placeholder']);
+/** Insertable types plus ones that only exist by conversion but must stay deletable. */
+const DELETABLE_SECTION_TYPES = new Set([...INSERTABLE_SECTION_TYPES, 'imageCarousel']);
 
 const outlineAnchorId = (entry) => {
   if (!entry || typeof entry !== 'object') return '';
@@ -1191,7 +1193,7 @@ function contentSectionDevWriter() {
               existing && typeof existing === 'object' && !Array.isArray(existing)
                 ? String(existing.type || '')
                 : '';
-            if (!INSERTABLE_SECTION_TYPES.has(existingType)) {
+            if (!DELETABLE_SECTION_TYPES.has(existingType)) {
               send(400, { error: 'That section type cannot be deleted here.' });
               return;
             }

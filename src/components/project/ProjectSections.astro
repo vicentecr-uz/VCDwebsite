@@ -1,6 +1,7 @@
 ---
 import ProjectBodyText from './ProjectBodyText.astro';
 import ProjectImage from './ProjectImage.astro';
+import ProjectImageCarousel from './ProjectImageCarousel.astro';
 import ProjectImageGrid from './ProjectImageGrid.astro';
 import ProjectPressQuoteTicker from './ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
@@ -69,6 +70,24 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         constrained={section.constrained as never}
         layouts={section.layouts as never}
         matchHeight={section.matchHeight === true}
+        document={documentKey}
+        basePath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'imageCarousel') {
+    return (
+      <ProjectImageCarousel
+        items={section.items as never}
+        orientation={section.orientation as never}
+        heightMode={section.heightMode as never}
+        maxHeightVh={section.maxHeightVh as number | undefined}
+        scrollPinned={section.scrollPinned === true}
+        defaultAspectRatio={String(section.defaultAspectRatio ?? 'original')}
+        constrained={section.constrained as never}
         document={documentKey}
         basePath={path}
         spacing={spacing}
