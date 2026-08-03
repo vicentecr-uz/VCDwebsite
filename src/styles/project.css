@@ -542,13 +542,15 @@
 /*
   Caption below the dots (and below the media row when dots sit beside a
   vertical track). Outside the slide/track so image vertical alignment is
-  unchanged — only the active slide's caption is shown.
+  unchanged. Width/left are synced in JS to the active image surface.
 */
 .project-image-carousel__caption-slot {
-  display: grid;
-  width: 100%;
-  min-width: 0;
+  display: block;
   box-sizing: border-box;
+  min-width: 0;
+  /* Width is measured from the active image surface in JS. */
+  width: 100%;
+  margin-inline: auto;
 }
 
 .project-image-carousel__caption-slot[hidden] {
@@ -556,22 +558,22 @@
 }
 
 .project-image-carousel__caption {
-  grid-area: 1 / 1;
+  display: none;
   opacity: 0;
-  transition: opacity 240ms ease;
   pointer-events: none;
 }
 
-/* Beat `.project-caption--below { opacity: 1 }` so only the active slide shows. */
-.project-image-carousel__caption.project-caption--below {
-  opacity: 0;
-}
-
 .project-image-carousel__caption.is-active,
-.project-image-carousel__caption.project-caption--below.is-active,
 .project-image-carousel__caption[data-caption-editing='true'] {
+  display: block;
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Only the in-flow active caption contributes height; others must not reserve space. */
+.project-image-carousel__caption.project-caption--below:not(.is-active):not([data-caption-editing='true']) {
+  display: none;
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
