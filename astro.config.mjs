@@ -1859,6 +1859,13 @@ function contentNavDevWriter() {
 // https://astro.build/config
 export default defineConfig({
   devToolbar: { enabled: false },
+  // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
+  // (Astro's top-level server.host — vite.server.host alone is not enough.)
+  server: {
+    host: true,
+    // Vite/Astro block unknown Host headers by default; allow LAN IPs / mDNS names.
+    allowedHosts: true,
+  },
   vite: {
     define: {
       'import.meta.env.PUBLIC_TEASER_PASSWORD': JSON.stringify(process.env.PUBLIC_TEASER_PASSWORD || 'preview'),
