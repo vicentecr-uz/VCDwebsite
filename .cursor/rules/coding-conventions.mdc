@@ -1,0 +1,12 @@
+---
+description: Cross-cutting coding conventions for VCDwebsite (mirrors CLAUDE.md)
+alwaysApply: true
+---
+
+# Coding conventions
+
+Cursor doesn't read `CLAUDE.md` automatically, so cross-cutting conventions that matter to both agent types are mirrored here. `CLAUDE.md` → **Key conventions** is the canonical, fuller list — check it too.
+
+## Viewport height units
+
+Never use raw `svh` (or `vh`) for a height constraint that matters visually — Microsoft Edge on iOS doesn't reliably honor `svh`, letting it track the address bar's show/hide mid-scroll and shove blocks below it up/down. Use a JS-computed "safe vh" custom property instead: capture `window.innerHeight * 0.01` once on load, and only recompute it on a genuine width change (never on the height-only resize an iOS toolbar toggle fires). Keep `svh` only as the pre-JS/no-JS fallback (`var(--your-safe-vh, 1svh)`). Reference implementation: `--rcb-vh-safe` in `src/components/project/ProjectRedditCommentCarousel.astro`. See issue #96.
