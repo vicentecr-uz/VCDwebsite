@@ -138,6 +138,7 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 - `status`: `published` | `draft` | `teaser` — controls public visibility and build output
 - Draft images: `draft:{slug}/file.jpg` in JSON → `src/content/drafts/media/` (dev); auto-promoted to `public/images/` when project settings are saved as `published` or `teaser`
 - Dev mode: drag-and-drop images (`DevImageDrop`), text/spacing editors, crop/grid tuners
+- **New slug 404s in an already-running session:** Astro caches `getStaticPaths()` — a newly added `{slug}.json` (or checking out a branch that adds one) will hit `/404` until you restart (`bun run dev:session:stop` then `bun run dev:session`). Do not dig into routing until you've restarted.
 
 **Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes. `LegacyProjectGrid` is case-study media clusters — not the same as site `ProjectGrid` listings.
 
