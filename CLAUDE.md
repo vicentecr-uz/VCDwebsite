@@ -55,12 +55,26 @@ The save bar has two buttons:
 - **Save** — disk only, unchanged behaviour. Use when the edit should sit locally until it's committed by hand.
 - **Save & Publish** — saves, then commits the content surface to `main` and pushes. Cloudflare deploys ~30s later.
 
-Publish only works on `main` (content always lives on `main`). On a feature branch the button is disabled and its tooltip names the current branch; plain Save still works everywhere.
+Content always lands on `main`, but **you don't have to be standing there**. From a feature branch the commit is built against `main` and pushed; your checkout, your index, and your branch are untouched.
+
+What gates Publish is whether the branch changes **content-rendering code**, not which branch you're on:
+
+- No rendering changes → Publish works, from any branch.
+- Rendering changes present → the bar shows an amber ⚠ naming the files, Publish steps down to an outline, and clicking it asks you to confirm before going ahead.
+
+The reason for the gate: content and the engine that renders it are versioned separately, and only the engine travels through the branch. A content edit that depends on an unmerged feature breaks the live site **silently** — there's no schema, and `ProjectSections.astro` dispatches on `section.type` through an `if` chain ending in `return null`, so an unknown section type just vanishes and an unknown field is ignored.
+
+The check is deliberately **branch-level**, not field-level. A per-field check (feature manifest, static analysis of `main`'s renderer) fails **open** — one unregistered field silently permits a breaking publish. This fails closed, and the override covers the false positives, because you know whether you just used a new toggle and the check can't. **Don't re-litigate this without a new reason.**
 
 Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in `astro.config.mjs`):
 
-- `GET /api/publish` → `{ branch, files, canPublish }`; the save bar polls it on load and on dev-mode entry to set the button state.
-- `POST /api/publish` → stages **only** `src/content` + `public/images`, commits, pushes. It refuses if anything outside that surface is already staged, rather than sweeping it into the commit.
+- `RENDERING_PATHS` is the gate's path list. A stale list fails **open**, so err towards adding a path when you add a component.
+- `GET /api/publish` → `{ branch, files, canPublish, onPublishBranch, rendersContent, renderingFiles }`; the save bar polls it on load and on dev-mode entry.
+- `files` means **unpublished**, `behind` means **`main` moved and this branch hasn't picked it up**. Both differ from `main`; only the first is yours to publish. A file you haven't touched since you last published or branched is `behind` — offering to publish it would revert whatever landed on `main`. `behind` shows in the branch-label tooltip, not the change count.
+- `.git/vcd-last-publish.json` records `path → blob sha` for everything this checkout has published. It's what lets the staleness guard tell **our own** last publish from a foreign one — without it, publishing twice from the same branch fails the second time, because `main` carries a commit the branch's merge base predates. Local, never committed.
+- `POST /api/publish` (`{ manifest, force }`) → on `main`, stages **only** `src/content` + `public/images` and commits in place; it refuses if anything outside that surface is already staged. Off `main`, it builds the commit with plumbing against a scratch index (`read-tree` from `origin/main` → swap in content blobs → `commit-tree` → push the bare SHA), so nothing is ever staged in your checkout. It refuses if `main` has newer edits to the files being published **that didn't come from here**.
+- **Publishing off-branch leaves your branch one commit behind `main` — that's the design, not a fault.** The commit lands on `main`; your branch never moves. It resolves when the branch merges or rebases.
+- `bun run test:publish` exercises both paths against throwaway repos. **Run it after any change here** — the off-branch path is plumbing, and a subtle mistake shows up as a bad commit on `main`.
 - The commit subject is written by a **local model** — `gemma3:4b` via Ollama on `localhost:11434` — given the save bar's **change manifest** (semantic counts like `3 crops`, `2 text fields`), not the JSON diff, which is mostly reordering noise. No API key, no cost, no network.
 - Ollama runs as a login service (`brew services start ollama`, ~34MB idle). If it's down, missing the model, or slow, publishing still succeeds with a deterministic message built from the same manifest (`content: update tapico (5 changes)`). **Message generation must never block a publish.**
 - `gemma3:1b` was tried and rejected — it hallucinated page names, which is disqualifying for text landing in git history unattended. Don't swap the model without re-benchmarking. Two things in `SYSTEM_PROMPT` are load-bearing at this model size: naming the banned verb forms explicitly, and **no few-shot example** (an example block makes it echo the manifest back verbatim). Field paths are deliberately kept out of the prompt — the model copies them into the subject instead of describing the edit.
@@ -69,7 +83,7 @@ Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in
 
 `src/content/**` and `public/images/**` are the **content surface**. Everything else is **engine**.
 
-- Content publishes to `main` from the save bar. Never stage it in a feature commit.
+- Content publishes to `main` from the save bar, from whatever branch you're on. Never stage it in a feature commit.
 - Engine work goes on a feature branch. Commit it with:
 
   ```bash
