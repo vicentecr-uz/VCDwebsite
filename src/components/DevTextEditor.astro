@@ -1,6 +1,7 @@
 <div class="dev-text-actions" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
     <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
+    <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
     <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
@@ -184,6 +185,7 @@
     const publishButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-publish]');
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
+    const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
     const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
@@ -197,7 +199,7 @@
     const spacingElements = [
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
-    if (!actions || !saveButton || !publishButton || !revertButton || !status) return;
+    if (!actions || !saveButton || !publishButton || !revertButton || !status || !branchLabel) return;
     if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
@@ -2498,16 +2500,28 @@
           canPublish?: boolean;
           publishBranch?: string;
         };
+        const branch = state.branch || 'detached HEAD';
+        const target = state.publishBranch ?? 'main';
         publishButton.hidden = false;
+        branchLabel.hidden = false;
+        branchLabel.textContent = branch;
+        // Off the publish branch the name steps up to full text colour — the
+        // disabled button says you can't publish, this says which branch is why.
+        branchLabel.classList.toggle('is-dev-branch-off-target', !state.canPublish);
         if (state.canPublish) {
           publishButton.disabled = false;
-          publishButton.title = `Save, commit, and push to ${state.publishBranch ?? 'main'}`;
+          publishButton.title = `Save, commit, and push to ${target}`;
+          branchLabel.title = `On ${branch} — content publishes from here`;
         } else {
           publishButton.disabled = true;
-          publishButton.title = `On ${state.branch || 'a detached HEAD'} — switch to ${state.publishBranch ?? 'main'} to publish`;
+          publishButton.title = `On ${branch} — switch to ${target} to publish`;
+          branchLabel.title = `On ${branch} — switch to ${target} to publish content`;
         }
       } catch {
+        // Not a git repo, or the dev route is unavailable — say nothing rather
+        // than showing a branch we can't vouch for.
         publishButton.hidden = true;
+        branchLabel.hidden = true;
       }
     };
 
@@ -2661,6 +2675,25 @@
     color: var(--color-text-soft);
     font-size: 0.75rem;
     white-space: nowrap;
+  }
+
+  .dev-text-actions__branch {
+    max-width: 12em;
+    overflow: hidden;
+    border-left: 1px solid var(--color-border);
+    padding-inline: 0.6em 0.45em;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .dev-text-actions__branch[hidden] {
+    display: none;
+  }
+
+  .dev-text-actions__branch.is-dev-branch-off-target {
+    color: var(--color-text);
   }
 
   .dev-text-actions button {
