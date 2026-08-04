@@ -21,6 +21,16 @@ import {
   resolveMaxVh,
 } from '../lib/projectImageFrame';
 import { bindProjectCropCovers } from '../lib/projectCropCover';
+import {
+  bindProjectImageCarousels,
+  carouselDotAppearance,
+  carouselDotGeometry,
+} from '../lib/projectImageCarousel';
+import {
+  resolveCarouselSettings,
+  serializeCarouselSettings,
+  type CarouselSettingsSource,
+} from '../lib/projectImageCarouselSettings';
 
 type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
@@ -265,6 +275,260 @@ export function mountImageGridSection(
   return grid;
 }
 
+function mountImageCarouselSection(
+  section: MountedSection,
+  documentKey: string,
+  index: number,
+): HTMLElement {
+  const spacing = String(section.spacing ?? 'section');
+  const sectionPath = ['sections', index];
+  const items = Array.isArray(section.items) ? section.items as MountedSection[] : [];
+  const constrained = resolveImageGridConstrained(section.constrained as never);
+  const defaultAspectRatio = String(section.defaultAspectRatio ?? 'original');
+  const itemIds = items.map((item, itemIndex) => String(item.id ?? `item-${itemIndex}`));
+  const settingsSource: CarouselSettingsSource = {
+    orientation: section.orientation === 'vertical' ? 'vertical' : 'horizontal',
+    heightMode: section.heightMode === 'tallest' ? 'tallest' : 'dynamic',
+    maxHeightVh: typeof section.maxHeightVh === 'number' ? section.maxHeightVh : undefined,
+    scrollPinned: section.scrollPinned === true,
+    dotsPlacement: (
+      section.dotsPlacement === 'over' || section.dotsPlacement === 'hidden'
+        ? section.dotsPlacement
+        : 'outside'
+    ),
+    visible: Array.isArray(section.visible)
+      ? section.visible.map((value) => String(value))
+      : undefined,
+    breakpoints: (
+      section.breakpoints
+      && typeof section.breakpoints === 'object'
+      && !Array.isArray(section.breakpoints)
+    )
+      ? section.breakpoints as CarouselSettingsSource['breakpoints']
+      : undefined,
+  };
+  const resolved = resolveCarouselSettings(settingsSource, itemIds);
+  const live = resolved.byViewport.desktop;
+  const settingsJson = serializeCarouselSettings(
+    resolved.orientation,
+    resolved.byViewport,
+    itemIds,
+  );
+  const visibleIds = live.visible;
+  const parkedIds = itemIds.filter((id) => !visibleIds.includes(id));
+  const orderedIds = [...visibleIds, ...parkedIds];
+  const visibleCount = visibleIds.length;
+  const dotGeometry = carouselDotGeometry(0, visibleCount);
+
+  const editorItems = items.map((item, itemIndex) => ({
+    id: itemIds[itemIndex],
+    src: projectImage(String(item.src ?? '')),
+    alt: String(item.alt ?? ''),
+  }));
+
+  const block = document.createElement('div');
+  block.className = [
+    'project-image-carousel',
+    STACK_CLASS[spacing as SpacingValue] ?? null,
+    'dev-carousel-edit-target',
+  ].filter(Boolean).join(' ');
+  block.style.cssText = [
+    imageGridConstrainedStyle(constrained),
+    live.maxHeightVh ? `--project-carousel-max-vh:${live.maxHeightVh}` : '',
+  ].filter(Boolean).join(';');
+  block.setAttribute('data-project-image-carousel', '');
+  block.setAttribute('data-carousel-settings', JSON.stringify(settingsJson));
+  block.setAttribute('data-orientation', resolved.orientation);
+  block.setAttribute('data-height-mode', live.heightMode);
+  block.setAttribute('data-scroll-pinned', live.scrollPinned ? 'true' : 'false');
+  block.setAttribute('data-dots-placement', live.dotsPlacement);
+  block.setAttribute('data-dev-carousel-target', 'carousel');
+  block.setAttribute('data-dev-document', documentKey);
+  block.setAttribute('data-dev-carousel-path', JSON.stringify(sectionPath));
+  block.setAttribute('data-dev-carousel-orientation', resolved.orientation);
+  block.setAttribute('data-dev-carousel-height-mode', live.heightMode);
+  block.setAttribute('data-dev-carousel-max-vh', String(live.maxHeightVh ?? ''));
+  block.setAttribute('data-dev-carousel-scroll-pinned', live.scrollPinned ? 'true' : 'false');
+  block.setAttribute('data-dev-carousel-dots-placement', live.dotsPlacement);
+  block.setAttribute('data-dev-carousel-constrained', JSON.stringify(constrained));
+  block.setAttribute('data-dev-carousel-default-aspect', defaultAspectRatio);
+  block.setAttribute('data-dev-carousel-items', JSON.stringify(editorItems));
+  block.setAttribute('data-dev-carousel-visible', JSON.stringify(visibleIds));
+  block.setAttribute('data-dev-carousel-settings', JSON.stringify(settingsJson));
+  block.setAttribute('data-dev-spacing-document', documentKey);
+  block.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));
+  block.setAttribute('data-dev-spacing-value', spacing);
+  block.setAttribute('data-dev-section-deletable', 'imageCarousel');
+
+  const editTrigger = document.createElement('button');
+  editTrigger.type = 'button';
+  editTrigger.className = 'dev-grid-edit-trigger';
+  editTrigger.setAttribute('data-dev-edit-trigger', 'carousel');
+  editTrigger.setAttribute('data-dev-corner', 'top-left');
+  editTrigger.setAttribute('data-dev-mode-only', '');
+  editTrigger.hidden = true;
+  editTrigger.textContent = 'Edit carousel';
+  block.append(editTrigger);
+
+  const media = document.createElement('div');
+  media.className = 'project-image-carousel__media';
+
+  const clip = document.createElement('div');
+  clip.className = 'project-image-carousel__clip';
+  clip.setAttribute('data-carousel-clip', '');
+
+  const track = document.createElement('div');
+  track.className = 'project-image-carousel__track';
+  track.setAttribute('data-carousel-track', '');
+  track.tabIndex = 0;
+  track.setAttribute('role', 'group');
+  track.setAttribute('aria-roledescription', 'carousel');
+  track.setAttribute('aria-label', `Image carousel, ${visibleCount} images`);
+
+  const itemById = new Map(items.map((item, itemIndex) => [itemIds[itemIndex], { item, itemIndex }]));
+
+  orderedIds.forEach((id) => {
+    const entry = itemById.get(id);
+    if (!entry) return;
+    const { item, itemIndex } = entry;
+    const parked = !visibleIds.includes(id);
+    const displayIndex = visibleIds.indexOf(id);
+    const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(
+      {
+        src: String(item.src ?? ''),
+        variants: item.variants as ImageVariants | undefined,
+        srcWidth: item.srcWidth,
+        srcHeight: item.srcHeight,
+      },
+      defaultAspectRatio,
+    );
+    const maxVh = resolveMaxVh(item);
+    const placeholder = isPlaceholderSrc(String(item.src ?? ''));
+    const editAttrs = imageDevEditAttrs(true, {
+      documentKey,
+      path: [...sectionPath, 'items', itemIndex],
+      cropId: id,
+      variants,
+      gridDefaultAspect: defaultAspectRatio,
+      hasOwnVariants,
+      maxVh,
+    });
+
+    const figure = document.createElement('figure');
+    figure.className = [
+      'project-image-carousel__slide',
+      'project-image-grid__item',
+      'project-responsive-image',
+      placeholder && 'project-media--placeholder',
+      'dev-image-edit-target',
+    ].filter(Boolean).join(' ');
+    figure.style.cssText = `${variantStyle}${maxVh ? `;--project-max-vh:${maxVh}` : ''}`;
+    figure.setAttribute('data-carousel-slide', '');
+    if (!parked) figure.setAttribute('data-carousel-index', String(displayIndex));
+    if (parked) figure.setAttribute('data-carousel-parked', 'true');
+    if (maxVh) figure.setAttribute('data-max-vh', String(maxVh));
+    figure.setAttribute('data-grid-item-id', id);
+    figure.setAttribute('aria-roledescription', 'slide');
+    if (!parked) figure.setAttribute('aria-label', `${displayIndex + 1} of ${visibleCount}`);
+    if (parked) figure.setAttribute('aria-hidden', 'true');
+    applyDataAttrs(figure, editAttrs);
+
+    const surface = document.createElement('div');
+    surface.className = 'project-image-carousel__surface';
+
+    const frame = document.createElement('div');
+    frame.className = 'project-image-grid__frame';
+    frame.setAttribute('data-carousel-frame', '');
+
+    const img = document.createElement('img');
+    img.src = projectImage(String(item.src ?? ''));
+    img.alt = String(item.alt ?? '');
+    img.className = 'project-image-grid__image';
+    img.loading = displayIndex === 0 ? 'eager' : 'lazy';
+    frame.append(img);
+    surface.append(frame);
+
+    const captionAdd = document.createElement('button');
+    captionAdd.type = 'button';
+    captionAdd.className = 'dev-caption-add-trigger';
+    captionAdd.setAttribute('data-dev-edit-trigger', 'caption');
+    captionAdd.setAttribute('data-caption-action', 'add');
+    captionAdd.setAttribute('data-dev-mode-only', '');
+    captionAdd.hidden = true;
+    captionAdd.textContent = 'Add caption';
+
+    const imageEdit = document.createElement('button');
+    imageEdit.type = 'button';
+    imageEdit.className = 'dev-image-edit-trigger';
+    imageEdit.setAttribute('data-dev-edit-trigger', 'image');
+    imageEdit.setAttribute('data-dev-mode-only', '');
+    imageEdit.hidden = true;
+    imageEdit.textContent = 'Edit image';
+
+    surface.append(captionAdd, imageEdit);
+    figure.append(surface);
+    track.append(figure);
+  });
+
+  clip.append(track);
+  media.append(clip);
+
+  const dots = document.createElement('div');
+  dots.className = 'project-image-carousel__dots';
+  dots.setAttribute('data-carousel-dots', '');
+  dots.hidden = visibleCount < 2;
+
+  const dotWindow = document.createElement('div');
+  dotWindow.className = 'project-image-carousel__dot-window';
+  dotWindow.setAttribute('data-carousel-dot-window', '');
+  dotWindow.style.setProperty('--project-carousel-dot-count', String(dotGeometry.span));
+
+  const dotStrip = document.createElement('div');
+  dotStrip.className = 'project-image-carousel__dot-strip';
+  dotStrip.setAttribute('data-carousel-dot-strip', '');
+  dotStrip.style.setProperty('--project-carousel-dot-offset', String(dotGeometry.first));
+
+  orderedIds.forEach((id) => {
+    const parked = !visibleIds.includes(id);
+    const displayIndex = visibleIds.indexOf(id);
+    const { activeness, scale } = parked
+      ? { activeness: 0, scale: 0 }
+      : carouselDotAppearance(displayIndex, 0, dotGeometry.centre);
+    const dot = document.createElement('button');
+    dot.type = 'button';
+    dot.className = 'project-image-carousel__dot';
+    dot.setAttribute('data-carousel-dot', '');
+    if (!parked) dot.setAttribute('data-carousel-index', String(displayIndex));
+    dot.setAttribute('data-carousel-item-id', id);
+    if (parked) dot.setAttribute('data-carousel-parked', 'true');
+    dot.style.setProperty('--project-carousel-dot-activeness', String(activeness));
+    dot.style.setProperty('--project-carousel-dot-scale', String(scale));
+    dot.setAttribute('aria-current', !parked && displayIndex === 0 ? 'true' : 'false');
+    if (!parked) dot.setAttribute('aria-label', `Go to image ${displayIndex + 1}`);
+    if (parked) {
+      dot.setAttribute('aria-hidden', 'true');
+      dot.tabIndex = -1;
+    }
+    const mark = document.createElement('span');
+    mark.className = 'project-image-carousel__dot-mark';
+    dot.append(mark);
+    dotStrip.append(dot);
+  });
+
+  dotWindow.append(dotStrip);
+  dots.append(dotWindow);
+  media.append(dots);
+  block.append(media);
+
+  const captionSlot = document.createElement('div');
+  captionSlot.className = 'project-image-carousel__caption-slot';
+  captionSlot.setAttribute('data-carousel-caption-slot', '');
+  captionSlot.hidden = true;
+  block.append(captionSlot);
+
+  return block;
+}
+
 export function mountInsertedSection(
   section: MountedSection,
   documentKey: string,
@@ -272,6 +536,7 @@ export function mountInsertedSection(
 ): HTMLElement {
   const type = String(section.type ?? '');
   if (type === 'imageGrid') return mountImageGridSection(section, documentKey, index);
+  if (type === 'imageCarousel') return mountImageCarouselSection(section, documentKey, index);
   return mountImageSection(section, documentKey, index);
 }
 
@@ -286,4 +551,5 @@ export function syncDevModeOnSection(root: HTMLElement, devMode: boolean) {
 
 export function initMountedSectionCovers(root: HTMLElement) {
   bindProjectCropCovers(root);
+  bindProjectImageCarousels(root);
 }

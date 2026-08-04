@@ -315,6 +315,54 @@ export async function buildImageGridSectionFromSrcs(srcs) {
   };
 }
 
+export async function buildImageCarouselSection(documentKey, filenames) {
+  const id = `carousel-${Date.now().toString(36)}`;
+  const items = await Promise.all(filenames.map(async (filename, index) => ({
+    id: `item-${index + 1}-${Date.now().toString(36)}`,
+    src: draftMediaSrc(documentKey, filename),
+    alt: '',
+    ...(await readImageDims(documentKey, filename) ?? {}),
+    variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
+  })));
+  return {
+    type: 'imageCarousel',
+    id,
+    orientation: 'horizontal',
+    heightMode: 'dynamic',
+    dotsPlacement: 'outside',
+    defaultAspectRatio: 'original',
+    spacing: 'section',
+    items,
+    visible: items.map((item) => item.id),
+  };
+}
+
+/** Build an image carousel from existing canonical src tokens (draft: or public filenames). */
+export async function buildImageCarouselSectionFromSrcs(srcs) {
+  const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
+  const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
+  if (!tokens.length) throw new Error('At least one image file is required.');
+  const id = `carousel-${Date.now().toString(36)}`;
+  const items = await Promise.all(tokens.map(async (src, index) => ({
+    id: `item-${index + 1}-${Date.now().toString(36)}`,
+    src,
+    alt: '',
+    ...(await readImageDimsFromSrc(src) ?? {}),
+    variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
+  })));
+  return {
+    type: 'imageCarousel',
+    id,
+    orientation: 'horizontal',
+    heightMode: 'dynamic',
+    dotsPlacement: 'outside',
+    defaultAspectRatio: 'original',
+    spacing: 'section',
+    items,
+    visible: items.map((item) => item.id),
+  };
+}
+
 export function emptyModernProject(slug, title, grid) {
   const year = `'${new Date().getFullYear().toString().slice(-2)}`;
   const listing = grid === 'play'
