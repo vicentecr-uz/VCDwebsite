@@ -34,6 +34,16 @@ This *is* permission to create/switch to **that feature branch for this chat’s
 - Only stage and commit files changed **in this chat session**. Leave other unstaged edits alone.
 - One logical change set per branch/PR. Say which branch commits land on.
 
+### Content vs engine — never mix them in one commit
+
+`src/content/**` and `public/images/**` are the **content surface**: Anto publishes those to `main` himself from the dev save bar ("Save & Publish"). Everything else is **engine** work.
+
+- **Do not stage the content surface** in a feature commit. Dirty content files sitting next to your work are not yours to commit — leave them.
+- Commit engine work with `bun run commit:engine "message" <paths you changed>`. It refuses content paths and reports what it held back. **Always pass your paths** — the no-paths form sweeps every dirty engine file in the tree, including work from other sessions, and warns you when it does.
+- Only exception: a schema migration that forces content JSON to change alongside the code. Commit them together and say so in the message.
+
+See CLAUDE.md → *Content vs engine*.
+
 ## PRs and main
 
 - **Open PR** ≠ merge. Merge only when the user asks.
