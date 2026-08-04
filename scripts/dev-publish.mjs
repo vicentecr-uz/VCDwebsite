@@ -1,7 +1,7 @@
 // @ts-check
 import { execFile as execFileCb } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -112,6 +112,68 @@ function porcelainPath(line) {
 
 const isRenderingPath = (file) => RENDERING_PATHS.some((prefix) => file.startsWith(prefix));
 
+/**
+ * What this checkout last published, as `path → blob sha` (null for a deletion).
+ *
+ * Without it the staleness guard cannot tell *our own* last publish from someone
+ * else's: publish twice from the same feature branch and the second attempt sees
+ * main carrying a commit to that file which the branch's merge base predates,
+ * and refuses — so cross-branch publishing worked exactly once per branch.
+ *
+ * Local to the checkout (it lives in .git, is never committed, and never syncs)
+ * because that is exactly what it describes: what *this* working tree last sent.
+ */
+async function publishRecordPath() {
+  const gitDir = await git('rev-parse', '--absolute-git-dir');
+  return path.join(gitDir, 'vcd-last-publish.json');
+}
+
+async function readPublishRecord() {
+  try {
+    return JSON.parse(await readFile(await publishRecordPath(), 'utf8'));
+  } catch {
+    // Absent or unreadable — fall back to merge-base comparison for every file.
+    return {};
+  }
+}
+
+async function writePublishRecord(entries) {
+  try {
+    const record = { ...await readPublishRecord(), ...entries };
+    await writeFile(await publishRecordPath(), `${JSON.stringify(record, null, 2)}\n`);
+  } catch {
+    // A missing record only costs a false "main has newer edits" later, which is
+    // recoverable. Never fail a publish that already landed over bookkeeping.
+  }
+}
+
+/** Blob sha of `file` at `ref`, or null when it does not exist there. */
+async function blobAt(ref, file) {
+  try {
+    return await git('rev-parse', `${ref}:${file}`);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Files whose version on main did not come from us and is not what our branch
+ * started from — publishing those would silently revert whoever wrote them.
+ *
+ * A file matching our last-published blob is safe no matter how far main has
+ * moved: we put that version there, and nothing has changed it since.
+ */
+async function staleFiles(files, target, mergeBase) {
+  const record = await readPublishRecord();
+  const stale = [];
+  for (const file of files) {
+    const theirs = await blobAt(target, file);
+    if (Object.hasOwn(record, file) && record[file] === theirs) continue;
+    if (theirs !== await blobAt(mergeBase, file)) stale.push(file);
+  }
+  return stale;
+}
+
 /** Porcelain lines → paths, dropping anything git quoted or we could not parse. */
 const porcelainPaths = (raw) => raw
   .split('\n')
@@ -165,9 +227,12 @@ export async function renderingChanges() {
 /**
  * Content in this working tree that differs from the publish branch — the real
  * definition of "unpublished". Not the same as "dirty": content committed on a
- * feature branch is still unpublished, and content published from here through
- * the worktree path stops counting the moment it lands on main, even though it
- * stays dirty against the feature branch until that branch merges.
+ * feature branch is still unpublished, and content published from here off-branch
+ * stops counting the moment it lands on main, even though it stays dirty against
+ * the feature branch until that branch merges.
+ *
+ * Returns `{ files, behind }` — see splitAheadBehind() for why the difference
+ * between the two matters.
  */
 async function unpublishedContent() {
   const paths = await trackedContentPaths();
@@ -176,7 +241,10 @@ async function unpublishedContent() {
   if (!base) {
     // No main to compare against (a fresh clone of a branch, say) — fall back to
     // plain dirtiness, which is what this reported before cross-branch publish.
-    return paths.length ? porcelainPaths(await gitRaw('status', '--porcelain', '--', ...paths)) : [];
+    return {
+      files: paths.length ? porcelainPaths(await gitRaw('status', '--porcelain', '--', ...paths)) : [],
+      behind: [],
+    };
   }
 
   const changed = new Set();
@@ -193,18 +261,55 @@ async function unpublishedContent() {
   for (const file of lines(await git('ls-files', '--others', '--exclude-standard'))) {
     if (isContentPath(file)) changed.add(file);
   }
-  return [...changed].sort();
+
+  return splitAheadBehind([...changed].sort(), base);
+}
+
+/**
+ * "Differs from main" is two different situations and only one is publishable.
+ *
+ * If our copy is still exactly what we last put on main (or what this branch
+ * started from), we have not edited it — **main moved and we are behind**.
+ * Counting that as unpublished is a lie in the direction that matters: it invites
+ * a publish that would revert whoever moved main.
+ *
+ * Only a file we have actually changed since we last synced is ahead.
+ */
+async function splitAheadBehind(files, target) {
+  if (!files.length) return { files: [], behind: [] };
+
+  const record = await readPublishRecord();
+  let mergeBase = null;
+  try {
+    mergeBase = await git('merge-base', 'HEAD', target);
+  } catch {
+    // No shared history — every difference reads as ours, which is the safe way
+    // round: the staleness guard still refuses anything main changed under us.
+  }
+
+  const ahead = [];
+  const behind = [];
+  for (const file of files) {
+    const absolute = path.join(process.cwd(), file);
+    const ours = existsSync(absolute) ? await git('hash-object', '--', absolute) : null;
+    const lastSynced = Object.hasOwn(record, file)
+      ? record[file]
+      : (mergeBase ? await blobAt(mergeBase, file) : null);
+    (ours === lastSynced ? behind : ahead).push(file);
+  }
+  return { files: ahead, behind };
 }
 
 /** Branch, what is unpublished inside the content surface, and whether it is safe to publish. */
 export async function publishStatus() {
   const branch = await git('branch', '--show-current');
-  const files = await unpublishedContent();
+  const { files, behind } = await unpublishedContent();
   const renderingFiles = await renderingChanges();
 
   return {
     branch,
     files,
+    behind,
     // Publishing is no longer gated on being on main — content commits to main
     // through a worktree from wherever you are. What it is gated on is whether
     // this branch could have produced content main cannot render.
@@ -379,6 +484,12 @@ async function publishInPlace(manifest) {
     };
   }
 
+  // Recorded here too, so a later publish from a feature branch knows these
+  // versions of main came from this checkout rather than from someone else.
+  await writePublishRecord(
+    Object.fromEntries(await Promise.all(stagedNow.map(async (file) => [file, await blobAt('HEAD', file)]))),
+  );
+
   return { ok: true, pushed: true, message, generated, files: stagedNow };
 }
 
@@ -412,13 +523,14 @@ async function publishFromBranch(manifest, files) {
   const target = `origin/${PUBLISH_BRANCH}`;
   const mergeBase = await git('merge-base', 'HEAD', target);
 
-  // Guard: if main moved on any file we are about to write, our copy is stale
-  // and publishing would silently revert whoever published last.
-  const clobbered = lines(await git('diff', '--name-only', `${mergeBase}..${target}`, '--', ...files));
-  if (clobbered.length) {
+  // Guard: only refuse when main's copy of a file came from somewhere that is
+  // neither us nor this branch's starting point. Republishing a file we already
+  // published from here is the normal case, not a conflict.
+  const stale = await staleFiles(files, target, mergeBase);
+  if (stale.length) {
     return {
       ok: false,
-      error: `${PUBLISH_BRANCH} has newer edits to ${clobbered.slice(0, 3).join(', ')} — merge or rebase onto ${PUBLISH_BRANCH} first.`,
+      error: `${PUBLISH_BRANCH} has newer edits to ${stale.slice(0, 3).join(', ')} — merge or rebase onto ${PUBLISH_BRANCH} first.`,
     };
   }
 
@@ -428,15 +540,18 @@ async function publishFromBranch(manifest, files) {
   try {
     await gitWithEnv(env, 'read-tree', target);
 
+    const published = {};
     for (const file of files) {
       const absolute = path.join(process.cwd(), file);
       if (existsSync(absolute)) {
         const blob = await gitWithEnv(env, 'hash-object', '-w', '--', absolute);
         // Content is JSON and images — never executable, never a symlink.
         await gitWithEnv(env, 'update-index', '--add', '--cacheinfo', `100644,${blob},${file}`);
+        published[file] = blob;
       } else {
         // Deleted locally: publish the deletion rather than skipping the file.
         await gitWithEnv(env, 'update-index', '--force-remove', '--', file);
+        published[file] = null;
       }
     }
 
@@ -458,6 +573,9 @@ async function publishFromBranch(manifest, files) {
         error: error instanceof Error ? error.message.split('\n').pop() || 'Push failed.' : 'Push failed.',
       };
     }
+
+    // Only after the push lands: this records what main now holds because of us.
+    await writePublishRecord(published);
 
     return { ok: true, pushed: true, message, generated, files, branch: await git('branch', '--show-current') };
   } finally {

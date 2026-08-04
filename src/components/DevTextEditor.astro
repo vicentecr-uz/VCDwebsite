@@ -1120,6 +1120,19 @@
       || persistedMediaInserts.length,
     );
 
+    /**
+     * A message that must survive the next updateActions(). Publish failures used
+     * to flash for a frame and vanish — refreshPublishState() runs in the click
+     * handler's `finally` and updateActions() overwrote the text with the change
+     * count, so the one thing worth reading was the one thing you could not.
+     * Cleared by the next edit or button press, not by a repaint.
+     */
+    let stickyStatus = '';
+    const setStickyStatus = (message: string) => {
+      stickyStatus = message;
+      status.textContent = message;
+    };
+
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
@@ -1142,7 +1155,9 @@
       // the bar needed unsaved DOM state, Publish would be unreachable for it.
       actions.hidden = (!dirtyCount && !unpublishedCount)
         || !document.documentElement.classList.contains('is-dev-mode');
-      if (dirtyCount) {
+      if (stickyStatus) {
+        status.textContent = stickyStatus;
+      } else if (dirtyCount) {
         status.textContent = `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`;
       } else if (unpublishedCount) {
         status.textContent = `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'change' : 'changes'}`;
@@ -1296,7 +1311,11 @@
 
     const bindTextState = (state: EditableTextState) => {
       const { element } = state;
-      element.addEventListener('input', updateActions);
+      // Typing is the signal that the last Save/Publish message has been read.
+      element.addEventListener('input', () => {
+        stickyStatus = '';
+        updateActions();
+      });
       if (state.kind === 'paragraphs') {
         element.addEventListener('focus', () => {
           // Defer so the browser finishes its own caret placement first.
@@ -2298,6 +2317,7 @@
 
     revertButton.addEventListener('click', () => {
       void (async () => {
+        stickyStatus = '';
         revertPendingSectionInserts();
         revertPendingSectionDeletes();
         revertDirtyEdits();
@@ -2305,7 +2325,7 @@
         try {
           await revertPersistedMediaInserts();
         } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'Could not undo image inserts.';
+          setStickyStatus(error instanceof Error ? error.message : 'Could not undo image inserts.');
           actions.hidden = false;
         }
         hideFormatBar();
@@ -2376,7 +2396,7 @@
       saveButton.disabled = true;
       publishButton.disabled = true;
       revertButton.disabled = true;
-      status.textContent = 'Saving…';
+      setStickyStatus('Saving…');
 
       try {
         // Structural mutations first: client paths are already reindexed, so
@@ -2494,11 +2514,11 @@
         pendingMedia.clear();
         persistedMediaInserts.length = 0;
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
-        status.textContent = 'Saved.';
+        setStickyStatus('Saved.');
         updateActions();
         return manifest;
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not save changes.';
+        setStickyStatus(error instanceof Error ? error.message : 'Could not save changes.');
         return null;
       } finally {
         saveButton.disabled = false;
@@ -2540,8 +2560,10 @@
           renderingFiles?: string[];
           publishBranch?: string;
           files?: string[];
+          behind?: string[];
         };
         unpublishedCount = Array.isArray(state.files) ? state.files.length : 0;
+        const behind = Array.isArray(state.behind) ? state.behind : [];
         renderingFiles = Array.isArray(state.renderingFiles) ? state.renderingFiles : [];
         const branch = state.branch || 'detached HEAD';
         const target = state.publishBranch ?? 'main';
@@ -2553,9 +2575,16 @@
         // Away from main the name steps up to full text colour — publishing still
         // works from here, but where "here" is stops being ambient information.
         branchLabel.classList.toggle('is-dev-branch-off-target', !onTarget);
-        branchLabel.title = onTarget
+        // Being behind is not something to publish — it is content someone moved
+        // on main that this branch has not picked up. Say so, rather than leaving
+        // the difference to be misread as an edit waiting to go out.
+        const behindNote = behind.length
+          ? `\n${behind.length} file${behind.length === 1 ? '' : 's'} newer on ${target} `
+            + `(${behind.slice(0, 3).join(', ')}) — merge or rebase to pick ${behind.length === 1 ? 'it' : 'them'} up.`
+          : '';
+        branchLabel.title = (onTarget
           ? `On ${branch} — content publishes from here`
-          : `On ${branch} — content publishes to ${target} without switching`;
+          : `On ${branch} — content publishes to ${target} without switching`) + behindNote;
 
         warnLabel.hidden = !state.rendersContent;
         publishButton.classList.toggle('is-dev-publish-warn', Boolean(state.rendersContent));
@@ -2596,7 +2625,7 @@
         saveButton.disabled = true;
         publishButton.disabled = true;
         revertButton.disabled = true;
-        status.textContent = 'Publishing…';
+        setStickyStatus('Publishing…');
         actions.hidden = false;
 
         const post = async (force: boolean) => {
@@ -2621,7 +2650,7 @@
               + 'If this edit does not use those changes, it is safe to publish. Publish anyway?',
             );
             if (!confirmed) {
-              status.textContent = 'Publish cancelled.';
+              setStickyStatus('Publish cancelled.');
               return;
             }
             payload = await post(true);
@@ -2630,12 +2659,12 @@
           if (!payload.ok) {
             throw new Error(payload.error || 'Could not publish.');
           }
-          status.textContent = payload.pushed
+          setStickyStatus(payload.pushed
             ? `Published — ${payload.message}`
-            : `Committed locally, push failed: ${payload.error}`;
+            : `Committed locally, push failed: ${payload.error}`);
           actions.hidden = false;
         } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'Could not publish.';
+          setStickyStatus(error instanceof Error ? error.message : 'Could not publish.');
           actions.hidden = false;
         } finally {
           saveButton.disabled = false;

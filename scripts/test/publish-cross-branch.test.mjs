@@ -190,6 +190,97 @@ await inRepo('uncommitted rendering change also blocks', async (repo) => {
   check('blocked', blocked.ok === false && blocked.needsOverride === true, blocked.error);
 });
 
+await inRepo('publishing twice from the same branch keeps working', async (repo) => {
+  // The branch never rebases, so after the first publish main carries a commit
+  // to this file that the merge base predates. That is our own commit, and a
+  // guard that cannot tell it apart makes cross-branch publish a one-shot.
+  await repo.git('switch', '-c', 'feat/copy-tweak');
+
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"First"}\n');
+  const first = await publishContent({});
+  check('first publish', first.ok === true, first.error);
+
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Second"}\n');
+  check('sees it as unpublished again', (await publishStatus()).files.includes('src/content/projects/tapico.json'));
+  const second = await publishContent({});
+  check('second publish', second.ok === true, second.error);
+  check('origin has the second edit', (await contentOnOrigin(repo)).includes('Second'));
+
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Third"}\n');
+  const third = await publishContent({});
+  check('third publish', third.ok === true, third.error);
+  check('origin has the third edit', (await contentOnOrigin(repo)).includes('Third'));
+  check('branch never moved', (await repo.git('rev-list', '--count', 'HEAD')).stdout.trim() === '1');
+});
+
+await inRepo('a foreign edit still blocks after we have published', async (repo) => {
+  // Same shape as above, but someone else lands on top of our publish — the
+  // record must not wave that through.
+  await repo.git('switch', '-c', 'feat/copy-tweak');
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Ours"}\n');
+  check('our publish', (await publishContent({})).ok === true);
+
+  const other = path.join(repo.root, 'other');
+  await execFile('git', ['clone', repo.origin, other]);
+  await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
+  await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"Theirs"}\n');
+  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await execFile('git', ['push', 'origin', 'main'], { cwd: other });
+
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Ours again"}\n');
+  const result = await publishContent({});
+  check('refused', result.ok === false && /newer edits/.test(result.error), result.error);
+  check('their edit survives', (await contentOnOrigin(repo)).includes('Theirs'));
+});
+
+await inRepo('branch behind main is reported as behind, not as unpublished', async (repo) => {
+  // Anto publishes from main while a feature branch sits untouched. The branch's
+  // copy is now the *older* one — nothing to publish, and offering to publish it
+  // would revert the edit that just went out.
+  await repo.git('switch', '-c', 'feat/idle');
+
+  const other = path.join(repo.root, 'other');
+  await execFile('git', ['clone', repo.origin, other]);
+  await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
+  await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"Published from main"}\n');
+  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await execFile('git', ['push', 'origin', 'main'], { cwd: other });
+  await repo.git('fetch', 'origin', 'main');
+
+  const status = await publishStatus();
+  check('nothing to publish', status.files.length === 0, status.files.join(', '));
+  check('reported as behind', status.behind.includes('src/content/projects/tapico.json'), status.behind.join(', '));
+
+  const result = await publishContent({});
+  check('publish is a no-op, not a revert', result.ok === false && /No content changes/.test(result.error), result.error);
+  check('the newer edit survives', (await contentOnOrigin(repo)).includes('Published from main'));
+});
+
+await inRepo('editing a file main moved is still publishable', async (repo) => {
+  // Same setup, but this time we do edit it — that is a real unpublished change,
+  // and the staleness guard is what decides whether it may land.
+  await repo.git('switch', '-c', 'feat/idle');
+
+  const other = path.join(repo.root, 'other');
+  await execFile('git', ['clone', repo.origin, other]);
+  await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
+  await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
+  await writeFile(path.join(other, 'src/content/projects/tapico.json'), '{"title":"From main"}\n');
+  await execFile('git', ['commit', '-am', 'content: update tapico'], { cwd: other });
+  await execFile('git', ['push', 'origin', 'main'], { cwd: other });
+  await repo.git('fetch', 'origin', 'main');
+
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"My own edit"}\n');
+  const status = await publishStatus();
+  check('counted as unpublished', status.files.includes('src/content/projects/tapico.json'));
+  check('not counted as behind', status.behind.length === 0, status.behind.join(', '));
+
+  const result = await publishContent({});
+  check('refused as stale', result.ok === false && /newer edits/.test(result.error), result.error);
+});
+
 await inRepo('main moved on the same file → refuses to clobber', async (repo) => {
   await repo.git('switch', '-c', 'feat/copy-tweak');
   await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Tapico from branch"}\n');
