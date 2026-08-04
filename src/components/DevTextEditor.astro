@@ -1,8 +1,10 @@
 <div class="dev-text-actions" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
     <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
+    <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
-    <button type="button" class="dev-text-actions__save" data-dev-text-save>Save</button>
+    <button type="button" data-dev-text-save>Save</button>
+    <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
   </div>
 </div>
 
@@ -180,8 +182,10 @@
 
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
+    const publishButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-publish]');
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
+    const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
     const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
@@ -195,7 +199,7 @@
     const spacingElements = [
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
-    if (!actions || !saveButton || !revertButton || !status) return;
+    if (!actions || !saveButton || !publishButton || !revertButton || !status || !branchLabel) return;
     if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
@@ -2284,7 +2288,18 @@
       })();
     });
 
-    saveButton.addEventListener('click', async () => {
+    /**
+     * What was in this save, described semantically. The JSON diff is mostly
+     * noise (a reordered section rewrites hundreds of lines); this is what the
+     * publish route hands to the model that writes the commit subject.
+     */
+    type PublishManifest = {
+      documents: string[];
+      changes: Record<string, number>;
+      textPaths: string[];
+    };
+
+    const performSave = async (): Promise<PublishManifest | null> => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
       const pendingChanges = [...pendingMedia.values()];
@@ -2306,8 +2321,35 @@
         && !pendingChanges.length
         && !structuralPending
         && !mediaInsertPending
-      ) return;
+      ) return null;
+
+      const documents = new Set<string>();
+      dirtyText.forEach((state) => documents.add(state.document));
+      dirtySpacing.forEach((state) => documents.add(state.document));
+      pendingChanges.forEach((change) => {
+        const key = (change.payload as { document?: unknown } | undefined)?.document;
+        if (typeof key === 'string' && key) documents.add(key);
+      });
+      const manifest: PublishManifest = {
+        documents: [...documents],
+        changes: {
+          text: dirtyText.length,
+          spacing: dirtySpacing.length,
+          crop: imageChanges.filter((change) => change.kind === 'crop').length,
+          grid: imageChanges.filter((change) => change.kind === 'grid').length,
+          carousel: imageChanges.filter((change) => change.kind === 'carousel').length,
+          caption: imageChanges.filter((change) => change.kind === 'caption').length,
+          mediaInsert: mediaInsertPending + placeholderFills.length,
+          sectionInsert: pendingSectionInserts.length,
+          sectionDelete: pendingSectionDeletes.length,
+          sectionOrder: sectionOrderChanges.length,
+          listingOrder: listingChanges.length,
+        },
+        textPaths: dirtyText.slice(0, 8).map((state) => state.path.join('.')),
+      };
+
       saveButton.disabled = true;
+      publishButton.disabled = true;
       revertButton.disabled = true;
       status.textContent = 'Saving…';
 
@@ -2429,16 +2471,102 @@
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
         status.textContent = 'Saved.';
         updateActions();
+        return manifest;
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not save changes.';
+        return null;
       } finally {
         saveButton.disabled = false;
+        publishButton.disabled = false;
         revertButton.disabled = false;
       }
+    };
+
+    saveButton.addEventListener('click', () => {
+      void performSave();
     });
 
+    /**
+     * Save to disk, then commit the content surface to main and push. Content
+     * lives on main, so publishing is only offered there — on a feature branch
+     * the button stays disabled and plain Save is the path.
+     */
+    const refreshPublishState = async () => {
+      try {
+        const response = await fetch('/api/publish');
+        if (!response.ok) throw new Error('unavailable');
+        const state = await response.json() as {
+          branch?: string;
+          canPublish?: boolean;
+          publishBranch?: string;
+        };
+        const branch = state.branch || 'detached HEAD';
+        const target = state.publishBranch ?? 'main';
+        publishButton.hidden = false;
+        branchLabel.hidden = false;
+        branchLabel.textContent = branch;
+        // Off the publish branch the name steps up to full text colour — the
+        // disabled button says you can't publish, this says which branch is why.
+        branchLabel.classList.toggle('is-dev-branch-off-target', !state.canPublish);
+        if (state.canPublish) {
+          publishButton.disabled = false;
+          publishButton.title = `Save, commit, and push to ${target}`;
+          branchLabel.title = `On ${branch} — content publishes from here`;
+        } else {
+          publishButton.disabled = true;
+          publishButton.title = `On ${branch} — switch to ${target} to publish`;
+          branchLabel.title = `On ${branch} — switch to ${target} to publish content`;
+        }
+      } catch {
+        // Not a git repo, or the dev route is unavailable — say nothing rather
+        // than showing a branch we can't vouch for.
+        publishButton.hidden = true;
+        branchLabel.hidden = true;
+      }
+    };
+
+    publishButton.addEventListener('click', () => {
+      void (async () => {
+        const manifest = await performSave();
+        if (!manifest) return;
+
+        saveButton.disabled = true;
+        publishButton.disabled = true;
+        revertButton.disabled = true;
+        status.textContent = 'Publishing…';
+        actions.hidden = false;
+
+        try {
+          const response = await fetch('/api/publish', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ manifest }),
+          });
+          const payload = await response.json();
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || 'Could not publish.');
+          }
+          status.textContent = payload.pushed
+            ? `Published — ${payload.message}`
+            : `Committed locally, push failed: ${payload.error}`;
+          actions.hidden = false;
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'Could not publish.';
+          actions.hidden = false;
+        } finally {
+          saveButton.disabled = false;
+          revertButton.disabled = false;
+          void refreshPublishState();
+        }
+      })();
+    });
+
+    void refreshPublishState();
+
     window.addEventListener('vcd:dev-mode-change', (event) => {
-      setEditingEnabled(Boolean((event as CustomEvent<{ active: boolean }>).detail?.active));
+      const active = Boolean((event as CustomEvent<{ active: boolean }>).detail?.active);
+      setEditingEnabled(active);
+      if (active) void refreshPublishState();
     });
     window.addEventListener('beforeunload', (event) => {
       if (devServerReloading) return;
@@ -2549,6 +2677,25 @@
     white-space: nowrap;
   }
 
+  .dev-text-actions__branch {
+    max-width: 12em;
+    overflow: hidden;
+    border-left: 1px solid var(--color-border);
+    padding-inline: 0.6em 0.45em;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .dev-text-actions__branch[hidden] {
+    display: none;
+  }
+
+  .dev-text-actions__branch.is-dev-branch-off-target {
+    color: var(--color-text);
+  }
+
   .dev-text-actions button {
     border: 0;
     border-radius: calc(var(--radius-control) - 0.2em);
@@ -2575,8 +2722,13 @@
     color: var(--color-bg);
   }
 
-  .dev-text-actions .dev-text-actions__save:hover {
+  .dev-text-actions .dev-text-actions__save:hover:not(:disabled) {
     background: var(--color-text-soft);
+  }
+
+  /* Publish is gated on being on main, not on work in flight — not a wait state. */
+  .dev-text-actions .dev-text-actions__save:disabled {
+    cursor: not-allowed;
   }
 
   /* ── Selection formatting popup ───────────────────────── */

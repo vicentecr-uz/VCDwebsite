@@ -46,7 +46,41 @@ Two ways to edit content on disk in dev — both write the same JSON under `src/
 - **Saved** = JSON on disk (survives reload)
 - **Committed/pushed to `main`** = production deploy
 
-No auto-save, no git commit on Save.
+No auto-save. **Save** never commits; **Save & Publish** does — see below.
+
+### Save vs Save & Publish
+
+The save bar has two buttons:
+
+- **Save** — disk only, unchanged behaviour. Use when the edit should sit locally until it's committed by hand.
+- **Save & Publish** — saves, then commits the content surface to `main` and pushes. Cloudflare deploys ~30s later.
+
+Publish only works on `main` (content always lives on `main`). On a feature branch the button is disabled and its tooltip names the current branch; plain Save still works everywhere.
+
+Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in `astro.config.mjs`):
+
+- `GET /api/publish` → `{ branch, files, canPublish }`; the save bar polls it on load and on dev-mode entry to set the button state.
+- `POST /api/publish` → stages **only** `src/content` + `public/images`, commits, pushes. It refuses if anything outside that surface is already staged, rather than sweeping it into the commit.
+- The commit subject is written by a **local model** — `gemma3:4b` via Ollama on `localhost:11434` — given the save bar's **change manifest** (semantic counts like `3 crops`, `2 text fields`), not the JSON diff, which is mostly reordering noise. No API key, no cost, no network.
+- Ollama runs as a login service (`brew services start ollama`, ~34MB idle). If it's down, missing the model, or slow, publishing still succeeds with a deterministic message built from the same manifest (`content: update tapico (5 changes)`). **Message generation must never block a publish.**
+- `gemma3:1b` was tried and rejected — it hallucinated page names, which is disqualifying for text landing in git history unattended. Don't swap the model without re-benchmarking. Two things in `SYSTEM_PROMPT` are load-bearing at this model size: naming the banned verb forms explicitly, and **no few-shot example** (an example block makes it echo the manifest back verbatim). Field paths are deliberately kept out of the prompt — the model copies them into the subject instead of describing the edit.
+
+### Content vs engine
+
+`src/content/**` and `public/images/**` are the **content surface**. Everything else is **engine**.
+
+- Content publishes to `main` from the save bar. Never stage it in a feature commit.
+- Engine work goes on a feature branch. Commit it with:
+
+  ```bash
+  bun run commit:engine "your message" src/components/Thing.astro scripts/thing.mjs
+  ```
+
+  **Pass the paths you changed.** Agents: this is the required form — only list files you edited in this session. The script refuses content paths outright.
+
+  The no-paths form (`bun run commit:engine "msg"`) sweeps *every* dirty engine file, which cannot distinguish your edits from another agent's in-flight work. It prints a warning when it does this. Use it only when you know the tree is otherwise clean.
+
+Exception: schema migrations that require touching content JSON alongside the code change — commit them together and say so in the message.
 
 ### Key files (agents: read these for editor bugs)
 
@@ -54,6 +88,7 @@ No auto-save, no git commit on Save.
 - `src/components/DevModeController.astro` — dev mode toggle
 - `src/components/project/ProjectImage*Tuner.astro` — crop, grid, caption pending edits
 - `scripts/dev-api-plugins.mjs` — `readDevDocument` / `writeDevDocument`, `suppressContentHmr` on every write
+- `scripts/dev-publish.mjs` — `/api/publish` (branch gate, content-only staging, commit message generation)
 - `scripts/content-hmr-gate.mjs` — suppresses full-reload WS + `handleHotUpdate` for `src/content/**` during API writes
 
 ### Text save caveat

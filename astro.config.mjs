@@ -30,6 +30,7 @@ import {
   removeMediaItemFromDocument,
 } from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
+import { publishDevWriter } from './scripts/dev-publish.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -554,8 +555,8 @@ const applyImageWidthFlags = (target, change) => {
       }
       constrained[viewport] = stepped;
     }
-    const allFull = IMAGE_VIEWPORTS.every((viewport) => constrained[viewport] === 100);
-    const allEighty = IMAGE_VIEWPORTS.every((viewport) => constrained[viewport] === 80);
+    const allFull = [...IMAGE_VIEWPORTS].every((viewport) => constrained[viewport] === 100);
+    const allEighty = [...IMAGE_VIEWPORTS].every((viewport) => constrained[viewport] === 80);
     if (allFull) {
       delete target.constrained;
     } else if (allEighty) {
@@ -1064,7 +1065,15 @@ function contentBatchDevWriter() {
           /** @type {Map<string, { crops: any[], grids: any[], carousels: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const resolveBatchChange = (documentKey, fieldPath) => {
-            const target = resolveDevFieldTarget(documentKey, '', fieldPath);
+            // resolveDevFieldTarget throws on an unknown document or an empty
+            // path; swallow it so the caller's specific message wins over the
+            // catch-all at the bottom of the handler.
+            let target;
+            try {
+              target = resolveDevFieldTarget(documentKey, '', fieldPath);
+            } catch {
+              return null;
+            }
             if (!target?.relativeFile) return null;
             let group = grouped.get(target.relativeFile);
             if (!group) {
@@ -1247,7 +1256,8 @@ function contentBatchDevWriter() {
             text: textChanges.length,
             spacing: spacingChanges.length,
           });
-        } catch {
+        } catch (error) {
+          console.error('[content-batch] save failed', error);
           send(400, { error: 'Could not parse or write the batch changes.' });
         }
       });
@@ -1967,6 +1977,7 @@ export default defineConfig({
       sectionOrderDevWriter(),
       projectSettingsDevWriter(),
       publishMediaDevWriter(),
+      publishDevWriter(),
       imageCropDevWriter(),
       imageGridDevWriter(),
       styleTokenDevWriter(),
