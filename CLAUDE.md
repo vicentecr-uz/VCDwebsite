@@ -73,10 +73,12 @@ Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in
 - Engine work goes on a feature branch. Commit it with:
 
   ```bash
-  bun run commit:engine "your message"
+  bun run commit:engine "your message" src/components/Thing.astro scripts/thing.mjs
   ```
 
-  which stages everything *except* the content surface and prints what it left alone.
+  **Pass the paths you changed.** Agents: this is the required form — only list files you edited in this session. The script refuses content paths outright.
+
+  The no-paths form (`bun run commit:engine "msg"`) sweeps *every* dirty engine file, which cannot distinguish your edits from another agent's in-flight work. It prints a warning when it does this. Use it only when you know the tree is otherwise clean.
 
 Exception: schema migrations that require touching content JSON alongside the code change — commit them together and say so in the message.
 

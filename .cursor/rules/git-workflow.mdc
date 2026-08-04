@@ -39,7 +39,7 @@ This *is* permission to create/switch to **that feature branch for this chat’s
 `src/content/**` and `public/images/**` are the **content surface**: Anto publishes those to `main` himself from the dev save bar ("Save & Publish"). Everything else is **engine** work.
 
 - **Do not stage the content surface** in a feature commit. Dirty content files sitting next to your work are not yours to commit — leave them.
-- Commit engine work with `bun run commit:engine "message"`, which stages everything outside the content surface and reports what it held back. No manual pathspec juggling, no surgical `git add`.
+- Commit engine work with `bun run commit:engine "message" <paths you changed>`. It refuses content paths and reports what it held back. **Always pass your paths** — the no-paths form sweeps every dirty engine file in the tree, including work from other sessions, and warns you when it does.
 - Only exception: a schema migration that forces content JSON to change alongside the code. Commit them together and say so in the message.
 
 See CLAUDE.md → *Content vs engine*.
