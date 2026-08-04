@@ -1105,6 +1105,19 @@
       }
     });
 
+    /** Content files changed on disk but not yet committed to the publish branch. */
+    let unpublishedCount = 0;
+
+    /** Anything in the DOM not yet written to disk. */
+    const hasPendingEdits = () => Boolean(
+      dirtyTextStates().length
+      || dirtySpacingStates().length
+      || pendingMedia.size
+      || pendingSectionDeletes.length
+      || pendingSectionInserts.length
+      || persistedMediaInserts.length,
+    );
+
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
@@ -1121,12 +1134,22 @@
       });
       spacingStates.forEach(syncSpacingControl);
 
-      actions.hidden = !dirtyCount || !document.documentElement.classList.contains('is-dev-mode');
+      // Two independent reasons to show the bar: edits not yet on disk, and
+      // edits on disk not yet published. Content saved on a feature branch and
+      // carried to main by a branch switch is only ever the second kind — if
+      // the bar needed unsaved DOM state, Publish would be unreachable for it.
+      actions.hidden = (!dirtyCount && !unpublishedCount)
+        || !document.documentElement.classList.contains('is-dev-mode');
       if (dirtyCount) {
         status.textContent = `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`;
+      } else if (unpublishedCount) {
+        status.textContent = `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'change' : 'changes'}`;
       } else {
         status.textContent = '';
       }
+      // Revert only undoes in-memory edits; it cannot take back a disk write.
+      revertButton.hidden = !dirtyCount;
+      saveButton.hidden = !dirtyCount;
     };
 
     const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
@@ -2483,7 +2506,11 @@
     };
 
     saveButton.addEventListener('click', () => {
-      void performSave();
+      void (async () => {
+        // A successful Save turns unsaved edits into unpublished ones, so the
+        // bar has to stay up — refresh the count rather than letting it hide.
+        if (await performSave()) void refreshPublishState();
+      })();
     });
 
     /**
@@ -2499,7 +2526,9 @@
           branch?: string;
           canPublish?: boolean;
           publishBranch?: string;
+          files?: string[];
         };
+        unpublishedCount = Array.isArray(state.files) ? state.files.length : 0;
         const branch = state.branch || 'detached HEAD';
         const target = state.publishBranch ?? 'main';
         publishButton.hidden = false;
@@ -2520,15 +2549,22 @@
       } catch {
         // Not a git repo, or the dev route is unavailable — say nothing rather
         // than showing a branch we can't vouch for.
+        unpublishedCount = 0;
         publishButton.hidden = true;
         branchLabel.hidden = true;
       }
+      updateActions();
     };
 
     publishButton.addEventListener('click', () => {
       void (async () => {
+        const hadUnsavedEdits = hasPendingEdits();
         const manifest = await performSave();
-        if (!manifest) return;
+        // A null manifest means either nothing was dirty — the normal case for
+        // content already on disk — or the save failed. Only the second should
+        // stop us; performSave has already put its error in the status.
+        if (hadUnsavedEdits && !manifest) return;
+        if (!manifest && !unpublishedCount) return;
 
         saveButton.disabled = true;
         publishButton.disabled = true;
