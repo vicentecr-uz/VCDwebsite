@@ -30,6 +30,7 @@ import {
   removeMediaItemFromDocument,
 } from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
+import { publishDevWriter } from './scripts/dev-publish.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -1967,6 +1968,7 @@ export default defineConfig({
       sectionOrderDevWriter(),
       projectSettingsDevWriter(),
       publishMediaDevWriter(),
+      publishDevWriter(),
       imageCropDevWriter(),
       imageGridDevWriter(),
       styleTokenDevWriter(),
