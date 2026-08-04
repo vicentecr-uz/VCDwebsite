@@ -1,6 +1,7 @@
 <div class="dev-text-actions" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
     <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
+    <span class="dev-text-actions__warn" data-dev-text-warn hidden>⚠</span>
     <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
@@ -186,6 +187,7 @@
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
     const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
+    const warnLabel = actions?.querySelector<HTMLElement>('[data-dev-text-warn]');
     const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
@@ -199,7 +201,7 @@
     const spacingElements = [
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
-    if (!actions || !saveButton || !publishButton || !revertButton || !status || !branchLabel) return;
+    if (!actions || !saveButton || !publishButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
@@ -2513,10 +2515,18 @@
       })();
     });
 
+    /** Rendering files on this branch, for the override confirm. Empty when safe. */
+    let renderingFiles: string[] = [];
+
     /**
      * Save to disk, then commit the content surface to main and push. Content
-     * lives on main, so publishing is only offered there — on a feature branch
-     * the button stays disabled and plain Save is the path.
+     * always lands on main, but you no longer have to be standing there — from a
+     * feature branch the commit is built against main and pushed, leaving this
+     * checkout untouched.
+     *
+     * What gates Publish now is whether this branch changes content-*rendering*
+     * code. If it does, the edit may depend on a feature main cannot render yet,
+     * so the bar warns and Publish asks for confirmation first.
      */
     const refreshPublishState = async () => {
       try {
@@ -2525,33 +2535,50 @@
         const state = await response.json() as {
           branch?: string;
           canPublish?: boolean;
+          onPublishBranch?: boolean;
+          rendersContent?: boolean;
+          renderingFiles?: string[];
           publishBranch?: string;
           files?: string[];
         };
         unpublishedCount = Array.isArray(state.files) ? state.files.length : 0;
+        renderingFiles = Array.isArray(state.renderingFiles) ? state.renderingFiles : [];
         const branch = state.branch || 'detached HEAD';
         const target = state.publishBranch ?? 'main';
+        const onTarget = state.onPublishBranch !== false;
         publishButton.hidden = false;
+        publishButton.disabled = false;
         branchLabel.hidden = false;
         branchLabel.textContent = branch;
-        // Off the publish branch the name steps up to full text colour — the
-        // disabled button says you can't publish, this says which branch is why.
-        branchLabel.classList.toggle('is-dev-branch-off-target', !state.canPublish);
-        if (state.canPublish) {
-          publishButton.disabled = false;
-          publishButton.title = `Save, commit, and push to ${target}`;
-          branchLabel.title = `On ${branch} — content publishes from here`;
+        // Away from main the name steps up to full text colour — publishing still
+        // works from here, but where "here" is stops being ambient information.
+        branchLabel.classList.toggle('is-dev-branch-off-target', !onTarget);
+        branchLabel.title = onTarget
+          ? `On ${branch} — content publishes from here`
+          : `On ${branch} — content publishes to ${target} without switching`;
+
+        warnLabel.hidden = !state.rendersContent;
+        publishButton.classList.toggle('is-dev-publish-warn', Boolean(state.rendersContent));
+        if (state.rendersContent) {
+          const summary = renderingFiles.slice(0, 3).join(', ')
+            + (renderingFiles.length > 3 ? `, +${renderingFiles.length - 3} more` : '');
+          const warning = `This branch changes how content renders (${summary}). `
+            + `If this edit uses those changes, ${target} cannot render it yet.`;
+          warnLabel.title = warning;
+          publishButton.title = `${warning} Publish will ask you to confirm.`;
         } else {
-          publishButton.disabled = true;
-          publishButton.title = `On ${branch} — switch to ${target} to publish`;
-          branchLabel.title = `On ${branch} — switch to ${target} to publish content`;
+          publishButton.title = onTarget
+            ? `Save, commit, and push to ${target}`
+            : `Save, commit, and push to ${target} — ${branch} stays as it is`;
         }
       } catch {
         // Not a git repo, or the dev route is unavailable — say nothing rather
         // than showing a branch we can't vouch for.
         unpublishedCount = 0;
+        renderingFiles = [];
         publishButton.hidden = true;
         branchLabel.hidden = true;
+        warnLabel.hidden = true;
       }
       updateActions();
     };
@@ -2572,14 +2599,35 @@
         status.textContent = 'Publishing…';
         actions.hidden = false;
 
-        try {
+        const post = async (force: boolean) => {
           const response = await fetch('/api/publish', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ manifest }),
+            body: JSON.stringify({ manifest, force }),
           });
-          const payload = await response.json();
-          if (!response.ok || !payload.ok) {
+          return await response.json();
+        };
+
+        try {
+          let payload = await post(false);
+
+          // The rendering-code check is branch-level on purpose, so it is coarse:
+          // it knows the branch touches rendering, not whether this edit uses it.
+          // Anto does, so ask him rather than making the call for him.
+          if (payload.needsOverride) {
+            const files: string[] = Array.isArray(payload.renderingFiles) ? payload.renderingFiles : renderingFiles;
+            const confirmed = window.confirm(
+              `This branch changes how content renders:\n\n${files.join('\n')}\n\n`
+              + 'If this edit does not use those changes, it is safe to publish. Publish anyway?',
+            );
+            if (!confirmed) {
+              status.textContent = 'Publish cancelled.';
+              return;
+            }
+            payload = await post(true);
+          }
+
+          if (!payload.ok) {
             throw new Error(payload.error || 'Could not publish.');
           }
           status.textContent = payload.pushed
@@ -2732,6 +2780,20 @@
     color: var(--color-text);
   }
 
+  /* The one colour in dev chrome. Everything else here is monochrome, so amber
+     on a single glyph is enough to read as a warning without a palette token. */
+  .dev-text-actions__warn {
+    padding-inline: 0.2em;
+    color: #b26a00;
+    font-size: 0.8rem;
+    line-height: 1;
+    cursor: help;
+  }
+
+  .dev-text-actions__warn[hidden] {
+    display: none;
+  }
+
   .dev-text-actions button {
     border: 0;
     border-radius: calc(var(--radius-control) - 0.2em);
@@ -2762,9 +2824,22 @@
     background: var(--color-text-soft);
   }
 
-  /* Publish is gated on being on main, not on work in flight — not a wait state. */
+  /* Publish only disables while a publish is in flight. */
   .dev-text-actions .dev-text-actions__save:disabled {
-    cursor: not-allowed;
+    cursor: wait;
+  }
+
+  /* Rendering code changed on this branch: step Publish down from the filled
+     default action to an outline, so it stops reading as the obvious next click.
+     It still works — it asks for confirmation first. */
+  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--color-border);
+    color: var(--color-text);
+  }
+
+  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled) {
+    background: var(--color-surface-strong);
   }
 
   /* ── Selection formatting popup ───────────────────────── */
