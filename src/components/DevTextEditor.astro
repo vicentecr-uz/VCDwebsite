@@ -78,7 +78,7 @@
     currentValue: SpacingValue;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image';
+  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageCarousel';
 
   type SpacingOption = { value: SpacingValue; label: string; title: string };
 
@@ -443,6 +443,7 @@
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
             <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
             <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
+            <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
           </div>
           <div class="dev-gap-toolbar__spacing">
             ${spacingButtonsHtml(pageTop)}
@@ -1524,12 +1525,16 @@
           event.preventDefault();
           event.stopPropagation();
           const type = button.dataset.devSectionType as InsertableSectionType | undefined;
-          if (type === 'image') {
+          if (type === 'image' || type === 'imageCarousel') {
             const sectionIndex = state.path.at(-2);
             if (typeof sectionIndex !== 'number') return;
             closeSectionMenus();
             window.dispatchEvent(new CustomEvent('vcd:dev-image-picker-open', {
-              detail: { documentKey: state.document, index: sectionIndex },
+              detail: {
+                documentKey: state.document,
+                index: sectionIndex,
+                ...(type === 'imageCarousel' ? { preferredType: 'imageCarousel' } : {}),
+              },
             }));
             return;
           }
