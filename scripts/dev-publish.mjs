@@ -11,8 +11,21 @@ const execFile = promisify(execFileCb);
  */
 export const CONTENT_PATHS = ['src/content', 'public/images'];
 const PUBLISH_BRANCH = 'main';
-/** Deliberately the cheapest model — this writes a one-line subject, nothing more. */
-const MESSAGE_MODEL = 'claude-haiku-4-5';
+
+/**
+ * Commit subjects are written by a local model via Ollama — no API key, no cost,
+ * no network. `gemma3:4b` was picked by benchmark: 1b hallucinated page names
+ * (invented "John Doe", misspelled "Tapico"), which is disqualifying for text
+ * that lands in permanent git history unattended. See Atlas learnings.md →
+ * "Small-model benchmark for one-line commit subjects".
+ *
+ * Ollama runs as a login service (`brew services start ollama`). If it is not
+ * running, publishing still works — see generateMessage().
+ */
+const MESSAGE_MODEL = 'gemma3:4b';
+const OLLAMA_URL = 'http://localhost:11434/api/generate';
+/** Cold start is ~6s once the 5-minute keep-alive lapses; warm is ~1s. */
+const MESSAGE_TIMEOUT_MS = 20_000;
 
 /** Raw stdout — porcelain output must not be trimmed, its first column is a space. */
 const gitRaw = async (...args) => {
@@ -99,11 +112,10 @@ function describeManifest(manifest = {}) {
 
   const where = documents.length ? documents.join(', ') : 'site content';
   const what = parts.length ? parts.join(', ') : 'content edits';
-  const paths = Array.isArray(manifest.textPaths) && manifest.textPaths.length
-    ? `\nEdited fields: ${manifest.textPaths.slice(0, 8).join(', ')}`
-    : '';
-
-  return `Pages: ${where}\nChanges: ${what}${paths}`;
+  // JSON field paths are deliberately left out — small models copy them straight
+  // into the subject line ("Updated sections.12.paragraphs") instead of describing
+  // the edit. The counts above carry everything the subject actually needs.
+  return `${documents.length === 1 ? 'Page' : 'Pages'}: ${where}\nEdits: ${what}`;
 }
 
 function fallbackMessage(manifest, files) {
@@ -117,14 +129,22 @@ function fallbackMessage(manifest, files) {
   return `content: update ${where}${suffix}`;
 }
 
+/**
+ * Tuned against gemma3:4b over five sample manifests. Two things are load-bearing
+ * and should not be "tidied": naming the banned verb forms explicitly (without it
+ * the model writes "Refines …" for every subject), and the no-invention rule.
+ * Do NOT add a few-shot example — at this model size an "Example input:" block
+ * makes it echo the manifest back verbatim instead of writing a subject.
+ */
 const SYSTEM_PROMPT = [
-  "You write git commit subjects for edits to a designer's portfolio website.",
-  'These are content edits — copy, image crops, captions, section order — not code.',
-  'Reply with ONE subject line and nothing else.',
-  'Rules: start with "content: ", imperative mood, at most 72 characters,',
-  'no trailing period, no quotes, no explanation.',
-  'Describe what changed on the page in plain language.',
-].join(' ');
+  'Write a git commit subject for edits made to a page on a design portfolio website.',
+  'Do not repeat or reformat the input. Write one original line, under 60 characters.',
+  'Begin with a plain imperative verb (Update, Revise, Retune, Reorder, Rewrite, Replace)',
+  '— not "Refines" or "Updated".',
+  'Use only names and facts present in the input; never invent any.',
+  'Describe edits the way a designer would, never as field paths or code.',
+  'No final period, no quotes.',
+].join('\n');
 
 /** Sanitize whatever the model returned down to a single usable subject line. */
 function normalizeSubject(raw) {
@@ -137,30 +157,33 @@ function normalizeSubject(raw) {
 }
 
 /**
- * Ask Haiku for a subject line. Optional by design: with no API key, or if the
- * call fails for any reason, publishing still happens with the deterministic
- * message. Never let the message generator block a publish.
+ * Ask the local model for a subject line. Optional by design: if Ollama is not
+ * running, the model is missing, or the call is slow, publishing still happens
+ * with the deterministic message. Never let the message generator block a
+ * publish — a commit that lands with a plainer subject beats one that does not
+ * land at all.
  */
 async function generateMessage(manifest, files) {
   const fallback = fallbackMessage(manifest, files);
-  if (!process.env.ANTHROPIC_API_KEY) return { message: fallback, generated: false };
 
   try {
-    const { default: Anthropic } = await import('@anthropic-ai/sdk');
-    const client = new Anthropic();
-    const response = await client.messages.create({
-      model: MESSAGE_MODEL,
-      max_tokens: 128,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: describeManifest(manifest) }],
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(MESSAGE_TIMEOUT_MS),
+      body: JSON.stringify({
+        model: MESSAGE_MODEL,
+        system: SYSTEM_PROMPT,
+        prompt: describeManifest(manifest),
+        stream: false,
+        options: { temperature: 0.2, num_predict: 40 },
+      }),
     });
-    if (response.stop_reason === 'refusal') return { message: fallback, generated: false };
-    const text = response.content
-      .filter((block) => block.type === 'text')
-      .map((block) => block.text)
-      .join('\n');
-    return { message: normalizeSubject(text) || fallback, generated: true };
+    if (!response.ok) return { message: fallback, generated: false };
+    const payload = await response.json();
+    return { message: normalizeSubject(payload.response) || fallback, generated: true };
   } catch {
+    // Daemon down, model not pulled, or timed out — the fallback is fine.
     return { message: fallback, generated: false };
   }
 }

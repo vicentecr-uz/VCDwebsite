@@ -61,7 +61,9 @@ Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in
 
 - `GET /api/publish` → `{ branch, files, canPublish }`; the save bar polls it on load and on dev-mode entry to set the button state.
 - `POST /api/publish` → stages **only** `src/content` + `public/images`, commits, pushes. It refuses if anything outside that surface is already staged, rather than sweeping it into the commit.
-- The commit subject comes from Haiku 4.5 (`claude-haiku-4-5`) given the save bar's **change manifest** — semantic counts (`3 crops`, `2 text fields`) plus edited field paths, not the JSON diff, which is mostly reordering noise. With no `ANTHROPIC_API_KEY` set, or if the call fails, it falls back to a deterministic message built from the same manifest. **Message generation must never block a publish.**
+- The commit subject is written by a **local model** — `gemma3:4b` via Ollama on `localhost:11434` — given the save bar's **change manifest** (semantic counts like `3 crops`, `2 text fields`), not the JSON diff, which is mostly reordering noise. No API key, no cost, no network.
+- Ollama runs as a login service (`brew services start ollama`, ~34MB idle). If it's down, missing the model, or slow, publishing still succeeds with a deterministic message built from the same manifest (`content: update tapico (5 changes)`). **Message generation must never block a publish.**
+- `gemma3:1b` was tried and rejected — it hallucinated page names, which is disqualifying for text landing in git history unattended. Don't swap the model without re-benchmarking. Two things in `SYSTEM_PROMPT` are load-bearing at this model size: naming the banned verb forms explicitly, and **no few-shot example** (an example block makes it echo the manifest back verbatim). Field paths are deliberately kept out of the prompt — the model copies them into the subject instead of describing the edit.
 
 ### Content vs engine
 
