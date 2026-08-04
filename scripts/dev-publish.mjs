@@ -53,13 +53,19 @@ async function trackedContentPaths() {
   return present;
 }
 
-/** `XY path`, or `XY old -> new` for renames. */
+/**
+ * `XY path`, or `XY old -> new` for renames. Git C-style-quotes any path with
+ * a space or non-ASCII character, so unquote before the value is shown to
+ * anyone or used to derive a page name.
+ */
 function porcelainPath(line) {
   const match = /^..\s(.*)$/.exec(line);
   if (!match) return null;
   const path = match[1];
   const arrow = path.indexOf(' -> ');
-  return arrow === -1 ? path : path.slice(arrow + 4);
+  const raw = arrow === -1 ? path : path.slice(arrow + 4);
+  if (!raw.startsWith('"') || !raw.endsWith('"')) return raw;
+  return raw.slice(1, -1).replace(/\\(.)/g, '$1');
 }
 
 /** Branch + what is dirty inside the content surface. */
@@ -87,8 +93,23 @@ export async function publishStatus() {
  * The manifest is far richer than the JSON diff — a reordered `sections` array
  * is 200 lines of noise on disk but "reordered 3 sections" here.
  */
-function describeManifest(manifest = {}) {
-  const documents = Array.isArray(manifest.documents) ? manifest.documents : [];
+/**
+ * `src/content/projects/tapico.json` → `tapico`. Used when there is no manifest
+ * — publishing content that was saved earlier (often on another branch) rather
+ * than in this save-bar session, so the client has nothing to describe.
+ */
+function documentsFromFiles(files = []) {
+  const names = files
+    .map((file) => /([^/\\]+)\.json$/.exec(String(file).replace(/^"|"$/g, '')))
+    .filter(Boolean)
+    .map((match) => match[1]);
+  return [...new Set(names)];
+}
+
+function describeManifest(manifest = {}, files = []) {
+  const documents = Array.isArray(manifest.documents) && manifest.documents.length
+    ? manifest.documents
+    : documentsFromFiles(files);
   const counts = manifest.changes && typeof manifest.changes === 'object' ? manifest.changes : {};
   const labels = {
     text: ['text field', 'text fields'],
@@ -119,7 +140,9 @@ function describeManifest(manifest = {}) {
 }
 
 function fallbackMessage(manifest, files) {
-  const documents = Array.isArray(manifest?.documents) ? manifest.documents : [];
+  const documents = Array.isArray(manifest?.documents) && manifest.documents.length
+    ? manifest.documents
+    : documentsFromFiles(files);
   const where = documents.length
     ? documents.join(', ')
     : (files.length === 1 ? files[0] : `${files.length} files`);
@@ -174,7 +197,7 @@ async function generateMessage(manifest, files) {
       body: JSON.stringify({
         model: MESSAGE_MODEL,
         system: SYSTEM_PROMPT,
-        prompt: describeManifest(manifest),
+        prompt: describeManifest(manifest, files),
         stream: false,
         options: { temperature: 0.2, num_predict: 40 },
       }),
