@@ -792,6 +792,24 @@
     touch-action: none;
   }
 
+  /*
+    Below 40em the gutter is 16px but a chip plus its gap needs ~36px, so the
+    outward translate pushes the handle off-screen (and its right-hand twin,
+    .dev-section-delete, pushes the document's scroll width out with it) —
+    issue #100. Flip the chip inside the media box instead. The bridge goes
+    with it: it exists only to keep hover alive across the gutter gap, and
+    there is no gap once the chip sits on the block.
+  */
+  @media (max-width: 40em) {
+    .dev-section-drag-handle {
+      transform: translate(0.55em, -50%);
+    }
+
+    .dev-section-drag-bridge {
+      display: none;
+    }
+  }
+
   .is-dev-mode
     [data-dev-section-reorderable].is-dev-section-controls-visible:not(
       :has(> .dev-gap-toolbar :hover, > .dev-gap-toolbar:focus-within)
