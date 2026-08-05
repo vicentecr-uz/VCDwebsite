@@ -654,16 +654,21 @@ html:not(.is-dev-mode) .dev-crop-stage {
 /* Faded full bitmap behind the frame: prepended so the clip paints over the
    shared region — only the content outside the frame reads as ghosted.
    Opacity lives on the wrapper so mount/unmount can fade the whole ghost. */
-.is-dev-mode .dev-crop-ghost {
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
+.is-dev-mode .dev-crop-ghost,
+.is-dev-mode .dev-crop-stage {
   opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-.is-dev-mode .dev-crop-ghost.is-visible {
+.is-dev-mode .dev-crop-ghost.is-visible,
+.is-dev-mode .dev-crop-stage.is-visible {
   opacity: 1;
+}
+
+.is-dev-mode .dev-crop-ghost {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .is-dev-mode .dev-crop-ghost > img {
@@ -680,12 +685,6 @@ html:not(.is-dev-mode) .dev-crop-stage {
   );
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .is-dev-mode .dev-crop-ghost {
-    transition: none;
-  }
-}
-
 /* Interaction layer over the frame: pan, wheel zoom, resize handles. Sits
    below the section drag handle (80) and delete (70). */
 .is-dev-mode .dev-crop-stage {
@@ -696,6 +695,19 @@ html:not(.is-dev-mode) .dev-crop-stage {
   user-select: none;
   outline: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);
   outline-offset: -1px;
+  /* No hits while faded in/out — avoids grabbing invisible handles. */
+  pointer-events: none;
+}
+
+.is-dev-mode .dev-crop-stage.is-visible {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-dev-mode .dev-crop-ghost,
+  .is-dev-mode .dev-crop-stage {
+    transition: none;
+  }
 }
 
 .is-dev-mode .dev-crop-stage.is-dragging {
