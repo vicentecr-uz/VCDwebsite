@@ -249,12 +249,16 @@ const loopItems = [...items, ...items];
 <script>
   const CLEANUP_KEY = '__pressTickerCleanup';
   const BEAT_KEY = '__pressTickerBeat';
+  /** Intentional offscreen park — ensureTickersAlive must skip these. */
+  const PAUSED_KEY = '__pressTickerPaused';
   const WATCH_KEY = '__pressTickerWatch';
   const STATE_PREFIX = 'press-ticker-state:';
+  const SPEED_SETTLED = 0.01;
 
   type TickerRoot = HTMLElement & {
     [CLEANUP_KEY]?: () => void;
     [BEAT_KEY]?: number;
+    [PAUSED_KEY]?: boolean;
   };
 
   const stateKeyFor = (root: HTMLElement) =>
@@ -362,7 +366,8 @@ const loopItems = [...items, ...items];
     let loopWidth = 0;
     let raf = 0;
     let lastTs = 0;
-    let lastPersist = 0;
+    let offscreen = false;
+    let parked = false;
     // Soft hover pause / resume.
     const tauMs = 280;
     // Coast after flick: friction-like ease into steady auto-scroll (not a hard stop).
@@ -437,6 +442,24 @@ const loopItems = [...items, ...items];
       coasting = true;
     };
 
+    /** Cancel RAF once settled offscreen. Watchdog skips hosts with PAUSED_KEY. */
+    const park = () => {
+      if (parked) return;
+      parked = true;
+      host[PAUSED_KEY] = true;
+      cancelAnimationFrame(raf);
+      raf = 0;
+      persist();
+    };
+
+    const unpark = () => {
+      if (!parked) return;
+      parked = false;
+      delete host[PAUSED_KEY];
+      lastTs = 0;
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
     const pushSample = (clientX: number) => {
       const t = performance.now();
       samples.push({ t, x: clientX });
@@ -473,14 +496,16 @@ const loopItems = [...items, ...items];
       }
 
       // Finger owns phase while dragging; raf only coasts / auto-scrolls otherwise.
-      if (loopWidth > 0 && Math.abs(speed) > 0.01 && !(dragging && dragMoved)) {
+      if (loopWidth > 0 && Math.abs(speed) > SPEED_SETTLED && !(dragging && dragMoved)) {
         phase = wrapPhase(phase + (speed * dt) / 1000);
         apply();
       }
 
-      if (ts - lastPersist > 200) {
-        lastPersist = ts;
-        persist();
+      if (parked) return;
+      // Offscreen + settled → cancel RAF. Hover-pause while on-screen keeps looping.
+      if (offscreen && !dragging && Math.abs(speed) < SPEED_SETTLED) {
+        park();
+        return;
       }
 
       raf = requestAnimationFrame(tick);
@@ -505,7 +530,7 @@ const loopItems = [...items, ...items];
         if (dragging) return;
         window.clearTimeout(resumeTimer);
         window.clearTimeout(wheelIdleTimer);
-        targetSpeed = baseSpeed;
+        if (!offscreen) targetSpeed = baseSpeed;
       },
       { signal },
     );
@@ -568,6 +593,7 @@ const loopItems = [...items, ...items];
       const flick = flickVelocityFromPointer();
       samples = [];
       beginCoast(flick);
+      persist();
     };
 
     viewport.addEventListener('pointerup', endDrag, { signal });
@@ -621,6 +647,7 @@ const loopItems = [...items, ...items];
         wheelIdleTimer = window.setTimeout(() => {
           wheelGesture = false;
           samples = [];
+          persist();
         }, 120);
       },
       { passive: false, signal },
@@ -645,6 +672,24 @@ const loopItems = [...items, ...items];
     apply();
     persist();
     host[BEAT_KEY] = performance.now();
+    delete host[PAUSED_KEY];
+    parked = false;
+
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        offscreen = !entry.isIntersecting;
+        if (offscreen) {
+          pauseForUser(); // targetSpeed = 0; speed decays via tauMs
+          return;
+        }
+        // Back on screen — only resume auto-scroll if user hasn't paused
+        if (!hoverPaused && !dragging) targetSpeed = baseSpeed;
+        unpark();
+      },
+      { root: null, rootMargin: '100px', threshold: 0 },
+    );
+    io.observe(root); // ticker root, not viewport only
+
     raf = requestAnimationFrame(tick);
 
     const ro = new ResizeObserver(() => {
@@ -657,11 +702,15 @@ const loopItems = [...items, ...items];
     const cleanup = () => {
       persist();
       cancelAnimationFrame(raf);
+      raf = 0;
+      parked = false;
       window.clearTimeout(resumeTimer);
       window.clearTimeout(wheelIdleTimer);
+      io.disconnect();
       ro.disconnect();
       ac.abort();
       viewport.classList.remove('is-dragging');
+      delete host[PAUSED_KEY];
       delete host[CLEANUP_KEY];
     };
     host[CLEANUP_KEY] = cleanup;
@@ -681,6 +730,8 @@ const loopItems = [...items, ...items];
     const now = performance.now();
     document.querySelectorAll<HTMLElement>('[data-press-quote-ticker]').forEach((node) => {
       const host = node as TickerRoot;
+      // Intentional offscreen park — do not treat as a dead loop.
+      if (host[PAUSED_KEY]) return;
       const beat = host[BEAT_KEY] ?? 0;
       const hasLoop = typeof host[CLEANUP_KEY] === 'function';
       if (!hasLoop || now - beat > 1600) {
