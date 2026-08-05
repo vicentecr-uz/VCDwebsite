@@ -629,6 +629,20 @@
   position: relative;
 }
 
+/*
+  Crop handles sit half outside the frame. `.project-media` (and friends) use
+  overflow:hidden to clip the bitmap — that also eats the stage chrome, so the
+  on-page handles look "missing" until the first live edit adds .project-cropped.
+  Force visible spill-over for the whole edit session on the host and its
+  immediate block wrapper. Specificity beats `.project-media` / `.project-cropped`.
+*/
+.is-dev-mode .dev-crop-stage-host.project-media,
+.is-dev-mode .dev-crop-stage-host.project-image,
+.is-dev-mode .dev-crop-stage-host.project-image-grid__item,
+.is-dev-mode .project-block:has(> .dev-crop-stage-host) {
+  overflow: visible;
+}
+
 /* Backstop: every rule above is dev-gated, so an orphaned surface outside dev
    mode would render as plain in-flow content (the ghost as a full-size
    duplicate image). If any exit path ever misses the teardown, hide it. */
@@ -638,7 +652,19 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 /* Faded full bitmap behind the frame: prepended so the clip paints over the
-   shared region — only the content outside the frame reads as ghosted. */
+   shared region — only the content outside the frame reads as ghosted.
+   Opacity lives on the wrapper so mount/unmount can fade the whole ghost. */
+.is-dev-mode .dev-crop-ghost,
+.is-dev-mode .dev-crop-stage {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.is-dev-mode .dev-crop-ghost.is-visible,
+.is-dev-mode .dev-crop-stage.is-visible {
+  opacity: 1;
+}
+
 .is-dev-mode .dev-crop-ghost {
   position: absolute;
   z-index: 0;
@@ -669,6 +695,19 @@ html:not(.is-dev-mode) .dev-crop-stage {
   user-select: none;
   outline: 1px solid color-mix(in srgb, var(--color-text) 35%, transparent);
   outline-offset: -1px;
+  /* No hits while faded in/out — avoids grabbing invisible handles. */
+  pointer-events: none;
+}
+
+.is-dev-mode .dev-crop-stage.is-visible {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-dev-mode .dev-crop-ghost,
+  .is-dev-mode .dev-crop-stage {
+    transition: none;
+  }
 }
 
 .is-dev-mode .dev-crop-stage.is-dragging {
@@ -772,7 +811,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease;
 }
 
 .dev-image-edit-trigger[hidden] {
@@ -805,7 +844,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease;
 }
 
 .dev-caption-add-trigger[hidden] {
@@ -848,7 +887,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease;
 }
 
 .dev-grid-edit-trigger[hidden] {
@@ -861,6 +900,11 @@ html:not(.is-dev-mode) .dev-crop-stage {
 .dev-carousel-edit-target:focus-within > .dev-grid-edit-trigger {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Press feedback — chips already cast a shadow, so darken the fill instead. */
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):active {
+  background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
 }
 
 /* ── Typography blocks ──────────────────────────────────────── */
@@ -1045,6 +1089,16 @@ html:not(.is-dev-mode) .dev-crop-stage {
 
 /* Cropped media clips via .project-crop-clip so frame chrome can overflow. */
 .project-media.project-cropped {
+  overflow: visible;
+}
+
+/*
+  On-page crop stage: restate after the media overflow:hidden rules so the
+  edit-session unclip can't lose a cascade fight to a later equal-weight rule.
+*/
+.is-dev-mode .dev-crop-stage-host.project-media,
+.is-dev-mode .dev-crop-stage-host.project-image,
+.is-dev-mode .dev-crop-stage-host.project-image-grid__item {
   overflow: visible;
 }
 
