@@ -45,6 +45,8 @@ const EDITABLE_COLOR_TOKENS = new Set([
   '--color-bg',
   '--color-surface-soft',
   '--color-surface-strong',
+  '--color-surface-control',
+  '--color-surface-control-strong',
   '--color-text',
   '--color-text-soft',
   '--color-text-muted',
