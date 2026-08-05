@@ -89,6 +89,12 @@
       return !beforeExit.defaultPrevented;
     };
 
+    /** Mirror open tuners onto <html> so page chrome (gap chips) can step aside. */
+    const syncTunerOpenClass = () => {
+      const open = devPanels().some((panel) => !panel.hidden);
+      html.classList.toggle('is-dev-tuner-open', open);
+    };
+
     const syncDevModeControls = (active: boolean) => {
       editTriggers().forEach((trigger) => {
         trigger.disabled = !active;
@@ -107,6 +113,7 @@
           target.classList.remove('is-dev-image-selected');
         });
       }
+      syncTunerOpenClass();
     };
 
     const emitDevModeChange = (active: boolean) => {
@@ -312,6 +319,9 @@
       }
 
       if (event.key !== 'Escape') return;
+      // Page body-text caret: DevTextEditor handles Esc (deselect like click-away)
+      // in capture. Other typing targets (tuner fields, etc.) must not fall through
+      // to panel-close / leave-Dev-Mode.
       if (isTypingTarget(event.target as HTMLElement | null)) return;
 
       if (isSectionEditor()) {
@@ -346,6 +356,10 @@
       event.preventDefault();
       setDevMode(false);
     });
+
+    window.addEventListener('vcd:dev-edit-open', syncTunerOpenClass);
+    window.addEventListener('vcd:dev-edit-close', syncTunerOpenClass);
+    syncTunerOpenClass();
   };
 
   initDevModeController();
