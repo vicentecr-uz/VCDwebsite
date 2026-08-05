@@ -1140,11 +1140,17 @@
     pointer-events: auto;
   }
 
+  /*
+    Keep the grip out of the way while editing text. !important for the same
+    reason as .dev-section-delete in DevTextEditor — editing text means the
+    section is hovered, and the :hover reveal above carries a :not(:has(…))
+    worth two classes, so it outweighs this selector without it.
+  */
   .is-dev-mode.is-dev-text-caret [data-dev-section-reorderable] > .dev-section-drag-handle,
   .is-dev-mode.is-dev-text-caret [data-dev-section-reorderable] > .dev-section-drag-bridge,
   .is-dev-mode.is-dev-text-caret [data-dev-section-reorderable].is-dev-section-controls-visible
     > .dev-section-drag-handle {
-    opacity: 0;
-    pointer-events: none;
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 </style>
