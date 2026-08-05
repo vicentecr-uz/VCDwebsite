@@ -178,11 +178,58 @@ import DevOverlay from './DevOverlay.astro';
       resetForm();
     };
 
+    let veilMotionTimer = 0;
+    let veilMotionGeneration = 0;
+
+    const prefersReducedMotion = () =>
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const clearVeilMotion = () => {
+      if (veilMotionTimer) {
+        window.clearTimeout(veilMotionTimer);
+        veilMotionTimer = 0;
+      }
+    };
+
+    /**
+     * Covering veils fade only (no rise). Standalone panels use DevOverlay's
+     * fade+rise. Keep both paths animated — nothing in this chrome should pop.
+     */
+    const showVeil = () => {
+      clearVeilMotion();
+      veilMotionGeneration += 1;
+      veil.hidden = false;
+      veil.classList.remove('is-dev-log-veil-open');
+      void veil.offsetWidth;
+      if (prefersReducedMotion()) {
+        veil.classList.add('is-dev-log-veil-open');
+        return;
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          veil.classList.add('is-dev-log-veil-open');
+        });
+      });
+    };
+
     const hideVeil = () => {
-      veil.hidden = true;
+      clearVeilMotion();
+      const generation = ++veilMotionGeneration;
       veilActions.hidden = true;
       veilMode = 'idle';
       cancelConfirmSource = null;
+      veil.classList.remove('is-dev-log-veil-open');
+
+      const finish = () => {
+        if (generation !== veilMotionGeneration) return;
+        veil.hidden = true;
+      };
+
+      if (prefersReducedMotion() || veil.hidden) {
+        finish();
+        return;
+      }
+      veilMotionTimer = window.setTimeout(finish, 200);
     };
 
     const showCancelConfirm = (source: 'escape' | 'button') => {
@@ -190,7 +237,7 @@ import DevOverlay from './DevOverlay.astro';
       veilMode = 'cancel';
       veilMessage.textContent = 'Are you sure you want to cancel?';
       veilActions.hidden = false;
-      veil.hidden = false;
+      showVeil();
     };
 
     /** Same as the Cancel button: confirm if dirty, otherwise close. */
@@ -206,7 +253,7 @@ import DevOverlay from './DevOverlay.astro';
       veilMode = 'logging';
       veilMessage.textContent = message;
       veilActions.hidden = true;
-      veil.hidden = false;
+      showVeil();
     };
 
     const fileToAttachment = (file: File) => new Promise<Attachment>((resolve, reject) => {
@@ -768,6 +815,7 @@ import DevOverlay from './DevOverlay.astro';
   }
 
   .dev-log-issue__veil {
+    --dev-log-veil-ms: 180ms;
     position: absolute;
     inset: 0;
     z-index: 2;
@@ -779,6 +827,21 @@ import DevOverlay from './DevOverlay.astro';
     background: color-mix(in srgb, var(--color-surface-soft) 88%, transparent);
     backdrop-filter: blur(2px);
     padding: 1em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dev-log-veil-ms) ease;
+  }
+
+  .dev-log-issue__veil.is-dev-log-veil-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-log-issue__veil {
+      --dev-log-veil-ms: 0ms;
+      transition: none;
+    }
   }
 
   .dev-log-issue__veil[hidden] {
