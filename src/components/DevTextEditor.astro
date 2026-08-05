@@ -54,6 +54,7 @@
     buildIndexMapFromOrder,
     remapSectionPaths,
     resetSectionOrderIds,
+    shiftSectionOrderIds,
   } from '../scripts/devSectionPaths';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -526,6 +527,11 @@
     };
 
     const reindexDevPaths = (fromIndex: number, delta: number) => {
+      // Order ids are not in DEV_PATH_ATTRS but track the same JSON index, so
+      // they have to move with the paths. Every caller mutates the DOM either
+      // before the new root is attached or after the old one is detached, so
+      // the shifted set never includes the block being added or removed.
+      shiftSectionOrderIds(fromIndex, delta);
       document.querySelectorAll<HTMLElement>(DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(',')).forEach((el) => {
         DEV_PATH_ATTRS.forEach((attr) => {
           const raw = el.getAttribute(attr);
@@ -1680,6 +1686,20 @@
         root,
         section,
       });
+
+      // Media inserts land on disk at drop time, so a pending reorder captured
+      // before this point is already stale. Announce the structural change the
+      // way the add-block path does — the revert path already does.
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+        detail: {
+          document: documentKey,
+          action: 'insert',
+          index,
+          type: String(section.type ?? 'image'),
+          section,
+        },
+      }));
+
       syncPageTopSpacingControls();
       updateActions();
     };
