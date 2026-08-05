@@ -209,6 +209,9 @@ const listingGrids = ['home', 'work', 'play'] as const;
     if (!response.ok) throw new Error(payload.error || 'Could not upload the cover image.');
     const filename = payload.filenames?.[0];
     if (!filename) throw new Error('Could not upload the cover image.');
+    // The file is on disk before the dialog is saved — and stays there if it is
+    // cancelled — so the save bar has to know without waiting for a reload.
+    window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
     return `/draft-media/${slug}/${filename}`;
   };
 

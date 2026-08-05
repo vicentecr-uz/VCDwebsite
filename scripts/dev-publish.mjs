@@ -352,6 +352,7 @@ function describeManifest(manifest = {}, files = []) {
     carousel: ['carousel', 'carousels'],
     caption: ['caption', 'captions'],
     mediaInsert: ['image insert', 'image inserts'],
+    mediaRemove: ['removed image', 'removed images'],
     sectionInsert: ['new section', 'new sections'],
     sectionDelete: ['deleted section', 'deleted sections'],
     sectionOrder: ['section reorder', 'section reorders'],

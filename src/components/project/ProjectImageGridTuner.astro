@@ -455,7 +455,59 @@ import DevOverlay from '../DevOverlay.astro';
       });
     };
 
-    const removeFromPage = async (id: string) => {
+    // Builds and dispatches the 'grid' pending upsert from the current saved*
+    // state, shared between the tuner's own Save changes and the
+    // reconciliation removeFromPage does when a layout edit is already
+    // staged and an item gets removed on top of it.
+    const dispatchGridUpsert = (
+      target: HTMLElement,
+      documentKey: string,
+      gridPath: Array<string | number>,
+      pendingId: string,
+      baseline: GridBaseline,
+    ) => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'grid',
+          payload: {
+            document: documentKey,
+            path: gridPath,
+            columns: { ...savedColumns },
+            constrained: { ...savedConstrained },
+            defaultAspectRatio: savedAspect,
+            matchHeight: savedMatchHeight,
+            layouts: cloneLayouts(savedLayouts),
+          },
+          revert: () => {
+            applyBaselineToTarget(target, baseline);
+            if (editTarget === target) {
+              savedColumns = { ...baseline.columns };
+              draftColumns = { ...baseline.columns };
+              savedConstrained = { ...baseline.constrained };
+              draftConstrained = { ...baseline.constrained };
+              savedAspect = baseline.aspect;
+              draftAspect = baseline.aspect;
+              savedMatchHeight = baseline.matchHeight;
+              draftMatchHeight = baseline.matchHeight;
+              savedLayouts = cloneLayouts(baseline.layouts);
+              draftLayouts = cloneLayouts(baseline.layouts);
+              renderDraft();
+            }
+          },
+        },
+      }));
+    };
+
+    const gridStateMatchesBaseline = (baseline: GridBaseline) => (
+      JSON.stringify(savedColumns) === JSON.stringify(baseline.columns)
+      && JSON.stringify(savedConstrained) === JSON.stringify(baseline.constrained)
+      && savedAspect === baseline.aspect
+      && savedMatchHeight === baseline.matchHeight
+      && JSON.stringify(savedLayouts) === JSON.stringify(baseline.layouts)
+    );
+
+    const removeFromPage = (id: string) => {
       if (itemIds.length <= 1) {
         status.textContent = 'Keep at least one image, or delete the whole section.';
         return;
@@ -478,46 +530,87 @@ import DevOverlay from '../DevOverlay.astro';
         return;
       }
 
-      try {
-        const response = await fetch('/api/content-section', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+      const gridPendingId = pendingIdFor(target);
+      const gridBaseline = diskBaselines.get(gridPendingId);
+
+      // Snapshot everything the removal touches, so Revert in the page bar can
+      // put the image back. The removal itself only writes to disk at Save.
+      const beforeCatalog = catalog.map((item) => ({ ...item }));
+      const beforeDraftLayouts = cloneLayouts(draftLayouts);
+      // A layout edit staged earlier (Save changes) has to win over this
+      // pre-removal snapshot on revert — otherwise Revert would leave that
+      // edit half-applied instead of going all the way back to disk.
+      const revertLayouts = gridBaseline ? cloneLayouts(gridBaseline.layouts) : beforeDraftLayouts;
+      const removedNodes = [...target.querySelectorAll<HTMLElement>(
+        `[data-grid-item-id="${CSS.escape(id)}"]`,
+      )].map((node) => ({
+        node,
+        parent: node.parentElement,
+        next: node.nextElementSibling,
+      }));
+
+      catalog = catalog.filter((item) => item.id !== id);
+      itemIds = catalog.map((item) => item.id);
+      target.dataset.devGridItems = JSON.stringify(catalog);
+
+      for (const viewport of VIEWPORTS) {
+        const visible = draftLayouts[viewport]?.visible;
+        if (!Array.isArray(visible)) continue;
+        draftLayouts[viewport] = {
+          visible: visible.filter((entry) => entry !== id),
+        };
+      }
+      savedLayouts = cloneLayouts(draftLayouts);
+      target.dataset.devGridLayouts = JSON.stringify(draftLayouts);
+
+      removedNodes.forEach(({ node }) => node.remove());
+
+      // A layout edit staged earlier for this grid still describes a real,
+      // un-disked change once the removed id is purged from its `visible`
+      // lists — keep it live (re-upserted with the purge applied) instead of
+      // dropping it, so the save bar's count and Save both still carry it.
+      // Only drop it if purging brought it back to exactly matching disk.
+      if (gridBaseline && !gridStateMatchesBaseline(gridBaseline)) {
+        dispatchGridUpsert(target, documentKey, gridPath, gridPendingId, gridBaseline);
+      } else {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+          detail: { id: gridPendingId },
+        }));
+      }
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: `media-remove:${documentKey}:${target.dataset.devGridPath || '[]'}:${id}`,
+          kind: 'media-remove',
+          payload: {
             document: documentKey,
             action: 'removeMediaItem',
             path: gridPath,
             itemId: id,
-          }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not remove that image.');
+          },
+          revert: () => {
+            removedNodes.forEach(({ node, parent, next }) => {
+              if (!parent) return;
+              if (next && next.parentElement === parent) parent.insertBefore(node, next);
+              else parent.append(node);
+            });
+            target.dataset.devGridItems = JSON.stringify(beforeCatalog);
+            target.dataset.devGridLayouts = JSON.stringify(revertLayouts);
+            // Only the currently edited grid owns these closures — touching them
+            // for any other target would corrupt the one on screen.
+            if (editTarget === target) {
+              catalog = beforeCatalog.map((item) => ({ ...item }));
+              itemIds = catalog.map((item) => item.id);
+              savedLayouts = cloneLayouts(revertLayouts);
+              draftLayouts = cloneLayouts(revertLayouts);
+              renderDraft();
+            }
+          },
+        },
+      }));
 
-        catalog = catalog.filter((item) => item.id !== id);
-        itemIds = catalog.map((item) => item.id);
-        target.dataset.devGridItems = JSON.stringify(catalog);
-
-        for (const viewport of VIEWPORTS) {
-          const visible = draftLayouts[viewport]?.visible;
-          if (!Array.isArray(visible)) continue;
-          draftLayouts[viewport] = {
-            visible: visible.filter((entry) => entry !== id),
-          };
-        }
-        savedLayouts = cloneLayouts(draftLayouts);
-        target.dataset.devGridLayouts = JSON.stringify(draftLayouts);
-
-        target.querySelectorAll(`[data-grid-item-id="${CSS.escape(id)}"]`).forEach((node) => {
-          node.remove();
-        });
-
-        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-          detail: { id: pendingIdFor(target) },
-        }));
-        renderDraft();
-        status.textContent = 'Removed from page — file kept in asset manager.';
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not remove that image.';
-      }
+      renderDraft();
+      status.textContent = 'Removed from page — Save in the page bar to write it to disk.';
     };
 
     const makeThumb = (item: GridItem) => {
@@ -558,7 +651,7 @@ import DevOverlay from '../DevOverlay.astro';
       removeButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        void removeFromPage(item.id);
+        removeFromPage(item.id);
       });
 
       wrap.append(button, removeButton);
@@ -739,43 +832,7 @@ import DevOverlay from '../DevOverlay.astro';
       savedMatchHeight = draftMatchHeight;
       savedLayouts = cloneLayouts(draftLayouts);
 
-      const stagedColumns = { ...draftColumns };
-      const stagedConstrained = { ...draftConstrained };
-      const stagedAspect = draftAspect;
-      const stagedMatchHeight = draftMatchHeight;
-      const stagedLayouts = cloneLayouts(draftLayouts);
-
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-        detail: {
-          id: pendingId,
-          kind: 'grid',
-          payload: {
-            document: documentKey,
-            path: gridPath,
-            columns: stagedColumns,
-            constrained: stagedConstrained,
-            defaultAspectRatio: stagedAspect,
-            matchHeight: stagedMatchHeight,
-            layouts: stagedLayouts,
-          },
-          revert: () => {
-            applyBaselineToTarget(target, baseline);
-            if (editTarget === target) {
-              savedColumns = { ...baseline.columns };
-              draftColumns = { ...baseline.columns };
-              savedConstrained = { ...baseline.constrained };
-              draftConstrained = { ...baseline.constrained };
-              savedAspect = baseline.aspect;
-              draftAspect = baseline.aspect;
-              savedMatchHeight = baseline.matchHeight;
-              draftMatchHeight = baseline.matchHeight;
-              savedLayouts = cloneLayouts(baseline.layouts);
-              draftLayouts = cloneLayouts(baseline.layouts);
-              renderDraft();
-            }
-          },
-        },
-      }));
+      dispatchGridUpsert(target, documentKey, gridPath, pendingId, baseline);
 
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
       closePanel();
