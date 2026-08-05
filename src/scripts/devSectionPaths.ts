@@ -71,6 +71,30 @@ export function ensureSectionOrderIds(dropZone?: HTMLElement | null) {
   });
 }
 
+/**
+ * Shift stamped order ids the same way an insert/delete shifts section paths.
+ * Order ids track the JSON index, so a structural edit has to move both or the
+ * pending reorder payload stops describing the document — wrong length, or a
+ * duplicate id where the new block lands on an index still claimed by its
+ * neighbour. Mirrors `bumpSectionPath`: an insert moves ids at or after the
+ * index, a delete moves only those strictly after it.
+ */
+export function shiftSectionOrderIds(
+  fromIndex: number,
+  delta: number,
+  dropZone?: HTMLElement | null,
+) {
+  const zone = dropZone ?? getDropZone();
+  if (!zone) return;
+
+  zone.querySelectorAll<HTMLElement>(`[${SECTION_ORDER_ID_ATTR}]`).forEach((root) => {
+    const current = Number(root.getAttribute(SECTION_ORDER_ID_ATTR));
+    if (!Number.isInteger(current)) return;
+    if (delta > 0 ? current < fromIndex : current <= fromIndex) return;
+    root.setAttribute(SECTION_ORDER_ID_ATTR, String(current + delta));
+  });
+}
+
 export function sectionOrderId(root: HTMLElement): number | null {
   const raw = root.getAttribute(SECTION_ORDER_ID_ATTR);
   if (raw == null || raw === '') return sectionIndexFromElement(root);

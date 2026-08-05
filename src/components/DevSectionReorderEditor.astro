@@ -623,6 +623,20 @@
   window.addEventListener('vcd:dev-section-structure-changed', () => {
     if (!reorderActive) return;
     syncDragHandles();
+
+    // An insert or delete renumbers every section after it, which invalidates
+    // both halves of the pending reorder: the baseline it is diffed against and
+    // the snapshot payload itself. Leaving them stale is what made Save fail
+    // with "Section order does not match the document" — the payload still
+    // described a document one section shorter than the one on disk.
+    //
+    // Order ids are JSON indices, so the document's own order is simply those
+    // ids ascending. Re-derive the baseline that way rather than recapturing
+    // DOM order, which is the *edited* order whenever a reorder is pending.
+    const zone = dropZone();
+    if (!zone) return;
+    baselineOrder = [...captureSectionOrder(zone)].sort((a, b) => a - b);
+    syncPending();
   });
 
   /**
