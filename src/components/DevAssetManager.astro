@@ -37,6 +37,7 @@ const { documentKey } = Astro.props;
       <div class="dev-asset-manager__actions">
         <button type="button" data-asset-pick="image" disabled>Single image</button>
         <button type="button" data-asset-pick="imageGrid" disabled>Image grid</button>
+        <button type="button" data-asset-pick="imageCarousel" disabled>Carousel</button>
         <button type="button" data-asset-cancel>Cancel</button>
       </div>
     </footer>
@@ -92,6 +93,7 @@ const { documentKey } = Astro.props;
       const type = button.getAttribute('data-asset-pick');
       if (type === 'image') button.disabled = count < 1;
       else if (type === 'imageGrid') button.disabled = count < 1;
+      else if (type === 'imageCarousel') button.disabled = count < 1;
       button.hidden = !pickMode;
     });
     if (countEl instanceof HTMLElement) {
@@ -279,6 +281,7 @@ const { documentKey } = Astro.props;
       .filter(Boolean);
     if (!srcs.length) return;
     if (type === 'imageGrid' && srcs.length < 1) return;
+    if (type === 'imageCarousel' && srcs.length < 1) return;
     const resolve = resolvePick;
     resolvePick = null;
     rejectPick = null;
@@ -303,7 +306,7 @@ const { documentKey } = Astro.props;
   pickButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const type = button.getAttribute('data-asset-pick');
-      if (type === 'image' || type === 'imageGrid') confirmPick(type);
+      if (type === 'image' || type === 'imageGrid' || type === 'imageCarousel') confirmPick(type);
     });
   });
 
