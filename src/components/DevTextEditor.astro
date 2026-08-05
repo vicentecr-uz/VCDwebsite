@@ -2403,6 +2403,24 @@
       textPaths: string[];
     };
 
+    /**
+     * Vite only registers `configureServer` middleware on process start. After a
+     * branch pull, client HMR can call a new `/api/…` path the running server
+     * never mounted — Astro then returns HTML and `response.json()` throws a
+     * cryptic JSON.parse error. Surface a restart hint instead.
+     */
+    const readApiJson = async (response: Response): Promise<Record<string, unknown>> => {
+      const text = await response.text();
+      try {
+        return (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+      } catch {
+        throw new Error(
+          `Dev API returned non-JSON (HTTP ${response.status}). `
+          + 'Restart the dev session (`bun run dev:session:stop`, then `bun run dev:session`) and try again.',
+        );
+      }
+    };
+
     const performSave = async (): Promise<PublishManifest | null> => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
@@ -2489,8 +2507,8 @@
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify(change.payload),
           });
-          const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error || 'Could not save the colour token.');
+          const payload = await readApiJson(response);
+          if (!response.ok) throw new Error(String(payload.error || 'Could not save the colour token.'));
         }
 
         if (imageChanges.length > 0) {
@@ -2624,9 +2642,12 @@
 
     const refreshStyleEngineState = async () => {
       try {
-        const response = await fetch('/api/publish-styles');
+        // Prefer /api/commit-engine — mounted since the first #109 server start.
+        // /api/publish-styles is an alias added later; calling it after client HMR
+        // without a restart 404s as HTML.
+        const response = await fetch('/api/commit-engine');
         if (!response.ok) throw new Error('unavailable');
-        const state = await response.json() as { files?: string[]; dirty?: boolean };
+        const state = await readApiJson(response) as { files?: string[]; dirty?: boolean };
         styleEngineDirtyCount = Array.isArray(state.files) ? state.files.length : (state.dirty ? 1 : 0);
       } catch {
         // Leave the last known count — a blip shouldn't hide Publish styles.
@@ -2646,16 +2667,25 @@
         commitStylesButton.classList.add('is-dev-actions-busy');
         setStickyStatus('Publishing styles…');
         try {
-          const response = await fetch('/api/publish-styles', {
+          const response = await fetch('/api/commit-engine', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
               message: 'styles: update colour tokens',
             }),
           });
-          const payload = await response.json();
+          const payload = await readApiJson(response);
           if (!response.ok || !payload.ok) {
-            throw new Error(payload.error || 'Could not publish styles.');
+            throw new Error(String(payload.error || 'Could not publish styles.'));
+          }
+          // Old middleware (pre-restart) only committed on the branch and had no
+          // `pushed` field — don't claim the colours are on main.
+          if (payload.pushed === undefined) {
+            styleEngineDirtyCount = 0;
+            setStickyStatus(
+              'Styles committed on this branch only. Restart the dev session to publish colour tokens to main.',
+            );
+            return;
           }
           styleEngineDirtyCount = 0;
           setStickyStatus(payload.pushed
