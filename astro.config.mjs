@@ -2032,7 +2032,13 @@ export default defineConfig({
     },
     server: {
       watch: {
-        ignored: ['**/ROADMAP.md', '**/sitemap/**']
+        // Draft media is served by /draft-media middleware, not Vite modules.
+        // Watching it full-reloads the page on every replace/add upload.
+        ignored: [
+          '**/ROADMAP.md',
+          '**/sitemap/**',
+          '**/src/content/drafts/media/**',
+        ],
       }
     }
   }
