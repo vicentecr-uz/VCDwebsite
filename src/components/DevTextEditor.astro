@@ -5,6 +5,7 @@
     <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
+    <button type="button" data-dev-text-commit-styles hidden>Publish styles</button>
     <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
   </div>
 </div>
@@ -188,6 +189,7 @@
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
     const publishButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-publish]');
+    const commitStylesButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-commit-styles]');
     const revertButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-revert]');
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
     const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
@@ -205,7 +207,7 @@
     const spacingElements = [
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
-    if (!actions || !saveButton || !publishButton || !revertButton || !status || !branchLabel || !warnLabel) return;
+    if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
@@ -213,7 +215,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token';
       payload: Record<string, unknown>;
       revert: () => void;
       /** Live section root for placeholder fills — index is read from it at Save. */
@@ -1121,6 +1123,12 @@
     let unpublishedCount = 0;
 
     /**
+     * Colour-token CSS ahead of main (e.g. global.css after a Save). Separate
+     * from content publish — Publish styles pushes it to main from any branch.
+     */
+    let styleEngineDirtyCount = 0;
+
+    /**
      * Once /api/publish has succeeded at least once this session, keep the last
      * known counts on a transient failure instead of emptying the bar as if
      * publish were unavailable (same catch path as "not a git repo").
@@ -1174,7 +1182,8 @@
       // edits on disk not yet published. Content saved on a feature branch and
       // carried to main by a branch switch is only ever the second kind — if
       // the bar needed unsaved DOM state, Publish would be unreachable for it.
-      actions.hidden = (!dirtyCount && !unpublishedCount)
+      // Style-token Saves also leave CSS ahead of main for Publish styles.
+      actions.hidden = (!dirtyCount && !unpublishedCount && !styleEngineDirtyCount)
         || !document.documentElement.classList.contains('is-dev-mode');
       if (stickyStatus) {
         status.textContent = stickyStatus;
@@ -1182,6 +1191,8 @@
         status.textContent = `${dirtyCount} unsaved ${dirtyCount === 1 ? 'change' : 'changes'}`;
       } else if (unpublishedCount) {
         status.textContent = `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'change' : 'changes'}`;
+      } else if (styleEngineDirtyCount) {
+        status.textContent = `${styleEngineDirtyCount} style ${styleEngineDirtyCount === 1 ? 'file' : 'files'} to publish`;
       } else {
         status.textContent = '';
       }
@@ -1190,13 +1201,16 @@
       // Keep Save in the layout after a successful write — greyed, not removed —
       // so the bar keeps its shape while Publish becomes the next step.
       saveButton.hidden = false;
+      commitStylesButton.hidden = !styleEngineDirtyCount;
       if (!actionsBusy) {
         saveButton.disabled = !dirtyCount;
         revertButton.disabled = false;
+        commitStylesButton.disabled = false;
       }
       saveButton.classList.toggle('is-dev-actions-busy', actionsBusy);
       publishButton.classList.toggle('is-dev-actions-busy', actionsBusy);
       revertButton.classList.toggle('is-dev-actions-busy', actionsBusy);
+      commitStylesButton.classList.toggle('is-dev-actions-busy', actionsBusy);
     };
 
     const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
@@ -1949,7 +1963,8 @@
           && detail.kind !== 'caption'
           && detail.kind !== 'listing-order'
           && detail.kind !== 'section-order'
-          && detail.kind !== 'placeholder-fill')
+          && detail.kind !== 'placeholder-fill'
+          && detail.kind !== 'style-token')
       ) {
         return;
       }
@@ -2388,6 +2403,24 @@
       textPaths: string[];
     };
 
+    /**
+     * Vite only registers `configureServer` middleware on process start. After a
+     * branch pull, client HMR can call a new `/api/…` path the running server
+     * never mounted — Astro then returns HTML and `response.json()` throws a
+     * cryptic JSON.parse error. Surface a restart hint instead.
+     */
+    const readApiJson = async (response: Response): Promise<Record<string, unknown>> => {
+      const text = await response.text();
+      try {
+        return (text ? JSON.parse(text) : {}) as Record<string, unknown>;
+      } catch {
+        throw new Error(
+          `Dev API returned non-JSON (HTTP ${response.status}). `
+          + 'Restart the dev session (`bun run dev:session:stop`, then `bun run dev:session`) and try again.',
+        );
+      }
+    };
+
     const performSave = async (): Promise<PublishManifest | null> => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
@@ -2397,11 +2430,13 @@
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
       const placeholderFills = pendingChanges.filter((change) => change.kind === 'placeholder-fill');
+      const styleTokenChanges = pendingChanges.filter((change) => change.kind === 'style-token');
       const imageChanges = pendingChanges.filter(
         (change) => (
           change.kind !== 'listing-order'
           && change.kind !== 'section-order'
           && change.kind !== 'placeholder-fill'
+          && change.kind !== 'style-token'
         ),
       );
       if (
@@ -2433,6 +2468,7 @@
           sectionDelete: pendingSectionDeletes.length,
           sectionOrder: sectionOrderChanges.length,
           listingOrder: listingChanges.length,
+          styleToken: styleTokenChanges.length,
         },
         textPaths: dirtyText.slice(0, 8).map((state) => state.path.join('.')),
       };
@@ -2463,6 +2499,16 @@
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save grid order.');
+        }
+
+        for (const change of styleTokenChanges) {
+          const response = await fetch('/api/style-token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok) throw new Error(String(payload.error || 'Could not save the colour token.'));
         }
 
         if (imageChanges.length > 0) {
@@ -2565,7 +2611,12 @@
         // Optimistic: keep the bar up until refreshPublishState confirms counts.
         // Without this, dirtyCount is 0 and unpublishedCount is still stale, so
         // the bar flickers hidden between Save and the /api/publish GET.
-        unpublishedCount = Math.max(unpublishedCount, manifest.documents.length || 1);
+        if (manifest.documents.length) {
+          unpublishedCount = Math.max(unpublishedCount, manifest.documents.length);
+        }
+        if (styleTokenChanges.length) {
+          styleEngineDirtyCount = Math.max(styleEngineDirtyCount, 1);
+        }
         setStickyStatus('Saved.');
         return manifest;
       } catch (error) {
@@ -2582,7 +2633,70 @@
       void (async () => {
         // A successful Save turns unsaved edits into unpublished ones, so the
         // bar has to stay up — refresh the count rather than letting it hide.
-        if (await performSave()) void refreshPublishState();
+        if (await performSave()) {
+          void refreshPublishState();
+          void refreshStyleEngineState();
+        }
+      })();
+    });
+
+    const refreshStyleEngineState = async () => {
+      try {
+        // Prefer /api/commit-engine — mounted since the first #109 server start.
+        // /api/publish-styles is an alias added later; calling it after client HMR
+        // without a restart 404s as HTML.
+        const response = await fetch('/api/commit-engine');
+        if (!response.ok) throw new Error('unavailable');
+        const state = await readApiJson(response) as { files?: string[]; dirty?: boolean };
+        styleEngineDirtyCount = Array.isArray(state.files) ? state.files.length : (state.dirty ? 1 : 0);
+      } catch {
+        // Leave the last known count — a blip shouldn't hide Publish styles.
+      }
+      // Hand "Saved." back to the count once we know style/engine state.
+      if (stickyStatus === 'Saved.') stickyStatus = '';
+      updateActions();
+    };
+
+    commitStylesButton.addEventListener('click', () => {
+      void (async () => {
+        actionsBusy = true;
+        commitStylesButton.disabled = true;
+        saveButton.disabled = true;
+        publishButton.disabled = true;
+        revertButton.disabled = true;
+        commitStylesButton.classList.add('is-dev-actions-busy');
+        setStickyStatus('Publishing styles…');
+        try {
+          const response = await fetch('/api/commit-engine', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              message: 'styles: update colour tokens',
+            }),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok || !payload.ok) {
+            throw new Error(String(payload.error || 'Could not publish styles.'));
+          }
+          // Old middleware (pre-restart) only committed on the branch and had no
+          // `pushed` field — don't claim the colours are on main.
+          if (payload.pushed === undefined) {
+            styleEngineDirtyCount = 0;
+            setStickyStatus(
+              'Styles committed on this branch only. Restart the dev session to publish colour tokens to main.',
+            );
+            return;
+          }
+          styleEngineDirtyCount = 0;
+          setStickyStatus(payload.pushed
+            ? (payload.message ? `Published styles — ${payload.message}` : 'Styles published.')
+            : `Committed locally, push failed: ${payload.error}`);
+        } catch (error) {
+          setStickyStatus(error instanceof Error ? error.message : 'Could not publish styles.');
+        } finally {
+          actionsBusy = false;
+          void refreshStyleEngineState();
+        }
       })();
     });
 
@@ -2736,11 +2850,15 @@
     });
 
     void refreshPublishState();
+    void refreshStyleEngineState();
 
     window.addEventListener('vcd:dev-mode-change', (event) => {
       const active = Boolean((event as CustomEvent<{ active: boolean }>).detail?.active);
       setEditingEnabled(active);
-      if (active) void refreshPublishState();
+      if (active) {
+        void refreshPublishState();
+        void refreshStyleEngineState();
+      }
     });
     window.addEventListener('beforeunload', (event) => {
       if (devServerReloading) return;

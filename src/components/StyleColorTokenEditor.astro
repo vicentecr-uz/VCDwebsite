@@ -33,12 +33,12 @@ import DevOverlay from './DevOverlay.astro';
     </label>
 
     <div class="color-token-editor__actions">
-      <button type="button" data-token-save>Save</button>
+      <button type="button" data-token-done>Done</button>
       <button type="button" data-token-revert>Revert changes</button>
     </div>
 
     <p class="color-token-editor__status" data-token-status aria-live="polite">
-      Changes preview live until saved.
+      Changes preview live — use Save in the page bar to write.
     </p>
 
     <color-picker
@@ -70,10 +70,11 @@ import DevOverlay from './DevOverlay.astro';
     const hexInput = editor.querySelector<HTMLInputElement>('[data-token-hex]');
     const swatch = editor.querySelector<HTMLButtonElement>('[data-token-swatch]');
     const picker = editor.querySelector<ColorPickerElement>('[data-token-picker]');
-    const saveButton = editor.querySelector<HTMLButtonElement>('[data-token-save]');
+    const doneButton = editor.querySelector<HTMLButtonElement>('[data-token-done]');
     const revertButton = editor.querySelector<HTMLButtonElement>('[data-token-revert]');
     const status = editor.querySelector<HTMLElement>('[data-token-status]');
-    if (!name || !hexInput || !swatch || !picker || !saveButton || !revertButton || !status) {
+    const panel = editor.closest<HTMLElement>('[data-dev-overlay]');
+    if (!name || !hexInput || !swatch || !picker || !doneButton || !revertButton || !status) {
       return;
     }
 
@@ -82,6 +83,8 @@ import DevOverlay from './DevOverlay.astro';
     let activeToken = '';
     let savedValue = '';
     let syncingField = false;
+
+    const pendingIdFor = (token: string) => `style-token:${token}`;
 
     const normalizeHex = (raw: string) => {
       const value = raw.trim().startsWith('#') ? raw.trim() : `#${raw.trim()}`;
@@ -102,13 +105,52 @@ import DevOverlay from './DevOverlay.astro';
       syncingField = false;
     };
 
+    const applyPreview = (token: string, value: string) => {
+      root.style.setProperty(token, value);
+      if (activeTrigger?.dataset.colorTokenName === token) {
+        activeTrigger.dataset.colorTokenValue = value;
+        activeTrigger.style.background = value;
+        activeTrigger
+          .closest<HTMLElement>('.token-card')
+          ?.querySelector<HTMLElement>('[data-token-value]')
+          ?.replaceChildren(value);
+      }
+    };
+
+    const syncPending = (token: string, value: string, baseline: string) => {
+      const id = pendingIdFor(token);
+      if (value === baseline) {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id } }));
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id,
+          kind: 'style-token',
+          payload: { token, value },
+          revert: () => {
+            applyPreview(token, baseline);
+            if (activeToken === token) {
+              savedValue = baseline;
+              syncHexField(baseline);
+              picker.setAttribute('hex', toPickerHex(baseline));
+              status.textContent = 'Reverted to the last saved colour.';
+            }
+          },
+        },
+      }));
+    };
+
     /** Live-preview a colour. Pass rewriteField=false while the user is typing hex. */
     const preview = (value: string, rewriteField = true) => {
       if (!activeToken) return;
-      root.style.setProperty(activeToken, value);
+      applyPreview(activeToken, value);
       swatch.style.background = value;
       if (rewriteField) syncHexField(value);
-      status.textContent = 'Previewing unsaved changes.';
+      syncPending(activeToken, value, savedValue);
+      status.textContent = value === savedValue
+        ? 'Changes preview live — use Save in the page bar to write.'
+        : 'Unsaved — use Save in the page bar to write.';
     };
 
     const openPicker = (hex: string) => {
@@ -120,9 +162,9 @@ import DevOverlay from './DevOverlay.astro';
     };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
-      const panel = event.detail?.panel as HTMLElement | undefined;
+      const openPanel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLButtonElement | undefined;
-      if (panel?.dataset.devPanelKey !== 'style-color-token' || !trigger) return;
+      if (openPanel?.dataset.devPanelKey !== 'style-color-token' || !trigger) return;
 
       const token = trigger.dataset.colorTokenName;
       const fallback = normalizeHex(trigger.dataset.colorTokenSavedValue || '');
@@ -135,8 +177,21 @@ import DevOverlay from './DevOverlay.astro';
       name.textContent = token;
       syncHexField(current);
       picker.setAttribute('hex', toPickerHex(current));
-      status.textContent = 'Changes preview live until saved.';
+      status.textContent = current === savedValue
+        ? 'Changes preview live — use Save in the page bar to write.'
+        : 'Unsaved — use Save in the page bar to write.';
+      if (current !== savedValue) syncPending(token, current, savedValue);
     }) as EventListener);
+
+    window.addEventListener('vcd:dev-pending-committed', () => {
+      if (!activeToken || !activeTrigger) return;
+      const live = normalizeHex(getComputedStyle(root).getPropertyValue(activeToken));
+      if (!live) return;
+      savedValue = live;
+      activeTrigger.dataset.colorTokenSavedValue = live;
+      activeTrigger.dataset.colorTokenValue = live;
+      status.textContent = 'Saved — publish styles from the page bar when ready.';
+    });
 
     hexInput.addEventListener('input', () => {
       if (syncingField) return;
@@ -179,41 +234,8 @@ import DevOverlay from './DevOverlay.astro';
       status.textContent = 'Reverted to the last saved colour.';
     });
 
-    saveButton.addEventListener('click', async () => {
-      const value = normalizeHex(hexInput.value);
-      if (!activeToken || !activeTrigger || !value) {
-        status.textContent = 'Enter a valid hex colour before saving.';
-        return;
-      }
-
-      saveButton.disabled = true;
-      status.textContent = 'Saving…';
-
-      try {
-        const response = await fetch('/api/style-token', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ token: activeToken, value }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Save failed.');
-
-        savedValue = payload.value;
-        activeTrigger.dataset.colorTokenSavedValue = payload.value;
-        activeTrigger.dataset.colorTokenValue = payload.value;
-        activeTrigger.style.background = payload.value;
-        activeTrigger
-          .closest<HTMLElement>('.token-card')
-          ?.querySelector<HTMLElement>('[data-token-value]')
-          ?.replaceChildren(payload.value);
-        preview(payload.value);
-        picker.setAttribute('hex', toPickerHex(payload.value));
-        status.textContent = 'Saved to global.css.';
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not save the colour.';
-      } finally {
-        saveButton.disabled = false;
-      }
+    doneButton.addEventListener('click', () => {
+      if (panel) panel.hidden = true;
     });
   };
 
@@ -252,9 +274,7 @@ import DevOverlay from './DevOverlay.astro';
     width: 100%;
     min-height: 2.4em;
     border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
+    border-radius: var(--radius-control);
     background: var(--color-surface-strong);
     color: var(--color-text);
     font: inherit;
@@ -269,9 +289,7 @@ import DevOverlay from './DevOverlay.astro';
     width: 2.4em;
     height: 2.4em;
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
+    border-radius: var(--radius-control);
     background: var(--color-surface-strong);
     padding: 0;
     cursor: pointer;
@@ -285,9 +303,7 @@ import DevOverlay from './DevOverlay.astro';
 
   .color-token-editor__actions button {
     border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
+    border-radius: var(--radius-control);
     background: var(--color-surface-strong);
     padding: 0.55em;
     color: var(--color-text);

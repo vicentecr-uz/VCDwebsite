@@ -35,6 +35,7 @@ import {
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
 import { publishDevWriter } from './scripts/dev-publish.mjs';
 import { issueDevWriter } from './scripts/dev-issue.mjs';
+import { commitEngineDevWriter } from './scripts/dev-commit-engine.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -371,6 +372,9 @@ function styleTokenDevWriter() {
             return;
           }
 
+          // Live preview already applied the colour — suppress the Vite/Astro
+          // full-reload that would otherwise wipe is-dev-mode and the save bar.
+          suppressContentHmr();
           await writeFile(file, source.replace(declaration, `$1${value}$3`), 'utf8');
           send(200, { ok: true, token, value });
         } catch {
@@ -2020,6 +2024,7 @@ export default defineConfig({
       publishMediaDevWriter(),
       publishDevWriter(),
       issueDevWriter(),
+      commitEngineDevWriter(),
       imageCropDevWriter(),
       imageGridDevWriter(),
       styleTokenDevWriter(),
