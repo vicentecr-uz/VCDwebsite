@@ -1560,6 +1560,13 @@ const lockSvg = sizeIcon(lockIcon, 14);
       pageStage = { ghost, ghostImg, stage, target };
       wirePageStage(stage);
       syncPageStageBox();
+      // Layout can settle a frame later (constrained width, fonts, overlay open)
+      // — re-glue so handles aren't stranded at 0×0 and look "missing".
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (pageStage?.stage === stage) syncPageStageBox();
+        });
+      });
       const carousel = target.closest('[data-project-image-carousel]');
       if (carousel) {
         window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
