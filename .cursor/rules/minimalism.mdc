@@ -1,0 +1,32 @@
+---
+description: Decision ladder before writing code — stop at the first rung that solves the task
+alwaysApply: true
+---
+
+# Before writing code — climb this ladder
+
+**Do not start implementing until you have climbed this ladder.** Stop at the **first** rung that solves the task. Understand the problem first (read the code you will touch, trace the real flow) — the ladder chooses *how* to solve it, not whether to understand it.
+
+1. **Needed at all?** If not, do not build it (YAGNI). Push back if the request looks speculative.
+2. **Already in this codebase?** Reuse the existing helper / pattern. Do not rewrite it.
+3. **Standard library?** Prefer it over custom code.
+4. **Native platform feature?** Prefer it over a library or a hand-rolled solution.
+5. **Already-installed dependency?** Use it. Do not add a new package if an installed one covers it.
+6. **One line?** Prefer one line over a new abstraction or helper.
+7. **Only then:** write the minimum new code that works.
+
+## Must
+
+- Fix **root causes**, not reported symptoms: grep other callers of any function you touch; one shared guard beats a patch per caller.
+- Prefer **editing existing files** over creating new ones.
+- Prefer **deletion over addition**; boring over clever; fewest files possible.
+- Mark deliberate corner-cuts (global lock, O(n²), naive heuristic) with a **one-line comment** naming the ceiling and the upgrade path.
+
+## Must not
+
+- No abstractions that were not **explicitly** requested.
+- No new dependency if it can be avoided.
+- No speculative / "nice to have" extras beyond what was asked.
+- Never trade away **input validation, error handling, security, or accessibility** to keep a diff small.
+
+Canonical personal standard: Atlas `standards.md` → *Code Style — Decision ladder*. Distilled from the Ponytail agent ruleset.
