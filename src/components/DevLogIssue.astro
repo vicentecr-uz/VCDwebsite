@@ -62,7 +62,7 @@ import DevOverlay from './DevOverlay.astro';
 
       <div class="dev-log-issue__actions">
         <button type="button" data-log-cancel>Cancel</button>
-        <button type="button" class="dev-log-issue__primary" data-log-submit>Log</button>
+        <button type="button" class="dev-log-issue__primary" data-log-submit>Log issue</button>
       </div>
 
       <div class="dev-log-issue__veil" data-log-veil hidden>
@@ -121,6 +121,8 @@ import DevOverlay from './DevOverlay.astro';
     let pickedContext = '';
     let metaBranch = '';
     let veilMode: 'idle' | 'cancel' | 'logging' | 'done' = 'idle';
+    /** How we opened the cancel confirm — Esc again means Yes; Cancel-click then Esc means No. */
+    let cancelConfirmSource: 'escape' | 'button' | null = null;
     let metaLoaded = false;
 
     const isDirty = () => Boolean(
@@ -163,15 +165,26 @@ import DevOverlay from './DevOverlay.astro';
       veil.hidden = true;
       veilActions.hidden = true;
       veilMode = 'idle';
+      cancelConfirmSource = null;
       veil.classList.remove('is-under-lights');
     };
 
-    const showCancelConfirm = () => {
+    const showCancelConfirm = (source: 'escape' | 'button') => {
+      cancelConfirmSource = source;
       veilMode = 'cancel';
       veil.classList.remove('is-under-lights');
       veilMessage.textContent = 'Are you sure you want to cancel?';
       veilActions.hidden = false;
       veil.hidden = false;
+    };
+
+    /** Same as the Cancel button: confirm if dirty, otherwise close. */
+    const requestCancel = (source: 'escape' | 'button') => {
+      if (!isDirty()) {
+        closePanel();
+        return;
+      }
+      showCancelConfirm(source);
     };
 
     const showLoggingVeil = (message: string) => {
@@ -481,18 +494,18 @@ import DevOverlay from './DevOverlay.astro';
     }, true);
 
     cancelButton.addEventListener('click', (event) => {
-      if (event.altKey || !isDirty()) {
+      if (event.altKey) {
         closePanel();
         return;
       }
-      showCancelConfirm();
+      requestCancel('button');
     });
 
     veilNo.addEventListener('click', () => hideVeil());
     veilYes.addEventListener('click', () => closePanel());
     submitButton.addEventListener('click', () => void submitIssue());
 
-    // Capture Esc so cancel-confirm / pick-mode win over DevModeController.
+    // Capture Esc so cancel-confirm / pick-mode / form-dismiss win over DevModeController.
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyI') {
         event.preventDefault();
@@ -512,11 +525,24 @@ import DevOverlay from './DevOverlay.astro';
         return;
       }
 
+      if (panel.hidden) return;
+
       if (veilMode === 'cancel') {
         event.preventDefault();
         event.stopImmediatePropagation();
-        hideVeil();
+        // Esc opened the confirm → Esc again confirms (Yes).
+        // Cancel button opened it → Esc goes back one step (No).
+        if (cancelConfirmSource === 'escape') closePanel();
+        else hideVeil();
+        return;
       }
+
+      if (veilMode === 'logging' || veilMode === 'done') return;
+
+      // Form open: Esc acts like Cancel.
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      requestCancel('escape');
     }, true);
   };
 
@@ -555,13 +581,26 @@ import DevOverlay from './DevOverlay.astro';
     border-radius: var(--radius-control-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-    background: var(--color-surface-strong);
+    background-color: var(--color-surface-strong);
     padding: 0.55em 0.65em;
     color: var(--color-text);
     font: inherit;
     font-size: 0.85rem;
     letter-spacing: normal;
     text-transform: none;
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .dev-log-issue__field input:focus,
+  .dev-log-issue__field textarea:focus,
+  .dev-log-issue__field select:focus,
+  .dev-log-issue__field input:focus-visible,
+  .dev-log-issue__field textarea:focus-visible,
+  .dev-log-issue__field select:focus-visible {
+    background-color: var(--color-surface-strong);
+    outline: 2px solid var(--color-text);
+    outline-offset: 1px;
   }
 
   .dev-log-issue__field textarea {
