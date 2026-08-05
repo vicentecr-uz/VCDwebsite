@@ -24,6 +24,8 @@
   // Shared with the controller, which holds the drop slot back behind this fade.
   const LIFT_BACKDROP_FADE_MS = REORDER_TIMING.LIFT_CARD_FADE_MS;
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
+  /** Fist cursor only while the button is down — settle may continue after. */
+  const SECTION_HOLDING_CLASS = 'is-section-reorder-holding';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
 
@@ -213,9 +215,16 @@
 
   const setSectionDragging = (active: boolean) => {
     document.documentElement.classList.toggle(SECTION_DRAGGING_CLASS, active);
+    if (!active) {
+      document.documentElement.classList.remove(SECTION_HOLDING_CLASS);
+    }
     if (active) {
       document.querySelector('.site-header')?.classList.add('is-scrolled-hidden');
     }
+  };
+
+  const setSectionHolding = (active: boolean) => {
+    document.documentElement.classList.toggle(SECTION_HOLDING_CLASS, active);
   };
 
   const pinSectionControls = (root: HTMLElement) => {
@@ -318,6 +327,7 @@
       section.classList.remove('is-dev-section-controls-visible');
     });
     setSectionDragging(true);
+    setSectionHolding(true);
     root.classList.add('is-section-lifted-session');
     bindSessionPointerListeners();
   };
@@ -329,6 +339,8 @@
     const root = dragItem;
     const sessionId = activeSessionId;
     sessionButtonDown = false;
+    // Open the fist immediately — settle / card fade can keep running.
+    setSectionHolding(false);
     unbindSessionPointerListeners();
 
     if (dragHandle && dragPointerId != null) {
@@ -565,6 +577,7 @@
     activeSessionId = 0;
     droppingSessionId = 0;
     sessionButtonDown = false;
+    setSectionHolding(false);
     unbindSessionPointerListeners();
     if (grabNodeSnapshot) restoreNodeOrder(grabNodeSnapshot);
     else if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
@@ -808,16 +821,20 @@
   .is-dev-mode .dev-section-drag-handle:hover,
   .is-dev-mode .dev-section-drag-handle:focus-visible,
   .is-dev-mode .dev-section-drag-handle:active,
-  .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
+  html.is-section-reorder-holding
+    [data-dev-section-reorderable].is-section-lifted-session
+    > .dev-section-drag-handle {
     background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
     backdrop-filter: blur(8px);
     transform: translate(calc(-100% - 0.55em), -50%) scale(1.08);
   }
 
   /* :active alone drops once pointer capture / drag takes over — keep the
-     press shadow for the whole lift session. */
+     press look only while held (is-section-reorder-holding), not through settle. */
   .is-dev-mode .dev-section-drag-handle:active,
-  .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
+  html.is-section-reorder-holding
+    [data-dev-section-reorderable].is-section-lifted-session
+    > .dev-section-drag-handle {
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
@@ -825,7 +842,9 @@
     .is-dev-mode .dev-section-drag-handle:hover,
     .is-dev-mode .dev-section-drag-handle:focus-visible,
     .is-dev-mode .dev-section-drag-handle:active,
-    .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
+    html.is-section-reorder-holding
+      [data-dev-section-reorderable].is-section-lifted-session
+      > .dev-section-drag-handle {
       transform: translate(0.55em, -50%) scale(1.08);
     }
   }
@@ -923,9 +942,13 @@
   html.is-section-reorder-dragging {
     touch-action: none;
     user-select: none;
-    cursor: grabbing;
     /* Slot relocates must not be swallowed by scroll anchoring (#75). */
     overflow-anchor: none;
+  }
+
+  /* Fist only while the pointer is down — drop settle must not keep grabbing. */
+  html.is-section-reorder-holding {
+    cursor: grabbing;
   }
 
   html.is-section-reorder-dragging [data-dev-project-drop-zone],
@@ -935,9 +958,12 @@
   }
 
   html.is-section-reorder-dragging .dev-section-drag-handle {
-    cursor: grabbing;
     opacity: 0;
     pointer-events: none;
+  }
+
+  html.is-section-reorder-holding .dev-section-drag-handle {
+    cursor: grabbing;
   }
 
   html.is-section-reorder-dragging
@@ -1133,9 +1159,14 @@
   }
 
   .is-dev-mode [data-dev-section-reorderable].is-section-dragging .dev-section-drag-handle {
-    cursor: grabbing;
     opacity: 1;
     pointer-events: auto;
+  }
+
+  html.is-section-reorder-holding
+    [data-dev-section-reorderable].is-section-dragging
+    .dev-section-drag-handle {
+    cursor: grabbing;
   }
 
   /*
