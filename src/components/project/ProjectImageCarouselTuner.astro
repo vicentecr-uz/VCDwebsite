@@ -420,15 +420,19 @@ import DevOverlay from '../DevOverlay.astro';
       // put the image back. The removal itself only writes to disk at Save.
       const pendingId = pendingIdFor(target);
       const beforeCatalog = catalog.map((item) => ({ ...item }));
-      const beforeDraft = cloneDraft(draft);
-      const beforeSaved = cloneDraft(saved);
-      const beforeBaseline = diskBaselines.has(pendingId)
+      const carouselBaseline = diskBaselines.has(pendingId)
         ? cloneDraft(diskBaselines.get(pendingId)!)
         : null;
+      // A layout edit staged earlier (drag/park, or Save changes) has to win
+      // over a pre-removal snapshot on revert — otherwise Revert would leave
+      // that edit half-applied instead of going all the way back to disk.
+      const revertDraft = carouselBaseline ?? cloneDraft(draft);
       // writeSettingsJson() serializes against the closure's itemIds, which only
-      // describe the target being edited — keep the literal strings instead so a
+      // describe the target being edited — keep the literal string instead so a
       // revert can restore a carousel the tuner has since moved off.
-      const beforeSettingsJson = target.dataset.devCarouselSettings ?? '';
+      const revertSettingsJson = JSON.stringify(
+        serializeCarouselSettings(revertDraft.orientation, revertDraft.byViewport, itemIds),
+      );
       const removedNodes = [...target.querySelectorAll<HTMLElement>(
         `[data-grid-item-id="${CSS.escape(id)}"], [data-carousel-item-id="${CSS.escape(id)}"]`,
       )].map((node) => ({
@@ -449,16 +453,16 @@ import DevOverlay from '../DevOverlay.astro';
         }
       }
       saved = cloneDraft(draft);
-      diskBaselines.set(pendingId, cloneDraft(saved));
       writeSettingsJson(target, draft);
 
       removedNodes.forEach(({ node }) => node.remove());
 
-      // Layout staging for this carousel described a set of items that no longer
-      // matches — drop it rather than write a `visible` list naming a gone id.
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-        detail: { id: pendingId },
-      }));
+      // A layout edit staged earlier for this carousel still describes a
+      // real, un-disked change once the removed id is purged from its
+      // `visible` lists — keep it live instead of dropping it, so the save
+      // bar's count and Save both still carry it. stageDraft drops it on its
+      // own if purging brought the draft back to exactly matching disk.
+      stageDraft('Removed from page — Save in the page bar to write it to disk.');
 
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
         detail: {
@@ -477,17 +481,15 @@ import DevOverlay from '../DevOverlay.astro';
               else parent.append(node);
             });
             target.dataset.devCarouselItems = JSON.stringify(beforeCatalog);
-            target.dataset.carouselSettings = beforeSettingsJson;
-            target.dataset.devCarouselSettings = beforeSettingsJson;
-            if (beforeBaseline) diskBaselines.set(pendingId, cloneDraft(beforeBaseline));
-            else diskBaselines.delete(pendingId);
+            target.dataset.carouselSettings = revertSettingsJson;
+            target.dataset.devCarouselSettings = revertSettingsJson;
             // Only the currently edited carousel owns these closures — touching
             // them for any other target would corrupt the one on screen.
             if (editTarget === target) {
               catalog = beforeCatalog.map((item) => ({ ...item }));
               itemIds = catalog.map((item) => item.id);
-              saved = cloneDraft(beforeSaved);
-              draft = cloneDraft(beforeDraft);
+              saved = cloneDraft(revertDraft);
+              draft = cloneDraft(revertDraft);
               renderDraft();
             }
             window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: target } }));
