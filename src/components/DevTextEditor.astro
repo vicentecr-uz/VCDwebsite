@@ -2975,6 +2975,7 @@
   */
   .is-dev-mode [data-dev-text-document] {
     position: relative;
+    isolation: isolate;
     border-radius: 0.15em;
     cursor: text;
     outline: none;
@@ -2983,9 +2984,21 @@
   .is-dev-mode [data-dev-text-document]::before {
     content: '';
     position: absolute;
-    inset: -0.2em;
+    inset: -0.5em;
     border: 1px dashed color-mix(in srgb, currentColor 40%, transparent);
-    border-radius: inherit;
+    border-radius: 0.5em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .is-dev-mode [data-dev-text-document]::after {
+    content: '';
+    position: absolute;
+    inset: -0.3em;
+    z-index: -1;
+    border-radius: 0.3em;
+    background: color-mix(in srgb, currentColor 10%, var(--color-surface-soft));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
@@ -3008,9 +3021,8 @@
     tiny “grid” chrome icon at the top-left corner after click-away.
   */
   html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting):not(.is-dev-mode-settling)
-    [data-dev-text-document]:is(:focus, .is-dev-text-dirty) {
-    background: color-mix(in srgb, currentColor 10%, transparent);
-    transition: background-color 0.15s ease;
+    [data-dev-text-document]:is(:focus, .is-dev-text-dirty)::after {
+    opacity: 1;
   }
 
   /*
