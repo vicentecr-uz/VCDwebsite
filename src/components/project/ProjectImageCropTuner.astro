@@ -1127,11 +1127,11 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
     /* ── On-page crop surface ──────────────────────────────────────────
        Mounted only while this panel is editing a target — never on hover.
-       Drag pans the content, wheel zooms around the pointer, edge/corner
-       handles reshape the frame, and a faded ghost shows the source
-       outside the frame. Gated to the real viewport: editing the tablet
-       crop from a desktop window keeps the modal preview as the surface,
-       since the page cannot display that variant. */
+       Drag pans the content, wheel zooms around the pointer (and pans once
+       zoomed in), edge/corner handles reshape the frame, and a faded ghost
+       shows the source outside the frame. Gated to the real viewport:
+       editing the tablet crop from a desktop window keeps the modal preview
+       as the surface, since the page cannot display that variant. */
     let pageStage: {
       ghost: HTMLElement;
       ghostImg: HTMLImageElement;
@@ -1319,6 +1319,21 @@ const lockSvg = sizeIcon(lockIcon, 14);
         status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
       };
 
+      const releaseAllCaptures = () => {
+        for (const id of pointers.keys()) {
+          if (surface.hasPointerCapture(id)) surface.releasePointerCapture(id);
+        }
+      };
+
+      /** Locked cover-fit crops cannot pan — treat that as "no room to pan". */
+      const cropCanPan = () => {
+        if (!constrainToFrame()) return true;
+        const h = contentH(draft);
+        const slackX = Math.max(0, 1 - draft.w);
+        const slackY = Math.max(0, 1 - h);
+        return slackX > 1e-4 || slackY > 1e-4;
+      };
+
       surface.addEventListener('pointerdown', (event) => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
         if (
@@ -1329,9 +1344,11 @@ const lockSvg = sizeIcon(lockIcon, 14);
         if (options?.stopPropagation) event.stopPropagation();
 
         pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-        capturePointer(surface, event.pointerId);
 
         if (pointers.size >= 2) {
+          // Capturing the first contact can starve the second on some browsers
+          // (Safari especially) — drop captures so both fingers keep delivering.
+          releaseAllCaptures();
           beginPinch(surface.getBoundingClientRect());
           return;
         }
@@ -1344,6 +1361,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
         panOriginY = draft.cy;
         panAxis = null;
         surface.classList.add('is-dragging');
+        capturePointer(surface, event.pointerId);
       });
 
       surface.addEventListener('pointermove', (event) => {
@@ -1405,6 +1423,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
           panOriginY = draft.cy;
           panAxis = null;
           surface.classList.add('is-dragging');
+          capturePointer(surface, id);
           return;
         }
 
@@ -1414,6 +1433,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
       surface.addEventListener('pointerup', endPointer);
       surface.addEventListener('pointercancel', endPointer);
       surface.addEventListener('lostpointercapture', (event) => {
+        // Ignore capture loss while pinching — we release captures on purpose
+        // when the second finger lands, and ending the pointer then drops the pinch.
+        if (pointers.size >= 2 || pinch) return;
         if (!pointers.has(event.pointerId)) return;
         endPointer(event);
       });
@@ -1423,7 +1445,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
         const bounds = surface.getBoundingClientRect();
         if (!bounds.width || !bounds.height) return;
 
-        // Trackpad pinch (and ctrl+wheel) zooms; two-finger swipe pans.
+        // Trackpad pinch (and ctrl+wheel) always zooms.
         if (event.ctrlKey) {
           const gain = wheelGainFor(event.deltaY, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
           const factor = Math.exp(-event.deltaY * gain);
@@ -1432,15 +1454,24 @@ const lockSvg = sizeIcon(lockIcon, 14);
           return;
         }
 
-        // Wheel deltas use scroll semantics (opposite pointer-drag). Natural
-        // two-finger swipe pans the image with the fingers.
-        const panGainX = wheelGainFor(event.deltaX, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
-        const panGainY = wheelGainFor(event.deltaY, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
-        beginLiveEdits();
-        draft.cx += (event.deltaX / bounds.width) * draft.w * panGainX;
-        draft.cy += (event.deltaY / bounds.height) * contentH(draft) * panGainY;
-        renderDraft();
-        status.textContent = 'Unsaved changes.';
+        // Two-finger swipe pans when the crop has room to move. At a locked
+        // cover-fit (the common open state) pan is a no-op — fall back to
+        // scroll-to-zoom so trackpad gestures still do something useful.
+        if (cropCanPan()) {
+          const panGainX = wheelGainFor(event.deltaX, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
+          const panGainY = wheelGainFor(event.deltaY, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
+          beginLiveEdits();
+          draft.cx += (event.deltaX / bounds.width) * draft.w * panGainX;
+          draft.cy += (event.deltaY / bounds.height) * contentH(draft) * panGainY;
+          renderDraft();
+          status.textContent = 'Unsaved changes.';
+          return;
+        }
+
+        const gain = wheelGainFor(event.deltaY, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
+        const factor = Math.exp(-event.deltaY * gain);
+        zoomAtClientPoint(event.clientX, event.clientY, factor, bounds);
+        status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
       }, { passive: false });
     };
 
@@ -2158,12 +2189,17 @@ const lockSvg = sizeIcon(lockIcon, 14);
     opacity: 0.8;
   }
 
+  /*
+    Resize handles sit half outside the preview. DevOverlay's body scrolls with
+    overflow-x:hidden, which clips anything that escapes the stage box — pad
+    every side enough for the 0.7em chip plus its ::before hit slop.
+  */
   .tapico-crop-tuner__stage {
     display: flex;
     align-items: center;
     justify-content: center;
     min-height: 14em;
-    padding-block: 0.55em;
+    padding: 0.85em;
     background: var(--color-surface-soft);
   }
 
