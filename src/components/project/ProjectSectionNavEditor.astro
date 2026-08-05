@@ -7,63 +7,62 @@
  * - Section = Overview / Public Reception / … (scroll target + range)
  * A section owns page blocks from its start until the next section or group.
  */
+import DevOverlay from '../DevOverlay.astro';
 ---
 
 <div class="section-nav-editor" data-section-nav-editor hidden>
-  <div class="section-nav-editor__popover" data-nav-popover hidden>
-    <div class="section-nav-editor__head" data-nav-drag-handle>
-      <p class="section-nav-editor__title">Outline marker</p>
-    </div>
-
-    <p class="section-nav-editor__belongs" data-nav-belongs hidden></p>
-
-    <label class="section-nav-editor__row">
-      <input type="checkbox" data-nav-as-group />
-      <span>Section group</span>
-    </label>
-    <label class="section-nav-editor__field" data-nav-group-label-wrap>
-      <span>Group label</span>
-      <input type="text" data-nav-group-label maxlength="120" autocomplete="off" placeholder="Intro" />
-    </label>
-
-    <label class="section-nav-editor__row">
-      <input type="checkbox" data-nav-as-section />
-      <span>Section</span>
-    </label>
-    <label class="section-nav-editor__field" data-nav-section-label-wrap>
-      <span>Section label</span>
-      <input type="text" data-nav-section-label maxlength="120" autocomplete="off" placeholder="Overview" />
-    </label>
-
-    <p class="section-nav-editor__hint-inline">
-      A section covers this block and everything below it until the next section or group — you don’t mark every block.
-      Same block can start both a group and a section (e.g. Intro + Overview).
-    </p>
-
-    <div class="section-nav-editor__title-vis" data-nav-title-vis hidden>
-      <p class="section-nav-editor__subtitle">Show in-page title</p>
-      <div class="section-nav-editor__chips" role="group" aria-label="Title visibility">
-        <button type="button" data-title-bp="desktop" aria-pressed="true">D</button>
-        <button type="button" data-title-bp="tablet" aria-pressed="true">T</button>
-        <button type="button" data-title-bp="mobile" aria-pressed="true">M</button>
-      </div>
-      <button type="button" class="section-nav-editor__preset" data-nav-hide-sidebar>
-        Hide when sidebar shows
-      </button>
-    </div>
-
-    <div class="section-nav-editor__actions">
-      <button type="button" data-nav-cancel>Cancel</button>
-      <button type="button" class="section-nav-editor__save" data-nav-apply>Apply</button>
-    </div>
-    <p class="section-nav-editor__status" data-nav-status hidden></p>
-  </div>
-
   <div class="section-nav-editor__hint" data-nav-hint hidden>
     <span data-nav-hint-text>
       Click a block → section group and/or section · Esc closes marker · Esc again → Dev Mode
     </span>
   </div>
+
+  <DevOverlay title="Outline marker" storageKey="section-nav-marker" panelKey="section-nav" defaultHidden>
+    <div class="section-nav-editor__popover" data-nav-popover>
+      <p class="section-nav-editor__belongs" data-nav-belongs hidden></p>
+
+      <label class="section-nav-editor__row">
+        <input type="checkbox" data-nav-as-group />
+        <span>Section group</span>
+      </label>
+      <label class="section-nav-editor__field" data-nav-group-label-wrap>
+        <span>Group label</span>
+        <input type="text" data-nav-group-label maxlength="120" autocomplete="off" placeholder="Intro" />
+      </label>
+
+      <label class="section-nav-editor__row">
+        <input type="checkbox" data-nav-as-section />
+        <span>Section</span>
+      </label>
+      <label class="section-nav-editor__field" data-nav-section-label-wrap>
+        <span>Section label</span>
+        <input type="text" data-nav-section-label maxlength="120" autocomplete="off" placeholder="Overview" />
+      </label>
+
+      <p class="section-nav-editor__hint-inline">
+        A section covers this block and everything below it until the next section or group — you don’t mark every block.
+        Same block can start both a group and a section (e.g. Intro + Overview).
+      </p>
+
+      <div class="section-nav-editor__title-vis" data-nav-title-vis hidden>
+        <p class="section-nav-editor__subtitle">Show in-page title</p>
+        <div class="section-nav-editor__chips" role="group" aria-label="Title visibility">
+          <button type="button" data-title-bp="desktop" aria-pressed="true">D</button>
+          <button type="button" data-title-bp="tablet" aria-pressed="true">T</button>
+          <button type="button" data-title-bp="mobile" aria-pressed="true">M</button>
+        </div>
+        <button type="button" class="section-nav-editor__preset" data-nav-hide-sidebar>
+          Hide when sidebar shows
+        </button>
+      </div>
+
+      <div class="section-nav-editor__actions">
+        <button type="button" data-nav-cancel>Cancel</button>
+        <button type="button" class="section-nav-editor__save" data-nav-apply>Apply</button>
+      </div>
+      <p class="section-nav-editor__status" data-nav-status hidden></p>
+    </div>
+  </DevOverlay>
 </div>
 
 <script>
@@ -168,6 +167,7 @@
     };
 
     const popover = shell.querySelector<HTMLElement>('[data-nav-popover]');
+    const popoverPanel = shell.querySelector<HTMLElement>('[data-dev-panel-key="section-nav"]');
     const hint = shell.querySelector<HTMLElement>('[data-nav-hint]');
     const asGroupInput = shell.querySelector<HTMLInputElement>('[data-nav-as-group]');
     const asSectionInput = shell.querySelector<HTMLInputElement>('[data-nav-as-section]');
@@ -181,10 +181,10 @@
     const applyBtn = shell.querySelector<HTMLButtonElement>('[data-nav-apply]');
     const cancelBtn = shell.querySelector<HTMLButtonElement>('[data-nav-cancel]');
     const hideSidebarBtn = shell.querySelector<HTMLButtonElement>('[data-nav-hide-sidebar]');
-    const dragHandle = shell.querySelector<HTMLElement>('[data-nav-drag-handle]');
 
     if (
       !popover ||
+      !popoverPanel ||
       !hint ||
       !asGroupInput ||
       !asSectionInput ||
@@ -197,13 +197,25 @@
       !statusEl ||
       !applyBtn ||
       !cancelBtn ||
-      !hideSidebarBtn ||
-      !dragHandle
+      !hideSidebarBtn
     ) {
       return;
     }
 
-    const POPOVER_POSITION_KEY = 'sectionNavEditor:popover:position';
+    /**
+     * DevOverlay persists its own dragged position under this key (see
+     * DevOverlay.astro's `positionStorageKey`) — absence means "never dragged",
+     * which is when we anchor near the clicked block instead of reusing the panel's
+     * last spot.
+     */
+    const OVERLAY_POSITION_KEY = 'devOverlay:section-nav-marker:position';
+    const hasStoredPopoverPosition = () => {
+      try {
+        return Boolean(window.localStorage.getItem(OVERLAY_POSITION_KEY));
+      } catch {
+        return false;
+      }
+    };
 
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -213,39 +225,18 @@
       return Math.max(12, bottom + 8);
     };
 
-    const savePopoverPosition = (left: number, top: number) => {
-      try {
-        window.localStorage.setItem(POPOVER_POSITION_KEY, JSON.stringify({ left, top }));
-      } catch {
-        // Ignore storage failures.
-      }
-    };
-
-    const readPopoverPosition = () => {
-      try {
-        const raw = window.localStorage.getItem(POPOVER_POSITION_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw) as { left?: unknown; top?: unknown };
-        const left = Number(parsed.left);
-        const top = Number(parsed.top);
-        if (!Number.isFinite(left) || !Number.isFinite(top)) return null;
-        return { left, top };
-      } catch {
-        return null;
-      }
-    };
-
-    const setPopoverPosition = (left: number, top: number, persist = false) => {
+    const setPopoverPosition = (left: number, top: number) => {
       const pad = 12;
-      const width = popover.offsetWidth || Math.min(300, window.innerWidth - pad * 2);
-      const height = popover.offsetHeight || 0;
+      const width = popoverPanel.offsetWidth || Math.min(300, window.innerWidth - pad * 2);
+      const height = popoverPanel.offsetHeight || 0;
       const maxLeft = Math.max(pad, window.innerWidth - width - pad);
       const maxTop = Math.max(headerClearance(), window.innerHeight - height - pad);
       const nextLeft = clamp(left, pad, maxLeft);
       const nextTop = clamp(top, headerClearance(), maxTop);
-      popover.style.left = `${nextLeft}px`;
-      popover.style.top = `${nextTop}px`;
-      if (persist) savePopoverPosition(nextLeft, nextTop);
+      popoverPanel.style.left = `${nextLeft}px`;
+      popoverPanel.style.top = `${nextTop}px`;
+      popoverPanel.style.right = 'auto';
+      popoverPanel.style.bottom = 'auto';
     };
 
     let outline = getDevSectionOutline();
@@ -507,35 +498,44 @@
       sectionLabelInput.disabled = !asSectionInput.checked;
     };
 
-    const closePopover = () => {
-      popover.hidden = true;
+    /** Clears marker-editing state without touching the panel's hidden flag — shared
+     * by closePopover and the DevOverlay traffic-light Hide button, which hides the
+     * panel itself before this code ever finds out. */
+    const clearPopoverState = () => {
       activeBlock?.classList.remove('is-section-nav-active');
       activeBlock = null;
       clearRangeHighlights();
       setStatus('');
     };
 
-    const positionPopover = (block: HTMLElement) => {
-      const stored = readPopoverPosition();
+    const closePopover = () => {
+      popoverPanel.hidden = true;
+      clearPopoverState();
+    };
+
+    // DevOverlay's own traffic-light Hide button closes the panel directly and
+    // only announces it afterwards — catch that path too, or activeBlock/highlight
+    // state is left dangling on the page.
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel?.dataset.devPanelKey !== 'section-nav') return;
+      clearPopoverState();
+    }) as EventListener);
+
+    const anchorPopoverNearBlock = (block: HTMLElement) => {
       const pad = 12;
-      const width = Math.min(300, window.innerWidth - pad * 2);
-      popover.style.width = `${width}px`;
-
-      if (stored) {
-        setPopoverPosition(stored.left, stored.top);
-        return;
-      }
-
+      const width = popoverPanel.offsetWidth || Math.min(300, window.innerWidth - pad * 2);
       const rect = block.getBoundingClientRect();
       const minTop = headerClearance();
-      let left = clamp(rect.left, pad, window.innerWidth - width - pad);
+      const left = clamp(rect.left, pad, window.innerWidth - width - pad);
       let top = rect.bottom + 8;
 
-      popover.style.left = `${left}px`;
-      popover.style.top = `${top}px`;
+      popoverPanel.style.left = `${left}px`;
+      popoverPanel.style.top = `${top}px`;
+      popoverPanel.style.right = 'auto';
+      popoverPanel.style.bottom = 'auto';
 
       requestAnimationFrame(() => {
-        const popRect = popover.getBoundingClientRect();
+        const popRect = popoverPanel.getBoundingClientRect();
         if (popRect.bottom > window.innerHeight - pad || popRect.top < minTop) {
           top = rect.top - popRect.height - 8;
           if (top < minTop) {
@@ -599,8 +599,10 @@
       }
 
       setStatus('');
-      popover.hidden = false;
-      positionPopover(block);
+      popoverPanel.hidden = false;
+      if (!hasStoredPopoverPosition()) {
+        anchorPopoverNearBlock(block);
+      }
       if (asGroupInput.checked) {
         groupLabelInput.focus();
         groupLabelInput.select();
@@ -885,7 +887,7 @@
     // Marker edits only reach `outline` via Apply, so an open popover holds work
     // the save bar cannot see. Land it rather than letting Save drop it silently.
     window.addEventListener('vcd:dev-before-save', () => {
-      if (!isActive() || popover.hidden || !activeBlock) return;
+      if (!isActive() || popoverPanel.hidden || !activeBlock) return;
       onApply();
     });
 
@@ -895,7 +897,9 @@
         if (!isActive()) return;
         const target = event.target as HTMLElement | null;
         if (!target) return;
-        if (target.closest('[data-nav-popover]')) return;
+        // The whole DevOverlay panel, not just the inner content — its own
+        // head (drag handle, traffic lights) sits outside [data-nav-popover].
+        if (target.closest('[data-dev-panel-key="section-nav"]')) return;
         if (target.closest('.section-sidebar-nav')) return;
         if (target.closest('.site-header')) return;
         // This runs in capture, so a click on Save reached here first and closed
@@ -905,7 +909,7 @@
 
         const block = target.closest<HTMLElement>(`${mainScope} [data-dev-spacing-path], ${mainScope} .section-block[id]`);
         if (!block || !isEditableBlock(block)) {
-          if (!popover.hidden) closePopover();
+          if (!popoverPanel.hidden) closePopover();
           return;
         }
 
@@ -917,7 +921,7 @@
     );
 
     document.addEventListener('mousemove', (event) => {
-      if (!isActive() || !popover.hidden) return;
+      if (!isActive() || !popoverPanel.hidden) return;
       const target = event.target as HTMLElement | null;
       const block = target?.closest<HTMLElement>(`${mainScope} [data-dev-spacing-path], ${mainScope} .section-block[id]`);
       if (hoverBlock === block) return;
@@ -930,66 +934,14 @@
       if (!isActive()) return;
       if (event.key !== 'Escape') return;
       // Only dismiss the marker popover; DevModeController owns Esc → Dev Mode.
-      if (popover.hidden) return;
+      if (popoverPanel.hidden) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       closePopover();
     }, true);
 
-    let dragPointerId: number | null = null;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let dragOriginLeft = 0;
-    let dragOriginTop = 0;
-
-    dragHandle.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-
-      const bounds = popover.getBoundingClientRect();
-      setPopoverPosition(bounds.left, bounds.top);
-
-      dragPointerId = event.pointerId;
-      dragStartX = event.clientX;
-      dragStartY = event.clientY;
-      dragOriginLeft = bounds.left;
-      dragOriginTop = bounds.top;
-
-      popover.classList.add('is-dragging');
-      dragHandle.setPointerCapture(event.pointerId);
-    });
-
-    dragHandle.addEventListener('pointermove', (event) => {
-      if (dragPointerId !== event.pointerId) return;
-      const dx = event.clientX - dragStartX;
-      const dy = event.clientY - dragStartY;
-      setPopoverPosition(dragOriginLeft + dx, dragOriginTop + dy);
-    });
-
-    const endPopoverDrag = (event: PointerEvent) => {
-      if (dragPointerId !== event.pointerId) return;
-      dragPointerId = null;
-      popover.classList.remove('is-dragging');
-      if (dragHandle.hasPointerCapture(event.pointerId)) {
-        dragHandle.releasePointerCapture(event.pointerId);
-      }
-      const left = Number.parseFloat(popover.style.left);
-      const top = Number.parseFloat(popover.style.top);
-      if (Number.isFinite(left) && Number.isFinite(top)) {
-        setPopoverPosition(left, top, true);
-      }
-    };
-
-    dragHandle.addEventListener('pointerup', endPopoverDrag);
-    dragHandle.addEventListener('pointercancel', endPopoverDrag);
-
-    window.addEventListener('resize', () => {
-      if (popover.hidden) return;
-      const left = Number.parseFloat(popover.style.left);
-      const top = Number.parseFloat(popover.style.top);
-      if (!Number.isFinite(left) || !Number.isFinite(top)) return;
-      setPopoverPosition(left, top);
-    });
+    // Dragging, position persistence, and resize-clamping are handled by
+    // DevOverlay itself (see [data-drag-handle] in DevOverlay.astro).
 
     window.addEventListener('vcd:section-nav-editor-change', (() => {
       setEditorChrome(isActive());
@@ -1016,8 +968,8 @@
     cursor: default !important;
   }
 
-  html.is-section-nav-editing .section-nav-editor__popover,
-  html.is-section-nav-editing .section-nav-editor__popover *,
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'],
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] *,
   html.is-section-nav-editing .section-nav-editor__hint,
   html.is-section-nav-editing .section-nav-editor__hint *,
   /* The save bar is now the save surface for this mode, so it is chrome you click
@@ -1027,13 +979,19 @@
     cursor: auto !important;
   }
 
-  html.is-section-nav-editing .section-nav-editor__head,
-  html.is-section-nav-editing .section-nav-editor__popover.is-dragging .section-nav-editor__head {
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .dev-overlay__head {
     cursor: grab !important;
   }
 
-  html.is-section-nav-editing .section-nav-editor__popover.is-dragging .section-nav-editor__head {
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'].is-dragging .dev-overlay__head {
     cursor: grabbing !important;
+  }
+
+  /* The blanket `auto` above outranks the panel's own `cursor: pointer` on
+     buttons/links (higher specificity + !important) — restore it explicitly. */
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] button:not(:disabled),
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .section-nav-editor__preset {
+    cursor: pointer !important;
   }
 
   html.is-section-nav-editing [data-section-nav-main] .is-section-nav-hover {
@@ -1097,36 +1055,9 @@
     }
   }
 
+  /* Chrome (position, background, shadow, drag handle, title) comes from DevOverlay. */
   .section-nav-editor__popover {
-    position: fixed;
-    z-index: 60;
-    padding: 0.85em;
-    border-radius: var(--radius-card-smooth);
-    background: var(--color-bg);
-    box-shadow: 0 0.35em 1.25em rgba(26, 26, 26, 0.14);
-    border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
     font-size: 0.9rem;
-  }
-
-  .section-nav-editor__head {
-    margin: -0.15em -0.15em 0.65em;
-    padding: 0.15em 0.15em 0.35em;
-    cursor: grab;
-    user-select: none;
-    touch-action: none;
-  }
-
-  .section-nav-editor__popover.is-dragging .section-nav-editor__head {
-    cursor: grabbing;
-  }
-
-  .section-nav-editor__title {
-    margin: 0;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
   }
 
   .section-nav-editor__subtitle {
