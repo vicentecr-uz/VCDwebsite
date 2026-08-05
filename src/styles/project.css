@@ -627,9 +627,19 @@
 */
 .is-dev-mode .dev-crop-stage-host {
   position: relative;
-  /* Uncropped .project-media clips with overflow:hidden; the stage's handles
-     sit half outside the frame, so unclip for the whole edit session — not
-     only after the first live crop adds .project-cropped. */
+}
+
+/*
+  Crop handles sit half outside the frame. `.project-media` (and friends) use
+  overflow:hidden to clip the bitmap — that also eats the stage chrome, so the
+  on-page handles look "missing" until the first live edit adds .project-cropped.
+  Force visible spill-over for the whole edit session on the host and its
+  immediate block wrapper. Specificity beats `.project-media` / `.project-cropped`.
+*/
+.is-dev-mode .dev-crop-stage-host.project-media,
+.is-dev-mode .dev-crop-stage-host.project-image,
+.is-dev-mode .dev-crop-stage-host.project-image-grid__item,
+.is-dev-mode .project-block:has(> .dev-crop-stage-host) {
   overflow: visible;
 }
 
@@ -1049,6 +1059,16 @@ html:not(.is-dev-mode) .dev-crop-stage {
 
 /* Cropped media clips via .project-crop-clip so frame chrome can overflow. */
 .project-media.project-cropped {
+  overflow: visible;
+}
+
+/*
+  On-page crop stage: restate after the media overflow:hidden rules so the
+  edit-session unclip can't lose a cascade fight to a later equal-weight rule.
+*/
+.is-dev-mode .dev-crop-stage-host.project-media,
+.is-dev-mode .dev-crop-stage-host.project-image,
+.is-dev-mode .dev-crop-stage-host.project-image-grid__item {
   overflow: visible;
 }
 
