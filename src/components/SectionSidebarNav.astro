@@ -848,32 +848,24 @@ const easingOptions = [
     };
 
     /**
-     * Sequential row fades: height travel is split into slices (bottom-first on
-     * collapse, top-first on expand). Rows overlap slightly during the handoff.
+     * Row fades keyed to visible height — same mapping for expand and collapse,
+     * so the two directions are literal mirrors. Bottom-first slices: as height
+     * shrinks, lower rows clear first; as it grows, upper rows appear first —
+     * but only after a short headroom (`1 - FADE_TRAVEL_RATIO`) so a neighbor's
+     * label never sits on top of rows that are still fading in (expand) or that
+     * haven't finished fading out (collapse).
      */
     const FADE_TRAVEL_RATIO = 0.88;
 
-    const applyLinkOpacitiesForHeight = (bands, visibleHeight, travelExtent, shouldOpen) => {
+    const applyLinkOpacitiesForHeight = (bands, visibleHeight, travelExtent) => {
       if (!bands.length || travelExtent <= 0) return;
 
       const count = bands.length;
       const fadeTravel = travelExtent * FADE_TRAVEL_RATIO;
       const slice = fadeTravel / count;
 
-      if (shouldOpen) {
-        const sorted = [...bands].sort((a, b) => a.top - b.top);
-        sorted.forEach((band, index) => {
-          const fadeLow = index * slice;
-          const fadeHigh = (index + 1) * slice;
-          const span = Math.max(fadeHigh - fadeLow, 1);
-          let opacity = 0;
-          if (visibleHeight >= fadeHigh) opacity = 1;
-          else if (visibleHeight > fadeLow) opacity = (visibleHeight - fadeLow) / span;
-          band.row.style.opacity = String(Math.max(0, Math.min(1, opacity)));
-        });
-        return;
-      }
-
+      // Bottom-first: index 0 is the lowest row. Opacity is a function of height
+      // alone — direction does not get its own curve.
       const sorted = [...bands].sort((a, b) => b.top - a.top);
       sorted.forEach((band, index) => {
         const fadeHigh = travelExtent - index * slice;
@@ -999,7 +991,7 @@ const easingOptions = [
         const height = anim.fromHeight + (anim.toHeight - anim.fromHeight) * eased;
         const clampedHeight = Math.max(0, height);
         anim.content.style.height = `${clampedHeight}px`;
-        applyLinkOpacitiesForHeight(anim.bands, clampedHeight, anim.travelExtent, anim.shouldOpen);
+        applyLinkOpacitiesForHeight(anim.bands, clampedHeight, anim.travelExtent);
         const chevronDeg =
           anim.chevronFrom + (anim.chevronTo - anim.chevronFrom) * eased;
         applyChevronDegrees(group, chevronDeg);
@@ -1097,7 +1089,7 @@ const easingOptions = [
       }
 
       void content.offsetHeight;
-      applyLinkOpacitiesForHeight(bands, fromHeight, travelExtent, shouldOpen);
+      applyLinkOpacitiesForHeight(bands, fromHeight, travelExtent);
       applyChevronDegrees(group, chevronFrom);
 
       groupAnims.set(group, {
