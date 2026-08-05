@@ -356,6 +356,7 @@ function describeManifest(manifest = {}, files = []) {
     sectionDelete: ['deleted section', 'deleted sections'],
     sectionOrder: ['section reorder', 'section reorders'],
     listingOrder: ['grid reorder', 'grid reorders'],
+    sectionNav: ['outline change', 'outline changes'],
   };
 
   const parts = [];

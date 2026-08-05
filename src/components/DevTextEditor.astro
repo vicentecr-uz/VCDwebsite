@@ -215,7 +215,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav';
       payload: Record<string, unknown>;
       revert: () => void;
       /** Live section root for placeholder fills — index is read from it at Save. */
@@ -1972,7 +1972,8 @@
           && detail.kind !== 'listing-order'
           && detail.kind !== 'section-order'
           && detail.kind !== 'placeholder-fill'
-          && detail.kind !== 'style-token')
+          && detail.kind !== 'style-token'
+          && detail.kind !== 'section-nav')
       ) {
         return;
       }
@@ -2471,6 +2472,11 @@
     };
 
     const performSave = async (): Promise<PublishManifest | null> => {
+      // Editors with an explicit Apply step stage nothing until it is pressed —
+      // the section nav marker popover is one. Give them the chance to land an
+      // open draft before we read the pending map, or Save drops what is on screen.
+      window.dispatchEvent(new Event('vcd:dev-before-save'));
+
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
       const pendingChanges = [...pendingMedia.values()];
@@ -2480,12 +2486,14 @@
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
       const placeholderFills = pendingChanges.filter((change) => change.kind === 'placeholder-fill');
       const styleTokenChanges = pendingChanges.filter((change) => change.kind === 'style-token');
+      const sectionNavChanges = pendingChanges.filter((change) => change.kind === 'section-nav');
       const imageChanges = pendingChanges.filter(
         (change) => (
           change.kind !== 'listing-order'
           && change.kind !== 'section-order'
           && change.kind !== 'placeholder-fill'
           && change.kind !== 'style-token'
+          && change.kind !== 'section-nav'
         ),
       );
       if (
@@ -2518,6 +2526,7 @@
           sectionOrder: sectionOrderChanges.length,
           listingOrder: listingChanges.length,
           styleToken: styleTokenChanges.length,
+          sectionNav: sectionNavChanges.length,
         },
         textPaths: dirtyText.slice(0, 8).map((state) => state.path.join('.')),
       };
@@ -2548,6 +2557,16 @@
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save grid order.');
+        }
+
+        for (const change of sectionNavChanges) {
+          const response = await fetch('/api/content-nav', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok) throw new Error(String(payload.error || 'Could not save the section outline.'));
         }
 
         for (const change of styleTokenChanges) {
