@@ -1473,7 +1473,7 @@ import DevOverlay from '../DevOverlay.astro';
       const ghostImg = document.createElement('img');
       ghostImg.alt = '';
       ghostImg.draggable = false;
-      ghostImg.src = editedImage.currentSrc || editedImage.src;
+      ghostImg.src = editedImage.src || editedImage.currentSrc;
       ghost.append(ghostImg);
 
       const stage = document.createElement('div');
@@ -1815,7 +1815,14 @@ import DevOverlay from '../DevOverlay.astro';
         draft = { ...draftVariants[selectedViewport] };
         if (targetWasCropped || liveApply) beginLiveEdits();
         renderDraft();
-        if (editingSession) mountPageStage();
+        // Remounting reads currentSrc, which can lag one frame behind a
+        // programmatic src swap — sync the live stage in place instead.
+        if (pageStage) {
+          pageStage.ghostImg.src = image.src || url;
+          syncPageStageBox();
+        } else if (editingSession) {
+          mountPageStage();
+        }
         status.textContent = 'Image replaced — unsaved changes.';
       };
 
@@ -1883,16 +1890,19 @@ import DevOverlay from '../DevOverlay.astro';
 
     replaceDropzone.addEventListener('dragover', (event) => {
       event.preventDefault();
+      event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
       replaceDropzone.dataset.active = 'true';
     });
 
-    replaceDropzone.addEventListener('dragleave', () => {
+    replaceDropzone.addEventListener('dragleave', (event) => {
+      event.stopPropagation();
       delete replaceDropzone.dataset.active;
     });
 
     replaceDropzone.addEventListener('drop', (event) => {
       event.preventDefault();
+      event.stopPropagation();
       delete replaceDropzone.dataset.active;
       const file = event.dataTransfer?.files?.[0];
       if (!file || !file.type.startsWith('image/')) return;
@@ -1905,6 +1915,15 @@ import DevOverlay from '../DevOverlay.astro';
           status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
         }
       })();
+    });
+
+    // Keep replace-overlay drags from reaching the page-level image drop
+    // handler (which would insert a new section / trigger a reload).
+    (['dragenter', 'dragover', 'dragleave', 'drop'] as const).forEach((type) => {
+      replaceOverlay.addEventListener(type, (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
     });
 
     document.addEventListener('keydown', (event) => {
