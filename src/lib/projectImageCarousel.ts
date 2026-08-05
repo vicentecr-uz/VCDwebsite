@@ -631,14 +631,28 @@ function initCarousel(block: HTMLElement): void {
   window.addEventListener('resize', () => syncViewportSettings(carousel), { passive: true });
   block.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
     if (image.complete) return;
-    image.addEventListener('load', () => applyHeight(carousel), { once: true });
+    image.addEventListener('load', () => {
+      sync(carousel);
+    }, { once: true });
   });
 }
 
 let refreshBound = false;
 
+/** Include `root` itself when it matches — querySelectorAll only finds descendants. */
+function queryCarouselsIn(root: ParentNode): HTMLElement[] {
+  const matches: HTMLElement[] = [];
+  if (root instanceof HTMLElement && root.matches('[data-project-image-carousel]')) {
+    matches.push(root);
+  }
+  root.querySelectorAll<HTMLElement>('[data-project-image-carousel]').forEach((el) => {
+    matches.push(el);
+  });
+  return matches;
+}
+
 export function bindProjectImageCarousels(root: ParentNode = document): void {
-  root.querySelectorAll<HTMLElement>('[data-project-image-carousel]').forEach(initCarousel);
+  queryCarouselsIn(root).forEach(initCarousel);
   if (refreshBound) return;
   refreshBound = true;
   // Dev tuner writes orientation/height mode onto the block, then fires this.
