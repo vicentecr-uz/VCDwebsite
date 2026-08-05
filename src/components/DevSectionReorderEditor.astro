@@ -24,7 +24,6 @@
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
-  const HOVER_LEAVE_MS = 450;
 
   let reorderActive = false;
   let dragItem: HTMLElement | null = null;
@@ -217,27 +216,15 @@
     }
   };
 
-  const hoverLeaveTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>>();
-
   const pinSectionControls = (root: HTMLElement) => {
-    const pending = hoverLeaveTimers.get(root);
-    if (pending) clearTimeout(pending);
-    hoverLeaveTimers.delete(root);
     root.classList.add('is-dev-section-controls-visible');
   };
 
-  const scheduleUnpinSectionControls = (root: HTMLElement | null) => {
+  /** Pin persists through an active drag/drop session — everything else unpins on leave. */
+  const unpinSectionControls = (root: HTMLElement | null) => {
     if (!root) return;
     if (root.classList.contains('is-section-lifted-session')) return;
-    const pending = hoverLeaveTimers.get(root);
-    if (pending) clearTimeout(pending);
-    hoverLeaveTimers.set(root, setTimeout(() => {
-      hoverLeaveTimers.delete(root);
-      if (root.classList.contains('is-section-lifted-session')) return;
-      if (!root.matches(':hover')) {
-        root.classList.remove('is-dev-section-controls-visible');
-      }
-    }, HOVER_LEAVE_MS));
+    root.classList.remove('is-dev-section-controls-visible');
   };
 
   /**
@@ -262,7 +249,7 @@
     if (!root) return;
     root.classList.remove('is-section-lifted-session');
     root.style.pointerEvents = '';
-    scheduleUnpinSectionControls(root);
+    unpinSectionControls(root);
   };
 
   const clearHostLiftChrome = () => {
@@ -422,7 +409,7 @@
     if (root.dataset.devSectionControlsWired === 'true') return;
     root.dataset.devSectionControlsWired = 'true';
     root.addEventListener('mouseenter', () => pinSectionControls(root));
-    root.addEventListener('mouseleave', () => scheduleUnpinSectionControls(root));
+    root.addEventListener('mouseleave', () => unpinSectionControls(root));
   };
 
   const wireDragHandle = (root: HTMLElement, handle: HTMLButtonElement) => {
@@ -787,7 +774,7 @@
     pointer-events: none;
     transform: translate(calc(-100% - 0.55em), -50%);
     transition:
-      opacity 0.15s ease 0.35s,
+      opacity 0.15s ease,
       background-color 0.15s ease 0s,
       box-shadow 0.15s ease 0s;
     touch-action: none;
@@ -824,7 +811,6 @@
   .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
     opacity: 1;
     pointer-events: auto;
-    transition-delay: 0s;
   }
 
   .is-dev-mode .dev-section-drag-handle:hover,
