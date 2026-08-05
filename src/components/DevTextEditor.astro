@@ -3337,6 +3337,24 @@
   }
 
   /*
+    Below 40em the gutter is 16px but a chip plus its gap needs ~36px, so the
+    outward translate lands trash off the right edge and its ::after bridge
+    sets the document's scroll width (section right + 4.5em), making the page
+    scroll sideways — issue #100. Flip the chip inside the media box and drop
+    the bridge; it only spans the gutter gap, which is gone once the chip sits
+    on the block. Mirrors .dev-section-drag-handle in DevSectionReorderEditor.
+  */
+  @media (max-width: 40em) {
+    .dev-section-delete {
+      transform: translate(-0.55em, -50%);
+    }
+
+    .is-dev-mode [data-dev-section-deletable]::after {
+      content: none;
+    }
+  }
+
+  /*
     Delete is a sibling of the gap toolbar under the same section. Hovering
     + / spacing / the add menu still matches section:hover (descendants count
     even when painted in the margin gap) — exclude those so trash stays put.
