@@ -56,6 +56,10 @@ const showDevTools = import.meta.env.DEV;
     <script>
       import gsap from 'gsap';
       import { registerHyperellipse } from '../vendor/hyperellipse/index.js';
+      import { bindSafeVh } from '../lib/safeVh';
+
+      // Stable 1vh unit for max-height caps (Edge/iOS svh is buggy mid-scroll).
+      bindSafeVh();
 
       // Polyfill CSS corner-shape (squircle) in Safari / Firefox; no-op in Chromium.
       registerHyperellipse();

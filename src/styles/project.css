@@ -381,7 +381,7 @@
   width: 100%;
   max-width: calc(
     min(var(--project-carousel-max-vh, 1000), var(--project-max-vh, 1000))
-    * 1svh * var(--project-image-ratio-num, 1)
+    * var(--vh-safe, 1svh) * var(--project-image-ratio-num, 1)
   );
   margin-inline: auto;
   min-width: 0;
@@ -968,7 +968,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 /*
- * Max view-height (--project-max-vh, % of svh): scale the whole image down,
+ * Max view-height (--project-max-vh, % of safe vh): scale the whole image down,
  * keep aspect ratio. Uncropped: figure shrink-wraps to the bitmap so captions
  * match the image; width caps use cqw against .project-block.
  * Cropped: shrink the crop frame width so aspect-ratio + max-height agree.
@@ -985,13 +985,13 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 .project-media--max-vh.project-cropped {
-  max-height: calc(var(--project-max-vh, 80) * 1svh);
-  width: min(100%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
+  max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
+  width: min(100%, calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh) * var(--project-image-ratio-num, 1)));
   margin-inline: auto;
 }
 
 .project-media--constrained.project-media--max-vh.project-cropped {
-  width: min(var(--project-image-grid-width, 80%), calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
+  width: min(var(--project-image-grid-width, 80%), calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh) * var(--project-image-ratio-num, 1)));
 }
 
 .project-media__img {
@@ -1001,19 +1001,19 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 .project-media__img--h50 {
-  height: 50svh;
+  height: calc(var(--vh-safe, 1svh) * 50);
 }
 
 .project-media__img--h35 {
-  height: 35svh;
+  height: calc(var(--vh-safe, 1svh) * 35);
 }
 
 .project-media__img--h40 {
-  height: 40svh;
+  height: calc(var(--vh-safe, 1svh) * 40);
 }
 
 .project-media__img--h60 {
-  height: 60svh;
+  height: calc(var(--vh-safe, 1svh) * 60);
 }
 
 /* ── Grids ──────────────────────────────────────────────────── */
@@ -1235,7 +1235,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 :is(.project-media, .project-image).project-media--max-vh.project-cropped:has(> .project-caption--below) > .project-crop-clip {
-  max-height: calc(var(--project-max-vh, 80) * 1svh);
+  max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
 }
 
 /*
@@ -1402,19 +1402,19 @@ html:not(.is-dev-mode) .dev-crop-stage {
   }
 
   .project-media__img--h50 {
-    height: 50svh;
+    height: calc(var(--vh-safe, 1svh) * 50);
   }
 
   .project-media__img--h35 {
-    height: 35svh;
+    height: calc(var(--vh-safe, 1svh) * 35);
   }
 
   .project-media__img--h40 {
-    height: 40svh;
+    height: calc(var(--vh-safe, 1svh) * 40);
   }
 
   .project-media__img--h60 {
-    height: 60svh;
+    height: calc(var(--vh-safe, 1svh) * 60);
   }
 }
 
@@ -1705,7 +1705,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   width: auto;
   max-width: 100cqw;
   height: auto;
-  max-height: calc(var(--project-max-vh, 80) * 1svh);
+  max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
   object-fit: contain;
 }
 
@@ -1844,20 +1844,20 @@ html:not(.is-dev-mode) .dev-crop-stage {
   }
 
   .project-media__img--max-vh {
-    max-height: calc(var(--project-max-vh, 80) * 1svh);
+    max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
   }
 
   .project-media--max-vh.project-cropped {
-    max-height: calc(var(--project-max-vh, 80) * 1svh);
-    width: min(100%, calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
+    max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
+    width: min(100%, calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh) * var(--project-image-ratio-num, 1)));
   }
 
   .project-media--constrained.project-media--max-vh.project-cropped {
-    width: min(var(--project-image-grid-width, 80%), calc(var(--project-max-vh, 80) * 1svh * var(--project-image-ratio-num, 1)));
+    width: min(var(--project-image-grid-width, 80%), calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh) * var(--project-image-ratio-num, 1)));
   }
 
   .project-media__img--mobile-short {
-    max-height: 30svh;
+    max-height: calc(var(--vh-safe, 1svh) * 30);
     object-fit: cover;
   }
 }
