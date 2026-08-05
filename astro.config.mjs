@@ -29,6 +29,7 @@ import {
 } from './scripts/dev-api-plugins.mjs';
 import {
   assetsDevWriter,
+  normalizeAssetSrc,
   removeMediaItemFromDocument,
 } from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
@@ -611,6 +612,26 @@ const applyCropChange = (data, change) => {
     return { ok: true };
   }
 
+  const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
+  if (typeof change.src === 'string' && !requestedSrc) {
+    return { ok: false, error: 'That image file is not valid.' };
+  }
+  if (requestedSrc) {
+    target.src = requestedSrc;
+    const srcWidth = Number(change.srcWidth);
+    const srcHeight = Number(change.srcHeight);
+    if (Number.isFinite(srcWidth) && srcWidth > 0) {
+      target.srcWidth = Math.round(srcWidth);
+    } else {
+      delete target.srcWidth;
+    }
+    if (Number.isFinite(srcHeight) && srcHeight > 0) {
+      target.srcHeight = Math.round(srcHeight);
+    } else {
+      delete target.srcHeight;
+    }
+  }
+
   const requestedVariants = change.variants && typeof change.variants === 'object'
     ? change.variants
     : null;
@@ -660,7 +681,7 @@ const applyCropChange = (data, change) => {
       target.variants[viewport] = next;
     }
     delete target.crop;
-  } else if (!hasWidthFlags) {
+  } else if (!hasWidthFlags && !requestedSrc) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 

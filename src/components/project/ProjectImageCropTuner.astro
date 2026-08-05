@@ -104,6 +104,10 @@ import DevOverlay from '../DevOverlay.astro';
 
     <p class="tapico-crop-tuner__readout" data-crop-readout>shows 100% of width · centre 0.500, 0.500</p>
 
+    <button type="button" class="tapico-crop-tuner__replace" data-crop-replace>
+      Replace image
+    </button>
+
     <div class="tapico-crop-tuner__actions">
       <button type="button" data-crop-reset>Reset</button>
       <button type="button" data-crop-revert>Revert changes</button>
@@ -114,6 +118,20 @@ import DevOverlay from '../DevOverlay.astro';
     <p class="tapico-crop-tuner__status" data-crop-status aria-live="polite">
       Hold Shift while dragging to lock movement to one axis.
     </p>
+
+    <div
+      class="tapico-crop-tuner__replace-overlay"
+      data-crop-replace-overlay
+      aria-hidden="true"
+    >
+      <div class="tapico-crop-tuner__replace-drop" data-crop-replace-dropzone>
+        <p class="tapico-crop-tuner__replace-label">Drop image here</p>
+        <button type="button" data-crop-replace-choose>Choose from Finder</button>
+        <button type="button" data-crop-replace-assets>Choose from asset manager</button>
+        <button type="button" data-crop-replace-cancel>Cancel</button>
+        <input type="file" accept="image/*" hidden data-crop-replace-file />
+      </div>
+    </div>
   </div>
 </DevOverlay>
 
@@ -124,6 +142,7 @@ import DevOverlay from '../DevOverlay.astro';
     resolveImageGridConstrained,
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
+  import { projectImage, draftProjectImageSrc } from '../../lib/images';
 
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
   type ConstrainedByViewport = Record<ImageViewport, ImageGridConstrainPercent>;
@@ -166,6 +185,13 @@ import DevOverlay from '../DevOverlay.astro';
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
+    const replaceButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace]');
+    const replaceOverlay = tuner.querySelector<HTMLElement>('[data-crop-replace-overlay]');
+    const replaceDropzone = tuner.querySelector<HTMLElement>('[data-crop-replace-dropzone]');
+    const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
+    const replaceAssetsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-assets]');
+    const replaceCancelButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-cancel]');
+    const replaceFileInput = tuner.querySelector<HTMLInputElement>('[data-crop-replace-file]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
     if (
@@ -189,9 +215,22 @@ import DevOverlay from '../DevOverlay.astro';
       !revertButton ||
       !resetButton ||
       !useGridDefaultButton ||
+      !replaceButton ||
+      !replaceOverlay ||
+      !replaceDropzone ||
+      !replaceChooseButton ||
+      !replaceAssetsButton ||
+      !replaceCancelButton ||
+      !replaceFileInput ||
       !initialTarget ||
       !initialImage
     ) return;
+
+    // Park the replace overlay on the modal surface so it covers the whole panel.
+    const overlaySurface = tuner.closest<HTMLElement>('.dev-overlay__surface');
+    if (overlaySurface && replaceOverlay.parentElement !== overlaySurface) {
+      overlaySurface.appendChild(replaceOverlay);
+    }
 
     // Untouched images render at natural ratio on the page — mirror that in the editor.
     const defaults: CropState = { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 };
@@ -510,8 +549,33 @@ import DevOverlay from '../DevOverlay.astro';
       constrained: ConstrainedByViewport;
       maxVh: number | undefined;
       cropped: boolean;
+      src: string;
+      srcWidth?: number;
+      srcHeight?: number;
     }>();
     const VIEWPORTS: ImageViewport[] = ['desktop', 'tablet', 'mobile'];
+    let savedSrc = '';
+    let draftSrc = '';
+    let savedSrcWidth: number | undefined;
+    let savedSrcHeight: number | undefined;
+    let draftSrcWidth: number | undefined;
+    let draftSrcHeight: number | undefined;
+    let replaceOverlayOpen = false;
+
+    const openReplaceOverlay = () => {
+      replaceOverlayOpen = true;
+      replaceOverlay.dataset.open = 'true';
+      replaceOverlay.setAttribute('aria-hidden', 'false');
+      status.textContent = 'Drop an image, or choose from Finder / asset manager.';
+    };
+
+    const closeReplaceOverlay = () => {
+      if (!replaceOverlayOpen && replaceOverlay.dataset.open !== 'true') return;
+      replaceOverlayOpen = false;
+      delete replaceOverlay.dataset.open;
+      replaceOverlay.setAttribute('aria-hidden', 'true');
+      delete replaceDropzone.dataset.active;
+    };
 
     const pendingIdFor = (target: HTMLElement) => {
       const documentKey = target.dataset.devDocument || '';
@@ -519,12 +583,46 @@ import DevOverlay from '../DevOverlay.astro';
       return `crop:${documentKey}:${imagePath}`;
     };
 
-    const snapshotBaseline = (target: HTMLElement) => ({
-      variants: readAppliedVariants(target),
-      constrained: isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false),
-      maxVh: supportsMaxVh(target) ? readMaxVh(target) : undefined,
-      cropped: target.classList.contains('project-cropped') || isGridTarget(target),
-    });
+    const canonicalSrcFromUrl = (url: string) => {
+      try {
+        const pathname = new URL(url, window.location.origin).pathname;
+        if (pathname.startsWith('/draft-media/')) {
+          return `draft:${decodeURIComponent(pathname.slice('/draft-media/'.length))}`;
+        }
+        if (pathname.startsWith('/images/')) {
+          return decodeURIComponent(pathname.slice('/images/'.length));
+        }
+      } catch {
+        // Fall through.
+      }
+      return '';
+    };
+
+    const readTargetSrc = (image: HTMLImageElement) => (
+      canonicalSrcFromUrl(image.currentSrc || image.src)
+    );
+
+    const readTargetDims = (image: HTMLImageElement) => {
+      const srcWidth = image.naturalWidth || undefined;
+      const srcHeight = image.naturalHeight || undefined;
+      return {
+        ...(srcWidth ? { srcWidth } : {}),
+        ...(srcHeight ? { srcHeight } : {}),
+      };
+    };
+
+    const snapshotBaseline = (target: HTMLElement) => {
+      const image = target.querySelector<HTMLImageElement>('img');
+      const dims = image ? readTargetDims(image) : {};
+      return {
+        variants: readAppliedVariants(target),
+        constrained: isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false),
+        maxVh: supportsMaxVh(target) ? readMaxVh(target) : undefined,
+        cropped: target.classList.contains('project-cropped') || isGridTarget(target),
+        src: image ? readTargetSrc(image) : '',
+        ...dims,
+      };
+    };
 
     const closePanel = () => {
       const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
@@ -550,6 +648,27 @@ import DevOverlay from '../DevOverlay.astro';
       } else {
         target.dataset.devImageVariants = JSON.stringify(variants);
         if (isGridTarget(target)) target.dataset.devHasOwnVariants = 'true';
+      }
+    };
+
+    const applySrcLive = (
+      target: HTMLElement,
+      src: string,
+      dims?: { srcWidth?: number; srcHeight?: number },
+    ) => {
+      const image = target.querySelector<HTMLImageElement>('img');
+      if (!image || !src) return;
+      const url = projectImage(src);
+      image.src = url;
+      if (dims?.srcWidth && dims?.srcHeight) {
+        target.style.setProperty(
+          '--project-image-original-ratio',
+          `${dims.srcWidth} / ${dims.srcHeight}`,
+        );
+        target.style.setProperty(
+          '--project-image-original-ratio-num',
+          String(dims.srcWidth / dims.srcHeight),
+        );
       }
     };
 
@@ -705,6 +824,7 @@ import DevOverlay from '../DevOverlay.astro';
       const standalone = isStandaloneMedia(target);
       const carouselItem = isCarouselItem(target);
       const persistCrop = targetWasCropped || liveApply;
+      const srcChanged = Boolean(draftSrc) && draftSrc !== savedSrc;
       const pendingId = pendingIdFor(target);
       if (!diskBaselines.has(pendingId)) {
         diskBaselines.set(pendingId, {
@@ -712,6 +832,9 @@ import DevOverlay from '../DevOverlay.astro';
           constrained: savedConstrained,
           maxVh: savedMaxVh,
           cropped: targetWasCropped,
+          src: savedSrc,
+          ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
+          ...(savedSrcHeight ? { srcHeight: savedSrcHeight } : {}),
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
@@ -722,6 +845,15 @@ import DevOverlay from '../DevOverlay.astro';
         savedVariants = structuredClone(stagedVariants);
         saved = { ...stagedVariants[selectedViewport] };
         targetWasCropped = true;
+      }
+      if (srcChanged) {
+        applySrcLive(target, draftSrc, {
+          ...(draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
+          ...(draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
+        });
+        savedSrc = draftSrc;
+        savedSrcWidth = draftSrcWidth;
+        savedSrcHeight = draftSrcHeight;
       }
       if (standalone || carouselItem) {
         applyFrameFlagsLive(target, { constrained: stagedConstrained, maxVh: stagedMaxVh });
@@ -743,6 +875,13 @@ import DevOverlay from '../DevOverlay.astro';
             document: documentKey,
             path: imagePath,
             ...(persistCrop ? { variants: stagedVariants } : {}),
+            ...(srcChanged
+              ? {
+                src: draftSrc,
+                ...(draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
+                ...(draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
+              }
+              : {}),
             ...(standalone
               ? {
                 constrained: stagedConstrained,
@@ -772,6 +911,12 @@ import DevOverlay from '../DevOverlay.astro';
                 }
               }
             }
+            if (srcChanged && baseline.src) {
+              applySrcLive(target, baseline.src, {
+                ...(baseline.srcWidth ? { srcWidth: baseline.srcWidth } : {}),
+                ...(baseline.srcHeight ? { srcHeight: baseline.srcHeight } : {}),
+              });
+            }
             if (standalone || carouselItem) {
               applyFrameFlagsLive(target, {
                 constrained: baseline.constrained,
@@ -787,6 +932,16 @@ import DevOverlay from '../DevOverlay.astro';
                 targetWasCropped = baseline.cropped;
                 renderDraft();
                 syncUseGridDefaultButton();
+              }
+              if (srcChanged) {
+                savedSrc = baseline.src;
+                draftSrc = baseline.src;
+                savedSrcWidth = baseline.srcWidth;
+                savedSrcHeight = baseline.srcHeight;
+                draftSrcWidth = baseline.srcWidth;
+                draftSrcHeight = baseline.srcHeight;
+                previewImage.src = editedImage.currentSrc || editedImage.src;
+                if (pageStage) pageStage.ghostImg.src = previewImage.src;
               }
               savedConstrained = { ...baseline.constrained };
               draftConstrained = { ...baseline.constrained };
@@ -841,8 +996,20 @@ import DevOverlay from '../DevOverlay.astro';
       draft = { ...saved };
       draftConstrained = { ...savedConstrained };
       draftMaxVh = savedMaxVh;
+      const srcNeedsRestore = Boolean(savedSrc) && draftSrc !== savedSrc;
+      draftSrc = savedSrc;
+      draftSrcWidth = savedSrcWidth;
+      draftSrcHeight = savedSrcHeight;
 
-      if (liveApply || savedSinceSelect) {
+      if (liveApply || savedSinceSelect || srcNeedsRestore) {
+        if (srcNeedsRestore) {
+          applySrcLive(target, savedSrc, {
+            ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
+            ...(savedSrcHeight ? { srcHeight: savedSrcHeight } : {}),
+          });
+          previewImage.src = editedImage.currentSrc || editedImage.src;
+          if (pageStage) pageStage.ghostImg.src = previewImage.src;
+        }
         if (targetWasCropped || savedSinceSelect) {
           // Restore every breakpoint, not just the one on screen — the session
           // may have edited others via the viewport chips.
@@ -851,7 +1018,7 @@ import DevOverlay from '../DevOverlay.astro';
             savedVariants,
             isGridTarget(target) && !targetHadOwnVariants ? { clearOwn: true } : undefined,
           );
-        } else {
+        } else if (liveApply || savedSinceSelect) {
           stripLiveCropFrame();
         }
       }
@@ -872,6 +1039,7 @@ import DevOverlay from '../DevOverlay.astro';
       const image = target.querySelector<HTMLImageElement>('img');
       if (!image) return;
 
+      closeReplaceOverlay();
       unmountPageStage();
       resizeObserver?.unobserve(editTarget);
       editTarget = target;
@@ -891,6 +1059,7 @@ import DevOverlay from '../DevOverlay.astro';
       if (!diskBaselines.has(pendingId)) {
         diskBaselines.set(pendingId, snapshotBaseline(editTarget));
       }
+      const baseline = diskBaselines.get(pendingId)!;
       savedVariants = readAppliedVariants(editTarget);
       draftVariants = structuredClone(savedVariants);
       savedConstrained = isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false);
@@ -899,6 +1068,12 @@ import DevOverlay from '../DevOverlay.astro';
       draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
+      savedSrc = baseline.src || readTargetSrc(editedImage);
+      draftSrc = savedSrc;
+      savedSrcWidth = baseline.srcWidth;
+      savedSrcHeight = baseline.srcHeight;
+      draftSrcWidth = savedSrcWidth;
+      draftSrcHeight = savedSrcHeight;
       previewImage.src = editedImage.currentSrc || editedImage.src;
 
       if (editedImage.complete) {
@@ -1338,6 +1513,7 @@ import DevOverlay from '../DevOverlay.astro';
     }) as EventListener);
 
     const teardownEditSession = () => {
+      closeReplaceOverlay();
       unmountPageStage();
       // Closing is a cancel: unsaved crop edits never survive the panel.
       revertToSaved();
@@ -1545,6 +1721,180 @@ import DevOverlay from '../DevOverlay.astro';
         : 'Full height — unsaved changes.';
     });
 
+    const readFileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = () => reject(reader.error ?? new Error('Could not read the file.'));
+      reader.readAsDataURL(file);
+    });
+
+    const uploadReplaceFile = async (file: File) => {
+      const documentKey = editTarget.dataset.devDocument || '';
+      if (!documentKey) throw new Error('This image is not wired for uploads.');
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          document: documentKey,
+          files: [{
+            filename: file.name,
+            data: await readFileAsBase64(file),
+            mimeType: file.type,
+          }],
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Upload failed.');
+      const filename = Array.isArray(result.filenames) ? String(result.filenames[0] || '') : '';
+      if (!filename) throw new Error('Upload failed.');
+      return draftProjectImageSrc(documentKey, filename);
+    };
+
+    const pickReplaceFromAssetManager = () => new Promise<{ srcs: string[] }>((resolve, reject) => {
+      const documentKey = editTarget.dataset.devDocument || '';
+      window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
+        detail: {
+          documentKey,
+          project: documentKey,
+          mode: 'pick',
+          resolve,
+          reject,
+        },
+      }));
+    });
+
+    const applyReplacement = (src: string, dims?: { srcWidth?: number; srcHeight?: number }) => {
+      if (!src) return;
+      draftSrc = src;
+      draftSrcWidth = dims?.srcWidth;
+      draftSrcHeight = dims?.srcHeight;
+
+      applySrcLive(editTarget, src, dims);
+      previewImage.src = projectImage(src);
+      if (pageStage) pageStage.ghostImg.src = previewImage.src;
+
+      const finish = () => {
+        const nextDims = dims?.srcWidth && dims?.srcHeight
+          ? dims
+          : readTargetDims(editedImage);
+        if (nextDims.srcWidth && nextDims.srcHeight) {
+          draftSrcWidth = nextDims.srcWidth;
+          draftSrcHeight = nextDims.srcHeight;
+          editTarget.style.setProperty(
+            '--project-image-original-ratio',
+            `${nextDims.srcWidth} / ${nextDims.srcHeight}`,
+          );
+          editTarget.style.setProperty(
+            '--project-image-original-ratio-num',
+            String(nextDims.srcWidth / nextDims.srcHeight),
+          );
+        }
+        VIEWPORTS.forEach((viewport) => {
+          const aspect = draftVariants[viewport].aspect;
+          draftVariants[viewport] = {
+            aspect,
+            cx: 0.5,
+            cy: 0.5,
+            w: coverW(aspect),
+          };
+        });
+        draft = { ...draftVariants[selectedViewport] };
+        if (targetWasCropped || liveApply) beginLiveEdits();
+        renderDraft();
+        if (editingSession) mountPageStage();
+        status.textContent = 'Image replaced — unsaved changes.';
+      };
+
+      if (editedImage.complete && editedImage.naturalWidth) {
+        finish();
+      } else {
+        editedImage.addEventListener('load', finish, { once: true });
+      }
+      closeReplaceOverlay();
+    };
+
+    replaceButton.addEventListener('click', () => {
+      openReplaceOverlay();
+    });
+
+    replaceCancelButton.addEventListener('click', () => {
+      closeReplaceOverlay();
+      status.textContent = viewportGateOk()
+        ? 'Editing this image — drag or two-finger swipe to pan, pinch/scroll to zoom, pull the handles to reshape.'
+        : 'Editing this image. The page updates when you change the crop.';
+    });
+
+    replaceChooseButton.addEventListener('click', () => {
+      replaceFileInput.click();
+    });
+
+    replaceFileInput.addEventListener('change', () => {
+      const file = replaceFileInput.files?.[0];
+      replaceFileInput.value = '';
+      if (!file || !file.type.startsWith('image/')) return;
+      void (async () => {
+        try {
+          status.textContent = 'Uploading…';
+          const src = await uploadReplaceFile(file);
+          applyReplacement(src);
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+        }
+      })();
+    });
+
+    replaceAssetsButton.addEventListener('click', () => {
+      void (async () => {
+        try {
+          const result = await pickReplaceFromAssetManager();
+          const src = Array.isArray(result?.srcs)
+            ? String(result.srcs.find(Boolean) || '')
+            : '';
+          if (!src) return;
+          applyReplacement(src);
+        } catch (error) {
+          if (error instanceof Error && error.message === 'cancelled') return;
+          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+        }
+      })();
+    });
+
+    replaceDropzone.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+      replaceDropzone.dataset.active = 'true';
+    });
+
+    replaceDropzone.addEventListener('dragleave', () => {
+      delete replaceDropzone.dataset.active;
+    });
+
+    replaceDropzone.addEventListener('drop', (event) => {
+      event.preventDefault();
+      delete replaceDropzone.dataset.active;
+      const file = event.dataTransfer?.files?.[0];
+      if (!file || !file.type.startsWith('image/')) return;
+      void (async () => {
+        try {
+          status.textContent = 'Uploading…';
+          const src = await uploadReplaceFile(file);
+          applyReplacement(src);
+        } catch (error) {
+          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+        }
+      })();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !replaceOverlayOpen) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeReplaceOverlay();
+    }, true);
+
     saveButton.addEventListener('click', saveDraft);
 
     revertButton.addEventListener('click', () => {
@@ -1584,6 +1934,9 @@ import DevOverlay from '../DevOverlay.astro';
           constrained: savedConstrained,
           maxVh: savedMaxVh,
           cropped: targetWasCropped,
+          src: savedSrc,
+          ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
+          ...(savedSrcHeight ? { srcHeight: savedSrcHeight } : {}),
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
@@ -1635,6 +1988,9 @@ import DevOverlay from '../DevOverlay.astro';
           constrained: savedConstrained,
           maxVh: savedMaxVh,
           cropped: targetWasCropped,
+          src: savedSrc,
+          ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
+          ...(savedSrcHeight ? { srcHeight: savedSrcHeight } : {}),
         });
       }
     }) as EventListener);
@@ -2074,6 +2430,92 @@ import DevOverlay from '../DevOverlay.astro';
     line-height: 1.35;
     color: var(--color-text-muted);
     font-variant-numeric: tabular-nums;
+  }
+
+  .tapico-crop-tuner__replace {
+    border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: transparent;
+    padding: 0.55em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__replace:hover {
+    background: var(--color-surface-soft);
+  }
+
+  .tapico-crop-tuner__replace-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    padding: 0.85em;
+    background: color-mix(in srgb, var(--color-bg, #ffffff) 88%, transparent);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.2s ease, visibility 0.2s ease;
+  }
+
+  .tapico-crop-tuner__replace-overlay[data-open='true'] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .tapico-crop-tuner__replace-drop {
+    display: grid;
+    gap: 0.55em;
+    width: min(100%, 16em);
+    padding: 1em 0.9em;
+    border: 1px dashed color-mix(in srgb, var(--color-text) 28%, transparent);
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    text-align: center;
+  }
+
+  .tapico-crop-tuner__replace-drop[data-active='true'] {
+    border-color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    background: var(--color-surface-strong);
+  }
+
+  .tapico-crop-tuner__replace-label {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .tapico-crop-tuner__replace-drop button {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-soft);
+    padding: 0.5em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__replace-drop button:hover {
+    background: var(--color-surface-strong);
+  }
+
+  .tapico-crop-tuner__replace-drop button[data-crop-replace-cancel] {
+    background: transparent;
+    color: var(--color-text-muted);
   }
 
   .tapico-crop-tuner__actions {
