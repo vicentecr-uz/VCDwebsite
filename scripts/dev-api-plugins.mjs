@@ -537,6 +537,9 @@ export function uploadDevWriter() {
             return;
           }
           const directory = path.join(process.cwd(), 'src/content/drafts/media', documentKey);
+          // Draft media is served by middleware, not imported — still lives under
+          // src/content, so Vite/Astro would full-reload without a suppress window.
+          suppressContentHmr();
           await mkdir(directory, { recursive: true });
           const filenames = [];
           for (const file of files) {
