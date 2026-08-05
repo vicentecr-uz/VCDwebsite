@@ -148,6 +148,32 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 
 Ask before introducing anything not on `/styles`.
 
+## Plans & implementation handoffs
+
+When planning is done and a **fresh chat** should implement (often with a mid-tier model), write a **builder-ready** spec — not a loose diagnosis.
+
+**Canonical shape:** Atlas `AGENT-GUIDE.md` → *Implementation handoff (builder-ready)*. Minimum sections:
+
+| Section | Purpose |
+| --- | --- |
+| **Done when** | One-sentence success criteria at the top |
+| **Executor** | Suggested model; call out when **not** to use Haiku |
+| **Branch / Issue** | `feat/…` off latest `main`; GitHub links |
+| **First reads** | Repo files with line anchors |
+| **Landmines** | Watchdogs, HMR re-init, stale timestamps, etc. |
+| **Pseudo-code** | Required for RAF loops, flags, observers |
+| **Cleanup / lifecycle** | `disconnect()`, delete host keys, cancel timers |
+| **Verify** | Exact repro + signals that are **not** valid before/after |
+| **Out of scope** | Stops scope creep |
+| **Pickup** | Read → summarize → implement exactly; do not replan |
+
+**Where to store:**
+
+- `.cursor/plans/*.plan.md` — Cursor-native (Plan mode)
+- `Atlas/handoffs/YYMMDD-….md` — cross-provider / git-tracked
+
+**Workflow:** smart model plans → builder-ready doc → new chat on **Grok** (default for engine/agent work) → `bun run commit:engine` with explicit paths → PR.
+
 ### About page
 Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
 - **Wide (≥50em):** photo 3/4 (17em col) left, Contact+About+Experience stacked in right col
