@@ -372,6 +372,9 @@ function styleTokenDevWriter() {
             return;
           }
 
+          // Live preview already applied the colour — suppress the Vite/Astro
+          // full-reload that would otherwise wipe is-dev-mode and the save bar.
+          suppressContentHmr();
           await writeFile(file, source.replace(declaration, `$1${value}$3`), 'utf8');
           send(200, { ok: true, token, value });
         } catch {

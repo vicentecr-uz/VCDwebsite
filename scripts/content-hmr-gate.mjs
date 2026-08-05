@@ -9,7 +9,15 @@ const isContentPath = (file = '') =>
 const isDraftMediaPath = (file = '') =>
   /[/\\]src[/\\]content[/\\]drafts[/\\]media[/\\]/.test(file);
 
-/** Suppress Vite/Astro full-reloads for content JSON briefly after API writes. */
+/** Colour-token Saves write this file; the live preview already matches. */
+const isStyleTokenPath = (file = '') =>
+  /[/\\]src[/\\]styles[/\\]global\.css$/.test(file);
+
+/**
+ * Suppress Vite/Astro full-reloads briefly after API writes.
+ * Content JSON and colour-token CSS both use this — the in-page editors already
+ * show the right pixels, and a reload would drop `is-dev-mode` / the save bar.
+ */
 export function suppressContentHmr(ms = 2500) {
   suppressUntil = Math.max(suppressUntil, Date.now() + ms);
 }
@@ -45,7 +53,7 @@ export function contentHmrGate() {
       // Draft uploads are served via /draft-media middleware, never imported.
       if (isDraftMediaPath(file)) return [];
       if (!isContentHmrSuppressed()) return;
-      if (!isContentPath(file)) return;
+      if (!isContentPath(file) && !isStyleTokenPath(file)) return;
       // In-place editors already mutated the DOM — skip module invalidation.
       return [];
     },
