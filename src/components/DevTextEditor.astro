@@ -57,6 +57,7 @@
     shiftSectionOrderIds,
   } from '../scripts/devSectionPaths';
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+  import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -440,7 +441,7 @@
             aria-expanded="false"
             aria-haspopup="menu"
           >
-            <span aria-hidden="true">+</span>
+            <span aria-hidden="true">${sizeIcon(plusIcon)}</span>
           </button>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
@@ -3094,20 +3095,29 @@
     border: 0;
     /* Match .dev-image-edit-trigger / grid / caption chips. */
     border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
-    backdrop-filter: blur(8px);
+    /* Icon-only at rest; fill + shadow + scale arrive on hover/press. */
+    background: transparent;
     padding: 0.45em 0.65em;
     color: var(--color-text);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
-    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    box-shadow: none;
     cursor: pointer;
+    transition:
+      background-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
   }
 
   .dev-gap-toolbar__add:hover,
+  .dev-gap-toolbar__add:focus-visible,
+  .dev-gap-toolbar__add:active,
   .dev-gap-toolbar__add[aria-expanded='true'] {
-    background: var(--color-surface-strong);
+    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    transform: scale(1.08);
   }
 
   .dev-gap-toolbar__menu {
@@ -3312,10 +3322,9 @@
     border: 0;
     /* Same chip scale as .dev-image-edit-trigger — --radius-control is em-based. */
     border-radius: var(--radius-control);
-    /* --color-surface-control, not --color-surface-soft — see the note on
-       .dev-section-drag-handle in DevSectionReorderEditor. */
-    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    backdrop-filter: blur(8px);
+    /* Icon-only at rest; fill + shadow + scale arrive on hover/press.
+       Mirrors .dev-section-drag-handle in DevSectionReorderEditor. */
+    background: transparent;
     padding: 0.45em 0.55em;
     color: var(--color-text);
     font: inherit;
@@ -3327,8 +3336,9 @@
     transform: translate(calc(100% + 0.55em), -50%);
     transition:
       opacity 0.15s ease,
-      background-color 0.15s ease 0s,
-      box-shadow 0.15s ease 0s;
+      background-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
   }
 
   .dev-section-delete[hidden] {
@@ -3378,9 +3388,20 @@
   }
 
   .dev-section-delete:hover,
-  .dev-section-delete:focus-visible {
-    background: var(--color-surface-control-strong);
+  .dev-section-delete:focus-visible,
+  .dev-section-delete:active {
+    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
+    backdrop-filter: blur(8px);
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    transform: translate(calc(100% + 0.55em), -50%) scale(1.08);
+  }
+
+  @media (max-width: 40em) {
+    .dev-section-delete:hover,
+    .dev-section-delete:focus-visible,
+    .dev-section-delete:active {
+      transform: translate(-0.55em, -50%) scale(1.08);
+    }
   }
 
   /*
