@@ -14,6 +14,7 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - Font: Hanken Grotesk (Google Fonts, weights 300–900)
 - Background: `--color-bg` (`#ffffff`). Every surface meant to read as "the page" — page background, header background (`.site-header__bg`), nav menu panel background and its menu backdrop — must reference this one token, never a literal white. They are stacked and expected to blend seamlessly, so when dark mode lands they have to move together.
 - **Viewport height units:** Never use raw `svh` (or `vh`) for a height constraint that matters visually — Microsoft Edge on iOS doesn't reliably honor `svh`, letting it track the address bar's show/hide mid-scroll and shove blocks below it up/down (see issue #96). Use the shared helper `src/lib/safeVh.ts` (`bindSafeVh()` in `Layout.astro`), which sets a JS-computed `--vh-safe` custom property once on load and only recomputes it on a genuine width change (never on the height-only resize an iOS toolbar toggle fires). Keep `svh` only as the pre-JS/no-JS fallback: `calc(var(--vh-safe, 1svh) * N)`. Do not re-implement this per component.
+- **Appear / disappear motion:** Dev chrome should not pop. Standalone panels (`DevOverlay`) fade in with a slight rise (mirrored on exit). Covering veils over an existing surface fade only. Respect `prefers-reduced-motion`.
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
 - Dev server: port 4321
 - **Dev session:** `bun run dev:session` starts Astro dev server (port 4321); `dev:session:stop` / `dev:session:status`. One Cursor chat owns the session — reuse servers, don't duplicate. See `.cursor/rules/dev-session.mdc`.
@@ -87,13 +88,15 @@ Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in
 - Content publishes to `main` from the save bar, from whatever branch you're on. Never stage it in a feature commit.
 - Engine work goes on a feature branch. Commit it with:
 
-  ```bash
-  bun run commit:engine "your message" src/components/Thing.astro scripts/thing.mjs
-  ```
+ ```bash
+ bun run commit:engine "your message" src/components/Thing.astro scripts/thing.mjs
+ ```
 
-  **Pass the paths you changed.** Agents: this is the required form — only list files you edited in this session. The script refuses content paths outright.
+ **Pass the paths you changed.** Agents: this is the required form — only list files you edited in this session. The script refuses content paths outright.
 
-  The no-paths form (`bun run commit:engine "msg"`) sweeps *every* dirty engine file, which cannot distinguish your edits from another agent's in-flight work. It prints a warning when it does this. Use it only when you know the tree is otherwise clean.
+ The no-paths form (`bun run commit:engine "msg"`) sweeps *every* dirty engine file, which cannot distinguish your edits from another agent's in-flight work. It prints a warning when it does this. Use it only when you know the tree is otherwise clean.
+
+- **Colour tokens on `/styles`:** edits stage as unsaved pending (like crops), **Save** writes `src/styles/global.css`, then **Commit styles** on the save bar commits that file on the current branch. Do not fold token CSS into Save & Publish — that path is content-only.
 
 Exception: schema migrations that require touching content JSON alongside the code change — commit them together and say so in the message.
 
