@@ -183,13 +183,11 @@ import DevOverlay from './DevOverlay.astro';
       veilActions.hidden = true;
       veilMode = 'idle';
       cancelConfirmSource = null;
-      veil.classList.remove('is-under-lights');
     };
 
     const showCancelConfirm = (source: 'escape' | 'button') => {
       cancelConfirmSource = source;
       veilMode = 'cancel';
-      veil.classList.remove('is-under-lights');
       veilMessage.textContent = 'Are you sure you want to cancel?';
       veilActions.hidden = false;
       veil.hidden = false;
@@ -206,7 +204,6 @@ import DevOverlay from './DevOverlay.astro';
 
     const showLoggingVeil = (message: string) => {
       veilMode = 'logging';
-      veil.classList.add('is-under-lights');
       veilMessage.textContent = message;
       veilActions.hidden = true;
       veil.hidden = false;
@@ -788,10 +785,8 @@ import DevOverlay from './DevOverlay.astro';
     display: none;
   }
 
-  /* Logging veil sits under traffic lights so the window can still be closed. */
-  .dev-log-issue__veil.is-under-lights {
-    top: 1.6em;
-  }
+  /* Veil covers the form body only — traffic lights live in the overlay head
+     above this slot, so they stay clickable without leaving a gap over Title. */
 
   .dev-log-issue__veil-card {
     display: flex;
