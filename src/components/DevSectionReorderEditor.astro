@@ -780,7 +780,11 @@
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
-    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+    /* Hairline, not a drop shadow, carries the edge at rest: the fill is
+       ~1.08:1 on white, so a shadow was the only thing separating the chip
+       from the page — and it read as a smudge rather than an edge. The
+       shadow now belongs to :hover alone, as the state change. */
+    box-shadow: inset 0 0 0 1px var(--color-border-strong);
     cursor: grab;
     opacity: 0;
     pointer-events: none;
@@ -829,7 +833,9 @@
   .is-dev-mode .dev-section-drag-handle:hover,
   .is-dev-mode .dev-section-drag-handle:focus-visible {
     background: var(--color-surface-strong);
-    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    box-shadow:
+      inset 0 0 0 1px var(--color-border-strong),
+      0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
   .is-dev-mode .is-section-lifted {
