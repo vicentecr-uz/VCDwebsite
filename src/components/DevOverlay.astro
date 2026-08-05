@@ -1,4 +1,8 @@
 ---
+import minusIcon from 'lucide-static/icons/minus.svg?raw';
+import xIcon from 'lucide-static/icons/x.svg?raw';
+import { sizeIcon } from '../lib/icons';
+
 interface Props {
   title: string;
   storageKey?: string;
@@ -16,6 +20,10 @@ const {
   panelKey,
   defaultHidden = false,
 } = Astro.props;
+
+/* Fit inside --dev-overlay-light-size (0.9em); stroke still currentColor. */
+const minimizeSvg = sizeIcon(minusIcon, 10);
+const hideSvg = sizeIcon(xIcon, 10);
 ---
 
 <aside
@@ -40,7 +48,7 @@ const {
               title="Minimize"
               aria-expanded="true"
             >
-              <span class="dev-overlay__light-icon" aria-hidden="true"></span>
+              <span class="dev-overlay__light-icon" aria-hidden="true" set:html={minimizeSvg} />
             </button>
             <button
               type="button"
@@ -49,7 +57,7 @@ const {
               aria-label="Hide"
               title="Hide"
             >
-              <span class="dev-overlay__light-icon" aria-hidden="true"></span>
+              <span class="dev-overlay__light-icon" aria-hidden="true" set:html={hideSvg} />
             </button>
           </div>
         )
@@ -323,34 +331,16 @@ const {
   .dev-overlay__light-icon {
     position: absolute;
     inset: 0;
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     opacity: 0;
     pointer-events: none;
+    line-height: 0;
   }
 
-  .dev-overlay__light-icon::before,
-  .dev-overlay__light-icon::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    width: 0.42em;
-    height: 1px;
-    margin: auto;
-    background: currentColor;
-  }
-
-  /* Hide (close): × — rotate a centred bar (inset + margin:auto keeps true centre). */
-  .dev-overlay__light--hide .dev-overlay__light-icon::before {
-    transform: rotate(45deg);
-  }
-
-  .dev-overlay__light--hide .dev-overlay__light-icon::after {
-    transform: rotate(-45deg);
-  }
-
-  /* Minimize: − */
-  .dev-overlay__light--minimize .dev-overlay__light-icon::after {
-    display: none;
+  .dev-overlay__light-icon :global(svg) {
+    display: block;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--hide,
