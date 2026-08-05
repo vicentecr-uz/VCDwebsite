@@ -34,6 +34,7 @@ import {
 } from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
 import { publishDevWriter } from './scripts/dev-publish.mjs';
+import { issueDevWriter } from './scripts/dev-issue.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -2018,6 +2019,7 @@ export default defineConfig({
       projectSettingsDevWriter(),
       publishMediaDevWriter(),
       publishDevWriter(),
+      issueDevWriter(),
       imageCropDevWriter(),
       imageGridDevWriter(),
       styleTokenDevWriter(),

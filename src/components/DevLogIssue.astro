@@ -1,0 +1,758 @@
+---
+import DevOverlay from './DevOverlay.astro';
+---
+
+<DevOverlay
+  title="Log new issue"
+  storageKey="log-issue"
+  panelKey="log-issue"
+  defaultHidden
+  showMinimize={false}
+>
+    <div class="dev-log-issue" data-dev-log-issue>
+      <label class="dev-log-issue__field">
+        <span>Title</span>
+        <input type="text" data-log-title autocomplete="off" spellcheck="true" />
+      </label>
+
+      <label class="dev-log-issue__field">
+        <span>Description</span>
+        <textarea data-log-body rows="5" spellcheck="true"></textarea>
+      </label>
+
+      <div
+        class="dev-log-issue__drop"
+        data-log-drop
+        tabindex="0"
+        role="button"
+        aria-label="Attach screenshots or recordings"
+      >
+        <p class="dev-log-issue__drop-label" data-log-drop-label>
+          Drop screenshots or recordings
+        </p>
+        <ul class="dev-log-issue__files" data-log-files hidden></ul>
+        <input
+          type="file"
+          data-log-file-input
+          accept="image/*,video/*"
+          multiple
+          hidden
+        />
+      </div>
+
+      <div class="dev-log-issue__row">
+        <label class="dev-log-issue__field">
+          <span>Label</span>
+          <select data-log-label required>
+            <option value="">Select…</option>
+          </select>
+        </label>
+        <label class="dev-log-issue__field">
+          <span>Milestone</span>
+          <select data-log-milestone required>
+            <option value="">Select…</option>
+          </select>
+        </label>
+      </div>
+
+      <button type="button" class="dev-log-issue__pick" data-log-pick>
+        Pick element on page
+      </button>
+      <p class="dev-log-issue__picked" data-log-picked hidden></p>
+
+      <div class="dev-log-issue__actions">
+        <button type="button" data-log-cancel>Cancel</button>
+        <button type="button" class="dev-log-issue__primary" data-log-submit>Log</button>
+      </div>
+
+      <div class="dev-log-issue__veil" data-log-veil hidden>
+        <div class="dev-log-issue__veil-card" data-log-veil-card>
+          <p class="dev-log-issue__veil-message" data-log-veil-message></p>
+          <div class="dev-log-issue__veil-actions" data-log-veil-actions hidden>
+            <button type="button" data-log-veil-no>No</button>
+            <button type="button" class="dev-log-issue__primary" data-log-veil-yes>Yes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </DevOverlay>
+
+<div class="dev-log-issue-pick-outline" data-log-pick-outline hidden></div>
+
+<script>
+  type Attachment = { filename: string; data: string; mimeType: string };
+
+  const initDevLogIssue = () => {
+    const root = document.querySelector<HTMLElement>('[data-dev-log-issue]');
+    const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
+    const outline = document.querySelector<HTMLElement>('[data-log-pick-outline]');
+    if (!root || !panel || !outline) return;
+    if (root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const titleInput = root.querySelector<HTMLInputElement>('[data-log-title]');
+    const bodyInput = root.querySelector<HTMLTextAreaElement>('[data-log-body]');
+    const drop = root.querySelector<HTMLElement>('[data-log-drop]');
+    const dropLabel = root.querySelector<HTMLElement>('[data-log-drop-label]');
+    const filesList = root.querySelector<HTMLElement>('[data-log-files]');
+    const fileInput = root.querySelector<HTMLInputElement>('[data-log-file-input]');
+    const labelSelect = root.querySelector<HTMLSelectElement>('[data-log-label]');
+    const milestoneSelect = root.querySelector<HTMLSelectElement>('[data-log-milestone]');
+    const pickButton = root.querySelector<HTMLButtonElement>('[data-log-pick]');
+    const pickedNote = root.querySelector<HTMLElement>('[data-log-picked]');
+    const cancelButton = root.querySelector<HTMLButtonElement>('[data-log-cancel]');
+    const submitButton = root.querySelector<HTMLButtonElement>('[data-log-submit]');
+    const veil = root.querySelector<HTMLElement>('[data-log-veil]');
+    const veilCard = root.querySelector<HTMLElement>('[data-log-veil-card]');
+    const veilMessage = root.querySelector<HTMLElement>('[data-log-veil-message]');
+    const veilActions = root.querySelector<HTMLElement>('[data-log-veil-actions]');
+    const veilNo = root.querySelector<HTMLButtonElement>('[data-log-veil-no]');
+    const veilYes = root.querySelector<HTMLButtonElement>('[data-log-veil-yes]');
+
+    if (
+      !titleInput || !bodyInput || !drop || !dropLabel || !filesList || !fileInput
+      || !labelSelect || !milestoneSelect || !pickButton || !pickedNote
+      || !cancelButton || !submitButton || !veil || !veilCard || !veilMessage
+      || !veilActions || !veilNo || !veilYes
+    ) return;
+
+    let attachments: Attachment[] = [];
+    let pickMode = false;
+    let pickedContext = '';
+    let metaBranch = '';
+    let veilMode: 'idle' | 'cancel' | 'logging' | 'done' = 'idle';
+    let metaLoaded = false;
+
+    const isDirty = () => Boolean(
+      titleInput.value.trim()
+      || bodyInput.value.trim()
+      || attachments.length
+      || pickedContext
+      || labelSelect.value
+      || milestoneSelect.value,
+    );
+
+    const resetForm = () => {
+      titleInput.value = '';
+      bodyInput.value = '';
+      attachments = [];
+      pickedContext = '';
+      labelSelect.value = '';
+      milestoneSelect.value = '';
+      renderFiles();
+      pickedNote.hidden = true;
+      pickedNote.textContent = '';
+      hideVeil();
+      stopPickMode();
+    };
+
+    const openPanel = () => {
+      panel.hidden = false;
+      void loadMeta();
+      requestAnimationFrame(() => titleInput.focus());
+    };
+
+    const closePanel = () => {
+      stopPickMode();
+      hideVeil();
+      panel.hidden = true;
+      resetForm();
+    };
+
+    const hideVeil = () => {
+      veil.hidden = true;
+      veilActions.hidden = true;
+      veilMode = 'idle';
+      veil.classList.remove('is-under-lights');
+    };
+
+    const showCancelConfirm = () => {
+      veilMode = 'cancel';
+      veil.classList.remove('is-under-lights');
+      veilMessage.textContent = 'Are you sure you want to cancel?';
+      veilActions.hidden = false;
+      veil.hidden = false;
+    };
+
+    const showLoggingVeil = (message: string) => {
+      veilMode = 'logging';
+      veil.classList.add('is-under-lights');
+      veilMessage.textContent = message;
+      veilActions.hidden = true;
+      veil.hidden = false;
+    };
+
+    const fileToAttachment = (file: File) => new Promise<Attachment>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        const comma = result.indexOf(',');
+        const data = comma >= 0 ? result.slice(comma + 1) : result;
+        resolve({
+          filename: file.name,
+          data,
+          mimeType: file.type || 'application/octet-stream',
+        });
+      };
+      reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
+      reader.readAsDataURL(file);
+    });
+
+    const renderFiles = () => {
+      filesList.replaceChildren();
+      if (!attachments.length) {
+        filesList.hidden = true;
+        dropLabel.hidden = false;
+        return;
+      }
+      dropLabel.hidden = true;
+      filesList.hidden = false;
+      attachments.forEach((file, index) => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = file.filename;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', (event) => {
+          event.stopPropagation();
+          attachments.splice(index, 1);
+          renderFiles();
+        });
+        li.append(name, remove);
+        filesList.append(li);
+      });
+    };
+
+    const addFiles = async (list: FileList | File[]) => {
+      const incoming = [...list].filter((file) => (
+        file.type.startsWith('image/') || file.type.startsWith('video/')
+      ));
+      if (!incoming.length) return;
+      const next = await Promise.all(incoming.map(fileToAttachment));
+      attachments.push(...next);
+      renderFiles();
+    };
+
+    const loadMeta = async () => {
+      if (metaLoaded) return;
+      try {
+        const response = await fetch('/api/dev-issue');
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not load labels.');
+        metaBranch = String(payload.branch || '');
+        labelSelect.replaceChildren(new Option('Select…', ''));
+        for (const name of payload.labels || []) {
+          labelSelect.append(new Option(String(name), String(name)));
+        }
+        milestoneSelect.replaceChildren(new Option('Select…', ''));
+        for (const milestone of payload.milestones || []) {
+          milestoneSelect.append(
+            new Option(String(milestone.title), String(milestone.title)),
+          );
+        }
+        metaLoaded = true;
+      } catch (error) {
+        dropLabel.textContent = error instanceof Error
+          ? error.message
+          : 'Could not reach the issue API.';
+      }
+    };
+
+    /** Walk up for section / document / path context already on the DOM. */
+    const describeElement = (target: Element | null) => {
+      if (!(target instanceof Element)) return null;
+      const section = target.closest<HTMLElement>('[data-dev-section-deletable]');
+      const type = section?.dataset.devSectionDeletable
+        || target.closest<HTMLElement>('[data-dev-grid-target]')?.dataset.devGridTarget
+        || target.closest<HTMLElement>('[data-dev-carousel-target]')?.dataset.devCarouselTarget
+        || target.closest<HTMLElement>('[data-dev-image-target]')?.dataset.devImageTarget
+        || 'element';
+
+      const spacingHost = target.closest<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]');
+      const docHost = target.closest<HTMLElement>('[data-dev-document], [data-dev-text-document], [data-dev-spacing-document]');
+      const documentKey = spacingHost?.dataset.devSpacingDocument
+        || docHost?.dataset.devDocument
+        || docHost?.dataset.devTextDocument
+        || docHost?.dataset.devSpacingDocument
+        || '';
+
+      let pathLabel = '';
+      const tryPath = (raw: string | undefined) => {
+        if (!raw) return;
+        try {
+          const parts = JSON.parse(raw) as Array<string | number>;
+          if (!Array.isArray(parts) || !parts.length) return;
+          // Prefer section root: ["sections", N, ...] → sections[N]
+          if (parts[0] === 'sections' && typeof parts[1] === 'number') {
+            pathLabel = `sections[${parts[1]}]`;
+            return;
+          }
+          pathLabel = parts.map(String).join('.');
+        } catch {
+          // ignore
+        }
+      };
+
+      tryPath(spacingHost?.dataset.devSpacingPath);
+      if (!pathLabel) {
+        const pathHost = target.closest<HTMLElement>(
+          '[data-dev-image-path], [data-dev-grid-path], [data-dev-carousel-path], [data-dev-text-path]',
+        );
+        tryPath(
+          pathHost?.dataset.devImagePath
+          || pathHost?.dataset.devGridPath
+          || pathHost?.dataset.devCarouselPath
+          || pathHost?.dataset.devTextPath,
+        );
+      }
+
+      if (!documentKey && !pathLabel) return null;
+      const file = documentKey
+        ? `src/content/projects/${documentKey}.json`
+        : 'unknown document';
+      return `${pathLabel || '—'} — ${type} — ${file}`;
+    };
+
+    const stopPickMode = () => {
+      if (!pickMode) return;
+      pickMode = false;
+      pickButton.classList.remove('is-active');
+      pickButton.textContent = 'Pick element on page';
+      outline.hidden = true;
+      document.documentElement.classList.remove('is-dev-log-picking');
+    };
+
+    const startPickMode = () => {
+      pickMode = true;
+      pickButton.classList.add('is-active');
+      pickButton.textContent = 'Click an element… (Esc to cancel)';
+      document.documentElement.classList.add('is-dev-log-picking');
+      // Hide the panel so the page is visible to pick against; reopen after.
+      panel.hidden = true;
+    };
+
+    const placeOutline = (el: Element) => {
+      const rect = el.getBoundingClientRect();
+      outline.hidden = false;
+      outline.style.top = `${rect.top}px`;
+      outline.style.left = `${rect.left}px`;
+      outline.style.width = `${rect.width}px`;
+      outline.style.height = `${rect.height}px`;
+    };
+
+    const buildContextBlock = () => {
+      const lines = [
+        '',
+        '---',
+        `Page: ${window.location.href}`,
+        `Branch: ${metaBranch || '(unknown)'}`,
+        `Viewport: ${window.innerWidth}×${window.innerHeight}`,
+      ];
+      if (pickedContext) lines.push(`Element: ${pickedContext}`);
+      return lines.join('\n');
+    };
+
+    const submitIssue = async () => {
+      const title = titleInput.value.trim();
+      const description = bodyInput.value.trim();
+      const label = labelSelect.value;
+      const milestone = milestoneSelect.value;
+
+      if (!title) {
+        titleInput.focus();
+        return;
+      }
+      if (!description) {
+        bodyInput.focus();
+        return;
+      }
+      if (!label) {
+        labelSelect.focus();
+        return;
+      }
+      if (!milestone) {
+        milestoneSelect.focus();
+        return;
+      }
+
+      showLoggingVeil('Logging issue…');
+      submitButton.disabled = true;
+      cancelButton.disabled = true;
+
+      try {
+        const response = await fetch('/api/dev-issue', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            body: `${description}${buildContextBlock()}`,
+            label,
+            milestone,
+            attachments,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not create the issue.');
+
+        const number = payload.number ? `#${payload.number}` : 'created';
+        veilMode = 'done';
+        veilMessage.textContent = `Logged ${number}`;
+        if (payload.url) {
+          const link = document.createElement('a');
+          link.href = payload.url;
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.textContent = payload.url;
+          veilMessage.append(document.createElement('br'), link);
+        }
+        window.setTimeout(() => closePanel(), 1600);
+      } catch (error) {
+        hideVeil();
+        veilMode = 'idle';
+        dropLabel.hidden = false;
+        dropLabel.textContent = error instanceof Error
+          ? error.message
+          : 'Could not create the issue.';
+      } finally {
+        submitButton.disabled = false;
+        cancelButton.disabled = false;
+      }
+    };
+
+    drop.addEventListener('click', () => fileInput.click());
+    drop.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        fileInput.click();
+      }
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files?.length) void addFiles(fileInput.files);
+      fileInput.value = '';
+    });
+    drop.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      drop.classList.add('is-dragover');
+    });
+    drop.addEventListener('dragleave', () => drop.classList.remove('is-dragover'));
+    drop.addEventListener('drop', (event) => {
+      event.preventDefault();
+      drop.classList.remove('is-dragover');
+      if (event.dataTransfer?.files?.length) void addFiles(event.dataTransfer.files);
+    });
+
+    pickButton.addEventListener('click', () => {
+      if (pickMode) stopPickMode();
+      else startPickMode();
+    });
+
+    document.addEventListener('pointermove', (event) => {
+      if (!pickMode) return;
+      const el = document.elementFromPoint(event.clientX, event.clientY);
+      if (!el || el === outline || panel.contains(el)) {
+        outline.hidden = true;
+        return;
+      }
+      const host = el.closest<HTMLElement>(
+        '[data-dev-section-deletable], [data-dev-grid-target], [data-dev-carousel-target], [data-dev-image-target], [data-dev-spacing-document], section, [id]',
+      ) || el;
+      placeOutline(host);
+    }, true);
+
+    document.addEventListener('click', (event) => {
+      if (!pickMode) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const el = event.target;
+      if (!(el instanceof Element)) return;
+      const description = describeElement(el);
+      stopPickMode();
+      panel.hidden = false;
+      if (description) {
+        pickedContext = description;
+        pickedNote.hidden = false;
+        pickedNote.textContent = description;
+      } else {
+        pickedContext = '';
+        pickedNote.hidden = false;
+        pickedNote.textContent = 'No mapped section under that click — page/branch context will still be attached.';
+      }
+    }, true);
+
+    cancelButton.addEventListener('click', (event) => {
+      if (event.altKey || !isDirty()) {
+        closePanel();
+        return;
+      }
+      showCancelConfirm();
+    });
+
+    veilNo.addEventListener('click', () => hideVeil());
+    veilYes.addEventListener('click', () => closePanel());
+    submitButton.addEventListener('click', () => void submitIssue());
+
+    // Capture Esc so cancel-confirm / pick-mode win over DevModeController.
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyI') {
+        event.preventDefault();
+        if (panel.hidden) openPanel();
+        else if (veilMode === 'cancel') hideVeil();
+        else titleInput.focus();
+        return;
+      }
+
+      if (event.key !== 'Escape') return;
+
+      if (pickMode) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        stopPickMode();
+        panel.hidden = false;
+        return;
+      }
+
+      if (veilMode === 'cancel') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        hideVeil();
+      }
+    }, true);
+  };
+
+  initDevLogIssue();
+</script>
+
+<style>
+  :global(.dev-overlay[data-dev-panel-key='log-issue']) {
+    width: min(28em, calc(100vw - 2em));
+    z-index: 50;
+  }
+
+  .dev-log-issue {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+    font-size: 0.85rem;
+  }
+
+  .dev-log-issue__field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3em;
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .dev-log-issue__field input,
+  .dev-log-issue__field textarea,
+  .dev-log-issue__field select {
+    width: 100%;
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-strong);
+    padding: 0.55em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.85rem;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  .dev-log-issue__field textarea {
+    resize: vertical;
+    min-height: 6.5em;
+    line-height: 1.4;
+  }
+
+  .dev-log-issue__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5em;
+  }
+
+  .dev-log-issue__drop {
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: color-mix(in srgb, var(--color-surface-strong) 55%, transparent);
+    padding: 0.85em 0.75em;
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+    text-align: center;
+    cursor: pointer;
+  }
+
+  .dev-log-issue__drop.is-dragover {
+    border-color: var(--color-text);
+    color: var(--color-text);
+  }
+
+  .dev-log-issue__drop-label {
+    margin: 0;
+  }
+
+  .dev-log-issue__files {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    text-align: left;
+  }
+
+  .dev-log-issue__files li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5em;
+    color: var(--color-text);
+    font-size: 0.75rem;
+  }
+
+  .dev-log-issue__files button {
+    border: 0;
+    background: transparent;
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: 0.7rem;
+    cursor: pointer;
+  }
+
+  .dev-log-issue__pick {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-strong);
+    padding: 0.55em 0.75em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .dev-log-issue__pick.is-active {
+    outline: 1px solid var(--color-text);
+  }
+
+  .dev-log-issue__picked {
+    margin: 0;
+    color: var(--color-text-soft);
+    font-size: 0.75rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .dev-log-issue__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4em;
+  }
+
+  .dev-log-issue__actions button,
+  .dev-log-issue__veil-actions button {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-strong);
+    padding: 0.55em 0.85em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .dev-log-issue__primary {
+    background: var(--color-text) !important;
+    color: var(--color-bg) !important;
+  }
+
+  .dev-log-issue__actions button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+  }
+
+  .dev-log-issue__veil {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+    backdrop-filter: blur(2px);
+    padding: 1em;
+  }
+
+  .dev-log-issue__veil[hidden] {
+    display: none;
+  }
+
+  /* Logging veil sits under traffic lights so the window can still be closed. */
+  .dev-log-issue__veil.is-under-lights {
+    top: 1.6em;
+  }
+
+  .dev-log-issue__veil-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75em;
+    text-align: center;
+  }
+
+  .dev-log-issue__veil-message {
+    margin: 0;
+    color: var(--color-text);
+    font-size: 0.9rem;
+    line-height: 1.4;
+  }
+
+  .dev-log-issue__veil-message a {
+    color: var(--color-text-soft);
+    font-size: 0.75rem;
+    word-break: break-all;
+  }
+
+  .dev-log-issue__veil-actions {
+    display: flex;
+    gap: 0.4em;
+  }
+
+  .dev-log-issue__veil-actions[hidden] {
+    display: none;
+  }
+
+  :global(.dev-log-issue-pick-outline) {
+    position: fixed;
+    z-index: 60;
+    border: 2px solid var(--color-text);
+    border-radius: 0.15em;
+    background: color-mix(in srgb, var(--color-text) 8%, transparent);
+    pointer-events: none;
+    box-sizing: border-box;
+  }
+
+  :global(.dev-log-issue-pick-outline[hidden]) {
+    display: none;
+  }
+
+  :global(html.is-dev-log-picking) {
+    cursor: crosshair !important;
+  }
+
+  :global(html.is-dev-log-picking *) {
+    cursor: crosshair !important;
+  }
+</style>
