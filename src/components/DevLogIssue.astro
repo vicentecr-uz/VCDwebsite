@@ -54,10 +54,17 @@ import DevOverlay from './DevOverlay.astro';
         </label>
       </div>
 
-      <button type="button" class="dev-log-issue__pick" data-log-pick>
-        Pick element on page
-      </button>
-      <p class="dev-log-issue__picked" data-log-picked hidden></p>
+      <div class="dev-log-issue__pick-block">
+        <div class="dev-log-issue__pick-head">
+          <button type="button" class="dev-log-issue__clear" data-log-clear hidden>
+            Clear
+          </button>
+        </div>
+        <button type="button" class="dev-log-issue__pick" data-log-pick>
+          Pick element on page
+        </button>
+        <p class="dev-log-issue__picked" data-log-picked hidden></p>
+      </div>
 
       <div class="dev-log-issue__actions">
         <button type="button" data-log-cancel>Cancel</button>
@@ -98,6 +105,7 @@ import DevOverlay from './DevOverlay.astro';
     const labelSelect = root.querySelector<HTMLSelectElement>('[data-log-label]');
     const milestoneSelect = root.querySelector<HTMLSelectElement>('[data-log-milestone]');
     const pickButton = root.querySelector<HTMLButtonElement>('[data-log-pick]');
+    const clearPickButton = root.querySelector<HTMLButtonElement>('[data-log-clear]');
     const pickedNote = root.querySelector<HTMLElement>('[data-log-picked]');
     const cancelButton = root.querySelector<HTMLButtonElement>('[data-log-cancel]');
     const submitButton = root.querySelector<HTMLButtonElement>('[data-log-submit]');
@@ -110,7 +118,7 @@ import DevOverlay from './DevOverlay.astro';
 
     if (
       !titleInput || !bodyInput || !drop || !dropLabel || !filesList || !fileInput
-      || !labelSelect || !milestoneSelect || !pickButton || !pickedNote
+      || !labelSelect || !milestoneSelect || !pickButton || !clearPickButton || !pickedNote
       || !cancelButton || !submitButton || !veil || !veilCard || !veilMessage
       || !veilActions || !veilNo || !veilYes
     ) return;
@@ -133,16 +141,26 @@ import DevOverlay from './DevOverlay.astro';
       || milestoneSelect.value,
     );
 
+    const setPickedContext = (value: string, note: string) => {
+      pickedContext = value;
+      const hasPick = Boolean(value) || Boolean(note);
+      pickedNote.hidden = !hasPick;
+      pickedNote.textContent = note;
+      clearPickButton.hidden = !value;
+    };
+
+    const clearPickedElement = () => {
+      setPickedContext('', '');
+    };
+
     const resetForm = () => {
       titleInput.value = '';
       bodyInput.value = '';
       attachments = [];
-      pickedContext = '';
       labelSelect.value = '';
       milestoneSelect.value = '';
       renderFiles();
-      pickedNote.hidden = true;
-      pickedNote.textContent = '';
+      clearPickedElement();
       hideVeil();
       stopPickMode();
     };
@@ -459,6 +477,10 @@ import DevOverlay from './DevOverlay.astro';
       else startPickMode();
     });
 
+    clearPickButton.addEventListener('click', () => {
+      clearPickedElement();
+    });
+
     document.addEventListener('pointermove', (event) => {
       if (!pickMode) return;
       const el = document.elementFromPoint(event.clientX, event.clientY);
@@ -482,13 +504,12 @@ import DevOverlay from './DevOverlay.astro';
       stopPickMode();
       panel.hidden = false;
       if (description) {
-        pickedContext = description;
-        pickedNote.hidden = false;
-        pickedNote.textContent = description;
+        setPickedContext(description, description);
       } else {
-        pickedContext = '';
-        pickedNote.hidden = false;
-        pickedNote.textContent = 'No mapped section under that click — page/branch context will still be attached.';
+        setPickedContext(
+          '',
+          'No mapped section under that click — page/branch context will still be attached.',
+        );
       }
     }, true);
 
@@ -589,6 +610,12 @@ import DevOverlay from './DevOverlay.astro';
     text-transform: none;
     appearance: none;
     -webkit-appearance: none;
+    /*
+      Parent DevOverlay uses backdrop-filter; without a local stacking context,
+      unfocused siblings can lose their fill while another field is focused.
+    */
+    transform: translateZ(0);
+    isolation: isolate;
   }
 
   .dev-log-issue__field input:focus,
@@ -600,6 +627,64 @@ import DevOverlay from './DevOverlay.astro';
     background-color: var(--color-surface-strong);
     outline: 2px solid var(--color-text);
     outline-offset: 1px;
+  }
+
+  .dev-log-issue__pick-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+  }
+
+  .dev-log-issue__pick-head {
+    display: flex;
+    justify-content: flex-end;
+    min-height: 0;
+  }
+
+  .dev-log-issue__clear {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    color: var(--color-text-muted);
+    font: inherit;
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .dev-log-issue__clear:hover {
+    color: var(--color-text);
+  }
+
+  .dev-log-issue__clear[hidden] {
+    display: none;
+  }
+
+  .dev-log-issue__pick {
+    border: 0;
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: var(--color-surface-strong);
+    padding: 0.55em 0.75em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .dev-log-issue__pick.is-active {
+    outline: 1px solid var(--color-text);
+  }
+
+  .dev-log-issue__picked {
+    margin: 0;
+    color: var(--color-text-soft);
+    font-size: 0.75rem;
+    line-height: 1.35;
+    word-break: break-word;
   }
 
   .dev-log-issue__field textarea {
@@ -662,24 +747,6 @@ import DevOverlay from './DevOverlay.astro';
     font: inherit;
     font-size: 0.7rem;
     cursor: pointer;
-  }
-
-  .dev-log-issue__pick {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--color-surface-strong);
-    padding: 0.55em 0.75em;
-    color: var(--color-text);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .dev-log-issue__pick.is-active {
-    outline: 1px solid var(--color-text);
   }
 
   .dev-log-issue__picked {
