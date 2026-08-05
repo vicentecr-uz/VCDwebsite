@@ -1117,6 +1117,16 @@
     /** Content files changed on disk but not yet committed to the publish branch. */
     let unpublishedCount = 0;
 
+    /**
+     * Once /api/publish has succeeded at least once this session, keep the last
+     * known counts on a transient failure instead of emptying the bar as if
+     * publish were unavailable (same catch path as "not a git repo").
+     */
+    let publishKnown = false;
+
+    /** Save or publish in flight — keeps buttons disabled with a wait cursor. */
+    let actionsBusy = false;
+
     /** Anything in the DOM not yet written to disk. */
     const hasPendingEdits = () => Boolean(
       dirtyTextStates().length
@@ -1132,7 +1142,8 @@
      * to flash for a frame and vanish — refreshPublishState() runs in the click
      * handler's `finally` and updateActions() overwrote the text with the change
      * count, so the one thing worth reading was the one thing you could not.
-     * Cleared by the next edit or button press, not by a repaint.
+     * Cleared by the next edit or button press, not by a repaint — except
+     * "Saved.", which yields to the unpublished count once publish state refreshes.
      */
     let stickyStatus = '';
     const setStickyStatus = (message: string) => {
@@ -1173,7 +1184,16 @@
       }
       // Revert only undoes in-memory edits; it cannot take back a disk write.
       revertButton.hidden = !dirtyCount;
-      saveButton.hidden = !dirtyCount;
+      // Keep Save in the layout after a successful write — greyed, not removed —
+      // so the bar keeps its shape while Publish becomes the next step.
+      saveButton.hidden = false;
+      if (!actionsBusy) {
+        saveButton.disabled = !dirtyCount;
+        revertButton.disabled = false;
+      }
+      saveButton.classList.toggle('is-dev-actions-busy', actionsBusy);
+      publishButton.classList.toggle('is-dev-actions-busy', actionsBusy);
+      revertButton.classList.toggle('is-dev-actions-busy', actionsBusy);
     };
 
     const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
@@ -2421,6 +2441,10 @@
       saveButton.disabled = true;
       publishButton.disabled = true;
       revertButton.disabled = true;
+      actionsBusy = true;
+      saveButton.classList.add('is-dev-actions-busy');
+      publishButton.classList.add('is-dev-actions-busy');
+      revertButton.classList.add('is-dev-actions-busy');
       setStickyStatus('Saving…');
 
       try {
@@ -2539,16 +2563,19 @@
         pendingMedia.clear();
         persistedMediaInserts.length = 0;
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed'));
+        // Optimistic: keep the bar up until refreshPublishState confirms counts.
+        // Without this, dirtyCount is 0 and unpublishedCount is still stale, so
+        // the bar flickers hidden between Save and the /api/publish GET.
+        unpublishedCount = Math.max(unpublishedCount, manifest.documents.length || 1);
         setStickyStatus('Saved.');
-        updateActions();
         return manifest;
       } catch (error) {
         setStickyStatus(error instanceof Error ? error.message : 'Could not save changes.');
         return null;
       } finally {
-        saveButton.disabled = false;
+        actionsBusy = false;
         publishButton.disabled = false;
-        revertButton.disabled = false;
+        updateActions();
       }
     };
 
@@ -2587,6 +2614,7 @@
           files?: string[];
           behind?: string[];
         };
+        publishKnown = true;
         unpublishedCount = Array.isArray(state.files) ? state.files.length : 0;
         const behind = Array.isArray(state.behind) ? state.behind : [];
         renderingFiles = Array.isArray(state.renderingFiles) ? state.renderingFiles : [];
@@ -2594,7 +2622,7 @@
         const target = state.publishBranch ?? 'main';
         const onTarget = state.onPublishBranch !== false;
         publishButton.hidden = false;
-        publishButton.disabled = false;
+        if (!actionsBusy) publishButton.disabled = false;
         branchLabel.hidden = false;
         branchLabel.textContent = branch;
         // Away from main the name steps up to full text colour — publishing still
@@ -2626,14 +2654,20 @@
             : `Save, commit, and push to ${target} — ${branch} stays as it is`;
         }
       } catch {
-        // Not a git repo, or the dev route is unavailable — say nothing rather
-        // than showing a branch we can't vouch for.
-        unpublishedCount = 0;
-        renderingFiles = [];
-        publishButton.hidden = true;
-        branchLabel.hidden = true;
-        warnLabel.hidden = true;
+        // First failure (or never-a-git-repo): hide publish chrome. Once we've
+        // successfully loaded publish state, keep the last counts so a blip
+        // doesn't empty the bar the same way.
+        if (!publishKnown) {
+          unpublishedCount = 0;
+          renderingFiles = [];
+          publishButton.hidden = true;
+          branchLabel.hidden = true;
+          warnLabel.hidden = true;
+        }
       }
+      // "Saved." was only a beat confirmation — once we know the unpublished
+      // count, hand the status back to the count. Leave Publish confirmations alone.
+      if (stickyStatus === 'Saved.') stickyStatus = '';
       updateActions();
     };
 
@@ -2650,6 +2684,10 @@
         saveButton.disabled = true;
         publishButton.disabled = true;
         revertButton.disabled = true;
+        actionsBusy = true;
+        saveButton.classList.add('is-dev-actions-busy');
+        publishButton.classList.add('is-dev-actions-busy');
+        revertButton.classList.add('is-dev-actions-busy');
         setStickyStatus('Publishing…');
         actions.hidden = false;
 
@@ -2692,8 +2730,7 @@
           setStickyStatus(error instanceof Error ? error.message : 'Could not publish.');
           actions.hidden = false;
         } finally {
-          saveButton.disabled = false;
-          revertButton.disabled = false;
+          actionsBusy = false;
           void refreshPublishState();
         }
       })();
@@ -2865,6 +2902,11 @@
   }
 
   .dev-text-actions button:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .dev-text-actions button.is-dev-actions-busy:disabled {
     cursor: wait;
     opacity: 0.55;
   }
@@ -2880,14 +2922,18 @@
 
   /* Publish only disables while a publish is in flight. */
   .dev-text-actions .dev-text-actions__save:disabled {
+    cursor: default;
+  }
+
+  .dev-text-actions .dev-text-actions__save.is-dev-actions-busy:disabled {
     cursor: wait;
   }
 
   /* Rendering code changed on this branch: step Publish down from the filled
-     default action to an outline, so it stops reading as the obvious next click.
-     It still works — it asks for confirmation first. */
+     default — soft surface + border so it stays a visible control, not a ghost
+     outline that disappears against the bar. Still asks for confirmation. */
   .dev-text-actions .dev-text-actions__save.is-dev-publish-warn {
-    background: transparent;
+    background: var(--color-surface-soft);
     box-shadow: inset 0 0 0 1px var(--color-border);
     color: var(--color-text);
   }
