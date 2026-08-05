@@ -45,6 +45,9 @@ const { documentKey } = Astro.props;
 </dialog>
 
 <script>
+  import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+  import { sizeIcon } from '../lib/icons';
+
   const UNASSIGNED = '__unassigned__';
 
   /** @typedef {{
@@ -197,7 +200,7 @@ const { documentKey } = Astro.props;
       trash.className = 'dev-asset-manager__trash';
       trash.title = 'Delete forever';
       trash.setAttribute('aria-label', `Delete ${asset.filename} forever`);
-      trash.innerHTML = `<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M6 2h4l.5 1H14v1.5H2V3h3.5L6 2zm1 4.5v5h1.5v-5H7zm2.5 0v5H11v-5H9.5zM3.5 4.5h9l-.7 9.2a1 1 0 0 1-1 .8H5.2a1 1 0 0 1-1-.8L3.5 4.5z"/></svg>`;
+      trash.innerHTML = sizeIcon(trashIcon);
 
       button.addEventListener('click', () => {
         if (!pickMode) {
