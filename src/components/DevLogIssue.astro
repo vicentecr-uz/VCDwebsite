@@ -598,9 +598,11 @@ import DevOverlay from './DevOverlay.astro';
   .dev-log-issue__field select {
     width: 100%;
     border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
+    /* Plain radius — no corner-shape. Hyperellipse moves fill onto a
+       z-index:-1 ::before; inside the overlay's backdrop-filter stacking
+       context that layer drops behind the surface and the fill vanishes on
+       focus (same fight as project chips — see project.css). */
+    border-radius: var(--radius-control);
     background-color: var(--color-surface-strong);
     padding: 0.55em 0.65em;
     color: var(--color-text);
@@ -610,12 +612,6 @@ import DevOverlay from './DevOverlay.astro';
     text-transform: none;
     appearance: none;
     -webkit-appearance: none;
-    /*
-      Parent DevOverlay uses backdrop-filter; without a local stacking context,
-      unfocused siblings can lose their fill while another field is focused.
-    */
-    transform: translateZ(0);
-    isolation: isolate;
   }
 
   .dev-log-issue__field input:focus,
