@@ -773,18 +773,15 @@
     border: 0;
     /* Same chip scale as .dev-image-edit-trigger — --radius-control is em-based. */
     border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--color-surface-soft) 92%, transparent);
+    /* --color-surface-control, not --color-surface-soft: the resting fill
+       has to read as a shape on its own, with no border or shadow at rest. */
+    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
     backdrop-filter: blur(8px);
     padding: 0.45em 0.55em;
     color: var(--color-text);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
-    /* Hairline, not a drop shadow, carries the edge at rest: the fill is
-       ~1.08:1 on white, so a shadow was the only thing separating the chip
-       from the page — and it read as a smudge rather than an edge. The
-       shadow now belongs to :hover alone, as the state change. */
-    box-shadow: inset 0 0 0 1px var(--color-border-strong);
     cursor: grab;
     opacity: 0;
     pointer-events: none;
@@ -832,10 +829,8 @@
 
   .is-dev-mode .dev-section-drag-handle:hover,
   .is-dev-mode .dev-section-drag-handle:focus-visible {
-    background: var(--color-surface-strong);
-    box-shadow:
-      inset 0 0 0 1px var(--color-border-strong),
-      0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    background: var(--color-surface-control-strong);
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
   .is-dev-mode .is-section-lifted {
