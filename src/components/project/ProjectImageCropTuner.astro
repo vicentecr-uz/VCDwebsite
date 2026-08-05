@@ -1,5 +1,13 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
+import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
+import lockIcon from 'lucide-static/icons/lock.svg?raw';
+import { sizeIcon } from '../../lib/icons';
+
+const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
+const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
+const lockSvg = sizeIcon(lockIcon, 14);
 ---
 
 <DevOverlay
@@ -80,10 +88,10 @@ import DevOverlay from '../DevOverlay.astro';
 
     <div class="tapico-crop-tuner__toolbar" aria-label="Crop controls">
       <button type="button" data-crop-center-x aria-label="Centre horizontally">
-        <span class="tapico-crop-tuner__align-icon tapico-crop-tuner__align-icon--x" aria-hidden="true"></span>
+        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignXSvg} />
       </button>
       <button type="button" data-crop-center-y aria-label="Centre vertically">
-        <span class="tapico-crop-tuner__align-icon tapico-crop-tuner__align-icon--y" aria-hidden="true"></span>
+        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignYSvg} />
       </button>
       <button
         type="button"
@@ -91,7 +99,12 @@ import DevOverlay from '../DevOverlay.astro';
         data-crop-constraint
         aria-pressed="true"
       >
-        <span class="tapico-crop-tuner__lock-icon" aria-hidden="true"></span>
+        <span
+          class="tapico-crop-tuner__icon"
+          data-crop-constraint-icon
+          aria-hidden="true"
+          set:html={lockSvg}
+        />
         <span data-crop-constraint-state>Crop locked</span>
       </button>
     </div>
@@ -143,6 +156,12 @@ import DevOverlay from '../DevOverlay.astro';
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { projectImage, draftProjectImageSrc } from '../../lib/images';
+  import lockIcon from 'lucide-static/icons/lock.svg?raw';
+  import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
+  import { sizeIcon } from '../../lib/icons';
+
+  const LOCK_ICON = sizeIcon(lockIcon, 14);
+  const LOCK_OPEN_ICON = sizeIcon(lockOpenIcon, 14);
 
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
   type ConstrainedByViewport = Record<ImageViewport, ImageGridConstrainPercent>;
@@ -181,6 +200,7 @@ import DevOverlay from '../DevOverlay.astro';
     const centerYButton = tuner.querySelector<HTMLButtonElement>('[data-crop-center-y]');
     const constraintButton = tuner.querySelector<HTMLButtonElement>('[data-crop-constraint]');
     const constraintState = tuner.querySelector<HTMLElement>('[data-crop-constraint-state]');
+    const constraintIcon = tuner.querySelector<HTMLElement>('[data-crop-constraint-icon]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-crop-save]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
@@ -211,6 +231,7 @@ import DevOverlay from '../DevOverlay.astro';
       !centerYButton ||
       !constraintButton ||
       !constraintState ||
+      !constraintIcon ||
       !saveButton ||
       !revertButton ||
       !resetButton ||
@@ -704,6 +725,7 @@ import DevOverlay from '../DevOverlay.astro';
       const locked = constrainToFrame();
       constraintButton.setAttribute('aria-pressed', locked ? 'true' : 'false');
       constraintButton.classList.toggle('is-locked', locked);
+      constraintIcon.innerHTML = locked ? LOCK_ICON : LOCK_OPEN_ICON;
       constraintState.textContent = locked ? 'Crop locked' : 'Crop unlocked';
     };
 
@@ -2362,93 +2384,16 @@ import DevOverlay from '../DevOverlay.astro';
     background: color-mix(in srgb, var(--color-surface-strong) 88%, var(--color-text));
   }
 
-  .tapico-crop-tuner__lock-icon {
-    position: relative;
-    display: inline-block;
-    width: 0.85em;
-    height: 1em;
+  .tapico-crop-tuner__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     flex: 0 0 auto;
+    line-height: 0;
   }
 
-  .tapico-crop-tuner__lock-icon::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    width: 0.5em;
-    height: 0.5em;
-    border: 1px solid currentColor;
-    border-bottom: 0;
-    border-radius: 0.35em 0.35em 0 0;
-    transform: translateX(-50%);
-    transform-origin: bottom left;
-    transition: transform 0.15s ease;
-  }
-
-  .tapico-crop-tuner__lock-icon::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    height: 0.6em;
-    border: 1px solid currentColor;
-    background: #ffffff;
-  }
-
-  .tapico-crop-tuner__constraint:not(.is-locked) .tapico-crop-tuner__lock-icon::before {
-    transform: translateX(-15%) rotate(-24deg);
-  }
-
-  .tapico-crop-tuner__align-icon {
-    position: relative;
-    display: inline-block;
-    width: 1.1em;
-    height: 1.1em;
-    flex: 0 0 auto;
-  }
-
-  .tapico-crop-tuner__align-icon::before,
-  .tapico-crop-tuner__align-icon::after {
-    content: '';
-    position: absolute;
-    background: currentColor;
-  }
-
-  .tapico-crop-tuner__align-icon--x::before {
-    top: 0;
-    bottom: 0;
-    left: 50%;
-    width: 1px;
-    transform: translateX(-50%);
-  }
-
-  .tapico-crop-tuner__align-icon--x::after {
-    top: 0.25em;
-    right: 0;
-    bottom: 0.25em;
-    left: 0;
-    border-right: 0.3em solid currentColor;
-    border-left: 0.3em solid currentColor;
-    background: transparent;
-  }
-
-  .tapico-crop-tuner__align-icon--y::before {
-    top: 50%;
-    right: 0;
-    left: 0;
-    height: 1px;
-    transform: translateY(-50%);
-  }
-
-  .tapico-crop-tuner__align-icon--y::after {
-    top: 0;
-    right: 0.25em;
-    bottom: 0;
-    left: 0.25em;
-    border-top: 0.3em solid currentColor;
-    border-bottom: 0.3em solid currentColor;
-    background: transparent;
+  .tapico-crop-tuner__icon :global(svg) {
+    display: block;
   }
 
   .tapico-crop-tuner__control input {
