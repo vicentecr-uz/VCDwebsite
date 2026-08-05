@@ -62,6 +62,12 @@ const {
 </aside>
 
 <script>
+  const MOTION_MS = 180;
+  const prefersReducedMotion = () =>
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const nativeHidden = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
+
   const initDevOverlay = (overlay: HTMLElement) => {
     if (overlay.dataset.initialized === 'true') return;
     overlay.dataset.initialized = 'true';
@@ -127,6 +133,98 @@ const {
         // Ignore storage failures.
       }
     };
+
+    /**
+     * Intent vs DOM: during the exit fade the panel is still in the tree
+     * (no [hidden]) so the transition can play; `.hidden` getters report intent
+     * so toggles / Esc stay consistent. Every dismiss path must go through this
+     * — traffic light, Esc, and tuner `panel.hidden = true`.
+     */
+    let wantVisible = !overlay.hasAttribute('hidden');
+    let motionTimer = 0;
+    let motionGeneration = 0;
+
+    const setNativeHidden = (hidden: boolean) => {
+      if (nativeHidden?.set) nativeHidden.set.call(overlay, hidden);
+      else if (hidden) overlay.setAttribute('hidden', '');
+      else overlay.removeAttribute('hidden');
+    };
+
+    const clearMotionTimer = () => {
+      if (motionTimer) {
+        window.clearTimeout(motionTimer);
+        motionTimer = 0;
+      }
+    };
+
+    const finishShow = () => {
+      setNativeHidden(false);
+      // Start from the resting "closed" pose, then open on the next frame.
+      overlay.classList.remove('is-dev-overlay-open');
+      void overlay.offsetWidth;
+      if (prefersReducedMotion()) {
+        overlay.classList.add('is-dev-overlay-open');
+        return;
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!wantVisible) return;
+          overlay.classList.add('is-dev-overlay-open');
+        });
+      });
+    };
+
+    const finishHide = (generation: number) => {
+      if (generation !== motionGeneration || wantVisible) return;
+      overlay.classList.remove('is-dev-overlay-open');
+      setNativeHidden(true);
+      clearMotionTimer();
+    };
+
+    const showOverlay = () => {
+      if (wantVisible && !overlay.hasAttribute('hidden') && overlay.classList.contains('is-dev-overlay-open')) {
+        return;
+      }
+      wantVisible = true;
+      motionGeneration += 1;
+      clearMotionTimer();
+      finishShow();
+    };
+
+    const hideOverlayAnimated = () => {
+      if (!wantVisible && overlay.hasAttribute('hidden')) return;
+      wantVisible = false;
+      const generation = ++motionGeneration;
+      clearMotionTimer();
+      overlay.classList.remove('is-dev-overlay-open');
+
+      if (prefersReducedMotion() || overlay.hasAttribute('hidden')) {
+        finishHide(generation);
+        return;
+      }
+
+      // Fallback if transitionend is skipped (display/tab backgrounded, etc.).
+      motionTimer = window.setTimeout(() => finishHide(generation), MOTION_MS + 50);
+    };
+
+    if (nativeHidden?.get && nativeHidden?.set) {
+      Object.defineProperty(overlay, 'hidden', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          return !wantVisible;
+        },
+        set(value: boolean) {
+          if (value) hideOverlayAnimated();
+          else showOverlay();
+        },
+      });
+    }
+
+    // Already open on first paint (rare) — sit in the open pose with no entrance.
+    if (wantVisible) {
+      overlay.classList.add('is-dev-overlay-open');
+    }
 
     const hideOverlay = () => {
       overlay.hidden = true;
@@ -210,6 +308,13 @@ const {
       setMinimized(!overlay.classList.contains('is-minimized'));
     });
 
+    overlay.addEventListener('transitionend', (event) => {
+      if (event.target !== overlay) return;
+      if (event.propertyName !== 'opacity') return;
+      if (wantVisible) return;
+      finishHide(motionGeneration);
+    });
+
     window.addEventListener('resize', () => {
       const left = Number.parseFloat(overlay.style.left);
       const top = Number.parseFloat(overlay.style.top);
@@ -228,6 +333,8 @@ const {
     owns squircle clip-path + translucent fill + backdrop-filter.
   */
   .dev-overlay {
+    --dev-overlay-motion-ms: 180ms;
+    --dev-overlay-rise: 0.35em;
     position: fixed;
     right: 1em;
     bottom: 1em;
@@ -241,6 +348,28 @@ const {
     font-family: var(--font-sans);
     color: var(--color-text);
     box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+    opacity: 0;
+    transform: translateY(var(--dev-overlay-rise));
+    transition:
+      opacity var(--dev-overlay-motion-ms) ease,
+      transform var(--dev-overlay-motion-ms) ease;
+  }
+
+  .dev-overlay.is-dev-overlay-open {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* Closed / mid-exit: don't intercept clicks under a fading panel. */
+  .dev-overlay:not(.is-dev-overlay-open) {
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-overlay {
+      --dev-overlay-motion-ms: 0ms;
+      transition: none;
+    }
   }
 
   .dev-overlay__surface {
