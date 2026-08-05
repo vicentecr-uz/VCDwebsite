@@ -1138,6 +1138,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
       stage: HTMLElement;
       target: HTMLElement;
     } | null = null;
+    /** In-flight exit fade — cancelled if a remount needs the DOM cleared now. */
+    let closingStage: NonNullable<typeof pageStage> | null = null;
+    let closingStageTimer = 0;
 
     const PAGE_RESIZE_DIRS: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'];
 
@@ -1181,24 +1184,55 @@ const lockSvg = sizeIcon(lockIcon, 14);
       }
     };
 
-    const unmountPageStage = () => {
-      if (!pageStage) return;
-      pageStage.ghost.remove();
-      pageStage.stage.remove();
-      const carousel = pageStage.target.closest('[data-project-image-carousel]');
-      const track = pageStage.target.closest<HTMLElement>('[data-carousel-track]');
-      const clip = pageStage.target.closest<HTMLElement>('[data-carousel-clip]')
+    const finishClosingStage = (closing: NonNullable<typeof pageStage>) => {
+      if (closingStage === closing) closingStage = null;
+      if (closingStageTimer) {
+        window.clearTimeout(closingStageTimer);
+        closingStageTimer = 0;
+      }
+      closing.ghost.remove();
+      closing.stage.remove();
+      // Drop the host class with the nodes — keep overflow:visible while the
+      // ghost is still fading out so handles/spill aren't clipped mid-exit.
+      closing.target.classList.remove('dev-crop-stage-host');
+      const carousel = closing.target.closest('[data-project-image-carousel]');
+      const track = closing.target.closest<HTMLElement>('[data-carousel-track]');
+      const clip = closing.target.closest<HTMLElement>('[data-carousel-clip]')
         ?? track?.parentElement;
-      pageStage.target.classList.remove('dev-crop-stage-host');
-      // Drop the height lock after the host class, so the tallest-mode
-      // auto-height can see every sibling again on the next refresh.
       track?.style.removeProperty('--project-carousel-crop-lock-height');
       clip?.style.removeProperty('--project-carousel-crop-lock-height');
-      pageStage = null;
-      // Slides un-isolate — put the carousel back on the one just cropped.
       if (carousel) {
         window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: carousel } }));
       }
+    };
+
+    const unmountPageStage = (options?: { immediate?: boolean }) => {
+      // A remount must kill any in-flight exit fade first.
+      if (closingStage) finishClosingStage(closingStage);
+      if (!pageStage) return;
+      const closing = pageStage;
+      pageStage = null;
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const canFade = !options?.immediate
+        && !reduceMotion
+        && closing.ghost.classList.contains('is-visible');
+      if (!canFade) {
+        finishClosingStage(closing);
+        return;
+      }
+
+      closingStage = closing;
+      closing.ghost.classList.remove('is-visible');
+      const onEnd = (event: TransitionEvent) => {
+        if (event.target !== closing.ghost || event.propertyName !== 'opacity') return;
+        closing.ghost.removeEventListener('transitionend', onEnd);
+        if (closingStage === closing) finishClosingStage(closing);
+      };
+      closing.ghost.addEventListener('transitionend', onEnd);
+      closingStageTimer = window.setTimeout(() => {
+        if (closingStage === closing) finishClosingStage(closing);
+      }, 250);
     };
 
     /** Capture can throw once a pointer is gone (fast release, pen lift). */
@@ -1516,7 +1550,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
     };
 
     const mountPageStage = () => {
-      unmountPageStage();
+      // Remounts (viewport chip, image switch) skip the exit fade so the old
+      // ghost can't linger under the new stage.
+      unmountPageStage({ immediate: true });
       if (!editingSession || !viewportGateOk()) return;
       const target = editTarget;
 
@@ -1566,6 +1602,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
         requestAnimationFrame(() => {
           if (pageStage?.stage === stage) syncPageStageBox();
         });
+      });
+      // Fade the ghost in after paint so opacity 0 → visible actually transitions.
+      requestAnimationFrame(() => {
+        if (pageStage?.ghost === ghost) ghost.classList.add('is-visible');
       });
       const carousel = target.closest('[data-project-image-carousel]');
       if (carousel) {

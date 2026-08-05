@@ -652,11 +652,18 @@ html:not(.is-dev-mode) .dev-crop-stage {
 }
 
 /* Faded full bitmap behind the frame: prepended so the clip paints over the
-   shared region — only the content outside the frame reads as ghosted. */
+   shared region — only the content outside the frame reads as ghosted.
+   Opacity lives on the wrapper so mount/unmount can fade the whole ghost. */
 .is-dev-mode .dev-crop-ghost {
   position: absolute;
   z-index: 0;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.is-dev-mode .dev-crop-ghost.is-visible {
+  opacity: 1;
 }
 
 .is-dev-mode .dev-crop-ghost > img {
@@ -671,6 +678,12 @@ html:not(.is-dev-mode) .dev-crop-stage {
     calc(var(--project-content-cx, 0.5) * -100%),
     calc(var(--project-content-cy, 0.5) * -100%)
   );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-dev-mode .dev-crop-ghost {
+    transition: none;
+  }
 }
 
 /* Interaction layer over the frame: pan, wheel zoom, resize handles. Sits
@@ -786,7 +799,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease;
 }
 
 .dev-image-edit-trigger[hidden] {
@@ -819,7 +832,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease;
 }
 
 .dev-caption-add-trigger[hidden] {
@@ -862,7 +875,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease;
 }
 
 .dev-grid-edit-trigger[hidden] {
@@ -875,6 +888,11 @@ html:not(.is-dev-mode) .dev-crop-stage {
 .dev-carousel-edit-target:focus-within > .dev-grid-edit-trigger {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Press feedback — chips already cast a shadow, so darken the fill instead. */
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):active {
+  background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
 }
 
 /* ── Typography blocks ──────────────────────────────────────── */
