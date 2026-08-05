@@ -795,14 +795,25 @@ const lockSvg = sizeIcon(lockIcon, 14);
       }
     };
 
-    const renderDraft = () => {
-      preview.style.aspectRatio = draft.aspect === 'original'
-        ? `${previewImage.naturalWidth || 1} / ${previewImage.naturalHeight || 1}`
-        : draft.aspect.replace(':', ' / ');
+    /**
+     * Crop CSS only — safe to call every animation frame during pan/pinch/wheel.
+     * Skips panel chrome, stage remeasure, and frame-change events (those thrash).
+     */
+    const paintDraftCrop = () => {
       // Bounds are closed form now, so clamping on open can't shift a saved crop.
       constrainDraft();
       draftVariants[selectedViewport] = { ...draft };
       setCropVariables(preview, draft);
+      if (liveApply) {
+        setTargetVariant(editTarget, selectedViewport, draft);
+      }
+    };
+
+    /** Panel readouts + stage box — use after discrete edits, or throttled mid-gesture. */
+    const flushDraftChrome = (options?: { announce?: boolean }) => {
+      preview.style.aspectRatio = draft.aspect === 'original'
+        ? `${previewImage.naturalWidth || 1} / ${previewImage.naturalHeight || 1}`
+        : draft.aspect.replace(':', ' / ');
       if (liveApply) {
         if (editedImage.naturalWidth && editedImage.naturalHeight) {
           editTarget.style.setProperty(
@@ -814,9 +825,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
             String(editedImage.naturalWidth / editedImage.naturalHeight),
           );
         }
-        setTargetVariant(editTarget, selectedViewport, draft);
         editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
-        announceFrameChange(editTarget);
+        if (options?.announce !== false) announceFrameChange(editTarget);
       }
       syncAspectRatioSelect();
       viewportButtons.forEach((button) => {
@@ -833,6 +843,11 @@ const lockSvg = sizeIcon(lockIcon, 14);
       readout.textContent = `${ratioLabel} · shows ${Math.round(draft.w * 100)}% of width · centre ${draft.cx.toFixed(3)}, ${draft.cy.toFixed(3)}`;
       // Frame edits reshape the clip; keep the on-page surface glued to it.
       syncPageStageBox();
+    };
+
+    const renderDraft = () => {
+      paintDraftCrop();
+      flushDraftChrome();
     };
 
     const saveDraft = () => {
@@ -1249,23 +1264,29 @@ const lockSvg = sizeIcon(lockIcon, 14);
       Trackpad wheel arrives in uneven chunks. A flat low gain feels precise but
       sluggish; a flat high gain covers ground but jumps. Blend by delta size:
       slow nudges stay fine, quicker flicks use the original full sensitivity.
+      Apply through rAF (one paint/frame) so chunky packets don't grit the crop.
     */
     const WHEEL_ZOOM_GAIN_FINE = 0.00085;
     const WHEEL_ZOOM_GAIN_FAST = 0.0022;
     const WHEEL_PAN_GAIN_FINE = 0.38;
     const WHEEL_PAN_GAIN_FAST = 1;
-    const WHEEL_GAIN_KNEE = 28;
+    /** Higher knee = more of the common trackpad range stays in the fine→mid blend. */
+    const WHEEL_GAIN_KNEE = 40;
+    /** EMA toward per-frame |delta| so gain doesn't flicker with packet noise. */
+    const WHEEL_SPEED_EMA = 0.32;
     const POINTER_PAN_GAIN = 1;
     const PINCH_ZOOM_EXPONENT = 1;
+    /** Mid-gesture chrome (zoom % / readout) at most ~15 Hz — not every paint. */
+    const GESTURE_CHROME_MS = 64;
 
-    /** Smoothstep blend from fine → fast gain based on |delta|. */
-    const wheelGainFor = (delta: number, fine: number, fast: number) => {
-      const t = Math.min(1, Math.abs(delta) / WHEEL_GAIN_KNEE);
+    /** Smoothstep blend from fine → fast gain based on gesture speed. */
+    const wheelGainForSpeed = (speed: number, fine: number, fast: number) => {
+      const t = Math.min(1, Math.max(0, speed) / WHEEL_GAIN_KNEE);
       const blend = t * t * (3 - 2 * t);
       return fine + (fast - fine) * blend;
     };
 
-    /** Zoom around a client point — keeps that source location under the pointer. */
+    /** Zoom around a client point — mutates draft only; caller paints. */
     const zoomAtClientPoint = (clientX: number, clientY: number, factor: number, bounds: DOMRect) => {
       if (!bounds.width || !bounds.height) return;
       const fx = (clientX - bounds.left) / bounds.width;
@@ -1277,7 +1298,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
       draft.w = clamp(draft.w / factor, maxW / 1.5, maxW);
       draft.cx = sourceX - (fx - 0.5) * draft.w;
       draft.cy = sourceY - (fy - 0.5) * contentH(draft);
-      renderDraft();
     };
 
     /**
@@ -1305,35 +1325,91 @@ const lockSvg = sizeIcon(lockIcon, 14);
         startMidY: number;
         sourceX: number;
         sourceY: number;
+        bounds: DOMRect;
+      } | null = null;
+      /** Cached stage rect while a gesture is live — avoids layout thrash per move. */
+      let gestureBounds: DOMRect | null = null;
+      let paintRaf = 0;
+      let chromeRaf = 0;
+      let chromeTimer = 0;
+      let wheelIdleTimer = 0;
+      let lastChromeAt = 0;
+      let pendingStatus: string | null = null;
+      let pointerDirty = false;
+      let wheelSpeedEma = 0;
+      let pendingWheel: {
+        dx: number;
+        dy: number;
+        zoom: boolean;
+        clientX: number;
+        clientY: number;
       } | null = null;
 
       const pointList = () => [...pointers.values()];
 
-      const beginPinch = (bounds: DOMRect) => {
-        const [a, b] = pointList();
-        if (!a || !b || !bounds.width || !bounds.height) return;
-        const startDist = Math.hypot(a.x - b.x, a.y - b.y);
-        if (startDist < 8) return;
-        const startMidX = (a.x + b.x) / 2;
-        const startMidY = (a.y + b.y) / 2;
-        const fx = (startMidX - bounds.left) / bounds.width;
-        const fy = (startMidY - bounds.top) / bounds.height;
-        pinch = {
-          startDist,
-          startW: draft.w,
-          startCx: draft.cx,
-          startCy: draft.cy,
-          startMidX,
-          startMidY,
-          sourceX: draft.cx + (fx - 0.5) * draft.w,
-          sourceY: draft.cy + (fy - 0.5) * contentH(draft),
-        };
-        panPointer = null;
-        surface.classList.add('is-dragging');
+      const refreshGestureBounds = () => {
+        gestureBounds = surface.getBoundingClientRect();
+        return gestureBounds;
       };
 
-      const applyPinch = (bounds: DOMRect) => {
-        if (!pinch || !bounds.width || !bounds.height) return;
+      const boundsOrRefresh = () => {
+        if (gestureBounds && gestureBounds.width && gestureBounds.height) return gestureBounds;
+        return refreshGestureBounds();
+      };
+
+      const clearChromeSchedule = () => {
+        if (chromeTimer) {
+          window.clearTimeout(chromeTimer);
+          chromeTimer = 0;
+        }
+        if (chromeRaf) {
+          cancelAnimationFrame(chromeRaf);
+          chromeRaf = 0;
+        }
+      };
+
+      const flushGestureChrome = (force = false) => {
+        clearChromeSchedule();
+        if (force) {
+          flushDraftChrome();
+          if (pendingStatus != null) {
+            status.textContent = pendingStatus;
+            pendingStatus = null;
+          }
+          lastChromeAt = performance.now();
+          return;
+        }
+        const zoom = zoomOf(draft);
+        zoomInput.value = zoom.toFixed(3);
+        zoomOutput.value = `${Math.round(zoom * 100)}%`;
+        if (pendingStatus != null) {
+          status.textContent = pendingStatus;
+          pendingStatus = null;
+        }
+        lastChromeAt = performance.now();
+      };
+
+      const scheduleGestureChrome = () => {
+        if (chromeTimer || chromeRaf) return;
+        const wait = Math.max(0, GESTURE_CHROME_MS - (performance.now() - lastChromeAt));
+        const run = () => {
+          chromeTimer = 0;
+          chromeRaf = requestAnimationFrame(() => {
+            chromeRaf = 0;
+            flushGestureChrome(false);
+          });
+        };
+        if (wait <= 0) {
+          run();
+          return;
+        }
+        chromeTimer = window.setTimeout(run, wait);
+      };
+
+      const applyPinchToDraft = () => {
+        if (!pinch) return;
+        const bounds = pinch.bounds;
+        if (!bounds.width || !bounds.height) return;
         const [a, b] = pointList();
         if (!a || !b) return;
         const dist = Math.hypot(a.x - b.x, a.y - b.y);
@@ -1350,8 +1426,93 @@ const lockSvg = sizeIcon(lockIcon, 14);
         draft.w = newW;
         draft.cx = pinch.sourceX - (fx - 0.5) * draft.w;
         draft.cy = pinch.sourceY - (fy - 0.5) * contentH(draft);
-        renderDraft();
-        status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+        pendingStatus = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+      };
+
+      const applyPanToDraft = () => {
+        if (panPointer == null) return;
+        const point = pointers.get(panPointer);
+        if (!point) return;
+        const bounds = boundsOrRefresh();
+        if (!bounds.width || !bounds.height) return;
+        const deltaX = point.x - panStartX;
+        const deltaY = point.y - panStartY;
+        beginLiveEdits();
+        const nextX = panOriginX - (deltaX / bounds.width) * draft.w * POINTER_PAN_GAIN;
+        const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft) * POINTER_PAN_GAIN;
+        draft.cx = panAxis === 'y' ? panOriginX : nextX;
+        draft.cy = panAxis === 'x' ? panOriginY : nextY;
+        pendingStatus = panAxis
+          ? `${panAxis.toUpperCase()} axis locked — unsaved changes.`
+          : 'Unsaved changes.';
+      };
+
+      const applyPendingWheel = () => {
+        if (!pendingWheel) return;
+        const { dx, dy, zoom, clientX, clientY } = pendingWheel;
+        pendingWheel = null;
+        const bounds = boundsOrRefresh();
+        if (!bounds.width || !bounds.height) return;
+
+        if (zoom) {
+          const mag = Math.abs(dy);
+          wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
+          const gain = wheelGainForSpeed(wheelSpeedEma, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
+          const factor = Math.exp(-dy * gain);
+          zoomAtClientPoint(clientX, clientY, factor, bounds);
+          pendingStatus = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+          return;
+        }
+
+        const mag = Math.hypot(dx, dy);
+        wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
+        const panGain = wheelGainForSpeed(wheelSpeedEma, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
+        beginLiveEdits();
+        draft.cx += (dx / bounds.width) * draft.w * panGain;
+        draft.cy += (dy / bounds.height) * contentH(draft) * panGain;
+        pendingStatus = 'Unsaved changes.';
+      };
+
+      const flushGesturePaint = () => {
+        paintRaf = 0;
+        if (pendingWheel) applyPendingWheel();
+        if (pointerDirty) {
+          pointerDirty = false;
+          if (pointers.size >= 2) applyPinchToDraft();
+          else applyPanToDraft();
+        }
+        paintDraftCrop();
+        scheduleGestureChrome();
+      };
+
+      const requestGesturePaint = () => {
+        if (paintRaf) return;
+        paintRaf = requestAnimationFrame(flushGesturePaint);
+      };
+
+      const beginPinch = (bounds: DOMRect) => {
+        const [a, b] = pointList();
+        if (!a || !b || !bounds.width || !bounds.height) return;
+        const startDist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (startDist < 8) return;
+        const startMidX = (a.x + b.x) / 2;
+        const startMidY = (a.y + b.y) / 2;
+        const fx = (startMidX - bounds.left) / bounds.width;
+        const fy = (startMidY - bounds.top) / bounds.height;
+        gestureBounds = bounds;
+        pinch = {
+          startDist,
+          startW: draft.w,
+          startCx: draft.cx,
+          startCy: draft.cy,
+          startMidX,
+          startMidY,
+          sourceX: draft.cx + (fx - 0.5) * draft.w,
+          sourceY: draft.cy + (fy - 0.5) * contentH(draft),
+          bounds,
+        };
+        panPointer = null;
+        surface.classList.add('is-dragging');
       };
 
       const releaseAllCaptures = () => {
@@ -1369,6 +1530,30 @@ const lockSvg = sizeIcon(lockIcon, 14);
         return slackX > 1e-4 || slackY > 1e-4;
       };
 
+      const endGestureSession = () => {
+        if (wheelIdleTimer) {
+          window.clearTimeout(wheelIdleTimer);
+          wheelIdleTimer = 0;
+        }
+        gestureBounds = null;
+        wheelSpeedEma = 0;
+        if (paintRaf) {
+          cancelAnimationFrame(paintRaf);
+          flushGesturePaint();
+        }
+        flushGestureChrome(true);
+      };
+
+      const armWheelIdleFlush = () => {
+        if (wheelIdleTimer) window.clearTimeout(wheelIdleTimer);
+        wheelIdleTimer = window.setTimeout(() => {
+          wheelIdleTimer = 0;
+          // Pointer gesture owns the session — don't reset mid-drag.
+          if (pointers.size > 0 || pinch || panPointer != null) return;
+          endGestureSession();
+        }, 140);
+      };
+
       surface.addEventListener('pointerdown', (event) => {
         if (event.button !== 0 && event.pointerType === 'mouse') return;
         if (
@@ -1379,12 +1564,13 @@ const lockSvg = sizeIcon(lockIcon, 14);
         if (options?.stopPropagation) event.stopPropagation();
 
         pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+        refreshGestureBounds();
 
         if (pointers.size >= 2) {
           // Capturing the first contact can starve the second on some browsers
           // (Safari especially) — drop captures so both fingers keep delivering.
           releaseAllCaptures();
-          beginPinch(surface.getBoundingClientRect());
+          beginPinch(boundsOrRefresh());
           return;
         }
 
@@ -1404,8 +1590,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
         pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
         if (pointers.size >= 2) {
-          if (!pinch) beginPinch(surface.getBoundingClientRect());
-          applyPinch(surface.getBoundingClientRect());
+          if (!pinch) beginPinch(boundsOrRefresh());
+          pointerDirty = true;
+          requestGesturePaint();
           return;
         }
 
@@ -1413,10 +1600,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
         if (event.pointerType === 'mouse' && event.buttons === 0) {
           panPointer = null;
           surface.classList.remove('is-dragging');
+          endGestureSession();
           return;
         }
-        const bounds = surface.getBoundingClientRect();
-        if (!bounds.width || !bounds.height) return;
         const deltaX = event.clientX - panStartX;
         const deltaY = event.clientY - panStartY;
         if (event.shiftKey && !panAxis && Math.hypot(deltaX, deltaY) >= 3) {
@@ -1424,15 +1610,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
         } else if (!event.shiftKey) {
           panAxis = null;
         }
-        beginLiveEdits();
-        const nextX = panOriginX - (deltaX / bounds.width) * draft.w * POINTER_PAN_GAIN;
-        const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft) * POINTER_PAN_GAIN;
-        draft.cx = panAxis === 'y' ? panOriginX : nextX;
-        draft.cy = panAxis === 'x' ? panOriginY : nextY;
-        renderDraft();
-        status.textContent = panAxis
-          ? `${panAxis.toUpperCase()} axis locked — unsaved changes.`
-          : 'Unsaved changes.';
+        pointerDirty = true;
+        requestGesturePaint();
       });
 
       const endPointer = (event: PointerEvent) => {
@@ -1443,7 +1622,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
         }
 
         if (pointers.size >= 2) {
-          beginPinch(surface.getBoundingClientRect());
+          beginPinch(refreshGestureBounds());
           return;
         }
 
@@ -1464,6 +1643,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
         panPointer = null;
         surface.classList.remove('is-dragging');
+        endGestureSession();
       };
       surface.addEventListener('pointerup', endPointer);
       surface.addEventListener('pointercancel', endPointer);
@@ -1477,36 +1657,36 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
       surface.addEventListener('wheel', (event) => {
         event.preventDefault();
-        const bounds = surface.getBoundingClientRect();
-        if (!bounds.width || !bounds.height) return;
+        if (!gestureBounds) refreshGestureBounds();
 
-        // Trackpad pinch (and ctrl+wheel) always zooms.
-        if (event.ctrlKey) {
-          const gain = wheelGainFor(event.deltaY, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
-          const factor = Math.exp(-event.deltaY * gain);
-          zoomAtClientPoint(event.clientX, event.clientY, factor, bounds);
-          status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
-          return;
+        // Trackpad pinch (and ctrl+wheel) always zooms. At locked cover-fit,
+        // swipe falls back to scroll-to-zoom so the gesture still does something.
+        const zoom = event.ctrlKey || !cropCanPan();
+        if (!pendingWheel || pendingWheel.zoom !== zoom) {
+          // Mode change mid-frame — flush the previous bucket first.
+          if (pendingWheel && (pendingWheel.dx || pendingWheel.dy)) {
+            if (paintRaf) {
+              cancelAnimationFrame(paintRaf);
+              flushGesturePaint();
+            } else {
+              applyPendingWheel();
+              paintDraftCrop();
+            }
+          }
+          pendingWheel = {
+            dx: 0,
+            dy: 0,
+            zoom,
+            clientX: event.clientX,
+            clientY: event.clientY,
+          };
         }
-
-        // Two-finger swipe pans when the crop has room to move. At a locked
-        // cover-fit (the common open state) pan is a no-op — fall back to
-        // scroll-to-zoom so trackpad gestures still do something useful.
-        if (cropCanPan()) {
-          const panGainX = wheelGainFor(event.deltaX, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
-          const panGainY = wheelGainFor(event.deltaY, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
-          beginLiveEdits();
-          draft.cx += (event.deltaX / bounds.width) * draft.w * panGainX;
-          draft.cy += (event.deltaY / bounds.height) * contentH(draft) * panGainY;
-          renderDraft();
-          status.textContent = 'Unsaved changes.';
-          return;
-        }
-
-        const gain = wheelGainFor(event.deltaY, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
-        const factor = Math.exp(-event.deltaY * gain);
-        zoomAtClientPoint(event.clientX, event.clientY, factor, bounds);
-        status.textContent = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
+        pendingWheel.dx += event.deltaX;
+        pendingWheel.dy += event.deltaY;
+        pendingWheel.clientX = event.clientX;
+        pendingWheel.clientY = event.clientY;
+        requestGesturePaint();
+        armWheelIdleFlush();
       }, { passive: false });
     };
 
