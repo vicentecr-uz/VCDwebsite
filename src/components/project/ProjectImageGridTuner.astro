@@ -455,6 +455,58 @@ import DevOverlay from '../DevOverlay.astro';
       });
     };
 
+    // Builds and dispatches the 'grid' pending upsert from the current saved*
+    // state, shared between the tuner's own Save changes and the
+    // reconciliation removeFromPage does when a layout edit is already
+    // staged and an item gets removed on top of it.
+    const dispatchGridUpsert = (
+      target: HTMLElement,
+      documentKey: string,
+      gridPath: Array<string | number>,
+      pendingId: string,
+      baseline: GridBaseline,
+    ) => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'grid',
+          payload: {
+            document: documentKey,
+            path: gridPath,
+            columns: { ...savedColumns },
+            constrained: { ...savedConstrained },
+            defaultAspectRatio: savedAspect,
+            matchHeight: savedMatchHeight,
+            layouts: cloneLayouts(savedLayouts),
+          },
+          revert: () => {
+            applyBaselineToTarget(target, baseline);
+            if (editTarget === target) {
+              savedColumns = { ...baseline.columns };
+              draftColumns = { ...baseline.columns };
+              savedConstrained = { ...baseline.constrained };
+              draftConstrained = { ...baseline.constrained };
+              savedAspect = baseline.aspect;
+              draftAspect = baseline.aspect;
+              savedMatchHeight = baseline.matchHeight;
+              draftMatchHeight = baseline.matchHeight;
+              savedLayouts = cloneLayouts(baseline.layouts);
+              draftLayouts = cloneLayouts(baseline.layouts);
+              renderDraft();
+            }
+          },
+        },
+      }));
+    };
+
+    const gridStateMatchesBaseline = (baseline: GridBaseline) => (
+      JSON.stringify(savedColumns) === JSON.stringify(baseline.columns)
+      && JSON.stringify(savedConstrained) === JSON.stringify(baseline.constrained)
+      && savedAspect === baseline.aspect
+      && savedMatchHeight === baseline.matchHeight
+      && JSON.stringify(savedLayouts) === JSON.stringify(baseline.layouts)
+    );
+
     const removeFromPage = (id: string) => {
       if (itemIds.length <= 1) {
         status.textContent = 'Keep at least one image, or delete the whole section.';
@@ -478,11 +530,17 @@ import DevOverlay from '../DevOverlay.astro';
         return;
       }
 
+      const gridPendingId = pendingIdFor(target);
+      const gridBaseline = diskBaselines.get(gridPendingId);
+
       // Snapshot everything the removal touches, so Revert in the page bar can
       // put the image back. The removal itself only writes to disk at Save.
       const beforeCatalog = catalog.map((item) => ({ ...item }));
-      const beforeSavedLayouts = cloneLayouts(savedLayouts);
       const beforeDraftLayouts = cloneLayouts(draftLayouts);
+      // A layout edit staged earlier (Save changes) has to win over this
+      // pre-removal snapshot on revert — otherwise Revert would leave that
+      // edit half-applied instead of going all the way back to disk.
+      const revertLayouts = gridBaseline ? cloneLayouts(gridBaseline.layouts) : beforeDraftLayouts;
       const removedNodes = [...target.querySelectorAll<HTMLElement>(
         `[data-grid-item-id="${CSS.escape(id)}"]`,
       )].map((node) => ({
@@ -507,11 +565,18 @@ import DevOverlay from '../DevOverlay.astro';
 
       removedNodes.forEach(({ node }) => node.remove());
 
-      // Layout staging for this grid described a set of items that no longer
-      // matches — drop it rather than write a `visible` list naming a gone id.
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-        detail: { id: pendingIdFor(target) },
-      }));
+      // A layout edit staged earlier for this grid still describes a real,
+      // un-disked change once the removed id is purged from its `visible`
+      // lists — keep it live (re-upserted with the purge applied) instead of
+      // dropping it, so the save bar's count and Save both still carry it.
+      // Only drop it if purging brought it back to exactly matching disk.
+      if (gridBaseline && !gridStateMatchesBaseline(gridBaseline)) {
+        dispatchGridUpsert(target, documentKey, gridPath, gridPendingId, gridBaseline);
+      } else {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+          detail: { id: gridPendingId },
+        }));
+      }
 
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
         detail: {
@@ -530,14 +595,14 @@ import DevOverlay from '../DevOverlay.astro';
               else parent.append(node);
             });
             target.dataset.devGridItems = JSON.stringify(beforeCatalog);
-            target.dataset.devGridLayouts = JSON.stringify(beforeDraftLayouts);
+            target.dataset.devGridLayouts = JSON.stringify(revertLayouts);
             // Only the currently edited grid owns these closures — touching them
             // for any other target would corrupt the one on screen.
             if (editTarget === target) {
               catalog = beforeCatalog.map((item) => ({ ...item }));
               itemIds = catalog.map((item) => item.id);
-              savedLayouts = cloneLayouts(beforeSavedLayouts);
-              draftLayouts = cloneLayouts(beforeDraftLayouts);
+              savedLayouts = cloneLayouts(revertLayouts);
+              draftLayouts = cloneLayouts(revertLayouts);
               renderDraft();
             }
           },
@@ -767,43 +832,7 @@ import DevOverlay from '../DevOverlay.astro';
       savedMatchHeight = draftMatchHeight;
       savedLayouts = cloneLayouts(draftLayouts);
 
-      const stagedColumns = { ...draftColumns };
-      const stagedConstrained = { ...draftConstrained };
-      const stagedAspect = draftAspect;
-      const stagedMatchHeight = draftMatchHeight;
-      const stagedLayouts = cloneLayouts(draftLayouts);
-
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-        detail: {
-          id: pendingId,
-          kind: 'grid',
-          payload: {
-            document: documentKey,
-            path: gridPath,
-            columns: stagedColumns,
-            constrained: stagedConstrained,
-            defaultAspectRatio: stagedAspect,
-            matchHeight: stagedMatchHeight,
-            layouts: stagedLayouts,
-          },
-          revert: () => {
-            applyBaselineToTarget(target, baseline);
-            if (editTarget === target) {
-              savedColumns = { ...baseline.columns };
-              draftColumns = { ...baseline.columns };
-              savedConstrained = { ...baseline.constrained };
-              draftConstrained = { ...baseline.constrained };
-              savedAspect = baseline.aspect;
-              draftAspect = baseline.aspect;
-              savedMatchHeight = baseline.matchHeight;
-              draftMatchHeight = baseline.matchHeight;
-              savedLayouts = cloneLayouts(baseline.layouts);
-              draftLayouts = cloneLayouts(baseline.layouts);
-              renderDraft();
-            }
-          },
-        },
-      }));
+      dispatchGridUpsert(target, documentKey, gridPath, pendingId, baseline);
 
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
       closePanel();
