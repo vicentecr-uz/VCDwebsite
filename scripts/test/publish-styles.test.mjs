@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
 
-const { publishStyles, stylesPublishStatus, STYLE_TOKEN_PATH } = await import('../dev-commit-engine.mjs');
+const { publishStyles, stylesPublishStatus, commitStyleTokensOnBranch, STYLE_TOKEN_PATH } = await import('../dev-commit-engine.mjs');
 
 let failures = 0;
 
@@ -87,9 +87,12 @@ await inRepo('on main, dirty global.css → publishes in place', async (repo) =>
   check('working tree matches main', (await stylesPublishStatus()).files.length === 0);
 });
 
-await inRepo('off main, dirty global.css → publishes without switching', async (repo) => {
+await inRepo('off main, save commits on branch before publish', async (repo) => {
   await repo.git('switch', '-c', 'feat/tokens');
   await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #abcdef; }\n');
+
+  const commit = await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  check('committed on branch', commit.ok === true && commit.committed === true, commit.error);
 
   const beforeBranch = (await repo.git('branch', '--show-current')).stdout.trim();
   check('still on feature branch before', beforeBranch === 'feat/tokens');
@@ -102,15 +105,26 @@ await inRepo('off main, dirty global.css → publishes without switching', async
   check('still on feature branch after', afterBranch === 'feat/tokens');
   check('status clear vs main', (await stylesPublishStatus()).files.length === 0);
 
-  // Feature branch tip still has the old file — working tree stays dirty vs HEAD.
   const { stdout: porcelain } = await repo.git('status', '--porcelain', '--', STYLE_TOKEN_PATH);
-  check('working tree still dirty vs feature tip', porcelain.trim().length > 0, porcelain);
+  check('working tree clean vs feature tip', porcelain.trim().length === 0, porcelain);
+});
+
+await inRepo('save commit is idempotent when already committed', async (repo) => {
+  await repo.git('switch', '-c', 'feat/tokens');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #abcdef; }\n');
+
+  const first = await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  check('first commit', first.ok === true && first.committed === true, first.error);
+
+  const second = await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  check('second skipped', second.ok === true && second.skipped === true, second.error);
 });
 
 await inRepo('content stays out of a styles publish', async (repo) => {
   await repo.git('switch', '-c', 'feat/tokens-only');
   await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #222222; }\n');
   await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Should not ship"}\n');
+  await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
 
   const result = await publishStyles({});
   check('published styles', result.ok === true, result.error);
@@ -126,6 +140,7 @@ await inRepo('content stays out of a styles publish', async (repo) => {
 await inRepo('main moved on global.css → refuses to clobber', async (repo) => {
   await repo.git('switch', '-c', 'feat/stale');
   await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #aaaaaa; }\n');
+  await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
 
   const other = path.join(repo.root, 'other');
   await execFile('git', ['clone', repo.origin, other]);

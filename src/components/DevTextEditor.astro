@@ -2511,6 +2511,20 @@
           if (!response.ok) throw new Error(String(payload.error || 'Could not save the colour token.'));
         }
 
+        if (styleTokenChanges.length) {
+          const response = await fetch('/api/style-token-commit', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              tokens: styleTokenChanges
+                .map((change) => (change.payload as { token?: unknown } | undefined)?.token)
+                .filter((token): token is string => typeof token === 'string' && token.length > 0),
+            }),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok) throw new Error(String(payload.error || 'Could not commit style changes.'));
+        }
+
         if (imageChanges.length > 0) {
           const response = await fetch('/api/content-batch', {
             method: 'POST',
