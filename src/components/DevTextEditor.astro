@@ -572,13 +572,15 @@
       control.classList.remove('is-near-add', 'is-near-spacing');
     };
 
+    const clearGapProximityAll = () => {
+      spacingStates.forEach(({ control }) => clearGapProximity(control));
+      document.documentElement.classList.remove('is-page-top-gap-above-header');
+    };
+
     const syncSpacingCaretSuppression = () => {
       const suppressed = isDevTextCaretActive();
       document.documentElement.classList.toggle('is-dev-text-caret', suppressed);
-      if (suppressed) {
-        spacingStates.forEach(({ control }) => clearGapProximity(control));
-        document.documentElement.classList.remove('is-page-top-gap-above-header');
-      }
+      if (suppressed) clearGapProximityAll();
     };
 
     const syncSpacingControlVisibility = () => {
@@ -672,11 +674,15 @@
      * control type, only the nearest in-range target wins — thin sections
      * otherwise stack two toolbars and the lower one steals clicks.
      */
+    const gapsSuppressed = () =>
+      isDevTextCaretActive()
+      || document.documentElement.classList.contains('is-dev-asset-manager-open')
+      || document.documentElement.classList.contains('is-dev-tuner-open');
+
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (
         !document.documentElement.classList.contains('is-dev-mode')
-        || isDevTextCaretActive()
-        || document.documentElement.classList.contains('is-dev-asset-manager-open')
+        || gapsSuppressed()
       ) {
         spacingStates.forEach(({ control }) => {
           if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
@@ -782,6 +788,8 @@
           }
         });
       });
+      // Tuner click doesn't move the pointer — drop near-gap classes immediately.
+      window.addEventListener('vcd:dev-edit-open', clearGapProximityAll);
       document.addEventListener(
         'pointerdown',
         (event) => {
@@ -2279,11 +2287,52 @@
       },
       true,
     );
-    document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
-      if (formatBar.hidden) return;
-      hideFormatBar();
-    });
+
+    /**
+     * Esc while editing body text — same outcome as click-away:
+     * 1) format / link bar dismisses first
+     * 2) then the caret leaves the block (chrome unsuppresses)
+     * Capture + stop so DevModeController does not exit Dev Mode on the same key.
+     */
+    const deselectDevTextCaret = () => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return false;
+      if (!textStates.some((state) => state.element === active || state.element.contains(active))) {
+        return false;
+      }
+      // Tuner / overlay fields keep their own Esc layering.
+      if (active.closest('[data-dev-panel-key], .dev-overlay')) return false;
+
+      window.getSelection()?.removeAllRanges();
+      active.blur();
+      document.querySelectorAll<HTMLElement>('.is-dev-section-controls-visible').forEach((el) => {
+        if (!el.matches(':hover')) el.classList.remove('is-dev-section-controls-visible');
+      });
+      // focusout syncs on rAF; do it now so gap/drag chrome return without a frame of lag.
+      syncSpacingCaretSuppression();
+      return true;
+    };
+
+    document.addEventListener(
+      'keydown',
+      (event) => {
+        if (event.key !== 'Escape') return;
+        if (!document.documentElement.classList.contains('is-dev-mode')) return;
+
+        if (!formatBar.hidden) {
+          event.preventDefault();
+          event.stopPropagation();
+          hideFormatBar();
+          return;
+        }
+
+        if (!isDevTextCaretActive()) return;
+        if (!deselectDevTextCaret()) return;
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      true,
+    );
 
     // ⌘B / ⌘I / ⌘U / ⌘K (link)
     document.addEventListener('keydown', (event) => {
@@ -3264,6 +3313,13 @@
   .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__spacing {
     opacity: 0;
     pointer-events: none;
+  }
+
+  /* Tuner open: force-hide even dirty / near chips (same as asset manager). */
+  html.is-dev-tuner-open .dev-gap-toolbar__add,
+  html.is-dev-tuner-open .dev-gap-toolbar__spacing {
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 
   .dev-gap-toolbar__add {
