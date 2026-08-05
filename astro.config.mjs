@@ -5,6 +5,8 @@ import { defineConfig } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
 import {
+  buildImageCarouselSection,
+  buildImageCarouselSectionFromSrcs,
   buildImageGridSection,
   buildImageGridSectionFromSrcs,
   buildImageSection,
@@ -1271,9 +1273,15 @@ function contentBatchDevWriter() {
  *
  * @returns {import('vite').Plugin}
  */
-const INSERTABLE_SECTION_TYPES = new Set(['bodyText', 'sectionTitle', 'image', 'imageGrid', 'placeholder']);
-/** Insertable types plus ones that only exist by conversion but must stay deletable. */
-const DELETABLE_SECTION_TYPES = new Set([...INSERTABLE_SECTION_TYPES, 'imageCarousel']);
+const INSERTABLE_SECTION_TYPES = new Set([
+  'bodyText',
+  'sectionTitle',
+  'image',
+  'imageGrid',
+  'imageCarousel',
+  'placeholder',
+]);
+const DELETABLE_SECTION_TYPES = new Set(INSERTABLE_SECTION_TYPES);
 
 const outlineAnchorId = (entry) => {
   if (!entry || typeof entry !== 'object') return '';
@@ -1544,6 +1552,15 @@ function contentSectionDevWriter() {
             section = srcs.length
               ? await buildImageGridSectionFromSrcs(srcs)
               : await buildImageGridSection(documentKey, filenames);
+            if (section && typeof section === 'object') section.spacing = insertSpacing;
+          } else if (type === 'imageCarousel') {
+            if (!srcs.length && !filenames.length) {
+              send(400, { error: 'At least one image file is required.' });
+              return;
+            }
+            section = srcs.length
+              ? await buildImageCarouselSectionFromSrcs(srcs)
+              : await buildImageCarouselSection(documentKey, filenames);
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();

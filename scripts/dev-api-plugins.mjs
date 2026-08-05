@@ -3,6 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
+import { normalizeAssetSrc, readImageDimsFromSrc } from './dev-assets.mjs';
 
 export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
 
@@ -181,7 +182,6 @@ export async function buildImageSection(documentKey, filenames) {
 
 /** Build an image section from an existing canonical src token (draft: or public filename). */
 export async function buildImageSectionFromSrcs(srcs) {
-  const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
   const src = normalizeAssetSrc(srcs[0]);
   if (!src) throw new Error('An image file is required.');
   const id = `image-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -231,7 +231,6 @@ export async function fillPlaceholderImageSection(section, documentKey, filename
   /** @type {{ srcWidth: number, srcHeight: number } | null} */
   let dims = null;
   if (existingSrc) {
-    const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
     src = normalizeAssetSrc(existingSrc);
     if (!src) throw new Error('An image file is required.');
     dims = await readImageDimsFromSrc(src);
@@ -289,7 +288,6 @@ export async function buildImageGridSection(documentKey, filenames) {
 
 /** Build an image grid from existing canonical src tokens (draft: or public filenames). */
 export async function buildImageGridSectionFromSrcs(srcs) {
-  const { readImageDimsFromSrc, normalizeAssetSrc } = await import('./dev-assets.mjs');
   const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
   if (!tokens.length) throw new Error('At least one image file is required.');
   const id = `grid-${Date.now().toString(36)}`;
@@ -312,6 +310,53 @@ export async function buildImageGridSectionFromSrcs(srcs) {
       desktop: { visible: [...visible] },
       mobile: { visible: [...visible] },
     },
+  };
+}
+
+export async function buildImageCarouselSection(documentKey, filenames) {
+  const id = `carousel-${Date.now().toString(36)}`;
+  const items = await Promise.all(filenames.map(async (filename, index) => ({
+    id: `item-${index + 1}-${Date.now().toString(36)}`,
+    src: draftMediaSrc(documentKey, filename),
+    alt: '',
+    ...(await readImageDims(documentKey, filename) ?? {}),
+    variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
+  })));
+  return {
+    type: 'imageCarousel',
+    id,
+    orientation: 'horizontal',
+    heightMode: 'dynamic',
+    dotsPlacement: 'outside',
+    defaultAspectRatio: 'original',
+    spacing: 'section',
+    items,
+    visible: items.map((item) => item.id),
+  };
+}
+
+/** Build an image carousel from existing canonical src tokens (draft: or public filenames). */
+export async function buildImageCarouselSectionFromSrcs(srcs) {
+  const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
+  if (!tokens.length) throw new Error('At least one image file is required.');
+  const id = `carousel-${Date.now().toString(36)}`;
+  const items = await Promise.all(tokens.map(async (src, index) => ({
+    id: `item-${index + 1}-${Date.now().toString(36)}`,
+    src,
+    alt: '',
+    ...(await readImageDimsFromSrc(src) ?? {}),
+    variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
+  })));
+  return {
+    type: 'imageCarousel',
+    id,
+    orientation: 'horizontal',
+    heightMode: 'dynamic',
+    dotsPlacement: 'outside',
+    defaultAspectRatio: 'original',
+    spacing: 'section',
+    items,
+    visible: items.map((item) => item.id),
   };
 }
 

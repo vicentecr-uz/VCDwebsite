@@ -23,6 +23,7 @@ const { documentKey } = Astro.props;
     <div class="dev-image-drop-dialog__actions">
       <button type="button" data-dev-image-pick="image" disabled>Single image</button>
       <button type="button" data-dev-image-pick="imageGrid" disabled>Image grid</button>
+      <button type="button" data-dev-image-pick="imageCarousel" disabled>Carousel</button>
       <button type="button" data-dev-image-placeholder>Add placeholder</button>
       <button type="button" value="cancel">Cancel</button>
     </div>
@@ -48,6 +49,8 @@ const { documentKey } = Astro.props;
   /** @type {string[]} */
   let pendingSrcs = [];
   let pendingInsertIndex = 0;
+  /** @type {string | null} */
+  let preferredType = null;
   let dragDepth = 0;
   /** @type {HTMLElement | null} */
   let activePlaceholder = null;
@@ -255,6 +258,7 @@ const { documentKey } = Astro.props;
 
     pendingFiles = [];
     pendingSrcs = [];
+    preferredType = null;
     syncPickerState();
     if (picker instanceof HTMLDialogElement) picker.close();
   };
@@ -481,7 +485,11 @@ const { documentKey } = Astro.props;
         if (picker instanceof HTMLDialogElement && picker.open) picker.close();
         const result = await pickFromAssetManager();
         const srcs = Array.isArray(result?.srcs) ? result.srcs.filter(Boolean) : [];
-        const type = result?.type === 'imageGrid' ? 'imageGrid' : 'image';
+        const type = result?.type === 'imageGrid'
+          ? 'imageGrid'
+          : result?.type === 'imageCarousel'
+            ? 'imageCarousel'
+            : 'image';
         if (!srcs.length) return;
         pendingFiles = [];
         pendingSrcs = srcs;
@@ -504,6 +512,21 @@ const { documentKey } = Astro.props;
     if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) return;
     setPendingFiles(fileInput.files);
     fileInput.value = '';
+    if (
+      preferredType
+      && (preferredType === 'image' || preferredType === 'imageGrid' || preferredType === 'imageCarousel')
+      && pendingFiles.length
+    ) {
+      const type = preferredType;
+      void (async () => {
+        try {
+          const filenames = await uploadFiles(pendingFiles);
+          await insertSection(type, filenames);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not add images.');
+        }
+      })();
+    }
   });
 
   dropzone?.addEventListener('dragover', (event) => {
@@ -521,12 +544,28 @@ const { documentKey } = Astro.props;
     if (dropzone instanceof HTMLElement) delete dropzone.dataset.active;
     if (!event.dataTransfer?.files?.length) return;
     setPendingFiles(event.dataTransfer.files);
+    if (
+      preferredType
+      && (preferredType === 'image' || preferredType === 'imageGrid' || preferredType === 'imageCarousel')
+      && pendingFiles.length
+    ) {
+      const type = preferredType;
+      void (async () => {
+        try {
+          const filenames = await uploadFiles(pendingFiles);
+          await insertSection(type, filenames);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not add images.');
+        }
+      })();
+    }
   });
 
   picker?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
     if (picker instanceof HTMLDialogElement) picker.close();
     pendingFiles = [];
     pendingSrcs = [];
+    preferredType = null;
     syncPickerState();
   });
 
@@ -542,6 +581,7 @@ const { documentKey } = Astro.props;
     const detail = event.detail ?? {};
     if (detail.documentKey !== documentKey || typeof detail.index !== 'number') return;
     pendingInsertIndex = detail.index;
+    preferredType = typeof detail.preferredType === 'string' ? detail.preferredType : null;
     openPicker();
   }));
 
