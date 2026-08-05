@@ -10,3 +10,10 @@ Cursor doesn't read `CLAUDE.md` automatically, so cross-cutting conventions that
 ## Viewport height units
 
 Never use raw `svh` (or `vh`) for a height constraint that matters visually — Microsoft Edge on iOS doesn't reliably honor `svh`, letting it track the address bar's show/hide mid-scroll and shove blocks below it up/down. Use the shared helper `src/lib/safeVh.ts` (`bindSafeVh()` in `Layout.astro`), which sets `--vh-safe` once on load and only recomputes on a genuine width change (never on the height-only resize an iOS toolbar toggle fires). Keep `svh` only as the pre-JS/no-JS fallback: `calc(var(--vh-safe, 1svh) * N)`. Do not re-implement this per component. See issues #96 / #97.
+
+## Appear / disappear motion
+
+Dev chrome (and similar UI) should not pop in or out:
+- **Standalone panels** (e.g. `DevOverlay` tuners) — fade in with a slight rise; mirror on exit. See `DevOverlay.astro`.
+- **Covering veils** over an existing component (e.g. cancel / status overlays) — fade only, no rise.
+Respect `prefers-reduced-motion`.
