@@ -5,7 +5,7 @@
     <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
-    <button type="button" data-dev-text-commit-styles hidden>Commit styles</button>
+    <button type="button" data-dev-text-commit-styles hidden>Publish styles</button>
     <button type="button" class="dev-text-actions__save" data-dev-text-publish>Save &amp; Publish</button>
   </div>
 </div>
@@ -1123,8 +1123,8 @@
     let unpublishedCount = 0;
 
     /**
-     * Engine style files on disk but not yet committed (e.g. global.css after a
-     * colour-token Save). Separate from content publish — Commit styles handles it.
+     * Colour-token CSS ahead of main (e.g. global.css after a Save). Separate
+     * from content publish — Publish styles pushes it to main from any branch.
      */
     let styleEngineDirtyCount = 0;
 
@@ -1182,7 +1182,7 @@
       // edits on disk not yet published. Content saved on a feature branch and
       // carried to main by a branch switch is only ever the second kind — if
       // the bar needed unsaved DOM state, Publish would be unreachable for it.
-      // Style-token Saves also leave engine files to Commit styles.
+      // Style-token Saves also leave CSS ahead of main for Publish styles.
       actions.hidden = (!dirtyCount && !unpublishedCount && !styleEngineDirtyCount)
         || !document.documentElement.classList.contains('is-dev-mode');
       if (stickyStatus) {
@@ -1192,7 +1192,7 @@
       } else if (unpublishedCount) {
         status.textContent = `${unpublishedCount} unpublished ${unpublishedCount === 1 ? 'change' : 'changes'}`;
       } else if (styleEngineDirtyCount) {
-        status.textContent = `${styleEngineDirtyCount} style ${styleEngineDirtyCount === 1 ? 'file' : 'files'} to commit`;
+        status.textContent = `${styleEngineDirtyCount} style ${styleEngineDirtyCount === 1 ? 'file' : 'files'} to publish`;
       } else {
         status.textContent = '';
       }
@@ -2624,12 +2624,12 @@
 
     const refreshStyleEngineState = async () => {
       try {
-        const response = await fetch('/api/commit-engine');
+        const response = await fetch('/api/publish-styles');
         if (!response.ok) throw new Error('unavailable');
         const state = await response.json() as { files?: string[]; dirty?: boolean };
         styleEngineDirtyCount = Array.isArray(state.files) ? state.files.length : (state.dirty ? 1 : 0);
       } catch {
-        // Leave the last known count — a blip shouldn't hide Commit styles.
+        // Leave the last known count — a blip shouldn't hide Publish styles.
       }
       // Hand "Saved." back to the count once we know style/engine state.
       if (stickyStatus === 'Saved.') stickyStatus = '';
@@ -2644,22 +2644,25 @@
         publishButton.disabled = true;
         revertButton.disabled = true;
         commitStylesButton.classList.add('is-dev-actions-busy');
-        setStickyStatus('Committing styles…');
+        setStickyStatus('Publishing styles…');
         try {
-          const response = await fetch('/api/commit-engine', {
+          const response = await fetch('/api/publish-styles', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({
-              paths: ['src/styles/global.css'],
-              message: 'Update colour tokens in global.css',
+              message: 'styles: update colour tokens',
             }),
           });
           const payload = await response.json();
-          if (!response.ok) throw new Error(payload.error || 'Could not commit styles.');
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || 'Could not publish styles.');
+          }
           styleEngineDirtyCount = 0;
-          setStickyStatus(payload.message ? `Committed — ${payload.message}` : 'Styles committed.');
+          setStickyStatus(payload.pushed
+            ? (payload.message ? `Published styles — ${payload.message}` : 'Styles published.')
+            : `Committed locally, push failed: ${payload.error}`);
         } catch (error) {
-          setStickyStatus(error instanceof Error ? error.message : 'Could not commit styles.');
+          setStickyStatus(error instanceof Error ? error.message : 'Could not publish styles.');
         } finally {
           actionsBusy = false;
           void refreshStyleEngineState();

@@ -96,7 +96,7 @@ Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in
 
  The no-paths form (`bun run commit:engine "msg"`) sweeps *every* dirty engine file, which cannot distinguish your edits from another agent's in-flight work. It prints a warning when it does this. Use it only when you know the tree is otherwise clean.
 
-- **Colour tokens on `/styles`:** edits stage as unsaved pending (like crops), **Save** writes `src/styles/global.css`, then **Commit styles** on the save bar commits that file on the current branch. Do not fold token CSS into Save & Publish — that path is content-only.
+- **Colour tokens on `/styles`:** edits stage as unsaved pending (like crops), **Save** writes `src/styles/global.css` (HMR suppressed so the save bar stays up), then **Publish styles** pushes that file to `main` from any branch — same scratch-index path as content, without folding CSS into Save & Publish (content-only).
 
 Exception: schema migrations that require touching content JSON alongside the code change — commit them together and say so in the message.
 
