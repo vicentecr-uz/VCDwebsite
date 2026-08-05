@@ -329,11 +329,21 @@
       if (!devMode) return;
       if (html.classList.contains('is-dev-mode-exiting')) return;
 
+      // Layer Esc: open tuner windows dismiss first (cancel + close). Only when
+      // none are open does Esc leave the whole Dev Mode layer.
+      const openPanels = devPanels().filter((panel) => !panel.hidden);
+      if (openPanels.length) {
+        event.preventDefault();
+        openPanels.forEach((panel) => {
+          panel.hidden = true;
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+            detail: { panel },
+          }));
+        });
+        return;
+      }
+
       event.preventDefault();
-      devPanels().forEach((panel) => {
-        panel.hidden = true;
-      });
-      window.dispatchEvent(new Event('vcd:dev-panels-closed'));
       setDevMode(false);
     });
   };
