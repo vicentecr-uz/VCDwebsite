@@ -393,7 +393,7 @@ import DevOverlay from '../DevOverlay.astro';
       applyToTarget(editTarget, draft, selectedViewport);
     };
 
-    const removeFromPage = async (id: string) => {
+    const removeFromPage = (id: string) => {
       if (itemIds.length <= 1) {
         status.textContent = 'Keep at least one image, or delete the whole section.';
         return;
@@ -416,51 +416,88 @@ import DevOverlay from '../DevOverlay.astro';
         return;
       }
 
-      try {
-        const response = await fetch('/api/content-section', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+      // Snapshot everything the removal touches, so Revert in the page bar can
+      // put the image back. The removal itself only writes to disk at Save.
+      const pendingId = pendingIdFor(target);
+      const beforeCatalog = catalog.map((item) => ({ ...item }));
+      const beforeDraft = cloneDraft(draft);
+      const beforeSaved = cloneDraft(saved);
+      const beforeBaseline = diskBaselines.has(pendingId)
+        ? cloneDraft(diskBaselines.get(pendingId)!)
+        : null;
+      // writeSettingsJson() serializes against the closure's itemIds, which only
+      // describe the target being edited — keep the literal strings instead so a
+      // revert can restore a carousel the tuner has since moved off.
+      const beforeSettingsJson = target.dataset.devCarouselSettings ?? '';
+      const removedNodes = [...target.querySelectorAll<HTMLElement>(
+        `[data-grid-item-id="${CSS.escape(id)}"], [data-carousel-item-id="${CSS.escape(id)}"]`,
+      )].map((node) => ({
+        node,
+        parent: node.parentElement,
+        next: node.nextElementSibling,
+      }));
+
+      catalog = catalog.filter((item) => item.id !== id);
+      itemIds = catalog.map((item) => item.id);
+      target.dataset.devCarouselItems = JSON.stringify(catalog);
+
+      for (const viewport of IMAGE_VIEWPORTS) {
+        draft.byViewport[viewport].visible = draft.byViewport[viewport].visible
+          .filter((entry) => entry !== id);
+        if (!draft.byViewport[viewport].visible.length) {
+          draft.byViewport[viewport].visible = [...itemIds];
+        }
+      }
+      saved = cloneDraft(draft);
+      diskBaselines.set(pendingId, cloneDraft(saved));
+      writeSettingsJson(target, draft);
+
+      removedNodes.forEach(({ node }) => node.remove());
+
+      // Layout staging for this carousel described a set of items that no longer
+      // matches — drop it rather than write a `visible` list naming a gone id.
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+        detail: { id: pendingId },
+      }));
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: `media-remove:${documentKey}:${target.dataset.devCarouselPath || '[]'}:${id}`,
+          kind: 'media-remove',
+          payload: {
             document: documentKey,
             action: 'removeMediaItem',
             path: carouselPath,
             itemId: id,
-          }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not remove that image.');
+          },
+          revert: () => {
+            removedNodes.forEach(({ node, parent, next }) => {
+              if (!parent) return;
+              if (next && next.parentElement === parent) parent.insertBefore(node, next);
+              else parent.append(node);
+            });
+            target.dataset.devCarouselItems = JSON.stringify(beforeCatalog);
+            target.dataset.carouselSettings = beforeSettingsJson;
+            target.dataset.devCarouselSettings = beforeSettingsJson;
+            if (beforeBaseline) diskBaselines.set(pendingId, cloneDraft(beforeBaseline));
+            else diskBaselines.delete(pendingId);
+            // Only the currently edited carousel owns these closures — touching
+            // them for any other target would corrupt the one on screen.
+            if (editTarget === target) {
+              catalog = beforeCatalog.map((item) => ({ ...item }));
+              itemIds = catalog.map((item) => item.id);
+              saved = cloneDraft(beforeSaved);
+              draft = cloneDraft(beforeDraft);
+              renderDraft();
+            }
+            window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: target } }));
+          },
+        },
+      }));
 
-        catalog = catalog.filter((item) => item.id !== id);
-        itemIds = catalog.map((item) => item.id);
-        target.dataset.devCarouselItems = JSON.stringify(catalog);
-
-        for (const viewport of IMAGE_VIEWPORTS) {
-          draft.byViewport[viewport].visible = draft.byViewport[viewport].visible
-            .filter((entry) => entry !== id);
-          if (!draft.byViewport[viewport].visible.length) {
-            draft.byViewport[viewport].visible = [...itemIds];
-          }
-        }
-        saved = cloneDraft(draft);
-        diskBaselines.set(pendingIdFor(target), cloneDraft(saved));
-        writeSettingsJson(target, draft);
-
-        target.querySelectorAll(`[data-grid-item-id="${CSS.escape(id)}"]`).forEach((node) => {
-          node.remove();
-        });
-        target.querySelectorAll(`[data-carousel-item-id="${CSS.escape(id)}"]`).forEach((node) => {
-          node.remove();
-        });
-
-        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-          detail: { id: pendingIdFor(target) },
-        }));
-        renderDraft();
-        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: target } }));
-        status.textContent = 'Removed from page — file kept in asset manager.';
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not remove that image.';
-      }
+      renderDraft();
+      window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: target } }));
+      status.textContent = 'Removed from page — Save in the page bar to write it to disk.';
     };
 
     const makeThumb = (item: CatalogItem) => {
@@ -501,7 +538,7 @@ import DevOverlay from '../DevOverlay.astro';
       removeButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        void removeFromPage(item.id);
+        removeFromPage(item.id);
       });
 
       wrap.append(button, removeButton);

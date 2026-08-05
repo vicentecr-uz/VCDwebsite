@@ -455,7 +455,7 @@ import DevOverlay from '../DevOverlay.astro';
       });
     };
 
-    const removeFromPage = async (id: string) => {
+    const removeFromPage = (id: string) => {
       if (itemIds.length <= 1) {
         status.textContent = 'Keep at least one image, or delete the whole section.';
         return;
@@ -478,46 +478,74 @@ import DevOverlay from '../DevOverlay.astro';
         return;
       }
 
-      try {
-        const response = await fetch('/api/content-section', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
+      // Snapshot everything the removal touches, so Revert in the page bar can
+      // put the image back. The removal itself only writes to disk at Save.
+      const beforeCatalog = catalog.map((item) => ({ ...item }));
+      const beforeSavedLayouts = cloneLayouts(savedLayouts);
+      const beforeDraftLayouts = cloneLayouts(draftLayouts);
+      const removedNodes = [...target.querySelectorAll<HTMLElement>(
+        `[data-grid-item-id="${CSS.escape(id)}"]`,
+      )].map((node) => ({
+        node,
+        parent: node.parentElement,
+        next: node.nextElementSibling,
+      }));
+
+      catalog = catalog.filter((item) => item.id !== id);
+      itemIds = catalog.map((item) => item.id);
+      target.dataset.devGridItems = JSON.stringify(catalog);
+
+      for (const viewport of VIEWPORTS) {
+        const visible = draftLayouts[viewport]?.visible;
+        if (!Array.isArray(visible)) continue;
+        draftLayouts[viewport] = {
+          visible: visible.filter((entry) => entry !== id),
+        };
+      }
+      savedLayouts = cloneLayouts(draftLayouts);
+      target.dataset.devGridLayouts = JSON.stringify(draftLayouts);
+
+      removedNodes.forEach(({ node }) => node.remove());
+
+      // Layout staging for this grid described a set of items that no longer
+      // matches — drop it rather than write a `visible` list naming a gone id.
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+        detail: { id: pendingIdFor(target) },
+      }));
+
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: `media-remove:${documentKey}:${target.dataset.devGridPath || '[]'}:${id}`,
+          kind: 'media-remove',
+          payload: {
             document: documentKey,
             action: 'removeMediaItem',
             path: gridPath,
             itemId: id,
-          }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not remove that image.');
+          },
+          revert: () => {
+            removedNodes.forEach(({ node, parent, next }) => {
+              if (!parent) return;
+              if (next && next.parentElement === parent) parent.insertBefore(node, next);
+              else parent.append(node);
+            });
+            target.dataset.devGridItems = JSON.stringify(beforeCatalog);
+            target.dataset.devGridLayouts = JSON.stringify(beforeDraftLayouts);
+            // Only the currently edited grid owns these closures — touching them
+            // for any other target would corrupt the one on screen.
+            if (editTarget === target) {
+              catalog = beforeCatalog.map((item) => ({ ...item }));
+              itemIds = catalog.map((item) => item.id);
+              savedLayouts = cloneLayouts(beforeSavedLayouts);
+              draftLayouts = cloneLayouts(beforeDraftLayouts);
+              renderDraft();
+            }
+          },
+        },
+      }));
 
-        catalog = catalog.filter((item) => item.id !== id);
-        itemIds = catalog.map((item) => item.id);
-        target.dataset.devGridItems = JSON.stringify(catalog);
-
-        for (const viewport of VIEWPORTS) {
-          const visible = draftLayouts[viewport]?.visible;
-          if (!Array.isArray(visible)) continue;
-          draftLayouts[viewport] = {
-            visible: visible.filter((entry) => entry !== id),
-          };
-        }
-        savedLayouts = cloneLayouts(draftLayouts);
-        target.dataset.devGridLayouts = JSON.stringify(draftLayouts);
-
-        target.querySelectorAll(`[data-grid-item-id="${CSS.escape(id)}"]`).forEach((node) => {
-          node.remove();
-        });
-
-        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-          detail: { id: pendingIdFor(target) },
-        }));
-        renderDraft();
-        status.textContent = 'Removed from page — file kept in asset manager.';
-      } catch (error) {
-        status.textContent = error instanceof Error ? error.message : 'Could not remove that image.';
-      }
+      renderDraft();
+      status.textContent = 'Removed from page — Save in the page bar to write it to disk.';
     };
 
     const makeThumb = (item: GridItem) => {
@@ -558,7 +586,7 @@ import DevOverlay from '../DevOverlay.astro';
       removeButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        void removeFromPage(item.id);
+        removeFromPage(item.id);
       });
 
       wrap.append(button, removeButton);
