@@ -1596,10 +1596,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
       teardownEditSession();
     }) as EventListener);
 
-    // Escape hides every panel without per-panel close events, and Alt+D can
-    // exit dev mode with the panel open. Both must tear the page surface down,
-    // or the orphaned ghost loses its dev-only styling and renders as a
-    // full-size in-flow duplicate of the image.
+    // Esc closes open panels via vcd:dev-edit-close (DevModeController); Alt+D
+    // can exit Dev Mode with a panel still open. Both must tear the page
+    // surface down, or the orphaned ghost loses its dev-only styling and
+    // renders as a full-size in-flow duplicate of the image.
     window.addEventListener('vcd:dev-panels-closed', teardownEditSession);
     window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active === false) teardownEditSession();
