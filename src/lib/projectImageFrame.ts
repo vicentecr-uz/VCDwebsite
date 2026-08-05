@@ -104,7 +104,7 @@ export function resolveGridItemCrop(
   };
 }
 
-/** Allowed max view-height caps (% of svh). Matches grid width steps. */
+/** Allowed max view-height caps (% of `--vh-safe`). Matches grid width steps. */
 export const MAX_VH_PERCENTS = [90, 80, 70, 60, 50, 40, 30] as const;
 export type MaxVhPercent = (typeof MAX_VH_PERCENTS)[number];
 
