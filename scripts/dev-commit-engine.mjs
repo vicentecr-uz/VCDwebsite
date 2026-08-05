@@ -22,6 +22,14 @@ export const STYLE_TOKEN_PATH = 'src/styles/global.css';
 const PUBLISH_BRANCH = 'main';
 const DEFAULT_MESSAGE = 'styles: update colour tokens';
 
+/** @param {string[]} tokens */
+function buildSaveMessage(tokens) {
+  const names = [...new Set(tokens.map((token) => String(token || '').trim()).filter(Boolean))];
+  if (names.length === 1) return `styles: update ${names[0]}`;
+  if (names.length > 1) return `styles: update colour tokens (${names.length})`;
+  return DEFAULT_MESSAGE;
+}
+
 const gitRaw = async (...args) => {
   const { stdout } = await execFile('git', args, { cwd: process.cwd() });
   return stdout;
@@ -282,6 +290,45 @@ async function publishStylesFromBranch(files, message) {
 }
 
 /**
+ * Commit saved colour-token CSS on the current branch so disk, HEAD, and
+ * Publish styles stay aligned. Publish still ships the same file to main.
+ *
+ * @param {{ tokens?: string[], message?: string }} [payload]
+ */
+export async function commitStyleTokensOnBranch(payload = {}) {
+  const branch = await git('branch', '--show-current');
+  if (!branch) {
+    return { ok: false, error: 'On a detached HEAD — check out a branch to save styles.' };
+  }
+
+  const staged = lines(await git('diff', '--cached', '--name-only'));
+  const strays = staged.filter((file) => file !== STYLE_TOKEN_PATH);
+  if (strays.length) {
+    return {
+      ok: false,
+      error: `Other files are staged (${strays.slice(0, 3).join(', ')}) — commit or unstage them first.`,
+    };
+  }
+
+  const diffHead = await gitRaw('diff', 'HEAD', '--', STYLE_TOKEN_PATH);
+  if (!diffHead.trim()) {
+    return { ok: true, skipped: true, message: 'Already committed.' };
+  }
+
+  const message = String(payload.message || '').trim()
+    || buildSaveMessage(Array.isArray(payload.tokens) ? payload.tokens : []);
+
+  await git('add', '--', STYLE_TOKEN_PATH);
+  const stagedNow = lines(await git('diff', '--cached', '--name-only'));
+  if (!stagedNow.length || !stagedNow.includes(STYLE_TOKEN_PATH)) {
+    return { ok: false, error: 'No style changes to commit.' };
+  }
+
+  await git('commit', '-m', message);
+  return { ok: true, committed: true, message, files: stagedNow };
+}
+
+/**
  * @param {{ message?: string }} [payload]
  */
 export async function publishStyles(payload = {}) {
@@ -338,6 +385,23 @@ export function commitEngineDevWriter() {
 
       server.middlewares.use('/api/publish-styles', handler);
       server.middlewares.use('/api/commit-engine', handler);
+
+      server.middlewares.use('/api/style-token-commit', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        try {
+          const payload = await readJsonBody(req);
+          const result = await commitStyleTokensOnBranch(payload);
+          send(res, result.ok ? 200 : 409, result);
+        } catch (error) {
+          send(res, 500, {
+            error: error instanceof Error ? error.message : 'Could not commit style changes.',
+          });
+        }
+      });
     },
   };
 }
