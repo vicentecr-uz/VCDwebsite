@@ -259,6 +259,9 @@ const { documentKey } = Astro.props;
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Could not delete that asset.');
       selected.delete(asset.id);
+      // Gone from disk for good — there is nothing to stage or revert, but the
+      // content surface moved, so the save bar's unpublished count has to catch up.
+      window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
       await loadAssets();
       setStatus(`Deleted ${asset.filename}.`);
     } catch (error) {
