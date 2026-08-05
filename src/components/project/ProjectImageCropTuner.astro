@@ -651,15 +651,24 @@ import DevOverlay from '../DevOverlay.astro';
       }
     };
 
+    const pageImageFor = (target: HTMLElement) => {
+      // While the on-page crop stage is mounted the ghost <img> is prepended
+      // first — never treat that as the content bitmap.
+      if (target === editTarget && editedImage?.isConnected) return editedImage;
+      return [...target.querySelectorAll<HTMLImageElement>('img')]
+        .find((img) => !img.closest('.dev-crop-ghost'))
+        ?? null;
+    };
+
     const applySrcLive = (
       target: HTMLElement,
       src: string,
       dims?: { srcWidth?: number; srcHeight?: number },
     ) => {
-      const image = target.querySelector<HTMLImageElement>('img');
-      if (!image || !src) return;
-      const url = projectImage(src);
-      image.src = url;
+      if (!src) return null;
+      const image = pageImageFor(target);
+      if (!image) return null;
+      image.src = projectImage(src);
       if (dims?.srcWidth && dims?.srcHeight) {
         target.style.setProperty(
           '--project-image-original-ratio',
@@ -670,6 +679,7 @@ import DevOverlay from '../DevOverlay.astro';
           String(dims.srcWidth / dims.srcHeight),
         );
       }
+      return image;
     };
 
     /**
@@ -1772,14 +1782,15 @@ import DevOverlay from '../DevOverlay.astro';
       draftSrcWidth = dims?.srcWidth;
       draftSrcHeight = dims?.srcHeight;
 
-      applySrcLive(editTarget, src, dims);
-      previewImage.src = projectImage(src);
-      if (pageStage) pageStage.ghostImg.src = previewImage.src;
+      const url = projectImage(src);
+      const image = applySrcLive(editTarget, src, dims) ?? editedImage;
+      previewImage.src = url;
+      if (pageStage) pageStage.ghostImg.src = url;
 
       const finish = () => {
         const nextDims = dims?.srcWidth && dims?.srcHeight
           ? dims
-          : readTargetDims(editedImage);
+          : readTargetDims(image);
         if (nextDims.srcWidth && nextDims.srcHeight) {
           draftSrcWidth = nextDims.srcWidth;
           draftSrcHeight = nextDims.srcHeight;
@@ -1808,11 +1819,19 @@ import DevOverlay from '../DevOverlay.astro';
         status.textContent = 'Image replaced — unsaved changes.';
       };
 
-      if (editedImage.complete && editedImage.naturalWidth) {
-        finish();
-      } else {
-        editedImage.addEventListener('load', finish, { once: true });
-      }
+      // `complete` can still reflect the previous bitmap for a tick after src
+      // assignment — prefer decode(), fall back to load.
+      const ready = (img: HTMLImageElement) => {
+        if (typeof img.decode === 'function') {
+          return img.decode().then(() => undefined, () => undefined);
+        }
+        if (img.complete && img.naturalWidth) return Promise.resolve();
+        return new Promise<void>((resolve) => {
+          img.addEventListener('load', () => resolve(), { once: true });
+          img.addEventListener('error', () => resolve(), { once: true });
+        });
+      };
+      void Promise.all([ready(image), ready(previewImage)]).then(finish);
       closeReplaceOverlay();
     };
 
