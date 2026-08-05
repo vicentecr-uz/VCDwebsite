@@ -807,20 +807,25 @@
 
   .is-dev-mode .dev-section-drag-handle:hover,
   .is-dev-mode .dev-section-drag-handle:focus-visible,
-  .is-dev-mode .dev-section-drag-handle:active {
+  .is-dev-mode .dev-section-drag-handle:active,
+  .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
     background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
     backdrop-filter: blur(8px);
     transform: translate(calc(-100% - 0.55em), -50%) scale(1.08);
   }
 
-  .is-dev-mode .dev-section-drag-handle:active {
+  /* :active alone drops once pointer capture / drag takes over — keep the
+     press shadow for the whole lift session. */
+  .is-dev-mode .dev-section-drag-handle:active,
+  .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
   @media (max-width: 40em) {
     .is-dev-mode .dev-section-drag-handle:hover,
     .is-dev-mode .dev-section-drag-handle:focus-visible,
-    .is-dev-mode .dev-section-drag-handle:active {
+    .is-dev-mode .dev-section-drag-handle:active,
+    .is-dev-mode [data-dev-section-reorderable].is-section-lifted-session > .dev-section-drag-handle {
       transform: translate(0.55em, -50%) scale(1.08);
     }
   }
