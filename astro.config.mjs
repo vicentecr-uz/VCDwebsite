@@ -372,8 +372,8 @@ function styleTokenDevWriter() {
             return;
           }
 
-          // Live preview already applied the colour — suppress the Vite/Astro
-          // full-reload that would otherwise wipe is-dev-mode and the save bar.
+          // Live preview already applied the colour — skip CSS HMR invalidation
+          // so is-dev-mode and the save bar stay up (full-reload is always blocked).
           suppressContentHmr();
           await writeFile(file, source.replace(declaration, `$1${value}$3`), 'utf8');
           send(200, { ok: true, token, value });
@@ -2039,12 +2039,15 @@ export default defineConfig({
     },
     server: {
       watch: {
-        // Draft media is served by /draft-media middleware, not Vite modules.
-        // Watching it full-reloads the page on every replace/add upload.
+        // Content + published images are not Vite modules. Watching them
+        // fires full-reloads on Save / Decap / branch-sync pulls — calm HMR
+        // (contentHmrGate) also drops full-reload WS, but ignoring here
+        // keeps the watcher quiet. Manual refresh when you want new content.
         ignored: [
           '**/ROADMAP.md',
           '**/sitemap/**',
-          '**/src/content/drafts/media/**',
+          '**/src/content/**',
+          '**/public/images/**',
         ],
       }
     }
