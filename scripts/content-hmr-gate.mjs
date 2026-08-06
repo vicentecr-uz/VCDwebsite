@@ -14,9 +14,10 @@ const isStyleTokenPath = (file = '') =>
   /[/\\]src[/\\]styles[/\\]global\.css$/.test(file);
 
 /**
- * Suppress Vite/Astro full-reloads briefly after API writes.
- * Content JSON and colour-token CSS both use this — the in-page editors already
- * show the right pixels, and a reload would drop `is-dev-mode` / the save bar.
+ * Skip module invalidation briefly after API writes where the in-page
+ * editor already shows the right pixels (colour-token Saves to global.css).
+ * Full-reload is blocked always by contentHmrGate — this only covers HMR
+ * `update` invalidation for paths that still get watched.
  */
 export function suppressContentHmr(ms = 2500) {
   suppressUntil = Math.max(suppressUntil, Date.now() + ms);
@@ -26,18 +27,28 @@ export function isContentHmrSuppressed() {
   return Date.now() <= suppressUntil;
 }
 
+/**
+ * Calm HMR: full browser reloads are opt-in (manual), not the default.
+ *
+ * Vite/Astro's safe default is "when in doubt, full-reload". That drops
+ * `is-dev-mode` / the save bar and surprises mid-edit when branch sync
+ * pulls engine or content files. Here we:
+ *   1. Drop every `full-reload` WebSocket payload.
+ *   2. Skip hot-update for content JSON / draft media (not modules).
+ *   3. Still allow normal HMR `update` for .astro / .css / .ts.
+ *
+ * Server restarts (astro.config / package.json changes) are unchanged —
+ * those restart the process, not a WS message.
+ */
 export function contentHmrGate() {
   return {
     name: 'content-hmr-gate',
     apply: 'serve',
     configureServer(server) {
-      // Astro often full-reloads content JSON even when handleHotUpdate
-      // returns []. Intercept the WS payload during the suppress window.
       const send = server.ws.send.bind(server.ws);
       server.ws.send = (payload, ...rest) => {
         if (
-          isContentHmrSuppressed()
-          && payload
+          payload
           && typeof payload === 'object'
           && payload.type === 'full-reload'
         ) {
@@ -50,12 +61,12 @@ export function contentHmrGate() {
      * @param {{ file: string }} ctx
      */
     handleHotUpdate({ file }) {
-      // Draft uploads are served via /draft-media middleware, never imported.
-      if (isDraftMediaPath(file)) return [];
-      if (!isContentHmrSuppressed()) return;
-      if (!isContentPath(file) && !isStyleTokenPath(file)) return;
-      // In-place editors already mutated the DOM — skip module invalidation.
-      return [];
+      // Draft media + content JSON: served/read outside the module graph.
+      // Branch sync / Decap / Save writing these must not invalidate modules.
+      if (isDraftMediaPath(file) || isContentPath(file)) return [];
+      // Colour-token Save already applied live — skip CSS HMR flash.
+      if (isContentHmrSuppressed() && isStyleTokenPath(file)) return [];
+      // .astro / CSS / TS: let Vite HMR update proceed (no full-reload).
     },
   };
 }

@@ -11,7 +11,7 @@ alwaysApply: true
 
 **Default for VCDwebsite (Cursor and Claude):** start feature / fix work on a **new branch based on latest `main`**. **Do not implement on `main`** unless Anto **explicitly** says to work on `main` for that task.
 
-1. Before the first edit: `git fetch origin` (when network allows), then `git switch main && git pull` if needed so local `main` is current.
+1. Before the first edit: ensure `main` is current — `git fetch origin` (when network allows), then `git switch main`. If **branch sync** is running (`bun run dev:session:status` shows `Sync: running`), do **not** `git pull` the checked-out branch manually — sync handles it; run `bun run branch:sync:once` if you need an immediate update. If sync is stopped, `git pull` on `main` is fine.
 2. Create and check out the feature branch: `git switch -c feat/<short-name>` (or the name Anto gives).
 3. Call `SetActiveBranch` so this chat’s UI tracks that branch.
 4. Say which branch you’re on when it matters.
@@ -47,10 +47,14 @@ See CLAUDE.md → *Content vs engine*.
 ## PRs and main
 
 - **Open PR** ≠ merge. Merge only when the user asks.
-- After merge, switch to `main` (`git checkout main && git pull`), then reload the browser. Production deploys from `main` push (Cloudflare Pages).
+- After merge, switch to `main` (`git checkout main`; pull only if branch sync is not running — otherwise wait for sync or `bun run branch:sync:once`), then reload the browser. Production deploys from `main` push (Cloudflare Pages).
 - **After every merge — delete the feature branch (do this from `main`):** remove the **remote** branch (`git push origin --delete <branch>` or `gh pr merge --delete-branch`) and the **local** branch (`git branch -d <branch>`). Do not leave merged branches around to pile up. Skip only for stacked PRs still based on that branch. See Atlas `standards.md` → *Git — Delete merged feature branches*.
 - **After merge or an impactful commit:** always log a short **why / learning / reuse** note to Atlas (`learnings.md`, `decisions-log.md`, or `standards.md`) in the same turn — do not wait to be asked. Skip only if nothing new. See Atlas `standards.md` → *Git — Log learnings after merge / impactful commit*.
 
 ## Dev session
 
 Reuse the existing dev session (`bun run dev:session:status`) — do not start duplicate servers. See `dev-session.mdc`.
+
+## Branch sync (auto-pull)
+
+While the dev session is running, **branch sync** auto-pulls the checked-out branch every ~60s. **Do not run `git pull` manually** when sync is running — check `bun run branch:sync:status` first. Canonical details: `CLAUDE.md` → *Key conventions* → Dev session / Branch sync.
