@@ -46,5 +46,5 @@ The codebase can grow past what one author imagines. Growth stays under the same
 ## Related today
 
 - Local Edit: `import.meta.env.DEV`, `DevModeController`, content APIs in `astro.config.mjs` / `scripts/dev-*.mjs`
-- Production CMS (`/admin`, Sveltia + GitHub PKCE) is a separate structural editor — not a substitute for full online Edit parity
+- No separate `/admin` CMS — Decap/Sveltia removed; online Edit parity is the only authoring destination
 - Content vs engine split and Save & Publish remain relevant however Edit is hosted

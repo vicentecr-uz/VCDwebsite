@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start/stop Astro dev server + Decap local proxy for a local editing session.
+# Start/stop Astro + branch sync for a local editing session.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,14 +7,11 @@ SESSION_DIR="$ROOT/.dev-session"
 BUN="$HOME/.bun/bin/bun"
 
 ASTRO_PID="$SESSION_DIR/astro.pid"
-DECAP_PID="$SESSION_DIR/decap.pid"
 SYNC_PID="$SESSION_DIR/branch-sync.pid"
 ASTRO_LOG="$SESSION_DIR/astro.log"
-DECAP_LOG="$SESSION_DIR/decap.log"
 SYNC_LOG="$SESSION_DIR/branch-sync.log"
 
 ASTRO_PORT=4321
-DECAP_PORT=8081
 
 mkdir -p "$SESSION_DIR"
 
@@ -48,19 +45,17 @@ print_urls() {
 
   echo ""
   echo "  Site:  http://localhost:${ASTRO_PORT}"
-  echo "  Admin: http://localhost:${ASTRO_PORT}/admin"
   if [[ -n "$ip" ]]; then
     echo "  Phone: http://${ip}:${ASTRO_PORT}"
   fi
   echo ""
-  echo "  Logs: tail -f .dev-session/astro.log .dev-session/decap.log"
+  echo "  Logs: tail -f .dev-session/astro.log"
 }
 
 cmd_status() {
-  local astro_pid decap_pid astro_ok=0 decap_ok=0
+  local astro_pid astro_ok=0
 
   astro_pid="$(read_pid "$ASTRO_PID" || true)"
-  decap_pid="$(read_pid "$DECAP_PID" || true)"
 
   echo "Dev session status"
   echo "------------------"
@@ -74,15 +69,6 @@ cmd_status() {
     echo "  Astro: stopped"
   fi
 
-  if [[ -n "$decap_pid" ]] && pid_alive "$decap_pid"; then
-    echo "  Decap: running (pid $decap_pid, port $DECAP_PORT)"
-    decap_ok=1
-  elif port_in_use "$DECAP_PORT"; then
-    echo "  Decap: port $DECAP_PORT in use (not tracked by this script)"
-  else
-    echo "  Decap: stopped"
-  fi
-
   local sync_pid sync_ok=0
   sync_pid="$(read_pid "$SYNC_PID" || true)"
   if [[ -n "$sync_pid" ]] && pid_alive "$sync_pid"; then
@@ -92,7 +78,7 @@ cmd_status() {
     echo "  Sync:  stopped"
   fi
 
-  if [[ "$astro_ok" -eq 1 && "$decap_ok" -eq 1 ]]; then
+  if [[ "$astro_ok" -eq 1 ]]; then
     print_urls
   fi
 
@@ -136,7 +122,8 @@ stop_pid_file() {
 cmd_stop() {
   echo "Stopping dev session..."
   stop_pid_file "Astro" "$ASTRO_PID"
-  stop_pid_file "Decap" "$DECAP_PID"
+  # Legacy Decap pid from older sessions — stop if still tracked.
+  stop_pid_file "Decap" "$SESSION_DIR/decap.pid"
   stop_pid_file "Sync" "$SYNC_PID"
   echo "Done."
 }
@@ -177,10 +164,9 @@ start_process() {
 }
 
 session_running() {
-  local astro_pid decap_pid
+  local astro_pid
   astro_pid="$(read_pid "$ASTRO_PID" || true)"
-  decap_pid="$(read_pid "$DECAP_PID" || true)"
-  [[ -n "$astro_pid" ]] && pid_alive "$astro_pid" && [[ -n "$decap_pid" ]] && pid_alive "$decap_pid"
+  [[ -n "$astro_pid" ]] && pid_alive "$astro_pid"
 }
 
 cmd_start() {
@@ -195,16 +181,10 @@ cmd_start() {
     exit 1
   fi
 
-  if port_in_use "$DECAP_PORT"; then
-    echo "Port $DECAP_PORT is already in use. Stop the other process or run: $0 stop"
-    exit 1
-  fi
-
   echo "Starting dev session..."
   # --host is also set in astro.config.mjs (server.host); keep the flag so a
   # bare restart still binds even if config is temporarily wrong.
   start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev -- --host
-  start_process "Decap" "$DECAP_PID" "$DECAP_LOG" "$BUN" x decap-server
   bash "$ROOT/scripts/branch-sync.sh" start
 
   echo ""
@@ -222,7 +202,7 @@ usage() {
   cat <<EOF
 Usage: $0 {start|stop|status|restart}
 
-  start    Start Astro (port $ASTRO_PORT) and Decap proxy (port $DECAP_PORT)
+  start    Start Astro (port $ASTRO_PORT) and branch sync
   stop     Stop tracked dev-session processes
   status   Show whether server is running
   restart  Stop then start
