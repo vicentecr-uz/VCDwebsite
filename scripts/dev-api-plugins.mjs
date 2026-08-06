@@ -684,7 +684,8 @@ export function projectSettingsDevWriter() {
           data.status = validateStatus(body.status, validateStatus(data.status));
           data.slug = slug;
           const previousListings = data.listings ?? {};
-          data.listings = {};
+          // Merge — one-grid saves must not wipe Home/Work/Play siblings.
+          data.listings = { ...previousListings };
           for (const grid of LISTING_GRIDS) {
             const listing = body.listings?.[grid];
             if (!listing) continue;
