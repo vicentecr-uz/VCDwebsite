@@ -173,6 +173,18 @@ When planning is done and a **fresh chat** should implement (often with a mid-ti
 
 **Workflow:** smart model plans → builder-ready doc → new chat on **Grok** (default for engine/agent work) → `bun run commit:engine` with explicit paths → PR.
 
+### Manager / executor split (same-session)
+
+The faster, in-session form of the same idea. When a chat is pinned to an expensive model (Opus 5, Grok), **that session is the manager**: it reads the code, diagnoses, writes the spec, and **reviews the diff**. Execution goes to a **Sonnet subagent in a worktree**, which applies a change list and does not decide what the change should be.
+
+- **Do not delegate exploration or diagnosis.** The manager's value is a warm picture of the codebase — that is what makes the second and third diagnosis cheap. Delegating reading to save tokens forces you to re-derive it later at higher cost. Read the code yourself; delegate the typing.
+- **Always `git diff <base>...<branch>` before merging.** Subagent reports are claims, not results — "build passed, matches spec" is not evidence the code is correct.
+- **Skip the split when** the hard part *is* the diagnosis, the fix is one small edit, or the spec would take longer to write than the change. Each spawn starts cold.
+- **Branch base:** when the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the executor confirm its parent commit before editing.
+- **Spell out landmines** in every spec — worktree agents inherit no session context. At minimum: Bun is not on `PATH` (`$HOME/.bun/bin/bun`); **do not start a dev server** (one already owns port 4321, so the agent cannot verify in-browser — verification happens after merge); commit only via `commit:engine` with explicit paths; never stage content paths; name the files other parallel agents are touching as off-limits.
+
+Canonical: Atlas `standards.md` → *Agents — Manager / executor split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
+
 ### About page
 Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
 - **Wide (≥50em):** photo 3/4 (17em col) left, Contact+About+Experience stacked in right col
