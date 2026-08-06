@@ -524,62 +524,88 @@ const statusIcons = {
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /**
-   * Soft circular iris wipe from the drop point. Returns a disposer that
-   * removes the overlay (call after the real cover src is updated).
-   * Mask is set inline each frame — CSS vars inside mask-image often don't repaint.
+   * Soft circular iris wipe from the drop point over the still-dimmed old cover.
+   * Waits for the new image to decode so frame 0 is visible, then expands over 1s.
+   * Returns a disposer that removes the overlay (call after the real cover src updates).
    */
-  const playCoverIrisReveal = (cover, file, clientX, clientY) => new Promise((resolve) => {
+  const playCoverIrisReveal = (cover, file, clientX, clientY) => new Promise((resolve, reject) => {
     const blobUrl = URL.createObjectURL(file);
     const overlay = document.createElement('img');
     overlay.className = 'project-grid__iris';
     overlay.alt = '';
     overlay.draggable = false;
-    overlay.src = blobUrl;
 
     const rect = cover.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
     const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
-    const feather = Math.max(24, Math.min(rect.width, rect.height) * 0.12);
+    const feather = Math.max(28, Math.min(rect.width, rect.height) * 0.14);
     const maxR = Math.hypot(
       Math.max(x, rect.width - x),
       Math.max(y, rect.height - y),
     ) + feather;
 
     const applyMask = (radius) => {
-      const gradient = `radial-gradient(circle at ${x}px ${y}px, #000 0px, #000 ${radius}px, transparent ${radius + feather}px)`;
+      const gradient = `radial-gradient(circle at ${x}px ${y}px, #000 0px, #000 ${Math.max(0, radius)}px, transparent ${Math.max(0, radius) + feather}px)`;
       overlay.style.webkitMaskImage = gradient;
       overlay.style.maskImage = gradient;
     };
 
-    applyMask(0);
-    cover.append(overlay);
-
     const dispose = () => {
       overlay.remove();
       URL.revokeObjectURL(blobUrl);
+      delete cover.dataset.devIrisActive;
+      delete cover.dataset.devDropActive;
     };
 
-    if (prefersReducedMotion()) {
-      applyMask(maxR);
-      resolve(dispose);
-      return;
-    }
+    const run = async () => {
+      try {
+        // Keep the old cover dimmed under the iris for the whole wipe.
+        cover.dataset.devIrisActive = 'true';
+        cover.dataset.devDropActive = 'true';
+        applyMask(0);
+        cover.append(overlay);
+        overlay.src = blobUrl;
 
-    requestAnimationFrame(() => {
-      const start = performance.now();
-      const duration = 700;
-      const tick = (now) => {
-        const t = Math.min(1, (now - start) / duration);
-        const eased = 1 - (1 - t) ** 3;
-        applyMask(maxR * eased);
-        if (t < 1) {
-          requestAnimationFrame(tick);
+        if (overlay.decode) {
+          await overlay.decode();
+        } else if (!overlay.complete) {
+          await new Promise((res, rej) => {
+            overlay.onload = () => res();
+            overlay.onerror = () => rej(new Error('Could not load dropped image.'));
+          });
+        }
+
+        // Paint r=0 for a couple of frames so the wipe is visible from the start.
+        applyMask(0);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        if (prefersReducedMotion()) {
+          applyMask(maxR);
+          resolve(dispose);
           return;
         }
-        resolve(dispose);
-      };
-      requestAnimationFrame(tick);
-    });
+
+        const start = performance.now();
+        const duration = 1000;
+        const tick = (now) => {
+          const t = Math.min(1, (now - start) / duration);
+          // Ease-out cubic — slow start so the pinprick reads clearly.
+          const eased = 1 - (1 - t) ** 3;
+          applyMask(maxR * eased);
+          if (t < 1) {
+            requestAnimationFrame(tick);
+            return;
+          }
+          resolve(dispose);
+        };
+        requestAnimationFrame(tick);
+      } catch (error) {
+        dispose();
+        reject(error);
+      }
+    };
+
+    void run();
   });
 
   const coverFromPoint = (clientX, clientY, fallbackTarget) => {
