@@ -47,12 +47,19 @@ import DevOverlay from './DevOverlay.astro';
           </select>
         </label>
         <label class="dev-log-issue__field">
-          <span>Milestone</span>
-          <select data-log-milestone required>
+          <span>Page</span>
+          <select data-log-page-label>
             <option value="">Select…</option>
           </select>
         </label>
       </div>
+
+      <label class="dev-log-issue__field">
+        <span>Milestone</span>
+        <select data-log-milestone required>
+          <option value="">Select…</option>
+        </select>
+      </label>
 
       <div class="dev-log-issue__pick-block">
         <div class="dev-log-issue__pick-head">
@@ -103,6 +110,7 @@ import DevOverlay from './DevOverlay.astro';
     const filesList = root.querySelector<HTMLElement>('[data-log-files]');
     const fileInput = root.querySelector<HTMLInputElement>('[data-log-file-input]');
     const labelSelect = root.querySelector<HTMLSelectElement>('[data-log-label]');
+    const pageLabelSelect = root.querySelector<HTMLSelectElement>('[data-log-page-label]');
     const milestoneSelect = root.querySelector<HTMLSelectElement>('[data-log-milestone]');
     const pickButton = root.querySelector<HTMLButtonElement>('[data-log-pick]');
     const clearPickButton = root.querySelector<HTMLButtonElement>('[data-log-clear]');
@@ -118,7 +126,7 @@ import DevOverlay from './DevOverlay.astro';
 
     if (
       !titleInput || !bodyInput || !drop || !dropLabel || !filesList || !fileInput
-      || !labelSelect || !milestoneSelect || !pickButton || !clearPickButton || !pickedNote
+      || !labelSelect || !pageLabelSelect || !milestoneSelect || !pickButton || !clearPickButton || !pickedNote
       || !cancelButton || !submitButton || !veil || !veilCard || !veilMessage
       || !veilActions || !veilNo || !veilYes
     ) return;
@@ -130,7 +138,9 @@ import DevOverlay from './DevOverlay.astro';
     let veilMode: 'idle' | 'cancel' | 'logging' | 'done' = 'idle';
     /** How we opened the cancel confirm — Esc again means Yes; Cancel-click then Esc means No. */
     let cancelConfirmSource: 'escape' | 'button' | null = null;
-    let metaLoaded = false;
+    let pageLabelTouched = false;
+    /** Page labels the API returned — used to validate auto-picks. */
+    let pageLabelOptions: string[] = [];
 
     const isDirty = () => Boolean(
       titleInput.value.trim()
@@ -138,6 +148,7 @@ import DevOverlay from './DevOverlay.astro';
       || attachments.length
       || pickedContext
       || labelSelect.value
+      || pageLabelSelect.value
       || milestoneSelect.value,
     );
 
@@ -158,6 +169,8 @@ import DevOverlay from './DevOverlay.astro';
       bodyInput.value = '';
       attachments = [];
       labelSelect.value = '';
+      pageLabelSelect.value = '';
+      pageLabelTouched = false;
       milestoneSelect.value = '';
       renderFiles();
       clearPickedElement();
@@ -165,9 +178,58 @@ import DevOverlay from './DevOverlay.astro';
       stopPickMode();
     };
 
+    /** Infer which page-area label fits the current URL / DOM. */
+    const inferPageLabelFromDocument = () => {
+      if (document.querySelector('[data-dev-project-drop-zone], .project-page')) {
+        return 'project pages';
+      }
+      const grid = document.querySelector<HTMLElement>('[data-dev-project-grid]');
+      if (grid?.dataset.devProjectGrid === 'home') return 'home page';
+      if (grid?.dataset.devProjectGrid === 'work' || grid?.dataset.devProjectGrid === 'play') {
+        return 'gallery pages';
+      }
+      const path = window.location.pathname.replace(/\/$/, '') || '/';
+      if (path === '/') return 'home page';
+      if (path === '/about') return 'about page';
+      if (path === '/work' || path === '/play') return 'gallery pages';
+      return '';
+    };
+
+    /** Prefer element context over the bare URL when picking. */
+    const inferPageLabelFromElement = (target: Element) => {
+      if (target.closest(
+        '[data-dev-project-drop-zone], .project-page, [data-dev-document], '
+        + '[data-dev-text-document], [data-dev-section-deletable], [data-section-nav-root]',
+      )) {
+        return 'project pages';
+      }
+      const grid = target.closest<HTMLElement>('[data-dev-project-grid]');
+      if (grid?.dataset.devProjectGrid === 'home') return 'home page';
+      if (grid?.dataset.devProjectGrid === 'work' || grid?.dataset.devProjectGrid === 'play') {
+        return 'gallery pages';
+      }
+      if (target.closest('.listing-main')) {
+        return inferPageLabelFromDocument();
+      }
+      return inferPageLabelFromDocument();
+    };
+
+    const applyPageLabel = (name: string, { force = false } = {}) => {
+      if (!name || !pageLabelOptions.includes(name)) return;
+      if (!force && pageLabelTouched) return;
+      pageLabelSelect.value = name;
+    };
+
+    const autoFillPageLabel = (target?: Element) => {
+      const inferred = target
+        ? inferPageLabelFromElement(target)
+        : inferPageLabelFromDocument();
+      applyPageLabel(inferred, { force: Boolean(target) });
+    };
+
     const openPanel = () => {
       panel.hidden = false;
-      void loadMeta();
+      void loadMeta().then(() => autoFillPageLabel());
       requestAnimationFrame(() => titleInput.focus());
     };
 
@@ -309,7 +371,6 @@ import DevOverlay from './DevOverlay.astro';
     };
 
     const loadMeta = async () => {
-      if (metaLoaded) return;
       try {
         const response = await fetch('/api/dev-issue');
         const payload = await response.json();
@@ -319,13 +380,17 @@ import DevOverlay from './DevOverlay.astro';
         for (const name of payload.labels || []) {
           labelSelect.append(new Option(String(name), String(name)));
         }
+        pageLabelOptions = (payload.pageLabels || []).map(String);
+        pageLabelSelect.replaceChildren(new Option('Select…', ''));
+        for (const name of pageLabelOptions) {
+          pageLabelSelect.append(new Option(name, name));
+        }
         milestoneSelect.replaceChildren(new Option('Select…', ''));
         for (const milestone of payload.milestones || []) {
           milestoneSelect.append(
             new Option(String(milestone.title), String(milestone.title)),
           );
         }
-        metaLoaded = true;
       } catch (error) {
         dropLabel.textContent = error instanceof Error
           ? error.message
@@ -431,6 +496,7 @@ import DevOverlay from './DevOverlay.astro';
       const title = titleInput.value.trim();
       const description = bodyInput.value.trim();
       const label = labelSelect.value;
+      const pageLabel = pageLabelSelect.value;
       const milestone = milestoneSelect.value;
 
       if (!title) {
@@ -462,6 +528,7 @@ import DevOverlay from './DevOverlay.astro';
             title,
             body: `${description}${buildContextBlock()}`,
             label,
+            pageLabel: pageLabel || undefined,
             milestone,
             attachments,
           }),
@@ -516,6 +583,10 @@ import DevOverlay from './DevOverlay.astro';
       if (event.dataTransfer?.files?.length) void addFiles(event.dataTransfer.files);
     });
 
+    pageLabelSelect.addEventListener('change', () => {
+      pageLabelTouched = true;
+    });
+
     pickButton.addEventListener('click', () => {
       if (pickMode) stopPickMode();
       else startPickMode();
@@ -547,6 +618,7 @@ import DevOverlay from './DevOverlay.astro';
       const description = describeElement(el);
       stopPickMode();
       panel.hidden = false;
+      autoFillPageLabel(el);
       if (description) {
         setPickedContext(description, description);
       } else {
