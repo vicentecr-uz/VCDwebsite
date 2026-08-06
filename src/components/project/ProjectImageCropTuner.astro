@@ -1186,6 +1186,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
     const pageFrameFor = (target: HTMLElement): HTMLElement => (
       target.querySelector<HTMLElement>(':scope > .project-crop-clip')
+      // Gallery covers nest the clip under `.project-grid__stack` (hover + meta).
+      ?? target.querySelector<HTMLElement>(':scope > .project-grid__stack > .project-crop-clip')
       // Carousel wraps the frame in `.project-image-carousel__surface`.
       ?? target.querySelector<HTMLElement>('.project-image-grid__frame')
       ?? target
@@ -1197,10 +1199,14 @@ const lockSvg = sizeIcon(lockIcon, 14);
       if (!pageStage) return;
       const { target, ghost, stage } = pageStage;
       const frame = pageFrameFor(target);
-      // Uncropped targets have no frame node yet — overlay the bitmap itself
-      // (its box is what the first edit will turn into the frame).
+      // Uncropped targets have no clip yet. Listing covers: glue to the cover
+      // box (object-fit fills it). Elsewhere: the content bitmap — never the
+      // ghost <img> prepended by mountPageStage (querySelector('img') hits it
+      // first and zeros the stage → all handles stacked at top-left).
       const ref = frame === target
-        ? (target.querySelector<HTMLElement>('img') ?? target)
+        ? (isListingCover(target)
+          ? target
+          : (pageImageFor(target) ?? target))
         : frame;
       // Use viewport rects so a positioned surface (carousel width cap) between
       // the slide and frame does not zero-out offsetLeft/offsetTop.
