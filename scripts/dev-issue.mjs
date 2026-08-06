@@ -17,13 +17,20 @@ const execFile = promisify(execFileCb);
 
 const REPO = 'vcruzdesigns/VCDwebsite';
 const ASSETS_BRANCH = 'issue-assets';
-const ALLOWED_LABELS = new Set([
+const TYPE_LABELS = new Set([
   'bug',
   'enhancement',
   'documentation',
   'question',
   'duplicate',
   'new page',
+]);
+
+const PAGE_LABELS = new Set([
+  'gallery pages',
+  'about page',
+  'project pages',
+  'home page',
 ]);
 
 const git = async (...args) => {
@@ -153,16 +160,21 @@ async function listMeta() {
     gh('api', `repos/${REPO}/milestones?state=open`, '--jq', '.'),
   ]);
 
-  const labels = JSON.parse(labelsRaw)
-    .map((row) => row.name)
-    .filter((name) => ALLOWED_LABELS.has(name))
+  const repoLabels = JSON.parse(labelsRaw).map((row) => row.name);
+
+  const labels = repoLabels
+    .filter((name) => TYPE_LABELS.has(name))
+    .sort((a, b) => a.localeCompare(b));
+
+  const pageLabels = repoLabels
+    .filter((name) => PAGE_LABELS.has(name))
     .sort((a, b) => a.localeCompare(b));
 
   const milestones = JSON.parse(milestonesRaw)
     .map((row) => ({ number: row.number, title: row.title }))
     .sort((a, b) => a.number - b.number);
 
-  return { branch, labels, milestones, repo: REPO };
+  return { branch, labels, pageLabels, milestones, repo: REPO };
 }
 
 /**
@@ -170,6 +182,7 @@ async function listMeta() {
  *   title: string,
  *   body: string,
  *   label: string,
+ *   pageLabel?: string,
  *   milestone: string | number,
  *   attachments?: Array<{ filename: string, data: string, mimeType?: string }>,
  * }} payload
@@ -178,12 +191,14 @@ async function createIssue(payload) {
   const title = String(payload.title || '').trim();
   const body = String(payload.body || '').trim();
   const label = String(payload.label || '').trim();
+  const pageLabel = String(payload.pageLabel || '').trim();
   const milestone = String(payload.milestone || '').trim();
   const attachments = Array.isArray(payload.attachments) ? payload.attachments : [];
 
   if (!title) throw new Error('Title is required.');
   if (!body) throw new Error('Description is required.');
-  if (!ALLOWED_LABELS.has(label)) throw new Error('Pick a label.');
+  if (!TYPE_LABELS.has(label)) throw new Error('Pick a label.');
+  if (pageLabel && !PAGE_LABELS.has(pageLabel)) throw new Error('Pick a page label.');
   if (!milestone) throw new Error('Pick a milestone.');
 
   const uploaded = await pushIssueAssets(attachments);
@@ -199,7 +214,7 @@ async function createIssue(payload) {
   await fs.writeFile(bodyFile, fullBody, 'utf8');
 
   try {
-    const url = await gh(
+    const ghArgs = [
       'issue',
       'create',
       '--repo', REPO,
@@ -207,7 +222,9 @@ async function createIssue(payload) {
       '--body-file', bodyFile,
       '--label', label,
       '--milestone', milestone,
-    );
+    ];
+    if (pageLabel) ghArgs.push('--label', pageLabel);
+    const url = await gh(...ghArgs);
     const match = /\/issues\/(\d+)\s*$/.exec(url) || /\/issues\/(\d+)/.exec(url);
     const number = match ? Number(match[1]) : null;
     return { ok: true, url: url.trim(), number, attachments: uploaded };
