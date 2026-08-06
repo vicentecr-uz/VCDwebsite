@@ -77,6 +77,11 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
             />
           )}
         </div>
+        {isDev && item.slug && (
+          <div class="project-grid__drop-veil" aria-hidden="true">
+            <span class="project-grid__drop-label">Replace cover image</span>
+          </div>
+        )}
         <div class="project-grid__meta absolute bottom-0 left-0 right-0">
           <div class="flex items-baseline gap-2">
             <h2
@@ -244,6 +249,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
   .project-grid__stack {
     position: absolute;
     inset: 0;
+    transition: opacity 0.2s ease;
   }
 
   .project-grid__stack .project-grid__img {
@@ -393,9 +399,74 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     background: color-mix(in srgb, var(--color-surface-press) 80%, transparent);
   }
 
-  .project-grid__cover[data-dev-drop-active='true'] {
-    outline: 2px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
-    outline-offset: -0.4em;
+  .project-grid__drop-veil {
+    position: absolute;
+    inset: 0.45em;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    border: 1.5px dashed color-mix(in srgb, var(--color-text) 55%, transparent);
+    border-radius: 0.15em;
+    background: color-mix(in srgb, var(--color-bg) 28%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .project-grid__drop-label {
+    padding: 0.35em 0.65em;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
+    backdrop-filter: blur(8px);
+    color: var(--color-text);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .project-grid__cover[data-dev-drop-active='true'] .project-grid__drop-veil {
+    opacity: 1;
+  }
+
+  .project-grid__cover[data-dev-drop-active='true'] .project-grid__stack {
+    opacity: 0.45;
+  }
+
+  /* Iris reveal after a cover drop — soft radial wipe from the drop point. */
+  .project-grid__iris {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    --iris-x: 50%;
+    --iris-y: 50%;
+    --iris-r: 0px;
+    --iris-feather: 2em;
+    -webkit-mask-image: radial-gradient(
+      circle at var(--iris-x) var(--iris-y),
+      #000 0,
+      #000 var(--iris-r),
+      transparent calc(var(--iris-r) + var(--iris-feather))
+    );
+    mask-image: radial-gradient(
+      circle at var(--iris-x) var(--iris-y),
+      #000 0,
+      #000 var(--iris-r),
+      transparent calc(var(--iris-r) + var(--iris-feather))
+    );
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-grid__drop-veil,
+    .project-grid__cover[data-dev-drop-active='true'] .project-grid__stack,
+    .project-grid__stack {
+      transition: none;
+    }
   }
 
   .project-grid__new-page {

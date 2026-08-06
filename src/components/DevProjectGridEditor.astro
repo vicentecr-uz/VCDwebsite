@@ -510,8 +510,83 @@ const statusIcons = {
       syncPendingFor(slug);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not upload the cover image.');
+      throw error;
     }
   };
+
+  const clearCoverDropActive = (cover) => {
+    if (cover instanceof HTMLElement) delete cover.dataset.devDropActive;
+  };
+
+  const clearAllCoverDropActive = () => {
+    document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
+      if (node instanceof HTMLElement) delete node.dataset.devDropActive;
+    });
+  };
+
+  const prefersReducedMotion = () =>
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /**
+   * Soft circular iris wipe from the drop point. Returns a disposer that
+   * removes the overlay (call after the real cover src is updated).
+   */
+  const playCoverIrisReveal = (cover, file, clientX, clientY) => new Promise((resolve) => {
+    const blobUrl = URL.createObjectURL(file);
+    const overlay = document.createElement('img');
+    overlay.className = 'project-grid__iris';
+    overlay.alt = '';
+    overlay.draggable = false;
+    overlay.src = blobUrl;
+
+    const rect = cover.getBoundingClientRect();
+    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+    const maxR = Math.hypot(
+      Math.max(x, rect.width - x),
+      Math.max(y, rect.height - y),
+    ) + 48;
+
+    overlay.style.setProperty('--iris-x', `${x}px`);
+    overlay.style.setProperty('--iris-y', `${y}px`);
+    overlay.style.setProperty('--iris-r', '0px');
+    cover.append(overlay);
+
+    const dispose = () => {
+      overlay.remove();
+      URL.revokeObjectURL(blobUrl);
+    };
+
+    const expand = () => {
+      overlay.style.setProperty('--iris-r', `${maxR}px`);
+    };
+
+    if (prefersReducedMotion()) {
+      expand();
+      resolve(dispose);
+      return;
+    }
+
+    // rAF: paint radius 0, then expand (mask length isn't reliably transitionable).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const start = performance.now();
+        const duration = 650;
+        const tick = (now) => {
+          const t = Math.min(1, (now - start) / duration);
+          // Ease-out cubic.
+          const eased = 1 - (1 - t) ** 3;
+          overlay.style.setProperty('--iris-r', `${maxR * eased}px`);
+          if (t < 1) {
+            requestAnimationFrame(tick);
+            return;
+          }
+          resolve(dispose);
+        };
+        requestAnimationFrame(tick);
+      });
+    });
+  });
 
   const closeAllStatusMenus = () => {
     document.querySelectorAll('[data-dev-status-menu]').forEach((menu) => {
@@ -669,7 +744,7 @@ const statusIcons = {
     normalizeEmptyEditable(target);
   });
 
-  // Drop image onto cover → replace listing cover.
+  // Drop image onto cover → replace listing cover (hover veil + iris reveal).
   document.addEventListener('dragover', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     if (document.documentElement.classList.contains('show-listing-grid-editor')) return;
@@ -686,7 +761,10 @@ const statusIcons = {
     const cover = event.target instanceof Element
       ? event.target.closest('[data-dev-cover-drop]')
       : null;
-    if (cover instanceof HTMLElement) delete cover.dataset.devDropActive;
+    if (!(cover instanceof HTMLElement)) return;
+    const next = event.relatedTarget;
+    if (next instanceof Node && cover.contains(next)) return;
+    clearCoverDropActive(cover);
   });
 
   document.addEventListener('drop', (event) => {
@@ -697,10 +775,27 @@ const statusIcons = {
     if (!(cover instanceof HTMLElement)) return;
     event.preventDefault();
     event.stopPropagation();
-    delete cover.dataset.devDropActive;
+    clearCoverDropActive(cover);
     const slug = cover.dataset.devCoverDrop;
     const file = event.dataTransfer?.files?.[0];
-    if (slug && file) void applyCoverFileToCard(slug, file);
+    if (!slug || !(file instanceof File) || !file.type.startsWith('image/')) return;
+
+    void (async () => {
+      let disposeIris = () => {};
+      try {
+        disposeIris = await playCoverIrisReveal(cover, file, event.clientX, event.clientY);
+        await applyCoverFileToCard(slug, file);
+      } catch {
+        // applyCoverFileToCard already alerts
+      } finally {
+        disposeIris();
+      }
+    })();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    clearAllCoverDropActive();
   });
 
   settingsRoot?.addEventListener('input', (event) => {
