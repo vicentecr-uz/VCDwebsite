@@ -9,6 +9,8 @@ export type ProjectListingCard = {
   year?: string;
   meta?: string;
   image: string;
+  /** In-context shot shown on card hover (desktop). */
+  hoverImage?: string;
   bg: string;
   dark: boolean;
   full?: boolean;
@@ -36,6 +38,7 @@ export type ProjectGridListing = {
   title: string;
   subtitle?: string;
   image: string;
+  hoverImage?: string;
   bg: string;
   dark: boolean;
   full?: boolean;
@@ -154,6 +157,7 @@ function listingCardForGrid(
     title: project.title,
     subtitle: grid === 'play' ? listing.meta : listing.year,
     image,
+    hoverImage: isTeaser ? undefined : listing.hoverImage,
     bg: listing.bg,
     dark: listing.dark,
     full: listing.full,
