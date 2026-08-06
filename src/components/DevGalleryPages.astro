@@ -11,7 +11,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 ---
 
 <DevOverlay
-  title="Gallery pages"
+  title="Gallery Manager"
   storageKey="gallery-pages"
   panelKey="gallery-pages"
   defaultHidden
@@ -23,10 +23,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
   >
-    <p class="dev-gallery-pages__hint" data-gallery-hint>
-      Toggle which project pages appear on this gallery. Save to keep.
-    </p>
-
     <div class="dev-gallery-pages__filters" role="group" aria-label="Gallery filter">
       <button type="button" data-gallery-filter="all" class="is-active">All</button>
       <button type="button" data-gallery-filter="on">On this page</button>
@@ -71,7 +67,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     const gridEl = root.querySelector<HTMLElement>('[data-gallery-grid]');
     const statusEl = root.querySelector<HTMLElement>('[data-gallery-status]');
     const countEl = root.querySelector<HTMLElement>('[data-gallery-count]');
-    const hintEl = root.querySelector<HTMLElement>('[data-gallery-hint]');
     const overlayTitle = panel.querySelector<HTMLElement>('.dev-overlay__title');
     const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
     const settingsIcon = root.dataset.settingsIcon || '';
@@ -478,10 +473,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       const grid = currentGrid();
       if (!grid) return;
       activeGrid = grid;
-      if (overlayTitle) overlayTitle.textContent = `Gallery pages — ${gridLabel(grid)}`;
-      if (hintEl) {
-        hintEl.textContent = `Toggle which project pages appear on ${gridLabel(grid)}. Save to keep.`;
-      }
+      if (overlayTitle) overlayTitle.textContent = `Gallery Manager — ${gridLabel(grid)}`;
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       panel.hidden = false;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel } }));
@@ -559,7 +551,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     max-height: min(28em, calc(100vh - 8em));
   }
 
-  .dev-gallery-pages__hint,
   .dev-gallery-pages__status,
   .dev-gallery-pages__count {
     margin: 0;
