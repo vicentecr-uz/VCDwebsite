@@ -516,7 +516,10 @@ const statusIcons = {
 
   const clearAllCoverDropActive = () => {
     document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
-      if (node instanceof HTMLElement) delete node.dataset.devDropActive;
+      if (!(node instanceof HTMLElement)) return;
+      // Don't undim a cover mid-iris wipe.
+      if (node.dataset.devIrisActive) return;
+      delete node.dataset.devDropActive;
     });
   };
 
@@ -808,18 +811,27 @@ const statusIcons = {
     }
     event.preventDefault();
     event.stopPropagation();
-    clearAllCoverDropActive();
+    // Clear hover on other cards; keep this cover dimmed under the iris.
+    document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
+      if (node !== cover && node instanceof HTMLElement) delete node.dataset.devDropActive;
+    });
     const slug = cover.dataset.devCoverDrop;
     const file = event.dataTransfer?.files?.[0];
-    if (!slug || !(file instanceof File) || !file.type.startsWith('image/')) return;
+    if (!slug || !(file instanceof File) || !file.type.startsWith('image/')) {
+      delete cover.dataset.devDropActive;
+      return;
+    }
 
     void (async () => {
       let disposeIris = () => {};
       try {
         disposeIris = await playCoverIrisReveal(cover, file, event.clientX, event.clientY);
         await applyCoverFileToCard(slug, file);
-      } catch {
-        // applyCoverFileToCard already alerts
+      } catch (error) {
+        // applyCoverFileToCard already alerts upload failures; iris decode may not.
+        if (error instanceof Error && !/upload/i.test(error.message)) {
+          window.alert(error.message);
+        }
       } finally {
         disposeIris();
       }
