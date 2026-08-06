@@ -971,6 +971,7 @@ export function galleryMembershipDevWriter() {
             const shouldHave = wantedSet.has(slug);
             if (hasListing && !shouldHave) {
               delete data.listings[grid];
+              if (!Object.keys(data.listings).length) delete data.listings;
               await writeProjectJson(filePath, data);
               continue;
             }
