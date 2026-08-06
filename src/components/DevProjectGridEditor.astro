@@ -1023,7 +1023,6 @@ const statusIcons = {
   // Drop image onto cover → replace listing cover (hover wash + crossfade).
   document.addEventListener('dragover', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    if (document.documentElement.classList.contains('show-listing-grid-editor')) return;
 
     const cover = coverFromPoint(event.clientX, event.clientY, event.target);
     document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
@@ -1202,20 +1201,7 @@ const statusIcons = {
     closeSettingsPanel();
   });
 
-  window.addEventListener('vcd:listing-grid-editor-change', (event) => {
-    if (event.detail?.active) {
-      exitSpanMode();
-      disableAllCardEditing();
-      closeAllStatusMenus();
-      return;
-    }
-    if (document.documentElement.classList.contains('is-dev-mode')) {
-      enableAllCardEditing();
-    }
-  });
-
-  if (document.documentElement.classList.contains('is-dev-mode')
-    && !document.documentElement.classList.contains('show-listing-grid-editor')) {
+  if (document.documentElement.classList.contains('is-dev-mode')) {
     enableAllCardEditing();
   }
 </script>
