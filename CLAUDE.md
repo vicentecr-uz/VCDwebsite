@@ -168,7 +168,7 @@ When planning is done and a **fresh chat** should implement (often with a mid-ti
 
 **Where to store:**
 
-- `.cursor/plans/*.plan.md` — only when created via Cursor Plan mode (“Save to workspace”). Agent-written `.plan.md` files open as an empty Plan shell — use a normal `docs/….md` tracker instead (e.g. `docs/gallery-edit-polish.md`).
+- `.cursor/plans/*.plan.md` — only when created via Cursor Plan mode (“Save to workspace”). Agent-written `.plan.md` files open as an empty Plan shell — use Cursor Plan mode, or a normal `docs/….md` tracker.
 - `Atlas/handoffs/YYMMDD-….md` — cross-provider / git-tracked
 
 **Workflow:** smart model plans → builder-ready doc → new chat on **Grok** (default for engine/agent work) → `bun run commit:engine` with explicit paths → PR.
