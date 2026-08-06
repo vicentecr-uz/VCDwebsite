@@ -215,7 +215,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership';
       payload: Record<string, unknown>;
       revert: () => void;
       /** Live section root for placeholder fills — index is read from it at Save. */
@@ -1975,7 +1975,8 @@
           && detail.kind !== 'style-token'
           && detail.kind !== 'section-nav'
           && detail.kind !== 'media-remove'
-          && detail.kind !== 'project-settings')
+          && detail.kind !== 'project-settings'
+          && detail.kind !== 'gallery-membership')
       ) {
         return;
       }
@@ -2485,6 +2486,7 @@
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
       const mediaInsertPending = persistedMediaInserts.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
+      const galleryMembershipChanges = pendingChanges.filter((change) => change.kind === 'gallery-membership');
       const projectSettingsChanges = pendingChanges.filter((change) => change.kind === 'project-settings');
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
       const placeholderFills = pendingChanges.filter((change) => change.kind === 'placeholder-fill');
@@ -2494,6 +2496,7 @@
       const imageChanges = pendingChanges.filter(
         (change) => (
           change.kind !== 'listing-order'
+          && change.kind !== 'gallery-membership'
           && change.kind !== 'section-order'
           && change.kind !== 'placeholder-fill'
           && change.kind !== 'style-token'
@@ -2514,9 +2517,18 @@
       dirtyText.forEach((state) => documents.add(state.document));
       dirtySpacing.forEach((state) => documents.add(state.document));
       pendingChanges.forEach((change) => {
-        const key = (change.payload as { document?: unknown; slug?: unknown } | undefined)?.document
-          ?? (change.payload as { slug?: unknown } | undefined)?.slug;
+        const payload = change.payload as {
+          document?: unknown;
+          slug?: unknown;
+          slugs?: unknown;
+        } | undefined;
+        const key = payload?.document ?? payload?.slug;
         if (typeof key === 'string' && key) documents.add(key);
+        if (Array.isArray(payload?.slugs)) {
+          for (const slug of payload.slugs) {
+            if (typeof slug === 'string' && slug) documents.add(slug);
+          }
+        }
       });
       const manifest: PublishManifest = {
         documents: [...documents],
@@ -2532,6 +2544,7 @@
           sectionDelete: pendingSectionDeletes.length,
           sectionOrder: sectionOrderChanges.length,
           listingOrder: listingChanges.length,
+          galleryMembership: galleryMembershipChanges.length,
           projectSettings: projectSettingsChanges.length,
           styleToken: styleTokenChanges.length,
           sectionNav: sectionNavChanges.length,
@@ -2569,6 +2582,17 @@
           const payload = await readApiJson(response);
           if (!response.ok) throw new Error(String(payload.error || 'Could not remove that image.'));
         }
+        // Membership before order — listing-order skips slugs that lack listings[grid].
+        for (const change of galleryMembershipChanges) {
+          const response = await fetch('/api/gallery-membership', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error || 'Could not save gallery pages.');
+        }
+
         for (const change of listingChanges) {
           const response = await fetch('/api/listing-order', {
             method: 'POST',
