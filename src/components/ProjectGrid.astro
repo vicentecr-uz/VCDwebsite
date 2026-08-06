@@ -142,53 +142,57 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
           </a>
         )}
         {isDev && item.slug && (
-          <div class="project-grid__chips" data-dev-mode-only>
-            <div class="project-grid__status-wrap">
-              <button
-                type="button"
-                class="project-grid__chip dev-card-chip-trigger"
-                data-dev-project-status={item.slug}
-                aria-label={`Visibility: ${status}`}
-                aria-haspopup="listbox"
-                aria-expanded="false"
-                title={`Visibility: ${status}`}
-              >
-                <span class="project-grid__chip-icon" aria-hidden="true" set:html={statusIconSvg} />
-              </button>
-              <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
-                <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
-                  Published
+          <>
+            <div class="project-grid__chips project-grid__chips--start" data-dev-mode-only>
+              <div class="project-grid__status-wrap">
+                <button
+                  type="button"
+                  class="project-grid__chip"
+                  data-dev-project-status={item.slug}
+                  aria-label={`Visibility: ${status}`}
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                  title={`Visibility: ${status}`}
+                >
+                  <span class="project-grid__chip-icon" aria-hidden="true" set:html={statusIconSvg} />
                 </button>
-                <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
-                  Draft
-                </button>
-                <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
-                  Teaser
-                </button>
+                <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
+                  <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
+                    Published
+                  </button>
+                  <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
+                    Draft
+                  </button>
+                  <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
+                    Teaser
+                  </button>
+                </div>
               </div>
             </div>
-            {item.hoverImage && (
+            <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
+              {item.hoverImage && (
+                <button
+                  type="button"
+                  class="project-grid__chip"
+                  data-dev-project-hover={item.slug}
+                  aria-label={`Preview hover image for ${item.title}`}
+                  aria-pressed="false"
+                  title="Preview hover image"
+                >
+                  <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+                </button>
+              )}
               <button
                 type="button"
-                class="project-grid__chip dev-card-chip-trigger"
-                data-dev-project-hover={item.slug}
-                aria-label={`Preview hover image for ${item.title}`}
-                aria-pressed="false"
-                title="Preview hover image"
+                class="project-grid__chip project-grid__settings"
+                data-dev-project-settings={item.slug}
+                aria-label={`Settings for ${item.title}`}
+                title="Project settings"
               >
-                <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+                <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
               </button>
-            )}
-            <button
-              type="button"
-              class="project-grid__chip project-grid__settings dev-card-chip-trigger"
-              data-dev-project-settings={item.slug}
-              aria-label={`Settings for ${item.title}`}
-              title="Project settings"
-            >
-              <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
-            </button>
-          </div>
+            </div>
+          </>
         )}
       </li>
     );
@@ -311,29 +315,53 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
   .project-grid__chips {
     position: absolute;
     top: 0.75em;
-    right: 0.75em;
     z-index: 5;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
     gap: 0.35em;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
   }
 
+  .project-grid__chips--start {
+    left: 0.75em;
+    align-items: flex-start;
+  }
+
+  .project-grid__chips--end {
+    right: 0.75em;
+    align-items: flex-end;
+  }
+
   .project-grid__status-wrap {
     position: relative;
   }
 
+  /*
+    Match section drag-handle / delete: icon-only at rest; fill + scale on hover;
+    shadow only on press. (Not the frosted always-on Edit image chip.)
+  */
   .project-grid__chip {
     display: grid;
     place-items: center;
-    width: 2em;
-    height: 2em;
-    padding: 0;
+    width: auto;
+    height: auto;
+    min-width: 0;
+    padding: 0.45em 0.55em;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
     cursor: pointer;
-    transition: background-color 0.12s ease;
+    box-shadow: none;
+    transition:
+      background-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
   }
 
   .project-grid__chip-icon {
@@ -343,21 +371,29 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     pointer-events: none;
   }
 
-  .project-grid__chip[aria-pressed='true'] {
-    outline: 2px solid color-mix(in srgb, var(--color-text) 35%, transparent);
-    outline-offset: 1px;
+  .project-grid__chip:hover,
+  .project-grid__chip:focus-visible,
+  .project-grid__chip[aria-pressed='true'],
+  .project-grid__chip[aria-expanded='true'] {
+    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
+    backdrop-filter: blur(8px);
+    transform: scale(1.08);
+  }
+
+  .project-grid__chip:active {
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
   .project-grid__status-menu {
     position: absolute;
     top: 0;
-    right: calc(100% + 0.35em);
+    left: calc(100% + 0.35em);
     display: grid;
     gap: 0.15em;
     min-width: 7.5em;
     padding: 0.35em;
     border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--color-surface-chip) 96%, transparent);
+    background: color-mix(in srgb, var(--color-surface-control) 96%, transparent);
     backdrop-filter: blur(8px);
     box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.12);
   }
@@ -490,24 +526,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
 
 <style is:global>
   /*
-    Chip fill + reveal must ship with ProjectGrid — listing pages never import
-    project.css. Keep pointer-events here so clicks don't fall through to <a>.
+    Chip reveal must ship with ProjectGrid — listing pages never import
+    project.css. Interaction chrome (transparent → fill on hover → shadow on
+    press) lives in the scoped block above, matching section drag/delete.
   */
-  .project-grid__chip.dev-card-chip-trigger {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--color-surface-chip) 92%, transparent);
-    backdrop-filter: blur(8px);
-    color: var(--color-text);
-    font: inherit;
-    line-height: 1;
-    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
-  }
-
-  .project-grid__chip.dev-card-chip-trigger:active {
-    background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
-  }
-
   html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__chips,
   html.is-dev-mode .project-grid__chips:focus-within,
   .project-grid__item:hover .project-grid__chips,
