@@ -514,10 +514,6 @@ const statusIcons = {
     }
   };
 
-  const clearCoverDropActive = (cover) => {
-    if (cover instanceof HTMLElement) delete cover.dataset.devDropActive;
-  };
-
   const clearAllCoverDropActive = () => {
     document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
       if (node instanceof HTMLElement) delete node.dataset.devDropActive;
@@ -530,6 +526,7 @@ const statusIcons = {
   /**
    * Soft circular iris wipe from the drop point. Returns a disposer that
    * removes the overlay (call after the real cover src is updated).
+   * Mask is set inline each frame — CSS vars inside mask-image often don't repaint.
    */
   const playCoverIrisReveal = (cover, file, clientX, clientY) => new Promise((resolve) => {
     const blobUrl = URL.createObjectURL(file);
@@ -542,14 +539,19 @@ const statusIcons = {
     const rect = cover.getBoundingClientRect();
     const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
     const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
+    const feather = Math.max(24, Math.min(rect.width, rect.height) * 0.12);
     const maxR = Math.hypot(
       Math.max(x, rect.width - x),
       Math.max(y, rect.height - y),
-    ) + 48;
+    ) + feather;
 
-    overlay.style.setProperty('--iris-x', `${x}px`);
-    overlay.style.setProperty('--iris-y', `${y}px`);
-    overlay.style.setProperty('--iris-r', '0px');
+    const applyMask = (radius) => {
+      const gradient = `radial-gradient(circle at ${x}px ${y}px, #000 0px, #000 ${radius}px, transparent ${radius + feather}px)`;
+      overlay.style.webkitMaskImage = gradient;
+      overlay.style.maskImage = gradient;
+    };
+
+    applyMask(0);
     cover.append(overlay);
 
     const dispose = () => {
@@ -557,36 +559,39 @@ const statusIcons = {
       URL.revokeObjectURL(blobUrl);
     };
 
-    const expand = () => {
-      overlay.style.setProperty('--iris-r', `${maxR}px`);
-    };
-
     if (prefersReducedMotion()) {
-      expand();
+      applyMask(maxR);
       resolve(dispose);
       return;
     }
 
-    // rAF: paint radius 0, then expand (mask length isn't reliably transitionable).
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const start = performance.now();
-        const duration = 650;
-        const tick = (now) => {
-          const t = Math.min(1, (now - start) / duration);
-          // Ease-out cubic.
-          const eased = 1 - (1 - t) ** 3;
-          overlay.style.setProperty('--iris-r', `${maxR * eased}px`);
-          if (t < 1) {
-            requestAnimationFrame(tick);
-            return;
-          }
-          resolve(dispose);
-        };
-        requestAnimationFrame(tick);
-      });
+      const start = performance.now();
+      const duration = 700;
+      const tick = (now) => {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - (1 - t) ** 3;
+        applyMask(maxR * eased);
+        if (t < 1) {
+          requestAnimationFrame(tick);
+          return;
+        }
+        resolve(dispose);
+      };
+      requestAnimationFrame(tick);
     });
   });
+
+  const coverFromPoint = (clientX, clientY, fallbackTarget) => {
+    const fromEvent = fallbackTarget instanceof Element
+      ? fallbackTarget.closest('[data-dev-cover-drop]')
+      : null;
+    if (fromEvent instanceof HTMLElement) return fromEvent;
+    const hit = document.elementFromPoint(clientX, clientY);
+    if (!(hit instanceof Element)) return null;
+    const cover = hit.closest('[data-dev-cover-drop]');
+    return cover instanceof HTMLElement ? cover : null;
+  };
 
   const closeAllStatusMenus = () => {
     document.querySelectorAll('[data-dev-status-menu]').forEach((menu) => {
@@ -748,34 +753,36 @@ const statusIcons = {
   document.addEventListener('dragover', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     if (document.documentElement.classList.contains('show-listing-grid-editor')) return;
-    const cover = event.target instanceof Element
-      ? event.target.closest('[data-dev-cover-drop]')
-      : null;
-    if (!(cover instanceof HTMLElement)) return;
+
+    const cover = coverFromPoint(event.clientX, event.clientY, event.target);
+    document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
+      if (node !== cover && node instanceof HTMLElement) delete node.dataset.devDropActive;
+    });
+    if (!cover) return;
+
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
     cover.dataset.devDropActive = 'true';
   });
 
   document.addEventListener('dragleave', (event) => {
-    const cover = event.target instanceof Element
-      ? event.target.closest('[data-dev-cover-drop]')
-      : null;
-    if (!(cover instanceof HTMLElement)) return;
-    const next = event.relatedTarget;
-    if (next instanceof Node && cover.contains(next)) return;
-    clearCoverDropActive(cover);
+    // Only clear when the pointer leaves the window / document — per-cover
+    // clear is driven by dragover (above) so child enter/leave doesn't flicker.
+    if (event.relatedTarget == null || event.relatedTarget === document.documentElement) {
+      clearAllCoverDropActive();
+    }
   });
 
   document.addEventListener('drop', (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    const cover = event.target instanceof Element
-      ? event.target.closest('[data-dev-cover-drop]')
-      : null;
-    if (!(cover instanceof HTMLElement)) return;
+    const cover = coverFromPoint(event.clientX, event.clientY, event.target);
+    if (!cover) {
+      clearAllCoverDropActive();
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
-    clearCoverDropActive(cover);
+    clearAllCoverDropActive();
     const slug = cover.dataset.devCoverDrop;
     const file = event.dataTransfer?.files?.[0];
     if (!slug || !(file instanceof File) || !file.type.startsWith('image/')) return;
@@ -791,6 +798,10 @@ const statusIcons = {
         disposeIris();
       }
     })();
+  });
+
+  document.addEventListener('dragend', () => {
+    clearAllCoverDropActive();
   });
 
   document.addEventListener('keydown', (event) => {
