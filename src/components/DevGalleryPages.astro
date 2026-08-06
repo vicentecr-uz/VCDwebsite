@@ -194,6 +194,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
       button.addEventListener('pointerdown', (event: PointerEvent) => {
         if (event.button !== 0 || drag) return;
+        // A drag that ends without a click (released off the card) would leave
+        // this set and eat the next toggle — every press clears it.
+        suppressClick = false;
         const pointerId = event.pointerId;
         const startX = event.clientX;
         const startY = event.clientY;
@@ -202,10 +205,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         let baseX = startX;
         let baseY = startY;
 
+        // Document-level: before the drag threshold there is no pointer capture,
+        // so a press that releases off the card would never reach a button-level
+        // listener — leaving `drag` set and blocking every later drag.
         const cleanupListeners = () => {
-          button.removeEventListener('pointermove', onMove);
-          button.removeEventListener('pointerup', onUp);
-          button.removeEventListener('pointercancel', onCancel);
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          document.removeEventListener('pointercancel', onCancel);
         };
 
         const finish = () => {
@@ -241,21 +247,21 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           const curIndex = order.indexOf(page.slug);
           if (curIndex === -1 || order.length < 2) return;
 
-          let nearest = curIndex;
-          let bestDist = Infinity;
-          order.forEach((slug, index) => {
-            const el = cardEl(slug);
-            if (!el) return;
-            const rect = el.getBoundingClientRect();
-            const cx = rect.left + rect.width / 2;
-            const cy = rect.top + rect.height / 2;
-            const dist = (cx - clientX) ** 2 + (cy - clientY) ** 2;
-            if (dist < bestDist) {
-              bestDist = dist;
+          // Only other cards are drop targets: the dragged card is transformed to
+          // follow the pointer, so it sits a fixed distance from it (zero when
+          // grabbed dead centre) and would win any nearest-centre test forever.
+          let nearest = -1;
+          for (const [index, slug] of order.entries()) {
+            if (slug === page.slug) continue;
+            const rect = cardEl(slug)?.getBoundingClientRect();
+            if (!rect) continue;
+            if (clientX >= rect.left && clientX <= rect.right
+              && clientY >= rect.top && clientY <= rect.bottom) {
               nearest = index;
+              break;
             }
-          });
-          if (nearest === curIndex) return;
+          }
+          if (nearest === -1 || nearest === curIndex) return;
 
           const reduced = prefersReducedMotion();
           const firstRects = reduced
@@ -319,9 +325,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
         drag = { pointerId, slug: page.slug, cancel: abort };
 
-        button.addEventListener('pointermove', onMove);
-        button.addEventListener('pointerup', onUp);
-        button.addEventListener('pointercancel', onCancel);
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onCancel);
       });
     };
 
