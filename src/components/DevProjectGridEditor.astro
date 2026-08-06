@@ -800,7 +800,6 @@ const statusIcons = {
     }
     event.preventDefault();
     event.stopPropagation();
-    // Clear hover on other cards; keep this cover dimmed under the iris.
     document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
       if (node !== cover && node instanceof HTMLElement) delete node.dataset.devDropActive;
     });
@@ -812,21 +811,17 @@ const statusIcons = {
     }
 
     void (async () => {
-      let disposeIris = () => {};
+      let disposeCrossfade = () => {};
       try {
-        disposeIris = await playCoverIrisReveal(cover, file, event.clientX, event.clientY);
-        // Upload + swap base src while the iris still covers the card, then wait
-        // until the base has painted the new image — otherwise dispose flashes the old one.
+        disposeCrossfade = await playCoverCrossfade(cover, file);
         await applyCoverFileToCard(slug, file);
-        const baseImg = cover.querySelector('.project-grid__img--base');
-        await waitImageReady(baseImg);
+        await waitImageReady(cover.querySelector('.project-grid__img--base'));
       } catch (error) {
-        // applyCoverFileToCard already alerts upload failures; iris decode may not.
         if (error instanceof Error && !/upload/i.test(error.message)) {
           window.alert(error.message);
         }
       } finally {
-        disposeIris();
+        disposeCrossfade();
       }
     })();
   });
