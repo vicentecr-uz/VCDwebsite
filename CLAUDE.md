@@ -114,6 +114,10 @@ Exception: schema migrations that require touching content JSON alongside the co
 
 Body-text fields read `<p>` children first; if the browser puts typed text outside `<p>` (e.g. after clearing a field), `readParagraphsValue` also checks other block children and inline content in the field — **only at Save time**, without rewriting the DOM while typing.
 
+## North star (not a build queue)
+
+Long-horizon product intent — **View vs Edit**, online Edit with **full parity** to local Edit, **WYSIWYG** / hands-on in-page controls, eventual open-source + bring-your-own hosting — lives in [`docs/product-vision.md`](docs/product-vision.md). Do not treat it as current-sprint work.
+
 ## Scope
 What belongs in this repo: work that is **the site itself** — IA, global layout, deploy, nav, and integration of other work (routes, embeds, links, how a tool sits inside vcruzdesigns.com). What does **not** belong here: tasks inside another repo's product (calculator logic, chart bugs, Stoozing HTML layout, AutoSpeedTest features) — those stay in that project's own notes. Gray line: if the issue is the site shell (iframe sizing, Astro page grid, site chrome breaking mobile), it's here; if it's Stoozing's own layout/CSS in `stoozing-playground.html`, it's Stoozing Playground.
 

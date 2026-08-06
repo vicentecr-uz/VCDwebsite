@@ -93,3 +93,7 @@ public/           # static assets (images, favicon, admin config)
 - **Spacing:** `1em` unit consistently (header, grid, footer, gaps), set via inline `style=` for guaranteed rendering rather than Tailwind arbitrary values.
 - **Max width:** fluid gutter — `#site-wrapper` holds content to `60em` max, gutter grows beyond `62em` viewport.
 - **Fonts:** Hanken Grotesk (300–900) site-wide; EB Garamond loaded only where needed via the `serif` prop on `Layout`.
+
+## Docs
+
+- [`docs/product-vision.md`](docs/product-vision.md) — north star (View/Edit, online Edit parity, WYSIWYG, eventual open source). Not a sprint backlog.
