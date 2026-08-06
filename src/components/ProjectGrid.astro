@@ -1,5 +1,9 @@
 ---
 import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
+import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
+import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import imagesIcon from 'lucide-static/icons/images.svg?raw';
 import type { ProjectStatus } from '../lib/projects';
 import { sizeIcon } from '../lib/icons';
 
@@ -29,7 +33,14 @@ interface Props {
 
 const { items, variant = 'work' } = Astro.props;
 const isDev = import.meta.env.DEV;
+
 const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
+const hoverIconSvg = sizeIcon(imagesIcon, 14);
+const statusIcons = {
+  published: sizeIcon(globeIcon, 14),
+  draft: sizeIcon(filePenIcon, 14),
+  teaser: sizeIcon(eyeOffIcon, 14),
+} as const;
 
 const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
 const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
@@ -40,12 +51,14 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     const isPlayPlaceholder = variant === 'play' && !item.href && !item.teaser;
     const isTeaser = Boolean(item.teaser);
     const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
-    const statusLabel = item.status && item.status !== 'published' ? item.status : '';
+    const status = (item.status ?? 'published') as keyof typeof statusIcons;
+    const statusIconSvg = statusIcons[status] ?? statusIcons.published;
 
     const cover = (
       <div
         class:list={['project-grid__cover', 'relative', 'overflow-hidden', item.hoverImage && 'project-grid__cover--has-hover']}
         style={`background-color: ${item.bg}`}
+        data-dev-cover-drop={isDev && item.slug ? item.slug : undefined}
       >
         <div class="project-grid__stack">
           <img
@@ -73,7 +86,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
             >
               {item.title}
             </h2>
-            {item.subtitle && (
+            {(item.subtitle || isDev) && (
               <span
                 class="project-grid__subtitle font-bold"
                 style={`color: ${subtitleColor(item.dark)}`}
@@ -93,11 +106,6 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
             )}
           </div>
         </div>
-        {statusLabel && (
-          <span class="project-grid__status-badge" data-dev-mode-only>
-            {statusLabel}
-          </span>
-        )}
       </div>
     );
 
@@ -106,6 +114,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
         class:list={['project-grid__item', item.full && 'project-grid__item--full']}
         data-dev-project-slug={item.slug}
         data-dev-play-link={item.playLinkId}
+        data-dev-status={status}
+        data-dev-bg={item.bg}
+        data-dev-dark={item.dark ? 'true' : 'false'}
+        data-dev-hover-image={item.hoverImage || undefined}
       >
         {isStatic ? (
           <div
@@ -127,15 +139,53 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
           </a>
         )}
         {isDev && item.slug && (
-          <button
-            type="button"
-            class="project-grid__settings dev-card-chip-trigger"
-            data-dev-project-settings={item.slug}
-            data-dev-mode-only
-            aria-label={`Settings for ${item.title}`}
-          >
-            <span class="project-grid__settings-icon" aria-hidden="true" set:html={settingsIconSvg} />
-          </button>
+          <div class="project-grid__chips" data-dev-mode-only>
+            <div class="project-grid__status-wrap">
+              <button
+                type="button"
+                class="project-grid__chip dev-card-chip-trigger"
+                data-dev-project-status={item.slug}
+                aria-label={`Visibility: ${status}`}
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                title={`Visibility: ${status}`}
+              >
+                <span class="project-grid__chip-icon" aria-hidden="true" set:html={statusIconSvg} />
+              </button>
+              <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
+                <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
+                  Published
+                </button>
+                <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
+                  Draft
+                </button>
+                <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
+                  Teaser
+                </button>
+              </div>
+            </div>
+            {item.hoverImage && (
+              <button
+                type="button"
+                class="project-grid__chip dev-card-chip-trigger"
+                data-dev-project-hover={item.slug}
+                aria-label={`Preview hover image for ${item.title}`}
+                aria-pressed="false"
+                title="Preview hover image"
+              >
+                <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+              </button>
+            )}
+            <button
+              type="button"
+              class="project-grid__chip project-grid__settings dev-card-chip-trigger"
+              data-dev-project-settings={item.slug}
+              aria-label={`Settings for ${item.title}`}
+              title="Project settings"
+            >
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
+            </button>
+          </div>
         )}
       </li>
     );
@@ -205,11 +255,13 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 0;
   }
 
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
+  .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
   }
 
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base {
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
+  .project-grid__cover.is-dev-hover-forced .project-grid__img--base {
     opacity: 0;
   }
 
@@ -253,43 +305,80 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 1;
   }
 
-  .project-grid__status-badge {
-    position: absolute;
-    top: 0.75em;
-    left: 0.75em;
-    padding: 0.2em 0.55em;
-    border-radius: 999px;
-    background: rgba(0, 0, 0, 0.72);
-    color: #fff;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  /* Chip fill / hover reveal: see the is:global block below — must not live in
-     project.css (listing pages never import it). */
-  .project-grid__settings {
+  .project-grid__chips {
     position: absolute;
     top: 0.75em;
     right: 0.75em;
     z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .project-grid__status-wrap {
+    position: relative;
+  }
+
+  .project-grid__chip {
     display: grid;
     place-items: center;
     width: 2em;
     height: 2em;
     padding: 0;
     cursor: pointer;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease, background-color 0.12s ease;
+    transition: background-color 0.12s ease;
   }
 
-  .project-grid__settings-icon {
+  .project-grid__chip-icon {
     display: grid;
     place-items: center;
     line-height: 0;
     pointer-events: none;
+  }
+
+  .project-grid__chip[aria-pressed='true'] {
+    outline: 2px solid color-mix(in srgb, var(--color-text) 35%, transparent);
+    outline-offset: 1px;
+  }
+
+  .project-grid__status-menu {
+    position: absolute;
+    top: 0;
+    right: calc(100% + 0.35em);
+    display: grid;
+    gap: 0.15em;
+    min-width: 7.5em;
+    padding: 0.35em;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-chip) 96%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.12);
+  }
+
+  .project-grid__status-menu button {
+    padding: 0.35em 0.55em;
+    border: 0;
+    border-radius: 0.3em;
+    background: transparent;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .project-grid__status-menu button:hover,
+  .project-grid__status-menu button[aria-selected='true'] {
+    background: color-mix(in srgb, var(--color-surface-press) 80%, transparent);
+  }
+
+  .project-grid__cover[data-dev-drop-active='true'] {
+    outline: 2px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+    outline-offset: -0.4em;
   }
 
   .project-grid__new-page {
@@ -398,11 +487,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
 
 <style is:global>
   /*
-    Chip fill + reveal must be global and ship with ProjectGrid — listing pages
-    (home/work/play) never import project.css. Keep pointer-events here so clicks
-    don't fall through to the card <a>.
+    Chip fill + reveal must ship with ProjectGrid — listing pages never import
+    project.css. Keep pointer-events here so clicks don't fall through to <a>.
   */
-  .project-grid__settings.dev-card-chip-trigger {
+  .project-grid__chip.dev-card-chip-trigger {
     border: 0;
     border-radius: var(--radius-control);
     background: color-mix(in srgb, var(--color-surface-chip) 92%, transparent);
@@ -413,19 +501,24 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
   }
 
-  .project-grid__settings.dev-card-chip-trigger:active {
+  .project-grid__chip.dev-card-chip-trigger:active {
     background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
   }
 
-  html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__settings,
-  html.is-dev-mode .project-grid__settings:focus-visible,
-  .project-grid__item:hover .project-grid__settings,
-  .project-grid__item:focus-within .project-grid__settings {
+  html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__chips,
+  html.is-dev-mode .project-grid__chips:focus-within,
+  .project-grid__item:hover .project-grid__chips,
+  .project-grid__item:focus-within .project-grid__chips {
     opacity: 1;
     pointer-events: auto;
   }
 
-  .project-grid__item.is-dev-project-settings-active
+  /* Layer 1: titles stay readable for inline edit without hovering the card. */
+  html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__meta {
+    opacity: 1;
+  }
+
+  html.is-dev-mode:not(.show-listing-grid-editor)
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
     outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
     outline-offset: 0.12em;
