@@ -215,7 +215,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings';
       payload: Record<string, unknown>;
       revert: () => void;
       /** Live section root for placeholder fills — index is read from it at Save. */
@@ -1974,7 +1974,8 @@
           && detail.kind !== 'placeholder-fill'
           && detail.kind !== 'style-token'
           && detail.kind !== 'section-nav'
-          && detail.kind !== 'media-remove')
+          && detail.kind !== 'media-remove'
+          && detail.kind !== 'project-settings')
       ) {
         return;
       }
@@ -2484,6 +2485,7 @@
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
       const mediaInsertPending = persistedMediaInserts.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
+      const projectSettingsChanges = pendingChanges.filter((change) => change.kind === 'project-settings');
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
       const placeholderFills = pendingChanges.filter((change) => change.kind === 'placeholder-fill');
       const styleTokenChanges = pendingChanges.filter((change) => change.kind === 'style-token');
@@ -2497,6 +2499,7 @@
           && change.kind !== 'style-token'
           && change.kind !== 'section-nav'
           && change.kind !== 'media-remove'
+          && change.kind !== 'project-settings'
         ),
       );
       if (
@@ -2511,7 +2514,8 @@
       dirtyText.forEach((state) => documents.add(state.document));
       dirtySpacing.forEach((state) => documents.add(state.document));
       pendingChanges.forEach((change) => {
-        const key = (change.payload as { document?: unknown } | undefined)?.document;
+        const key = (change.payload as { document?: unknown; slug?: unknown } | undefined)?.document
+          ?? (change.payload as { slug?: unknown } | undefined)?.slug;
         if (typeof key === 'string' && key) documents.add(key);
       });
       const manifest: PublishManifest = {
@@ -2528,6 +2532,7 @@
           sectionDelete: pendingSectionDeletes.length,
           sectionOrder: sectionOrderChanges.length,
           listingOrder: listingChanges.length,
+          projectSettings: projectSettingsChanges.length,
           styleToken: styleTokenChanges.length,
           sectionNav: sectionNavChanges.length,
           mediaRemove: mediaRemoveChanges.length,
@@ -2572,6 +2577,22 @@
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save grid order.');
+        }
+
+        for (const change of projectSettingsChanges) {
+          const response = await fetch('/api/project-settings', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok) {
+            throw new Error(String(payload.error || 'Could not save project settings.'));
+          }
+          const moved = payload.moved;
+          if (Array.isArray(moved) && moved.length) {
+            setStickyStatus(`Published ${moved.length} image(s) to public/images.`);
+          }
         }
 
         for (const change of sectionNavChanges) {
