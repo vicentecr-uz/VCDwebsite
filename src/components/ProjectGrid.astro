@@ -400,8 +400,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Match section drag-handle / delete: icon-only at rest; fill + scale on hover;
-    shadow only on press. (Not the frosted always-on Edit image chip.)
+    Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
+    Press darkens the fill (--color-surface-press) — drop shadow is invisible
+    on dark covers with light glyphs (#154).
   */
   .project-grid__chip {
     display: grid;
@@ -421,7 +422,6 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     box-shadow: none;
     transition:
       background-color 0.15s ease,
-      box-shadow 0.15s ease,
       transform 0.15s ease;
   }
 
@@ -442,7 +442,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   .project-grid__chip:active {
-    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
+    backdrop-filter: blur(8px);
   }
 
   .project-grid__status-menu {
@@ -631,6 +632,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
 
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:hover,
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible,
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active,
   .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
   .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
     color: var(--color-text);
