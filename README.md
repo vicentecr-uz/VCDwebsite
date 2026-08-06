@@ -32,14 +32,16 @@ bun run dev          # Astro dev server at http://localhost:4321
 For the full local workflow with the CMS proxy, use the dev session helper:
 
 ```sh
-bun run dev:session         # start Astro (4321) + Decap CMS proxy (8081)
-bun run dev:session:status  # check what's running
-bun run dev:session:stop    # stop both
+bun run dev:session         # start Astro (4321) + Decap CMS proxy (8081) + branch sync
+bun run dev:session:status  # check what's running (includes sync)
+bun run dev:session:stop    # stop all three
 ```
+
+While the session runs, **branch sync** auto-pulls the checked-out branch every ~60s (pull-only, no auto-commit). Agents: don't `git pull` manually when sync is running — see `CLAUDE.md` → *Branch sync*.
 
 ### Content editing (CMS)
 
-- **Local:** open <http://localhost:4321/admin> in any browser. In dev this loads **Decap CMS** with `local_backend: true`, talking to the `decap-server` proxy that `dev:session` starts. "Publish" writes directly to the content files in `src/content/` on disk — no git commit, no push — and Astro HMR picks them up instantly. Changes only go live after you commit and push to `main`.
+- **Local:** open <http://localhost:4321/admin> in any browser. In dev this loads **Decap CMS** with `local_backend: true`, talking to the `decap-server` proxy that `dev:session` starts. "Publish" writes directly to the content files in `src/content/` on disk — no git commit, no push. Dev HMR is calm (no auto full-reload for content) — refresh the page after Decap edits. Changes only go live after you commit and push to `main`.
 - **Production:** <https://wip.vcruzdesigns.com/admin> loads **Sveltia CMS** with GitHub PKCE auth. Edits commit to the repo via GitHub.
 
 Content lives as JSON under `src/content/` (`home/`, `work/`, `play/`, `projects/`, `about.json`, `settings/`).
@@ -91,3 +93,7 @@ public/           # static assets (images, favicon, admin config)
 - **Spacing:** `1em` unit consistently (header, grid, footer, gaps), set via inline `style=` for guaranteed rendering rather than Tailwind arbitrary values.
 - **Max width:** fluid gutter — `#site-wrapper` holds content to `60em` max, gutter grows beyond `62em` viewport.
 - **Fonts:** Hanken Grotesk (300–900) site-wide; EB Garamond loaded only where needed via the `serif` prop on `Layout`.
+
+## Docs
+
+- [`docs/product-vision.md`](docs/product-vision.md) — north star (View/Edit, online Edit parity, WYSIWYG, eventual open source). Not a sprint backlog.

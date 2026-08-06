@@ -17,8 +17,9 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - **Appear / disappear motion:** Dev chrome should not pop. Standalone panels (`DevOverlay`) fade in with a slight rise (mirrored on exit). Covering veils over an existing surface fade only. Respect `prefers-reduced-motion`.
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
 - Dev server: port 4321
-- **Dev session:** `bun run dev:session` starts Astro dev server (port 4321); `dev:session:stop` / `dev:session:status`. One Cursor chat owns the session — reuse servers, don't duplicate. See `.cursor/rules/dev-session.mdc`.
-- **Local CMS:** Open `http://localhost:4321/admin` in any browser — in dev, `admin.astro` loads **Decap CMS** (not Sveltia) with `local_backend: true`, talking to the `decap-server` proxy on port 8081 that `dev:session` starts. "Publish" writes directly to the local content files on disk (no git commit, no push); Astro HMR picks them up instantly. Changes only go live after you manually commit and push to `main`. (Decap is used locally instead of Sveltia because Sveltia's local workflow needs the Chromium-only File System Access API; Decap's HTTP proxy works in any browser, e.g. Zen/Firefox.)
+- **Dev session:** `bun run dev:session` starts Astro (port 4321), Decap proxy (8081), and **branch sync**; `dev:session:stop` / `dev:session:status`. One local session — reuse servers across chats (Cursor or Claude), don't start duplicates.
+- **Branch sync (auto-pull):** While the dev session runs, a background poll (every 60s) pulls the **currently checked-out branch** from its upstream. Pull-only — no auto-commit or push; local dirty files survive via `--autostash` when a rebase is needed. Switching branches is picked up on the next poll. **Agents (Cursor and Claude): do not run `git pull` manually** when sync is running — check `bun run dev:session:status` or `bun run branch:sync:status`; use `bun run branch:sync:once` if you need an immediate pull. Manual: `branch:sync`, `branch:sync:stop`, `branch:sync:status`, `branch:sync:once`. Log: `.dev-session/branch-sync.log`. Cursor also has `.cursor/rules/dev-session.mdc`.
+- **Local CMS:** Open `http://localhost:4321/admin` in any browser — in dev, `admin.astro` loads **Decap CMS** (not Sveltia) with `local_backend: true`, talking to the `decap-server` proxy on port 8081 that `dev:session` starts. "Publish" writes directly to the local content files on disk (no git commit, no push). Dev HMR is calm (no auto full-reload for content) — refresh the page manually after Decap edits. Changes only go live after you manually commit and push to `main`. (Decap is used locally instead of Sveltia because Sveltia's local workflow needs the Chromium-only File System Access API; Decap's HTTP proxy works in any browser, e.g. Zen/Firefox.)
 - **Deployment:** Cloudflare Pages auto-deploys on every push to `main` — live at `wip.vcruzdesigns.com` within ~30s. No manual deploy step needed. Production CMS at `wip.vcruzdesigns.com/admin` loads **Sveltia CMS** (the prod build, via `import.meta.env.DEV` in `admin.astro`) with GitHub PKCE auth via Cloudflare Worker.
 - Page transitions: GSAP fades `#transition-overlay` (starts opaque; fades out once viewport-visible images + fonts are ready, min 0.5s hold / max 4s wait; fades in on navigation). CSS 5s safety-net reveal if JS fails.
 - Max page width: fluid gutter via `#site-wrapper { padding-inline: max(1em, calc((100% - 60em) / 2)) }` — gutter holds at 1em until viewport exceeds 62em, then grows to keep content at 60em max
@@ -31,7 +32,7 @@ Two ways to edit content on disk in dev — both write the same JSON under `src/
 |--|---------------------|--------------------------|
 | Where | On the live page (dev mode toggle) | Separate admin UI |
 | Best for | Visual tweaks — inline text, crops, spacing, grid order | Structural/bulk edits |
-| UI update on save | **No page flash** — DOM already shows your edits | May trigger Astro/Vite HMR reload |
+| UI update on save | **No page flash** — DOM already shows your edits | No auto full-reload — refresh manually after Decap edits |
 
 ### In-page editor flow
 
@@ -39,7 +40,7 @@ Two ways to edit content on disk in dev — both write the same JSON under `src/
 2. **Edit in the browser DOM** — text fields become `contenteditable`; image/grid/caption tuners preview changes live. Components carry `data-dev-*` attributes mapping DOM nodes to JSON paths (e.g. `sections[12].paragraphs` in `tapico.json`).
 3. **Dirty / pending state** — `DevTextEditor.astro` tracks unsaved text, spacing, and media edits. Image tuners queue changes via `vcd:dev-pending-upsert` until Save.
 4. **Save** — POST to dev-only API routes in `astro.config.mjs` (`/api/content-text`, `/api/content-spacing`, `/api/content-batch`, `/api/content-section`, etc.). Handlers call `writeDevDocument()` in `scripts/dev-api-plugins.mjs`, which patches the JSON file on disk.
-5. **No flash on Save** — `suppressContentHmr()` + `contentHmrGate` (`scripts/content-hmr-gate.mjs`) block Vite full-reloads and module invalidation for ~2.5s after API writes. The page already looks correct; Save only persists to disk. `vcd:dev-pending-committed` syncs client “saved” state in tuners. **Do not assume Save triggers HMR** for in-page edits.
+5. **No flash on Save** — `contentHmrGate` (`scripts/content-hmr-gate.mjs`) drops all Vite `full-reload` WS messages in dev, and ignores `src/content/**` + `public/images/**` in the file watcher. Component/CSS edits still HMR via `update`. `suppressContentHmr()` additionally skips module invalidation for colour-token Saves (~2.5s) where the live preview already matches. Save only persists to disk. `vcd:dev-pending-committed` syncs client “saved” state in tuners. **Do not assume Save or branch sync triggers a page reload.**
 6. **Reload without Save** — unsaved DOM edits are lost (warning shown if dirty).
 
 ### Lifecycle
@@ -96,7 +97,7 @@ Implementation is `scripts/dev-publish.mjs` (`publishDevWriter()`, registered in
 
  The no-paths form (`bun run commit:engine "msg"`) sweeps *every* dirty engine file, which cannot distinguish your edits from another agent's in-flight work. It prints a warning when it does this. Use it only when you know the tree is otherwise clean.
 
-- **Colour tokens on `/styles`:** edits stage as unsaved pending (like crops), **Save** writes `src/styles/global.css` and commits it on the current branch (HMR suppressed so the save bar stays up), then **Publish styles** pushes that file to `main` from any branch — same scratch-index path as content, without folding CSS into Save & Publish (content-only). Vite only mounts the style-token / commit middleware when the dev server starts — after pulling this branch, restart the session (`dev:session:stop` / `dev:session`) or Save/Publish styles can 404 as HTML.
+- **Colour tokens on `/styles`:** edits stage as unsaved pending (like crops), **Save** writes `src/styles/global.css` and commits it on the current branch (`suppressContentHmr` skips CSS HMR so the save bar stays up), then **Publish styles** pushes that file to `main` from any branch — same scratch-index path as content, without folding CSS into Save & Publish (content-only). Vite only mounts the style-token / commit middleware when the dev server starts — after pulling this branch, restart the session (`dev:session:stop` / `dev:session`) or Save/Publish styles can 404 as HTML.
 
 Exception: schema migrations that require touching content JSON alongside the code change — commit them together and say so in the message.
 
@@ -107,11 +108,15 @@ Exception: schema migrations that require touching content JSON alongside the co
 - `src/components/project/ProjectImage*Tuner.astro` — crop, grid, caption pending edits
 - `scripts/dev-api-plugins.mjs` — `readDevDocument` / `writeDevDocument`, `suppressContentHmr` on every write
 - `scripts/dev-publish.mjs` — `/api/publish` (branch gate, content-only staging, commit message generation)
-- `scripts/content-hmr-gate.mjs` — suppresses full-reload WS + `handleHotUpdate` for `src/content/**` during API writes
+- `scripts/content-hmr-gate.mjs` — calm HMR: always drops `full-reload` WS; skips hot-update for content/draft media; `suppressContentHmr` skips colour-token CSS invalidation after API writes
 
 ### Text save caveat
 
 Body-text fields read `<p>` children first; if the browser puts typed text outside `<p>` (e.g. after clearing a field), `readParagraphsValue` also checks other block children and inline content in the field — **only at Save time**, without rewriting the DOM while typing.
+
+## North star (not a build queue)
+
+Long-horizon product intent — **View vs Edit**, online Edit with **full parity** to local Edit, **WYSIWYG** / hands-on in-page controls, eventual open-source + bring-your-own hosting — lives in [`docs/product-vision.md`](docs/product-vision.md). Do not treat it as current-sprint work.
 
 ## Scope
 What belongs in this repo: work that is **the site itself** — IA, global layout, deploy, nav, and integration of other work (routes, embeds, links, how a tool sits inside vcruzdesigns.com). What does **not** belong here: tasks inside another repo's product (calculator logic, chart bugs, Stoozing HTML layout, AutoSpeedTest features) — those stay in that project's own notes. Gray line: if the issue is the site shell (iframe sizing, Astro page grid, site chrome breaking mobile), it's here; if it's Stoozing's own layout/CSS in `stoozing-playground.html`, it's Stoozing Playground.
