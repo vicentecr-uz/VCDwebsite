@@ -1,9 +1,13 @@
 ---
 import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
+import eyeIcon from 'lucide-static/icons/eye.svg?raw';
+import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import DevOverlay from './DevOverlay.astro';
 import { sizeIcon } from '../lib/icons';
 
 const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
+const eyeIconSvg = sizeIcon(eyeIcon, 12);
+const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 ---
 
 <DevOverlay
@@ -12,7 +16,13 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
   panelKey="gallery-pages"
   defaultHidden
 >
-  <div class="dev-gallery-pages" data-dev-gallery-pages data-settings-icon={settingsIconSvg}>
+  <div
+    class="dev-gallery-pages"
+    data-dev-gallery-pages
+    data-settings-icon={settingsIconSvg}
+    data-eye-icon={eyeIconSvg}
+    data-eye-off-icon={eyeOffIconSvg}
+  >
     <p class="dev-gallery-pages__hint" data-gallery-hint>
       Toggle which project pages appear on this gallery. Save to keep.
     </p>
@@ -37,6 +47,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
    *   title: string,
    *   status: string,
    *   onGallery: boolean,
+   *   hasCover: boolean,
    *   image: string,
    *   coverUrl: string,
    *   bg: string,
@@ -45,6 +56,10 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
    *   subtitle: string,
    *   hoverImage: string,
    * }} GalleryPage */
+
+  type GridOrderEntry =
+    | { type: 'project'; slug: string; order: number; full: boolean }
+    | { type: 'play-link'; id: string; order: number };
 
   const initDevGalleryPages = () => {
     const root = document.querySelector<HTMLElement>('[data-dev-gallery-pages]');
@@ -60,6 +75,8 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     const overlayTitle = panel.querySelector<HTMLElement>('.dev-overlay__title');
     const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
     const settingsIcon = root.dataset.settingsIcon || '';
+    const eyeIconHtml = root.dataset.eyeIcon || '';
+    const eyeOffIconHtml = root.dataset.eyeOffIcon || '';
 
     /** @type {GalleryPage[]} */
     let pages = [];
@@ -67,6 +84,8 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     let selected = new Set();
     /** @type {Set<string>} */
     let baseline = new Set();
+    /** @type {GridOrderEntry[]} */
+    let baselineOrder: GridOrderEntry[] = [];
     /** @type {'all' | 'on' | 'off'} */
     let filter = 'all';
     /** @type {'home' | 'work' | 'play' | ''} */
@@ -101,9 +120,30 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
       return true;
     };
 
+    const ordersEqual = (left: GridOrderEntry[], right: GridOrderEntry[]) =>
+      JSON.stringify(left) === JSON.stringify(right);
+
     const listingGrid = () => document.querySelector<HTMLElement>(
       activeGrid ? `[data-dev-project-grid="${activeGrid}"]` : '[data-dev-project-grid]',
     );
+
+    const captureGridOrder = (): GridOrderEntry[] => {
+      const grid = listingGrid();
+      if (!grid) return [];
+      return [...grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)')]
+        .map((item, index) => {
+          const slug = item.dataset.devProjectSlug;
+          const playLink = item.dataset.devPlayLink;
+          const full = item.classList.contains('project-grid__item--full');
+          if (slug) return { type: 'project' as const, slug, order: index + 1, full };
+          if (playLink) return { type: 'play-link' as const, id: playLink, order: index + 1 };
+          return null;
+        })
+        .filter((entry): entry is GridOrderEntry => entry !== null);
+    };
+
+    const isDirty = () =>
+      !setsEqual(selected, baseline) || !ordersEqual(captureGridOrder(), baselineOrder);
 
     const pageBySlug = (slug: string) => pages.find((page) => page.slug === slug);
 
@@ -129,7 +169,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
       const cover = document.createElement('div');
       cover.className = 'project-grid__cover relative overflow-hidden';
       cover.style.backgroundColor = page.bg || '#efefef';
-      if (page.hoverImage && !isTeaser) {
+      if (page.hoverImage && !isTeaser && page.hasCover) {
         cover.classList.add('project-grid__cover--has-hover');
       }
 
@@ -137,13 +177,15 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
       stack.className = 'project-grid__stack';
 
       const baseImg = document.createElement('img');
-      baseImg.src = page.coverUrl || projectImage(page.image);
+      baseImg.src = page.hasCover
+        ? (page.coverUrl || projectImage(page.image))
+        : '/images/black-token.svg';
       baseImg.alt = page.title;
       baseImg.className = 'project-grid__img project-grid__img--base w-full h-full object-cover';
       baseImg.loading = 'lazy';
       stack.append(baseImg);
 
-      if (page.hoverImage && !isTeaser) {
+      if (page.hoverImage && !isTeaser && page.hasCover) {
         const hoverImg = document.createElement('img');
         hoverImg.src = projectImage(page.hoverImage);
         hoverImg.alt = '';
@@ -230,6 +272,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
 
         const detached = detachedItems.get(slug);
         if (detached) {
+          // Re-add lands at the end — expected; order dirtiness keeps Revert available.
           if (anchor) grid.insertBefore(detached, anchor);
           else grid.append(detached);
           detachedItems.delete(slug);
@@ -259,24 +302,48 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
 
     const restoreMembershipPreview = () => {
       selected = new Set(baseline);
-      applyMembershipPreview();
-      // Put detached cards that belong in baseline back if still missing.
       const grid = listingGrid();
-      if (!grid) return;
-      const anchor = grid.querySelector('.project-grid__item--new');
-      for (const slug of baseline) {
-        if (grid.querySelector(`[data-dev-project-slug="${slug}"]`)) continue;
-        const detached = detachedItems.get(slug);
-        if (!detached) continue;
-        if (anchor) grid.insertBefore(detached, anchor);
-        else grid.append(detached);
-        detachedItems.delete(slug);
+      if (!grid) {
+        detachedItems.clear();
+        createdItems.clear();
+        return;
       }
+
+      const byProject = new Map<string, HTMLElement>();
+      const byPlay = new Map<string, HTMLElement>();
+
+      for (const item of grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)')) {
+        const slug = item.dataset.devProjectSlug;
+        const playLink = item.dataset.devPlayLink;
+        if (slug) byProject.set(slug, item);
+        if (playLink) byPlay.set(playLink, item);
+      }
+      for (const [slug, item] of detachedItems) byProject.set(slug, item);
+      for (const [slug, item] of createdItems) byProject.set(slug, item);
+
+      const anchor = grid.querySelector('.project-grid__item--new');
+      for (const entry of baselineOrder) {
+        const item = entry.type === 'project'
+          ? byProject.get(entry.slug)
+          : byPlay.get(entry.id);
+        if (!item) continue;
+        if (entry.type === 'project') {
+          item.classList.toggle('project-grid__item--full', entry.full);
+        }
+        if (anchor) grid.insertBefore(item, anchor);
+        else grid.append(item);
+      }
+
       for (const [slug, item] of [...createdItems]) {
         if (baseline.has(slug)) continue;
         item.remove();
         createdItems.delete(slug);
       }
+      for (const item of [...grid.querySelectorAll<HTMLElement>('[data-dev-project-slug]')]) {
+        const slug = item.dataset.devProjectSlug;
+        if (slug && !baseline.has(slug)) item.remove();
+      }
+
       detachedItems.clear();
       createdItems.clear();
     };
@@ -284,7 +351,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     const syncPending = () => {
       if (!activeGrid) return;
       const pendingId = `gallery-membership:${activeGrid}`;
-      if (setsEqual(selected, baseline)) {
+      if (!isDirty()) {
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
         return;
       }
@@ -295,6 +362,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
           payload: {
             grid: activeGrid,
             slugs: [...selected],
+            items: captureGridOrder(),
           },
           revert: () => {
             restoreMembershipPreview();
@@ -315,8 +383,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     const syncCount = () => {
       if (!countEl) return;
       const onCount = selected.size;
-      const dirty = !setsEqual(selected, baseline);
-      countEl.textContent = dirty
+      countEl.textContent = isDirty()
         ? `${onCount} on this gallery · unsaved`
         : `${onCount} on this gallery`;
     };
@@ -344,28 +411,36 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
         card.dataset.gallerySlug = page.slug;
         const isOn = selected.has(page.slug);
         card.classList.toggle('is-selected', isOn);
+        card.classList.toggle('is-off', !isOn);
+        card.classList.toggle('is-placeholder', !page.hasCover);
 
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'dev-gallery-pages__thumb';
         button.title = page.title;
-        button.setAttribute('aria-label', `${page.title}${isOn ? ' (on this gallery)' : ' (not on this gallery)'}`);
+        button.setAttribute(
+          'aria-label',
+          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
+        );
         button.setAttribute('aria-pressed', isOn ? 'true' : 'false');
 
-        const img = document.createElement('img');
-        img.src = page.coverUrl || projectImage(page.image);
-        img.alt = '';
-        img.loading = 'lazy';
-        button.append(img);
+        if (page.hasCover) {
+          const img = document.createElement('img');
+          img.src = page.coverUrl || projectImage(page.image);
+          img.alt = '';
+          img.loading = 'lazy';
+          button.append(img);
+        } else {
+          const name = document.createElement('span');
+          name.className = 'dev-gallery-pages__placeholder-title';
+          name.textContent = page.title;
+          button.append(name);
+        }
 
         const badge = document.createElement('span');
         badge.className = 'dev-gallery-pages__badge';
-        badge.textContent = isOn ? 'On page' : 'Off';
-        card.classList.toggle('is-off', !isOn);
-
-        const label = document.createElement('span');
-        label.className = 'dev-gallery-pages__label';
-        label.textContent = page.title;
+        badge.setAttribute('aria-hidden', 'true');
+        badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
 
         button.addEventListener('click', () => {
           if (selected.has(page.slug)) selected.delete(page.slug);
@@ -376,7 +451,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
           syncPending();
         });
 
-        card.append(badge, button, label);
+        card.append(badge, button);
         gridEl.append(card);
       }
 
@@ -396,6 +471,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
       baseline = new Set(selected);
       detachedItems.clear();
       createdItems.clear();
+      baselineOrder = captureGridOrder();
       renderGrid();
     };
 
@@ -451,6 +527,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     window.addEventListener('vcd:dev-pending-committed', () => {
       if (!activeGrid) return;
       baseline = new Set(selected);
+      baselineOrder = captureGridOrder();
       detachedItems.clear();
       createdItems.clear();
       for (const page of pages) {
@@ -515,7 +592,7 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
 
   .dev-gallery-pages__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(6.5em, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(7em, 1fr));
     gap: 0.55em;
     overflow: auto;
     min-height: 0;
@@ -529,14 +606,15 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     border: 1px solid #ddd;
     border-radius: 0.35em;
     overflow: hidden;
-    background: #f3f3f3;
+    background: #efefef;
   }
 
+  /* 4:3 frame — padding-bottom % is width-relative (aspect-ratio fails with abspos kids). */
   .dev-gallery-pages__card::before {
     content: '';
     display: block;
     width: 100%;
-    padding-bottom: 100%;
+    padding-bottom: 75%;
   }
 
   .dev-gallery-pages__card.is-selected {
@@ -547,20 +625,39 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
   .dev-gallery-pages__thumb {
     position: absolute;
     inset: 0;
-    display: block;
+    display: grid;
+    place-items: center;
     width: 100%;
     height: 100%;
-    padding: 0;
+    padding: 0.55em;
     border: 0;
     background: transparent;
     cursor: pointer;
   }
 
   .dev-gallery-pages__thumb img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
+  }
+
+  .dev-gallery-pages__placeholder-title {
+    position: relative;
+    z-index: 0;
+    max-width: 100%;
+    color: #6d6d6d;
+    font-size: 0.72em;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    text-align: center;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
   }
 
   .dev-gallery-pages__badge {
@@ -568,12 +665,13 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     z-index: 1;
     top: 0.35em;
     left: 0.35em;
-    padding: 0.12em 0.35em;
+    display: grid;
+    place-items: center;
+    width: 1.45em;
+    height: 1.45em;
     border-radius: 0.25em;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(255, 255, 255, 0.92);
     color: #333;
-    font-size: 0.6em;
-    letter-spacing: 0.02em;
     pointer-events: none;
   }
 
@@ -582,21 +680,15 @@ const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
     color: #fff;
   }
 
-  .dev-gallery-pages__label {
-    position: absolute;
-    z-index: 1;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    padding: 0.35em 0.4em;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.72));
-    color: #fff;
-    font-size: 0.62em;
-    font-weight: 600;
-    line-height: 1.2;
-    pointer-events: none;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  .dev-gallery-pages__card.is-off .dev-gallery-pages__thumb img {
+    opacity: 0.55;
+  }
+
+  .dev-gallery-pages__card.is-off.is-placeholder .dev-gallery-pages__placeholder-title {
+    opacity: 0.55;
+  }
+
+  .dev-gallery-pages__badge :global(svg) {
+    display: block;
   }
 </style>
