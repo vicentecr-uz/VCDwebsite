@@ -602,6 +602,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         button.type = 'button';
         button.className = 'dev-gallery-pages__thumb';
         button.title = page.title;
+        // Native <img> drag hijacks the pointer once it starts — it never fires pointermove,
+        // so the custom reorder drag couldn't clear its threshold. Kill native drag outright.
+        button.draggable = false;
+        button.addEventListener('dragstart', (event) => event.preventDefault());
         button.setAttribute(
           'aria-label',
           `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
@@ -613,6 +617,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           img.src = page.coverUrl || projectImage(page.image);
           img.alt = '';
           img.loading = 'lazy';
+          img.draggable = false;
           button.append(img);
         } else {
           const name = document.createElement('span');
@@ -841,6 +846,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     border: 0;
     background: transparent;
     cursor: pointer;
+    -webkit-user-drag: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 
   .dev-gallery-pages__card.is-selected .dev-gallery-pages__thumb {
@@ -859,6 +867,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     height: 100%;
     object-fit: cover;
     display: block;
+    cursor: inherit;
   }
 
   .dev-gallery-pages__placeholder-title {
@@ -875,6 +884,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
+    cursor: inherit;
   }
 
   .dev-gallery-pages__badge {
