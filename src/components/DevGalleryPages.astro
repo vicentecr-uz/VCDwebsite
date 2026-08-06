@@ -1,0 +1,694 @@
+---
+import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
+import eyeIcon from 'lucide-static/icons/eye.svg?raw';
+import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
+import DevOverlay from './DevOverlay.astro';
+import { sizeIcon } from '../lib/icons';
+
+const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
+const eyeIconSvg = sizeIcon(eyeIcon, 12);
+const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
+---
+
+<DevOverlay
+  title="Gallery pages"
+  storageKey="gallery-pages"
+  panelKey="gallery-pages"
+  defaultHidden
+>
+  <div
+    class="dev-gallery-pages"
+    data-dev-gallery-pages
+    data-settings-icon={settingsIconSvg}
+    data-eye-icon={eyeIconSvg}
+    data-eye-off-icon={eyeOffIconSvg}
+  >
+    <p class="dev-gallery-pages__hint" data-gallery-hint>
+      Toggle which project pages appear on this gallery. Save to keep.
+    </p>
+
+    <div class="dev-gallery-pages__filters" role="group" aria-label="Gallery filter">
+      <button type="button" data-gallery-filter="all" class="is-active">All</button>
+      <button type="button" data-gallery-filter="on">On this page</button>
+      <button type="button" data-gallery-filter="off">Not on page</button>
+    </div>
+
+    <p class="dev-gallery-pages__status" data-gallery-status aria-live="polite">Loading…</p>
+    <div class="dev-gallery-pages__grid" data-gallery-grid></div>
+    <p class="dev-gallery-pages__count" data-gallery-count></p>
+  </div>
+</DevOverlay>
+
+<script>
+  import { projectImage } from '../lib/images';
+
+  /** @typedef {{
+   *   slug: string,
+   *   title: string,
+   *   status: string,
+   *   onGallery: boolean,
+   *   hasCover: boolean,
+   *   image: string,
+   *   coverUrl: string,
+   *   bg: string,
+   *   dark: boolean,
+   *   full: boolean,
+   *   subtitle: string,
+   *   hoverImage: string,
+   * }} GalleryPage */
+
+  type GridOrderEntry =
+    | { type: 'project'; slug: string; order: number; full: boolean }
+    | { type: 'play-link'; id: string; order: number };
+
+  const initDevGalleryPages = () => {
+    const root = document.querySelector<HTMLElement>('[data-dev-gallery-pages]');
+    const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
+    if (!root || !panel) return;
+    if (root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const gridEl = root.querySelector<HTMLElement>('[data-gallery-grid]');
+    const statusEl = root.querySelector<HTMLElement>('[data-gallery-status]');
+    const countEl = root.querySelector<HTMLElement>('[data-gallery-count]');
+    const hintEl = root.querySelector<HTMLElement>('[data-gallery-hint]');
+    const overlayTitle = panel.querySelector<HTMLElement>('.dev-overlay__title');
+    const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
+    const settingsIcon = root.dataset.settingsIcon || '';
+    const eyeIconHtml = root.dataset.eyeIcon || '';
+    const eyeOffIconHtml = root.dataset.eyeOffIcon || '';
+
+    /** @type {GalleryPage[]} */
+    let pages = [];
+    /** @type {Set<string>} */
+    let selected = new Set();
+    /** @type {Set<string>} */
+    let baseline = new Set();
+    /** @type {GridOrderEntry[]} */
+    let baselineOrder: GridOrderEntry[] = [];
+    /** @type {'all' | 'on' | 'off'} */
+    let filter = 'all';
+    /** @type {'home' | 'work' | 'play' | ''} */
+    let activeGrid = '';
+    /** @type {Map<string, HTMLElement>} */
+    const detachedItems = new Map();
+    /** @type {Map<string, HTMLElement>} */
+    const createdItems = new Map();
+
+    const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
+    const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
+
+    const currentGrid = (): 'home' | 'work' | 'play' | '' => {
+      const grid = document.querySelector<HTMLElement>('[data-dev-project-grid]');
+      const id = grid?.dataset.devProjectGrid;
+      return id === 'home' || id === 'work' || id === 'play' ? id : '';
+    };
+
+    const gridLabel = (grid: string) => (
+      grid === 'home' ? 'Home' : grid === 'work' ? 'Work' : grid === 'play' ? 'Play' : 'Gallery'
+    );
+
+    const setStatus = (message: string) => {
+      if (statusEl) statusEl.textContent = message;
+    };
+
+    const setsEqual = (left: Set<string>, right: Set<string>) => {
+      if (left.size !== right.size) return false;
+      for (const value of left) {
+        if (!right.has(value)) return false;
+      }
+      return true;
+    };
+
+    const ordersEqual = (left: GridOrderEntry[], right: GridOrderEntry[]) =>
+      JSON.stringify(left) === JSON.stringify(right);
+
+    const listingGrid = () => document.querySelector<HTMLElement>(
+      activeGrid ? `[data-dev-project-grid="${activeGrid}"]` : '[data-dev-project-grid]',
+    );
+
+    const captureGridOrder = (): GridOrderEntry[] => {
+      const grid = listingGrid();
+      if (!grid) return [];
+      return [...grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)')]
+        .map((item, index) => {
+          const slug = item.dataset.devProjectSlug;
+          const playLink = item.dataset.devPlayLink;
+          const full = item.classList.contains('project-grid__item--full');
+          if (slug) return { type: 'project' as const, slug, order: index + 1, full };
+          if (playLink) return { type: 'play-link' as const, id: playLink, order: index + 1 };
+          return null;
+        })
+        .filter((entry): entry is GridOrderEntry => entry !== null);
+    };
+
+    const isDirty = () =>
+      !setsEqual(selected, baseline) || !ordersEqual(captureGridOrder(), baselineOrder);
+
+    const pageBySlug = (slug: string) => pages.find((page) => page.slug === slug);
+
+    const buildGridCard = (page: GalleryPage) => {
+      const item = document.createElement('li');
+      item.className = 'project-grid__item';
+      item.dataset.devProjectSlug = page.slug;
+      if (page.full && activeGrid !== 'play') {
+        item.classList.add('project-grid__item--full');
+      }
+
+      const isTeaser = page.status === 'teaser';
+      const card = document.createElement(isTeaser ? 'div' : 'a');
+      if (card instanceof HTMLAnchorElement) {
+        card.href = `/${page.slug}`;
+      } else {
+        card.setAttribute('aria-disabled', 'true');
+        card.dataset.devTeaserSlug = page.slug;
+        card.dataset.devTeaserHref = `/${page.slug}`;
+      }
+      card.className = `project-grid__card block${isTeaser ? ' project-grid__card--teaser' : ''}`;
+
+      const cover = document.createElement('div');
+      cover.className = 'project-grid__cover relative overflow-hidden';
+      cover.style.backgroundColor = page.bg || '#efefef';
+      if (page.hoverImage && !isTeaser && page.hasCover) {
+        cover.classList.add('project-grid__cover--has-hover');
+      }
+
+      const stack = document.createElement('div');
+      stack.className = 'project-grid__stack';
+
+      const baseImg = document.createElement('img');
+      baseImg.src = page.hasCover
+        ? (page.coverUrl || projectImage(page.image))
+        : '/images/black-token.svg';
+      baseImg.alt = page.title;
+      baseImg.className = 'project-grid__img project-grid__img--base w-full h-full object-cover';
+      baseImg.loading = 'lazy';
+      stack.append(baseImg);
+
+      if (page.hoverImage && !isTeaser && page.hasCover) {
+        const hoverImg = document.createElement('img');
+        hoverImg.src = projectImage(page.hoverImage);
+        hoverImg.alt = '';
+        hoverImg.className = 'project-grid__img project-grid__img--hover w-full h-full object-cover';
+        hoverImg.loading = 'lazy';
+        hoverImg.setAttribute('aria-hidden', 'true');
+        stack.append(hoverImg);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'project-grid__meta absolute bottom-0 left-0 right-0';
+      const row = document.createElement('div');
+      row.className = 'flex items-baseline gap-2';
+
+      const title = document.createElement('h2');
+      title.className = 'project-grid__title font-bold';
+      title.style.color = titleColor(page.dark);
+      title.dataset.devProjectTitle = '';
+      title.textContent = page.title;
+      row.append(title);
+
+      if (page.subtitle) {
+        const subtitle = document.createElement('span');
+        subtitle.className = 'project-grid__subtitle font-bold';
+        subtitle.style.color = subtitleColor(page.dark);
+        subtitle.dataset.devProjectSubtitle = '';
+        subtitle.textContent = page.subtitle;
+        row.append(subtitle);
+      }
+
+      if (isTeaser) {
+        const teaserLabel = document.createElement('span');
+        teaserLabel.className = 'project-grid__teaser-label font-bold';
+        teaserLabel.style.color = subtitleColor(page.dark);
+        teaserLabel.dataset.devProjectTeaserLabel = '';
+        teaserLabel.textContent = 'Coming soon';
+        row.append(teaserLabel);
+      }
+
+      meta.append(row);
+      cover.append(stack, meta);
+
+      if (page.status && page.status !== 'published') {
+        const badge = document.createElement('span');
+        badge.className = 'project-grid__status-badge';
+        badge.dataset.devModeOnly = '';
+        badge.textContent = page.status;
+        cover.append(badge);
+      }
+
+      card.append(cover);
+      item.append(card);
+
+      const settings = document.createElement('button');
+      settings.type = 'button';
+      settings.className = 'project-grid__settings dev-card-chip-trigger';
+      settings.dataset.devProjectSettings = page.slug;
+      settings.dataset.devModeOnly = '';
+      settings.setAttribute('aria-label', `Settings for ${page.title}`);
+      const icon = document.createElement('span');
+      icon.className = 'project-grid__settings-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = settingsIcon;
+      settings.append(icon);
+      item.append(settings);
+
+      return item;
+    };
+
+    const applyMembershipPreview = () => {
+      const grid = listingGrid();
+      if (!grid || !activeGrid) return;
+      const anchor = grid.querySelector('.project-grid__item--new');
+
+      for (const [slug, item] of [...createdItems]) {
+        if (selected.has(slug)) continue;
+        item.remove();
+        createdItems.delete(slug);
+      }
+
+      for (const slug of [...selected]) {
+        const existing = grid.querySelector<HTMLElement>(`[data-dev-project-slug="${slug}"]`);
+        if (existing) continue;
+
+        const detached = detachedItems.get(slug);
+        if (detached) {
+          // Re-add lands at the end — expected; order dirtiness keeps Revert available.
+          if (anchor) grid.insertBefore(detached, anchor);
+          else grid.append(detached);
+          detachedItems.delete(slug);
+          continue;
+        }
+
+        const page = pageBySlug(slug);
+        if (!page) continue;
+        const created = buildGridCard(page);
+        createdItems.set(slug, created);
+        if (anchor) grid.insertBefore(created, anchor);
+        else grid.append(created);
+      }
+
+      for (const item of [...grid.querySelectorAll<HTMLElement>('.project-grid__item[data-dev-project-slug]')]) {
+        const slug = item.dataset.devProjectSlug;
+        if (!slug || selected.has(slug)) continue;
+        if (createdItems.has(slug)) {
+          item.remove();
+          createdItems.delete(slug);
+          continue;
+        }
+        detachedItems.set(slug, item);
+        item.remove();
+      }
+    };
+
+    const restoreMembershipPreview = () => {
+      selected = new Set(baseline);
+      const grid = listingGrid();
+      if (!grid) {
+        detachedItems.clear();
+        createdItems.clear();
+        return;
+      }
+
+      const byProject = new Map<string, HTMLElement>();
+      const byPlay = new Map<string, HTMLElement>();
+
+      for (const item of grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)')) {
+        const slug = item.dataset.devProjectSlug;
+        const playLink = item.dataset.devPlayLink;
+        if (slug) byProject.set(slug, item);
+        if (playLink) byPlay.set(playLink, item);
+      }
+      for (const [slug, item] of detachedItems) byProject.set(slug, item);
+      for (const [slug, item] of createdItems) byProject.set(slug, item);
+
+      const anchor = grid.querySelector('.project-grid__item--new');
+      for (const entry of baselineOrder) {
+        const item = entry.type === 'project'
+          ? byProject.get(entry.slug)
+          : byPlay.get(entry.id);
+        if (!item) continue;
+        if (entry.type === 'project') {
+          item.classList.toggle('project-grid__item--full', entry.full);
+        }
+        if (anchor) grid.insertBefore(item, anchor);
+        else grid.append(item);
+      }
+
+      for (const [slug, item] of [...createdItems]) {
+        if (baseline.has(slug)) continue;
+        item.remove();
+        createdItems.delete(slug);
+      }
+      for (const item of [...grid.querySelectorAll<HTMLElement>('[data-dev-project-slug]')]) {
+        const slug = item.dataset.devProjectSlug;
+        if (slug && !baseline.has(slug)) item.remove();
+      }
+
+      detachedItems.clear();
+      createdItems.clear();
+    };
+
+    const syncPending = () => {
+      if (!activeGrid) return;
+      const pendingId = `gallery-membership:${activeGrid}`;
+      if (!isDirty()) {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: {
+          id: pendingId,
+          kind: 'gallery-membership',
+          payload: {
+            grid: activeGrid,
+            slugs: [...selected],
+            items: captureGridOrder(),
+          },
+          revert: () => {
+            restoreMembershipPreview();
+            renderGrid();
+            syncCount();
+          },
+        },
+      }));
+    };
+
+    const visiblePages = () => pages.filter((page) => {
+      const on = selected.has(page.slug);
+      if (filter === 'on') return on;
+      if (filter === 'off') return !on;
+      return true;
+    });
+
+    const syncCount = () => {
+      if (!countEl) return;
+      const onCount = selected.size;
+      countEl.textContent = isDirty()
+        ? `${onCount} on this gallery · unsaved`
+        : `${onCount} on this gallery`;
+    };
+
+    const renderGrid = () => {
+      if (!gridEl) return;
+      const list = visiblePages();
+      gridEl.replaceChildren();
+
+      if (!list.length) {
+        setStatus(filter === 'on'
+          ? 'No pages on this gallery yet.'
+          : filter === 'off'
+            ? 'Every project page is already on this gallery.'
+            : 'No project pages found.');
+        syncCount();
+        return;
+      }
+
+      setStatus(`${list.length} page${list.length === 1 ? '' : 's'}`);
+
+      for (const page of list) {
+        const card = document.createElement('div');
+        card.className = 'dev-gallery-pages__card';
+        card.dataset.gallerySlug = page.slug;
+        const isOn = selected.has(page.slug);
+        card.classList.toggle('is-selected', isOn);
+        card.classList.toggle('is-off', !isOn);
+        card.classList.toggle('is-placeholder', !page.hasCover);
+
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dev-gallery-pages__thumb';
+        button.title = page.title;
+        button.setAttribute(
+          'aria-label',
+          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
+        );
+        button.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+
+        if (page.hasCover) {
+          const img = document.createElement('img');
+          img.src = page.coverUrl || projectImage(page.image);
+          img.alt = '';
+          img.loading = 'lazy';
+          button.append(img);
+        } else {
+          const name = document.createElement('span');
+          name.className = 'dev-gallery-pages__placeholder-title';
+          name.textContent = page.title;
+          button.append(name);
+        }
+
+        const badge = document.createElement('span');
+        badge.className = 'dev-gallery-pages__badge';
+        badge.setAttribute('aria-hidden', 'true');
+        badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
+
+        button.addEventListener('click', () => {
+          if (selected.has(page.slug)) selected.delete(page.slug);
+          else selected.add(page.slug);
+          applyMembershipPreview();
+          renderGrid();
+          syncCount();
+          syncPending();
+        });
+
+        card.append(badge, button);
+        gridEl.append(card);
+      }
+
+      syncCount();
+    };
+
+    const loadPages = async () => {
+      if (!activeGrid) return;
+      setStatus('Loading…');
+      const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(activeGrid)}`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Could not load gallery pages.');
+      pages = Array.isArray(payload.pages) ? payload.pages : [];
+      selected = new Set(
+        pages.filter((page) => page.onGallery).map((page) => page.slug),
+      );
+      baseline = new Set(selected);
+      detachedItems.clear();
+      createdItems.clear();
+      baselineOrder = captureGridOrder();
+      renderGrid();
+    };
+
+    const openPanel = () => {
+      const grid = currentGrid();
+      if (!grid) return;
+      activeGrid = grid;
+      if (overlayTitle) overlayTitle.textContent = `Gallery pages — ${gridLabel(grid)}`;
+      if (hintEl) {
+        hintEl.textContent = `Toggle which project pages appear on ${gridLabel(grid)}. Save to keep.`;
+      }
+      window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+      panel.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel } }));
+      void loadPages().catch((error) => {
+        setStatus(error instanceof Error ? error.message : 'Could not load gallery pages.');
+      });
+    };
+
+    const closePanel = () => {
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+    };
+
+    filterButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const next = button.getAttribute('data-gallery-filter');
+        if (next !== 'all' && next !== 'on' && next !== 'off') return;
+        filter = next;
+        filterButtons.forEach((entry) => {
+          entry.classList.toggle('is-active', entry.getAttribute('data-gallery-filter') === filter);
+        });
+        renderGrid();
+      });
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyP') {
+        if (!currentGrid()) return;
+        event.preventDefault();
+        if (panel.hidden) openPanel();
+        else closePanel();
+        return;
+      }
+
+      if (event.key !== 'Escape') return;
+      if (panel.hidden) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      closePanel();
+    }, true);
+
+    window.addEventListener('vcd:dev-pending-committed', () => {
+      if (!activeGrid) return;
+      baseline = new Set(selected);
+      baselineOrder = captureGridOrder();
+      detachedItems.clear();
+      createdItems.clear();
+      for (const page of pages) {
+        page.onGallery = selected.has(page.slug);
+      }
+      syncCount();
+      renderGrid();
+    });
+
+    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (event.detail?.active) return;
+      if (!panel.hidden) closePanel();
+    }) as EventListener);
+  };
+
+  initDevGalleryPages();
+</script>
+
+<style is:global>
+  .dev-overlay[data-dev-panel-key='gallery-pages'] {
+    width: min(34em, calc(100vw - 2em));
+    z-index: 50;
+  }
+
+  .dev-gallery-pages {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+    font-size: 0.85rem;
+    max-height: min(28em, calc(100vh - 8em));
+  }
+
+  .dev-gallery-pages__hint,
+  .dev-gallery-pages__status,
+  .dev-gallery-pages__count {
+    margin: 0;
+    color: #555;
+    font-size: 0.78em;
+  }
+
+  .dev-gallery-pages__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3em;
+  }
+
+  .dev-gallery-pages__filters button {
+    padding: 0.3em 0.55em;
+    border: 1px solid transparent;
+    border-radius: 0.3em;
+    background: transparent;
+    font: inherit;
+    font-size: 0.78em;
+    line-height: 1.25;
+    cursor: pointer;
+  }
+
+  .dev-gallery-pages__filters button.is-active {
+    border-color: #ccc;
+    background: #f7f7f7;
+  }
+
+  .dev-gallery-pages__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(7em, 1fr));
+    gap: 0.55em;
+    overflow: auto;
+    min-height: 0;
+    max-height: min(20em, calc(100vh - 14em));
+    padding: 0.15em;
+  }
+
+  .dev-gallery-pages__card {
+    position: relative;
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 0.35em;
+    overflow: hidden;
+    background: #efefef;
+  }
+
+  /* 4:3 frame — padding-bottom % is width-relative (aspect-ratio fails with abspos kids). */
+  .dev-gallery-pages__card::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-bottom: 75%;
+  }
+
+  .dev-gallery-pages__card.is-selected {
+    /* Inset grey ring — thinner than the old 2px black outline. */
+    box-shadow: inset 0 0 0 1px #bbb;
+  }
+
+  .dev-gallery-pages__thumb {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    padding: 0.55em;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .dev-gallery-pages__thumb img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .dev-gallery-pages__placeholder-title {
+    position: relative;
+    z-index: 0;
+    max-width: 100%;
+    color: #6d6d6d;
+    font-size: 0.72em;
+    font-weight: 700;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+    text-align: center;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+  }
+
+  .dev-gallery-pages__badge {
+    position: absolute;
+    z-index: 1;
+    top: 0.35em;
+    left: 0.35em;
+    display: grid;
+    place-items: center;
+    width: 1.45em;
+    height: 1.45em;
+    border-radius: 0.25em;
+    background: rgba(255, 255, 255, 0.92);
+    color: #333;
+    pointer-events: none;
+  }
+
+  .dev-gallery-pages__card.is-off .dev-gallery-pages__badge {
+    background: rgba(34, 34, 34, 0.82);
+    color: #fff;
+  }
+
+  .dev-gallery-pages__card.is-off .dev-gallery-pages__thumb img {
+    opacity: 0.55;
+  }
+
+  .dev-gallery-pages__card.is-off.is-placeholder .dev-gallery-pages__placeholder-title {
+    opacity: 0.55;
+  }
+
+  .dev-gallery-pages__badge svg {
+    display: block;
+  }
+</style>
