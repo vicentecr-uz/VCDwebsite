@@ -824,6 +824,14 @@ function seedListingCard(grid, data, order) {
   };
 }
 
+const PLACEHOLDER_COVER = '/images/black-token.svg';
+
+function isPlaceholderCoverSrc(src) {
+  const value = String(src || '').trim();
+  if (!value) return true;
+  return value === PLACEHOLDER_COVER || value.includes('black-token');
+}
+
 function coverForGalleryPage(data, grid) {
   const listings = data.listings && typeof data.listings === 'object' ? data.listings : {};
   const onGallery = Boolean(listings[grid]);
@@ -831,13 +839,16 @@ function coverForGalleryPage(data, grid) {
     ?? LISTING_GRIDS.map((key) => listings[key]).find(Boolean)
     ?? {};
   const isTeaser = data.status === 'teaser';
-  const image = isTeaser
-    ? (data.teaser?.coverImage || listing.image || '/images/black-token.svg')
-    : (listing.image || data.teaser?.coverImage || '/images/black-token.svg');
+  const rawImage = isTeaser
+    ? (data.teaser?.coverImage || listing.image || '')
+    : (listing.image || data.teaser?.coverImage || '');
+  const hasCover = !isPlaceholderCoverSrc(rawImage);
+  const image = hasCover ? String(rawImage) : PLACEHOLDER_COVER;
   return {
     onGallery,
-    image: String(image || '/images/black-token.svg'),
-    coverUrl: listingImageUrl(image),
+    hasCover,
+    image,
+    coverUrl: hasCover ? listingImageUrl(image) : '',
     bg: String(listing.bg || '#efefef'),
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
@@ -889,8 +900,9 @@ export function galleryMembershipDevWriter() {
                   title: slug,
                   status: 'draft',
                   onGallery: false,
-                  image: '/images/black-token.svg',
-                  coverUrl: '/images/black-token.svg',
+                  hasCover: false,
+                  image: PLACEHOLDER_COVER,
+                  coverUrl: '',
                   bg: '#efefef',
                   dark: false,
                   full: false,
@@ -979,6 +991,35 @@ export function galleryMembershipDevWriter() {
               nextOrder += 1;
               data.listings[grid] = seedListingCard(grid, data, nextOrder);
               await writeProjectJson(filePath, data);
+            }
+          }
+
+          // Optional DOM order from the panel — covers remove→re-add landing at the end.
+          const items = Array.isArray(body.items) ? body.items : [];
+          for (const entry of items) {
+            const order = Number(entry.order);
+            if (!Number.isInteger(order) || order < 1) continue;
+            if (entry.type === 'project') {
+              const slug = String(entry.slug || '').trim();
+              const relativeFile = resolveEditableDocument(slug);
+              if (!relativeFile) continue;
+              const file = path.join(process.cwd(), relativeFile);
+              const data = JSON.parse(await readFile(file, 'utf8'));
+              if (!data.listings?.[grid]) continue;
+              data.listings[grid].order = order;
+              if (typeof entry.full === 'boolean') {
+                data.listings[grid].full = entry.full;
+              }
+              await writeProjectJson(file, data);
+              continue;
+            }
+            if (entry.type === 'play-link') {
+              const id = String(entry.id || '').trim();
+              if (!id || id.includes('..') || id.includes('/')) continue;
+              const file = path.join(process.cwd(), `src/content/play/${id}.json`);
+              const data = JSON.parse(await readFile(file, 'utf8'));
+              data.order = order;
+              await writeProjectJson(file, data);
             }
           }
 
