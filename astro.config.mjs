@@ -2040,7 +2040,7 @@ export default defineConfig({
     server: {
       watch: {
         // Content + published images are not Vite modules. Watching them
-        // fires full-reloads on Save / Decap / branch-sync pulls — calm HMR
+        // fires full-reloads on Save / branch-sync pulls — calm HMR
         // (contentHmrGate) also drops full-reload WS, but ignoring here
         // keeps the watcher quiet. Manual refresh when you want new content.
         ignored: [

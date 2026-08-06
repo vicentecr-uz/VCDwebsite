@@ -62,7 +62,7 @@ export function contentHmrGate() {
      */
     handleHotUpdate({ file }) {
       // Draft media + content JSON: served/read outside the module graph.
-      // Branch sync / Decap / Save writing these must not invalidate modules.
+      // Branch sync / Save writing these must not invalidate modules.
       if (isDraftMediaPath(file) || isContentPath(file)) return [];
       // Colour-token Save already applied live — skip CSS HMR flash.
       if (isContentHmrSuppressed() && isStyleTokenPath(file)) return [];
