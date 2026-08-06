@@ -39,6 +39,7 @@ const PUBLISH_BRANCH = 'main';
  */
 const RENDERING_PATHS = [
   'src/components/project/',
+  'src/components/ProjectGrid.astro',
   'src/lib/project',
   'src/pages/[slug].astro',
   'src/styles/project.css',
