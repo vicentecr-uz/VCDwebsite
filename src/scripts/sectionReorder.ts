@@ -130,15 +130,60 @@ export const resolveInsertIndexFromY = (
 export const GRID_INSERT_HYSTERESIS_PX = 18;
 const GRID_ROW_WEIGHT = 1.6;
 
+/** First item of each visual row, in document order. Grid rows share a top. */
+const rowStartIndices = (items: HTMLElement[]) => {
+  const starts: number[] = [];
+  let previousTop = 0;
+  items.forEach((el, index) => {
+    const { top } = el.getBoundingClientRect();
+    if (index === 0 || top - previousTop > 1) starts.push(index);
+    previousTop = top;
+  });
+  return starts;
+};
+
+/**
+ * Insert index for a block that occupies a whole row. Only row boundaries are
+ * legal: hand a full-width card an index mid-row and its slot pushes the card
+ * beside it onto a row of its own, stranding an empty cell — the layout can't
+ * represent the position it was given.
+ */
+const resolveRowInsertIndex = (
+  items: HTMLElement[],
+  centerY: number,
+  currentIndex: number,
+  slot: HTMLElement | null,
+  hysteresisPx: number,
+) => {
+  // Hold while the block still straddles the middle of the slot it already has.
+  const slotRect = slot?.getBoundingClientRect();
+  if (slotRect && slotRect.height > 0) {
+    if (Math.abs(centerY - (slotRect.top + slotRect.height / 2)) <= hysteresisPx) {
+      return currentIndex;
+    }
+  }
+
+  for (const start of rowStartIndices(items)) {
+    const rect = items[start].getBoundingClientRect();
+    if (centerY < rect.top + rect.height / 2) return start;
+  }
+  return items.length;
+};
+
 export const resolveInsertIndexInGrid = (
   items: HTMLElement[],
   centerX: number,
   centerY: number,
   currentIndex = 0,
   slot: HTMLElement | null = null,
-  hysteresisPx = GRID_INSERT_HYSTERESIS_PX,
+  options: { snapToRowStart?: boolean; hysteresisPx?: number } = {},
 ) => {
   if (!items.length) return 0;
+
+  const hysteresisPx = options.hysteresisPx ?? GRID_INSERT_HYSTERESIS_PX;
+  if (options.snapToRowStart) {
+    return resolveRowInsertIndex(items, centerY, currentIndex, slot, hysteresisPx);
+  }
 
   const score = (rect: DOMRect) => Math.hypot(
     centerX - (rect.left + rect.width / 2),
