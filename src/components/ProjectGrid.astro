@@ -4,6 +4,7 @@ import type { ProjectStatus } from '../lib/projects';
 export type ProjectGridItem = {
   title: string;
   image: string;
+  hoverImage?: string;
   bg: string;
   dark: boolean;
   /** Year on home/work; optional meta line on play. */
@@ -40,12 +41,22 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
 
     const cover = (
       <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
-        <img
-          src={item.image}
-          alt={item.title}
-          class="project-grid__img w-full h-full object-cover"
-          loading="lazy"
-        />
+        <div class="project-grid__stack">
+          <img
+            src={item.image}
+            alt={item.title}
+            class="project-grid__img project-grid__img--base w-full h-full object-cover"
+            loading="lazy"
+          />
+          {item.hoverImage && (
+            <img
+              src={item.hoverImage}
+              alt=""
+              class="project-grid__img project-grid__img--hover w-full h-full object-cover"
+              loading="lazy"
+            />
+          )}
+        </div>
         <div class="project-grid__meta absolute bottom-0 left-0 right-0">
           <div class="flex items-baseline gap-2">
             <h2 class="project-grid__title font-bold" style={`color: ${titleColor(item.dark)}`}>
@@ -154,6 +165,32 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     transform: translateZ(0);
   }
 
+  .project-grid__stack {
+    position: absolute;
+    inset: 0;
+  }
+
+  .project-grid__stack .project-grid__img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 0.4s ease;
+  }
+
+  .project-grid__img--hover {
+    opacity: 0;
+  }
+
+  .project-grid__card:hover .project-grid__img--hover {
+    opacity: 1;
+  }
+
+  .project-grid__card:hover .project-grid__img--base {
+    opacity: 0;
+  }
+
   .project-grid__title,
   .project-grid__subtitle,
   .project-grid__teaser-label {
@@ -162,28 +199,17 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     line-height: 1.2;
   }
 
-  .project-grid--home .project-grid__img {
-    filter: none;
-    transform: scale(1.18);
-    transition: transform 0.5s ease;
+  .project-grid__card--placeholder .project-grid__img {
+    filter: grayscale(1);
   }
 
-  .project-grid--home .project-grid__card:hover .project-grid__img {
-    transform: scale(1.22);
+  .project-grid__card--teaser .project-grid__img {
+    filter: blur(12px);
   }
 
-  .project-grid--work .project-grid__img,
-  .project-grid--play .project-grid__img {
-    transform: scale(1.04);
-    transition: transform 0.5s ease;
+  .project-grid__card--teaser:hover .project-grid__img {
+    filter: blur(10px);
   }
-
-  .project-grid--work .project-grid__card:hover .project-grid__img,
-  .project-grid--play .project-grid__card:hover .project-grid__img {
-    transform: scale(1.07);
-  }
-
-  .project-grid__meta {
     opacity: 0;
     padding: var(--space-unit);
     transition: opacity 0.3s ease;
