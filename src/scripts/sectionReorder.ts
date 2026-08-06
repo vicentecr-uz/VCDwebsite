@@ -115,16 +115,19 @@ export const resolveInsertIndexFromY = (
  * Insert index for a two-dimensional flow (a listing grid), where the 1-D walk
  * above has nothing to walk: siblings sit beside each other as well as below.
  *
- * Candidate insert points are the leading edge-centre of every item plus the
- * trailing edge of the last, and the lifted card's centre picks the nearest.
- * Vertical distance is weighted heavier than horizontal so a card in the row
- * above never out-scores one in the row the pointer is actually in.
+ * The lifted card's centre finds the nearest item centre, then reading order
+ * decides which side of it to land on — horizontally when the two share a row,
+ * vertically when they don't. Vertical distance is weighted heavier so a card
+ * in the row above never out-scores one in the row the card is actually in.
  *
- * Anchors move as the slot moves, which on its own oscillates between two
- * indices at the boundary — `hysteresisPx` makes a challenger beat the held
- * index by a margin before the slot gives way.
+ * **The held slot competes as a candidate of its own.** Without it, a card that
+ * has not moved at all still resolves to whichever neighbour happens to be
+ * nearest, and the slot jumps to that neighbour the instant you pick the card
+ * up. It also supplies the stickiness that keeps the slot from flickering
+ * between two cells at their seam: a real item has to beat the held slot by
+ * `hysteresisPx` before anything moves.
  */
-export const GRID_INSERT_HYSTERESIS_PX = 14;
+export const GRID_INSERT_HYSTERESIS_PX = 18;
 const GRID_ROW_WEIGHT = 1.6;
 
 export const resolveInsertIndexInGrid = (
@@ -132,38 +135,37 @@ export const resolveInsertIndexInGrid = (
   centerX: number,
   centerY: number,
   currentIndex = 0,
+  slot: HTMLElement | null = null,
   hysteresisPx = GRID_INSERT_HYSTERESIS_PX,
 ) => {
   if (!items.length) return 0;
 
-  const anchors: { index: number; x: number; y: number }[] = items.map((el, index) => {
-    const rect = el.getBoundingClientRect();
-    return { index, x: rect.left, y: rect.top + rect.height / 2 };
-  });
-  const lastRect = items[items.length - 1].getBoundingClientRect();
-  anchors.push({
-    index: items.length,
-    x: lastRect.right,
-    y: lastRect.top + lastRect.height / 2,
-  });
+  const score = (rect: DOMRect) => Math.hypot(
+    centerX - (rect.left + rect.width / 2),
+    (centerY - (rect.top + rect.height / 2)) * GRID_ROW_WEIGHT,
+  );
 
-  const score = (anchor: { x: number; y: number }) =>
-    Math.hypot(centerX - anchor.x, (centerY - anchor.y) * GRID_ROW_WEIGHT);
+  const slotRect = slot?.getBoundingClientRect();
+  const slotScore = slotRect && slotRect.height > 0 && slotRect.width > 0
+    ? score(slotRect)
+    : Number.POSITIVE_INFINITY;
 
-  const held = anchors.find((anchor) => anchor.index === currentIndex);
-  const heldScore = held ? score(held) : Number.POSITIVE_INFINITY;
-
-  let best = currentIndex;
-  let bestScore = heldScore;
-  anchors.forEach((anchor) => {
-    const value = score(anchor);
-    if (value < bestScore - hysteresisPx) {
-      best = anchor.index;
-      bestScore = value;
-    }
+  let nearest = -1;
+  let nearestScore = Number.POSITIVE_INFINITY;
+  items.forEach((el, index) => {
+    const value = score(el.getBoundingClientRect());
+    if (value >= nearestScore) return;
+    nearest = index;
+    nearestScore = value;
   });
 
-  return best;
+  if (nearest < 0 || slotScore <= nearestScore + hysteresisPx) return currentIndex;
+
+  const rect = items[nearest].getBoundingClientRect();
+  const dx = centerX - (rect.left + rect.width / 2);
+  const dy = centerY - (rect.top + rect.height / 2);
+  const sameRow = Math.abs(dy) < rect.height / 2;
+  return (sameRow ? dx > 0 : dy > 0) ? nearest + 1 : nearest;
 };
 
 export const setLiftTransformOrigin = (
@@ -307,6 +309,8 @@ export type ResolveInsertContext = {
   currentIndex: number;
   /** Sign of travel through the page; 0 before the block has moved. */
   direction: number;
+  /** The drop slot as currently placed, so it can compete for the position. */
+  slot: HTMLElement | null;
 };
 
 export type ReorderHost = {
@@ -331,6 +335,17 @@ export type ReorderHost = {
   ) => { top: string; bottom: string; marginTop?: string };
   /** Tag for the drop slot. `div` suits a section list; a grid `<ul>` wants `li`. */
   indicatorTag?: string;
+  /**
+   * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
+   * wants a longer, gentler ramp than a page of full-width sections — the same
+   * pointer travel covers far more content.
+   */
+  scrollTuning?: {
+    deadZonePx?: number;
+    rampPx?: number;
+    maxScrollSpeed?: number;
+    velocitySmoothing?: number;
+  };
   /**
    * Where the lifted block would land. Defaults to the 1-D Y walk
    * ({@link resolveInsertIndexFromY}); two-dimensional hosts pass
@@ -435,7 +450,7 @@ export type ReorderController = {
  * this owns placement, FLIP, indicator fade, scroll, and drop glide.
  */
 export const createReorderController = (host: ReorderHost): ReorderController => {
-  const scrollDriver = createScrollDriver();
+  const scrollDriver = createScrollDriver(host.scrollTuning);
   const liftedClass = host.classes.lifted ?? 'is-lifted';
   let state = idleState();
   let dropIndicator: HTMLElement | null = null;
@@ -590,6 +605,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         centerY,
         currentIndex: state.placedIndex,
         direction: travelDirection,
+        slot: getIndicatorBody(),
       });
     }
     return resolveInsertIndexFromY(
