@@ -71,6 +71,10 @@ const listingGrids = ['home', 'work', 'play'] as const;
                 <input type="text" name={`image-${grid}`} data-dev-cover-url={grid} />
               </label>
               <label>
+                Hover image URL
+                <input type="text" name={`hoverImage-${grid}`} placeholder="Optional in-context shot" />
+              </label>
+              <label>
                 Card background
                 <input type="text" name={`bg-${grid}`} />
               </label>
@@ -297,8 +301,10 @@ const listingGrids = ['home', 'work', 'play'] as const;
 
   const buildListingPayload = (grid, formData) => {
     if (!formData.get(`listing-${grid}`)) return null;
+    const hoverImage = String(formData.get(`hoverImage-${grid}`) || '').trim();
     const listing = {
       image: String(formData.get(`image-${grid}`) || ''),
+      ...(hoverImage ? { hoverImage } : {}),
       bg: String(formData.get(`bg-${grid}`) || '#efefef'),
       dark: formData.get(`dark-${grid}`) === 'on',
       full: formData.get(`full-${grid}`) === 'on',
@@ -352,6 +358,7 @@ const listingGrids = ['home', 'work', 'play'] as const;
       const listing = payload.listings?.[grid];
       setFieldChecked(form, `listing-${grid}`, Boolean(listing));
       setFieldValue(form, `image-${grid}`, listing?.image ?? '');
+      setFieldValue(form, `hoverImage-${grid}`, listing?.hoverImage ?? '');
       setFieldValue(form, `bg-${grid}`, listing?.bg ?? '#efefef');
       setFieldChecked(form, `dark-${grid}`, Boolean(listing?.dark));
       setFieldChecked(form, `full-${grid}`, Boolean(listing?.full));

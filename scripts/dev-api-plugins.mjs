@@ -22,6 +22,7 @@ function validateStatus(status, fallback = 'draft') {
 }
 
 function listingCardForGrid(grid, listing, previous = {}) {
+  const hoverImage = String(listing.hoverImage || '').trim();
   const base = {
     order: previous.order ?? 999,
     image: String(listing.image || ''),
@@ -29,6 +30,7 @@ function listingCardForGrid(grid, listing, previous = {}) {
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
   };
+  if (hoverImage) base.hoverImage = hoverImage;
   if (grid === 'play') {
     return {
       ...base,
