@@ -41,7 +41,7 @@ const statusIcons = {
 >
   <div class="dev-project-settings" data-dev-project-settings-root>
     <p class="dev-project-settings__hint">
-      Title, year, visibility, and cover are edited on the card. This panel is for card layout extras.
+      Title, year, visibility, cover, and span are edited on the card. This panel is for card layout extras.
     </p>
 
     <div class="dev-project-settings__listing" data-ps-listing-fields>
@@ -53,11 +53,6 @@ const statusIcons = {
       <label class="dev-project-settings__inline">
         <input type="checkbox" data-ps-dark />
         <span>Light text on card</span>
-      </label>
-
-      <label class="dev-project-settings__inline" data-ps-full-wrap hidden>
-        <input type="checkbox" data-ps-full />
-        <span>Full-width card</span>
       </label>
     </div>
 
@@ -75,10 +70,8 @@ const statusIcons = {
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
-  const fullWrap = settingsRoot?.querySelector('[data-ps-full-wrap]');
   const bgInput = settingsRoot?.querySelector('[data-ps-bg]');
   const darkInput = settingsRoot?.querySelector('[data-ps-dark]');
-  const fullInput = settingsRoot?.querySelector('[data-ps-full]');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
@@ -437,14 +430,12 @@ const statusIcons = {
   const renderPanelFromEntry = (entry) => {
     if (bgInput instanceof HTMLInputElement) bgInput.value = entry.draft.listing.bg;
     if (darkInput instanceof HTMLInputElement) darkInput.checked = entry.draft.listing.dark;
-    if (fullInput instanceof HTMLInputElement) fullInput.checked = entry.draft.listing.full;
-    if (fullWrap instanceof HTMLElement) fullWrap.hidden = entry.grid === 'play';
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
       overlayTitle.textContent = `Project settings — ${gridLabel}`;
     }
     if (statusLine instanceof HTMLElement) {
-      statusLine.textContent = 'Card background, text colour, and width. Title/visibility edit on the card.';
+      statusLine.textContent = 'Card background and text colour. Title, visibility, cover, and span edit on the card.';
     }
   };
 
@@ -480,6 +471,173 @@ const statusIcons = {
       window.alert(error instanceof Error ? error.message : 'Could not load project settings.');
     }
   };
+
+  window.addEventListener('vcd:dev-project-settings-open', ((event) => {
+    const slug = String(event.detail?.slug || '').trim();
+    if (slug) void openSettings(slug);
+  }));
+
+  /** @type {HTMLElement | null} */
+  let spanModeItem = null;
+  /** @type {HTMLButtonElement | null} */
+  let spanModeChip = null;
+  /** @type {HTMLElement | null} */
+  let spanFrame = null;
+  /** @type {HTMLButtonElement | null} */
+  let spanHandle = null;
+  let spanDrag = null;
+
+  const cropPanelOpen = () => {
+    const panel = document.querySelector('[data-dev-panel-key="image"]');
+    return panel instanceof HTMLElement && !panel.hidden;
+  };
+
+  const syncSpanHandleSide = (item, handle) => {
+    if (!(item instanceof HTMLElement) || !(handle instanceof HTMLElement)) return;
+    const full = item.classList.contains('project-grid__item--full');
+    // Free/resize edge: full or left-column half → right; right-column half → left.
+    const side = full || item.offsetLeft < 24 ? 'end' : 'start';
+    handle.dataset.side = side;
+  };
+
+  const exitSpanMode = () => {
+    if (spanDrag) {
+      spanDrag = null;
+    }
+    if (spanModeChip) spanModeChip.setAttribute('aria-pressed', 'false');
+    if (spanModeItem) {
+      spanModeItem.classList.remove('is-span-mode', 'is-span-disabled');
+    }
+    spanFrame?.remove();
+    spanHandle?.remove();
+    spanFrame = null;
+    spanHandle = null;
+    spanModeItem = null;
+    spanModeChip = null;
+  };
+
+  const setSpanFull = async (item, full) => {
+    const slug = item.getAttribute('data-dev-project-slug');
+    if (!slug) return;
+    const grid = gridForItem(item);
+    if (grid === 'play') return;
+    try {
+      const entry = await ensureLoaded(slug, item);
+      entry.draft.listing.full = Boolean(full);
+      syncPendingFor(slug);
+      if (spanHandle) syncSpanHandleSide(item, spanHandle);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not update span.');
+    }
+  };
+
+  const enterSpanMode = (item, chip) => {
+    if (cropPanelOpen()) return;
+    exitSpanMode();
+    spanModeItem = item;
+    spanModeChip = chip;
+    item.classList.add('is-span-mode');
+    chip.setAttribute('aria-pressed', 'true');
+
+    const frame = document.createElement('div');
+    frame.className = 'project-grid__span-frame';
+    frame.setAttribute('aria-hidden', 'true');
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'project-grid__span-handle';
+    handle.setAttribute('aria-label', 'Drag to change column span');
+    syncSpanHandleSide(item, handle);
+    item.append(frame, handle);
+    spanFrame = frame;
+    spanHandle = handle;
+
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      if (cropPanelOpen()) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const grid = item.closest('[data-dev-project-grid]');
+      if (!(grid instanceof HTMLElement)) return;
+      const styles = getComputedStyle(grid);
+      const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 0;
+      const oneCol = (grid.clientWidth - gap) / 2;
+      const twoCol = grid.clientWidth;
+      const mid = (oneCol + twoCol) / 2;
+      const side = handle.dataset.side === 'start' ? 'start' : 'end';
+      spanDrag = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startWidth: item.getBoundingClientRect().width,
+        side,
+        mid,
+      };
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture can throw after a fast release.
+      }
+    });
+  };
+
+  const toggleSpanMode = async (item, chip) => {
+    if (spanModeItem === item) {
+      exitSpanMode();
+      return;
+    }
+    enterSpanMode(item, chip);
+  };
+
+  document.addEventListener('pointermove', (event) => {
+    if (!spanDrag || !spanModeItem) return;
+    if (event.pointerId !== spanDrag.pointerId) return;
+    const delta = event.clientX - spanDrag.startX;
+    const signed = spanDrag.side === 'end' ? delta : -delta;
+    const preview = spanDrag.startWidth + signed;
+    const nextFull = preview >= spanDrag.mid;
+    const current = spanModeItem.classList.contains('project-grid__item--full');
+    if (nextFull !== current) {
+      spanModeItem.classList.toggle('project-grid__item--full', nextFull);
+      if (spanHandle) syncSpanHandleSide(spanModeItem, spanHandle);
+    }
+  });
+
+  document.addEventListener('pointerup', (event) => {
+    if (!spanDrag || !spanModeItem) return;
+    if (event.pointerId !== spanDrag.pointerId) return;
+    const full = spanModeItem.classList.contains('project-grid__item--full');
+    spanDrag = null;
+    void setSpanFull(spanModeItem, full);
+  });
+
+  document.addEventListener('pointercancel', (event) => {
+    if (!spanDrag || event.pointerId !== spanDrag.pointerId) return;
+    spanDrag = null;
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!spanModeItem) return;
+    event.preventDefault();
+    event.stopPropagation();
+    exitSpanMode();
+  }, true);
+
+  window.addEventListener('vcd:dev-edit-open', ((event) => {
+    const panel = event.detail?.panel;
+    if (!(panel instanceof HTMLElement)) return;
+    if (panel.dataset.devPanelKey === 'image') {
+      // Exit span first so frame/handles are gone before crop chrome takes over.
+      if (spanModeItem) exitSpanMode();
+      document.documentElement.classList.add('is-dev-crop-open');
+    }
+  }));
+
+  window.addEventListener('vcd:dev-edit-close', ((event) => {
+    const panel = event.detail?.panel;
+    if (panel?.dataset?.devPanelKey === 'image') {
+      document.documentElement.classList.remove('is-dev-crop-open');
+    }
+  }));
 
   const uploadCoverImage = async (slug, file) => {
     const data = await readFileAsBase64(file);
@@ -535,13 +693,14 @@ const statusIcons = {
     }
   };
 
-  // Chips sit over the card — stop the (disarmed) card from eating the event.
+  // Chips sit on the <li> (outside the card <a>). preventDefault only — do not
+  // stopPropagation here or DevModeController never sees [data-dev-edit-trigger]
+  // (crop). Status / hover / span handlers below stop bubble themselves.
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (target.closest('.project-grid__chips, [data-dev-status-menu]')) {
       event.preventDefault();
-      event.stopPropagation();
       return;
     }
     // Belt-and-suspenders: title/year clicks must not bubble to the card's
@@ -607,12 +766,13 @@ const statusIcons = {
       return;
     }
 
-    const settingsButton = target.closest('[data-dev-project-settings]');
-    if (settingsButton instanceof HTMLElement) {
+    const spanButton = target.closest('[data-dev-project-span]');
+    if (spanButton instanceof HTMLElement) {
       event.preventDefault();
       event.stopPropagation();
-      const slug = settingsButton.dataset.devProjectSettings;
-      if (slug) void openSettings(slug);
+      const item = spanButton.closest('[data-dev-project-slug]');
+      if (!(item instanceof HTMLElement)) return;
+      void toggleSpanMode(item, spanButton);
       return;
     }
 
@@ -717,12 +877,11 @@ const statusIcons = {
   settingsRoot?.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (!target.matches('[data-ps-dark], [data-ps-full]')) return;
+    if (!target.matches('[data-ps-dark]')) return;
     if (!panelSlug) return;
     const entry = caches.get(panelSlug);
     if (!entry) return;
     entry.draft.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
-    entry.draft.listing.full = fullInput instanceof HTMLInputElement && fullInput.checked;
     syncPendingFor(panelSlug);
   });
 
@@ -811,12 +970,14 @@ const statusIcons = {
       enableAllCardEditing();
       return;
     }
+    exitSpanMode();
     disableAllCardEditing();
     closeSettingsPanel();
   });
 
   window.addEventListener('vcd:listing-grid-editor-change', (event) => {
     if (event.detail?.active) {
+      exitSpanMode();
       disableAllCardEditing();
       closeAllStatusMenus();
       return;

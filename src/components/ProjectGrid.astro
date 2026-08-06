@@ -1,11 +1,24 @@
 ---
-import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
+import cropIcon from 'lucide-static/icons/crop.svg?raw';
+import columns2Icon from 'lucide-static/icons/columns-2.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import imagesIcon from 'lucide-static/icons/images.svg?raw';
 import type { ProjectStatus } from '../lib/projects';
+import { projectImage } from '../lib/images';
 import { sizeIcon } from '../lib/icons';
+import {
+  normalizeImageVariants,
+  responsiveImageStyle,
+  type ImageVariants,
+} from '../lib/responsiveImage';
+import {
+  hasCropVariants,
+  imageDevEditAttrs,
+  imageSourceDims,
+} from '../lib/projectImageFrame';
+import '../styles/project.css';
 
 export type ProjectGridItem = {
   title: string;
@@ -23,6 +36,9 @@ export type ProjectGridItem = {
   status?: ProjectStatus;
   teaser?: boolean;
   teaserLabel?: string;
+  variants?: ImageVariants;
+  srcWidth?: number;
+  srcHeight?: number;
 };
 
 interface Props {
@@ -34,7 +50,8 @@ interface Props {
 const { items, variant = 'work' } = Astro.props;
 const isDev = import.meta.env.DEV;
 
-const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
+const cropIconSvg = sizeIcon(cropIcon, 14);
+const spanIconSvg = sizeIcon(columns2Icon, 14);
 const hoverIconSvg = sizeIcon(imagesIcon, 14);
 const statusIcons = {
   published: sizeIcon(globeIcon, 14),
@@ -44,6 +61,12 @@ const statusIcons = {
 
 const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
 const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
+
+/** Match the CSS frame the card uses at the desktop breakpoint. */
+const coverDefaultAspect = (item: ProjectGridItem) => {
+  if (item.full && variant === 'work') return '16:9';
+  return '4:3';
+};
 ---
 
 <ul class:list={['project-grid', `project-grid--${variant}`]} data-dev-project-grid={variant}>
@@ -53,23 +76,63 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
     const status = (item.status ?? 'published') as keyof typeof statusIcons;
     const statusIconSvg = statusIcons[status] ?? statusIcons.published;
+    const defaultAspect = coverDefaultAspect(item);
+    const srcDims = imageSourceDims(item);
+    const hasCrop = hasCropVariants(item.variants);
+    const normalized = hasCrop
+      ? normalizeImageVariants(item.variants, defaultAspect, srcDims)
+      : undefined;
+    const seedVariants = normalizeImageVariants(item.variants, defaultAspect, srcDims);
+    const editable = isDev && Boolean(item.slug);
+    const editAttrs = editable
+      ? imageDevEditAttrs(true, {
+          documentKey: item.slug!,
+          path: ['listings', variant],
+          cropId: `listing-${variant}`,
+          variants: seedVariants,
+          gridDefaultAspect: defaultAspect,
+        })
+      : undefined;
 
     const cover = (
       <div
-        class:list={['project-grid__cover', 'relative', 'overflow-hidden', item.hoverImage && 'project-grid__cover--has-hover']}
-        style={`background-color: ${item.bg}`}
-        data-dev-cover-drop={isDev && item.slug ? item.slug : undefined}
+        class:list={[
+          'project-grid__cover',
+          'relative',
+          !hasCrop && 'overflow-hidden',
+          item.hoverImage && 'project-grid__cover--has-hover',
+          hasCrop && 'project-cropped project-responsive-image',
+          editable && 'dev-image-edit-target',
+        ]}
+        style={[
+          `background-color: ${item.bg}`,
+          normalized ? responsiveImageStyle(normalized, srcDims) : '',
+        ].filter(Boolean).join(';')}
+        data-dev-cover-drop={editable ? item.slug : undefined}
+        data-dev-listing-cover={editable ? variant : undefined}
+        {...(editAttrs ?? {})}
       >
         <div class="project-grid__stack">
-          <img
-            src={item.image}
-            alt={item.title}
-            class="project-grid__img project-grid__img--base w-full h-full object-cover"
-            loading="lazy"
-          />
+          {hasCrop ? (
+            <div class="project-crop-clip">
+              <img
+                src={projectImage(item.image)}
+                alt={item.title}
+                class="project-grid__img project-grid__img--base"
+                loading="lazy"
+              />
+            </div>
+          ) : (
+            <img
+              src={projectImage(item.image)}
+              alt={item.title}
+              class="project-grid__img project-grid__img--base w-full h-full object-cover"
+              loading="lazy"
+            />
+          )}
           {item.hoverImage && (
             <img
-              src={item.hoverImage}
+              src={projectImage(item.hoverImage)}
               alt=""
               class="project-grid__img project-grid__img--hover w-full h-full object-cover"
               loading="lazy"
@@ -141,7 +204,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
             {cover}
           </a>
         )}
-        {isDev && item.slug && (
+        {editable && (
           <div class="project-grid__chips project-grid__chips--start" data-dev-mode-only>
             <div class="project-grid__status-wrap">
               <button
@@ -169,7 +232,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
             </div>
           </div>
         )}
-        {isDev && item.slug && (
+        {editable && (
           <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
             {item.hoverImage && (
               <button
@@ -183,14 +246,26 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
                 <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
               </button>
             )}
+            {variant !== 'play' && (
+              <button
+                type="button"
+                class="project-grid__chip"
+                data-dev-project-span={item.slug}
+                aria-label={`Span columns for ${item.title}`}
+                aria-pressed="false"
+                title="Span columns"
+              >
+                <span class="project-grid__chip-icon" aria-hidden="true" set:html={spanIconSvg} />
+              </button>
+            )}
             <button
               type="button"
-              class="project-grid__chip project-grid__settings"
-              data-dev-project-settings={item.slug}
-              aria-label={`Settings for ${item.title}`}
-              title="Project settings"
+              class="project-grid__chip"
+              data-dev-edit-trigger="image"
+              aria-label={`Crop cover for ${item.title}`}
+              title="Crop cover"
             >
-              <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={cropIconSvg} />
             </button>
           </div>
         )}
@@ -224,21 +299,25 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     grid-column: span 2;
   }
 
-  .project-grid--home .project-grid__item--full .project-grid__cover {
+  .project-grid--home .project-grid__item--full .project-grid__cover:not(.project-cropped) {
     aspect-ratio: 16 / 12;
   }
 
-  .project-grid--work .project-grid__item--full .project-grid__cover {
+  .project-grid--work .project-grid__item--full .project-grid__cover:not(.project-cropped) {
     aspect-ratio: 16 / 9;
   }
 
-  .project-grid__item--full .project-grid__img {
+  .project-grid__item--full .project-grid__cover:not(.project-cropped) .project-grid__img {
     object-position: center center;
   }
 
   .project-grid__cover {
     aspect-ratio: 4 / 3;
     transform: translateZ(0);
+  }
+
+  .project-grid__cover.project-cropped {
+    aspect-ratio: var(--project-image-ratio);
   }
 
   .project-grid__stack {
@@ -478,9 +557,9 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     }
 
     .project-grid--work .project-grid__item--full,
-    .project-grid--play .project-grid__cover,
-    .project-grid--work .project-grid__cover,
-    .project-grid--work .project-grid__item--full .project-grid__cover {
+    .project-grid--play .project-grid__cover:not(.project-cropped),
+    .project-grid--work .project-grid__cover:not(.project-cropped),
+    .project-grid--work .project-grid__item--full .project-grid__cover:not(.project-cropped) {
       aspect-ratio: 1 / 1;
     }
 
@@ -494,9 +573,9 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
       grid-template-columns: 1fr;
     }
 
-    .project-grid__cover,
-    .project-grid--home .project-grid__item--full .project-grid__cover,
-    .project-grid--work .project-grid__item--full .project-grid__cover {
+    .project-grid__cover:not(.project-cropped),
+    .project-grid--home .project-grid__item--full .project-grid__cover:not(.project-cropped),
+    .project-grid--work .project-grid__item--full .project-grid__cover:not(.project-cropped) {
       aspect-ratio: 4 / 3;
     }
   }
@@ -565,5 +644,78 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     content: attr(data-placeholder);
     color: color-mix(in srgb, currentColor 45%, transparent);
     pointer-events: none;
+  }
+
+  /* Cropped gallery covers: stack nests the clip; project.css expects a direct child.
+     Do not use `inset: auto` here — that shorthand resets top/left and pins the
+     bitmap to the top-left (ghost omits inset and stays centred). */
+  .project-grid__cover.project-cropped > .project-grid__stack > .project-crop-clip > img,
+  .project-grid__cover.project-cropped > .project-grid__stack > img.project-grid__img--base {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    right: auto;
+    bottom: auto;
+    width: calc(100% / var(--project-content-w, 1));
+    height: auto;
+    max-width: none;
+    min-height: 0;
+    object-fit: fill;
+    transform: translate(
+      calc(var(--project-content-cx, 0.5) * -100%),
+      calc(var(--project-content-cy, 0.5) * -100%)
+    );
+  }
+
+  .is-dev-mode .dev-crop-stage-host.project-grid__cover {
+    overflow: visible;
+  }
+
+  /* Span mode — on-card frame + edge handle (1↔2 columns). */
+  .project-grid__item.is-span-mode .project-grid__span-frame {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    border: 1.5px solid color-mix(in srgb, var(--color-text) 55%, transparent);
+    border-radius: 0;
+    pointer-events: none;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-bg) 40%, transparent);
+  }
+
+  .project-grid__item.is-span-mode .project-grid__span-handle {
+    position: absolute;
+    bottom: 0.55em;
+    z-index: 6;
+    width: 1.1em;
+    height: 1.1em;
+    padding: 0;
+    border: 1.5px solid color-mix(in srgb, var(--color-text) 70%, transparent);
+    border-radius: 0.15em;
+    background: color-mix(in srgb, var(--color-surface-control) 94%, transparent);
+    backdrop-filter: blur(8px);
+    cursor: ew-resize;
+    pointer-events: auto;
+    touch-action: none;
+  }
+
+  .project-grid__item.is-span-mode .project-grid__span-handle[data-side='end'] {
+    right: 0.55em;
+    left: auto;
+  }
+
+  .project-grid__item.is-span-mode .project-grid__span-handle[data-side='start'] {
+    left: 0.55em;
+    right: auto;
+  }
+
+  .project-grid__item.is-span-mode .project-grid__span-handle:active {
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+  }
+
+  /* Crop panel open: don't enter / keep span handles dead. */
+  html.is-dev-crop-open .project-grid__item.is-span-mode .project-grid__span-handle,
+  .project-grid__item.is-span-mode.is-span-disabled .project-grid__span-handle {
+    pointer-events: none;
+    opacity: 0.35;
   }
 </style>
