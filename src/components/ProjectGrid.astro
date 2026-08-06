@@ -563,7 +563,6 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     letter-spacing: -0.02em;
     line-height: 1.2;
     text-align: center;
-    /* Readable on any cover without a filled veil. */
     filter:
       drop-shadow(0 0 0.15em rgb(255 255 255 / 0.95))
       drop-shadow(0 0.05em 0.2em rgb(0 0 0 / 0.45));
@@ -577,13 +576,20 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 0;
   }
 
-  .project-grid__cover .project-grid__stack {
+  /*
+    Wash toward page white — do NOT lower stack opacity (that reveals the
+    listing card `bg` fill behind the images).
+  */
+  .project-grid__cover[data-dev-drop-active='true']::after,
+  .project-grid__cover[data-dev-iris-active='true']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: var(--color-bg);
+    opacity: 0.55;
+    pointer-events: none;
     transition: opacity 0.2s ease;
-  }
-
-  .project-grid__cover[data-dev-drop-active='true'] .project-grid__stack,
-  .project-grid__cover[data-dev-iris-active='true'] .project-grid__stack {
-    opacity: 0.45;
   }
 
   .project-grid__item:has(.project-grid__cover[data-dev-drop-active='true']) .project-grid__chips,
@@ -604,7 +610,8 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
 
   @media (prefers-reduced-motion: reduce) {
     .project-grid__drop-veil,
-    .project-grid__cover .project-grid__stack {
+    .project-grid__cover[data-dev-drop-active='true']::after,
+    .project-grid__cover[data-dev-iris-active='true']::after {
       transition: none;
     }
   }
