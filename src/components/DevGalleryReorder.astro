@@ -29,6 +29,9 @@
   let sessionSeq = 0;
   let activeSessionId = 0;
   let droppingSessionId = 0;
+  /** Button held. Cleanup keys off this, not the controller — a lift that never
+      took must still put back the page-level drag chrome it turned on. */
+  let sessionButtonDown = false;
 
   let keyboardGrabItem: HTMLElement | null = null;
   let keyboardGrabHandle: HTMLButtonElement | null = null;
@@ -227,6 +230,7 @@
         attachLiftBackdrop(item);
       }
 
+      sessionButtonDown = true;
       reveal.hold();
       document.documentElement.classList.add(DRAGGING_CLASS);
       event.preventDefault();
@@ -262,6 +266,10 @@
   };
 
   const mountAllHandles = () => {
+    // The drop slot is a direct child of the grid, so every relocate trips the
+    // observer. Nothing needs mounting mid-drag — the cards are all already
+    // wired, and re-running the pass on each FLIP is pure churn.
+    if (controller.isActive()) return;
     grids().forEach((grid) => {
       observeGrid(grid);
       gridItems(grid).forEach((item) => {
@@ -277,13 +285,15 @@
   // ---------------------------------------------------------------------
 
   const finishPointerSession = async () => {
-    if (!dragItem || !controller.isActive()) return;
+    if (!dragItem) return;
+    if (!controller.isActive() && !sessionButtonDown) return;
     if (droppingSessionId === activeSessionId) return;
 
     const grid = activeGrid;
     const handle = dragHandle;
     const pointerId = dragPointerId;
     const sessionId = activeSessionId;
+    sessionButtonDown = false;
 
     if (handle && pointerId != null) {
       try {
@@ -296,15 +306,15 @@
     droppingSessionId = sessionId;
     try {
       await controller.endDrop();
-      if (sessionId === activeSessionId) {
-        removeLiftBackdrop();
-        document.documentElement.classList.remove(DRAGGING_CLASS);
-        reveal.release();
-        if (grid) syncPending(grid);
-      }
+      if (sessionId === activeSessionId && grid) syncPending(grid);
     } finally {
       if (droppingSessionId === sessionId) droppingSessionId = 0;
       if (sessionId === activeSessionId) {
+        // Page-level chrome comes off even if the drop threw — leaving it on
+        // strands dev mode with hidden chips and a held proximity gate.
+        removeLiftBackdrop();
+        document.documentElement.classList.remove(DRAGGING_CLASS);
+        reveal.release();
         dragItem = null;
         dragHandle = null;
         dragPointerId = null;
@@ -321,6 +331,15 @@
 
     activeSessionId = 0;
     droppingSessionId = 0;
+    sessionButtonDown = false;
+
+    if (dragHandle && dragPointerId != null) {
+      try {
+        dragHandle.releasePointerCapture(dragPointerId);
+      } catch {
+        // Pointer may already be released.
+      }
+    }
 
     controller.destroy();
     removeLiftBackdrop();
@@ -615,6 +634,19 @@
     border-radius: var(--radius-control-smooth, 0.35em);
     background: color-mix(in srgb, var(--color-surface-soft) 85%, transparent);
     opacity: 0;
+  }
+
+  /*
+    The controller spawns a fading copy of the old slot on every relocate,
+    positioning it with inline top/left/width/height. Without `fixed` those
+    inline values do nothing and the ghost lands in the grid as a real cell —
+    a phantom column that shoves the row sideways for the length of its fade.
+  */
+  .dev-grid-drop-indicator__body.is-drop-indicator-fade-ghost {
+    position: fixed;
+    z-index: 90;
+    margin: 0;
+    pointer-events: none;
   }
 
   .is-grid-flip-moving {
