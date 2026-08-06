@@ -140,6 +140,11 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             />
           )}
         </div>
+        {isDev && item.slug && (
+          <div class="project-grid__drop-veil" aria-hidden="true">
+            <span class="project-grid__drop-label">Replace cover image</span>
+          </div>
+        )}
         <div class="project-grid__meta absolute bottom-0 left-0 right-0">
           <div class="flex items-baseline gap-2">
             <h2
@@ -360,6 +365,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   .project-grid__meta {
+    /* Above cover-drop wash / crossfade overlay so the title doesn’t pop in at the end. */
+    z-index: 5;
     opacity: 0;
     padding: var(--space-unit);
     transition: opacity 0.3s ease;
@@ -470,11 +477,6 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   .project-grid__status-menu button:hover,
   .project-grid__status-menu button[aria-selected='true'] {
     background: color-mix(in srgb, var(--color-surface-press) 80%, transparent);
-  }
-
-  .project-grid__cover[data-dev-drop-active='true'] {
-    outline: 2px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
-    outline-offset: -0.4em;
   }
 
   .project-grid__new-page {
@@ -617,6 +619,97 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   .project-grid__item:focus-within .project-grid__chips {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /*
+    Cover-drop chrome must be global — the crossfade overlay is created in JS
+    (no Astro scope attr), and scoped drop-active selectors were a no-op
+    in the same way chip placement was.
+  */
+  .project-grid__drop-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .project-grid__drop-label {
+    color: var(--color-text);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    text-align: center;
+    filter:
+      drop-shadow(0 0 0.15em rgb(255 255 255 / 0.95))
+      drop-shadow(0 0.05em 0.2em rgb(0 0 0 / 0.45));
+  }
+
+  .project-grid__cover[data-dev-drop-active='true'] .project-grid__drop-veil {
+    opacity: 1;
+  }
+
+  /*
+    Wash toward page white — do NOT lower stack opacity (that reveals the
+    listing card `bg` fill behind the images).
+  */
+  .project-grid__cover[data-dev-drop-active='true']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    background: var(--color-bg);
+    opacity: 0.55;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+
+  .project-grid__item:has(.project-grid__cover[data-dev-drop-active='true']) .project-grid__chips,
+  .project-grid__item:has(.project-grid__cover[data-dev-crossfade-active='true']) .project-grid__chips {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  /* During replace: hold page white under the fades so listing `bg` never peeks. */
+  .project-grid__cover[data-dev-crossfade-active='true'] {
+    background-color: var(--color-bg) !important;
+  }
+
+  .project-grid__cover[data-dev-crossfade-active='true'] .project-grid__stack {
+    transition: opacity 0.55s ease;
+  }
+
+  .project-grid__cover[data-dev-fade-out='true'] .project-grid__stack {
+    opacity: 0;
+  }
+
+  .project-grid__crossfade {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.55s ease;
+  }
+
+  .project-grid__crossfade.is-in {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-grid__drop-veil,
+    .project-grid__cover[data-dev-drop-active='true']::after,
+    .project-grid__cover[data-dev-crossfade-active='true'] .project-grid__stack,
+    .project-grid__crossfade {
+      transition: none;
+    }
   }
 
   /* Layer 1: titles stay readable for inline edit without hovering the card. */
