@@ -1,5 +1,5 @@
 ---
-description: Start/stop the local Astro + Decap dev session for VCDwebsite
+description: Start/stop the local Astro + branch-sync dev session for VCDwebsite
 alwaysApply: true
 ---
 
@@ -14,12 +14,10 @@ Phrases like: *"I'm going to work on the site"*, *"start dev session"*, *"spin u
 1. Run `bun run dev:session:status` first.
 2. If already running → report URLs and continue work. Do **not** start again.
 3. If stopped → run `bun run dev:session` (uses `$HOME/.bun/bin/bun` via the script).
-   - **Run it in the foreground — never wrap the start command with `&`, and never launch it as a backgrounded shell job.** The script self-daemonizes Astro + Decap and returns on its own (~20s). Backgrounding the *whole* start command puts the servers in the agent's short-lived process group, so they get killed the moment that command ends. If you need to wait, use a longer block/await on the foreground command instead of `&`.
+   - **Run it in the foreground — never wrap the start command with `&`, and never launch it as a backgrounded shell job.** The script self-daemonizes Astro + branch sync and returns on its own (~20s). Backgrounding the *whole* start command puts the servers in the agent's short-lived process group, so they get killed the moment that command ends. If you need to wait, use a longer block/await on the foreground command instead of `&`.
 4. Tell the user:
    - Site: `http://localhost:4321`
-   - CMS: `http://localhost:4321/admin`
    - Phone (same Wi‑Fi): `http://<lan-ip>:4321` — also printed by `dev:session:status` as `Phone:`
-   - Decap proxy: `http://localhost:8081`
 
 For preview/testing in this chat, assume these URLs are available. Prefer browser checks against localhost rather than starting new dev servers.
 
@@ -28,7 +26,7 @@ For preview/testing in this chat, assume these URLs are available. Prefer browse
 Phrases like: *"I'm done"*, *"shut down the dev session"*, *"stop the servers"*, *"wrap up the site session"*.
 
 1. Run `bun run dev:session:stop`.
-2. Confirm both Astro and Decap are stopped (`bun run dev:session:status` should show both stopped).
+2. Confirm Astro (and sync) are stopped (`bun run dev:session:status` should show both stopped).
 3. Briefly confirm the user can archive this chat.
 
 ## Manual commands
@@ -39,7 +37,7 @@ bun run dev:session:status   # check
 bun run dev:session:stop     # stop
 ```
 
-Logs: `.dev-session/astro.log`, `.dev-session/decap.log`, `.dev-session/branch-sync.log`
+Logs: `.dev-session/astro.log`, `.dev-session/branch-sync.log`
 
 ## Branch sync (auto-pull)
 
