@@ -624,26 +624,32 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Dark covers (listings.*.dark): light glyphs at rest. Hover keeps the light
-    frosted fill and adds a thin inset dark-gray ring; press / latched states
-    fill with that same gray so the ring cue still reads (icons go light again).
+    Dark covers (listings.*.dark): white glyphs always.
+    Rest — no chip fill / ring (cover is the dark ground).
+    Hover — dark fill + 1px inset ring slightly lighter than that fill.
+    Press / latched — fill becomes the ring colour (ring can stay; it blends).
   */
+  .project-grid__item[data-dev-dark='true'] {
+    --project-grid-chip-ring: color-mix(in srgb, var(--color-bg) 36%, #1a1a1a);
+    --project-grid-chip-fill: rgb(0 0 0 / 0.58);
+  }
+
   .project-grid__item[data-dev-dark='true'] .project-grid__chip {
     color: var(--color-bg);
   }
 
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:hover,
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible {
-    /* Light fill comes from the base chip:hover rule; dark icons on that fill. */
-    box-shadow: inset 0 0 0 1.5px var(--color-text-soft);
-    color: var(--color-text);
+    background: var(--project-grid-chip-fill);
+    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
+    color: var(--color-bg);
   }
 
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:active,
   .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
   .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
-    background: var(--color-text-soft);
-    box-shadow: inset 0 0 0 1.5px var(--color-text-soft);
+    background: var(--project-grid-chip-ring);
+    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
     color: var(--color-bg);
   }
 
