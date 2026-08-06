@@ -336,6 +336,13 @@ export type ReorderHost = {
   /** Tag for the drop slot. `div` suits a section list; a grid `<ul>` wants `li`. */
   indicatorTag?: string;
   /**
+   * Easing for neighbours yielding to the slot. Defaults to `ease-out`, which
+   * suits a section's long vertical travel. Grid neighbours hop a short
+   * diagonal, over which the same curve reads flat — they want a curve that
+   * front-loads more of the distance.
+   */
+  flipEasing?: string;
+  /**
    * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
    * wants a longer, gentler ramp than a page of full-width sections — the same
    * pointer travel covers far more content.
@@ -730,8 +737,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     flipRafId = requestAnimationFrame(() => {
       flipRafId = 0;
       if (generation !== flipGeneration) return;
+      const easing = host.flipEasing ?? 'ease-out';
       moving.forEach((el) => {
-        el.style.transition = `transform ${motionMs}ms ease-out`;
+        el.style.transition = `transform ${motionMs}ms ${easing}`;
         el.style.transform = '';
       });
       flipCleanupTimer = setTimeout(() => {
@@ -1126,6 +1134,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       setLiftTransformOrigin(item, handle);
 
       dropIndicator = createIndicator();
+      // Size and span the slot *before* it enters the flow. Inserting a bare
+      // cell and correcting it inside syncPlacement costs a frame of wrong
+      // layout — unnoticeable in a single column, violent in a grid, where a
+      // column-spanning block is briefly replaced by a one-column, zero-height
+      // cell and every card after it reflows and snaps back.
+      applySlotMetrics(sourceIndex);
+      host.onSlotSync?.(dropIndicator, sourceIndex);
       item.before(dropIndicator);
       syncPlacement(sourceIndex);
       // `is-visible` holds the vacated space open straight away, but the slot

@@ -141,6 +141,11 @@
     getDropZone: () => activeGrid,
     getDragItem: () => dragItem,
     indicatorTag: 'li',
+    // easeOutQuint. A neighbour hopping one cell covers a fraction of a
+    // section's travel, and plain ease-out spends too much of a short distance
+    // near constant speed — it reads linear. This dumps most of the distance
+    // early and lands soft.
+    flipEasing: 'cubic-bezier(0.22, 1, 0.36, 1)',
     classes: {
       indicator: 'dev-grid-drop-indicator',
       indicatorBody: 'dev-grid-drop-indicator__body',
@@ -687,6 +692,19 @@
 
   html.is-grid-reorder-dragging .project-grid__card {
     pointer-events: none;
+  }
+
+  /* One interaction at a time: a lift owns the page, so the inline-edit dashes
+     on titles and years step aside with the chips rather than riding along on
+     the card. Their own rule lives in ProjectGrid.astro and is more specific,
+     hence the override. */
+  html.is-grid-reorder-dragging
+    :is(
+      [data-dev-project-title],
+      [data-dev-project-subtitle],
+      [data-dev-project-teaser-label]
+    )[contenteditable] {
+    outline-color: transparent !important;
   }
 
   @media (prefers-reduced-motion: reduce) {
