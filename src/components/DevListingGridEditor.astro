@@ -3,12 +3,7 @@
 ---
 
 <script>
-  import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
-  import { sizeIcon } from '../lib/icons';
-
   const GRID_SELECTOR = '[data-dev-project-grid]';
-  const DRAG_HANDLE_ATTR = 'data-dev-grid-drag-handle';
-  const GRIP_SVG = sizeIcon(gripIcon, 14);
 
   type ListingOrderEntry =
     | { type: 'project'; slug: string; order: number; full: boolean }
@@ -104,22 +99,6 @@
   const itemLabel = (item: HTMLElement) =>
     item.querySelector('.project-grid__title')?.textContent?.trim() || 'item';
 
-  const mountDragHandle = (item: HTMLElement) => {
-    let handle = item.querySelector<HTMLButtonElement>(`[${DRAG_HANDLE_ATTR}]`);
-    if (!handle) {
-      handle = document.createElement('button');
-      handle.type = 'button';
-      handle.className = 'project-grid__drag-handle';
-      handle.setAttribute(DRAG_HANDLE_ATTR, '');
-      handle.setAttribute('aria-label', `Drag to reorder ${itemLabel(item)}`);
-      handle.title = 'Drag to reorder · Save to persist';
-      handle.innerHTML = `<span class="project-grid__drag-handle-icon" aria-hidden="true">${GRIP_SVG}</span>`;
-      item.append(handle);
-    }
-    handle.tabIndex = -1;
-    handle.hidden = false;
-  };
-
   const setGridItemReorderable = (active: boolean) => {
     grids().forEach((grid) => {
       grid.setAttribute('aria-dropeffect', active ? 'move' : 'none');
@@ -130,11 +109,8 @@
         item.toggleAttribute('data-dev-grid-draggable', active);
         if (active) {
           item.setAttribute('aria-label', `Reorder ${itemLabel(item)}`);
-          mountDragHandle(item);
         } else {
           item.removeAttribute('aria-label');
-          const handle = item.querySelector<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`);
-          if (handle) handle.hidden = true;
         }
       });
     });
@@ -171,7 +147,6 @@
     if (gridEditorActive && dragGrid) syncPending(dragGrid);
     if (dragItem) {
       dragItem.classList.remove('is-grid-dragging');
-      document.documentElement.classList.remove('is-listing-grid-holding');
       if (dragPointerId != null) {
         try {
           dragItem.releasePointerCapture(dragPointerId);
@@ -251,10 +226,7 @@
 
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    const handle = target.closest<HTMLElement>(`[${DRAG_HANDLE_ATTR}]`);
-    if (!handle || handle.hidden) return;
-
-    const item = handle.closest<HTMLElement>('.project-grid__item[data-dev-grid-draggable]');
+    const item = target.closest<HTMLElement>('.project-grid__item[data-dev-grid-draggable]');
     if (!item) return;
 
     const grid = item.closest<HTMLElement>(GRID_SELECTOR);
@@ -264,10 +236,8 @@
     dragGrid = grid;
     dragPointerId = event.pointerId;
     item.classList.add('is-grid-dragging');
-    document.documentElement.classList.add('is-listing-grid-holding');
     item.setPointerCapture(event.pointerId);
     event.preventDefault();
-    event.stopPropagation();
   });
 
   document.addEventListener('pointermove', (event) => {
@@ -277,7 +247,7 @@
     if (!grid) return;
 
     const hoverItem = hoverItemAtPoint(grid, event.clientX, event.clientY);
-    gridItems(grid).forEach((node) => node.classList.remove('is-grid-drop-target'));
+    gridItems(grid).forEach((item) => item.classList.remove('is-grid-drop-target'));
     if (!hoverItem || hoverItem === dragItem) return;
 
     hoverItem.classList.add('is-grid-drop-target');
@@ -351,84 +321,32 @@
 </script>
 
 <style is:global>
-  /*
-    Rearrange stays inside Edit — no dashed “other mode” frame around the grid.
-    Dirty cue mirrors section-order: subtle dashed outline only when pending.
-  */
+  .show-listing-grid-editor [data-dev-project-grid] {
+    outline: 1px dashed #b8b4ab;
+    outline-offset: 0.35em;
+  }
+
   .show-listing-grid-editor [data-dev-project-grid].is-grid-order-dirty {
-    outline: 2px dashed color-mix(in srgb, currentColor 45%, transparent);
-    outline-offset: 0.55em;
+    outline-style: solid;
+    outline-color: #6f6b62;
   }
 
   .show-listing-grid-editor .project-grid__item[data-dev-grid-draggable] {
-    touch-action: none;
-  }
-
-  .project-grid__drag-handle {
-    position: absolute;
-    top: 0.75em;
-    left: 0.75em;
-    z-index: 6;
-    display: grid;
-    place-items: center;
-    margin: 0;
-    padding: 0.45em 0.55em;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: transparent;
-    color: var(--color-text);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1;
     cursor: grab;
     touch-action: none;
-    /* Ghost at rest; fill on hover — same language as .dev-section-drag-handle. */
-    transition:
-      background-color 0.15s ease,
-      box-shadow 0.15s ease,
-      transform 0.15s ease;
-  }
-
-  .project-grid__drag-handle[hidden] {
-    display: none;
-  }
-
-  .project-grid__drag-handle-icon {
-    display: grid;
-    place-items: center;
-    line-height: 0;
-    pointer-events: none;
-    filter:
-      drop-shadow(0 0 0.12em rgb(255 255 255 / 0.95))
-      drop-shadow(0 0.05em 0.15em rgb(0 0 0 / 0.4));
-  }
-
-  .show-listing-grid-editor .project-grid__drag-handle:hover,
-  .show-listing-grid-editor .project-grid__drag-handle:focus-visible,
-  html.is-listing-grid-holding .project-grid__item.is-grid-dragging .project-grid__drag-handle {
-    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    backdrop-filter: blur(8px);
-    transform: scale(1.08);
-  }
-
-  .show-listing-grid-editor .project-grid__drag-handle:active,
-  html.is-listing-grid-holding .project-grid__item.is-grid-dragging .project-grid__drag-handle {
-    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
-    cursor: grabbing;
   }
 
   .show-listing-grid-editor .project-grid__item.is-grid-dragging,
   .show-listing-grid-editor .project-grid__item.is-grid-keyboard-grabbed {
-    z-index: 4;
+    opacity: 0.55;
     cursor: grabbing;
-    transform: scale(1.02);
-    box-shadow: 0 0.55em 1.4em rgb(0 0 0 / 0.14);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    outline: 2px solid #6f6b62;
+    outline-offset: 2px;
   }
 
   .show-listing-grid-editor .project-grid__item.is-grid-drop-target {
-    outline: 2px solid color-mix(in srgb, var(--color-text) 35%, transparent);
-    outline-offset: 3px;
+    outline: 2px solid #6f6b62;
+    outline-offset: 2px;
   }
 
   .show-listing-grid-editor .project-grid__item[data-dev-grid-draggable] .project-grid__card {
@@ -438,14 +356,5 @@
   .show-listing-grid-editor .project-grid__item--new,
   .show-listing-grid-editor .project-grid__chips {
     display: none;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .show-listing-grid-editor .project-grid__item.is-grid-dragging,
-    .show-listing-grid-editor .project-grid__item.is-grid-keyboard-grabbed,
-    .project-grid__drag-handle {
-      transition: none;
-      transform: none;
-    }
   }
 </style>
