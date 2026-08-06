@@ -783,6 +783,213 @@ export function sectionOrderDevWriter() {
   };
 }
 
+function listingImageUrl(src) {
+  const value = String(src || '').trim();
+  if (!value) return '/images/black-token.svg';
+  if (value.startsWith('draft:')) {
+    const draftPath = value.slice('draft:'.length);
+    return `/draft-media/${draftPath.split('/').map(encodeURIComponent).join('/')}`;
+  }
+  if (value.startsWith('/')) return value;
+  return `/images/${value.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+function seedListingCard(grid, data, order) {
+  const previous = data.listings && typeof data.listings === 'object' ? data.listings : {};
+  const sibling = LISTING_GRIDS.map((key) => previous[key]).find(Boolean) ?? {};
+  const year = `'${new Date().getFullYear().toString().slice(-2)}`;
+  const image = String(
+    sibling.image
+    || data.teaser?.coverImage
+    || '/images/black-token.svg',
+  );
+  const base = {
+    order,
+    image,
+    bg: String(sibling.bg || '#efefef'),
+    dark: Boolean(sibling.dark),
+    full: false,
+  };
+  const hoverImage = String(sibling.hoverImage || '').trim();
+  if (hoverImage) base.hoverImage = hoverImage;
+  if (grid === 'play') {
+    return {
+      ...base,
+      meta: String(sibling.meta || sibling.year || ''),
+    };
+  }
+  return {
+    ...base,
+    year: String(sibling.year || sibling.meta || year),
+  };
+}
+
+function coverForGalleryPage(data, grid) {
+  const listings = data.listings && typeof data.listings === 'object' ? data.listings : {};
+  const onGallery = Boolean(listings[grid]);
+  const listing = listings[grid]
+    ?? LISTING_GRIDS.map((key) => listings[key]).find(Boolean)
+    ?? {};
+  const isTeaser = data.status === 'teaser';
+  const image = isTeaser
+    ? (data.teaser?.coverImage || listing.image || '/images/black-token.svg')
+    : (listing.image || data.teaser?.coverImage || '/images/black-token.svg');
+  return {
+    onGallery,
+    image: String(image || '/images/black-token.svg'),
+    coverUrl: listingImageUrl(image),
+    bg: String(listing.bg || '#efefef'),
+    dark: Boolean(listing.dark),
+    full: Boolean(listing.full),
+    subtitle: String(grid === 'play' ? (listing.meta || '') : (listing.year || '')),
+    hoverImage: String(listing.hoverImage || ''),
+  };
+}
+
+/** Toggle which projects appear on Home / Work / Play (`listings[grid]` presence). */
+export function galleryMembershipDevWriter() {
+  return {
+    name: 'gallery-membership-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/gallery-membership', async (req, res, next) => {
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+
+        if (req.method === 'GET') {
+          try {
+            const url = new URL(req.url ?? '/', 'http://localhost');
+            const grid = String(url.searchParams.get('grid') || '');
+            if (!LISTING_GRIDS.includes(grid)) {
+              send(400, { error: 'That gallery cannot be edited.' });
+              return;
+            }
+            const projectsDir = path.join(process.cwd(), 'src/content/projects');
+            const files = readdirSync(projectsDir)
+              .filter((file) => file.endsWith('.json') && !file.endsWith('-old.json'));
+            /** @type {Array<Record<string, unknown>>} */
+            const pages = [];
+            for (const file of files) {
+              const slug = file.replace(/\.json$/, '');
+              try {
+                const data = JSON.parse(await readFile(path.join(projectsDir, file), 'utf8'));
+                const cover = coverForGalleryPage(data, grid);
+                pages.push({
+                  slug,
+                  title: String(data.title || slug),
+                  status: validateStatus(data.status, 'published'),
+                  ...cover,
+                });
+              } catch {
+                pages.push({
+                  slug,
+                  title: slug,
+                  status: 'draft',
+                  onGallery: false,
+                  image: '/images/black-token.svg',
+                  coverUrl: '/images/black-token.svg',
+                  bg: '#efefef',
+                  dark: false,
+                  full: false,
+                  subtitle: '',
+                  hoverImage: '',
+                });
+              }
+            }
+            pages.sort((a, b) => {
+              if (Boolean(a.onGallery) !== Boolean(b.onGallery)) {
+                return a.onGallery ? -1 : 1;
+              }
+              return String(a.title).localeCompare(String(b.title));
+            });
+            send(200, { grid, pages });
+          } catch {
+            send(400, { error: 'Could not load gallery pages.' });
+          }
+          return;
+        }
+
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const grid = String(body.grid || '');
+          if (!LISTING_GRIDS.includes(grid)) {
+            send(400, { error: 'That gallery cannot be updated.' });
+            return;
+          }
+          const wanted = Array.isArray(body.slugs)
+            ? [...new Set(body.slugs.map((value) => String(value || '').trim()).filter(Boolean))]
+            : [];
+          const wantedSet = new Set(wanted);
+          const projectsDir = path.join(process.cwd(), 'src/content/projects');
+          const files = readdirSync(projectsDir)
+            .filter((file) => file.endsWith('.json') && !file.endsWith('-old.json'));
+
+          let maxOrder = 0;
+          for (const file of files) {
+            try {
+              const data = JSON.parse(await readFile(path.join(projectsDir, file), 'utf8'));
+              const order = Number(data.listings?.[grid]?.order);
+              if (Number.isFinite(order) && order > maxOrder) maxOrder = order;
+            } catch {
+              // Skip unreadable project files when scanning max order.
+            }
+          }
+
+          // Play-link orders share the Play sort key — keep project appends above them.
+          if (grid === 'play') {
+            try {
+              const playDir = path.join(process.cwd(), 'src/content/play');
+              for (const file of readdirSync(playDir).filter((name) => name.endsWith('.json'))) {
+                const data = JSON.parse(await readFile(path.join(playDir, file), 'utf8'));
+                const order = Number(data.order);
+                if (Number.isFinite(order) && order > maxOrder) maxOrder = order;
+              }
+            } catch {
+              // Play folder may be empty.
+            }
+          }
+
+          let nextOrder = maxOrder;
+          for (const file of files) {
+            const slug = file.replace(/\.json$/, '');
+            const filePath = path.join(projectsDir, file);
+            const data = JSON.parse(await readFile(filePath, 'utf8'));
+            if (!data.listings || typeof data.listings !== 'object' || Array.isArray(data.listings)) {
+              data.listings = {};
+            }
+            const hasListing = Boolean(data.listings[grid]);
+            const shouldHave = wantedSet.has(slug);
+            if (hasListing && !shouldHave) {
+              delete data.listings[grid];
+              await writeProjectJson(filePath, data);
+              continue;
+            }
+            if (!hasListing && shouldHave) {
+              nextOrder += 1;
+              data.listings[grid] = seedListingCard(grid, data, nextOrder);
+              await writeProjectJson(filePath, data);
+            }
+          }
+
+          send(200, { ok: true });
+        } catch {
+          send(400, { error: 'Could not save gallery membership.' });
+        }
+      });
+    },
+  };
+}
+
 export function listingOrderDevWriter() {
   return {
     name: 'listing-order-dev-writer',
