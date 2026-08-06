@@ -1,9 +1,18 @@
 ---
 /** Singleton dev dialogs + handlers for Home / Work / Play project grids. */
 import DevOverlay from './DevOverlay.astro';
+import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
+import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
 
 const teaserPassword = getTeaserPassword();
+const statusIcons = {
+  published: sizeIcon(globeIcon, 14),
+  draft: sizeIcon(filePenIcon, 14),
+  teaser: sizeIcon(eyeOffIcon, 14),
+};
 ---
 
 <dialog class="dev-project-dialog" data-dev-project-create-dialog>
@@ -32,30 +41,10 @@ const teaserPassword = getTeaserPassword();
 >
   <div class="dev-project-settings" data-dev-project-settings-root>
     <p class="dev-project-settings__hint">
-      Edit the title and subtitle on the card directly. Other changes stage until Save.
+      Title, year, visibility, and cover are edited on the card. This panel is for card layout extras.
     </p>
 
-    <label class="dev-project-settings__field">
-      <span>Visibility</span>
-      <select data-ps-status>
-        <option value="published">Published</option>
-        <option value="draft">Draft</option>
-        <option value="teaser">Teaser</option>
-      </select>
-    </label>
-
     <div class="dev-project-settings__listing" data-ps-listing-fields>
-      <div data-ps-cover-fields>
-        <div class="dev-project-settings__cover-drop" data-ps-cover-drop>
-          <img alt="" data-ps-cover-preview hidden />
-          <p class="dev-project-settings__cover-label" data-ps-cover-drop-label>
-            Drop cover image
-          </p>
-          <button type="button" data-ps-cover-choose>Choose file</button>
-          <input type="file" accept="image/*" hidden data-ps-cover-file />
-        </div>
-      </div>
-
       <label class="dev-project-settings__field">
         <span>Card background</span>
         <input type="text" data-ps-bg />
@@ -72,12 +61,6 @@ const teaserPassword = getTeaserPassword();
       </label>
     </div>
 
-    <div class="dev-project-settings__teaser" data-ps-teaser-fields hidden>
-      <p class="dev-project-settings__note">
-        Teaser label is edited on the card. Cover and hover images will move to on-card controls.
-      </p>
-    </div>
-
     <div class="dev-project-settings__danger-actions">
       <button type="button" data-ps-delete>Delete project</button>
     </div>
@@ -86,22 +69,13 @@ const teaserPassword = getTeaserPassword();
   </div>
 </DevOverlay>
 
-<script define:vars={{ teaserPassword }}>
+<script define:vars={{ teaserPassword, statusIcons }}>
   const createDialog = document.querySelector('[data-dev-project-create-dialog]');
   const createForm = document.querySelector('[data-dev-project-create-form]');
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
-  const statusSelect = settingsRoot?.querySelector('[data-ps-status]');
-  const listingFields = settingsRoot?.querySelector('[data-ps-listing-fields]');
-  const teaserFields = settingsRoot?.querySelector('[data-ps-teaser-fields]');
   const fullWrap = settingsRoot?.querySelector('[data-ps-full-wrap]');
-  const coverFields = settingsRoot?.querySelector('[data-ps-cover-fields]');
-  const coverDrop = settingsRoot?.querySelector('[data-ps-cover-drop]');
-  const coverPreview = settingsRoot?.querySelector('[data-ps-cover-preview]');
-  const coverDropLabel = settingsRoot?.querySelector('[data-ps-cover-drop-label]');
-  const coverChoose = settingsRoot?.querySelector('[data-ps-cover-choose]');
-  const coverFile = settingsRoot?.querySelector('[data-ps-cover-file]');
   const bgInput = settingsRoot?.querySelector('[data-ps-bg]');
   const darkInput = settingsRoot?.querySelector('[data-ps-dark]');
   const fullInput = settingsRoot?.querySelector('[data-ps-full]');
@@ -110,14 +84,10 @@ const teaserPassword = getTeaserPassword();
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
 
   let createActiveGrid = 'work';
-  let activeSlug = '';
-  let activeGrid = 'work';
-  /** @type {HTMLElement | null} */
-  let activeItem = null;
-  /** @type {ReturnType<typeof emptySnapshot> | null} */
-  let savedSnapshot = null;
-  /** @type {ReturnType<typeof emptySnapshot> | null} */
-  let draftSnapshot = null;
+  /** @type {string} */
+  let panelSlug = '';
+  /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
+  const caches = new Map();
 
   const titleColor = (dark) => (dark ? '#f7f7f7' : '#6d6d6d');
   const subtitleColor = (dark) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
@@ -170,6 +140,9 @@ const teaserPassword = getTeaserPassword();
     window.location.assign(href);
   };
 
+  const gridForItem = (item) =>
+    item.closest('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid') ?? 'work';
+
   const gridItemForSlug = (slug) =>
     document.querySelector(`[data-dev-project-slug="${CSS.escape(slug)}"]`);
 
@@ -186,19 +159,71 @@ const teaserPassword = getTeaserPassword();
 
   const snapshotsMatch = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-  const readFormIntoDraft = () => {
-    if (!draftSnapshot) return;
-    const inline = readInlineText(activeItem);
-    draftSnapshot.title = inline.title;
-    draftSnapshot.subtitle = inline.subtitle;
-    draftSnapshot.teaserLabel = inline.teaserLabel;
-    draftSnapshot.status = statusSelect instanceof HTMLSelectElement ? statusSelect.value : 'draft';
-    // description / hoverImage / teaser.coverImage preserved from load — not edited here.
-    draftSnapshot.listing.bg = bgInput instanceof HTMLInputElement ? bgInput.value.trim() : '#efefef';
-    draftSnapshot.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
-    draftSnapshot.listing.full = fullInput instanceof HTMLInputElement && fullInput.checked;
-    draftSnapshot.listing.subtitle = inline.subtitle;
-    draftSnapshot.teaser.label = inline.teaserLabel;
+  const setEditable = (node) => {
+    if (!(node instanceof HTMLElement)) return;
+    try {
+      node.contentEditable = 'plaintext-only';
+      if (node.contentEditable !== 'plaintext-only') node.contentEditable = 'true';
+    } catch {
+      node.contentEditable = 'true';
+    }
+    node.setAttribute('spellcheck', 'true');
+  };
+
+  const enableCardEditing = (item) => {
+    if (!(item instanceof HTMLElement) || !item.dataset.devProjectSlug) return;
+    const status = item.dataset.devStatus || 'published';
+    setEditable(item.querySelector('[data-dev-project-title]'));
+    setEditable(item.querySelector('[data-dev-project-subtitle]'));
+    if (status === 'teaser') setEditable(item.querySelector('[data-dev-project-teaser-label]'));
+  };
+
+  const disableCardEditing = (item) => {
+    if (!(item instanceof HTMLElement)) return;
+    item.querySelectorAll(
+      '[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]',
+    ).forEach((node) => {
+      node.removeAttribute('contenteditable');
+      node.removeAttribute('spellcheck');
+    });
+  };
+
+  const enableAllCardEditing = () => {
+    document.querySelectorAll('[data-dev-project-slug]').forEach((item) => {
+      if (item instanceof HTMLElement) enableCardEditing(item);
+    });
+    disarmCardLinks();
+  };
+
+  const disableAllCardEditing = () => {
+    document.querySelectorAll('[data-dev-project-slug]').forEach((item) => {
+      if (item instanceof HTMLElement) disableCardEditing(item);
+    });
+    document.querySelectorAll('.is-dev-hover-forced').forEach((node) => {
+      node.classList.remove('is-dev-hover-forced');
+    });
+    document.querySelectorAll('[data-dev-project-hover][aria-pressed="true"]').forEach((btn) => {
+      btn.setAttribute('aria-pressed', 'false');
+    });
+    closeAllStatusMenus();
+    restoreCardLinks();
+  };
+
+  const disarmCardLinks = () => {
+    document.querySelectorAll('a.project-grid__card[href]').forEach((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      anchor.dataset.devHref = anchor.getAttribute('href') || '';
+      anchor.removeAttribute('href');
+    });
+  };
+
+  const restoreCardLinks = () => {
+    document.querySelectorAll('a.project-grid__card[data-dev-href]').forEach((anchor) => {
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      const href = anchor.dataset.devHref || '';
+      if (href) anchor.setAttribute('href', href);
+      delete anchor.dataset.devHref;
+    });
   };
 
   const buildListingPayload = (grid, listing, status) => {
@@ -216,20 +241,18 @@ const teaserPassword = getTeaserPassword();
     return { ...base, year: String(listing.subtitle || '') };
   };
 
-  const buildSavePayload = () => {
-    readFormIntoDraft();
-    if (!draftSnapshot || !activeSlug) return null;
+  const buildSavePayload = (slug, grid, draft) => {
     const listings = {};
-    listings[activeGrid] = buildListingPayload(activeGrid, draftSnapshot.listing, draftSnapshot.status);
+    listings[grid] = buildListingPayload(grid, draft.listing, draft.status);
     return {
-      slug: activeSlug,
-      title: draftSnapshot.title,
-      description: draftSnapshot.description,
-      status: draftSnapshot.status,
+      slug,
+      title: draft.title,
+      description: draft.description,
+      status: draft.status,
       listings,
       teaser: {
-        label: draftSnapshot.teaserLabel,
-        coverImage: draftSnapshot.teaser.coverImage,
+        label: draft.teaserLabel,
+        coverImage: draft.teaser.coverImage,
       },
     };
   };
@@ -247,6 +270,12 @@ const teaserPassword = getTeaserPassword();
     const displayImage = isTeaser
       ? (snapshot.teaser.coverImage || listing.image)
       : listing.image;
+
+    item.dataset.devStatus = snapshot.status;
+    item.dataset.devBg = listing.bg;
+    item.dataset.devDark = listing.dark ? 'true' : 'false';
+    if (listing.hoverImage) item.dataset.devHoverImage = listing.hoverImage;
+    else delete item.dataset.devHoverImage;
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full) && grid !== 'play');
     if (cover instanceof HTMLElement) {
@@ -266,140 +295,131 @@ const teaserPassword = getTeaserPassword();
       }
     }
     if (titleNode instanceof HTMLElement) {
-      if (titleNode.textContent !== snapshot.title) titleNode.textContent = snapshot.title;
+      if (document.activeElement !== titleNode && titleNode.textContent !== snapshot.title) {
+        titleNode.textContent = snapshot.title;
+      }
       titleNode.style.color = titleColor(listing.dark);
     }
     item.querySelectorAll('[data-dev-project-subtitle], [data-dev-project-teaser-label]').forEach((node) => {
       if (node instanceof HTMLElement) node.style.color = subtitleColor(listing.dark);
     });
-    if (teaserLabelNode instanceof HTMLElement) {
+    if (teaserLabelNode instanceof HTMLElement && document.activeElement !== teaserLabelNode) {
       const next = snapshot.teaserLabel || 'Coming soon';
       if (teaserLabelNode.textContent !== next) teaserLabelNode.textContent = next;
     }
     if (card instanceof HTMLElement) {
       card.classList.toggle('project-grid__card--teaser', isTeaser);
     }
-    const badge = item.querySelector('.project-grid__status-badge');
-    if (badge instanceof HTMLElement) {
-      const label = snapshot.status && snapshot.status !== 'published' ? snapshot.status : '';
-      badge.textContent = label;
-      badge.hidden = !label;
-    }
+    syncStatusChip(item, snapshot.status);
+    enableCardEditing(item);
   };
 
-  const syncCoverPreview = (url = '') => {
-    const trimmed = String(url || '').trim();
-    if (coverPreview instanceof HTMLImageElement) {
-      if (trimmed) {
-        coverPreview.src = trimmed;
-        coverPreview.hidden = false;
-      } else {
-        coverPreview.removeAttribute('src');
-        coverPreview.hidden = true;
-      }
+  const syncStatusChip = (item, status) => {
+    const btn = item.querySelector('[data-dev-project-status]');
+    const icon = btn?.querySelector('.project-grid__chip-icon');
+    const svg = statusIcons[status] || statusIcons.published;
+    if (btn instanceof HTMLElement) {
+      btn.setAttribute('aria-label', `Visibility: ${status}`);
+      btn.title = `Visibility: ${status}`;
     }
-    if (coverDropLabel instanceof HTMLElement) {
-      coverDropLabel.textContent = trimmed ? 'Drop to replace cover image' : 'Drop cover image';
-    }
-    if (coverDrop instanceof HTMLElement) {
-      coverDrop.classList.toggle('has-image', Boolean(trimmed));
-    }
-  };
-
-  const renderFormFromDraft = () => {
-    if (!draftSnapshot) return;
-    if (statusSelect instanceof HTMLSelectElement) statusSelect.value = draftSnapshot.status;
-    if (bgInput instanceof HTMLInputElement) bgInput.value = draftSnapshot.listing.bg;
-    if (darkInput instanceof HTMLInputElement) darkInput.checked = draftSnapshot.listing.dark;
-    if (fullInput instanceof HTMLInputElement) fullInput.checked = draftSnapshot.listing.full;
-    syncCoverPreview(draftSnapshot.listing.image);
-
-    const isTeaser = draftSnapshot.status === 'teaser';
-    if (listingFields instanceof HTMLElement) listingFields.hidden = false;
-    if (teaserFields instanceof HTMLElement) teaserFields.hidden = !isTeaser;
-    if (coverFields instanceof HTMLElement) coverFields.hidden = isTeaser;
-    if (fullWrap instanceof HTMLElement) fullWrap.hidden = activeGrid === 'play';
-
-    const gridLabel = activeGrid === 'home' ? 'Home' : activeGrid === 'work' ? 'Work' : 'Play';
-    if (overlayTitle instanceof HTMLElement) {
-      overlayTitle.textContent = `Project settings — ${gridLabel}`;
-    }
-    if (statusLine instanceof HTMLElement) {
-      const subtitleLabel = activeGrid === 'play' ? 'meta' : 'year';
-      statusLine.textContent = isTeaser
-        ? `Teaser mode — edit title and teaser label on the card. Save stages ${gridLabel} listing changes.`
-        : `Edit title and ${subtitleLabel} on the card. Save stages ${gridLabel} listing changes.`;
-    }
-  };
-
-  const disableInlineEditing = (item) => {
-    if (!item) return;
-    item.classList.remove('is-dev-project-settings-active');
-    item.querySelectorAll(
-      '[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]',
-    ).forEach((node) => {
-      node.removeAttribute('contenteditable');
-      node.removeAttribute('spellcheck');
+    if (icon instanceof HTMLElement) icon.innerHTML = svg;
+    item.querySelectorAll('[data-dev-status-option]').forEach((option) => {
+      if (!(option instanceof HTMLElement)) return;
+      option.setAttribute(
+        'aria-selected',
+        option.dataset.devStatusOption === status ? 'true' : 'false',
+      );
     });
   };
 
-  const enableInlineEditing = (item, status) => {
-    if (!item) return;
-    item.classList.add('is-dev-project-settings-active');
-    const setEditable = (node) => {
-      if (!(node instanceof HTMLElement)) return;
-      try {
-        node.contentEditable = 'plaintext-only';
-        if (node.contentEditable !== 'plaintext-only') node.contentEditable = 'true';
-      } catch {
-        node.contentEditable = 'true';
-      }
-      node.setAttribute('spellcheck', 'true');
-    };
-    setEditable(item.querySelector('[data-dev-project-title]'));
-    setEditable(item.querySelector('[data-dev-project-subtitle]'));
-    if (status === 'teaser') setEditable(item.querySelector('[data-dev-project-teaser-label]'));
+  const readInlineIntoDraft = (entry) => {
+    const inline = readInlineText(entry.item);
+    entry.draft.title = inline.title;
+    entry.draft.subtitle = inline.subtitle;
+    entry.draft.teaserLabel = inline.teaserLabel;
+    entry.draft.listing.subtitle = inline.subtitle;
+    entry.draft.teaser.label = inline.teaserLabel;
   };
 
-  const revertToSaved = () => {
-    if (!savedSnapshot || !activeItem) return;
-    draftSnapshot = structuredClone(savedSnapshot);
-    applyListingPreview(activeItem, draftSnapshot, activeGrid);
-    renderFormFromDraft();
-  };
-
-  const syncPending = () => {
-    if (!activeSlug || !savedSnapshot || !draftSnapshot) return;
-    readFormIntoDraft();
-    applyListingPreview(activeItem, draftSnapshot, activeGrid);
-    const id = pendingId(activeSlug, activeGrid);
-    if (snapshotsMatch(savedSnapshot, draftSnapshot)) {
+  const syncPendingFor = (slug) => {
+    const entry = caches.get(slug);
+    if (!entry) return;
+    readInlineIntoDraft(entry);
+    applyListingPreview(entry.item, entry.draft, entry.grid);
+    const id = pendingId(slug, entry.grid);
+    if (snapshotsMatch(entry.saved, entry.draft)) {
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id } }));
       return;
     }
-    const payload = buildSavePayload();
-    if (!payload) return;
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
       detail: {
         id,
         kind: 'project-settings',
-        payload,
+        payload: buildSavePayload(slug, entry.grid, entry.draft),
         revert: () => {
-          revertToSaved();
+          entry.draft = structuredClone(entry.saved);
+          applyListingPreview(entry.item, entry.draft, entry.grid);
+          if (panelSlug === slug) renderPanelFromEntry(entry);
         },
       },
     }));
   };
 
-  const closeSettings = () => {
-    if (activeItem) disableInlineEditing(activeItem);
-    activeSlug = '';
-    activeItem = null;
-    savedSnapshot = null;
-    draftSnapshot = null;
-    if (settingsPanel instanceof HTMLElement && !settingsPanel.hidden) {
-      settingsPanel.hidden = true;
-      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel: settingsPanel } }));
+  const ensureLoaded = async (slug, item) => {
+    const existing = caches.get(slug);
+    if (existing) {
+      existing.item = item;
+      return existing;
+    }
+    const grid = gridForItem(item);
+    const response = await fetch(
+      `/api/project-settings?slug=${encodeURIComponent(slug)}&grid=${encodeURIComponent(grid)}`,
+    );
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || 'Could not load project settings.');
+
+    const listing = payload.listings?.[grid] ?? payload.listing ?? {};
+    const inline = readInlineText(item);
+    const snapshot = {
+      title: inline.title || payload.title || '',
+      subtitle: inline.subtitle || (grid === 'play' ? listing.meta : listing.year) || '',
+      teaserLabel: inline.teaserLabel || payload.teaser?.label || '',
+      description: payload.description ?? '',
+      status: payload.status ?? item.dataset.devStatus ?? 'draft',
+      listing: {
+        image: listing.image ?? item.querySelector('.project-grid__img--base')?.getAttribute('src') ?? '',
+        hoverImage: listing.hoverImage ?? item.dataset.devHoverImage ?? '',
+        bg: listing.bg ?? item.dataset.devBg ?? '#efefef',
+        dark: listing.dark ?? item.dataset.devDark === 'true',
+        full: listing.full ?? item.classList.contains('project-grid__item--full'),
+        subtitle: inline.subtitle || (grid === 'play' ? listing.meta : listing.year) || '',
+      },
+      teaser: {
+        label: inline.teaserLabel || payload.teaser?.label || '',
+        coverImage: payload.teaser?.coverImage ?? '',
+      },
+    };
+    const entry = {
+      grid,
+      item,
+      saved: structuredClone(snapshot),
+      draft: structuredClone(snapshot),
+    };
+    caches.set(slug, entry);
+    return entry;
+  };
+
+  const renderPanelFromEntry = (entry) => {
+    if (bgInput instanceof HTMLInputElement) bgInput.value = entry.draft.listing.bg;
+    if (darkInput instanceof HTMLInputElement) darkInput.checked = entry.draft.listing.dark;
+    if (fullInput instanceof HTMLInputElement) fullInput.checked = entry.draft.listing.full;
+    if (fullWrap instanceof HTMLElement) fullWrap.hidden = entry.grid === 'play';
+    const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
+    if (overlayTitle instanceof HTMLElement) {
+      overlayTitle.textContent = `Project settings — ${gridLabel}`;
+    }
+    if (statusLine instanceof HTMLElement) {
+      statusLine.textContent = 'Card background, text colour, and width. Title/visibility edit on the card.';
     }
   };
 
@@ -410,6 +430,30 @@ const teaserPassword = getTeaserPassword();
       detail: { panel: settingsPanel },
     }));
     window.dispatchEvent(new Event('resize'));
+  };
+
+  const closeSettingsPanel = () => {
+    panelSlug = '';
+    if (settingsPanel instanceof HTMLElement && !settingsPanel.hidden) {
+      settingsPanel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel: settingsPanel } }));
+    }
+  };
+
+  const openSettings = async (slug) => {
+    const item = gridItemForSlug(slug);
+    if (!(item instanceof HTMLElement)) {
+      window.alert('Could not find that project on this page.');
+      return;
+    }
+    try {
+      const entry = await ensureLoaded(slug, item);
+      panelSlug = slug;
+      renderPanelFromEntry(entry);
+      openSettingsPanel();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not load project settings.');
+    }
   };
 
   const uploadCoverImage = async (slug, file) => {
@@ -430,125 +474,213 @@ const teaserPassword = getTeaserPassword();
     return `/draft-media/${slug}/${filename}`;
   };
 
-  const applyCoverFile = async (file) => {
-    if (!(file instanceof File) || !file.type.startsWith('image/') || !activeSlug) return;
+  const applyCoverFileToCard = async (slug, file) => {
+    if (!(file instanceof File) || !file.type.startsWith('image/')) return;
+    const item = gridItemForSlug(slug);
+    if (!(item instanceof HTMLElement)) return;
     try {
-      const url = await uploadCoverImage(activeSlug, file);
-      if (draftSnapshot) draftSnapshot.listing.image = url;
-      syncCoverPreview(url);
-      syncPending();
+      const entry = await ensureLoaded(slug, item);
+      const url = await uploadCoverImage(slug, file);
+      entry.draft.listing.image = url;
+      syncPendingFor(slug);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not upload the cover image.');
     }
   };
 
-  const openSettings = async (slug, grid) => {
-    if (!slug) return;
-    if (activeSlug && activeSlug !== slug) closeSettings();
-
-    const item = gridItemForSlug(slug);
-    if (!(item instanceof HTMLElement)) {
-      window.alert('Could not find that project on this page.');
-      return;
-    }
-
-    const response = await fetch(
-      `/api/project-settings?slug=${encodeURIComponent(slug)}&grid=${encodeURIComponent(grid)}`,
-    );
-    const payload = await response.json();
-    if (!response.ok) {
-      window.alert(payload.error || 'Could not load project settings.');
-      return;
-    }
-
-    const listing = payload.listings?.[grid] ?? payload.listing ?? {};
-    const inline = readInlineText(item);
-    const snapshot = {
-      title: inline.title || payload.title || '',
-      subtitle: inline.subtitle || (grid === 'play' ? listing.meta : listing.year) || '',
-      teaserLabel: inline.teaserLabel || payload.teaser?.label || '',
-      description: payload.description ?? '',
-      status: payload.status ?? 'draft',
-      listing: {
-        image: listing.image ?? '',
-        hoverImage: listing.hoverImage ?? '',
-        bg: listing.bg ?? '#efefef',
-        dark: Boolean(listing.dark),
-        full: Boolean(listing.full),
-        subtitle: inline.subtitle || (grid === 'play' ? listing.meta : listing.year) || '',
-      },
-      teaser: {
-        label: inline.teaserLabel || payload.teaser?.label || '',
-        coverImage: payload.teaser?.coverImage ?? '',
-      },
-    };
-
-    activeSlug = slug;
-    activeGrid = grid;
-    activeItem = item;
-    savedSnapshot = structuredClone(snapshot);
-    draftSnapshot = structuredClone(snapshot);
-
-    applyListingPreview(item, draftSnapshot, grid);
-    renderFormFromDraft();
-    enableInlineEditing(item, snapshot.status);
-    openSettingsPanel();
-    syncPending();
+  const closeAllStatusMenus = () => {
+    document.querySelectorAll('[data-dev-status-menu]').forEach((menu) => {
+      if (menu instanceof HTMLElement) menu.hidden = true;
+    });
+    document.querySelectorAll('[data-dev-project-status]').forEach((btn) => {
+      btn.setAttribute('aria-expanded', 'false');
+    });
   };
 
-  coverChoose?.addEventListener('click', () => {
-    if (coverFile instanceof HTMLInputElement) coverFile.click();
-  });
+  const setCardStatus = async (slug, status) => {
+    const item = gridItemForSlug(slug);
+    if (!(item instanceof HTMLElement)) return;
+    try {
+      const entry = await ensureLoaded(slug, item);
+      entry.draft.status = status;
+      closeAllStatusMenus();
+      syncPendingFor(slug);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not update visibility.');
+    }
+  };
 
-  coverFile?.addEventListener('change', () => {
-    if (!(coverFile instanceof HTMLInputElement) || !coverFile.files?.[0]) return;
-    void applyCoverFile(coverFile.files[0]);
-    coverFile.value = '';
-  });
-
-  if (coverDrop instanceof HTMLElement) {
-    coverDrop.addEventListener('dragover', (event) => {
-      event.preventDefault();
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-      coverDrop.dataset.active = 'true';
-    });
-    coverDrop.addEventListener('dragleave', () => {
-      delete coverDrop.dataset.active;
-    });
-    coverDrop.addEventListener('drop', (event) => {
+  // Chips sit over the card — stop the (disarmed) card from eating the event.
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.project-grid__chips, [data-dev-status-menu]')) {
       event.preventDefault();
       event.stopPropagation();
-      delete coverDrop.dataset.active;
-      const file = event.dataTransfer?.files?.[0];
-      if (file) void applyCoverFile(file);
-    });
-  }
+    }
+  }, true);
+
+  document.addEventListener('mousedown', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    // Don't steal focus from contenteditable — only stop chip mousedown bubbling to drag/link logic.
+    if (target.closest('.project-grid__chips, [data-dev-status-menu]')) {
+      event.stopPropagation();
+    }
+  }, true);
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const statusBtn = target.closest('[data-dev-project-status]');
+    if (statusBtn instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const wrap = statusBtn.closest('.project-grid__status-wrap');
+      const menu = wrap?.querySelector('[data-dev-status-menu]');
+      const open = menu instanceof HTMLElement && menu.hidden;
+      closeAllStatusMenus();
+      if (open && menu instanceof HTMLElement) {
+        menu.hidden = false;
+        statusBtn.setAttribute('aria-expanded', 'true');
+      }
+      return;
+    }
+
+    const statusOption = target.closest('[data-dev-status-option]');
+    if (statusOption instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = statusOption.closest('[data-dev-project-slug]');
+      const slug = item?.getAttribute('data-dev-project-slug');
+      const status = statusOption.dataset.devStatusOption;
+      if (slug && status) void setCardStatus(slug, status);
+      return;
+    }
+
+    const hoverBtn = target.closest('[data-dev-project-hover]');
+    if (hoverBtn instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = hoverBtn.closest('[data-dev-project-slug]');
+      const cover = item?.querySelector('.project-grid__cover');
+      if (!(cover instanceof HTMLElement)) return;
+      const next = !cover.classList.contains('is-dev-hover-forced');
+      cover.classList.toggle('is-dev-hover-forced', next);
+      hoverBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+      return;
+    }
+
+    const settingsButton = target.closest('[data-dev-project-settings]');
+    if (settingsButton instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const slug = settingsButton.dataset.devProjectSettings;
+      if (slug) void openSettings(slug);
+      return;
+    }
+
+    const newButton = target.closest('[data-dev-project-new]');
+    if (newButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      const gridRoot = newButton.closest('[data-dev-project-grid]');
+      createActiveGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
+      openCreateDialog();
+      return;
+    }
+
+    if (!target.closest('[data-dev-status-menu], [data-dev-project-status]')) {
+      closeAllStatusMenus();
+    }
+
+    const teaserCard = target.closest('[data-dev-teaser-slug]');
+    if (teaserCard instanceof HTMLElement && event.altKey) {
+      event.preventDefault();
+      const href = teaserCard.dataset.devTeaserHref;
+      const password = window.prompt('Enter teaser password');
+      if (!password) return;
+      if (password !== teaserPassword) {
+        window.alert('Incorrect password.');
+        return;
+      }
+      if (href) navigateAway(href);
+    }
+  }, true);
+
+  document.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
+    const item = target.closest('[data-dev-project-slug]');
+    const slug = item?.getAttribute('data-dev-project-slug');
+    if (!(item instanceof HTMLElement) || !slug) return;
+    void (async () => {
+      try {
+        await ensureLoaded(slug, item);
+        syncPendingFor(slug);
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : 'Could not stage that edit.');
+      }
+    })();
+  });
+
+  // Drop image onto cover → replace listing cover.
+  document.addEventListener('dragover', (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    if (document.documentElement.classList.contains('show-listing-grid-editor')) return;
+    const cover = event.target instanceof Element
+      ? event.target.closest('[data-dev-cover-drop]')
+      : null;
+    if (!(cover instanceof HTMLElement)) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    cover.dataset.devDropActive = 'true';
+  });
+
+  document.addEventListener('dragleave', (event) => {
+    const cover = event.target instanceof Element
+      ? event.target.closest('[data-dev-cover-drop]')
+      : null;
+    if (cover instanceof HTMLElement) delete cover.dataset.devDropActive;
+  });
+
+  document.addEventListener('drop', (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    const cover = event.target instanceof Element
+      ? event.target.closest('[data-dev-cover-drop]')
+      : null;
+    if (!(cover instanceof HTMLElement)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    delete cover.dataset.devDropActive;
+    const slug = cover.dataset.devCoverDrop;
+    const file = event.dataTransfer?.files?.[0];
+    if (slug && file) void applyCoverFileToCard(slug, file);
+  });
 
   settingsRoot?.addEventListener('input', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (!target.matches('[data-ps-status], [data-ps-bg]')) return;
-    if (target.matches('[data-ps-status]') && draftSnapshot && target instanceof HTMLSelectElement) {
-      draftSnapshot.status = target.value;
-      renderFormFromDraft();
-      if (activeItem) enableInlineEditing(activeItem, draftSnapshot.status);
-    }
-    syncPending();
+    if (!target.matches('[data-ps-bg]')) return;
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    entry.draft.listing.bg = bgInput instanceof HTMLInputElement ? bgInput.value.trim() : '#efefef';
+    syncPendingFor(panelSlug);
   });
 
   settingsRoot?.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-ps-dark], [data-ps-full]')) return;
-    syncPending();
-  });
-
-  document.addEventListener('input', (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || !activeItem) return;
-    if (!activeItem.contains(target)) return;
-    if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
-    syncPending();
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    entry.draft.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
+    entry.draft.listing.full = fullInput instanceof HTMLInputElement && fullInput.checked;
+    syncPendingFor(panelSlug);
   });
 
   const openCreateDialog = () => {
@@ -571,47 +703,6 @@ const teaserPassword = getTeaserPassword();
       }, { once: true });
     }
   };
-
-  // Capture phase + stopImmediatePropagation so the card <a> never navigates
-  // when the ⋮ (or its SVG child) is the click target.
-  document.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-
-    const settingsButton = target.closest('[data-dev-project-settings]');
-    if (settingsButton instanceof HTMLElement) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const slug = settingsButton.dataset.devProjectSettings;
-      const gridRoot = settingsButton.closest('[data-dev-project-grid]');
-      const grid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
-      if (slug) void openSettings(slug, grid);
-      return;
-    }
-
-    const newButton = target.closest('[data-dev-project-new]');
-    if (newButton) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      const gridRoot = newButton.closest('[data-dev-project-grid]');
-      createActiveGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
-      openCreateDialog();
-      return;
-    }
-
-    const teaserCard = target.closest('[data-dev-teaser-slug]');
-    if (teaserCard instanceof HTMLElement && event.altKey) {
-      event.preventDefault();
-      const href = teaserCard.dataset.devTeaserHref;
-      const password = window.prompt('Enter teaser password');
-      if (!password) return;
-      if (password !== teaserPassword) {
-        window.alert('Incorrect password.');
-        return;
-      }
-      if (href) navigateAway(href);
-    }
-  }, true);
 
   createForm?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -637,12 +728,12 @@ const teaserPassword = getTeaserPassword();
   });
 
   deleteButton?.addEventListener('click', async () => {
-    if (!activeSlug) return;
-    if (!window.confirm(`Delete "${activeSlug}" and its draft media? This cannot be undone.`)) return;
+    if (!panelSlug) return;
+    if (!window.confirm(`Delete "${panelSlug}" and its draft media? This cannot be undone.`)) return;
     const response = await fetch('/api/project-delete', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug: activeSlug }),
+      body: JSON.stringify({ slug: panelSlug }),
     });
     const payload = await response.json();
     if (!response.ok) {
@@ -655,28 +746,47 @@ const teaserPassword = getTeaserPassword();
   window.addEventListener('vcd:dev-edit-close', (event) => {
     const panel = event.detail?.panel;
     if (panel?.dataset?.devPanelKey !== 'project-settings') return;
-    if (activeItem) disableInlineEditing(activeItem);
-    activeSlug = '';
-    activeItem = null;
-    savedSnapshot = null;
-    draftSnapshot = null;
+    panelSlug = '';
   });
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
-    if (!activeSlug || !savedSnapshot) return;
-    revertToSaved();
+    caches.forEach((entry, slug) => {
+      entry.draft = structuredClone(entry.saved);
+      applyListingPreview(entry.item, entry.draft, entry.grid);
+      if (panelSlug === slug) renderPanelFromEntry(entry);
+    });
   });
 
   window.addEventListener('vcd:dev-pending-committed', () => {
-    if (!activeSlug || !draftSnapshot) return;
-    savedSnapshot = structuredClone(draftSnapshot);
-    syncPending();
+    caches.forEach((entry) => {
+      entry.saved = structuredClone(entry.draft);
+    });
   });
 
   window.addEventListener('vcd:dev-mode-change', (event) => {
-    if (event.detail?.active) return;
-    closeSettings();
+    if (event.detail?.active) {
+      enableAllCardEditing();
+      return;
+    }
+    disableAllCardEditing();
+    closeSettingsPanel();
   });
+
+  window.addEventListener('vcd:listing-grid-editor-change', (event) => {
+    if (event.detail?.active) {
+      disableAllCardEditing();
+      closeAllStatusMenus();
+      return;
+    }
+    if (document.documentElement.classList.contains('is-dev-mode')) {
+      enableAllCardEditing();
+    }
+  });
+
+  if (document.documentElement.classList.contains('is-dev-mode')
+    && !document.documentElement.classList.contains('show-listing-grid-editor')) {
+    enableAllCardEditing();
+  }
 </script>
 
 <style is:global>
@@ -750,7 +860,6 @@ const teaserPassword = getTeaserPassword();
   }
 
   .dev-project-settings__hint,
-  .dev-project-settings__note,
   .dev-project-settings__status {
     margin: 0;
     color: var(--color-text-soft);
@@ -774,60 +883,9 @@ const teaserPassword = getTeaserPassword();
     gap: 0.45em;
   }
 
-  .dev-project-settings__listing,
-  .dev-project-settings__teaser,
-  .dev-project-settings [data-ps-cover-fields] {
+  .dev-project-settings__listing {
     display: grid;
     gap: 0.55em;
-  }
-
-  .dev-project-settings__cover-drop {
-    display: grid;
-    gap: 0.45em;
-    justify-items: center;
-    min-height: 5em;
-    padding: 0.65em;
-    border: 1px dashed var(--color-border);
-    border-radius: 0.35em;
-    background: color-mix(in srgb, var(--color-bg) 88%, var(--color-surface-soft));
-    text-align: center;
-    position: relative;
-    overflow: hidden;
-  }
-
-  .dev-project-settings__cover-drop[data-active='true'] {
-    border-color: var(--color-text-muted);
-  }
-
-  .dev-project-settings__cover-drop.has-image {
-    min-height: 5.5em;
-  }
-
-  .dev-project-settings__cover-drop img {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.28;
-  }
-
-  .dev-project-settings__cover-label {
-    position: relative;
-    z-index: 1;
-    margin: 0;
-  }
-
-  .dev-project-settings__cover-drop button {
-    position: relative;
-    z-index: 1;
-    padding: 0.3em 0.55em;
-    border: 1px solid var(--color-border);
-    border-radius: 0.3em;
-    background: color-mix(in srgb, var(--color-bg) 92%, transparent);
-    font: inherit;
-    font-size: 0.75rem;
-    cursor: pointer;
   }
 
   .dev-project-settings__danger-actions {
