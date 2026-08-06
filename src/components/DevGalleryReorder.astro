@@ -152,8 +152,16 @@
     // The grid's own `gap` owns spacing; the slot needs no gap rails.
     measureLiftGaps: () => ({ top: '0px', bottom: '0px' }),
     measureInsertGaps: () => ({ top: '0px', bottom: '0px' }),
-    resolveInsertIndex: ({ items, centerX, centerY, currentIndex }) =>
-      resolveInsertIndexInGrid(items, centerX, centerY, currentIndex),
+    resolveInsertIndex: ({ items, centerX, centerY, currentIndex, slot }) =>
+      resolveInsertIndexInGrid(items, centerX, centerY, currentIndex, slot),
+    // A grid packs far more content into the same pointer travel than a page of
+    // full-width sections, so the same ramp reads as runaway. Longer, slower,
+    // with a wider dead zone to hold still in.
+    scrollTuning: {
+      deadZonePx: 56,
+      rampPx: 380,
+      maxScrollSpeed: 46,
+    },
     onSlotSync: (indicator) => {
       indicator.style.gridColumn =
         dragItem?.classList.contains('project-grid__item--full') ? '1 / -1' : '';
@@ -374,6 +382,21 @@
   // Keyboard grab (anchored to the handle button)
   // ---------------------------------------------------------------------
 
+  /*
+    Capture phase, and it swallows the event. DevModeController registers its
+    own Escape handler on `document` earlier in Layout.astro, so a bubble-phase
+    listener here loses the race and Escape aborts the drag *and* tries to leave
+    dev mode — which surfaces as a "Discard 1 unsaved change?" prompt for edits
+    that have nothing to do with the drag.
+  */
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!controller.isActive() && !dragItem) return;
+    event.preventDefault();
+    event.stopPropagation();
+    abortActiveSession();
+  }, { capture: true });
+
   const releaseKeyboardGrab = (revert: boolean) => {
     if (!keyboardGrabItem) return;
     const grid = keyboardGrabGrid;
@@ -445,14 +468,6 @@
       return;
     }
 
-    if (event.key === 'Escape') {
-      if (controller.isActive() || dragItem) {
-        event.preventDefault();
-        abortActiveSession();
-      }
-      return;
-    }
-
     if (!focusedHandle) return;
 
     if (event.key === ' ' || event.key === 'Enter') {
@@ -516,7 +531,17 @@
     justify-content: center;
     border: 0;
     border-radius: var(--radius-control);
-    background: transparent;
+    /*
+      Carries its own surface at rest, unlike the corner chips. Those inherit a
+      cover's `dark` flag, which is one boolean for a whole image — fine at a
+      corner, wrong at the centre, where a cover can be light at its edges and
+      near-black in the middle (Tapico). A summoned control that you cannot see
+      until you hover it is not summoned. Sitting on its own ground makes the
+      glyph legible over anything and drops the dependence on that flag.
+    */
+    background: color-mix(in srgb, var(--color-surface-control) 88%, transparent);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0.15em 0.5em rgb(0 0 0 / 0.12);
     padding: 0.45em 0.55em;
     color: var(--color-text);
     font: inherit;
@@ -539,23 +564,12 @@
     pointer-events: auto;
   }
 
-  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle {
-    color: var(--color-bg);
-  }
-
-  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle:hover,
-  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle:focus-visible,
-  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle:active {
-    background: var(--project-grid-chip-fill);
-    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
-    color: var(--color-bg);
-  }
-
+  /* No `data-dev-dark` variant: the handle brings its own ground, so the
+     cover's light/dark flag has no say over the glyph. */
   .dev-grid-drag-handle:hover,
   .dev-grid-drag-handle:focus-visible,
   .dev-grid-drag-handle:active {
-    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--color-surface-control);
     transform: translate(-50%, -50%) scale(1.08);
   }
 
