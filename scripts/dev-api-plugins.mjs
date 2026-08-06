@@ -844,6 +844,7 @@ function coverForGalleryPage(data, grid) {
     : (listing.image || data.teaser?.coverImage || '');
   const hasCover = !isPlaceholderCoverSrc(rawImage);
   const image = hasCover ? String(rawImage) : PLACEHOLDER_COVER;
+  const order = onGallery ? Number(listings[grid].order) : Number.POSITIVE_INFINITY;
   return {
     onGallery,
     hasCover,
@@ -854,6 +855,7 @@ function coverForGalleryPage(data, grid) {
     full: Boolean(listing.full),
     subtitle: String(grid === 'play' ? (listing.meta || '') : (listing.year || '')),
     hoverImage: String(listing.hoverImage || ''),
+    order: Number.isFinite(order) ? order : Number.POSITIVE_INFINITY,
   };
 }
 
@@ -908,12 +910,16 @@ export function galleryMembershipDevWriter() {
                   full: false,
                   subtitle: '',
                   hoverImage: '',
+                  order: Number.POSITIVE_INFINITY,
                 });
               }
             }
             pages.sort((a, b) => {
               if (Boolean(a.onGallery) !== Boolean(b.onGallery)) {
                 return a.onGallery ? -1 : 1;
+              }
+              if (a.onGallery && b.onGallery && a.order !== b.order) {
+                return a.order - b.order;
               }
               return String(a.title).localeCompare(String(b.title));
             });

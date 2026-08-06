@@ -11,7 +11,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 ---
 
 <DevOverlay
-  title="Gallery pages"
+  title="Gallery Manager"
   storageKey="gallery-pages"
   panelKey="gallery-pages"
   defaultHidden
@@ -23,10 +23,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
   >
-    <p class="dev-gallery-pages__hint" data-gallery-hint>
-      Toggle which project pages appear on this gallery. Save to keep.
-    </p>
-
     <div class="dev-gallery-pages__filters" role="group" aria-label="Gallery filter">
       <button type="button" data-gallery-filter="all" class="is-active">All</button>
       <button type="button" data-gallery-filter="on">On this page</button>
@@ -55,6 +51,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
    *   full: boolean,
    *   subtitle: string,
    *   hoverImage: string,
+   *   order: number,
    * }} GalleryPage */
 
   type GridOrderEntry =
@@ -71,7 +68,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     const gridEl = root.querySelector<HTMLElement>('[data-gallery-grid]');
     const statusEl = root.querySelector<HTMLElement>('[data-gallery-status]');
     const countEl = root.querySelector<HTMLElement>('[data-gallery-count]');
-    const hintEl = root.querySelector<HTMLElement>('[data-gallery-hint]');
     const overlayTitle = panel.querySelector<HTMLElement>('.dev-overlay__title');
     const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
     const settingsIcon = root.dataset.settingsIcon || '';
@@ -86,6 +82,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     let baseline = new Set();
     /** @type {GridOrderEntry[]} */
     let baselineOrder: GridOrderEntry[] = [];
+    /** @type {string[]} */
+    let baselinePagesOrder: string[] = [];
     /** @type {'all' | 'on' | 'off'} */
     let filter = 'all';
     /** @type {'home' | 'work' | 'play' | ''} */
@@ -94,6 +92,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     const detachedItems = new Map();
     /** @type {Map<string, HTMLElement>} */
     const createdItems = new Map();
+
+    let drag: { pointerId: number; slug: string; cancel: () => void } | null = null;
+    const DRAG_THRESHOLD = 4;
+    const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
     const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
@@ -146,6 +148,207 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       !setsEqual(selected, baseline) || !ordersEqual(captureGridOrder(), baselineOrder);
 
     const pageBySlug = (slug: string) => pages.find((page) => page.slug === slug);
+
+    const draggableCardOrder = (): string[] =>
+      gridEl
+        ? [...gridEl.querySelectorAll<HTMLElement>('.dev-gallery-pages__card.is-selected')]
+            .map((el) => el.dataset.gallerySlug || '')
+            .filter(Boolean)
+        : [];
+
+    const cardEl = (slug: string) =>
+      gridEl?.querySelector<HTMLElement>(`.dev-gallery-pages__card[data-gallery-slug="${slug}"]`) ?? null;
+
+    const reorderCardsToMatch = (order: string[]) => {
+      let prev: HTMLElement | null = null;
+      for (const slug of order) {
+        const el = cardEl(slug);
+        if (!el) continue;
+        if (prev) prev.after(el);
+        prev = el;
+      }
+    };
+
+    const applyOrderToLiveGrid = (order: string[]) => {
+      const grid = listingGrid();
+      if (!grid) return;
+      let prev: HTMLElement | null = null;
+      for (const slug of order) {
+        const el = grid.querySelector<HTMLElement>(`[data-dev-project-slug="${slug}"]`);
+        if (!el) continue;
+        if (prev) prev.after(el);
+        prev = el;
+      }
+    };
+
+    const applyPagesOrder = (order: string[]) => {
+      const rank = new Map(order.map((slug, index) => [slug, index]));
+      const ordered = pages
+        .filter((page) => rank.has(page.slug))
+        .sort((a, b) => (rank.get(a.slug) ?? 0) - (rank.get(b.slug) ?? 0));
+      const rest = pages.filter((page) => !rank.has(page.slug));
+      pages = [...ordered, ...rest];
+    };
+
+    // Mirrors the server's load-time sort (on-gallery first, hidden last) after an
+    // in-session toggle — the partition is stable, so a card just hidden lands at
+    // the end rather than holding its old slot.
+    const sortPagesByMembership = () => {
+      pages = [
+        ...pages.filter((page) => selected.has(page.slug)),
+        ...pages.filter((page) => !selected.has(page.slug)),
+      ];
+    };
+
+    const attachCardDrag = (card: HTMLElement, button: HTMLElement, page: GalleryPage, isOn: boolean) => {
+      if (!isOn) return;
+
+      button.addEventListener('pointerdown', (event: PointerEvent) => {
+        if (event.button !== 0 || drag) return;
+        card.classList.add('is-pressing');
+        const pointerId = event.pointerId;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const preDragOrder = draggableCardOrder();
+        let active = false;
+        let baseX = startX;
+        let baseY = startY;
+        // Blocks re-evaluating a swap target until the previous FLIP transition
+        // has settled, so getBoundingClientRect() isn't read mid-animation.
+        let swapLockedUntil = 0;
+
+        // Document-level: before the drag threshold there is no pointer capture,
+        // so a press that releases off the card would never reach a button-level
+        // listener — leaving `drag` set and blocking every later drag.
+        const cleanupListeners = () => {
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          document.removeEventListener('pointercancel', onCancel);
+        };
+
+        const finish = () => {
+          cleanupListeners();
+          if (button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
+          card.classList.remove('is-dragging');
+          card.classList.remove('is-pressing');
+          card.style.transform = '';
+          drag = null;
+        };
+
+        const abort = () => {
+          if (active) reorderCardsToMatch(preDragOrder);
+          finish();
+        };
+
+        const onMove = (moveEvent: PointerEvent) => {
+          if (moveEvent.pointerId !== pointerId) return;
+          const dx = moveEvent.clientX - startX;
+          const dy = moveEvent.clientY - startY;
+          if (!active) {
+            if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+            active = true;
+            button.setPointerCapture(pointerId);
+            card.classList.add('is-dragging');
+          }
+          moveEvent.preventDefault();
+          const clientX = moveEvent.clientX;
+          const clientY = moveEvent.clientY;
+          card.style.transform = `translate(${clientX - baseX}px, ${clientY - baseY}px) scale(1.04)`;
+
+          if (performance.now() < swapLockedUntil) return;
+
+          const order = draggableCardOrder();
+          const curIndex = order.indexOf(page.slug);
+          if (curIndex === -1 || order.length < 2) return;
+
+          // Only other cards are drop targets: the dragged card is transformed to
+          // follow the pointer, so it sits a fixed distance from it (zero when
+          // grabbed dead centre) and would win any nearest-centre test forever.
+          let nearest = -1;
+          for (const [index, slug] of order.entries()) {
+            if (slug === page.slug) continue;
+            const rect = cardEl(slug)?.getBoundingClientRect();
+            if (!rect) continue;
+            // Shrunken hit zone (middle 50% x 50%): a full-rect test lets the card
+            // that just landed under the pointer swap straight back next move.
+            const insetX = rect.width * 0.25;
+            const insetY = rect.height * 0.25;
+            if (clientX >= rect.left + insetX && clientX <= rect.right - insetX
+              && clientY >= rect.top + insetY && clientY <= rect.bottom - insetY) {
+              nearest = index;
+              break;
+            }
+          }
+          if (nearest === -1 || nearest === curIndex) return;
+
+          const reduced = prefersReducedMotion();
+          const firstRects = reduced
+            ? null
+            : new Map(
+                order
+                  .filter((slug) => slug !== page.slug)
+                  .map((slug) => [slug, cardEl(slug)?.getBoundingClientRect() ?? null]),
+              );
+
+          const newOrder = [...order];
+          newOrder.splice(curIndex, 1);
+          newOrder.splice(nearest, 0, page.slug);
+
+          const beforeLeft = card.offsetLeft;
+          const beforeTop = card.offsetTop;
+          reorderCardsToMatch(newOrder);
+          if (!reduced) swapLockedUntil = performance.now() + 160;
+          const afterLeft = card.offsetLeft;
+          const afterTop = card.offsetTop;
+          baseX += afterLeft - beforeLeft;
+          baseY += afterTop - beforeTop;
+          card.style.transform = `translate(${clientX - baseX}px, ${clientY - baseY}px) scale(1.04)`;
+
+          if (!reduced && firstRects) {
+            for (const [slug, firstRect] of firstRects) {
+              if (!firstRect) continue;
+              const el = cardEl(slug);
+              if (!el) continue;
+              const lastRect = el.getBoundingClientRect();
+              const invertX = firstRect.left - lastRect.left;
+              const invertY = firstRect.top - lastRect.top;
+              if (!invertX && !invertY) continue;
+              el.style.transition = 'none';
+              el.style.transform = `translate(${invertX}px, ${invertY}px)`;
+              requestAnimationFrame(() => {
+                el.style.transition = '';
+                el.style.transform = '';
+              });
+            }
+          }
+        };
+
+        const onUp = (upEvent: PointerEvent) => {
+          if (upEvent.pointerId !== pointerId) return;
+          if (!active) {
+            finish();
+            return;
+          }
+          const finalOrder = draggableCardOrder();
+          finish();
+          applyPagesOrder(finalOrder);
+          applyOrderToLiveGrid(finalOrder);
+          syncPending();
+          syncCount();
+        };
+
+        const onCancel = (cancelEvent: PointerEvent) => {
+          if (cancelEvent.pointerId !== pointerId) return;
+          abort();
+        };
+
+        drag = { pointerId, slug: page.slug, cancel: abort };
+
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+        document.addEventListener('pointercancel', onCancel);
+      });
+    };
 
     const buildGridCard = (page: GalleryPage) => {
       const item = document.createElement('li');
@@ -301,6 +504,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     const restoreMembershipPreview = () => {
       selected = new Set(baseline);
+      applyPagesOrder(baselinePagesOrder);
       const grid = listingGrid();
       if (!grid) {
         detachedItems.clear();
@@ -389,6 +593,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     const renderGrid = () => {
       if (!gridEl) return;
+      if (drag) drag.cancel();
       const list = visiblePages();
       gridEl.replaceChildren();
 
@@ -413,44 +618,52 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         card.classList.toggle('is-off', !isOn);
         card.classList.toggle('is-placeholder', !page.hasCover);
 
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'dev-gallery-pages__thumb';
-        button.title = page.title;
-        button.setAttribute(
-          'aria-label',
-          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
-        );
-        button.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+        const thumb = document.createElement('div');
+        thumb.className = 'dev-gallery-pages__thumb';
+        thumb.title = page.title;
+        // Native <img> drag hijacks the pointer once it starts — it never fires pointermove,
+        // so the custom reorder drag couldn't clear its threshold. Kill native drag outright.
+        thumb.draggable = false;
+        thumb.addEventListener('dragstart', (event) => event.preventDefault());
 
         if (page.hasCover) {
           const img = document.createElement('img');
           img.src = page.coverUrl || projectImage(page.image);
           img.alt = '';
           img.loading = 'lazy';
-          button.append(img);
+          img.draggable = false;
+          thumb.append(img);
         } else {
           const name = document.createElement('span');
           name.className = 'dev-gallery-pages__placeholder-title';
           name.textContent = page.title;
-          button.append(name);
+          thumb.append(name);
         }
 
-        const badge = document.createElement('span');
+        const badge = document.createElement('button');
+        badge.type = 'button';
         badge.className = 'dev-gallery-pages__badge';
-        badge.setAttribute('aria-hidden', 'true');
         badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
+        badge.setAttribute(
+          'aria-label',
+          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
+        );
+        badge.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+        badge.draggable = false;
+        badge.addEventListener('dragstart', (event) => event.preventDefault());
 
-        button.addEventListener('click', () => {
+        badge.addEventListener('click', () => {
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
+          sortPagesByMembership();
           applyMembershipPreview();
           renderGrid();
           syncCount();
           syncPending();
         });
+        attachCardDrag(card, thumb, page, isOn);
 
-        card.append(badge, button);
+        card.append(badge, thumb);
         gridEl.append(card);
       }
 
@@ -471,6 +684,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       detachedItems.clear();
       createdItems.clear();
       baselineOrder = captureGridOrder();
+      baselinePagesOrder = pages.map((page) => page.slug);
       renderGrid();
     };
 
@@ -478,10 +692,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       const grid = currentGrid();
       if (!grid) return;
       activeGrid = grid;
-      if (overlayTitle) overlayTitle.textContent = `Gallery pages — ${gridLabel(grid)}`;
-      if (hintEl) {
-        hintEl.textContent = `Toggle which project pages appear on ${gridLabel(grid)}. Save to keep.`;
-      }
+      if (overlayTitle) overlayTitle.textContent = `Gallery Manager — ${gridLabel(grid)}`;
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       panel.hidden = false;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel } }));
@@ -491,6 +702,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     };
 
     const closePanel = () => {
+      if (drag) drag.cancel();
       panel.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
@@ -508,6 +720,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     });
 
     document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && drag) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        drag.cancel();
+        return;
+      }
+
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyP') {
         if (!currentGrid()) return;
         event.preventDefault();
@@ -527,6 +746,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       if (!activeGrid) return;
       baseline = new Set(selected);
       baselineOrder = captureGridOrder();
+      baselinePagesOrder = pages.map((page) => page.slug);
       detachedItems.clear();
       createdItems.clear();
       for (const page of pages) {
@@ -538,6 +758,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active) return;
+      if (drag) drag.cancel();
       if (!panel.hidden) closePanel();
     }) as EventListener);
   };
@@ -559,7 +780,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     max-height: min(28em, calc(100vh - 8em));
   }
 
-  .dev-gallery-pages__hint,
   .dev-gallery-pages__status,
   .dev-gallery-pages__count {
     margin: 0;
@@ -591,11 +811,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
   .dev-gallery-pages__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(7em, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 0.55em;
     overflow: auto;
     min-height: 0;
-    max-height: min(20em, calc(100vh - 14em));
+    max-height: min(25em, calc(100vh - 14em));
     padding: 0.15em;
   }
 
@@ -606,6 +826,19 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     border-radius: 0.35em;
     overflow: hidden;
     background: #efefef;
+    transition: transform 150ms ease;
+  }
+
+  .dev-gallery-pages__card.is-dragging {
+    z-index: 2;
+    transition: none;
+    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.28);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-gallery-pages__card {
+      transition: none;
+    }
   }
 
   /* 4:3 frame — padding-bottom % is width-relative (aspect-ratio fails with abspos kids). */
@@ -631,7 +864,23 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     padding: 0.55em;
     border: 0;
     background: transparent;
-    cursor: pointer;
+    cursor: default;
+    -webkit-user-drag: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .dev-gallery-pages__card.is-selected .dev-gallery-pages__thumb {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .dev-gallery-pages__card.is-dragging .dev-gallery-pages__thumb {
+    cursor: grabbing;
+  }
+
+  .dev-gallery-pages__card.is-pressing .dev-gallery-pages__thumb {
+    cursor: grabbing;
   }
 
   .dev-gallery-pages__thumb img {
@@ -641,6 +890,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     height: 100%;
     object-fit: cover;
     display: block;
+    cursor: inherit;
   }
 
   .dev-gallery-pages__placeholder-title {
@@ -657,6 +907,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     display: -webkit-box;
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
+    cursor: inherit;
   }
 
   .dev-gallery-pages__badge {
@@ -671,7 +922,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     border-radius: 0.25em;
     background: rgba(255, 255, 255, 0.92);
     color: #333;
-    pointer-events: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
   }
 
   .dev-gallery-pages__card.is-off .dev-gallery-pages__badge {
