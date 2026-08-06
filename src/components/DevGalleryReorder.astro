@@ -1,0 +1,651 @@
+---
+/** Drag-to-reorder project cards on Home / Work / Play via a centre handle (dev mode). */
+---
+
+<script>
+  import { createReorderController, resolveInsertIndexInGrid } from '../scripts/sectionReorder';
+  import { createProximityReveal } from '../scripts/proximityReveal';
+  import moveIcon from 'lucide-static/icons/move.svg?raw';
+  import { sizeIcon } from '../lib/icons';
+
+  const GRID_SELECTOR = '[data-dev-project-grid]';
+  const HANDLE_ATTR = 'data-dev-grid-drag-handle';
+  const DRAGGING_CLASS = 'is-grid-reorder-dragging';
+  const REVEALED_CLASS = 'is-grid-handle-revealed';
+  const LIFT_BACKDROP_CLASS = 'dev-grid-lift-backdrop';
+  const LIFT_BACKDROP_VISIBLE_CLASS = 'is-visible';
+
+  type ListingOrderEntry =
+    | { type: 'project'; slug: string; order: number; full: boolean }
+    | { type: 'play-link'; id: string; order: number };
+
+  let devModeActive = document.documentElement.classList.contains('is-dev-mode');
+  let activeGrid: HTMLElement | null = null;
+  let dragItem: HTMLElement | null = null;
+  let dragHandle: HTMLButtonElement | null = null;
+  let dragPointerId: number | null = null;
+  let liftBackdrop: HTMLElement | null = null;
+  let grabOrderSnapshot: ListingOrderEntry[] | null = null;
+  let sessionSeq = 0;
+  let activeSessionId = 0;
+  let droppingSessionId = 0;
+
+  let keyboardGrabItem: HTMLElement | null = null;
+  let keyboardGrabHandle: HTMLButtonElement | null = null;
+  let keyboardGrabGrid: HTMLElement | null = null;
+  let keyboardGrabSnapshot: ListingOrderEntry[] | null = null;
+
+  const baselines = new Map<string, ListingOrderEntry[]>();
+  const observedGrids = new WeakSet<HTMLElement>();
+
+  const grids = () => [...document.querySelectorAll<HTMLElement>(GRID_SELECTOR)];
+
+  const gridItems = (grid: HTMLElement) => [
+    ...grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)'),
+  ];
+
+  const captureOrder = (grid: HTMLElement): ListingOrderEntry[] => (
+    gridItems(grid).map((item, index) => {
+      const slug = item.dataset.devProjectSlug;
+      const playLink = item.dataset.devPlayLink;
+      const full = item.classList.contains('project-grid__item--full');
+      if (slug) return { type: 'project', slug, order: index + 1, full };
+      if (playLink) return { type: 'play-link', id: playLink, order: index + 1 };
+      return null;
+    }).filter((item): item is ListingOrderEntry => item !== null)
+  );
+
+  const ordersMatch = (left: ListingOrderEntry[], right: ListingOrderEntry[]) =>
+    JSON.stringify(left) === JSON.stringify(right);
+
+  const restoreOrder = (grid: HTMLElement, items: ListingOrderEntry[]) => {
+    const anchor = grid.querySelector('.project-grid__item--new');
+    for (const entry of items) {
+      const selector = entry.type === 'project'
+        ? `[data-dev-project-slug="${entry.slug}"]`
+        : `[data-dev-play-link="${entry.id}"]`;
+      const item = grid.querySelector<HTMLElement>(selector);
+      if (!item) continue;
+      if (entry.type === 'project') {
+        item.classList.toggle('project-grid__item--full', entry.full);
+      }
+      if (anchor) grid.insertBefore(item, anchor);
+      else grid.append(item);
+    }
+  };
+
+  const syncPending = (grid: HTMLElement) => {
+    const gridId = grid.dataset.devProjectGrid;
+    if (!gridId || !['home', 'work', 'play'].includes(gridId)) return;
+
+    if (!baselines.has(gridId)) {
+      baselines.set(gridId, captureOrder(grid));
+    }
+
+    const baseline = baselines.get(gridId) ?? [];
+    const current = captureOrder(grid);
+    const pendingId = `listing-order:${gridId}`;
+
+    if (ordersMatch(baseline, current)) {
+      grid.classList.remove('is-grid-order-dirty');
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+      return;
+    }
+
+    grid.classList.add('is-grid-order-dirty');
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+      detail: {
+        id: pendingId,
+        kind: 'listing-order',
+        payload: {
+          grid: gridId,
+          items: current,
+        },
+        revert: () => {
+          restoreOrder(grid, structuredClone(baseline));
+          grid.classList.remove('is-grid-order-dirty');
+        },
+      },
+    }));
+  };
+
+  const captureBaselines = () => {
+    grids().forEach((grid) => {
+      const gridId = grid.dataset.devProjectGrid;
+      if (gridId) baselines.set(gridId, captureOrder(grid));
+    });
+  };
+
+  const itemLabel = (item: HTMLElement) =>
+    item.querySelector('.project-grid__title')?.textContent?.trim() || 'item';
+
+  // ---------------------------------------------------------------------
+  // Proximity reveal + reorder controller
+  // ---------------------------------------------------------------------
+
+  const reveal = createProximityReveal({
+    getTargets: () => grids().flatMap(gridItems),
+    isEnabled: () => devModeActive && !controller.isActive(),
+    setRevealed: (target) => {
+      document.querySelectorAll(`.${REVEALED_CLASS}`)
+        .forEach((el) => el.classList.remove(REVEALED_CLASS));
+      target?.classList.add(REVEALED_CLASS);
+    },
+  });
+
+  const controller = createReorderController({
+    getItems: () => (activeGrid ? gridItems(activeGrid).filter((el) => el !== dragItem) : []),
+    getDropZone: () => activeGrid,
+    getDragItem: () => dragItem,
+    indicatorTag: 'li',
+    classes: {
+      indicator: 'dev-grid-drop-indicator',
+      indicatorBody: 'dev-grid-drop-indicator__body',
+      flipMoving: 'is-grid-flip-moving',
+      lifted: 'is-grid-lifted',
+      fadeGhost: 'is-drop-indicator-fade-ghost',
+      liftBackdrop: LIFT_BACKDROP_CLASS,
+    },
+    // The grid's own `gap` owns spacing; the slot needs no gap rails.
+    measureLiftGaps: () => ({ top: '0px', bottom: '0px' }),
+    measureInsertGaps: () => ({ top: '0px', bottom: '0px' }),
+    resolveInsertIndex: ({ items, centerX, centerY, currentIndex }) =>
+      resolveInsertIndexInGrid(items, centerX, centerY, currentIndex),
+    onSlotSync: (indicator) => {
+      indicator.style.gridColumn =
+        dragItem?.classList.contains('project-grid__item--full') ? '1 / -1' : '';
+    },
+  });
+
+  const removeLiftBackdrop = () => {
+    liftBackdrop?.remove();
+    liftBackdrop = null;
+    dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
+  };
+
+  const attachLiftBackdrop = (item: HTMLElement) => {
+    removeLiftBackdrop();
+    liftBackdrop = document.createElement('div');
+    liftBackdrop.className = LIFT_BACKDROP_CLASS;
+    liftBackdrop.setAttribute('aria-hidden', 'true');
+    item.append(liftBackdrop);
+    requestAnimationFrame(() => {
+      liftBackdrop?.classList.add(LIFT_BACKDROP_VISIBLE_CLASS);
+    });
+  };
+
+  // ---------------------------------------------------------------------
+  // Handle mounting
+  // ---------------------------------------------------------------------
+
+  const wireDragHandle = (item: HTMLElement, handle: HTMLButtonElement) => {
+    if (handle.dataset.devGridDragWired === 'true') return;
+    handle.dataset.devGridDragWired = 'true';
+
+    handle.addEventListener('click', (event) => event.preventDefault());
+
+    handle.addEventListener('pointerdown', (event) => {
+      if (!devModeActive) return;
+      if (event.button !== 0) return;
+
+      const grid = item.closest<HTMLElement>(GRID_SELECTOR);
+      if (!grid) return;
+
+      const previous = dragItem;
+      let resumed = false;
+      if (controller.isActive()) {
+        if (item === previous) {
+          if (!controller.resumeLift(item, handle, event.clientX, event.clientY)) return;
+          resumed = true;
+        } else if (!controller.settleNow()) {
+          return;
+        } else {
+          removeLiftBackdrop();
+        }
+      }
+
+      activeGrid = grid;
+      dragItem = item;
+      dragHandle = handle;
+      dragPointerId = event.pointerId;
+      sessionSeq += 1;
+      activeSessionId = sessionSeq;
+
+      grabOrderSnapshot = captureOrder(grid);
+
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch {
+        // Document listeners still track pointer position.
+      }
+
+      if (!resumed) {
+        const items = gridItems(grid);
+        let sourceIndex = items.indexOf(item);
+        if (sourceIndex < 0) sourceIndex = 0;
+        controller.beginLift(item, handle, event.clientX, event.clientY, sourceIndex);
+        attachLiftBackdrop(item);
+      }
+
+      reveal.hold();
+      document.documentElement.classList.add(DRAGGING_CLASS);
+      event.preventDefault();
+    });
+  };
+
+  const mountDragHandle = (item: HTMLElement) => {
+    if (item.dataset.devGridDragMounted === 'true') {
+      const existing = item.querySelector<HTMLButtonElement>(`[${HANDLE_ATTR}]`);
+      if (existing) wireDragHandle(item, existing);
+      return;
+    }
+    item.dataset.devGridDragMounted = 'true';
+
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'dev-grid-drag-handle';
+    handle.setAttribute(HANDLE_ATTR, '');
+    handle.setAttribute('aria-label', `Reorder ${itemLabel(item)}`);
+    handle.title = 'Drag to reorder · Save to persist';
+    handle.innerHTML = sizeIcon(moveIcon, 16);
+    handle.tabIndex = devModeActive ? 0 : -1;
+    item.append(handle);
+
+    wireDragHandle(item, handle);
+  };
+
+  const observeGrid = (grid: HTMLElement) => {
+    if (observedGrids.has(grid)) return;
+    observedGrids.add(grid);
+    const observer = new MutationObserver(() => mountAllHandles());
+    observer.observe(grid, { childList: true });
+  };
+
+  const mountAllHandles = () => {
+    grids().forEach((grid) => {
+      observeGrid(grid);
+      gridItems(grid).forEach((item) => {
+        mountDragHandle(item);
+        const handle = item.querySelector<HTMLButtonElement>(`[${HANDLE_ATTR}]`);
+        if (handle) handle.tabIndex = devModeActive ? 0 : -1;
+      });
+    });
+  };
+
+  // ---------------------------------------------------------------------
+  // Session end / abort
+  // ---------------------------------------------------------------------
+
+  const finishPointerSession = async () => {
+    if (!dragItem || !controller.isActive()) return;
+    if (droppingSessionId === activeSessionId) return;
+
+    const grid = activeGrid;
+    const handle = dragHandle;
+    const pointerId = dragPointerId;
+    const sessionId = activeSessionId;
+
+    if (handle && pointerId != null) {
+      try {
+        handle.releasePointerCapture(pointerId);
+      } catch {
+        // Pointer may already be released.
+      }
+    }
+
+    droppingSessionId = sessionId;
+    try {
+      await controller.endDrop();
+      if (sessionId === activeSessionId) {
+        removeLiftBackdrop();
+        document.documentElement.classList.remove(DRAGGING_CLASS);
+        reveal.release();
+        if (grid) syncPending(grid);
+      }
+    } finally {
+      if (droppingSessionId === sessionId) droppingSessionId = 0;
+      if (sessionId === activeSessionId) {
+        dragItem = null;
+        dragHandle = null;
+        dragPointerId = null;
+        activeGrid = null;
+        grabOrderSnapshot = null;
+      }
+    }
+  };
+
+  const abortActiveSession = () => {
+    if (!controller.isActive() && !dragItem) return;
+    const grid = activeGrid;
+    const snapshot = grabOrderSnapshot;
+
+    activeSessionId = 0;
+    droppingSessionId = 0;
+
+    controller.destroy();
+    removeLiftBackdrop();
+    reveal.release();
+    document.documentElement.classList.remove(DRAGGING_CLASS);
+
+    if (grid && snapshot) restoreOrder(grid, snapshot);
+    if (grid) syncPending(grid);
+
+    dragItem = null;
+    dragHandle = null;
+    dragPointerId = null;
+    activeGrid = null;
+    grabOrderSnapshot = null;
+  };
+
+  document.addEventListener('pointermove', (event) => {
+    controller.setPointer(event.clientX, event.clientY);
+  }, { capture: true, passive: true });
+
+  document.addEventListener('pointerup', (event) => {
+    if (!dragItem || dragPointerId !== event.pointerId) return;
+    void finishPointerSession();
+  }, { capture: true });
+
+  document.addEventListener('mouseup', (event) => {
+    if (!dragItem || event.button !== 0) return;
+    void finishPointerSession();
+  }, { capture: true });
+
+  // ---------------------------------------------------------------------
+  // Keyboard grab (anchored to the handle button)
+  // ---------------------------------------------------------------------
+
+  const releaseKeyboardGrab = (revert: boolean) => {
+    if (!keyboardGrabItem) return;
+    const grid = keyboardGrabGrid;
+    const snapshot = keyboardGrabSnapshot;
+
+    keyboardGrabItem.classList.remove('is-grid-keyboard-grabbed');
+    keyboardGrabHandle?.setAttribute('aria-grabbed', 'false');
+    keyboardGrabItem = null;
+    keyboardGrabHandle = null;
+    keyboardGrabGrid = null;
+    keyboardGrabSnapshot = null;
+
+    if (revert && grid && snapshot) restoreOrder(grid, snapshot);
+    if (grid) syncPending(grid);
+  };
+
+  const moveKeyboardGrab = (delta: number) => {
+    if (!keyboardGrabItem || !keyboardGrabGrid) return;
+    const items = gridItems(keyboardGrabGrid);
+    const index = items.indexOf(keyboardGrabItem);
+    const targetIndex = index + delta;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const target = items[targetIndex];
+    keyboardGrabGrid.insertBefore(
+      keyboardGrabItem,
+      delta > 0 ? target.nextSibling : target,
+    );
+    syncPending(keyboardGrabGrid);
+  };
+
+  document.addEventListener('keydown', (event) => {
+    if (!devModeActive) return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    const target = event.target;
+    const focusedHandle = target instanceof HTMLElement && target.matches(`[${HANDLE_ATTR}]`)
+      ? (target as HTMLButtonElement)
+      : null;
+
+    if (keyboardGrabItem) {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        event.stopPropagation();
+        releaseKeyboardGrab(false);
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        releaseKeyboardGrab(true);
+        return;
+      }
+
+      if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveKeyboardGrab(-1);
+        return;
+      }
+
+      if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        event.stopPropagation();
+        moveKeyboardGrab(1);
+        return;
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      if (controller.isActive() || dragItem) {
+        event.preventDefault();
+        abortActiveSession();
+      }
+      return;
+    }
+
+    if (!focusedHandle) return;
+
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = focusedHandle.closest<HTMLElement>('.project-grid__item');
+      const grid = item?.closest<HTMLElement>(GRID_SELECTOR);
+      if (!item || !grid) return;
+      keyboardGrabItem = item;
+      keyboardGrabHandle = focusedHandle;
+      keyboardGrabGrid = grid;
+      keyboardGrabSnapshot = captureOrder(grid);
+      item.classList.add('is-grid-keyboard-grabbed');
+      focusedHandle.setAttribute('aria-grabbed', 'true');
+    }
+  });
+
+  // ---------------------------------------------------------------------
+  // Dev mode gating
+  // ---------------------------------------------------------------------
+
+  const onDevModeChange = ((event: CustomEvent<{ active?: boolean }>) => {
+    devModeActive = Boolean(event.detail?.active);
+    if (devModeActive) {
+      captureBaselines();
+    } else {
+      abortActiveSession();
+      releaseKeyboardGrab(true);
+      reveal.clear();
+    }
+    mountAllHandles();
+  }) as EventListener;
+
+  window.addEventListener('vcd:dev-mode-change', onDevModeChange);
+
+  window.addEventListener('vcd:dev-pending-committed', () => {
+    grids().forEach((grid) => {
+      const gridId = grid.dataset.devProjectGrid;
+      if (!gridId) return;
+      baselines.set(gridId, captureOrder(grid));
+      grid.classList.remove('is-grid-order-dirty');
+    });
+  });
+
+  window.addEventListener('vcd:dev-pending-reverted', () => {
+    grids().forEach((grid) => grid.classList.remove('is-grid-order-dirty'));
+  });
+
+  mountAllHandles();
+</script>
+
+<style is:global>
+  .dev-grid-drag-handle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-control);
+    background: transparent;
+    padding: 0.45em 0.55em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1;
+    cursor: grab;
+    opacity: 0;
+    pointer-events: none;
+    touch-action: none;
+    transition:
+      opacity 0.15s ease,
+      background-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .project-grid__item.is-grid-handle-revealed > .dev-grid-drag-handle,
+  .dev-grid-drag-handle:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle {
+    color: var(--color-bg);
+  }
+
+  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle:hover,
+  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle:focus-visible,
+  .project-grid__item[data-dev-dark='true'] .dev-grid-drag-handle:active {
+    background: var(--project-grid-chip-fill);
+    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
+    color: var(--color-bg);
+  }
+
+  .dev-grid-drag-handle:hover,
+  .dev-grid-drag-handle:focus-visible,
+  .dev-grid-drag-handle:active {
+    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
+    backdrop-filter: blur(8px);
+    transform: translate(-50%, -50%) scale(1.08);
+  }
+
+  .dev-grid-drag-handle:active {
+    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+  }
+
+  .project-grid__item.is-grid-lifted {
+    pointer-events: none;
+    touch-action: none;
+    z-index: 100;
+    transform: scale(1);
+    transition: transform 200ms ease-out;
+  }
+
+  .project-grid__item.is-grid-lifted.is-lifted-raised {
+    transform: scale(1.02);
+  }
+
+  .project-grid__item.is-grid-lifted.is-dropping {
+    transition: none;
+  }
+
+  .project-grid__item.is-grid-lifted.is-lifted-raised.is-dropping {
+    transform: scale(1.02);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-grid__item.is-grid-lifted {
+      transition: none;
+    }
+  }
+
+  .dev-grid-lift-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: var(--color-bg);
+    border-radius: inherit;
+    opacity: 0;
+    box-shadow: none;
+    pointer-events: none;
+    transition:
+      opacity 200ms ease-out,
+      box-shadow 200ms ease-out;
+  }
+
+  .dev-grid-lift-backdrop.is-visible {
+    opacity: 1;
+    box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 0.18);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-grid-lift-backdrop {
+      transition: none;
+    }
+
+    .dev-grid-lift-backdrop.is-visible {
+      opacity: 1;
+      box-shadow: 0 0.35em 1.2em rgb(0 0 0 / 0.12);
+    }
+  }
+
+  .dev-grid-drop-indicator {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    pointer-events: none;
+  }
+
+  .dev-grid-drop-indicator__body {
+    width: 100%;
+    height: var(--gap-height, 0px);
+    box-sizing: border-box;
+    border: 1px dashed color-mix(in srgb, var(--color-text-muted) 45%, transparent);
+    border-radius: var(--radius-control-smooth, 0.35em);
+    background: color-mix(in srgb, var(--color-surface-soft) 85%, transparent);
+    opacity: 0;
+  }
+
+  .is-grid-flip-moving {
+    position: relative;
+    z-index: 90;
+    will-change: transform;
+  }
+
+  html.is-grid-reorder-dragging {
+    user-select: none;
+    overflow-anchor: none;
+  }
+
+  html.is-grid-reorder-dragging .project-grid__chips,
+  html.is-grid-reorder-dragging .project-grid__item:not(.is-grid-lifted) > .dev-grid-drag-handle {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  html.is-grid-reorder-dragging .project-grid__item.is-grid-lifted > .dev-grid-drag-handle {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  html.is-grid-reorder-dragging .project-grid__card {
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-grid-drop-indicator__body {
+      transition: none;
+    }
+  }
+</style>
