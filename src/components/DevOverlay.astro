@@ -334,7 +334,7 @@ const hideSvg = sizeIcon(xIcon, 10);
 
 <style>
   /*
-    Single layer on purpose: one curve for outline, fill, and shadow, so there
+    Single layer on purpose: one curve for border, fill, and shadow, so there
     is no antialiased seam between two stacked identical corner radii.
   */
   .dev-overlay {
@@ -351,11 +351,12 @@ const hideSvg = sizeIcon(xIcon, 10);
     z-index: 40;
     width: min(22em, calc(100vw - 2em));
     max-height: calc(100dvh - 2em);
-    border: 0;
+    /* Border, not outline: an outline paints outside the border box in its own
+       pass, so on a curve its antialiased inner edge met the fill's outer edge
+       and the page bled through the join. A border sits on top of the fill —
+       background-clip is border-box — so there is no join to bleed through. */
+    border: 2px solid var(--dev-overlay-outline);
     border-radius: var(--radius-card-smooth);
-    /* Same fill as the surface on top. Outline and fill are rasterised on
-       separate elements, so a transparent outer let the page show through the
-       antialiased seam between the two identical curves as a dark hairline. */
     background: var(--color-bg);
     padding: var(--dev-overlay-pad);
     display: flex;
@@ -365,7 +366,6 @@ const hideSvg = sizeIcon(xIcon, 10);
     font-family: var(--font-sans);
     color: var(--color-text);
     box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
-    outline: 2px solid var(--dev-overlay-outline);
     opacity: 0;
     transform: translateY(var(--dev-overlay-rise));
     transition:
