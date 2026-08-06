@@ -544,24 +544,35 @@ const statusIcons = {
     });
   };
 
-  const waitTransition = (el, propertyName) => new Promise((resolve) => {
-    if (prefersReducedMotion()) {
+  const waitTransition = (el, propertyName, fallbackMs = 700) => new Promise((resolve) => {
+    if (prefersReducedMotion() || !(el instanceof HTMLElement)) {
       resolve();
       return;
     }
-    const done = (event) => {
-      if (event.target !== el) return;
-      if (propertyName && event.propertyName !== propertyName) return;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
       el.removeEventListener('transitionend', done);
       resolve();
     };
+    const done = (event) => {
+      if (event.target !== el) return;
+      if (propertyName && event.propertyName !== propertyName) return;
+      finish();
+    };
     el.addEventListener('transitionend', done);
-    window.setTimeout(resolve, 600);
+    window.setTimeout(finish, fallbackMs);
+  });
+
+  const delay = (ms) => new Promise((resolve) => {
+    window.setTimeout(resolve, prefersReducedMotion() ? 0 : ms);
   });
 
   /**
-   * Old cover fades out, new cover fades in. Returns a disposer — call after
-   * the base <img> has decoded the uploaded src so teardown doesn't flash.
+   * Old cover fades out → short gap → new cover fades in.
+   * Returns an async disposer: swap the base src first, await decode, then call it
+   * so the overlay is only removed once the base already matches (no end flash).
    */
   const playCoverCrossfade = (cover, file) => new Promise((resolve, reject) => {
     const blobUrl = URL.createObjectURL(file);
@@ -569,30 +580,50 @@ const statusIcons = {
     overlay.className = 'project-grid__crossfade';
     overlay.alt = '';
     overlay.draggable = false;
+    const stack = cover.querySelector('.project-grid__stack');
 
-    const dispose = () => {
+    const dispose = async () => {
+      // Restore the stack under the still-opaque overlay, then lift the overlay
+      // off — avoids a frame of empty / old cover.
+      if (stack instanceof HTMLElement) {
+        stack.style.transition = 'none';
+        stack.style.opacity = '1';
+      }
+      delete cover.dataset.devFadeOut;
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       overlay.remove();
-      URL.revokeObjectURL(blobUrl);
       delete cover.dataset.devCrossfadeActive;
       delete cover.dataset.devDropActive;
+      if (stack instanceof HTMLElement) {
+        stack.style.transition = '';
+        stack.style.opacity = '';
+      }
+      URL.revokeObjectURL(blobUrl);
     };
 
     const run = async () => {
       try {
-        // Drop hover wash/label; crossfade owns the card until teardown.
         delete cover.dataset.devDropActive;
         cover.dataset.devCrossfadeActive = 'true';
         cover.append(overlay);
         overlay.src = blobUrl;
         await waitImageReady(overlay);
-
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        // 1) Fade old out
+        cover.dataset.devFadeOut = 'true';
+        await waitTransition(stack, 'opacity', 700);
+
+        // 2) Beat between fades
+        await delay(140);
+
+        // 3) Fade new in (same duration as fade-out)
         overlay.classList.add('is-in');
-        await waitTransition(overlay, 'opacity');
+        await waitTransition(overlay, 'opacity', 700);
 
         resolve(dispose);
       } catch (error) {
-        dispose();
+        await dispose();
         reject(error);
       }
     };
@@ -811,7 +842,7 @@ const statusIcons = {
     }
 
     void (async () => {
-      let disposeCrossfade = () => {};
+      let disposeCrossfade = async () => {};
       try {
         disposeCrossfade = await playCoverCrossfade(cover, file);
         await applyCoverFileToCard(slug, file);
@@ -821,7 +852,7 @@ const statusIcons = {
           window.alert(error.message);
         }
       } finally {
-        disposeCrossfade();
+        await disposeCrossfade();
       }
     })();
   });
