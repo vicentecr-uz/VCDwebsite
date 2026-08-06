@@ -337,12 +337,16 @@ const hideSvg = sizeIcon(xIcon, 10);
 <style>
   /*
     Two layers so Firefox Hyperellipse can keep both a soft shadow and a clipped
-    backdrop blur: outer owns position + box-shadow (no --corner-shape), inner
-    owns squircle clip-path + translucent fill + backdrop-filter.
+    fill: outer owns position + box-shadow + outline (no --corner-shape), inner
+    owns squircle clip-path + page-matching fill. Outline lives on the outer so
+    overflow:hidden on the surface does not clip it.
   */
   .dev-overlay {
     --dev-overlay-motion-ms: 180ms;
     --dev-overlay-rise: 0.35em;
+    /* Former panel fill colour (surface-soft), solid — translucent color-mix
+       with `transparent` (black@0) reads as a near-black hairline as outline. */
+    --dev-overlay-outline: var(--color-surface-soft);
     position: fixed;
     right: 1em;
     bottom: 1em;
@@ -356,6 +360,7 @@ const hideSvg = sizeIcon(xIcon, 10);
     font-family: var(--font-sans);
     color: var(--color-text);
     box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+    outline: 2px solid var(--dev-overlay-outline);
     opacity: 0;
     transform: translateY(var(--dev-overlay-rise));
     transition:
@@ -388,8 +393,7 @@ const hideSvg = sizeIcon(xIcon, 10);
     border-radius: var(--radius-card-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--color-surface-soft) 96%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--color-bg);
     padding: var(--dev-overlay-pad);
     display: flex;
     flex-direction: column;
