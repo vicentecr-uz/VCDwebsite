@@ -2517,9 +2517,18 @@
       dirtyText.forEach((state) => documents.add(state.document));
       dirtySpacing.forEach((state) => documents.add(state.document));
       pendingChanges.forEach((change) => {
-        const key = (change.payload as { document?: unknown; slug?: unknown } | undefined)?.document
-          ?? (change.payload as { slug?: unknown } | undefined)?.slug;
+        const payload = change.payload as {
+          document?: unknown;
+          slug?: unknown;
+          slugs?: unknown;
+        } | undefined;
+        const key = payload?.document ?? payload?.slug;
         if (typeof key === 'string' && key) documents.add(key);
+        if (Array.isArray(payload?.slugs)) {
+          for (const slug of payload.slugs) {
+            if (typeof slug === 'string' && slug) documents.add(slug);
+          }
+        }
       });
       const manifest: PublishManifest = {
         documents: [...documents],
