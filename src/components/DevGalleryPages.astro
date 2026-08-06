@@ -91,6 +91,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     /** @type {Map<string, HTMLElement>} */
     const createdItems = new Map();
 
+    let drag: { pointerId: number; slug: string; cancel: () => void } | null = null;
+    let suppressClick = false;
+    const DRAG_THRESHOLD = 4;
+    const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
     const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
     const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
 
@@ -142,6 +147,183 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       !setsEqual(selected, baseline) || !ordersEqual(captureGridOrder(), baselineOrder);
 
     const pageBySlug = (slug: string) => pages.find((page) => page.slug === slug);
+
+    const draggableCardOrder = (): string[] =>
+      gridEl
+        ? [...gridEl.querySelectorAll<HTMLElement>('.dev-gallery-pages__card.is-selected')]
+            .map((el) => el.dataset.gallerySlug || '')
+            .filter(Boolean)
+        : [];
+
+    const cardEl = (slug: string) =>
+      gridEl?.querySelector<HTMLElement>(`.dev-gallery-pages__card[data-gallery-slug="${slug}"]`) ?? null;
+
+    const reorderCardsToMatch = (order: string[]) => {
+      let prev: HTMLElement | null = null;
+      for (const slug of order) {
+        const el = cardEl(slug);
+        if (!el) continue;
+        if (prev) prev.after(el);
+        prev = el;
+      }
+    };
+
+    const applyOrderToLiveGrid = (order: string[]) => {
+      const grid = listingGrid();
+      if (!grid) return;
+      let prev: HTMLElement | null = null;
+      for (const slug of order) {
+        const el = grid.querySelector<HTMLElement>(`[data-dev-project-slug="${slug}"]`);
+        if (!el) continue;
+        if (prev) prev.after(el);
+        prev = el;
+      }
+    };
+
+    const applyPagesOrder = (order: string[]) => {
+      const rank = new Map(order.map((slug, index) => [slug, index]));
+      const ordered = pages
+        .filter((page) => rank.has(page.slug))
+        .sort((a, b) => (rank.get(a.slug) ?? 0) - (rank.get(b.slug) ?? 0));
+      const rest = pages.filter((page) => !rank.has(page.slug));
+      pages = [...ordered, ...rest];
+    };
+
+    const attachCardDrag = (card: HTMLElement, button: HTMLButtonElement, page: GalleryPage, isOn: boolean) => {
+      if (!isOn) return;
+
+      button.addEventListener('pointerdown', (event: PointerEvent) => {
+        if (event.button !== 0 || drag) return;
+        const pointerId = event.pointerId;
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const preDragOrder = draggableCardOrder();
+        let active = false;
+        let baseX = startX;
+        let baseY = startY;
+
+        const cleanupListeners = () => {
+          button.removeEventListener('pointermove', onMove);
+          button.removeEventListener('pointerup', onUp);
+          button.removeEventListener('pointercancel', onCancel);
+        };
+
+        const finish = () => {
+          cleanupListeners();
+          if (button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
+          card.classList.remove('is-dragging');
+          card.style.transform = '';
+          drag = null;
+        };
+
+        const abort = () => {
+          if (active) reorderCardsToMatch(preDragOrder);
+          finish();
+        };
+
+        const onMove = (moveEvent: PointerEvent) => {
+          if (moveEvent.pointerId !== pointerId) return;
+          const dx = moveEvent.clientX - startX;
+          const dy = moveEvent.clientY - startY;
+          if (!active) {
+            if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
+            active = true;
+            suppressClick = true;
+            button.setPointerCapture(pointerId);
+            card.classList.add('is-dragging');
+          }
+          moveEvent.preventDefault();
+          const clientX = moveEvent.clientX;
+          const clientY = moveEvent.clientY;
+          card.style.transform = `translate(${clientX - baseX}px, ${clientY - baseY}px) scale(1.04)`;
+
+          const order = draggableCardOrder();
+          const curIndex = order.indexOf(page.slug);
+          if (curIndex === -1 || order.length < 2) return;
+
+          let nearest = curIndex;
+          let bestDist = Infinity;
+          order.forEach((slug, index) => {
+            const el = cardEl(slug);
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const dist = (cx - clientX) ** 2 + (cy - clientY) ** 2;
+            if (dist < bestDist) {
+              bestDist = dist;
+              nearest = index;
+            }
+          });
+          if (nearest === curIndex) return;
+
+          const reduced = prefersReducedMotion();
+          const firstRects = reduced
+            ? null
+            : new Map(
+                order
+                  .filter((slug) => slug !== page.slug)
+                  .map((slug) => [slug, cardEl(slug)?.getBoundingClientRect() ?? null]),
+              );
+
+          const newOrder = [...order];
+          newOrder.splice(curIndex, 1);
+          newOrder.splice(nearest, 0, page.slug);
+
+          const beforeLeft = card.offsetLeft;
+          const beforeTop = card.offsetTop;
+          reorderCardsToMatch(newOrder);
+          const afterLeft = card.offsetLeft;
+          const afterTop = card.offsetTop;
+          baseX += afterLeft - beforeLeft;
+          baseY += afterTop - beforeTop;
+          card.style.transform = `translate(${clientX - baseX}px, ${clientY - baseY}px) scale(1.04)`;
+
+          if (!reduced && firstRects) {
+            for (const [slug, firstRect] of firstRects) {
+              if (!firstRect) continue;
+              const el = cardEl(slug);
+              if (!el) continue;
+              const lastRect = el.getBoundingClientRect();
+              const invertX = firstRect.left - lastRect.left;
+              const invertY = firstRect.top - lastRect.top;
+              if (!invertX && !invertY) continue;
+              el.style.transition = 'none';
+              el.style.transform = `translate(${invertX}px, ${invertY}px)`;
+              requestAnimationFrame(() => {
+                el.style.transition = '';
+                el.style.transform = '';
+              });
+            }
+          }
+        };
+
+        const onUp = (upEvent: PointerEvent) => {
+          if (upEvent.pointerId !== pointerId) return;
+          if (!active) {
+            finish();
+            return;
+          }
+          const finalOrder = draggableCardOrder();
+          finish();
+          applyPagesOrder(finalOrder);
+          applyOrderToLiveGrid(finalOrder);
+          syncPending();
+          syncCount();
+        };
+
+        const onCancel = (cancelEvent: PointerEvent) => {
+          if (cancelEvent.pointerId !== pointerId) return;
+          abort();
+        };
+
+        drag = { pointerId, slug: page.slug, cancel: abort };
+
+        button.addEventListener('pointermove', onMove);
+        button.addEventListener('pointerup', onUp);
+        button.addEventListener('pointercancel', onCancel);
+      });
+    };
 
     const buildGridCard = (page: GalleryPage) => {
       const item = document.createElement('li');
@@ -385,6 +567,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     const renderGrid = () => {
       if (!gridEl) return;
+      if (drag) drag.cancel();
       const list = visiblePages();
       gridEl.replaceChildren();
 
@@ -437,7 +620,12 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         badge.setAttribute('aria-hidden', 'true');
         badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
 
-        button.addEventListener('click', () => {
+        button.addEventListener('click', (event) => {
+          if (suppressClick) {
+            suppressClick = false;
+            event.preventDefault();
+            return;
+          }
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
           applyMembershipPreview();
@@ -445,6 +633,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           syncCount();
           syncPending();
         });
+        attachCardDrag(card, button, page, isOn);
 
         card.append(badge, button);
         gridEl.append(card);
@@ -484,6 +673,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     };
 
     const closePanel = () => {
+      if (drag) drag.cancel();
       panel.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
@@ -501,6 +691,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     });
 
     document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && drag) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        drag.cancel();
+        return;
+      }
+
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyP') {
         if (!currentGrid()) return;
         event.preventDefault();
@@ -531,6 +728,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active) return;
+      if (drag) drag.cancel();
       if (!panel.hidden) closePanel();
     }) as EventListener);
   };
@@ -598,6 +796,19 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     border-radius: 0.35em;
     overflow: hidden;
     background: #efefef;
+    transition: transform 150ms ease;
+  }
+
+  .dev-gallery-pages__card.is-dragging {
+    z-index: 2;
+    transition: none;
+    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.28);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-gallery-pages__card {
+      transition: none;
+    }
   }
 
   /* 4:3 frame — padding-bottom % is width-relative (aspect-ratio fails with abspos kids). */
@@ -624,6 +835,15 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     border: 0;
     background: transparent;
     cursor: pointer;
+  }
+
+  .dev-gallery-pages__card.is-selected .dev-gallery-pages__thumb {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .dev-gallery-pages__card.is-dragging .dev-gallery-pages__thumb {
+    cursor: grabbing;
   }
 
   .dev-gallery-pages__thumb img {
