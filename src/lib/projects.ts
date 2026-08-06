@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { ImageVariants } from './responsiveImage';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser';
 export type ProjectStack = 'modern' | 'legacy';
@@ -14,6 +15,10 @@ export type ProjectListingCard = {
   bg: string;
   dark: boolean;
   full?: boolean;
+  /** Per-viewport cover crop (same shape as project image variants). */
+  variants?: ImageVariants;
+  srcWidth?: number;
+  srcHeight?: number;
 };
 
 export type ProjectTeaserConfig = {
@@ -47,6 +52,9 @@ export type ProjectGridListing = {
   teaser?: boolean;
   teaserLabel?: string;
   order?: number;
+  variants?: ImageVariants;
+  srcWidth?: number;
+  srcHeight?: number;
 };
 
 export type PlayLinkItem = {
@@ -166,6 +174,9 @@ function listingCardForGrid(
     teaser: isTeaser,
     teaserLabel: project.teaser?.label ?? 'Coming soon',
     order: listing.order,
+    variants: listing.variants,
+    srcWidth: listing.srcWidth,
+    srcHeight: listing.srcHeight,
   };
 }
 
