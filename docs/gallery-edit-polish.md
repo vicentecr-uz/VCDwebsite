@@ -9,7 +9,7 @@
 
 - [ ] **Cover drop hover** — dashed inset fade-in, dim cover, centred “Replace cover image”
 - [ ] **Cover drop iris** — soft-edge circular mask expands from drop point
-- [ ] **Span chip** — on-card toggle for how many grid cells the cover spans (full vs half)
+- [x] **Span chip** — on-card mode + drag handle for how many grid cells the cover spans (full vs half); Full-width checkbox removed
 - [ ] **Rearrange parity** — Alt+D×2 looks and works like section drag-handle reorder
 
 ## Done when

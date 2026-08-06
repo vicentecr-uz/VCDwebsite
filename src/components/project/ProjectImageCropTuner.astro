@@ -683,9 +683,12 @@ const lockSvg = sizeIcon(lockIcon, 14);
       // While the on-page crop stage is mounted the ghost <img> is prepended
       // first — never treat that as the content bitmap.
       if (target === editTarget && editedImage?.isConnected) return editedImage;
-      return [...target.querySelectorAll<HTMLImageElement>('img')]
-        .find((img) => !img.closest('.dev-crop-ghost'))
-        ?? null;
+      return (
+        target.querySelector<HTMLImageElement>('.project-grid__img--base')
+        ?? [...target.querySelectorAll<HTMLImageElement>('img')]
+          .find((img) => !img.closest('.dev-crop-ghost'))
+        ?? null
+      );
     };
 
     const applySrcLive = (
@@ -1103,7 +1106,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
-      const image = target.querySelector<HTMLImageElement>('img');
+      const image = target.querySelector<HTMLImageElement>('.project-grid__img--base')
+        ?? target.querySelector<HTMLImageElement>('img');
       if (!image) return;
 
       closeReplaceOverlay();
@@ -1822,7 +1826,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
       const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'image') return;
-      const target = trigger?.closest<HTMLElement>('[data-dev-image-target]');
+      const target = trigger?.closest<HTMLElement>('[data-dev-image-target]')
+        // Gallery crop chip sits on the --end rail (sibling of the cover target).
+        ?? trigger?.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]')
+        ?? null;
       if (target) selectTarget(target, true);
     }) as EventListener);
 
