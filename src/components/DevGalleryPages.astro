@@ -94,7 +94,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     const createdItems = new Map();
 
     let drag: { pointerId: number; slug: string; cancel: () => void } | null = null;
-    let suppressClick = false;
     const DRAG_THRESHOLD = 4;
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -191,14 +190,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       pages = [...ordered, ...rest];
     };
 
-    const attachCardDrag = (card: HTMLElement, button: HTMLButtonElement, page: GalleryPage, isOn: boolean) => {
+    const attachCardDrag = (card: HTMLElement, button: HTMLElement, page: GalleryPage, isOn: boolean) => {
       if (!isOn) return;
 
       button.addEventListener('pointerdown', (event: PointerEvent) => {
         if (event.button !== 0 || drag) return;
-        // A drag that ends without a click (released off the card) would leave
-        // this set and eat the next toggle — every press clears it.
-        suppressClick = false;
         card.classList.add('is-pressing');
         const pointerId = event.pointerId;
         const startX = event.clientX;
@@ -241,7 +237,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           if (!active) {
             if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
             active = true;
-            suppressClick = true;
             button.setPointerCapture(pointerId);
             card.classList.add('is-dragging');
           }
@@ -613,19 +608,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         card.classList.toggle('is-off', !isOn);
         card.classList.toggle('is-placeholder', !page.hasCover);
 
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'dev-gallery-pages__thumb';
-        button.title = page.title;
+        const thumb = document.createElement('div');
+        thumb.className = 'dev-gallery-pages__thumb';
+        thumb.title = page.title;
         // Native <img> drag hijacks the pointer once it starts — it never fires pointermove,
         // so the custom reorder drag couldn't clear its threshold. Kill native drag outright.
-        button.draggable = false;
-        button.addEventListener('dragstart', (event) => event.preventDefault());
-        button.setAttribute(
-          'aria-label',
-          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
-        );
-        button.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+        thumb.draggable = false;
+        thumb.addEventListener('dragstart', (event) => event.preventDefault());
 
         if (page.hasCover) {
           const img = document.createElement('img');
@@ -633,25 +622,27 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           img.alt = '';
           img.loading = 'lazy';
           img.draggable = false;
-          button.append(img);
+          thumb.append(img);
         } else {
           const name = document.createElement('span');
           name.className = 'dev-gallery-pages__placeholder-title';
           name.textContent = page.title;
-          button.append(name);
+          thumb.append(name);
         }
 
-        const badge = document.createElement('span');
+        const badge = document.createElement('button');
+        badge.type = 'button';
         badge.className = 'dev-gallery-pages__badge';
-        badge.setAttribute('aria-hidden', 'true');
         badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
+        badge.setAttribute(
+          'aria-label',
+          `${page.title}${isOn ? ' (shown on this gallery)' : ' (hidden from this gallery)'}`,
+        );
+        badge.setAttribute('aria-pressed', isOn ? 'true' : 'false');
+        badge.draggable = false;
+        badge.addEventListener('dragstart', (event) => event.preventDefault());
 
-        button.addEventListener('click', (event) => {
-          if (suppressClick) {
-            suppressClick = false;
-            event.preventDefault();
-            return;
-          }
+        badge.addEventListener('click', () => {
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
           applyMembershipPreview();
@@ -659,9 +650,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           syncCount();
           syncPending();
         });
-        attachCardDrag(card, button, page, isOn);
+        attachCardDrag(card, thumb, page, isOn);
 
-        card.append(badge, button);
+        card.append(badge, thumb);
         gridEl.append(card);
       }
 
@@ -862,7 +853,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     padding: 0.55em;
     border: 0;
     background: transparent;
-    cursor: pointer;
+    cursor: default;
     -webkit-user-drag: none;
     user-select: none;
     -webkit-user-select: none;
@@ -920,7 +911,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     border-radius: 0.25em;
     background: rgba(255, 255, 255, 0.92);
     color: #333;
-    pointer-events: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
   }
 
   .dev-gallery-pages__card.is-off .dev-gallery-pages__badge {
