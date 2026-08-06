@@ -32,8 +32,9 @@
   --color-surface-control-strong: #e7e7e9;
   --radius-card: 1em;
   --radius-control: 0.7em;
-  /* Corner curvature knob: superellipse(1)=round, 1.5=soft squircle, 2=squircle(pointier), higher=squarer */
-  --squircle-shape: superellipse(1.5);
+  /* Corner curvature knob: superellipse(1)=round, 1.5=soft squircle, 2=squircle(pointier), higher=squarer.
+     Squircle shaping is disabled (issue #161) — set to plain round. Re-enable by restoring superellipse(1.5). */
+  --squircle-shape: superellipse(1);
   /* Squircle-aware radii: × --corner-scale until polyfill applies in Safari/Firefox */
   --radius-card-smooth: calc(var(--radius-card) * var(--corner-scale, 1));
   --radius-control-smooth: calc(var(--radius-control) * var(--corner-scale, 1));
@@ -64,10 +65,12 @@
 }
 
 /* Pre-hydration radius softening for browsers without native corner-shape (Safari/Firefox).
-   Tune toward 1 for rounder shapes; 0.6 suits squircle(2), ~0.78 suits superellipse(1.5). */
+   Tune toward 1 for rounder shapes; 0.6 suits squircle(2), ~0.78 suits superellipse(1.5).
+   Squircle shaping is disabled (issue #161) — kept at 1 (unscaled) so radii render true.
+   Restore 0.78 alongside superellipse(1.5) above to re-enable. */
 @supports not (corner-shape: squircle) {
   :root {
-    --corner-scale: 0.78;
+    --corner-scale: 1;
   }
 }
 

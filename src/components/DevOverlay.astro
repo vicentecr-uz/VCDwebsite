@@ -34,38 +34,36 @@ const hideSvg = sizeIcon(xIcon, 10);
   data-dev-panel-key={panelKey}
   hidden={defaultHidden}
 >
-  <div class="dev-overlay__surface">
-    <div class="dev-overlay__head" data-drag-handle>
-      <p class="dev-overlay__title">{title}</p>
-      {
-        showMinimize && (
-          <div class="dev-overlay__lights" data-drag-ignore>
-            <button
-              type="button"
-              class="dev-overlay__light dev-overlay__light--minimize"
-              data-minimize-toggle
-              aria-label="Minimize"
-              title="Minimize"
-              aria-expanded="true"
-            >
-              <span class="dev-overlay__light-icon" aria-hidden="true" set:html={minimizeSvg} />
-            </button>
-            <button
-              type="button"
-              class="dev-overlay__light dev-overlay__light--hide"
-              data-hide-toggle
-              aria-label="Hide"
-              title="Hide"
-            >
-              <span class="dev-overlay__light-icon" aria-hidden="true" set:html={hideSvg} />
-            </button>
-          </div>
-        )
-      }
-    </div>
-    <div class="dev-overlay__body" data-overlay-body>
-      <slot />
-    </div>
+  <div class="dev-overlay__head" data-drag-handle>
+    <p class="dev-overlay__title">{title}</p>
+    {
+      showMinimize && (
+        <div class="dev-overlay__lights" data-drag-ignore>
+          <button
+            type="button"
+            class="dev-overlay__light dev-overlay__light--minimize"
+            data-minimize-toggle
+            aria-label="Minimize"
+            title="Minimize"
+            aria-expanded="true"
+          >
+            <span class="dev-overlay__light-icon" aria-hidden="true" set:html={minimizeSvg} />
+          </button>
+          <button
+            type="button"
+            class="dev-overlay__light dev-overlay__light--hide"
+            data-hide-toggle
+            aria-label="Hide"
+            title="Hide"
+          >
+            <span class="dev-overlay__light-icon" aria-hidden="true" set:html={hideSvg} />
+          </button>
+        </div>
+      )
+    }
+  </div>
+  <div class="dev-overlay__body" data-overlay-body>
+    <slot />
   </div>
 </aside>
 
@@ -336,14 +334,14 @@ const hideSvg = sizeIcon(xIcon, 10);
 
 <style>
   /*
-    Two layers so Firefox Hyperellipse can keep both a soft shadow and a clipped
-    fill: outer owns position + box-shadow + outline (no --corner-shape), inner
-    owns squircle clip-path + page-matching fill. Outline lives on the outer so
-    overflow:hidden on the surface does not clip it.
+    Single layer on purpose: one curve for border, fill, and shadow, so there
+    is no antialiased seam between two stacked identical corner radii.
   */
   .dev-overlay {
     --dev-overlay-motion-ms: 180ms;
     --dev-overlay-rise: 0.35em;
+    --dev-overlay-pad: 0.75em;
+    --dev-overlay-light-size: 0.9em;
     /* Former panel fill colour (surface-soft), solid — translucent color-mix
        with `transparent` (black@0) reads as a near-black hairline as outline. */
     --dev-overlay-outline: var(--color-surface-soft);
@@ -353,14 +351,21 @@ const hideSvg = sizeIcon(xIcon, 10);
     z-index: 40;
     width: min(22em, calc(100vw - 2em));
     max-height: calc(100dvh - 2em);
-    border: 0;
+    /* Border, not outline: an outline paints outside the border box in its own
+       pass, so on a curve its antialiased inner edge met the fill's outer edge
+       and the page bled through the join. A border sits on top of the fill —
+       background-clip is border-box — so there is no join to bleed through. */
+    border: 2px solid var(--dev-overlay-outline);
     border-radius: var(--radius-card-smooth);
-    background: transparent;
-    padding: 0;
+    background: var(--color-bg);
+    padding: var(--dev-overlay-pad);
+    display: flex;
+    flex-direction: column;
+    gap: 0.65em;
+    overflow: hidden;
     font-family: var(--font-sans);
     color: var(--color-text);
     box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
-    outline: 2px solid var(--dev-overlay-outline);
     opacity: 0;
     transform: translateY(var(--dev-overlay-rise));
     transition:
@@ -383,22 +388,6 @@ const hideSvg = sizeIcon(xIcon, 10);
       --dev-overlay-motion-ms: 0ms;
       transition: none;
     }
-  }
-
-  .dev-overlay__surface {
-    --dev-overlay-pad: 0.75em;
-    --dev-overlay-light-size: 0.9em;
-    position: relative;
-    max-height: calc(100dvh - 2em);
-    border-radius: var(--radius-card-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--color-bg);
-    padding: var(--dev-overlay-pad);
-    display: flex;
-    flex-direction: column;
-    gap: 0.65em;
-    overflow: hidden;
   }
 
   .dev-overlay[hidden] {
