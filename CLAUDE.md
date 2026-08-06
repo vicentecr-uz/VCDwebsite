@@ -17,22 +17,16 @@ Vicente Cruz is a UAL: CSM graduate, currently Junior Industrial Designer at Kin
 - **Appear / disappear motion:** Dev chrome should not pop. Standalone panels (`DevOverlay`) fade in with a slight rise (mirrored on exit). Covering veils over an existing surface fade only. Respect `prefers-reduced-motion`.
 - Bun path: `$HOME/.bun/bin/bun` (not on PATH)
 - Dev server: port 4321
-- **Dev session:** `bun run dev:session` starts Astro (port 4321), Decap proxy (8081), and **branch sync**; `dev:session:stop` / `dev:session:status`. One local session — reuse servers across chats (Cursor or Claude), don't start duplicates.
+- **Dev session:** `bun run dev:session` starts Astro (port 4321) and **branch sync**; `dev:session:stop` / `dev:session:status`. One local session — reuse servers across chats (Cursor or Claude), don't start duplicates.
 - **Branch sync (auto-pull):** While the dev session runs, a background poll (every 60s) pulls the **currently checked-out branch** from its upstream. Pull-only — no auto-commit or push; local dirty files survive via `--autostash` when a rebase is needed. Switching branches is picked up on the next poll. **Agents (Cursor and Claude): do not run `git pull` manually** when sync is running — check `bun run dev:session:status` or `bun run branch:sync:status`; use `bun run branch:sync:once` if you need an immediate pull. Manual: `branch:sync`, `branch:sync:stop`, `branch:sync:status`, `branch:sync:once`. Log: `.dev-session/branch-sync.log`. Cursor also has `.cursor/rules/dev-session.mdc`.
-- **Local CMS:** Open `http://localhost:4321/admin` in any browser — in dev, `admin.astro` loads **Decap CMS** (not Sveltia) with `local_backend: true`, talking to the `decap-server` proxy on port 8081 that `dev:session` starts. "Publish" writes directly to the local content files on disk (no git commit, no push). Dev HMR is calm (no auto full-reload for content) — refresh the page manually after Decap edits. Changes only go live after you manually commit and push to `main`. (Decap is used locally instead of Sveltia because Sveltia's local workflow needs the Chromium-only File System Access API; Decap's HTTP proxy works in any browser, e.g. Zen/Firefox.)
-- **Deployment:** Cloudflare Pages auto-deploys on every push to `main` — live at `wip.vcruzdesigns.com` within ~30s. No manual deploy step needed. Production CMS at `wip.vcruzdesigns.com/admin` loads **Sveltia CMS** (the prod build, via `import.meta.env.DEV` in `admin.astro`) with GitHub PKCE auth via Cloudflare Worker.
+- **Local authoring:** In-page Edit (dev mode) writes content JSON on disk via the Save bar. No separate `/admin` CMS — Decap/Sveltia were removed.
+- **Deployment:** Cloudflare Pages auto-deploys on every push to `main` — live at `wip.vcruzdesigns.com` within ~30s. No manual deploy step needed.
 - Page transitions: GSAP fades `#transition-overlay` (starts opaque; fades out once viewport-visible images + fonts are ready, min 0.5s hold / max 4s wait; fades in on navigation). CSS 5s safety-net reveal if JS fails.
 - Max page width: fluid gutter via `#site-wrapper { padding-inline: max(1em, calc((100% - 60em) / 2)) }` — gutter holds at 1em until viewport exceeds 62em, then grows to keep content at 60em max
 
 ## Dev authoring (local only)
 
-Two ways to edit content on disk in dev — both write the same JSON under `src/content/`, but behave differently:
-
-| | **In-page editor** | **Decap CMS** (`/admin`) |
-|--|---------------------|--------------------------|
-| Where | On the live page (dev mode toggle) | Separate admin UI |
-| Best for | Visual tweaks — inline text, crops, spacing, grid order | Structural/bulk edits |
-| UI update on save | **No page flash** — DOM already shows your edits | No auto full-reload — refresh manually after Decap edits |
+Content edits go through the **in-page editor** (dev mode). It writes JSON under `src/content/` (and images under `public/images/`) via the Save bar — same files the site renders from.
 
 ### In-page editor flow
 
