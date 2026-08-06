@@ -54,17 +54,7 @@ const teaserPassword = getTeaserPassword();
           <button type="button" data-ps-cover-choose>Choose file</button>
           <input type="file" accept="image/*" hidden data-ps-cover-file />
         </div>
-
-        <label class="dev-project-settings__field">
-          <span>Cover image URL</span>
-          <input type="text" data-ps-cover-url />
-        </label>
       </div>
-
-      <label class="dev-project-settings__field" data-ps-hover-wrap>
-        <span>Hover image URL</span>
-        <input type="text" data-ps-hover-url placeholder="Optional in-context shot" />
-      </label>
 
       <label class="dev-project-settings__field">
         <span>Card background</span>
@@ -83,30 +73,14 @@ const teaserPassword = getTeaserPassword();
     </div>
 
     <div class="dev-project-settings__teaser" data-ps-teaser-fields hidden>
-      <label class="dev-project-settings__field">
-        <span>Teaser cover image URL</span>
-        <input type="text" data-ps-teaser-cover />
-      </label>
       <p class="dev-project-settings__note">
-        Teaser label is edited on the card. Hover image is not used in teaser mode.
+        Teaser label is edited on the card. Cover and hover images will move to on-card controls.
       </p>
     </div>
 
-    <fieldset class="dev-project-settings__advanced">
-      <legend>Advanced</legend>
-      <label class="dev-project-settings__field">
-        <span>Description</span>
-        <textarea data-ps-description rows="2"></textarea>
-      </label>
-      <label class="dev-project-settings__field">
-        <span>Rename slug</span>
-        <input type="text" data-ps-new-slug placeholder="new-project-slug" pattern="[a-z0-9-]+" />
-      </label>
-      <div class="dev-project-settings__danger-actions">
-        <button type="button" data-ps-rename>Rename</button>
-        <button type="button" data-ps-delete>Delete project</button>
-      </div>
-    </fieldset>
+    <div class="dev-project-settings__danger-actions">
+      <button type="button" data-ps-delete>Delete project</button>
+    </div>
 
     <p class="dev-project-settings__status" data-ps-status-line aria-live="polite"></p>
   </div>
@@ -121,7 +95,6 @@ const teaserPassword = getTeaserPassword();
   const statusSelect = settingsRoot?.querySelector('[data-ps-status]');
   const listingFields = settingsRoot?.querySelector('[data-ps-listing-fields]');
   const teaserFields = settingsRoot?.querySelector('[data-ps-teaser-fields]');
-  const hoverWrap = settingsRoot?.querySelector('[data-ps-hover-wrap]');
   const fullWrap = settingsRoot?.querySelector('[data-ps-full-wrap]');
   const coverFields = settingsRoot?.querySelector('[data-ps-cover-fields]');
   const coverDrop = settingsRoot?.querySelector('[data-ps-cover-drop]');
@@ -129,15 +102,9 @@ const teaserPassword = getTeaserPassword();
   const coverDropLabel = settingsRoot?.querySelector('[data-ps-cover-drop-label]');
   const coverChoose = settingsRoot?.querySelector('[data-ps-cover-choose]');
   const coverFile = settingsRoot?.querySelector('[data-ps-cover-file]');
-  const coverUrl = settingsRoot?.querySelector('[data-ps-cover-url]');
-  const hoverUrl = settingsRoot?.querySelector('[data-ps-hover-url]');
   const bgInput = settingsRoot?.querySelector('[data-ps-bg]');
   const darkInput = settingsRoot?.querySelector('[data-ps-dark]');
   const fullInput = settingsRoot?.querySelector('[data-ps-full]');
-  const teaserCoverInput = settingsRoot?.querySelector('[data-ps-teaser-cover]');
-  const descriptionInput = settingsRoot?.querySelector('[data-ps-description]');
-  const newSlugInput = settingsRoot?.querySelector('[data-ps-new-slug]');
-  const renameButton = settingsRoot?.querySelector('[data-ps-rename]');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
@@ -226,19 +193,12 @@ const teaserPassword = getTeaserPassword();
     draftSnapshot.subtitle = inline.subtitle;
     draftSnapshot.teaserLabel = inline.teaserLabel;
     draftSnapshot.status = statusSelect instanceof HTMLSelectElement ? statusSelect.value : 'draft';
-    draftSnapshot.description = descriptionInput instanceof HTMLTextAreaElement
-      ? descriptionInput.value.trim()
-      : '';
-    draftSnapshot.listing.image = coverUrl instanceof HTMLInputElement ? coverUrl.value.trim() : '';
-    draftSnapshot.listing.hoverImage = hoverUrl instanceof HTMLInputElement ? hoverUrl.value.trim() : '';
+    // description / hoverImage / teaser.coverImage preserved from load — not edited here.
     draftSnapshot.listing.bg = bgInput instanceof HTMLInputElement ? bgInput.value.trim() : '#efefef';
     draftSnapshot.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
     draftSnapshot.listing.full = fullInput instanceof HTMLInputElement && fullInput.checked;
     draftSnapshot.listing.subtitle = inline.subtitle;
     draftSnapshot.teaser.label = inline.teaserLabel;
-    draftSnapshot.teaser.coverImage = teaserCoverInput instanceof HTMLInputElement
-      ? teaserCoverInput.value.trim()
-      : '';
   };
 
   const buildListingPayload = (grid, listing, status) => {
@@ -349,25 +309,15 @@ const teaserPassword = getTeaserPassword();
   const renderFormFromDraft = () => {
     if (!draftSnapshot) return;
     if (statusSelect instanceof HTMLSelectElement) statusSelect.value = draftSnapshot.status;
-    if (coverUrl instanceof HTMLInputElement) coverUrl.value = draftSnapshot.listing.image;
-    if (hoverUrl instanceof HTMLInputElement) hoverUrl.value = draftSnapshot.listing.hoverImage;
     if (bgInput instanceof HTMLInputElement) bgInput.value = draftSnapshot.listing.bg;
     if (darkInput instanceof HTMLInputElement) darkInput.checked = draftSnapshot.listing.dark;
     if (fullInput instanceof HTMLInputElement) fullInput.checked = draftSnapshot.listing.full;
-    if (teaserCoverInput instanceof HTMLInputElement) {
-      teaserCoverInput.value = draftSnapshot.teaser.coverImage;
-    }
-    if (descriptionInput instanceof HTMLTextAreaElement) {
-      descriptionInput.value = draftSnapshot.description;
-    }
-    if (newSlugInput instanceof HTMLInputElement) newSlugInput.value = '';
     syncCoverPreview(draftSnapshot.listing.image);
 
     const isTeaser = draftSnapshot.status === 'teaser';
     if (listingFields instanceof HTMLElement) listingFields.hidden = false;
     if (teaserFields instanceof HTMLElement) teaserFields.hidden = !isTeaser;
     if (coverFields instanceof HTMLElement) coverFields.hidden = isTeaser;
-    if (hoverWrap instanceof HTMLElement) hoverWrap.hidden = isTeaser;
     if (fullWrap instanceof HTMLElement) fullWrap.hidden = activeGrid === 'play';
 
     const gridLabel = activeGrid === 'home' ? 'Home' : activeGrid === 'work' ? 'Work' : 'Play';
@@ -484,7 +434,6 @@ const teaserPassword = getTeaserPassword();
     if (!(file instanceof File) || !file.type.startsWith('image/') || !activeSlug) return;
     try {
       const url = await uploadCoverImage(activeSlug, file);
-      if (coverUrl instanceof HTMLInputElement) coverUrl.value = url;
       if (draftSnapshot) draftSnapshot.listing.image = url;
       syncCoverPreview(url);
       syncPending();
@@ -575,15 +524,10 @@ const teaserPassword = getTeaserPassword();
     });
   }
 
-  coverUrl?.addEventListener('input', () => {
-    if (coverUrl instanceof HTMLInputElement) syncCoverPreview(coverUrl.value);
-    syncPending();
-  });
-
   settingsRoot?.addEventListener('input', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (!target.matches('[data-ps-status], [data-ps-hover-url], [data-ps-bg], [data-ps-description], [data-ps-teaser-cover]')) return;
+    if (!target.matches('[data-ps-status], [data-ps-bg]')) return;
     if (target.matches('[data-ps-status]') && draftSnapshot && target instanceof HTMLSelectElement) {
       draftSnapshot.status = target.value;
       renderFormFromDraft();
@@ -690,27 +634,6 @@ const teaserPassword = getTeaserPassword();
 
   createForm?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
     if (createDialog instanceof HTMLDialogElement) createDialog.close();
-  });
-
-  renameButton?.addEventListener('click', async () => {
-    if (!activeSlug || !(newSlugInput instanceof HTMLInputElement)) return;
-    const newSlug = newSlugInput.value.trim();
-    if (!newSlug || newSlug === activeSlug) {
-      window.alert('Enter a new slug that differs from the current one.');
-      return;
-    }
-    if (!window.confirm(`Rename "${activeSlug}" to "${newSlug}"?`)) return;
-    const response = await fetch('/api/project-rename', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug: activeSlug, newSlug }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      window.alert(payload.error || 'Could not rename the project.');
-      return;
-    }
-    navigateAway(`/${newSlug}`);
   });
 
   deleteButton?.addEventListener('click', async () => {
