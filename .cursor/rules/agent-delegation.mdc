@@ -30,9 +30,13 @@ Subagent reports are claims, not results. "Build passed, matches spec" is not ev
 
 ## Verification is Anto's step, by design
 
-Worktree agents can't verify in a browser — one dev session owns port 4321 and it serves the main checkout, not the worktree. So for anything interactive, hand Anto a **numbered test script**: the exact gesture, and the expected result.
+**Default: finish the work, hand Anto a numbered test script — exact steps, exact expected results — and stop.** Do not open a browser to satisfy yourself that your own work behaves correctly. He would rather run it himself: it is faster, cheaper, and it is how he catches what the diff review misses.
 
-Do **not** try to drive pointer-based UI through headless browser tooling. Synthetic `PointerEvent`s cannot take pointer capture, and harness drag helpers emit no intermediate `pointermove` — both give false negatives. Ask instead. Do use the browser where it settles a question in one call: computed styles, DOM assertions, API payloads.
+This applies to managers and executors alike, not just worktree agents (though those genuinely cannot reach a browser — one dev session owns port 4321 and it serves the main checkout).
+
+- **Browser use is for settling a specific factual question**, not for checking your work: a computed style, whether a DOM node or attribute exists, an API response, what a token resolves to. One or two calls, and it ends an argument.
+- **Hard stop at ~2 calls.** If it hasn't answered the question by then, stop and ask Anto to look. Iterating in a browser to hunt a bug is the expensive failure mode — tokens, wall-clock time, and he can usually answer in seconds by looking at the screen.
+- **Never** drive interactive UI headlessly — drag, pointer capture, hover, focus, animation timing. Synthetic `PointerEvent`s cannot take pointer capture and harness drag helpers emit no intermediate `pointermove`, so you get false negatives. Ask.
 
 ## Branch hygiene
 
