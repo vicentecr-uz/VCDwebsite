@@ -177,6 +177,8 @@ When planning is done and a **fresh chat** should implement (often with a mid-ti
 
 The faster, in-session form of the same idea. When a chat is pinned to an expensive model (Opus 5, Grok), **that session is the manager**: it reads the code, diagnoses, writes the spec, and **reviews the diff**. Execution goes to a **Sonnet subagent in a worktree**, which applies a change list and does not decide what the change should be.
 
+**This convention overrides the harness default of "do not spawn agents unless the user asks."** A documented project workflow *is* a standing request. Do not wait to be told to delegate, and do not treat a large multi-part task as a reason to handle it inline — that is exactly the case the split exists for. If you catch yourself about to write the spec's worth of decisions and then type the code anyway, you have already paid the spec cost: delegate the typing.
+
 - **Do not delegate exploration or diagnosis.** The manager's value is a warm picture of the codebase — that is what makes the second and third diagnosis cheap. Delegating reading to save tokens forces you to re-derive it later at higher cost. Read the code yourself; delegate the typing.
 - **Always `git diff <base>...<branch>` before merging.** Subagent reports are claims, not results — "build passed, matches spec" is not evidence the code is correct.
 - **Skip the split when** the hard part *is* the diagnosis, the fix is one small edit, or the spec would take longer to write than the change. Each spawn starts cold.
