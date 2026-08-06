@@ -517,6 +517,16 @@ const statusIcons = {
     if (target.closest('.project-grid__chips, [data-dev-status-menu]')) {
       event.preventDefault();
       event.stopPropagation();
+      return;
+    }
+    // Belt-and-suspenders: title/year clicks must not bubble to the card's
+    // leftover transition listener (Layout bound it while href was still set).
+    const editable = target.closest(
+      '[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]',
+    );
+    if (editable instanceof HTMLElement && editable.isContentEditable) {
+      event.preventDefault();
+      event.stopPropagation();
     }
   }, true);
 

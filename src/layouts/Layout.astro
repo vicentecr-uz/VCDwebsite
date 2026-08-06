@@ -157,6 +157,12 @@ const showDevTools = import.meta.env.DEV;
             return;
           }
 
+          // Edit mode may strip href from gallery cards so titles are editable.
+          // The .href IDL still resolves to this page — navigating would white-flash
+          // reload the same URL. Only transition when an href attribute is present.
+          const rawHref = anchor.getAttribute('href');
+          if (!rawHref) return;
+
           e.preventDefault();
           const target = anchor.href;
 
