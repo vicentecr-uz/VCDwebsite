@@ -26,6 +26,20 @@ The manager's value is an accumulated, warm picture of the codebase — that is 
 
 Subagent reports are claims, not results. "Build passed, matches spec" is not evidence the code is correct — `git diff <base>...<branch>` before merging, every time.
 
+**A green build proves compilation, nothing more.** Every executor report in the run that established this rule claimed success; behavioural bugs shipped in those diffs regardless. For UI and interaction work, correctness comes from the diff review plus a human running it.
+
+## Verification is Anto's step, by design
+
+Worktree agents can't verify in a browser — one dev session owns port 4321 and it serves the main checkout, not the worktree. So for anything interactive, hand Anto a **numbered test script**: the exact gesture, and the expected result.
+
+Do **not** try to drive pointer-based UI through headless browser tooling. Synthetic `PointerEvent`s cannot take pointer capture, and harness drag helpers emit no intermediate `pointermove` — both give false negatives. Ask instead. Do use the browser where it settles a question in one call: computed styles, DOM assertions, API payloads.
+
+## Branch hygiene
+
+- **Say which branch the checkout is on whenever it changes.** Testing a branch that doesn't contain the fix under test has already cost a full round.
+- **Never merge a second branch into a feature branch just to test them together.** Use a throwaway integration branch, or merge to `main` once approved. Separating it afterwards costs a reset plus cherry-picks.
+- **Docs and standards commits get their own branch**, straight to `main` — never bundled into feature work.
+
 ## When not to bother
 
 - The hard part *is* the diagnosis.
