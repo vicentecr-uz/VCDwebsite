@@ -282,6 +282,16 @@ const statusIcons = {
     };
   };
 
+  /** Blob object-URLs shown on the card until Save; draft URLs live only in `entry.draft`. */
+  const liveCoverBlobs = new Map();
+
+  const revokeLiveCover = (slug) => {
+    const url = liveCoverBlobs.get(slug);
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    liveCoverBlobs.delete(slug);
+  };
+
   const applyListingPreview = (item, snapshot, grid) => {
     if (!item || !snapshot) return;
     const cover = item.querySelector('.project-grid__cover');
@@ -292,9 +302,10 @@ const statusIcons = {
     const card = item.querySelector('.project-grid__card');
     const isTeaser = snapshot.status === 'teaser';
     const listing = snapshot.listing;
-    const displayImage = isTeaser
-      ? (snapshot.teaser.coverImage || listing.image)
-      : listing.image;
+    const slug = item.getAttribute('data-dev-project-slug');
+    const liveCover = slug ? liveCoverBlobs.get(slug) : null;
+    const displayImage = liveCover
+      || (isTeaser ? (snapshot.teaser.coverImage || listing.image) : listing.image);
 
     item.dataset.devStatus = snapshot.status;
     item.dataset.devBg = listing.bg;
@@ -382,6 +393,7 @@ const statusIcons = {
         kind: 'project-settings',
         payload: buildSavePayload(slug, entry.grid, entry.draft),
         revert: () => {
+          revokeLiveCover(slug);
           entry.draft = structuredClone(entry.saved);
           applyListingPreview(entry.item, entry.draft, entry.grid);
           if (panelSlug === slug) renderPanelFromEntry(entry);
@@ -499,7 +511,7 @@ const statusIcons = {
     return `/draft-media/${slug}/${filename}`;
   };
 
-  const applyCoverFileToCard = async (slug, file) => {
+  const applyCoverFileToCard = async (slug, file, blobUrl) => {
     if (!(file instanceof File) || !file.type.startsWith('image/')) return;
     const item = gridItemForSlug(slug);
     if (!(item instanceof HTMLElement)) return;
@@ -507,11 +519,49 @@ const statusIcons = {
       const entry = await ensureLoaded(slug, item);
       const url = await uploadCoverImage(slug, file);
       entry.draft.listing.image = url;
+      // DOM keeps showing the blob until Save; draft URL is save-payload only.
+      if (typeof blobUrl === 'string' && blobUrl) {
+        const previous = liveCoverBlobs.get(slug);
+        if (previous && previous !== blobUrl) URL.revokeObjectURL(previous);
+        liveCoverBlobs.set(slug, blobUrl);
+      }
       syncPendingFor(slug);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not upload the cover image.');
       throw error;
     }
+  };
+
+  /**
+   * On Save: put draft URL on the base under a still-visible blob overlay, then
+   * lift the overlay only once the draft image has painted.
+   */
+  const promoteLiveCoverOnSave = async (slug, entry) => {
+    const blobUrl = liveCoverBlobs.get(slug);
+    if (!blobUrl) return;
+
+    const draftUrl = entry.draft?.listing?.image;
+    const cover = entry.item?.querySelector('.project-grid__cover');
+    const baseImg = entry.item?.querySelector('.project-grid__img--base');
+    if (!(cover instanceof HTMLElement) || !(baseImg instanceof HTMLImageElement) || !draftUrl) {
+      revokeLiveCover(slug);
+      return;
+    }
+
+    const overlay = document.createElement('img');
+    overlay.className = 'project-grid__crossfade is-in';
+    overlay.alt = '';
+    overlay.draggable = false;
+    overlay.src = blobUrl;
+    cover.append(overlay);
+    await waitImageReady(overlay);
+
+    liveCoverBlobs.delete(slug);
+    baseImg.src = draftUrl;
+    await waitImageReady(baseImg);
+
+    overlay.remove();
+    URL.revokeObjectURL(blobUrl);
   };
 
   const clearAllCoverDropActive = () => {
@@ -570,9 +620,9 @@ const statusIcons = {
   });
 
   /**
-   * Old cover fades out → short gap → new cover fades in.
-   * Returns an async disposer: swap the base src first, await decode, then call it
-   * so the overlay is only removed once the base already matches (no end flash).
+   * Old cover fades out → short gap → new cover fades in (blob overlay).
+   * Returns `{ finish, blobUrl }`. Call `finish()` to park the blob on the base
+   * under the overlay, then remove the overlay — keep the blob until Save.
    */
   const playCoverCrossfade = (cover, file) => new Promise((resolve, reject) => {
     const blobUrl = URL.createObjectURL(file);
@@ -582,9 +632,24 @@ const statusIcons = {
     overlay.draggable = false;
     const stack = cover.querySelector('.project-grid__stack');
 
-    const dispose = async () => {
-      // Restore the stack under the still-opaque overlay, then lift the overlay
-      // off — avoids a frame of empty / old cover.
+    const abort = async () => {
+      overlay.remove();
+      delete cover.dataset.devFadeOut;
+      delete cover.dataset.devCrossfadeActive;
+      delete cover.dataset.devDropActive;
+      if (stack instanceof HTMLElement) {
+        stack.style.transition = '';
+        stack.style.opacity = '';
+      }
+      URL.revokeObjectURL(blobUrl);
+    };
+
+    const finish = async () => {
+      const baseImg = cover.querySelector('.project-grid__img--base');
+      if (baseImg instanceof HTMLImageElement) {
+        baseImg.src = blobUrl;
+        await waitImageReady(baseImg);
+      }
       if (stack instanceof HTMLElement) {
         stack.style.transition = 'none';
         stack.style.opacity = '1';
@@ -598,7 +663,6 @@ const statusIcons = {
         stack.style.transition = '';
         stack.style.opacity = '';
       }
-      URL.revokeObjectURL(blobUrl);
     };
 
     const run = async () => {
@@ -610,20 +674,17 @@ const statusIcons = {
         await waitImageReady(overlay);
         await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-        // 1) Fade old out
         cover.dataset.devFadeOut = 'true';
         await waitTransition(stack, 'opacity', 700);
 
-        // 2) Beat between fades
         await delay(140);
 
-        // 3) Fade new in (same duration as fade-out)
         overlay.classList.add('is-in');
         await waitTransition(overlay, 'opacity', 700);
 
-        resolve(dispose);
+        resolve({ finish, blobUrl });
       } catch (error) {
-        await dispose();
+        await abort();
         reject(error);
       }
     };
@@ -842,17 +903,14 @@ const statusIcons = {
     }
 
     void (async () => {
-      let disposeCrossfade = async () => {};
       try {
-        disposeCrossfade = await playCoverCrossfade(cover, file);
-        await applyCoverFileToCard(slug, file);
-        await waitImageReady(cover.querySelector('.project-grid__img--base'));
+        const { finish, blobUrl } = await playCoverCrossfade(cover, file);
+        await finish();
+        await applyCoverFileToCard(slug, file, blobUrl);
       } catch (error) {
         if (error instanceof Error && !/upload/i.test(error.message)) {
           window.alert(error.message);
         }
-      } finally {
-        await disposeCrossfade();
       }
     })();
   });
@@ -956,6 +1014,8 @@ const statusIcons = {
   });
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
+    liveCoverBlobs.forEach((url) => URL.revokeObjectURL(url));
+    liveCoverBlobs.clear();
     caches.forEach((entry, slug) => {
       entry.draft = structuredClone(entry.saved);
       applyListingPreview(entry.item, entry.draft, entry.grid);
@@ -964,9 +1024,12 @@ const statusIcons = {
   });
 
   window.addEventListener('vcd:dev-pending-committed', () => {
-    caches.forEach((entry) => {
-      entry.saved = structuredClone(entry.draft);
-    });
+    void (async () => {
+      for (const [slug, entry] of caches) {
+        await promoteLiveCoverOnSave(slug, entry);
+        entry.saved = structuredClone(entry.draft);
+      }
+    })();
   });
 
   window.addEventListener('vcd:dev-mode-change', (event) => {
