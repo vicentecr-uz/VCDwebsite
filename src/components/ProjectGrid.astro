@@ -40,7 +40,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     const statusLabel = item.status && item.status !== 'published' ? item.status : '';
 
     const cover = (
-      <div class="project-grid__cover relative overflow-hidden" style={`background-color: ${item.bg}`}>
+      <div
+        class:list={['project-grid__cover', 'relative', 'overflow-hidden', item.hoverImage && 'project-grid__cover--has-hover']}
+        style={`background-color: ${item.bg}`}
+      >
         <div class="project-grid__stack">
           <img
             src={item.image}
@@ -54,6 +57,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
               alt=""
               class="project-grid__img project-grid__img--hover w-full h-full object-cover"
               loading="lazy"
+              aria-hidden="true"
             />
           )}
         </div>
@@ -176,6 +180,9 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+
+  .project-grid__cover--has-hover .project-grid__img {
     transition: opacity 0.4s ease;
   }
 
@@ -183,11 +190,11 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 0;
   }
 
-  .project-grid__card:hover .project-grid__img--hover {
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
     opacity: 1;
   }
 
-  .project-grid__card:hover .project-grid__img--base {
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base {
     opacity: 0;
   }
 
@@ -199,17 +206,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     line-height: 1.2;
   }
 
-  .project-grid__card--placeholder .project-grid__img {
-    filter: grayscale(1);
-  }
-
-  .project-grid__card--teaser .project-grid__img {
-    filter: blur(12px);
-  }
-
-  .project-grid__card--teaser:hover .project-grid__img {
-    filter: blur(10px);
-  }
+  .project-grid__meta {
     opacity: 0;
     padding: var(--space-unit);
     transition: opacity 0.3s ease;
@@ -226,12 +223,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
 
   .project-grid__card--placeholder .project-grid__img {
     filter: grayscale(1);
-    transform: scale(1.04);
   }
 
   .project-grid__card--teaser .project-grid__img {
     filter: blur(12px);
-    transform: scale(1.08);
   }
 
   .project-grid__card--teaser:hover .project-grid__img {
@@ -330,22 +325,33 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
   }
 
   @media (max-width: 768px) {
-    .project-grid__img {
-      transform: scale(1.01) !important;
-      transition: transform 0.4s ease !important;
-    }
-
-    .project-grid__card:hover .project-grid__img {
-      transform: scale(1.03) !important;
-    }
-
+    /* Touch: titles always on; no hover image swap yet (#132). */
     .project-grid__meta {
       opacity: 1 !important;
       transition: none !important;
     }
 
+    .project-grid__cover--has-hover .project-grid__img {
+      transition: none;
+    }
+
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
+      opacity: 0;
+    }
+
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base {
+      opacity: 1;
+    }
+
     .project-grid__card--teaser .project-grid__img {
       filter: blur(10px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-grid__cover--has-hover .project-grid__img,
+    .project-grid__meta {
+      transition: none;
     }
   }
 
