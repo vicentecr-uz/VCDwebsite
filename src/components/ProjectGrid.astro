@@ -83,6 +83,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
               class="project-grid__title font-bold"
               style={`color: ${titleColor(item.dark)}`}
               data-dev-project-title
+              data-placeholder="Title"
             >
               {item.title}
             </h2>
@@ -91,6 +92,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
                 class="project-grid__subtitle font-bold"
                 style={`color: ${subtitleColor(item.dark)}`}
                 data-dev-project-subtitle
+                data-placeholder={variant === 'play' ? 'Meta' : 'Year'}
               >
                 {item.subtitle}
               </span>
@@ -100,6 +102,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
                 class="project-grid__teaser-label font-bold"
                 style={`color: ${subtitleColor(item.dark)}`}
                 data-dev-project-teaser-label
+                data-placeholder="Teaser label"
               >
                 {item.teaserLabel ?? 'Coming soon'}
               </span>
@@ -524,5 +527,19 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     outline-offset: 0.12em;
     border-radius: 0.15em;
     cursor: text;
+    /* Empty fields collapse to 0×0 — keep a hit target so you can click back in. */
+    display: inline-block;
+    min-width: 2.75em;
+    min-height: 1.15em;
+    vertical-align: baseline;
+  }
+
+  html.is-dev-mode:not(.show-listing-grid-editor)
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:empty::before,
+  html.is-dev-mode:not(.show-listing-grid-editor)
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:has(> br:only-child)::before {
+    content: attr(data-placeholder);
+    color: color-mix(in srgb, currentColor 45%, transparent);
+    pointer-events: none;
   }
 </style>

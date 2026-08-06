@@ -170,11 +170,36 @@ const statusIcons = {
     node.setAttribute('spellcheck', 'true');
   };
 
+  /** Browsers often leave a lone <br> after clearing — normalize so :empty / placeholder work. */
+  const normalizeEmptyEditable = (node) => {
+    if (!(node instanceof HTMLElement)) return;
+    const text = node.textContent?.replace(/\u00a0/g, ' ').trim() ?? '';
+    if (text) return;
+    if (node.innerHTML !== '') node.textContent = '';
+  };
+
+  const ensureSubtitleHost = (item) => {
+    let node = item.querySelector('[data-dev-project-subtitle]');
+    if (node instanceof HTMLElement) return node;
+    const row = item.querySelector('.project-grid__meta .flex');
+    const title = item.querySelector('[data-dev-project-title]');
+    if (!(row instanceof HTMLElement)) return null;
+    node = document.createElement('span');
+    node.className = 'project-grid__subtitle font-bold';
+    node.setAttribute('data-dev-project-subtitle', '');
+    node.dataset.placeholder = gridForItem(item) === 'play' ? 'Meta' : 'Year';
+    if (title instanceof HTMLElement) {
+      node.style.color = title.style.color || subtitleColor(item.dataset.devDark === 'true');
+    }
+    row.append(node);
+    return node;
+  };
+
   const enableCardEditing = (item) => {
     if (!(item instanceof HTMLElement) || !item.dataset.devProjectSlug) return;
     const status = item.dataset.devStatus || 'published';
     setEditable(item.querySelector('[data-dev-project-title]'));
-    setEditable(item.querySelector('[data-dev-project-subtitle]'));
+    setEditable(ensureSubtitleHost(item));
     if (status === 'teaser') setEditable(item.querySelector('[data-dev-project-teaser-label]'));
   };
 
@@ -623,6 +648,7 @@ const statusIcons = {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
+    normalizeEmptyEditable(target);
     const item = target.closest('[data-dev-project-slug]');
     const slug = item?.getAttribute('data-dev-project-slug');
     if (!(item instanceof HTMLElement) || !slug) return;
@@ -634,6 +660,13 @@ const statusIcons = {
         window.alert(error instanceof Error ? error.message : 'Could not stage that edit.');
       }
     })();
+  });
+
+  document.addEventListener('focusout', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
+    normalizeEmptyEditable(target);
   });
 
   // Drop image onto cover → replace listing cover.
