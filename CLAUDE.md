@@ -183,13 +183,23 @@ The faster, in-session form of the same idea. When a chat is pinned to an expens
 - **Branch base:** when the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the executor confirm its parent commit before editing.
 - **Spell out landmines** in every spec — worktree agents inherit no session context. At minimum: Bun is not on `PATH` (`$HOME/.bun/bin/bun`); **do not start a dev server** (one already owns port 4321, so the agent cannot verify in-browser — verification happens after merge); commit only via `commit:engine` with explicit paths; never stage content paths; name the files other parallel agents are touching as off-limits.
 - **A green build is not evidence.** Executor reports say "build passed, matches spec" whether or not the code is right. For dev-tooling and UI work a build proves compilation only — correctness comes from the diff review plus Anto running it.
-- **Owe Anto a numbered test script** for anything interactive: exact gesture, expected result. Worktree agents can't verify in a browser, so he is the verification step by design.
-- **Don't drive pointer UI headlessly.** Synthetic `PointerEvent`s can't take pointer capture and harness drag helpers emit no intermediate `pointermove` — false negatives both ways. Ask Anto. Do use the browser for computed styles, DOM assertions, and API payloads, where it settles things in one call.
+- **Anto is the verification step** — see *Verification* below. Hand him a numbered test script; don't self-verify in a browser.
 - **Say which branch the checkout is on whenever it changes** — testing the wrong branch has cost a full round already.
 - **Never merge another branch into a feature branch just to test them together.** Use a throwaway integration branch, or merge to `main` once approved; separating it afterwards costs a reset and cherry-picks.
 - **Docs / standards commits get their own branch** straight to `main` — never bundled into feature work.
 
 Canonical: Atlas `standards.md` → *Agents — Manager / executor split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
+
+### Verification — Anto tests, agents don't self-verify
+
+**Default: finish the work, hand Anto a numbered test script (exact steps, exact expected results), and stop.** Do not open a browser to satisfy yourself that your own work behaves correctly. He would rather run it himself — it is faster, cheaper, and how he catches what a diff review misses.
+
+- **Browser use is for settling a specific factual question**, not for checking your work: reading a computed style, asserting a DOM node or attribute exists, inspecting an API response, confirming what a token resolves to. One or two calls, and it ends an argument.
+- **Hard stop at ~2 calls.** If a check hasn't answered the question by then, stop and ask Anto to look. Iterating in a browser to hunt a bug is the expensive failure mode.
+- **Never** drive interactive UI headlessly — drag, pointer capture, hover, focus, animation timing. Synthetic `PointerEvent`s can't take pointer capture and harness drag helpers emit no intermediate `pointermove`, so you get false negatives. Ask.
+- Applies to managers and executors alike. A green build is not verification; it proves compilation only.
+
+Canonical: Atlas `standards.md` → *Agents — Anto tests the work*.
 
 ### About page
 Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
