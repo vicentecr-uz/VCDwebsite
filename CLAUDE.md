@@ -182,6 +182,12 @@ The faster, in-session form of the same idea. When a chat is pinned to an expens
 - **Skip the split when** the hard part *is* the diagnosis, the fix is one small edit, or the spec would take longer to write than the change. Each spawn starts cold.
 - **Branch base:** when the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the executor confirm its parent commit before editing.
 - **Spell out landmines** in every spec — worktree agents inherit no session context. At minimum: Bun is not on `PATH` (`$HOME/.bun/bin/bun`); **do not start a dev server** (one already owns port 4321, so the agent cannot verify in-browser — verification happens after merge); commit only via `commit:engine` with explicit paths; never stage content paths; name the files other parallel agents are touching as off-limits.
+- **A green build is not evidence.** Executor reports say "build passed, matches spec" whether or not the code is right. For dev-tooling and UI work a build proves compilation only — correctness comes from the diff review plus Anto running it.
+- **Owe Anto a numbered test script** for anything interactive: exact gesture, expected result. Worktree agents can't verify in a browser, so he is the verification step by design.
+- **Don't drive pointer UI headlessly.** Synthetic `PointerEvent`s can't take pointer capture and harness drag helpers emit no intermediate `pointermove` — false negatives both ways. Ask Anto. Do use the browser for computed styles, DOM assertions, and API payloads, where it settles things in one call.
+- **Say which branch the checkout is on whenever it changes** — testing the wrong branch has cost a full round already.
+- **Never merge another branch into a feature branch just to test them together.** Use a throwaway integration branch, or merge to `main` once approved; separating it afterwards costs a reset and cherry-picks.
+- **Docs / standards commits get their own branch** straight to `main` — never bundled into feature work.
 
 Canonical: Atlas `standards.md` → *Agents — Manager / executor split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
 
