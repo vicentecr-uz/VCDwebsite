@@ -267,8 +267,8 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     text-transform: uppercase;
   }
 
-  /* Chip fill / hover reveal live in project.css (global) so pointer-events
-     reliably beat the card <a> underneath. */
+  /* Chip fill / hover reveal: see the is:global block below — must not live in
+     project.css (listing pages never import it). */
   .project-grid__settings {
     position: absolute;
     top: 0.75em;
@@ -393,5 +393,43 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     .project-grid--work .project-grid__item--full .project-grid__cover {
       aspect-ratio: 4 / 3;
     }
+  }
+</style>
+
+<style is:global>
+  /*
+    Chip fill + reveal must be global and ship with ProjectGrid — listing pages
+    (home/work/play) never import project.css. Keep pointer-events here so clicks
+    don't fall through to the card <a>.
+  */
+  .project-grid__settings.dev-card-chip-trigger {
+    border: 0;
+    border-radius: var(--radius-control);
+    background: color-mix(in srgb, var(--color-surface-chip) 92%, transparent);
+    backdrop-filter: blur(8px);
+    color: var(--color-text);
+    font: inherit;
+    line-height: 1;
+    box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
+  }
+
+  .project-grid__settings.dev-card-chip-trigger:active {
+    background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
+  }
+
+  html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__settings,
+  html.is-dev-mode .project-grid__settings:focus-visible,
+  .project-grid__item:hover .project-grid__settings,
+  .project-grid__item:focus-within .project-grid__settings {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .project-grid__item.is-dev-project-settings-active
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
+    outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+    outline-offset: 0.12em;
+    border-radius: 0.15em;
+    cursor: text;
   }
 </style>
