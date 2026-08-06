@@ -121,6 +121,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
       Replace image
     </button>
 
+    <button type="button" class="tapico-crop-tuner__card-settings" data-crop-card-settings hidden>
+      Card settings
+    </button>
+
     <div class="tapico-crop-tuner__actions">
       <button type="button" data-crop-reset>Reset</button>
       <button type="button" data-crop-revert>Revert changes</button>
@@ -206,6 +210,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
     const replaceButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace]');
+    const cardSettingsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-card-settings]');
     const replaceOverlay = tuner.querySelector<HTMLElement>('[data-crop-replace-overlay]');
     const replaceDropzone = tuner.querySelector<HTMLElement>('[data-crop-replace-dropzone]');
     const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
@@ -237,6 +242,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
       !resetButton ||
       !useGridDefaultButton ||
       !replaceButton ||
+      !cardSettingsButton ||
       !replaceOverlay ||
       !replaceDropzone ||
       !replaceChooseButton ||
@@ -373,6 +379,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
     let draftMaxVh: number | undefined;
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
+    const isListingCover = (target: HTMLElement) => Boolean(target.dataset.devListingCover);
     const isStandaloneMedia = (target: HTMLElement) => (
       target.classList.contains('project-media') && !isGridTarget(target)
     );
@@ -676,9 +683,12 @@ const lockSvg = sizeIcon(lockIcon, 14);
       // While the on-page crop stage is mounted the ghost <img> is prepended
       // first — never treat that as the content bitmap.
       if (target === editTarget && editedImage?.isConnected) return editedImage;
-      return [...target.querySelectorAll<HTMLImageElement>('img')]
-        .find((img) => !img.closest('.dev-crop-ghost'))
-        ?? null;
+      return (
+        target.querySelector<HTMLImageElement>('.project-grid__img--base')
+        ?? [...target.querySelectorAll<HTMLImageElement>('img')]
+          .find((img) => !img.closest('.dev-crop-ghost'))
+        ?? null
+      );
     };
 
     const applySrcLive = (
@@ -786,12 +796,17 @@ const lockSvg = sizeIcon(lockIcon, 14);
       liveApply = true;
       if (!isGridTarget(editTarget)) {
         editTarget.classList.add('project-responsive-image', 'project-cropped');
+        if (isListingCover(editTarget)) {
+          // Cover starts with utility overflow-hidden for object-fit; crop clip owns clipping.
+          editTarget.classList.remove('overflow-hidden');
+        }
         // SSR cropped frames already wrap <img> in .project-crop-clip; live-first
         // crop must add it or overflow:visible on .project-cropped lets zoom spill.
         ensureCropClip(editTarget, editedImage);
         // An uncropped max-vh image legitimately carries the img-level class from
         // SSR; now that the target is cropped it would clamp the cover bitmap.
         editedImage.classList.remove('project-media__img--max-vh', 'project-media__img--max80');
+        editedImage.classList.remove('w-full', 'h-full', 'object-cover');
       }
     };
 
@@ -948,6 +963,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
                   image.style.width = '';
                   image.style.height = '';
                   removeCropClipIfOwned(image);
+                  if (isListingCover(target)) {
+                    target.classList.add('overflow-hidden');
+                    image.classList.add('w-full', 'h-full', 'object-cover');
+                  }
                 }
               } else if (isGridTarget(target) && !hadOwnVariants) {
                 applyVariantsToTarget(target, baseline.variants, { clearOwn: true });
@@ -1020,6 +1039,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
     const stripLiveCropFrame = () => {
       if (!editTarget || isGridTarget(editTarget)) return;
       editTarget.classList.remove('project-cropped', 'project-responsive-image');
+      if (isListingCover(editTarget)) {
+        editTarget.classList.add('overflow-hidden');
+        editedImage.classList.add('w-full', 'h-full', 'object-cover');
+      }
       // Restore the attribute rather than dropping it, so a cancelled session
       // leaves the target byte-identical to how it was rendered.
       if (targetVariantsAttr === null) delete editTarget.dataset.devImageVariants;
@@ -1083,7 +1106,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
-      const image = target.querySelector<HTMLImageElement>('img');
+      const image = target.querySelector<HTMLImageElement>('.project-grid__img--base')
+        ?? target.querySelector<HTMLImageElement>('img');
       if (!image) return;
 
       closeReplaceOverlay();
@@ -1132,6 +1156,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
       renderDraft();
       syncUseGridDefaultButton();
       syncWidthConstrainUi();
+      cardSettingsButton.hidden = !isListingCover(target);
       if (live) {
         mountPageStage();
         status.textContent = viewportGateOk()
@@ -1161,6 +1186,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
     const pageFrameFor = (target: HTMLElement): HTMLElement => (
       target.querySelector<HTMLElement>(':scope > .project-crop-clip')
+      // Gallery covers nest the clip under `.project-grid__stack` (hover + meta).
+      ?? target.querySelector<HTMLElement>(':scope > .project-grid__stack > .project-crop-clip')
       // Carousel wraps the frame in `.project-image-carousel__surface`.
       ?? target.querySelector<HTMLElement>('.project-image-grid__frame')
       ?? target
@@ -1172,10 +1199,14 @@ const lockSvg = sizeIcon(lockIcon, 14);
       if (!pageStage) return;
       const { target, ghost, stage } = pageStage;
       const frame = pageFrameFor(target);
-      // Uncropped targets have no frame node yet — overlay the bitmap itself
-      // (its box is what the first edit will turn into the frame).
+      // Uncropped targets have no clip yet. Listing covers: glue to the cover
+      // box (object-fit fills it). Elsewhere: the content bitmap — never the
+      // ghost <img> prepended by mountPageStage (querySelector('img') hits it
+      // first and zeros the stage → all handles stacked at top-left).
       const ref = frame === target
-        ? (target.querySelector<HTMLElement>('img') ?? target)
+        ? (isListingCover(target)
+          ? target
+          : (pageImageFor(target) ?? target))
         : frame;
       // Use viewport rects so a positioned surface (carousel width cap) between
       // the slide and frame does not zero-out offsetLeft/offsetTop.
@@ -1801,7 +1832,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
       const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'image') return;
-      const target = trigger?.closest<HTMLElement>('[data-dev-image-target]');
+      const target = trigger?.closest<HTMLElement>('[data-dev-image-target]')
+        // Gallery crop chip sits on the --end rail (sibling of the cover target).
+        ?? trigger?.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]')
+        ?? null;
       if (target) selectTarget(target, true);
     }) as EventListener);
 
@@ -2127,6 +2161,18 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
     replaceButton.addEventListener('click', () => {
       openReplaceOverlay();
+    });
+
+    cardSettingsButton.addEventListener('click', () => {
+      const target = editTarget;
+      if (!isListingCover(target)) return;
+      const slug = target.dataset.devDocument || '';
+      const grid = target.dataset.devListingCover || '';
+      if (!slug) return;
+      closePanel();
+      window.dispatchEvent(new CustomEvent('vcd:dev-project-settings-open', {
+        detail: { slug, grid },
+      }));
     });
 
     replaceCancelButton.addEventListener('click', () => {
@@ -2697,6 +2743,28 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
   .tapico-crop-tuner__replace:hover {
     background: var(--color-surface-soft);
+  }
+
+  .tapico-crop-tuner__card-settings {
+    border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
+    border-radius: var(--radius-control-smooth);
+    corner-shape: var(--squircle-shape);
+    --corner-shape: var(--squircle-shape);
+    background: transparent;
+    padding: 0.55em 0.65em;
+    color: var(--color-text);
+    font: inherit;
+    font-size: 0.75rem;
+    line-height: 1.1;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__card-settings:hover {
+    background: var(--color-surface-soft);
+  }
+
+  .tapico-crop-tuner__card-settings[hidden] {
+    display: none;
   }
 
   .tapico-crop-tuner__replace-overlay {

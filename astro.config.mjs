@@ -622,7 +622,15 @@ const applyCropChange = (data, change) => {
     return { ok: false, error: 'That image file is not valid.' };
   }
   if (requestedSrc) {
-    target.src = requestedSrc;
+    // Gallery listing cards store the cover as `image` (not section `src`).
+    if (
+      Object.prototype.hasOwnProperty.call(target, 'image')
+      && !Object.prototype.hasOwnProperty.call(target, 'src')
+    ) {
+      target.image = requestedSrc;
+    } else {
+      target.src = requestedSrc;
+    }
     const srcWidth = Number(change.srcWidth);
     const srcHeight = Number(change.srcHeight);
     if (Number.isFinite(srcWidth) && srcWidth > 0) {

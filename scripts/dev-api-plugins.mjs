@@ -22,7 +22,7 @@ function validateStatus(status, fallback = 'draft') {
 }
 
 function listingCardForGrid(grid, listing, previous = {}) {
-  const hoverImage = String(listing.hoverImage || '').trim();
+  const hoverImage = String(listing.hoverImage || previous.hoverImage || '').trim();
   const base = {
     order: previous.order ?? 999,
     image: String(listing.image || ''),
@@ -31,6 +31,15 @@ function listingCardForGrid(grid, listing, previous = {}) {
     full: Boolean(listing.full),
   };
   if (hoverImage) base.hoverImage = hoverImage;
+  // Crop data lives on the listing card; settings saves omit it — keep prior.
+  const variants = listing.variants ?? previous.variants;
+  if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
+    base.variants = structuredClone(variants);
+  }
+  const srcWidth = Number(listing.srcWidth ?? previous.srcWidth);
+  const srcHeight = Number(listing.srcHeight ?? previous.srcHeight);
+  if (Number.isFinite(srcWidth) && srcWidth > 0) base.srcWidth = Math.round(srcWidth);
+  if (Number.isFinite(srcHeight) && srcHeight > 0) base.srcHeight = Math.round(srcHeight);
   if (grid === 'play') {
     return {
       ...base,
