@@ -401,8 +401,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
 
   /*
     Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
-    Press darkens the fill (--color-surface-press) — drop shadow is invisible
-    on dark covers with light glyphs (#154).
+    Light covers: press darkens the fill slightly (--color-surface-press).
+    Dark covers override outline / press fill in the global block (#154).
   */
   .project-grid__chip {
     display: grid;
@@ -422,7 +422,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     box-shadow: none;
     transition:
       background-color 0.15s ease,
-      transform 0.15s ease;
+      box-shadow 0.15s ease,
+      transform 0.15s ease,
+      color 0.15s ease;
   }
 
   .project-grid__chip-icon {
@@ -622,24 +624,26 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Dark covers (listings.*.dark): light glyphs always — same as titles.
-    Hover/press use a dark frosted fill (not surface-control) so icons stay
-    light; :active darkens that fill further (drop shadow is invisible here).
+    Dark covers (listings.*.dark): light glyphs at rest. Hover keeps the light
+    frosted fill and adds a thin inset dark-gray ring; press / latched states
+    fill with that same gray so the ring cue still reads (icons go light again).
   */
   .project-grid__item[data-dev-dark='true'] .project-grid__chip {
     color: var(--color-bg);
   }
 
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:hover,
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible,
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
-    background: color-mix(in srgb, var(--color-text) 42%, transparent);
-    color: var(--color-bg);
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible {
+    /* Light fill comes from the base chip:hover rule; dark icons on that fill. */
+    box-shadow: inset 0 0 0 1.5px var(--color-text-soft);
+    color: var(--color-text);
   }
 
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active {
-    background: color-mix(in srgb, var(--color-text) 62%, transparent);
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active,
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
+    background: var(--color-text-soft);
+    box-shadow: inset 0 0 0 1.5px var(--color-text-soft);
     color: var(--color-bg);
   }
 
