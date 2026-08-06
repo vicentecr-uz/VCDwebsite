@@ -41,7 +41,7 @@ While the session runs, **branch sync** auto-pulls the checked-out branch every 
 
 ### Content editing (CMS)
 
-- **Local:** open <http://localhost:4321/admin> in any browser. In dev this loads **Decap CMS** with `local_backend: true`, talking to the `decap-server` proxy that `dev:session` starts. "Publish" writes directly to the content files in `src/content/` on disk — no git commit, no push — and Astro HMR picks them up instantly. Changes only go live after you commit and push to `main`.
+- **Local:** open <http://localhost:4321/admin> in any browser. In dev this loads **Decap CMS** with `local_backend: true`, talking to the `decap-server` proxy that `dev:session` starts. "Publish" writes directly to the content files in `src/content/` on disk — no git commit, no push. Dev HMR is calm (no auto full-reload for content) — refresh the page after Decap edits. Changes only go live after you commit and push to `main`.
 - **Production:** <https://wip.vcruzdesigns.com/admin> loads **Sveltia CMS** with GitHub PKCE auth. Edits commit to the repo via GitHub.
 
 Content lives as JSON under `src/content/` (`home/`, `work/`, `play/`, `projects/`, `about.json`, `settings/`).
