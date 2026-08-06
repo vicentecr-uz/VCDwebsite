@@ -646,13 +646,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     pointer-events: none;
   }
 
-  /* Cropped gallery covers: stack nests the clip; project.css expects a direct child. */
+  /* Cropped gallery covers: stack nests the clip; project.css expects a direct child.
+     Do not use `inset: auto` here — that shorthand resets top/left and pins the
+     bitmap to the top-left (ghost omits inset and stays centred). */
   .project-grid__cover.project-cropped > .project-grid__stack > .project-crop-clip > img,
   .project-grid__cover.project-cropped > .project-grid__stack > img.project-grid__img--base {
     position: absolute;
     top: 50%;
     left: 50%;
-    inset: auto;
+    right: auto;
+    bottom: auto;
     width: calc(100% / var(--project-content-w, 1));
     height: auto;
     max-width: none;
