@@ -8,8 +8,10 @@ BUN="$HOME/.bun/bin/bun"
 
 ASTRO_PID="$SESSION_DIR/astro.pid"
 DECAP_PID="$SESSION_DIR/decap.pid"
+SYNC_PID="$SESSION_DIR/branch-sync.pid"
 ASTRO_LOG="$SESSION_DIR/astro.log"
 DECAP_LOG="$SESSION_DIR/decap.log"
+SYNC_LOG="$SESSION_DIR/branch-sync.log"
 
 ASTRO_PORT=4321
 DECAP_PORT=8081
@@ -81,8 +83,21 @@ cmd_status() {
     echo "  Decap: stopped"
   fi
 
+  local sync_pid sync_ok=0
+  sync_pid="$(read_pid "$SYNC_PID" || true)"
+  if [[ -n "$sync_pid" ]] && pid_alive "$sync_pid"; then
+    echo "  Sync:  running (pid $sync_pid)"
+    sync_ok=1
+  else
+    echo "  Sync:  stopped"
+  fi
+
   if [[ "$astro_ok" -eq 1 && "$decap_ok" -eq 1 ]]; then
     print_urls
+  fi
+
+  if [[ "$sync_ok" -eq 1 ]]; then
+    echo "  Sync log: tail -f .dev-session/branch-sync.log"
   fi
 }
 
@@ -122,6 +137,7 @@ cmd_stop() {
   echo "Stopping dev session..."
   stop_pid_file "Astro" "$ASTRO_PID"
   stop_pid_file "Decap" "$DECAP_PID"
+  stop_pid_file "Sync" "$SYNC_PID"
   echo "Done."
 }
 
@@ -189,6 +205,7 @@ cmd_start() {
   # bare restart still binds even if config is temporarily wrong.
   start_process "Astro" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev -- --host
   start_process "Decap" "$DECAP_PID" "$DECAP_LOG" "$BUN" x decap-server
+  bash "$ROOT/scripts/branch-sync.sh" start
 
   echo ""
   echo "Dev session ready."

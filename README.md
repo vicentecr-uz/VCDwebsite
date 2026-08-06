@@ -32,10 +32,12 @@ bun run dev          # Astro dev server at http://localhost:4321
 For the full local workflow with the CMS proxy, use the dev session helper:
 
 ```sh
-bun run dev:session         # start Astro (4321) + Decap CMS proxy (8081)
-bun run dev:session:status  # check what's running
-bun run dev:session:stop    # stop both
+bun run dev:session         # start Astro (4321) + Decap CMS proxy (8081) + branch sync
+bun run dev:session:status  # check what's running (includes sync)
+bun run dev:session:stop    # stop all three
 ```
+
+While the session runs, **branch sync** auto-pulls the checked-out branch every ~60s (pull-only, no auto-commit). Agents: don't `git pull` manually when sync is running — see `CLAUDE.md` → *Branch sync*.
 
 ### Content editing (CMS)
 

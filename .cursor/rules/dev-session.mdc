@@ -5,7 +5,7 @@ alwaysApply: true
 
 # VCDwebsite dev session
 
-This repo uses a **persistent dev session** so one chat can own the local servers. Other agents in the same chat should reuse them — do not start duplicates.
+This repo uses a **persistent dev session** so one chat can own the local servers. Other agents in the same or another harness (Cursor, Claude) should reuse them — do not start duplicates.
 
 ## When the user starts a session
 
@@ -39,4 +39,21 @@ bun run dev:session:status   # check
 bun run dev:session:stop     # stop
 ```
 
-Logs: `.dev-session/astro.log`, `.dev-session/decap.log`
+Logs: `.dev-session/astro.log`, `.dev-session/decap.log`, `.dev-session/branch-sync.log`
+
+## Branch sync (auto-pull)
+
+While the dev session is running, a background **branch sync** polls every 60s and pulls the **currently checked-out branch** from its upstream. No auto-commit or push — local dirty files are preserved via `--autostash` when a rebase is needed.
+
+- Starts automatically with `dev:session`; stops with `dev:session:stop`.
+- **Agents: do not run `git pull` manually** when sync is running — check `bun run branch:sync:status` first. Applies to **Cursor and Claude**; canonical copy in `CLAUDE.md` → *Key conventions*.
+- Switching branches (Cursor checkout) is picked up on the next poll cycle.
+
+Manual commands:
+
+```bash
+bun run branch:sync          # start (if session started before this existed)
+bun run branch:sync:stop     # stop sync only
+bun run branch:sync:status   # running? which branch?
+bun run branch:sync:once     # single fetch/pull now
+```
