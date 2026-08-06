@@ -190,6 +190,16 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       pages = [...ordered, ...rest];
     };
 
+    // Mirrors the server's load-time sort (on-gallery first, hidden last) after an
+    // in-session toggle — the partition is stable, so a card just hidden lands at
+    // the end rather than holding its old slot.
+    const sortPagesByMembership = () => {
+      pages = [
+        ...pages.filter((page) => selected.has(page.slug)),
+        ...pages.filter((page) => !selected.has(page.slug)),
+      ];
+    };
+
     const attachCardDrag = (card: HTMLElement, button: HTMLElement, page: GalleryPage, isOn: boolean) => {
       if (!isOn) return;
 
@@ -645,6 +655,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         badge.addEventListener('click', () => {
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
+          sortPagesByMembership();
           applyMembershipPreview();
           renderGrid();
           syncCount();
