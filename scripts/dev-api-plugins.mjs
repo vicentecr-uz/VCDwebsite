@@ -22,6 +22,7 @@ function validateStatus(status, fallback = 'draft') {
 }
 
 function listingCardForGrid(grid, listing, previous = {}) {
+  const hoverImage = String(listing.hoverImage || '').trim();
   const base = {
     order: previous.order ?? 999,
     image: String(listing.image || ''),
@@ -29,6 +30,7 @@ function listingCardForGrid(grid, listing, previous = {}) {
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
   };
+  if (hoverImage) base.hoverImage = hoverImage;
   if (grid === 'play') {
     return {
       ...base,
@@ -682,7 +684,8 @@ export function projectSettingsDevWriter() {
           data.status = validateStatus(body.status, validateStatus(data.status));
           data.slug = slug;
           const previousListings = data.listings ?? {};
-          data.listings = {};
+          // Merge — one-grid saves must not wipe Home/Work/Play siblings.
+          data.listings = { ...previousListings };
           for (const grid of LISTING_GRIDS) {
             const listing = body.listings?.[grid];
             if (!listing) continue;
