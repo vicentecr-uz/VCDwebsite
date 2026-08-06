@@ -82,6 +82,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     let baseline = new Set();
     /** @type {GridOrderEntry[]} */
     let baselineOrder: GridOrderEntry[] = [];
+    /** @type {string[]} */
+    let baselinePagesOrder: string[] = [];
     /** @type {'all' | 'on' | 'off'} */
     let filter = 'all';
     /** @type {'home' | 'work' | 'play' | ''} */
@@ -197,6 +199,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         // A drag that ends without a click (released off the card) would leave
         // this set and eat the next toggle — every press clears it.
         suppressClick = false;
+        card.classList.add('is-pressing');
         const pointerId = event.pointerId;
         const startX = event.clientX;
         const startY = event.clientY;
@@ -204,6 +207,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         let active = false;
         let baseX = startX;
         let baseY = startY;
+        // Blocks re-evaluating a swap target until the previous FLIP transition
+        // has settled, so getBoundingClientRect() isn't read mid-animation.
+        let swapLockedUntil = 0;
 
         // Document-level: before the drag threshold there is no pointer capture,
         // so a press that releases off the card would never reach a button-level
@@ -218,6 +224,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           cleanupListeners();
           if (button.hasPointerCapture(pointerId)) button.releasePointerCapture(pointerId);
           card.classList.remove('is-dragging');
+          card.classList.remove('is-pressing');
           card.style.transform = '';
           drag = null;
         };
@@ -243,6 +250,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           const clientY = moveEvent.clientY;
           card.style.transform = `translate(${clientX - baseX}px, ${clientY - baseY}px) scale(1.04)`;
 
+          if (performance.now() < swapLockedUntil) return;
+
           const order = draggableCardOrder();
           const curIndex = order.indexOf(page.slug);
           if (curIndex === -1 || order.length < 2) return;
@@ -255,8 +264,12 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
             if (slug === page.slug) continue;
             const rect = cardEl(slug)?.getBoundingClientRect();
             if (!rect) continue;
-            if (clientX >= rect.left && clientX <= rect.right
-              && clientY >= rect.top && clientY <= rect.bottom) {
+            // Shrunken hit zone (middle 50% x 50%): a full-rect test lets the card
+            // that just landed under the pointer swap straight back next move.
+            const insetX = rect.width * 0.25;
+            const insetY = rect.height * 0.25;
+            if (clientX >= rect.left + insetX && clientX <= rect.right - insetX
+              && clientY >= rect.top + insetY && clientY <= rect.bottom - insetY) {
               nearest = index;
               break;
             }
@@ -279,6 +292,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
           const beforeLeft = card.offsetLeft;
           const beforeTop = card.offsetTop;
           reorderCardsToMatch(newOrder);
+          if (!reduced) swapLockedUntil = performance.now() + 160;
           const afterLeft = card.offsetLeft;
           const afterTop = card.offsetTop;
           baseX += afterLeft - beforeLeft;
@@ -485,6 +499,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     const restoreMembershipPreview = () => {
       selected = new Set(baseline);
+      applyPagesOrder(baselinePagesOrder);
       const grid = listingGrid();
       if (!grid) {
         detachedItems.clear();
@@ -667,6 +682,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       detachedItems.clear();
       createdItems.clear();
       baselineOrder = captureGridOrder();
+      baselinePagesOrder = pages.map((page) => page.slug);
       renderGrid();
     };
 
@@ -728,6 +744,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       if (!activeGrid) return;
       baseline = new Set(selected);
       baselineOrder = captureGridOrder();
+      baselinePagesOrder = pages.map((page) => page.slug);
       detachedItems.clear();
       createdItems.clear();
       for (const page of pages) {
@@ -857,6 +874,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
   }
 
   .dev-gallery-pages__card.is-dragging .dev-gallery-pages__thumb {
+    cursor: grabbing;
+  }
+
+  .dev-gallery-pages__card.is-pressing .dev-gallery-pages__thumb {
     cursor: grabbing;
   }
 
