@@ -142,57 +142,57 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
           </a>
         )}
         {isDev && item.slug && (
-          <>
-            <div class="project-grid__chips project-grid__chips--start" data-dev-mode-only>
-              <div class="project-grid__status-wrap">
-                <button
-                  type="button"
-                  class="project-grid__chip"
-                  data-dev-project-status={item.slug}
-                  aria-label={`Visibility: ${status}`}
-                  aria-haspopup="listbox"
-                  aria-expanded="false"
-                  title={`Visibility: ${status}`}
-                >
-                  <span class="project-grid__chip-icon" aria-hidden="true" set:html={statusIconSvg} />
-                </button>
-                <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
-                  <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
-                    Published
-                  </button>
-                  <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
-                    Draft
-                  </button>
-                  <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
-                    Teaser
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
-              {item.hoverImage && (
-                <button
-                  type="button"
-                  class="project-grid__chip"
-                  data-dev-project-hover={item.slug}
-                  aria-label={`Preview hover image for ${item.title}`}
-                  aria-pressed="false"
-                  title="Preview hover image"
-                >
-                  <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
-                </button>
-              )}
+          <div class="project-grid__chips project-grid__chips--start" data-dev-mode-only>
+            <div class="project-grid__status-wrap">
               <button
                 type="button"
-                class="project-grid__chip project-grid__settings"
-                data-dev-project-settings={item.slug}
-                aria-label={`Settings for ${item.title}`}
-                title="Project settings"
+                class="project-grid__chip"
+                data-dev-project-status={item.slug}
+                aria-label={`Visibility: ${status}`}
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                title={`Visibility: ${status}`}
               >
-                <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
+                <span class="project-grid__chip-icon" aria-hidden="true" set:html={statusIconSvg} />
               </button>
+              <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
+                <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
+                  Published
+                </button>
+                <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
+                  Draft
+                </button>
+                <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
+                  Teaser
+                </button>
+              </div>
             </div>
-          </>
+          </div>
+        )}
+        {isDev && item.slug && (
+          <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
+            {item.hoverImage && (
+              <button
+                type="button"
+                class="project-grid__chip"
+                data-dev-project-hover={item.slug}
+                aria-label={`Preview hover image for ${item.title}`}
+                aria-pressed="false"
+                title="Preview hover image"
+              >
+                <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+              </button>
+            )}
+            <button
+              type="button"
+              class="project-grid__chip project-grid__settings"
+              data-dev-project-settings={item.slug}
+              aria-label={`Settings for ${item.title}`}
+              title="Project settings"
+            >
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
+            </button>
+          </div>
         )}
       </li>
     );
@@ -312,28 +312,6 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 1;
   }
 
-  .project-grid__chips {
-    position: absolute;
-    top: 0.75em;
-    z-index: 5;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35em;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
-  }
-
-  .project-grid__chips--start {
-    left: 0.75em;
-    align-items: flex-start;
-  }
-
-  .project-grid__chips--end {
-    right: 0.75em;
-    align-items: flex-end;
-  }
-
   .project-grid__status-wrap {
     position: relative;
   }
@@ -369,6 +347,10 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     place-items: center;
     line-height: 0;
     pointer-events: none;
+    /* Halo so icon-only chips still read on dark covers (section handles sit on page bg). */
+    filter:
+      drop-shadow(0 0 0.12em rgb(255 255 255 / 0.95))
+      drop-shadow(0 0.05em 0.15em rgb(0 0 0 / 0.4));
   }
 
   .project-grid__chip:hover,
@@ -526,10 +508,34 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
 
 <style is:global>
   /*
-    Chip reveal must ship with ProjectGrid — listing pages never import
-    project.css. Interaction chrome (transparent → fill on hover → shadow on
-    press) lives in the scoped block above, matching section drag/delete.
+    Chip rails must be global — listing pages never import project.css, and
+    Astro-scoped BEM modifiers were not pinning --start left (both rails
+    stacked on the static position / right).
   */
+  .project-grid__chips {
+    position: absolute;
+    top: 0.75em;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .project-grid__chips--start {
+    left: 0.75em;
+    right: auto;
+    align-items: flex-start;
+  }
+
+  .project-grid__chips--end {
+    right: 0.75em;
+    left: auto;
+    align-items: flex-end;
+  }
+
   html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__chips,
   html.is-dev-mode .project-grid__chips:focus-within,
   .project-grid__item:hover .project-grid__chips,
