@@ -400,8 +400,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Match section drag-handle / delete: icon-only at rest; fill + scale on hover;
-    shadow only on press. (Not the frosted always-on Edit image chip.)
+    Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
+    Light covers: press darkens the fill slightly (--color-surface-press).
+    Dark covers override outline / press fill in the global block (#154).
   */
   .project-grid__chip {
     display: grid;
@@ -422,7 +423,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     transition:
       background-color 0.15s ease,
       box-shadow 0.15s ease,
-      transform 0.15s ease;
+      transform 0.15s ease,
+      color 0.15s ease;
   }
 
   .project-grid__chip-icon {
@@ -442,7 +444,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   .project-grid__chip:active {
-    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
+    backdrop-filter: blur(8px);
   }
 
   .project-grid__status-menu {
@@ -618,6 +621,36 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   .project-grid__item:focus-within .project-grid__chips {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  /*
+    Dark covers (listings.*.dark): white glyphs always.
+    Rest — no chip fill / ring (cover is the dark ground).
+    Hover — dark fill + 1px inset ring slightly lighter than that fill.
+    Press / latched — fill becomes the ring colour (ring can stay; it blends).
+  */
+  .project-grid__item[data-dev-dark='true'] {
+    --project-grid-chip-ring: color-mix(in srgb, var(--color-bg) 36%, #1a1a1a);
+    --project-grid-chip-fill: rgb(0 0 0 / 0.58);
+  }
+
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip {
+    color: var(--color-bg);
+  }
+
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:hover,
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible {
+    background: var(--project-grid-chip-fill);
+    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
+    color: var(--color-bg);
+  }
+
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active,
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
+    background: var(--project-grid-chip-ring);
+    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
+    color: var(--color-bg);
   }
 
   /*
