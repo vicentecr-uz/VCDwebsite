@@ -723,11 +723,18 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     outline-offset: 0.12em;
     border-radius: 0.15em;
     cursor: text;
-    /* Empty fields collapse to 0×0 — keep a hit target so you can click back in. */
+    /* Shrink-wrap when filled; min-width only on :empty below (years looked padded). */
     display: inline-block;
-    min-width: 2.75em;
     min-height: 1.15em;
     vertical-align: baseline;
+  }
+
+  /* Empty fields collapse to 0×0 — keep a hit target so you can click back in. */
+  html.is-dev-mode:not(.show-listing-grid-editor)
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:empty,
+  html.is-dev-mode:not(.show-listing-grid-editor)
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:has(> br:only-child) {
+    min-width: 2.75em;
   }
 
   html.is-dev-mode:not(.show-listing-grid-editor)
