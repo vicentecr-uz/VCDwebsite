@@ -1,0 +1,53 @@
+---
+description: Manager/executor split — expensive models diagnose and review, cheap worktree agents execute
+alwaysApply: true
+---
+
+# Agent delegation (manager / executor)
+
+Cursor doesn't read `CLAUDE.md` automatically, so this is mirrored here. Canonical: Atlas `standards.md` → *Agents — Manager / executor split*.
+
+When this chat is pinned to an expensive model (Opus 5, Grok), **this session is the manager**. Its job is diagnosis, specification, and review — not keystrokes.
+
+## The split
+
+| Manager (this session) | Executor (Sonnet subagent, in a worktree) |
+| --- | --- |
+| Reads the code, traces the real flow | Applies a change list |
+| Diagnoses the root cause | Does not decide what the change should be |
+| Writes the builder-ready spec | Confirms its branch parent before editing |
+| **Reviews the resulting diff** | Runs the build, commits, reports |
+
+## Do not delegate exploration
+
+The manager's value is an accumulated, warm picture of the codebase — that is what makes the second and third diagnosis cheap. Farming out *reading* to save tokens forces the manager to re-derive it later, costing more than it saved. Read the code yourself; delegate the typing.
+
+## Always review the diff
+
+Subagent reports are claims, not results. "Build passed, matches spec" is not evidence the code is correct — `git diff <base>...<branch>` before merging, every time.
+
+## When not to bother
+
+- The hard part *is* the diagnosis.
+- The fix is one small edit you can make in a single tool call.
+- Writing the spec would take longer than the change.
+
+Each spawn starts cold and re-reads context you already hold.
+
+## Spec shape
+
+Atlas `AGENT-GUIDE.md` → *Implementation handoff (builder-ready)*. Minimum: **Done when** / **Branch** / **First reads** / **Root cause** (stated as settled, explicitly not to be re-derived) / exact **change list** / **Landmines** / **Do NOT touch** / **Verify** / **Commit command**.
+
+## Branch base
+
+When the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the executor confirm the parent commit before editing. See `.cursor/rules/git-workflow.mdc`.
+
+## Landmines for executors
+
+Spell these out in every spec — worktree agents don't inherit session context:
+
+- Bun is not on `PATH`: use `$HOME/.bun/bin/bun`.
+- **Do not start a dev server.** One already runs on port 4321 against the main checkout; a worktree agent cannot verify in the browser. Verification happens after merge.
+- Commit with `bun run commit:engine "<msg>" <explicit paths>` — never the no-paths form, which sweeps other agents' in-flight work.
+- Never stage `src/content/**` or `public/images/**`.
+- Name the files other parallel agents are editing, as off-limits.
