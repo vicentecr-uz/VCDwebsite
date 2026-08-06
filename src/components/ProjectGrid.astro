@@ -541,7 +541,7 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
   }
 
   /*
-    Cover-drop chrome must be global — the iris overlay is created in JS
+    Cover-drop chrome must be global — the crossfade overlay is created in JS
     (no Astro scope attr), and scoped drop-active selectors were a no-op
     in the same way chip placement was.
   */
@@ -572,16 +572,11 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
     opacity: 1;
   }
 
-  .project-grid__cover[data-dev-iris-active='true'] .project-grid__drop-veil {
-    opacity: 0;
-  }
-
   /*
     Wash toward page white — do NOT lower stack opacity (that reveals the
     listing card `bg` fill behind the images).
   */
-  .project-grid__cover[data-dev-drop-active='true']::after,
-  .project-grid__cover[data-dev-iris-active='true']::after {
+  .project-grid__cover[data-dev-drop-active='true']::after {
     content: '';
     position: absolute;
     inset: 0;
@@ -593,25 +588,37 @@ const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba
   }
 
   .project-grid__item:has(.project-grid__cover[data-dev-drop-active='true']) .project-grid__chips,
-  .project-grid__item:has(.project-grid__cover[data-dev-iris-active='true']) .project-grid__chips {
+  .project-grid__item:has(.project-grid__cover[data-dev-crossfade-active='true']) .project-grid__chips {
     opacity: 0 !important;
     pointer-events: none !important;
   }
 
-  .project-grid__iris {
+  .project-grid__cover[data-dev-crossfade-active='true'] .project-grid__stack {
+    opacity: 0;
+    transition: opacity 0.45s ease;
+  }
+
+  .project-grid__crossfade {
     position: absolute;
     inset: 0;
     z-index: 4;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    opacity: 0;
     pointer-events: none;
+    transition: opacity 0.45s ease;
+  }
+
+  .project-grid__crossfade.is-in {
+    opacity: 1;
   }
 
   @media (prefers-reduced-motion: reduce) {
     .project-grid__drop-veil,
     .project-grid__cover[data-dev-drop-active='true']::after,
-    .project-grid__cover[data-dev-iris-active='true']::after {
+    .project-grid__cover[data-dev-crossfade-active='true'] .project-grid__stack,
+    .project-grid__crossfade {
       transition: none;
     }
   }

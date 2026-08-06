@@ -517,99 +517,14 @@ const statusIcons = {
   const clearAllCoverDropActive = () => {
     document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
-      // Don't undim a cover mid-iris wipe.
-      if (node.dataset.devIrisActive) return;
+      // Don't clear hover chrome mid-crossfade.
+      if (node.dataset.devCrossfadeActive) return;
       delete node.dataset.devDropActive;
     });
   };
 
   const prefersReducedMotion = () =>
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-  /**
-   * Soft circular iris wipe from the drop point over the white-washed old cover.
-   * Waits for decode so frame 0 is visible, then ease-in expands over 2s.
-   * Returns a disposer — call only after the base <img> has decoded the new src
-   * so removing the overlay doesn't flash the previous cover.
-   */
-  const playCoverIrisReveal = (cover, file, clientX, clientY) => new Promise((resolve, reject) => {
-    const blobUrl = URL.createObjectURL(file);
-    const overlay = document.createElement('img');
-    overlay.className = 'project-grid__iris';
-    overlay.alt = '';
-    overlay.draggable = false;
-
-    const rect = cover.getBoundingClientRect();
-    const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
-    const y = Math.max(0, Math.min(rect.height, clientY - rect.top));
-    const feather = Math.max(28, Math.min(rect.width, rect.height) * 0.14);
-    const maxR = Math.hypot(
-      Math.max(x, rect.width - x),
-      Math.max(y, rect.height - y),
-    ) + feather;
-
-    const applyMask = (radius) => {
-      const r = Math.max(0, radius);
-      const gradient = `radial-gradient(circle at ${x}px ${y}px, #000 0px, #000 ${r}px, transparent ${r + feather}px)`;
-      overlay.style.webkitMaskImage = gradient;
-      overlay.style.maskImage = gradient;
-    };
-
-    const dispose = () => {
-      overlay.remove();
-      URL.revokeObjectURL(blobUrl);
-      delete cover.dataset.devIrisActive;
-      delete cover.dataset.devDropActive;
-    };
-
-    const run = async () => {
-      try {
-        cover.dataset.devIrisActive = 'true';
-        cover.dataset.devDropActive = 'true';
-        applyMask(0);
-        cover.append(overlay);
-        overlay.src = blobUrl;
-
-        if (overlay.decode) {
-          await overlay.decode();
-        } else if (!overlay.complete) {
-          await new Promise((res, rej) => {
-            overlay.onload = () => res();
-            overlay.onerror = () => rej(new Error('Could not load dropped image.'));
-          });
-        }
-
-        applyMask(0);
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-        if (prefersReducedMotion()) {
-          applyMask(maxR);
-          resolve(dispose);
-          return;
-        }
-
-        const start = performance.now();
-        const duration = 2000;
-        const tick = (now) => {
-          const t = Math.min(1, (now - start) / duration);
-          // Ease-in cubic — slow start, then ramps up.
-          const eased = t * t * t;
-          applyMask(maxR * eased);
-          if (t < 1) {
-            requestAnimationFrame(tick);
-            return;
-          }
-          resolve(dispose);
-        };
-        requestAnimationFrame(tick);
-      } catch (error) {
-        dispose();
-        reject(error);
-      }
-    };
-
-    void run();
-  });
 
   const waitImageReady = async (img) => {
     if (!(img instanceof HTMLImageElement)) return;
@@ -628,6 +543,62 @@ const statusIcons = {
       img.addEventListener('error', done, { once: true });
     });
   };
+
+  const waitTransition = (el, propertyName) => new Promise((resolve) => {
+    if (prefersReducedMotion()) {
+      resolve();
+      return;
+    }
+    const done = (event) => {
+      if (event.target !== el) return;
+      if (propertyName && event.propertyName !== propertyName) return;
+      el.removeEventListener('transitionend', done);
+      resolve();
+    };
+    el.addEventListener('transitionend', done);
+    window.setTimeout(resolve, 600);
+  });
+
+  /**
+   * Old cover fades out, new cover fades in. Returns a disposer — call after
+   * the base <img> has decoded the uploaded src so teardown doesn't flash.
+   */
+  const playCoverCrossfade = (cover, file) => new Promise((resolve, reject) => {
+    const blobUrl = URL.createObjectURL(file);
+    const overlay = document.createElement('img');
+    overlay.className = 'project-grid__crossfade';
+    overlay.alt = '';
+    overlay.draggable = false;
+
+    const dispose = () => {
+      overlay.remove();
+      URL.revokeObjectURL(blobUrl);
+      delete cover.dataset.devCrossfadeActive;
+      delete cover.dataset.devDropActive;
+    };
+
+    const run = async () => {
+      try {
+        // Drop hover wash/label; crossfade owns the card until teardown.
+        delete cover.dataset.devDropActive;
+        cover.dataset.devCrossfadeActive = 'true';
+        cover.append(overlay);
+        overlay.src = blobUrl;
+        await waitImageReady(overlay);
+
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        overlay.classList.add('is-in');
+        await waitTransition(overlay, 'opacity');
+
+        resolve(dispose);
+      } catch (error) {
+        dispose();
+        reject(error);
+      }
+    };
+
+    void run();
+  });
 
   const coverFromPoint = (clientX, clientY, fallbackTarget) => {
     const fromEvent = fallbackTarget instanceof Element
