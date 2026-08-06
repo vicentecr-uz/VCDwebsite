@@ -111,6 +111,61 @@ export const resolveInsertIndexFromY = (
   return index;
 };
 
+/**
+ * Insert index for a two-dimensional flow (a listing grid), where the 1-D walk
+ * above has nothing to walk: siblings sit beside each other as well as below.
+ *
+ * Candidate insert points are the leading edge-centre of every item plus the
+ * trailing edge of the last, and the lifted card's centre picks the nearest.
+ * Vertical distance is weighted heavier than horizontal so a card in the row
+ * above never out-scores one in the row the pointer is actually in.
+ *
+ * Anchors move as the slot moves, which on its own oscillates between two
+ * indices at the boundary — `hysteresisPx` makes a challenger beat the held
+ * index by a margin before the slot gives way.
+ */
+export const GRID_INSERT_HYSTERESIS_PX = 14;
+const GRID_ROW_WEIGHT = 1.6;
+
+export const resolveInsertIndexInGrid = (
+  items: HTMLElement[],
+  centerX: number,
+  centerY: number,
+  currentIndex = 0,
+  hysteresisPx = GRID_INSERT_HYSTERESIS_PX,
+) => {
+  if (!items.length) return 0;
+
+  const anchors: { index: number; x: number; y: number }[] = items.map((el, index) => {
+    const rect = el.getBoundingClientRect();
+    return { index, x: rect.left, y: rect.top + rect.height / 2 };
+  });
+  const lastRect = items[items.length - 1].getBoundingClientRect();
+  anchors.push({
+    index: items.length,
+    x: lastRect.right,
+    y: lastRect.top + lastRect.height / 2,
+  });
+
+  const score = (anchor: { x: number; y: number }) =>
+    Math.hypot(centerX - anchor.x, (centerY - anchor.y) * GRID_ROW_WEIGHT);
+
+  const held = anchors.find((anchor) => anchor.index === currentIndex);
+  const heldScore = held ? score(held) : Number.POSITIVE_INFINITY;
+
+  let best = currentIndex;
+  let bestScore = heldScore;
+  anchors.forEach((anchor) => {
+    const value = score(anchor);
+    if (value < bestScore - hysteresisPx) {
+      best = anchor.index;
+      bestScore = value;
+    }
+  });
+
+  return best;
+};
+
 export const setLiftTransformOrigin = (
   root: HTMLElement,
   handle: HTMLElement | null,
@@ -245,6 +300,15 @@ export type ReorderClasses = {
   liftBackdrop?: string;
 };
 
+export type ResolveInsertContext = {
+  items: HTMLElement[];
+  centerX: number;
+  centerY: number;
+  currentIndex: number;
+  /** Sign of travel through the page; 0 before the block has moved. */
+  direction: number;
+};
+
 export type ReorderHost = {
   getItems: () => HTMLElement[];
   getDropZone: () => HTMLElement | null;
@@ -265,6 +329,19 @@ export type ReorderHost = {
     sourceIndex: number,
     liftGaps: { top: string; bottom: string },
   ) => { top: string; bottom: string; marginTop?: string };
+  /** Tag for the drop slot. `div` suits a section list; a grid `<ul>` wants `li`. */
+  indicatorTag?: string;
+  /**
+   * Where the lifted block would land. Defaults to the 1-D Y walk
+   * ({@link resolveInsertIndexFromY}); two-dimensional hosts pass
+   * {@link resolveInsertIndexInGrid}.
+   */
+  resolveInsertIndex?: (context: ResolveInsertContext) => number;
+  /**
+   * Called after the slot is placed. Hosts set whatever sizing the shared gap
+   * model does not own — a grid slot's column span, for instance.
+   */
+  onSlotSync?: (indicator: HTMLElement, insertIndex: number) => void;
   onStatus?: (text: string) => void;
 };
 
@@ -496,10 +573,35 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     applySlotMetrics(insertIndex);
     placeIndicatorBeforeIndex(insertIndex);
     bindNeighbor(insertIndex);
+    if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex);
+  };
+
+  /** Centre of the lifted block in viewport space — what placement is keyed off. */
+  const liftCenter = () => ({
+    x: state.liftLeft + state.liftWidth / 2,
+    y: state.liftTop + state.blockHeight / 2,
+  });
+
+  const resolveInsert = (centerX: number, centerY: number) => {
+    if (host.resolveInsertIndex) {
+      return host.resolveInsertIndex({
+        items: host.getItems(),
+        centerX,
+        centerY,
+        currentIndex: state.placedIndex,
+        direction: travelDirection,
+      });
+    }
+    return resolveInsertIndexFromY(
+      host.getItems(),
+      centerY,
+      state.placedIndex,
+      travelDirection,
+    );
   };
 
   const createIndicator = () => {
-    const indicator = document.createElement('div');
+    const indicator = document.createElement(host.indicatorTag ?? 'div');
     indicator.className = host.classes.indicator;
     indicator.setAttribute('aria-hidden', 'true');
     const body = document.createElement('div');
@@ -588,11 +690,15 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     captureElements.forEach((el) => {
       const first = firstRects.get(el);
       if (!first) return;
-      const deltaY = first.top - el.getBoundingClientRect().top;
-      if (Math.abs(deltaY) < 0.5) return;
+      const last = el.getBoundingClientRect();
+      // Both axes: a section list only ever moves vertically (deltaX stays 0),
+      // but a grid reflows sideways as items wrap between rows.
+      const deltaX = first.left - last.left;
+      const deltaY = first.top - last.top;
+      if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
       el.classList.add(host.classes.flipMoving);
       el.style.transition = 'none';
-      el.style.transform = `translateY(${deltaY}px)`;
+      el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
       moving.push(el);
     });
 
@@ -708,8 +814,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       state.liftLeft = state.pointerX - state.grabOffsetX;
       renderLift();
 
-      const centerY = state.liftTop + state.blockHeight / 2;
-      const travelY = centerY + window.scrollY;
+      const center = liftCenter();
+      const travelY = center.y + window.scrollY;
       if (lastTravelY !== null && Math.abs(travelY - lastTravelY) > TRAVEL_EPSILON_PX) {
         travelDirection = Math.sign(travelY - lastTravelY);
         lastTravelY = travelY;
@@ -717,12 +823,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         lastTravelY = travelY;
       }
 
-      state.targetIndex = resolveInsertIndexFromY(
-        host.getItems(),
-        centerY,
-        state.placedIndex,
-        travelDirection,
-      );
+      state.targetIndex = resolveInsert(center.x, center.y);
     }
 
     if (state.targetIndex !== state.placedIndex) {
@@ -1173,13 +1274,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       // Same seed and direction the last tick used, so the block lands in the
       // slot the indicator is showing rather than re-deciding on drop.
+      const finalCenter = liftCenter();
       const finalIndex = followPointer
-        ? resolveInsertIndexFromY(
-          host.getItems(),
-          state.liftTop + state.blockHeight / 2,
-          state.placedIndex,
-          travelDirection,
-        )
+        ? resolveInsert(finalCenter.x, finalCenter.y)
         : state.targetIndex;
       state.targetIndex = finalIndex;
 
