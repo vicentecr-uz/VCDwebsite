@@ -622,9 +622,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Dark covers (listings.*.dark): ghost chips use the light token so icons
-    read like titles on the same card. Frosted hover/press fill is light, so
-    flip back to --color-text whenever that fill shows (#154).
+    Dark covers (listings.*.dark): light glyphs always — same as titles.
+    Hover/press use a dark frosted fill (not surface-control) so icons stay
+    light; :active darkens that fill further (drop shadow is invisible here).
   */
   .project-grid__item[data-dev-dark='true'] .project-grid__chip {
     color: var(--color-bg);
@@ -632,10 +632,15 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
 
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:hover,
   .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible,
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active,
   .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
   .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
-    color: var(--color-text);
+    background: color-mix(in srgb, var(--color-text) 42%, transparent);
+    color: var(--color-bg);
+  }
+
+  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active {
+    background: color-mix(in srgb, var(--color-text) 62%, transparent);
+    color: var(--color-bg);
   }
 
   /*
