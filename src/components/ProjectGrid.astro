@@ -822,9 +822,52 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     opacity: 1;
   }
 
+  /*
+    The cover is editable too (drop to replace, chip to crop), so it earns the
+    same dashed hairline the text fields carry — see --dev-edit-dash. Inset
+    rather than outset: the cover is a filled box that butts against its
+    neighbours at one --space-unit, and an outset rule would read as a gap
+    change. Arrives on the same trigger and the same 0.15s as the chip rail
+    so the whole affordance layer lands as one thing, not three.
+  */
+  html.is-dev-mode .project-grid__cover::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border: var(--dev-edit-dash);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  html.is-dev-mode .project-grid__item:hover .project-grid__cover::before,
+  html.is-dev-mode .project-grid__item:focus-within .project-grid__cover::before,
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden])) .project-grid__cover::before,
+  html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host) .project-grid__cover::before {
+    opacity: 1;
+  }
+
+  /*
+    Drop and crossfade own the whole cover — the veil and its wash are the
+    affordance then, and a dashed frame under them just adds noise. Span mode
+    draws its own solid frame at z-index 4, which supersedes this one.
+  */
+  html.is-dev-mode .project-grid__cover[data-dev-drop-active='true']::before,
+  html.is-dev-mode .project-grid__cover[data-dev-crossfade-active='true']::before,
+  html.is-dev-mode .project-grid__item.is-span-mode .project-grid__cover::before {
+    opacity: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.is-dev-mode .project-grid__cover::before {
+      transition: none;
+    }
+  }
+
   html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
-    outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
+    outline: var(--dev-edit-dash);
     outline-offset: 0.12em;
     border-radius: 0.15em;
     cursor: text;
