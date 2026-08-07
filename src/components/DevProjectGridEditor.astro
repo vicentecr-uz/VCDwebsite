@@ -71,15 +71,16 @@ const statusIcons = {
 </DevOverlay>
 
 <script>
-  // NOTE: plain <script>, not type="module". Astro only bundles and rewrites
-  // imports for unadorned script tags — with type="module" it left this inline
-  // and the browser resolved `../scripts/coverLuminance` against the page URL
-  // (/work -> /scripts/coverLuminance, 404). The module never ran, so every
-  // drop silently fell back to the base `dark` value. #182.
   // #182 — measurement lives in its own module (coverLuminance.ts) so #172 can
   // lift it verbatim for runtime sampling later. The rest of this file's
-  // script is `define:vars` (inline, no `import`), so this module hands the
+  // script is `define:vars` (inline, no `import`), so this one hands the
   // function across on `window` instead of sharing scope directly.
+  //
+  // Must stay a plain <script>: Astro only bundles and rewrites imports for
+  // unadorned tags. With type="module" it stayed inline and the browser
+  // resolved `../scripts/coverLuminance` against the page URL
+  // (/work -> /scripts/coverLuminance, 404), so the module never ran and every
+  // drop silently took the `dark` fallback.
   import {
     coverBoxRegionToSourceRegion,
     isRegionDark,
@@ -1168,6 +1169,17 @@ const statusIcons = {
       cover.classList.toggle('is-dev-hover-forced', next);
       hoverBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
       setHoverChipLabel(hoverBtn, next);
+      return;
+    }
+
+    // Was buried in the crop tuner's "Card settings" button; now its own chip.
+    const settingsButton = target.closest('[data-dev-project-settings]');
+    if (settingsButton instanceof HTMLElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = settingsButton.closest('[data-dev-project-slug]');
+      const slug = item?.getAttribute('data-dev-project-slug');
+      if (slug) void openSettings(slug);
       return;
     }
 

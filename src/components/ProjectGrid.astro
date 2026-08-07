@@ -1,6 +1,7 @@
 ---
 import cropIcon from 'lucide-static/icons/crop.svg?raw';
 import columns2Icon from 'lucide-static/icons/columns-2.svg?raw';
+import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
@@ -56,6 +57,7 @@ const isDev = import.meta.env.DEV;
 const cropIconSvg = sizeIcon(cropIcon, 14);
 const spanIconSvg = sizeIcon(columns2Icon, 14);
 const hoverIconSvg = sizeIcon(imagesIcon, 14);
+const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
 const statusIcons = {
   published: sizeIcon(globeIcon, 14),
   draft: sizeIcon(filePenIcon, 14),
@@ -210,6 +212,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
         data-dev-status={status}
         data-dev-bg={item.bg}
         data-dev-dark={item.dark ? 'true' : 'false'}
+        data-dev-hover-dark={editable && item.hoverImage ? (hoverDark ? 'true' : 'false') : undefined}
         data-dev-hover-image={item.hoverImage || undefined}
       >
         {isStatic ? (
@@ -294,6 +297,20 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
               title="Crop cover"
             >
               <span class="project-grid__chip-icon" aria-hidden="true" set:html={cropIconSvg} />
+            </button>
+          </div>
+        )}
+        {editable && (
+          <div class="project-grid__chips project-grid__chips--end-bottom" data-dev-mode-only>
+            <button
+              type="button"
+              class="project-grid__chip"
+              data-dev-project-settings={item.slug}
+              aria-label={`Card settings for ${item.title}`}
+              aria-haspopup="dialog"
+              title="Card settings"
+            >
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
             </button>
           </div>
         )}
@@ -487,7 +504,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     border: 0;
     border-radius: var(--radius-control);
     background: transparent;
-    color: var(--color-text);
+    color: var(--chip-ink);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
@@ -511,14 +528,18 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   .project-grid__chip:focus-visible,
   .project-grid__chip[aria-pressed='true'],
   .project-grid__chip[aria-expanded='true'] {
-    background: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
+    background: var(--chip-fill);
+    box-shadow: inset 0 0 0 1px var(--chip-ring);
     backdrop-filter: blur(8px);
     transform: scale(1.08);
+    color: var(--chip-ink);
   }
 
   .project-grid__chip:active {
-    background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
+    background: var(--chip-press);
+    box-shadow: inset 0 0 0 1px var(--chip-ring);
     backdrop-filter: blur(8px);
+    color: var(--chip-ink);
   }
 
   .project-grid__status-menu {
@@ -708,6 +729,18 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
+    Bottom-right. The title/year sit bottom-*left* with a --space-unit pad, so
+    this corner is the only free one; the centre belongs to the drag handle.
+  */
+  .project-grid__chips--end-bottom {
+    top: auto;
+    bottom: 0.75em;
+    right: 0.75em;
+    left: auto;
+    align-items: flex-end;
+  }
+
+  /*
     Hover-only rail (#174) — chips stay hidden until something on the card
     asks for them. Removed the always-on selector that used to be here; keep
     reading each of the four cases below as its own reason, not a redundant
@@ -733,33 +766,61 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Dark covers (listings.*.dark): white glyphs always.
-    Rest — no chip fill / ring (cover is the dark ground).
-    Hover — dark fill + 1px inset ring slightly lighter than that fill.
-    Press / latched — fill becomes the ring colour (ring can stay; it blends).
+    Chip contrast — two palettes, chosen by what is *currently under the chip*.
+
+    On a light ground: dark glyphs, light control fill, no ring.
+    On a dark ground: white glyphs, dark fill, 1px inset ring slightly lighter
+    than that fill; press / latched promotes the ring colour to the fill.
   */
+  .project-grid {
+    --chip-ink-on-light: var(--color-text);
+    --chip-fill-on-light: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
+    --chip-ring-on-light: transparent;
+    --chip-press-on-light: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
+
+    --chip-ink-on-dark: var(--color-bg);
+    --chip-fill-on-dark: rgb(0 0 0 / 0.58);
+    --chip-ring-on-dark: color-mix(in srgb, var(--color-bg) 36%, #1a1a1a);
+    --chip-press-on-dark: var(--chip-ring-on-dark);
+  }
+
+  .project-grid__item {
+    --chip-ink: var(--chip-ink-on-light);
+    --chip-fill: var(--chip-fill-on-light);
+    --chip-ring: var(--chip-ring-on-light);
+    --chip-press: var(--chip-press-on-light);
+  }
+
   .project-grid__item[data-dev-dark='true'] {
-    --project-grid-chip-ring: color-mix(in srgb, var(--color-bg) 36%, #1a1a1a);
-    --project-grid-chip-fill: rgb(0 0 0 / 0.58);
+    --chip-ink: var(--chip-ink-on-dark);
+    --chip-fill: var(--chip-fill-on-dark);
+    --chip-ring: var(--chip-ring-on-dark);
+    --chip-press: var(--chip-press-on-dark);
   }
 
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip {
-    color: var(--color-bg);
+  /*
+    While the hover image is the one showing, the chips are sitting on *it*,
+    not on the base cover — so they take its measured value (#182's hoverDark)
+    instead of `dark`. This matters more than it looks: chips only reveal on
+    hover, so the hover image is the ground they are on almost every time you
+    see them. Same gate as the title ink and the image crossfade.
+
+    Interim until #172 measures per control position rather than per image.
+  */
+  .project-grid__item[data-dev-hover-dark='true']:has(.project-grid__card:hover .project-grid__cover--has-hover),
+  .project-grid__item[data-dev-hover-dark='true']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
+    --chip-ink: var(--chip-ink-on-dark);
+    --chip-fill: var(--chip-fill-on-dark);
+    --chip-ring: var(--chip-ring-on-dark);
+    --chip-press: var(--chip-press-on-dark);
   }
 
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip:hover,
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip:focus-visible {
-    background: var(--project-grid-chip-fill);
-    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
-    color: var(--color-bg);
-  }
-
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip:active,
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-pressed='true'],
-  .project-grid__item[data-dev-dark='true'] .project-grid__chip[aria-expanded='true'] {
-    background: var(--project-grid-chip-ring);
-    box-shadow: inset 0 0 0 1px var(--project-grid-chip-ring);
-    color: var(--color-bg);
+  .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__card:hover .project-grid__cover--has-hover),
+  .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
+    --chip-ink: var(--chip-ink-on-light);
+    --chip-fill: var(--chip-fill-on-light);
+    --chip-ring: var(--chip-ring-on-light);
+    --chip-press: var(--chip-press-on-light);
   }
 
   /*

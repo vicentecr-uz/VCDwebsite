@@ -121,10 +121,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
       Replace image
     </button>
 
-    <button type="button" class="tapico-crop-tuner__card-settings" data-crop-card-settings hidden>
-      Card settings
-    </button>
-
     <div class="tapico-crop-tuner__actions">
       <button type="button" data-crop-reset>Reset</button>
       <button type="button" data-crop-revert>Revert changes</button>
@@ -210,7 +206,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
     const replaceButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace]');
-    const cardSettingsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-card-settings]');
     const replaceOverlay = tuner.querySelector<HTMLElement>('[data-crop-replace-overlay]');
     const replaceDropzone = tuner.querySelector<HTMLElement>('[data-crop-replace-dropzone]');
     const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
@@ -242,7 +237,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
       !resetButton ||
       !useGridDefaultButton ||
       !replaceButton ||
-      !cardSettingsButton ||
       !replaceOverlay ||
       !replaceDropzone ||
       !replaceChooseButton ||
@@ -1156,7 +1150,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
       renderDraft();
       syncUseGridDefaultButton();
       syncWidthConstrainUi();
-      cardSettingsButton.hidden = !isListingCover(target);
       if (live) {
         mountPageStage();
         status.textContent = viewportGateOk()
@@ -2163,18 +2156,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
       openReplaceOverlay();
     });
 
-    cardSettingsButton.addEventListener('click', () => {
-      const target = editTarget;
-      if (!isListingCover(target)) return;
-      const slug = target.dataset.devDocument || '';
-      const grid = target.dataset.devListingCover || '';
-      if (!slug) return;
-      closePanel();
-      window.dispatchEvent(new CustomEvent('vcd:dev-project-settings-open', {
-        detail: { slug, grid },
-      }));
-    });
-
     replaceCancelButton.addEventListener('click', () => {
       closeReplaceOverlay();
       status.textContent = viewportGateOk()
@@ -2743,28 +2724,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
   .tapico-crop-tuner__replace:hover {
     background: var(--color-surface-soft);
-  }
-
-  .tapico-crop-tuner__card-settings {
-    border: 1px solid color-mix(in srgb, var(--color-text) 18%, transparent);
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: transparent;
-    padding: 0.55em 0.65em;
-    color: var(--color-text);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__card-settings:hover {
-    background: var(--color-surface-soft);
-  }
-
-  .tapico-crop-tuner__card-settings[hidden] {
-    display: none;
   }
 
   .tapico-crop-tuner__replace-overlay {
