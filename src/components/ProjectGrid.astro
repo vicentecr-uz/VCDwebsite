@@ -139,7 +139,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     way in and snaps back on the way out. Same 0.2s as the hover swap above —
     it is the same visual event, just driven by a chip instead of a pointer.
   */
-  :global(html.is-dev-mode) .project-grid__cover .project-grid__img {
+  html.is-dev-mode .project-grid__cover .project-grid__img {
     transition: opacity 0.2s ease;
   }
 
@@ -155,20 +155,20 @@ const gridCardTemplateSeed: ProjectGridItem = {
     plain :hover semantics below.
   */
   .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
-  :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover,
+  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover,
   .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
   }
 
   .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
-  :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base,
+  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base,
   .project-grid__cover.is-dev-hover-forced .project-grid__img--base {
     opacity: 0;
   }
 
-  :global(.project-grid__title),
-  :global(.project-grid__subtitle),
-  :global(.project-grid__teaser-label) {
+  .project-grid__title,
+  .project-grid__subtitle,
+  .project-grid__teaser-label {
     font-size: 1.25rem;
     letter-spacing: -0.03em;
     line-height: 1.2;
@@ -178,27 +178,24 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /*
-    :global on purpose. Astro scopes these to `[data-astro-cid-…]`, which a
-    JS-created node never carries — `ensureSubtitleHost` in
-    DevProjectGridEditor builds the year span for a project that has none, and
-    a scoped rule leaves it uncoloured. Same reason the chip rails and drop
-    chrome are global (see the block below).
+    Unscoped (this block is is:global). JS-created subtitle hosts from
+    ensureSubtitleHost must still receive colour — do not re-scope these.
   */
-  :global(.project-grid__title) {
+  .project-grid__title {
     color: var(--title-ink);
   }
 
-  :global(.project-grid__subtitle),
-  :global(.project-grid__teaser-label) {
+  .project-grid__subtitle,
+  .project-grid__teaser-label {
     color: var(--subtitle-ink);
   }
 
   /* Only cards that actually have a hover image swap ink — reuses the same
      gate as the image crossfade so a card with no hover image never changes
      colour. `.is-dev-hover-forced` mirrors it for the dev preview toggle. */
-  :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title),
-  :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title),
-  :global(.project-grid__cover.is-dev-hover-forced .project-grid__title) {
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
+  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title,
+  .project-grid__cover.is-dev-hover-forced .project-grid__title {
     color: var(--title-ink-hover);
   }
 
@@ -208,21 +205,21 @@ const gridCardTemplateSeed: ProjectGridItem = {
     to their on-light values. Without this a dark-cover card goes white-on-
     white the moment you press the preview chip.
   */
-  :global(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__title) {
+  .project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__title {
     color: var(--title-ink-on-page);
   }
 
-  :global(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__subtitle),
-  :global(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__teaser-label) {
+  .project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__subtitle,
+  .project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__teaser-label {
     color: var(--subtitle-ink-on-page);
   }
 
-  :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
-  :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label),
-  :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle),
-  :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label),
-  :global(.project-grid__cover.is-dev-hover-forced .project-grid__subtitle),
-  :global(.project-grid__cover.is-dev-hover-forced .project-grid__teaser-label) {
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
+  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle,
+  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label,
+  .project-grid__cover.is-dev-hover-forced .project-grid__subtitle,
+  .project-grid__cover.is-dev-hover-forced .project-grid__teaser-label {
     color: var(--subtitle-ink-hover);
   }
 
@@ -397,17 +394,17 @@ const gridCardTemplateSeed: ProjectGridItem = {
     }
 
     .project-grid__cover--has-hover .project-grid__img,
-    :global(html.is-dev-mode) .project-grid__cover .project-grid__img {
+    html.is-dev-mode .project-grid__cover .project-grid__img {
       transition: none;
     }
 
     .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
-    :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover {
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover {
       opacity: 0;
     }
 
     .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
-    :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base {
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base {
       opacity: 1;
     }
 
@@ -416,22 +413,22 @@ const gridCardTemplateSeed: ProjectGridItem = {
        never appears. `.is-dev-hover-forced` (the dev preview chip) is left
        alone here, same as the image opacity rules above: it is meant to work
        at any viewport width so authoring isn't width-gated. */
-    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title),
-    :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title) {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title {
       color: var(--title-ink);
     }
 
-    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
-    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label),
-    :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle),
-    :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label) {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label {
       color: var(--subtitle-ink);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .project-grid__cover--has-hover .project-grid__img,
-    :global(html.is-dev-mode) .project-grid__cover .project-grid__img,
+    html.is-dev-mode .project-grid__cover .project-grid__img,
     .project-grid__meta,
     .project-grid__title,
     .project-grid__subtitle,
