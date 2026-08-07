@@ -108,6 +108,11 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       `--subtitle-ink: ${subtitleColor(item.dark)}`,
       `--title-ink-hover: ${titleColor(hoverDark)}`,
       `--subtitle-ink-hover: ${subtitleColor(hoverDark)}`,
+      // Forced-hover on a card with no hover image shows the page background,
+      // not an image — so the ink is whatever reads on --color-bg. Hard-coded
+      // to the light-ground pair until dark mode gives the page two states.
+      `--title-ink-on-page: ${titleColor(false)}`,
+      `--subtitle-ink-on-page: ${subtitleColor(false)}`,
     ].join('; ');
 
     const cover = (
@@ -454,6 +459,21 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     color: var(--title-ink-hover);
   }
 
+  /*
+    Hover forced on a card with *no* hover image: the base fades out and the
+    page background is the ground, so both the ink and the chips below switch
+    to their on-light values. Without this a dark-cover card goes white-on-
+    white the moment you press the preview chip.
+  */
+  :global(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__title) {
+    color: var(--title-ink-on-page);
+  }
+
+  :global(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__subtitle),
+  :global(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__teaser-label) {
+    color: var(--subtitle-ink-on-page);
+  }
+
   :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
   :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label),
   :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle),
@@ -798,6 +818,11 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     lighter on dark, darker on light — so the chip reads as a shape rather
     than a floating glyph either way.
 
+    Naming: variants are named for the GROUND they sit on, not the ink —
+    `on-dark` is the white-icon set, because it sits on a dark ground. Same
+    convention as Material's `onSurface`. `dark` / `hoverDark` in the content
+    JSON also describe the ground, not the text.
+
     One rule on both grounds: the ring is a step *darker* than the fill it
     edges. Light — fill #e7e7e9, ring #d4d4d7 (the click fill nudged 7% toward
     --color-text; used raw it is 1.05:1 and vanishes). Dark — press fill
@@ -856,7 +881,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   .project-grid__item[data-dev-hover-dark='false']:hover:has(.project-grid__cover--has-hover),
-  .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
+  .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__cover--has-hover.is-dev-hover-forced),
+  /* No hover image at all — forced preview shows the page background. */
+  .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover)) {
     --chip-ink: var(--chip-ink-on-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
