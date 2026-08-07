@@ -17,6 +17,8 @@ export type ProjectListingCard = {
   bg: string;
   dark: boolean;
   full?: boolean;
+  /** Override card link (e.g. Design System → /styles). */
+  href?: string;
   /** Per-viewport cover crop (same shape as project image variants). */
   variants?: ImageVariants;
   srcWidth?: number;
@@ -60,27 +62,8 @@ export type ProjectGridListing = {
   srcHeight?: number;
 };
 
-export type PlayLinkItem = {
-  id: string;
-  order?: number;
-  title: string;
-  meta?: string;
-  image: string;
-  bg: string;
-  dark: boolean;
-  href?: string;
-  variants?: import('./responsiveImage').ImageVariants;
-  srcWidth?: number;
-  srcHeight?: number;
-};
-
 const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   '../content/projects/*.json',
-  { eager: true },
-);
-
-const playLinkModules = import.meta.glob<{ default: PlayLinkItem }>(
-  '../content/play/*.json',
   { eager: true },
 );
 
@@ -166,17 +149,19 @@ function listingCardForGrid(
     ? (project.teaser?.coverImage ?? listing.image)
     : listing.image;
 
+  const defaultHref = listing.href ?? `/${project.slug}`;
+
   return {
     slug: project.slug,
     title: project.title,
     subtitle: grid === 'play' ? listing.meta : listing.year,
     image,
-    hoverImage: isTeaser ? undefined : listing.hoverImage,
-    hoverDark: isTeaser ? undefined : listing.hoverDark,
+    hoverImage: listing.hoverImage,
+    hoverDark: listing.hoverDark,
     bg: listing.bg,
     dark: listing.dark,
     full: listing.full,
-    href: isTeaser && !dev ? undefined : `/${project.slug}`,
+    href: isTeaser && !dev ? undefined : defaultHref,
     status,
     teaser: isTeaser,
     teaserLabel: project.teaser?.label ?? 'Coming soon',
@@ -205,21 +190,6 @@ export function getProjectGridListings(grid: 'home' | 'work' | 'play'): ProjectG
     const orderB = projectB?.listings?.[grid]?.order ?? 999;
     return orderA - orderB;
   });
-}
-
-export function getPlayGridItems(): Array<ProjectGridListing | PlayLinkItem & { isLink: true }> {
-  const projectItems = getProjectGridListings('play');
-  const linkItems = Object.entries(playLinkModules)
-    .map(([filePath, entry]) => ({
-      ...entry.default,
-      id: filePath.replace('../content/play/', '').replace(/\.json$/, ''),
-      isLink: true as const,
-      order: entry.default.order ?? 999,
-    }));
-
-  return [...projectItems, ...linkItems].sort(
-    (a, b) => (a.order ?? 999) - (b.order ?? 999),
-  );
 }
 
 export function emptyModernProjectDocument(
