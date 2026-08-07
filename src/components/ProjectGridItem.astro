@@ -1,0 +1,378 @@
+---
+import cropIcon from 'lucide-static/icons/crop.svg?raw';
+import columns2Icon from 'lucide-static/icons/columns-2.svg?raw';
+import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
+import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
+import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import imagesIcon from 'lucide-static/icons/images.svg?raw';
+import type { ProjectStatus } from '../lib/projects';
+import { projectImage } from '../lib/images';
+import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
+import { sizeIcon } from '../lib/icons';
+import {
+  normalizeImageVariants,
+  responsiveImageStyle,
+} from '../lib/responsiveImage';
+import {
+  hasCropVariants,
+  imageDevEditAttrs,
+  imageSourceDims,
+  listingCoverDevEditAttrs,
+} from '../lib/projectImageFrame';
+import type { ProjectGridItem } from './ProjectGrid.astro';
+
+interface Props {
+  item: ProjectGridItem;
+  variant: 'home' | 'work' | 'play';
+}
+
+const { item, variant } = Astro.props;
+const isDev = import.meta.env.DEV;
+
+const cropIconSvg = sizeIcon(cropIcon, 14);
+const spanIconSvg = sizeIcon(columns2Icon, 14);
+const hoverIconSvg = sizeIcon(imagesIcon, 14);
+const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
+const statusIcons = {
+  published: sizeIcon(globeIcon, 14),
+  draft: sizeIcon(filePenIcon, 14),
+  teaser: sizeIcon(eyeOffIcon, 14),
+} as const;
+
+const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
+const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
+
+const coverDefaultAspect = (gridItem: ProjectGridItem) => {
+  if (gridItem.full && variant === 'work') return '16:9';
+  return '4:3';
+};
+
+const isPlayPlaceholder = variant === 'play' && !item.href && !item.teaser;
+const isTeaser = Boolean(item.teaser);
+const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
+const status = (item.status ?? 'published') as ProjectStatus;
+const statusIconSvg = statusIcons[status as keyof typeof statusIcons] ?? statusIcons.published;
+const defaultAspect = coverDefaultAspect(item);
+const srcDims = imageSourceDims(item);
+const hasCrop = hasCropVariants(item.variants);
+const normalized = hasCrop
+  ? normalizeImageVariants(item.variants, defaultAspect, srcDims)
+  : undefined;
+const projectEditable = isDev && Boolean(item.slug);
+const linkEditable = isDev && Boolean(item.playLinkId);
+const isPlaceholderCover = projectEditable && isPlaceholderCoverSrc(item.image);
+const projectEditAttrs = projectEditable
+  ? listingCoverDevEditAttrs(item.slug!, variant, item, defaultAspect)
+  : undefined;
+const linkEditAttrs = linkEditable
+  ? imageDevEditAttrs(true, {
+      documentKey: `play:${item.playLinkId}`,
+      path: [],
+      cropId: 'play-link',
+      variants: normalizeImageVariants(item.variants, defaultAspect, srcDims),
+      gridDefaultAspect: defaultAspect,
+    })
+  : undefined;
+const editAttrs = projectEditAttrs ?? linkEditAttrs;
+
+const hoverDark = item.hoverDark ?? item.dark;
+const metaStyle = [
+  `--title-ink: ${titleColor(item.dark)}`,
+  `--subtitle-ink: ${subtitleColor(item.dark)}`,
+  `--title-ink-hover: ${titleColor(hoverDark)}`,
+  `--subtitle-ink-hover: ${subtitleColor(hoverDark)}`,
+  `--title-ink-on-page: ${titleColor(false)}`,
+  `--subtitle-ink-on-page: ${subtitleColor(false)}`,
+].join('; ');
+---
+
+<li
+  class:list={['project-grid__item', item.full && 'project-grid__item--full']}
+  data-dev-project-slug={item.slug}
+  data-dev-play-link={item.playLinkId}
+  data-dev-status={status}
+  data-dev-bg={item.bg}
+  data-dev-dark={item.dark ? 'true' : 'false'}
+  data-dev-hover-dark={projectEditable && item.hoverImage ? (hoverDark ? 'true' : 'false') : undefined}
+  data-dev-hover-image={item.hoverImage || undefined}
+>
+  {isStatic ? (
+    <div
+      class:list={[
+        'project-grid__card',
+        'block',
+        isPlayPlaceholder && 'project-grid__card--placeholder',
+        isTeaser && 'project-grid__card--teaser',
+      ]}
+      aria-disabled="true"
+      data-dev-teaser-slug={isTeaser ? item.slug : undefined}
+      data-dev-teaser-href={isTeaser ? item.href ?? `/${item.slug}` : undefined}
+    >
+      <div
+        class:list={[
+          'project-grid__cover',
+          'relative',
+          !hasCrop && 'overflow-hidden',
+          item.hoverImage && 'project-grid__cover--has-hover',
+          hasCrop && 'project-cropped project-responsive-image',
+          (projectEditable || linkEditable) && 'dev-image-edit-target',
+        ]}
+        style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
+        data-dev-cover-drop={projectEditable ? item.slug : undefined}
+        data-dev-listing-cover={projectEditable ? variant : undefined}
+        data-dev-cover-empty={isPlaceholderCover ? 'true' : undefined}
+        {...(editAttrs ?? {})}
+      >
+        <div class="project-grid__stack">
+          {hasCrop ? (
+            <div class="project-crop-clip">
+              <img
+                src={projectImage(item.image)}
+                alt={item.title}
+                class="project-grid__img project-grid__img--base"
+                loading="lazy"
+              />
+            </div>
+          ) : (
+            <img
+              src={projectImage(item.image)}
+              alt={item.title}
+              class="project-grid__img project-grid__img--base w-full h-full object-cover"
+              loading="lazy"
+            />
+          )}
+          {(item.hoverImage || projectEditable) && (
+            <img
+              src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
+              alt=""
+              class="project-grid__img project-grid__img--hover w-full h-full object-cover"
+              loading="lazy"
+              hidden={!item.hoverImage}
+              aria-hidden="true"
+            />
+          )}
+        </div>
+        {isDev && item.slug && (
+          <div class="project-grid__drop-veil" data-dev-drop-veil="active" aria-hidden="true">
+            <span class="project-grid__drop-label" data-dev-drop-label>Replace cover image</span>
+          </div>
+        )}
+        {projectEditable && (
+          <div class="project-grid__drop-veil project-grid__drop-veil--hover-empty" aria-hidden="true">
+            <span class="project-grid__drop-label">Drop hover image</span>
+          </div>
+        )}
+        {isPlaceholderCover && (
+          <div class="project-grid__drop-veil project-grid__drop-veil--cover-empty" aria-hidden="true">
+            <span class="project-grid__drop-label">Drop cover image</span>
+          </div>
+        )}
+        <div class="project-grid__meta absolute bottom-0 left-0 right-0" style={metaStyle}>
+          <div class="flex items-baseline gap-2">
+            <h2
+              class="project-grid__title font-bold"
+              data-dev-project-title
+              data-placeholder="Title"
+            >
+              {item.title}
+            </h2>
+            {(item.subtitle || isDev) && (
+              <span
+                class="project-grid__subtitle font-bold"
+                data-dev-project-subtitle
+                data-placeholder={variant === 'play' ? 'Meta' : 'Year'}
+              >{item.subtitle ?? ''}</span>
+            )}
+            {isTeaser && variant !== 'play' && (
+              <span
+                class="project-grid__teaser-label font-bold"
+                data-dev-project-teaser-label
+                data-placeholder="Teaser label"
+              >{item.teaserLabel ?? 'Coming soon'}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <a href={item.href} class="project-grid__card block">
+      <div
+        class:list={[
+          'project-grid__cover',
+          'relative',
+          !hasCrop && 'overflow-hidden',
+          item.hoverImage && 'project-grid__cover--has-hover',
+          hasCrop && 'project-cropped project-responsive-image',
+          (projectEditable || linkEditable) && 'dev-image-edit-target',
+        ]}
+        style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
+        data-dev-cover-drop={projectEditable ? item.slug : undefined}
+        data-dev-listing-cover={projectEditable ? variant : undefined}
+        data-dev-cover-empty={isPlaceholderCover ? 'true' : undefined}
+        {...(editAttrs ?? {})}
+      >
+        <div class="project-grid__stack">
+          {hasCrop ? (
+            <div class="project-crop-clip">
+              <img
+                src={projectImage(item.image)}
+                alt={item.title}
+                class="project-grid__img project-grid__img--base"
+                loading="lazy"
+              />
+            </div>
+          ) : (
+            <img
+              src={projectImage(item.image)}
+              alt={item.title}
+              class="project-grid__img project-grid__img--base w-full h-full object-cover"
+              loading="lazy"
+            />
+          )}
+          {(item.hoverImage || projectEditable) && (
+            <img
+              src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
+              alt=""
+              class="project-grid__img project-grid__img--hover w-full h-full object-cover"
+              loading="lazy"
+              hidden={!item.hoverImage}
+              aria-hidden="true"
+            />
+          )}
+        </div>
+        {isDev && item.slug && (
+          <div class="project-grid__drop-veil" data-dev-drop-veil="active" aria-hidden="true">
+            <span class="project-grid__drop-label" data-dev-drop-label>Replace cover image</span>
+          </div>
+        )}
+        {projectEditable && (
+          <div class="project-grid__drop-veil project-grid__drop-veil--hover-empty" aria-hidden="true">
+            <span class="project-grid__drop-label">Drop hover image</span>
+          </div>
+        )}
+        {isPlaceholderCover && (
+          <div class="project-grid__drop-veil project-grid__drop-veil--cover-empty" aria-hidden="true">
+            <span class="project-grid__drop-label">Drop cover image</span>
+          </div>
+        )}
+        <div class="project-grid__meta absolute bottom-0 left-0 right-0" style={metaStyle}>
+          <div class="flex items-baseline gap-2">
+            <h2
+              class="project-grid__title font-bold"
+              data-dev-project-title
+              data-placeholder="Title"
+            >
+              {item.title}
+            </h2>
+            {(item.subtitle || isDev) && (
+              <span
+                class="project-grid__subtitle font-bold"
+                data-dev-project-subtitle
+                data-placeholder={variant === 'play' ? 'Meta' : 'Year'}
+              >{item.subtitle ?? ''}</span>
+            )}
+            {isTeaser && variant !== 'play' && (
+              <span
+                class="project-grid__teaser-label font-bold"
+                data-dev-project-teaser-label
+                data-placeholder="Teaser label"
+              >{item.teaserLabel ?? 'Coming soon'}</span>
+            )}
+          </div>
+        </div>
+      </div>
+    </a>
+  )}
+  {projectEditable && (
+    <div class="project-grid__chips project-grid__chips--start" data-dev-mode-only>
+      <div class="project-grid__status-wrap">
+        <button
+          type="button"
+          class="project-grid__chip"
+          data-dev-project-status={item.slug}
+          aria-label={`Visibility: ${status}`}
+          aria-haspopup="listbox"
+          aria-expanded="false"
+          title={`Visibility: ${status}`}
+        >
+          <span class="project-grid__chip-icon" aria-hidden="true" set:html={statusIconSvg} />
+        </button>
+        <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
+          <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
+            Published
+          </button>
+          <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
+            Draft
+          </button>
+          <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
+            Teaser
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+  {projectEditable && (
+    <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
+      {!isTeaser && (
+        <button
+          type="button"
+          class="project-grid__chip"
+          data-dev-project-hover={item.slug}
+          data-dev-hover-chip-for={item.title}
+          aria-label={`${item.title}: showing cover image — switch to hover image`}
+          aria-pressed="false"
+          title="Showing cover image — switch to hover image"
+        >
+          <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+        </button>
+      )}
+      <button
+        type="button"
+        class="project-grid__chip"
+        data-dev-project-span={item.slug}
+        aria-label={`Span columns for ${item.title}`}
+        aria-pressed="false"
+        title="Span columns"
+      >
+        <span class="project-grid__chip-icon" aria-hidden="true" set:html={spanIconSvg} />
+      </button>
+      <button
+        type="button"
+        class="project-grid__chip"
+        data-dev-edit-trigger="image"
+        aria-label={`Crop cover for ${item.title}`}
+        title="Crop cover"
+      >
+        <span class="project-grid__chip-icon" aria-hidden="true" set:html={cropIconSvg} />
+      </button>
+    </div>
+  )}
+  {linkEditable && (
+    <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
+      <button
+        type="button"
+        class="project-grid__chip"
+        data-dev-edit-trigger="image"
+        aria-label={`Crop cover for ${item.title}`}
+        title="Crop cover"
+      >
+        <span class="project-grid__chip-icon" aria-hidden="true" set:html={cropIconSvg} />
+      </button>
+    </div>
+  )}
+  {projectEditable && (
+    <div class="project-grid__chips project-grid__chips--end-bottom" data-dev-mode-only>
+      <button
+        type="button"
+        class="project-grid__chip"
+        data-dev-project-settings={item.slug}
+        aria-label={`Card settings for ${item.title}`}
+        aria-haspopup="dialog"
+        title="Card settings"
+      >
+        <span class="project-grid__chip-icon" aria-hidden="true" set:html={settingsIconSvg} />
+      </button>
+    </div>
+  )}
+</li>
