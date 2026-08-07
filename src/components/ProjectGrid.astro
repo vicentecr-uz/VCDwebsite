@@ -352,18 +352,21 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     object-fit: cover;
   }
 
+  /* Base <-> hover swap. Distinct from the drop-replace crossfade further
+     down (0.55s) — that one is a destructive edit and wants weight; this is
+     a browsing gesture and reads sluggish at the same speed. */
   .project-grid__cover--has-hover .project-grid__img {
-    transition: opacity 0.4s ease;
+    transition: opacity 0.2s ease;
   }
 
   /*
     The chip swap must fade too, and it has to be declared outside
     .is-dev-hover-forced: a transition only on the forced state animates the
-    way in and snaps back on the way out. Dev mode only — the public hover
-    crossfade above is unchanged.
+    way in and snaps back on the way out. Same 0.2s as the hover swap above —
+    it is the same visual event, just driven by a chip instead of a pointer.
   */
   :global(html.is-dev-mode) .project-grid__cover .project-grid__img {
-    transition: opacity 0.4s ease;
+    transition: opacity 0.2s ease;
   }
 
   .project-grid__img--hover {
