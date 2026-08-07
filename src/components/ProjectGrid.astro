@@ -568,11 +568,10 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    Pressed and latched share one fill, and it is --chip-press, which on dark
-    aliases --chip-ring-on-dark: holding or latching a chip promotes the ring
-    colour to the fill, so the two states are visibly the same family. These
-    selectors must stay *after* the hover group — a latched chip is also
-    hovered, and the last equal-specificity rule wins.
+    Pressed and latched promote to --chip-press (darker than the ring on dark;
+    on light the press fill darkens while the ring stays). These selectors must
+    stay *after* the hover group — a latched chip is also hovered, and the last
+    equal-specificity rule wins.
   */
   .project-grid__chip:active,
   .project-grid__chip[aria-pressed='true'],
@@ -823,19 +822,15 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     convention as Material's `onSurface`. `dark` / `hoverDark` in the content
     JSON also describe the ground, not the text.
 
-    One rule on both grounds: the ring is a step *darker* than the fill it
-    edges. Light — fill #e7e7e9, ring #d4d4d7 (the click fill nudged 7% toward
-    --color-text; used raw it is 1.05:1 and vanishes). Dark — press fill
-    #4c4c4c, ring #353535.
+    Light — ring a step *darker* than its fill: fill #e7e7e9, ring #d4d4d7 (the
+    click fill nudged 7% toward --color-text; used raw it is 1.05:1 and
+    vanishes). Dark — ring a step *lighter* than its fill: hover fill is the
+    translucent black overlay (reads as ring-only on dark covers); ring
+    #4c4c4c (22% toward --color-bg). Press fill is a step darker (#353535,
+    12% toward --color-bg) with the same lighter ring.
 
     Both steps are deliberately slight; the ring defines the shape rather than
-    outlining it. The dark ring used to be --color-bg 36% (~#6c6c6c) and
-    *lighter* than its fill, which read as a hard edge and inverted the
-    relationship the light chips have.
-
-    The dark press fill is intentionally NOT aliased to the ring any more —
-    they moved together, so darkening the ring dragged the fill down with it
-    and the step never appeared. Two independent values, on purpose.
+    outlining it.
   */
   .project-grid {
     --chip-ink-on-light: var(--color-text);
@@ -845,8 +840,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
 
     --chip-ink-on-dark: var(--color-bg);
     --chip-fill-on-dark: rgb(0 0 0 / 0.58);
-    --chip-ring-on-dark: color-mix(in srgb, var(--color-bg) 12%, #1a1a1a);
-    --chip-press-on-dark: color-mix(in srgb, var(--color-bg) 22%, #1a1a1a);
+    --chip-ring-on-dark: color-mix(in srgb, var(--color-bg) 22%, #1a1a1a);
+    --chip-press-on-dark: color-mix(in srgb, var(--color-bg) 12%, #1a1a1a);
   }
 
   .project-grid__item {
