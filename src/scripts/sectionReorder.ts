@@ -112,105 +112,128 @@ export const resolveInsertIndexFromY = (
 };
 
 /**
- * Insert index for a two-dimensional flow (a listing grid), where the 1-D walk
- * above has nothing to walk: siblings sit beside each other as well as below.
- *
- * The lifted card's centre finds the nearest item centre, then reading order
- * decides which side of it to land on — horizontally when the two share a row,
- * vertically when they don't. Vertical distance is weighted heavier so a card
- * in the row above never out-scores one in the row the card is actually in.
- *
- * **The held slot competes as a candidate of its own.** Without it, a card that
- * has not moved at all still resolves to whichever neighbour happens to be
- * nearest, and the slot jumps to that neighbour the instant you pick the card
- * up. It also supplies the stickiness that keeps the slot from flickering
- * between two cells at their seam: a real item has to beat the held slot by
- * `hysteresisPx` before anything moves.
+ * Share of a cell, centred on it, that yields to a lifted block — 0.5 on each
+ * axis, so a quarter of the cell's area. The one-dimensional list uses the same
+ * idea in {@link NEIGHBOR_HIT_BAND}: a neighbour gives way once the lifted
+ * block's centre reaches the middle of it, rather than having to clear its far
+ * edge. Outside every band nothing moves, which is what keeps a block that has
+ * only been picked up — or nudged — from displacing anything.
  */
-export const GRID_INSERT_HYSTERESIS_PX = 18;
-const GRID_ROW_WEIGHT = 1.6;
+export const GRID_HIT_BAND = 0.5;
 
-/** First item of each visual row, in document order. Grid rows share a top. */
-const rowStartIndices = (items: HTMLElement[]) => {
-  const starts: number[] = [];
+type HitBand = { top: number; bottom: number; left: number; right: number };
+
+const bandOf = (rect: HitBand): HitBand => {
+  const insetX = ((rect.right - rect.left) * (1 - GRID_HIT_BAND)) / 2;
+  const insetY = ((rect.bottom - rect.top) * (1 - GRID_HIT_BAND)) / 2;
+  return {
+    top: rect.top + insetY,
+    bottom: rect.bottom - insetY,
+    left: rect.left + insetX,
+    right: rect.right - insetX,
+  };
+};
+
+/** -1 before the band, 1 after it, 0 inside — reading order, rows before columns. */
+const relateToBand = (x: number, y: number, band: HitBand) => {
+  if (y < band.top) return -1;
+  if (y > band.bottom) return 1;
+  if (x < band.left) return -1;
+  if (x > band.right) return 1;
+  return 0;
+};
+
+const unionRect = (rects: HitBand[]): HitBand => ({
+  top: Math.min(...rects.map((r) => r.top)),
+  bottom: Math.max(...rects.map((r) => r.bottom)),
+  left: Math.min(...rects.map((r) => r.left)),
+  right: Math.max(...rects.map((r) => r.right)),
+});
+
+/** A thing the lifted block can displace: one cell, or a whole row of them. */
+type HitTarget = { startIndex: number; endIndex: number; rect: HitBand };
+
+const cellTargets = (items: HTMLElement[]): HitTarget[] =>
+  items.map((el, index) => ({
+    startIndex: index,
+    endIndex: index + 1,
+    rect: el.getBoundingClientRect(),
+  }));
+
+/**
+ * Rows, for a block that spans the whole width. Two half-width cards sharing a
+ * row are one target with one band — a full-width block has no way to sit
+ * between them, so offering that position only orphans one of them into a row
+ * of its own and leaves an empty cell behind.
+ */
+const rowTargets = (items: HTMLElement[]): HitTarget[] => {
+  const rows: HitTarget[] = [];
   let previousTop = 0;
   items.forEach((el, index) => {
-    const { top } = el.getBoundingClientRect();
-    if (index === 0 || top - previousTop > 1) starts.push(index);
-    previousTop = top;
+    const rect = el.getBoundingClientRect();
+    const current = rows[rows.length - 1];
+    if (!current || index === 0 || rect.top - previousTop > 1) {
+      rows.push({ startIndex: index, endIndex: index + 1, rect });
+    } else {
+      current.endIndex = index + 1;
+      current.rect = unionRect([current.rect, rect]);
+    }
+    previousTop = rect.top;
   });
-  return starts;
+  return rows;
 };
 
 /**
- * Insert index for a block that occupies a whole row. Only row boundaries are
- * legal: hand a full-width card an index mid-row and its slot pushes the card
- * beside it onto a row of its own, stranding an empty cell — the layout can't
- * represent the position it was given.
+ * Insert index for a two-dimensional flow (a listing grid), where the 1-D walk
+ * above has nothing to walk: siblings sit beside each other as well as below.
+ *
+ * Same shape as {@link resolveInsertIndexFromY}, in two axes. The slot the block
+ * already holds sets the direction of travel — the block is either before it or
+ * after it — and the walk runs that way only, yielding each target whose band
+ * the block's centre has reached or passed. Sitting inside its own slot's band
+ * means it has not gone anywhere, so nothing moves.
+ *
+ * Running one direction is what stops the flicker: a band satisfies the test
+ * from both sides, so a two-way walk steps forward over a target and straight
+ * back again.
  */
-const resolveRowInsertIndex = (
-  items: HTMLElement[],
-  centerY: number,
-  currentIndex: number,
-  slot: HTMLElement | null,
-  hysteresisPx: number,
-) => {
-  // Hold while the block still straddles the middle of the slot it already has.
-  const slotRect = slot?.getBoundingClientRect();
-  if (slotRect && slotRect.height > 0) {
-    if (Math.abs(centerY - (slotRect.top + slotRect.height / 2)) <= hysteresisPx) {
-      return currentIndex;
-    }
-  }
-
-  for (const start of rowStartIndices(items)) {
-    const rect = items[start].getBoundingClientRect();
-    if (centerY < rect.top + rect.height / 2) return start;
-  }
-  return items.length;
-};
-
 export const resolveInsertIndexInGrid = (
   items: HTMLElement[],
   centerX: number,
   centerY: number,
   currentIndex = 0,
   slot: HTMLElement | null = null,
-  options: { snapToRowStart?: boolean; hysteresisPx?: number } = {},
+  options: { snapToRowStart?: boolean } = {},
 ) => {
   if (!items.length) return 0;
 
-  const hysteresisPx = options.hysteresisPx ?? GRID_INSERT_HYSTERESIS_PX;
-  if (options.snapToRowStart) {
-    return resolveRowInsertIndex(items, centerY, currentIndex, slot, hysteresisPx);
+  const targets = options.snapToRowStart ? rowTargets(items) : cellTargets(items);
+
+  // No slot to measure against (first frame): leave the block where it is.
+  const slotRect = slot?.getBoundingClientRect();
+  if (!slotRect || slotRect.height <= 0) return currentIndex;
+
+  const direction = relateToBand(centerX, centerY, bandOf(slotRect));
+  if (direction === 0) return currentIndex;
+
+  let index = currentIndex;
+
+  if (direction > 0) {
+    for (const target of targets) {
+      if (target.startIndex < index) continue;
+      if (relateToBand(centerX, centerY, bandOf(target.rect)) < 0) break;
+      index = target.endIndex;
+    }
+    return index;
   }
 
-  const score = (rect: DOMRect) => Math.hypot(
-    centerX - (rect.left + rect.width / 2),
-    (centerY - (rect.top + rect.height / 2)) * GRID_ROW_WEIGHT,
-  );
-
-  const slotRect = slot?.getBoundingClientRect();
-  const slotScore = slotRect && slotRect.height > 0 && slotRect.width > 0
-    ? score(slotRect)
-    : Number.POSITIVE_INFINITY;
-
-  let nearest = -1;
-  let nearestScore = Number.POSITIVE_INFINITY;
-  items.forEach((el, index) => {
-    const value = score(el.getBoundingClientRect());
-    if (value >= nearestScore) return;
-    nearest = index;
-    nearestScore = value;
-  });
-
-  if (nearest < 0 || slotScore <= nearestScore + hysteresisPx) return currentIndex;
-
-  const rect = items[nearest].getBoundingClientRect();
-  const dx = centerX - (rect.left + rect.width / 2);
-  const dy = centerY - (rect.top + rect.height / 2);
-  const sameRow = Math.abs(dy) < rect.height / 2;
-  return (sameRow ? dx > 0 : dy > 0) ? nearest + 1 : nearest;
+  for (let i = targets.length - 1; i >= 0; i -= 1) {
+    const target = targets[i];
+    if (target.endIndex > index) continue;
+    if (relateToBand(centerX, centerY, bandOf(target.rect)) > 0) break;
+    index = target.startIndex;
+  }
+  return index;
 };
 
 export const setLiftTransformOrigin = (
