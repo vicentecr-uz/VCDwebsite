@@ -1189,6 +1189,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         indicatorOpacity: 0,
       };
 
+      /*
+        Scroll anchoring compensates for the lift. Taking the block out of flow
+        and dropping a stand-in where it stood is a wash for page height, but
+        the browser has already picked a visible node to hold steady, and if
+        that node is the block itself it adjusts scroll to keep it put — by
+        however far it has to, which is why the jump varied with where the
+        block sat in the viewport. Same pin performFlipRelocate uses for slot
+        moves; the lift needed it too.
+      */
+      const scrollYBeforeLift = window.scrollY;
+
       // Take the item out of flow before inserting the slot stand-in, so the
       // indicator inherits the same collapse context the section had.
       item.classList.add(liftedClass);
@@ -1215,6 +1226,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       // waits out the lift card's fade before painting itself in.
       dropIndicator.classList.add('is-visible');
       applyIndicatorOpacity(0);
+      // Force the layout the pin is guarding, then undo any adjustment the
+      // browser made. Reading scrollY without this reads the pre-layout value
+      // and the pin silently does nothing.
+      void dropIndicator.offsetHeight;
+      if (window.scrollY !== scrollYBeforeLift) {
+        window.scrollTo(0, scrollYBeforeLift);
+      }
       indicatorAnim = {
         type: 'fadeInWait',
         until: nowMs() + REORDER_TIMING.LIFT_CARD_FADE_MS,

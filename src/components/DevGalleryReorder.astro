@@ -256,6 +256,11 @@
         // Document listeners still track pointer position.
       }
 
+      // Before the lift, not after: whatever this class suppresses has to be
+      // suppressed by the time the lift mutates layout, or it only styles the
+      // aftermath.
+      document.documentElement.classList.add(DRAGGING_CLASS);
+
       if (!resumed) {
         const items = gridItems(grid);
         let sourceIndex = items.indexOf(item);
@@ -266,7 +271,6 @@
 
       sessionButtonDown = true;
       reveal.hold();
-      document.documentElement.classList.add(DRAGGING_CLASS);
       event.preventDefault();
     });
   };
@@ -701,14 +705,16 @@
   }
 
   /*
-    Every box the slot's arrival resizes has to opt out by name — `overflow-anchor`
-    on the root does not cover descendants. Without this the browser pins a card's
-    viewport position across the relocate and compensates by scrolling, which reads
-    as the rows above the lifted card sliding down on their own.
+    Opted out for the whole of dev mode, not just mid-drag. Every box has to be
+    named — `overflow-anchor` on the root does not cover descendants — and it has
+    to be in force *before* the lift, because the browser chooses its anchor from
+    the previous layout. Excluding cards only once dragging has started is too
+    late: the anchor is already a card, and the lift makes the browser scroll to
+    keep it still.
   */
-  html.is-grid-reorder-dragging [data-dev-project-grid],
-  html.is-grid-reorder-dragging .project-grid__item,
-  html.is-grid-reorder-dragging .dev-grid-drop-indicator {
+  html.is-dev-mode [data-dev-project-grid],
+  html.is-dev-mode .project-grid__item,
+  html.is-dev-mode .dev-grid-drop-indicator {
     overflow-anchor: none;
   }
 
