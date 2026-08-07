@@ -827,6 +827,15 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     --dev-edit-dash), drawn while an image is being dragged over the cover.
     Held inside the cover edge rather than on it, and rounded, so it reads as
     a slot the image will drop into rather than as the cover's own border.
+
+    Wider (2px) and colour-independent, unlike the 1px text-field version of
+    the same token: a text field always sits on the fixed page background,
+    but this frame sits on an arbitrary cover — including a dark one, which
+    the drop wash pushes toward a *medium* grey, close enough to
+    --dev-edit-dash-color's own luminance to disappear. Same fix
+    .project-grid__drop-label already uses two rules down: a light halo plus
+    a soft dark shadow, both tracing the dash's own alpha shape, so it reads
+    the same regardless of what is under it.
   */
   html.is-dev-mode .project-grid__cover::before {
     content: '';
@@ -835,8 +844,11 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     /* Above the page-white wash (2) so the dash isn't muted by it; the label
        is a real child at 3, so it still paints over this. */
     z-index: 3;
-    border: var(--dev-edit-dash);
+    border: 2px dashed var(--dev-edit-dash-color);
     border-radius: var(--radius-control);
+    filter:
+      drop-shadow(0 0 0.1em rgb(255 255 255 / 0.9))
+      drop-shadow(0 0.03em 0.15em rgb(0 0 0 / 0.4));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
