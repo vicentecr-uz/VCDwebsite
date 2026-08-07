@@ -1,150 +1,151 @@
 # Gallery Manager: cards added mid-session must be real cards
 
 **Issue:** [#167](https://github.com/vcruzdesigns/VCDwebsite/issues/167) — `bug` / `gallery pages` / milestone `v2`
-**Branch:** `fix/gallery-manager-card-parity` off latest `main`
-**Worker:** Composer 2.5 Fast in a worktree (Cursor default). On Claude Code, Sonnet. **Not Haiku** — the central decision here is *how not to duplicate markup*, and the naive fix is the thing that caused the bug.
+**Branch:** `fix/gallery-manager-card-parity` off latest `main` (confirm parent; after #171 merge that tip includes play-card parity)
+**Worker:** Composer 2.5 Fast in a worktree (Cursor default). **Not Haiku** — the central decision is *how not to duplicate markup*; the naive fix is the bug.
 
-**Sequencing:** land **last**, after `feat/gallery-cover-chips` (#174/#175/#176) and `feat/play-card-parity` (#171). This branch's whole job is to mirror `ProjectGrid.astro`'s dev markup; doing it before those land guarantees you mirror a version that no longer exists.
+**Sequencing:** land **after** `feat/play-card-parity` (#171) — merged. This branch mirrors `ProjectGrid.astro`'s current project-card markup.
+
+**Updated:** 2026-08-07 against `main` after PR #190. Line anchors in older drafts are stale — re-locate by symbol.
 
 ---
 
 ## Done when
 
-Turning a project **on** in the Gallery Manager adds a card that is indistinguishable from a server-rendered one: cover drop and crop wiring, both chip rails, drop veil, placeholders, and a meta field even when the year is empty — with no reload, and with `variants` available so crop works immediately.
+Turning a project **on** in the Gallery Manager adds a card indistinguishable from a server-rendered one: cover drop + crop wiring, all three chip rails (status / hover+span+crop / settings `⋮`), drop veils, placeholders, subtitle host even when year/meta is empty, title ink via CSS vars, hover `<img>` host, `variants` seeded so crop works — with no reload.
 
-And: the mechanism that made it drift is gone, so the next person to add a chip to `ProjectGrid.astro` gets it here for free.
-
----
-
-## The bug
-
-`buildGridCard()` (`src/components/DevGalleryPages.astro:353`) hand-builds a card in imperative JS. It is a stripped-down copy of `ProjectGrid.astro`'s markup and has not tracked it since. Pre-existing — unchanged from before the #160–#166 batch; surfaced while testing #165.
-
-Missing versus `ProjectGrid.astro:97-273`:
-
-| Missing | Where the real one lives |
-| --- | --- |
-| `dev-image-edit-target` class, `data-dev-cover-drop`, `data-dev-listing-cover`, the `imageDevEditAttrs(...)` bundle | `ProjectGrid.astro:87-110` |
-| `.project-grid__chips--start` — status button + menu | `ProjectGrid.astro:209-236` |
-| `.project-grid__chips--end` — hover, span, crop | `ProjectGrid.astro:237-273` |
-| `.project-grid__drop-veil` + label | `ProjectGrid.astro:140-144` |
-| `data-placeholder` on title / subtitle / teaser-label | `ProjectGrid.astro:151, 160, 170` |
-| the subtitle element when the year is empty | `ProjectGrid.astro:155` renders it on `item.subtitle \|\| isDev`; `buildGridCard:412` only `if (page.subtitle)` — so a project with no year has no year field to click into at all |
-
-Workaround today: Save, reload, and the card comes back server-rendered with everything wired.
+And: the drift mechanism is gone — next chip added to `ProjectGrid.astro` lands in the template for free.
 
 ---
 
-## The design call — read this before writing any code
+## The bug (still true)
 
-#167 ends with a warning, and it is the load-bearing part of this task:
+`buildGridCard()` in `DevGalleryPages.astro` hand-builds a stripped card. It has drifted further since #180/#186/#171. Current gaps include (re-grep; do not trust this as exhaustive):
 
-> The straightforward fix duplicates a large block of `ProjectGrid.astro`'s dev markup into imperative JS, which is exactly how the two drifted apart in the first place.
+- No `dev-image-edit-target` / `imageDevEditAttrs` / `data-dev-cover-drop` / `data-dev-listing-cover`
+- No chip rails (start / end / end-bottom) — still has a legacy `project-grid__settings` button
+- No drop veils; hover img only if `hoverImage` already set
+- Inline `style.color` on title/subtitle instead of `--title-ink` / `--subtitle-ink` / hover vars on `.project-grid__meta`
+- Subtitle only if `page.subtitle` (empty year → no field)
+- Status text badge instead of visibility chip + menu
+- `full` still gated with `activeGrid !== 'play'` (wrong after #171)
 
-**Do not fix this by extending `buildGridCard()`.** That closes the bug for a week and reopens it permanently.
-
-Three options were considered. The verdict:
-
-- ❌ **Fill in the gaps imperatively.** Fastest, and reproduces the exact failure. Rejected.
-- ❌ **Ask the server for rendered markup.** Cleanest in principle, but Astro components cannot be rendered ad-hoc from a Vite middleware without a real SSR entry point. Disproportionate.
-- ✅ **Clone a `<template>` that lives in `ProjectGrid.astro`.** One source of truth, in the same file as the real card, in the same syntax, reviewed in the same diff.
-
-### How the template approach goes
-
-1. In `ProjectGrid.astro`, when `isDev`, render **one** `<template data-dev-grid-card-template>` at the end of the `<ul>` (next to the existing `--new` `<li>` at line 277), containing a single `<li>` built from the *same* JSX the real cards use — extract the card body into a local function or component so the template and the loop cannot diverge. Seed it with neutral values: empty title, empty subtitle, placeholder cover, `status: 'draft'`.
-2. `buildGridCard(page)` becomes: clone the template's content, then **fill** it — set `dataset.devProjectSlug`, the two image `src`s, the title and subtitle text, the inline colours, the status chip icon and `aria-selected`, the `--full` class, the teaser branch.
-3. Everything structural — chips, menu, veil, `data-placeholder`, the `imageDevEditAttrs` bundle — comes along in the clone and is never re-typed.
-
-Constraints on the template:
-
-- The `imageDevEditAttrs` bundle carries per-item values (`documentKey`, `cropId`, serialised `variants`). Those are the *fill* step, not the clone. Read `src/lib/projectImageFrame.ts` and set exactly the attributes it emits — do not guess attribute names, and do not reimplement the serialisation. If the bundle is awkward to set from JS, export a small helper from that module that both the Astro side and the client side call.
-- A `<template>`'s contents are inert: no images load, no scripts run. That is why this is cheap. Confirm it does not appear in the layout (it will not) and that it is inside the `isDev` branch so it never ships to production.
-- If `getPlayGridItems` / the play work has introduced a second card shape by the time you get here, the template must cover the **project** shape only. Gallery Manager manages projects.
-
-**If the template approach hits something genuinely structural**, stop and report before falling back to hand-building. A worse-but-shipped imperative copy is not an acceptable silent fallback here — that is the bug.
+Workaround today: Save, reload.
 
 ---
 
-## Server change: `/api/gallery-membership` must return `variants`
+## Design call — settled
 
-`coverForGalleryPage()` (`scripts/dev-api-plugins.mjs:834-860`) returns `onGallery, hasCover, image, coverUrl, bg, dark, full, subtitle, hoverImage, order` — **no `variants`**, which the crop wiring needs to seed a frame.
+**Do not extend `buildGridCard()` imperatively.** Clone a `<template>` from `ProjectGrid.astro`.
 
-Add it. Notes:
+1. When `isDev`, render **one** `<template data-dev-grid-card-template>` inside the `<ul>` (beside `--new`), containing a single project-shaped `<li>` from the **same** markup as the loop — extract a local Astro fragment/function so template and loop cannot diverge. Seed: empty title, empty subtitle, placeholder cover, `status: 'draft'`, `projectEditable` paths.
+2. `buildGridCard(page)` → clone template content, then **fill**: slug, imgs, title/subtitle text, CSS ink vars (not inline color), status chip, `--full`, teaser branch (home/work only for teaser-label — play uses Meta only per #171), `data-dev-*` attrs, `imageDevEditAttrs` values.
+3. Structural chrome comes from the clone only.
 
-- Take it from the same listing object the rest of the fields come from (`listings[grid] ?? first listing found ?? {}`).
-- `PLACEHOLDER_IMAGE_VARIANTS` already exists at `dev-api-plugins.mjs:105` — use it as the fallback rather than inventing a shape or returning `undefined` and making the client guess.
-- The GET payload shape is consumed by `DevGalleryPages.astro`'s `GalleryPage` type. Update the type, and check for anywhere else that destructures the response.
-- Also worth returning `status` if it is not already there — the status chip needs it and `buildGridCard` currently reads `page.status`. Verify what the endpoint actually sends before adding a duplicate.
+**Template = project cards only.** Gallery Manager does not create play-links.
+
+**Fill helpers:** use `imageDevEditAttrs` from `src/lib/projectImageFrame.ts` — export a small JS-callable helper if needed so Astro and client set the same attributes. Do not re-serialise by guess.
+
+**Scoped styles:** JS-cloned nodes lack `data-astro-cid-*`. Chip rails / title ink / drop chrome must already be `:global` / `is:global` (they are). Do not add scoped-only rules for cloned cards.
+
+If the template approach hits something structural, **stop and report** — do not fall back to hand-building.
+
+---
+
+## Server: `/api/gallery-membership` must return crop seeds
+
+`coverForGalleryPage()` (`scripts/dev-api-plugins.mjs`) — add:
+
+- `variants` (from listing; fallback `PLACEHOLDER_IMAGE_VARIANTS`)
+- `hoverDark` when present (boolean)
+- `srcWidth` / `srcHeight` when present
+
+`status` is already on the GET page object. Update `GalleryPage` typedef in `DevGalleryPages.astro`.
 
 ---
 
 ## Worker landmines
 
-- **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
-- **Do not start a dev server.** Port 4321 is owned. You cannot verify in a browser; Anto does that after merge. A green build proves compilation only — do not report it as verification.
-- **Commit via `bun run commit:engine "msg" <explicit paths>`.** Never stage `src/content/**` or `public/images/**`.
-- **Vite only mounts dev middleware at server start.** Your `dev-api-plugins.mjs` change does nothing until the session restarts — Anto must run `bun run dev:session:stop` then `bun run dev:session` before testing. Put that as step 0 of the test script.
-- **`contentHmrGate` drops `full-reload`.** The card must be correct at creation; nothing will reload to rescue it.
-- **Two cards must not both claim a slug.** `syncGridCards` (~486) tracks `createdItems` and `detachedItems` separately, and re-toggling a project off then on must not leave a stale node. Read that function fully before changing what `buildGridCard` returns.
+- Bun: `$HOME/.bun/bin/bun`
+- Do **not** start a dev server (4321 owned). Cannot browser-verify.
+- `bun run commit:engine "msg" <explicit paths>` — never stage `src/content/**` / `public/images/**`
+- Vite mounts middleware at server start — Anto's test script step 0 is session restart
+- `contentHmrGate` drops full-reload — card must be correct at creation
+- `listingCardForGrid` is an allowlist — don't regress `hoverDark` / `variants`
+- Plain `<script>`, not `type="module"`, in Astro page scripts
+- Never silent fallbacks in new fill paths — `console.warn`
+- Do not `git pull`. Off-limits: unrelated content JSON.
 
 ---
 
-## First reads
+## First reads (by symbol)
 
-| File | Why |
+| File | Symbols |
 | --- | --- |
-| `src/components/DevGalleryPages.astro:353-440` | `buildGridCard` as it stands |
-| `src/components/DevGalleryPages.astro:470-503` | `syncGridCards` — insert / detach / re-insert lifecycle |
-| `src/components/ProjectGrid.astro:73-284` | everything the template must carry |
-| `src/lib/projectImageFrame.ts` | `imageDevEditAttrs`, `hasCropVariants`, `imageSourceDims` |
-| `src/lib/responsiveImage.ts` | `normalizeImageVariants`, `responsiveImageStyle` |
-| `scripts/dev-api-plugins.mjs:105-109, 827-860` | `PLACEHOLDER_IMAGE_VARIANTS`, `coverForGalleryPage` |
-| `src/components/DevProjectGridEditor.astro:209-228` | `enableAllCardEditing` — what has to run on a new card |
+| `DevGalleryPages.astro` | `GalleryPage`, `buildGridCard`, `applyMembershipPreview` / `syncGridCards`, `createdItems` / `detachedItems` |
+| `ProjectGrid.astro` | project card loop, `projectEditable`, three chip rails, `metaStyle`, drop veils, `--new` li |
+| `projectImageFrame.ts` | `imageDevEditAttrs` |
+| `responsiveImage.ts` | `normalizeImageVariants`, `responsiveImageStyle` |
+| `dev-api-plugins.mjs` | `coverForGalleryPage`, `PLACEHOLDER_IMAGE_VARIANTS`, gallery-membership GET |
+| `DevProjectGridEditor.astro` | `enableCardEditing` / `enableAllCardEditing`, `syncStatusChip` |
 
 ---
 
-## Wiring the new card up
+## Wiring checklist (after clone + fill)
 
-Cloning gets the markup; the card still has to join the running dev layer. Check each of these and add whatever is missing:
-
-- [ ] `enableAllCardEditing()` (or `enableCardEditing(item)`) runs on the new node, so title / subtitle / teaser-label become `contenteditable` and card links are disarmed.
-- [ ] The crop chip's `data-dev-edit-trigger="image"` is picked up. `DevModeController` binds `click` on `document` in capture and looks up panels by key, so a new node needs no re-binding — **verify by reading**, and say so rather than adding a redundant re-init.
-- [ ] Drop wiring likewise: `dragover` / `drop` are delegated on `document` and resolve via `coverFromPoint` → `closest('[data-dev-cover-drop]')`. Nothing to re-bind if the attribute is present.
-- [ ] `DevGalleryReorder`'s `captureOrder` sees the new `<li>` (it queries live each time — confirm) and its baseline is recaptured, or toggling a project on will read as a pending reorder.
-- [ ] The status chip's icon matches `page.status` — `syncStatusChip` in `DevProjectGridEditor.astro:345` already does exactly this. Call it; do not re-inline the icon lookup.
-- [ ] `ensureSubtitleHost` is not needed if the template always carries the subtitle span. Prefer the template carrying it — that is the fix for the empty-year case.
+- [ ] `enableCardEditing(item)` on the new node
+- [ ] Crop chip `data-dev-edit-trigger="image"` — document-delegated (verify by reading; no redundant re-bind)
+- [ ] Drop — document-delegated via `data-dev-cover-drop`
+- [ ] Reorder `captureOrder` sees the new `<li>`; baseline not spuriously dirty if avoidable
+- [ ] Status chip via `syncStatusChip` — do not re-inline icons
+- [ ] Subtitle host always present (template carries it) — empty year shows Year/Meta placeholder
+- [ ] Title ink = CSS vars on `.project-grid__meta`
+- [ ] Third rail `⋮` present; toggles settings closed when re-clicked (already in editor)
+- [ ] `data-dev-status='draft'` so view-mode draft fade CSS applies
+- [ ] Play: span chip present; no teaser-label element
+- [ ] `grep -rn "project-grid__chips" src/` — construction only in `ProjectGrid.astro` (+ CSS), not a second builder in `DevGalleryPages`
 
 ---
 
-## Verify — hand this to Anto
+## Verify — hand to Anto
 
-0. **Restart the dev session first** — `bun run dev:session:stop && bun run dev:session`. The API change is not live otherwise, and the failure looks like a 404 returning HTML.
+0. Restart: `bun run dev:session:stop && bun run dev:session`. Checkout `fix/gallery-manager-card-parity` on the main checkout (manager releases worktree first).
 
-Then, dev mode on, on `/work`:
+Dev mode, `/work` (also spot-check `/play`):
 
-1. Open the Gallery Manager, turn **on** a project that is currently off. The card appears immediately.
-2. Hover it → both chip rails appear, same as its neighbours. *Not valid as a pass:* chips visible because you reloaded.
-3. Click the visibility chip → menu opens, current status is marked selected, changing it stages a pending edit.
-4. Click the crop chip → the tuner opens on that card's cover and shows a usable frame (this is the `variants` fix).
-5. Click the span chip → frame and edge handle appear; drag changes the span.
-6. Drag an image onto the cover → drop veil reads "Replace cover image", the crossfade plays, the new cover lands.
-7. **Pick a project with no year.** Its card must still show a clickable "Year" placeholder. Type into it → stages. This is the case `buildGridCard` silently omitted.
-8. Title and year on the new card are click-to-edit and show placeholders when emptied.
-9. Toggle the same project **off** then **on** again → exactly one card, fully wired, no ghost.
-10. Save → reload → the server-rendered card is identical to what you were just editing.
-11. **Drift check.** Confirm there is now exactly one place in the repo that spells out the card's dev markup. `grep -rn "project-grid__chips" src/` should show `ProjectGrid.astro` and CSS only — no second construction site.
+1. Gallery Manager → turn **on** a project that is off → card appears immediately.
+2. Hover → all three chip rails like neighbours. *Not valid:* chips only after reload.
+3. Visibility chip → menu, status selected, change stages.
+4. Crop chip → tuner with usable frame (`variants`).
+5. Span chip → frame/handle; drag changes span (including on `/play`).
+6. Drop image on cover → veil + crossfade.
+7. Project with **no year** → clickable Year placeholder.
+8. Title/year click-to-edit.
+9. Toggle off then on → exactly one card, fully wired.
+10. Save → reload → identical to what you edited.
+11. Drift check: `grep -rn "project-grid__chips" src/` — no second construction site in `DevGalleryPages`.
 
 ---
 
 ## Out of scope
 
-- Any change to what the Gallery Manager *does* (membership toggling, ordering).
-- The chip reveal behaviour (#174) and the hover-swap chip (#175) — inherited from `feat/gallery-cover-chips`.
-- Play-link cards (#171) — the Gallery Manager manages projects.
-- Server-side rendering of arbitrary Astro components for dev APIs.
+- Gallery Manager membership/order behaviour changes
+- Play-link creation
+- Imperative fill-in of the old `buildGridCard` markup
+
+---
+
+## Report (auditable)
+
+1. Parent commit of branch  
+2. How template shares markup with the loop (fragment/function name)  
+3. Fields returned by `coverForGalleryPage` after change  
+4. Confirm `buildGridCard` no longer constructs chip HTML by hand  
+5. `commit:engine` paths  
+6. `bun run build` exit (compilation only)
 
 ---
 
 ## Pickup
 
-Read this file and the *First reads* table. Confirm your worktree branches from a `main` that already contains `feat/gallery-cover-chips` and `feat/play-card-parity`. Summarise the plan back in five or six lines — including which of the three approaches you are taking and why — then implement: server `variants` first, then the template, then the fill, then the wiring checklist. Do not replan. If the template approach fails structurally, **stop and report**; do not fall back to hand-building the markup.
+Confirm branch from current `main` (with #171). Summarise in 5–6 lines including template approach. Implement: server `variants` (+ hoverDark/dims) → template → fill → wiring checklist. Do not replan. If template fails structurally, stop and report.

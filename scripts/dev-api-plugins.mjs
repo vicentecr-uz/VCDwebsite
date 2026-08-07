@@ -891,7 +891,13 @@ function coverForGalleryPage(data, grid) {
   const hasCover = !isPlaceholderCoverSrc(rawImage);
   const image = hasCover ? String(rawImage) : PLACEHOLDER_COVER;
   const order = onGallery ? Number(listings[grid].order) : Number.POSITIVE_INFINITY;
-  return {
+  const variants = listing.variants
+    && typeof listing.variants === 'object'
+    && !Array.isArray(listing.variants)
+    ? structuredClone(listing.variants)
+    : structuredClone(PLACEHOLDER_IMAGE_VARIANTS);
+  /** @type {Record<string, unknown>} */
+  const cover = {
     onGallery,
     hasCover,
     image,
@@ -902,7 +908,16 @@ function coverForGalleryPage(data, grid) {
     subtitle: String(grid === 'play' ? (listing.meta || '') : (listing.year || '')),
     hoverImage: String(listing.hoverImage || ''),
     order: Number.isFinite(order) ? order : Number.POSITIVE_INFINITY,
+    variants,
   };
+  if (typeof listing.hoverDark === 'boolean') {
+    cover.hoverDark = listing.hoverDark;
+  }
+  const srcWidth = Number(listing.srcWidth);
+  const srcHeight = Number(listing.srcHeight);
+  if (Number.isFinite(srcWidth) && srcWidth > 0) cover.srcWidth = Math.round(srcWidth);
+  if (Number.isFinite(srcHeight) && srcHeight > 0) cover.srcHeight = Math.round(srcHeight);
+  return cover;
 }
 
 /** Toggle which projects appear on Home / Work / Play (`listings[grid]` presence). */
@@ -957,6 +972,7 @@ export function galleryMembershipDevWriter() {
                   subtitle: '',
                   hoverImage: '',
                   order: Number.POSITIVE_INFINITY,
+                  variants: structuredClone(PLACEHOLDER_IMAGE_VARIANTS),
                 });
               }
             }
