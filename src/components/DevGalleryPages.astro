@@ -1,11 +1,9 @@
 ---
-import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw';
+import DevOverlay from './DevOverlay.astro';
 import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
-import DevOverlay from './DevOverlay.astro';
 import { sizeIcon } from '../lib/icons';
 
-const settingsIconSvg = sizeIcon(ellipsisVerticalIcon, 14);
 const eyeIconSvg = sizeIcon(eyeIcon, 12);
 const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 ---
@@ -19,7 +17,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
   <div
     class="dev-gallery-pages"
     data-dev-gallery-pages
-    data-settings-icon={settingsIconSvg}
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
   >
@@ -37,6 +34,17 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
 <script>
   import { projectImage } from '../lib/images';
+  import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
+  import {
+    hasCropVariants,
+    imageSourceDims,
+    listingCoverDevEditAttrs,
+  } from '../lib/projectImageFrame';
+  import {
+    normalizeImageVariants,
+    responsiveImageStyle,
+    type ImageVariants,
+  } from '../lib/responsiveImage';
 
   /** @typedef {{
    *   slug: string,
@@ -52,6 +60,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
    *   subtitle: string,
    *   hoverImage: string,
    *   order: number,
+   *   variants: ImageVariants,
+   *   hoverDark?: boolean,
+   *   srcWidth?: number,
+   *   srcHeight?: number,
    * }} GalleryPage */
 
   type GridOrderEntry =
@@ -70,7 +82,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     const countEl = root.querySelector<HTMLElement>('[data-gallery-count]');
     const overlayTitle = panel.querySelector<HTMLElement>('.dev-overlay__title');
     const filterButtons = root.querySelectorAll<HTMLButtonElement>('[data-gallery-filter]');
-    const settingsIcon = root.dataset.settingsIcon || '';
     const eyeIconHtml = root.dataset.eyeIcon || '';
     const eyeOffIconHtml = root.dataset.eyeOffIcon || '';
 
@@ -99,6 +110,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
     const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
+
+    const coverDefaultAspect = (full: boolean, grid: string) => {
+      if (full && grid === 'work') return '16:9';
+      return '4:3';
+    };
 
     const currentGrid = (): 'home' | 'work' | 'play' | '' => {
       const grid = document.querySelector<HTMLElement>('[data-dev-project-grid]');
@@ -350,109 +366,174 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       });
     };
 
-    const buildGridCard = (page: GalleryPage) => {
-      const item = document.createElement('li');
-      item.className = 'project-grid__item';
-      item.dataset.devProjectSlug = page.slug;
-      if (page.full && activeGrid !== 'play') {
-        item.classList.add('project-grid__item--full');
+    const buildGridCard = (page: GalleryPage): HTMLElement | null => {
+      const template = document.querySelector<HTMLTemplateElement>('[data-dev-grid-card-template]');
+      const seed = template?.content.firstElementChild;
+      if (!(seed instanceof HTMLElement)) {
+        console.warn('[DevGalleryPages] Missing [data-dev-grid-card-template] — cannot add gallery card.');
+        return null;
       }
 
+      const grid = activeGrid;
+      if (grid !== 'home' && grid !== 'work' && grid !== 'play') {
+        console.warn('[DevGalleryPages] No active grid when building card.');
+        return null;
+      }
+
+      const item = seed.cloneNode(true) as HTMLElement;
       const isTeaser = page.status === 'teaser';
-      const card = document.createElement(isTeaser ? 'div' : 'a');
-      if (card instanceof HTMLAnchorElement) {
-        card.href = `/${page.slug}`;
+      const defaultAspect = coverDefaultAspect(page.full, grid);
+      const srcDims = imageSourceDims(page);
+      const variants = page.variants;
+      const hasCrop = hasCropVariants(variants);
+      const normalized = hasCrop
+        ? normalizeImageVariants(variants, defaultAspect, srcDims)
+        : undefined;
+      const hoverDark = typeof page.hoverDark === 'boolean' ? page.hoverDark : page.dark;
+
+      item.dataset.devProjectSlug = page.slug;
+      item.classList.toggle('project-grid__item--full', Boolean(page.full));
+      item.dataset.devStatus = page.status;
+      item.dataset.devBg = page.bg;
+      item.dataset.devDark = page.dark ? 'true' : 'false';
+      if (page.hoverImage) {
+        item.dataset.devHoverImage = page.hoverImage;
+        item.dataset.devHoverDark = hoverDark ? 'true' : 'false';
       } else {
-        card.setAttribute('aria-disabled', 'true');
-        card.dataset.devTeaserSlug = page.slug;
-        card.dataset.devTeaserHref = `/${page.slug}`;
-      }
-      card.className = `project-grid__card block${isTeaser ? ' project-grid__card--teaser' : ''}`;
-
-      const cover = document.createElement('div');
-      cover.className = 'project-grid__cover relative overflow-hidden';
-      if (page.hoverImage && !isTeaser && page.hasCover) {
-        cover.classList.add('project-grid__cover--has-hover');
+        delete item.dataset.devHoverImage;
+        delete item.dataset.devHoverDark;
       }
 
-      const stack = document.createElement('div');
-      stack.className = 'project-grid__stack';
+      const statusBtn = item.querySelector<HTMLElement>('[data-dev-project-status]');
+      if (statusBtn) statusBtn.dataset.devProjectStatus = page.slug;
+      const hoverBtn = item.querySelector<HTMLElement>('[data-dev-project-hover]');
+      if (hoverBtn) {
+        hoverBtn.dataset.devProjectHover = page.slug;
+        hoverBtn.dataset.devHoverChipFor = page.title;
+        hoverBtn.hidden = isTeaser;
+      }
+      const spanBtn = item.querySelector<HTMLElement>('[data-dev-project-span]');
+      if (spanBtn) {
+        spanBtn.dataset.devProjectSpan = page.slug;
+        spanBtn.setAttribute('aria-label', `Span columns for ${page.title}`);
+      }
+      const settingsBtn = item.querySelector<HTMLElement>('[data-dev-project-settings]');
+      if (settingsBtn) {
+        settingsBtn.dataset.devProjectSettings = page.slug;
+        settingsBtn.setAttribute('aria-label', `Card settings for ${page.title}`);
+      }
+      item.querySelectorAll<HTMLElement>('[data-dev-edit-trigger="image"]').forEach((cropBtn) => {
+        cropBtn.setAttribute('aria-label', `Crop cover for ${page.title}`);
+        cropBtn.title = 'Crop cover';
+      });
 
-      const baseImg = document.createElement('img');
-      baseImg.src = page.hasCover
-        ? (page.coverUrl || projectImage(page.image))
-        : '/images/black-token.svg';
-      baseImg.alt = page.title;
-      baseImg.className = 'project-grid__img project-grid__img--base w-full h-full object-cover';
-      baseImg.loading = 'lazy';
-      stack.append(baseImg);
-
-      if (page.hoverImage && !isTeaser && page.hasCover) {
-        const hoverImg = document.createElement('img');
-        hoverImg.src = projectImage(page.hoverImage);
-        hoverImg.alt = '';
-        hoverImg.className = 'project-grid__img project-grid__img--hover w-full h-full object-cover';
-        hoverImg.loading = 'lazy';
-        hoverImg.setAttribute('aria-hidden', 'true');
-        stack.append(hoverImg);
+      let card = item.querySelector<HTMLElement>('.project-grid__card');
+      if (isTeaser && card instanceof HTMLAnchorElement) {
+        const div = document.createElement('div');
+        div.className = `${card.className} project-grid__card--teaser`.trim();
+        div.setAttribute('aria-disabled', 'true');
+        div.dataset.devTeaserSlug = page.slug;
+        div.dataset.devTeaserHref = `/${page.slug}`;
+        while (card.firstChild) div.appendChild(card.firstChild);
+        card.replaceWith(div);
+        card = div;
+      } else if (card instanceof HTMLAnchorElement) {
+        card.href = `/${page.slug}`;
+        card.classList.remove('project-grid__card--teaser');
       }
 
-      const meta = document.createElement('div');
-      meta.className = 'project-grid__meta absolute bottom-0 left-0 right-0';
-      const row = document.createElement('div');
-      row.className = 'flex items-baseline gap-2';
+      const cover = item.querySelector<HTMLElement>('.project-grid__cover');
+      if (cover) {
+        const isPlaceholder = !page.hasCover || isPlaceholderCoverSrc(page.image);
+        cover.dataset.devCoverDrop = page.slug;
+        cover.dataset.devListingCover = grid;
+        if (isPlaceholder) cover.dataset.devCoverEmpty = 'true';
+        else delete cover.dataset.devCoverEmpty;
 
-      const title = document.createElement('h2');
-      title.className = 'project-grid__title font-bold';
-      title.style.color = titleColor(page.dark);
-      title.dataset.devProjectTitle = '';
-      title.textContent = page.title;
-      row.append(title);
+        cover.classList.toggle('project-grid__cover--has-hover', !isTeaser && Boolean(page.hoverImage));
+        cover.classList.toggle('overflow-hidden', !hasCrop);
+        cover.classList.toggle('project-cropped', hasCrop);
+        cover.classList.toggle('project-responsive-image', hasCrop);
+        if (normalized) {
+          cover.setAttribute('style', responsiveImageStyle(normalized, srcDims) ?? '');
+        } else {
+          cover.removeAttribute('style');
+        }
 
-      if (page.subtitle) {
-        const subtitle = document.createElement('span');
-        subtitle.className = 'project-grid__subtitle font-bold';
-        subtitle.style.color = subtitleColor(page.dark);
-        subtitle.dataset.devProjectSubtitle = '';
-        subtitle.textContent = page.subtitle;
-        row.append(subtitle);
+        const editAttrs = listingCoverDevEditAttrs(page.slug, grid, {
+          variants,
+          srcWidth: page.srcWidth,
+          srcHeight: page.srcHeight,
+        }, defaultAspect);
+        for (const [key, value] of Object.entries(editAttrs)) {
+          if (value === '') cover.removeAttribute(key);
+          else cover.setAttribute(key, value);
+        }
+
+        const baseImg = cover.querySelector<HTMLImageElement>('.project-grid__img--base');
+        if (baseImg) {
+          baseImg.src = page.hasCover
+            ? (page.coverUrl || projectImage(page.image))
+            : '/images/black-token.svg';
+          baseImg.alt = page.title;
+        }
+
+        const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
+        if (hoverImg) {
+          if (!isTeaser && page.hoverImage) {
+            hoverImg.src = projectImage(page.hoverImage);
+            hoverImg.hidden = false;
+          } else {
+            hoverImg.removeAttribute('src');
+            hoverImg.hidden = true;
+          }
+        }
+
+        const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
+        if (meta) {
+          meta.style.setProperty('--title-ink', titleColor(page.dark));
+          meta.style.setProperty('--subtitle-ink', subtitleColor(page.dark));
+          meta.style.setProperty('--title-ink-hover', titleColor(hoverDark));
+          meta.style.setProperty('--subtitle-ink-hover', subtitleColor(hoverDark));
+          meta.style.setProperty('--title-ink-on-page', titleColor(false));
+          meta.style.setProperty('--subtitle-ink-on-page', subtitleColor(false));
+        }
+
+        const titleEl = cover.querySelector<HTMLElement>('[data-dev-project-title]');
+        if (titleEl) titleEl.textContent = page.title;
+
+        const subtitleEl = cover.querySelector<HTMLElement>('[data-dev-project-subtitle]');
+        if (subtitleEl) subtitleEl.textContent = page.subtitle ?? '';
+
+        if (isTeaser && grid !== 'play') {
+          let teaserLabel = cover.querySelector<HTMLElement>('[data-dev-project-teaser-label]');
+          if (!teaserLabel) {
+            const row = cover.querySelector('.flex.items-baseline');
+            if (row) {
+              teaserLabel = document.createElement('span');
+              teaserLabel.className = 'project-grid__teaser-label font-bold';
+              teaserLabel.dataset.devProjectTeaserLabel = '';
+              teaserLabel.dataset.placeholder = 'Teaser label';
+              teaserLabel.textContent = 'Coming soon';
+              row.append(teaserLabel);
+            }
+          }
+        } else {
+          cover.querySelector('[data-dev-project-teaser-label]')?.remove();
+        }
       }
 
-      if (isTeaser) {
-        const teaserLabel = document.createElement('span');
-        teaserLabel.className = 'project-grid__teaser-label font-bold';
-        teaserLabel.style.color = subtitleColor(page.dark);
-        teaserLabel.dataset.devProjectTeaserLabel = '';
-        teaserLabel.textContent = 'Coming soon';
-        row.append(teaserLabel);
+      if (typeof window.__vcdSyncStatusChip === 'function') {
+        window.__vcdSyncStatusChip(item, page.status);
+      } else {
+        console.warn('[DevGalleryPages] __vcdSyncStatusChip unavailable — status chip may be stale.');
       }
 
-      meta.append(row);
-      cover.append(stack, meta);
-
-      if (page.status && page.status !== 'published') {
-        const badge = document.createElement('span');
-        badge.className = 'project-grid__status-badge';
-        badge.dataset.devModeOnly = '';
-        badge.textContent = page.status;
-        cover.append(badge);
+      if (typeof window.__vcdEnableCardEditing === 'function') {
+        window.__vcdEnableCardEditing(item);
+      } else {
+        console.warn('[DevGalleryPages] __vcdEnableCardEditing unavailable — card may not be editable.');
       }
-
-      card.append(cover);
-      item.append(card);
-
-      const settings = document.createElement('button');
-      settings.type = 'button';
-      settings.className = 'project-grid__settings dev-card-chip-trigger';
-      settings.dataset.devProjectSettings = page.slug;
-      settings.dataset.devModeOnly = '';
-      settings.setAttribute('aria-label', `Settings for ${page.title}`);
-      const icon = document.createElement('span');
-      icon.className = 'project-grid__settings-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      icon.innerHTML = settingsIcon;
-      settings.append(icon);
-      item.append(settings);
 
       return item;
     };
@@ -484,6 +565,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         const page = pageBySlug(slug);
         if (!page) continue;
         const created = buildGridCard(page);
+        if (!created) continue;
         createdItems.set(slug, created);
         if (anchor) grid.insertBefore(created, anchor);
         else grid.append(created);
