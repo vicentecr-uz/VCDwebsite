@@ -785,14 +785,20 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   /*
     Chip contrast — two palettes, chosen by what is *currently under the chip*.
 
-    On a light ground: dark glyphs, light control fill, no ring.
-    On a dark ground: white glyphs, dark fill, 1px inset ring slightly lighter
-    than that fill; press / latched promotes the ring colour to the fill.
+    Both grounds carry a 1px inset ring a step *away* from their own fill —
+    lighter on dark, darker on light — so the chip reads as a shape rather
+    than a floating glyph either way.
+
+    The light ring is anchored on --color-surface-press (the click fill) but
+    darkened: press is only 1.05:1 against the control fill, which is not a
+    visible hairline. 14% of --color-text into it lands ~1.40:1, in the same
+    family as the dark ring's step. Press / latched promotes the ring colour
+    to the fill on dark; on light the ring simply stays and blends.
   */
   .project-grid {
     --chip-ink-on-light: var(--color-text);
     --chip-fill-on-light: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    --chip-ring-on-light: transparent;
+    --chip-ring-on-light: color-mix(in srgb, var(--color-text) 14%, var(--color-surface-press));
     --chip-press-on-light: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
 
     --chip-ink-on-dark: var(--color-bg);
