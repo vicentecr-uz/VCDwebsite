@@ -39,6 +39,14 @@ Content edits go through the **in-page editor** (dev mode). It writes JSON under
 5. **No flash on Save** — `contentHmrGate` (`scripts/content-hmr-gate.mjs`) drops all Vite `full-reload` WS messages in dev, and ignores `src/content/**` + `public/images/**` in the file watcher. Component/CSS edits still HMR via `update`. `suppressContentHmr()` additionally skips module invalidation for colour-token Saves (~2.5s) where the live preview already matches. Save only persists to disk. `vcd:dev-pending-committed` syncs client “saved” state in tuners. **Do not assume Save or branch sync triggers a page reload.**
 6. **Reload without Save** — unsaved DOM edits are lost (warning shown if dirty).
 
+**Stale transforms after a branch change.** Because the gate drops every `full-reload`, Vite can keep serving a **stale transform** of a component's style block after a `git pull` or `git switch` — a hard reload does not clear it. The tell is a change appearing *partially* (one `<style>` block updates, another does not). Restart the session (`dev:session:stop` / `dev:session`) before concluding the CSS is wrong. Verify what is actually served, not what is on disk:
+
+```bash
+curl -s "http://localhost:4321/src/components/Thing.astro?astro&type=style&index=0&lang.css" | grep -o 'your-selector' | wc -l
+```
+
+`index=0` is the first `<style>`, `index=1` the next (e.g. `is:global`). Count with `grep -o … | wc -l` — served CSS is one long line, so `grep -c` always returns 1 and will mislead you.
+
 ### Lifecycle
 
 - **Unsaved** = DOM only (what you see while editing)
