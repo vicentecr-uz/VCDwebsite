@@ -6,6 +6,7 @@ import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
+import { PLACEHOLDER_COVER } from '../lib/placeholderCover.mjs';
 
 const teaserPassword = getTeaserPassword();
 const statusIcons = {
@@ -64,7 +65,7 @@ const statusIcons = {
   </div>
 </DevOverlay>
 
-<script define:vars={{ teaserPassword, statusIcons }}>
+<script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER }}>
   const createDialog = document.querySelector('[data-dev-project-create-dialog]');
   const createForm = document.querySelector('[data-dev-project-create-form]');
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
@@ -95,6 +96,28 @@ const statusIcons = {
 
   const HOVER_CHIP_LABEL_OFF = 'Showing cover image — switch to hover image';
   const HOVER_CHIP_LABEL_ON = 'Showing hover image — switch to cover image';
+
+  /** Every card carries this chip, so the accessible name has to name the card
+   * too — a dozen buttons reading "switch to hover image" is unnavigable. */
+  const setHoverChipLabel = (btn, pressed) => {
+    if (!(btn instanceof HTMLElement)) return;
+    const state = pressed ? HOVER_CHIP_LABEL_ON : HOVER_CHIP_LABEL_OFF;
+    const title = btn.dataset.devHoverChipFor;
+    btn.setAttribute(
+      'aria-label',
+      title ? `${title}: ${state.charAt(0).toLowerCase()}${state.slice(1)}` : state,
+    );
+    btn.title = state;
+  };
+
+  /** Mirror of isPlaceholderCoverSrc — a define:vars script is inline and
+   * cannot import, so the constant comes through define:vars and the two-line
+   * test is restated here. Keep in step with src/lib/placeholderCover.mjs. */
+  const isPlaceholderCover = (src) => {
+    const value = String(src || '').trim();
+    if (!value) return true;
+    return value === placeholderCover || value.includes('black-token');
+  };
 
   const emptyListing = () => ({
     image: '',
@@ -225,8 +248,7 @@ const statusIcons = {
     });
     document.querySelectorAll('[data-dev-project-hover][aria-pressed="true"]').forEach((btn) => {
       btn.setAttribute('aria-pressed', 'false');
-      btn.setAttribute('aria-label', HOVER_CHIP_LABEL_OFF);
-      if (btn instanceof HTMLElement) btn.title = HOVER_CHIP_LABEL_OFF;
+      setHoverChipLabel(btn, false);
     });
     closeAllStatusMenus();
     restoreCardLinks();
@@ -327,6 +349,24 @@ const statusIcons = {
     item.classList.toggle('project-grid__item--full', Boolean(listing.full) && grid !== 'play');
     if (cover instanceof HTMLElement) {
       cover.classList.toggle('project-grid__cover--has-hover', !isTeaser && Boolean(listing.hoverImage));
+      // #176 — the empty state is server-rendered, so it has to be re-derived
+      // here or the "Drop cover image" label and its wash sit on top of the
+      // image you just dropped until the next reload.
+      if (isPlaceholderCover(displayImage)) cover.dataset.devCoverEmpty = 'true';
+      else delete cover.dataset.devCoverEmpty;
+      // buildListingPayload drops hoverImage for teasers, so a hover drop on a
+      // card switched to teaser mid-session would vanish at Save. Markup is
+      // server-rendered and the status changes client-side, so retire the chip
+      // (and any forced-hover it left behind) here rather than only in Astro.
+      if (isTeaser) cover.classList.remove('is-dev-hover-forced');
+    }
+    const hoverChip = item.querySelector('[data-dev-project-hover]');
+    if (hoverChip instanceof HTMLElement) {
+      hoverChip.hidden = isTeaser;
+      if (isTeaser) {
+        hoverChip.setAttribute('aria-pressed', 'false');
+        setHoverChipLabel(hoverChip, false);
+      }
     }
     if (baseImg instanceof HTMLImageElement && displayImage) {
       baseImg.src = displayImage;
@@ -1005,9 +1045,7 @@ const statusIcons = {
       const next = !cover.classList.contains('is-dev-hover-forced');
       cover.classList.toggle('is-dev-hover-forced', next);
       hoverBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
-      const label = next ? HOVER_CHIP_LABEL_ON : HOVER_CHIP_LABEL_OFF;
-      hoverBtn.setAttribute('aria-label', label);
-      hoverBtn.title = label;
+      setHoverChipLabel(hoverBtn, next);
       return;
     }
 
@@ -1118,6 +1156,10 @@ const statusIcons = {
     // Slot derived once, at drop time, from whichever image is currently forced
     // to show — #175. Doesn't change which cover the drop targets (#176).
     const slot = cover.classList.contains('is-dev-hover-forced') ? 'hoverImage' : 'image';
+    // Drop the empty state before the crossfade, not after — otherwise its
+    // 55% page-white wash sits over the incoming image for the whole fade.
+    // applyListingPreview re-derives it from the draft once the upload lands.
+    if (slot === 'image') delete cover.dataset.devCoverEmpty;
 
     void (async () => {
       try {
