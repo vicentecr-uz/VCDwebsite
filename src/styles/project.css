@@ -907,6 +907,20 @@ html:not(.is-dev-mode) .dev-crop-stage {
   background: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
 }
 
+/*
+  #181 — keep image edit / caption / grid triggers out of the way while
+  editing text, same reasoning and !important as the gap toolbar / section
+  delete rules in DevTextEditor.astro: the text caret means the image is
+  likely hovered or focus-within too, and the :hover / :focus-within reveal
+  above outweighs a plain .is-dev-text-caret selector without it.
+*/
+html.is-dev-mode.is-dev-text-caret .dev-image-edit-trigger,
+html.is-dev-mode.is-dev-text-caret .dev-caption-add-trigger,
+html.is-dev-mode.is-dev-text-caret .dev-grid-edit-trigger {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* ── Typography blocks ──────────────────────────────────────── */
 .project-tagline {
   margin: 0;

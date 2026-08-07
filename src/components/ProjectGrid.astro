@@ -755,6 +755,75 @@ const gridCardTemplateSeed: ProjectGridItem = {
     outline-color: transparent;
   }
 
+  /*
+    #181 — one affordance at a time. Once a card has committed to a mode
+    (status menu, span, crop, or the text caret), its *other* chips are noise
+    for the duration — same reasoning as the cover-drop fade above, just
+    scoped to this one card rather than the whole rail. The rail itself stays
+    up (cases a/b/c above still hold it visible); only the individual chips
+    that aren't part of the active mode fade out.
+  */
+
+  /* a. Status menu open — the status chip stays, the other four fade. The
+        title/year dash is a light, quickly-dismissed mode, so it stays. */
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden]))
+    .project-grid__chip:not([data-dev-project-status]) {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dev-suppress-duration) ease;
+  }
+
+  /* b. Span mode — the span chip stays; other chips and the dash fade. */
+  html.is-dev-mode .project-grid__item.is-span-mode
+    .project-grid__chip:not([data-dev-project-span]) {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dev-suppress-duration) ease;
+  }
+
+  html.is-dev-mode .project-grid__item.is-span-mode
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
+    outline-color: transparent;
+    transition: outline-color var(--dev-suppress-duration) ease;
+  }
+
+  /* c. Crop tuner open — the crop chip stays; other chips and the dash fade. */
+  html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
+    .project-grid__chip:not([data-dev-edit-trigger='image']) {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dev-suppress-duration) ease;
+  }
+
+  html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
+    outline-color: transparent;
+    transition: outline-color var(--dev-suppress-duration) ease;
+  }
+
+  /* d. Text caret in the title/year — no chip is "active", so all five fade.
+        The dash stays: it is the text affordance itself. */
+  html.is-dev-text-caret .project-grid__item .project-grid__chip {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dev-suppress-duration) ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden]))
+      .project-grid__chip:not([data-dev-project-status]),
+    html.is-dev-mode .project-grid__item.is-span-mode .project-grid__chip:not([data-dev-project-span]),
+    html.is-dev-mode .project-grid__item.is-span-mode
+      :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable],
+    html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
+      .project-grid__chip:not([data-dev-edit-trigger='image']),
+    html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
+      :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable],
+    html.is-dev-text-caret .project-grid__item .project-grid__chip {
+      transition: none;
+    }
+  }
+
   /* During replace: hold page white under the fades so listing `bg` never peeks. */
   .project-grid__cover[data-dev-crossfade-active='true'] {
     background-color: var(--color-bg) !important;
