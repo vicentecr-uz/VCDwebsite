@@ -392,9 +392,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     opacity: 0;
   }
 
-  .project-grid__title,
-  .project-grid__subtitle,
-  .project-grid__teaser-label {
+  :global(.project-grid__title),
+  :global(.project-grid__subtitle),
+  :global(.project-grid__teaser-label) {
     font-size: 1.25rem;
     letter-spacing: -0.03em;
     line-height: 1.2;
@@ -403,27 +403,34 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     transition: color 0.2s ease;
   }
 
-  .project-grid__title {
+  /*
+    :global on purpose. Astro scopes these to `[data-astro-cid-…]`, which a
+    JS-created node never carries — `ensureSubtitleHost` in
+    DevProjectGridEditor builds the year span for a project that has none, and
+    a scoped rule leaves it uncoloured. Same reason the chip rails and drop
+    chrome are global (see the block below).
+  */
+  :global(.project-grid__title) {
     color: var(--title-ink);
   }
 
-  .project-grid__subtitle,
-  .project-grid__teaser-label {
+  :global(.project-grid__subtitle),
+  :global(.project-grid__teaser-label) {
     color: var(--subtitle-ink);
   }
 
   /* Only cards that actually have a hover image swap ink — reuses the same
      gate as the image crossfade so a card with no hover image never changes
      colour. `.is-dev-hover-forced` mirrors it for the dev preview toggle. */
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
-  .project-grid__cover.is-dev-hover-forced .project-grid__title {
+  :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title),
+  :global(.project-grid__cover.is-dev-hover-forced .project-grid__title) {
     color: var(--title-ink-hover);
   }
 
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
-  .project-grid__cover.is-dev-hover-forced .project-grid__subtitle,
-  .project-grid__cover.is-dev-hover-forced .project-grid__teaser-label {
+  :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
+  :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label),
+  :global(.project-grid__cover.is-dev-hover-forced .project-grid__subtitle),
+  :global(.project-grid__cover.is-dev-hover-forced .project-grid__teaser-label) {
     color: var(--subtitle-ink-hover);
   }
 
@@ -611,12 +618,12 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
        never appears. `.is-dev-hover-forced` (the dev preview chip) is left
        alone here, same as the image opacity rules above: it is meant to work
        at any viewport width so authoring isn't width-gated. */
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title {
+    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title) {
       color: var(--title-ink);
     }
 
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label {
+    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
+    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label) {
       color: var(--subtitle-ink);
     }
 
