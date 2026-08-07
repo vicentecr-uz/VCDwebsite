@@ -31,7 +31,15 @@ function listingCardForGrid(grid, listing, previous = {}) {
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
   };
-  if (hoverImage) base.hoverImage = hoverImage;
+  if (hoverImage) {
+    base.hoverImage = hoverImage;
+    // #182 — listingCardForGrid rebuilds from a fixed key set rather than
+    // merging, so a settings-only save (which doesn't send hoverDark) needs
+    // this fallback or it silently drops on the second save. Same pattern as
+    // hoverImage/variants above.
+    const hoverDark = typeof listing.hoverDark === 'boolean' ? listing.hoverDark : previous.hoverDark;
+    if (typeof hoverDark === 'boolean') base.hoverDark = hoverDark;
+  }
   // Crop data lives on the listing card; settings saves omit it — keep prior.
   const variants = listing.variants ?? previous.variants;
   if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
@@ -659,6 +667,8 @@ export function projectSettingsDevWriter() {
               listings: data.listings ?? {},
               listing: {
                 image: listing.image ?? '',
+                hoverImage: listing.hoverImage ?? '',
+                hoverDark: typeof listing.hoverDark === 'boolean' ? listing.hoverDark : undefined,
                 bg: listing.bg ?? '#efefef',
                 dark: Boolean(listing.dark),
                 full: Boolean(listing.full),
