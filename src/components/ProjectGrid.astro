@@ -704,8 +704,10 @@ const gridCardTemplateSeed: ProjectGridItem = {
     data-dev-cover-empty is only emitted for editable items (isDev), but the
     guard is kept anyway so a draft project can never show a drop affordance
     to a visitor. Same :not() yield as the hover-empty rule above.
+    Also yield while hover is forced — that mode is about the hover slot, so
+    "Drop cover image" must not stay stacked under "Drop hover image".
   */
-  html.is-dev-mode .project-grid__cover[data-dev-cover-empty='true']:not([data-dev-drop-active='true']):not([data-dev-crossfade-active='true'])
+  html.is-dev-mode .project-grid__cover[data-dev-cover-empty='true']:not(.is-dev-hover-forced):not([data-dev-drop-active='true']):not([data-dev-crossfade-active='true'])
     .project-grid__drop-veil--cover-empty {
     opacity: 1;
   }
