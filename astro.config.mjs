@@ -21,12 +21,10 @@ import {
   projectDeleteDevWriter,
   projectRenameDevWriter,
   projectSettingsDevWriter,
-  playLinkSettingsDevWriter,
   publishMediaDevWriter,
   readDevDocument,
   resolveDevFieldTarget,
   resolveEditableDocument,
-  isPlayDocumentKey,
   uploadDevWriter,
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
@@ -114,7 +112,7 @@ function imageCropDevWriter() {
             !Array.isArray(fieldPath) ||
             fieldPath.length > 8 ||
             !fieldPath.every(isSafePathPart) ||
-            (fieldPath.length === 0 && !isPlayDocumentKey(documentKey))
+            fieldPath.length === 0
           ) {
             send(400, { error: 'That image is not editable.' });
             return;
@@ -2033,7 +2031,6 @@ export default defineConfig({
       galleryMembershipDevWriter(),
       sectionOrderDevWriter(),
       projectSettingsDevWriter(),
-      playLinkSettingsDevWriter(),
       publishMediaDevWriter(),
       publishDevWriter(),
       issueDevWriter(),

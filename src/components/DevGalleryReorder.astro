@@ -15,9 +15,7 @@
   const LIFT_BACKDROP_CLASS = 'dev-grid-lift-backdrop';
   const LIFT_BACKDROP_VISIBLE_CLASS = 'is-visible';
 
-  type ListingOrderEntry =
-    | { type: 'project'; slug: string; order: number; full: boolean }
-    | { type: 'play-link'; id: string; order: number };
+  type ListingOrderEntry = { type: 'project'; slug: string; order: number; full: boolean };
 
   let devModeActive = document.documentElement.classList.contains('is-dev-mode');
   let activeGrid: HTMLElement | null = null;
@@ -50,10 +48,8 @@
   const captureOrder = (grid: HTMLElement): ListingOrderEntry[] => (
     gridItems(grid).map((item, index) => {
       const slug = item.dataset.devProjectSlug;
-      const playLink = item.dataset.devPlayLink;
       const full = item.classList.contains('project-grid__item--full');
       if (slug) return { type: 'project', slug, order: index + 1, full };
-      if (playLink) return { type: 'play-link', id: playLink, order: index + 1 };
       return null;
     }).filter((item): item is ListingOrderEntry => item !== null)
   );
@@ -64,14 +60,9 @@
   const restoreOrder = (grid: HTMLElement, items: ListingOrderEntry[]) => {
     const anchor = grid.querySelector('.project-grid__item--new');
     for (const entry of items) {
-      const selector = entry.type === 'project'
-        ? `[data-dev-project-slug="${entry.slug}"]`
-        : `[data-dev-play-link="${entry.id}"]`;
-      const item = grid.querySelector<HTMLElement>(selector);
+      const item = grid.querySelector<HTMLElement>(`[data-dev-project-slug="${entry.slug}"]`);
       if (!item) continue;
-      if (entry.type === 'project') {
-        item.classList.toggle('project-grid__item--full', entry.full);
-      }
+      item.classList.toggle('project-grid__item--full', entry.full);
       if (anchor) grid.insertBefore(item, anchor);
       else grid.append(item);
     }
