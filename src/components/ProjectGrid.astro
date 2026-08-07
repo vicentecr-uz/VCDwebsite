@@ -69,7 +69,13 @@ const gridCardTemplateSeed: ProjectGridItem = {
     </li>
   )}
 </ul>
-<style>
+{/*
+  Card markup lives in ProjectGridItem.astro (loop + Gallery Manager template).
+  Astro scoped CSS would pin selectors to this file's data-astro-cid, which the
+  child never carries — covers lose aspect-ratio, meta loses padding, items lose
+  position:relative (chips mis-anchor). Keep this block global; BEM is namespaced.
+*/}
+<style is:global>
   .project-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

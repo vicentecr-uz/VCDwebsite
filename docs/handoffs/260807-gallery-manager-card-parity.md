@@ -46,7 +46,7 @@ Workaround today: Save, reload.
 
 **Fill helpers:** use `imageDevEditAttrs` from `src/lib/projectImageFrame.ts` — export a small JS-callable helper if needed so Astro and client set the same attributes. Do not re-serialise by guess.
 
-**Scoped styles:** JS-cloned nodes lack `data-astro-cid-*`. Chip rails / title ink / drop chrome must already be `:global` / `is:global` (they are). Do not add scoped-only rules for cloned cards.
+**Scoped styles:** Card markup is in `ProjectGridItem.astro`. Parent `ProjectGrid` styles that target those classes **must** be `is:global` (or `.project-grid :global(…)`). Scoped parent CSS pins `data-astro-cid` from `ProjectGrid` — the child never carries it, so aspect-ratio / meta padding / `position:relative` / chip button chrome all vanish (caught in review). JS clones also lack any cid — same requirement.
 
 If the template approach hits something structural, **stop and report** — do not fall back to hand-building.
 
