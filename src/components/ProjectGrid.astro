@@ -802,8 +802,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /* d. Text caret in the title/year — no chip is "active", so all five fade.
-        The dash stays: it is the text affordance itself. */
-  html.is-dev-text-caret .project-grid__item .project-grid__chip {
+        The dash stays: it is the text affordance itself.
+        Scoped by `:has(:focus)` to the card being typed in, not every card —
+        `is-dev-text-caret` lives on <html>, and without the guard a caret in
+        one card would leave every other card's chips dead to the pointer. */
+  html.is-dev-text-caret .project-grid__item:has([contenteditable]:focus) .project-grid__chip {
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dev-suppress-duration) ease;
@@ -819,7 +822,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
       .project-grid__chip:not([data-dev-edit-trigger='image']),
     html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
       :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable],
-    html.is-dev-text-caret .project-grid__item .project-grid__chip {
+    html.is-dev-text-caret .project-grid__item:has([contenteditable]:focus) .project-grid__chip {
       transition: none;
     }
   }
