@@ -588,6 +588,59 @@ async function publishFromBranch(manifest, files) {
 }
 
 /**
+ * Throw away unpublished content edits: restore each ahead content-surface path
+ * to the publish branch tip (`origin/main` / `main`). Engine files are untouched.
+ *
+ * Untracked content that never existed on main is deleted. Tracked paths are
+ * checked out from the publish base. Used by the save-bar Revert when there is
+ * nothing in-memory left to undo (#196).
+ */
+export async function revertUnpublishedContent() {
+  // Match publish: reason about a current tip, not a stale fetch.
+  try {
+    await git('fetch', 'origin', PUBLISH_BRANCH);
+  } catch {
+    // Offline / no origin — fall through to whatever publishBaseRef resolves.
+  }
+
+  const base = await publishBaseRef();
+  if (!base) {
+    return { ok: false, error: 'No main ref to restore from.' };
+  }
+
+  const { files } = await unpublishedContent();
+  if (!files.length) {
+    return { ok: false, error: 'No unpublished content to revert.' };
+  }
+
+  const restored = [];
+  /** @type {Record<string, string | null>} */
+  const recordUpdates = {};
+
+  for (const file of files) {
+    if (!isContentPath(file)) {
+      return { ok: false, error: `Refusing to revert non-content path: ${file}` };
+    }
+    const absolute = path.join(process.cwd(), file);
+    const onBase = await blobAt(base, file);
+    if (onBase) {
+      await git('checkout', base, '--', file);
+      restored.push(file);
+      recordUpdates[file] = existsSync(absolute)
+        ? await git('hash-object', '--', absolute)
+        : onBase;
+    } else if (existsSync(absolute)) {
+      await rm(absolute, { force: true });
+      restored.push(file);
+      recordUpdates[file] = null;
+    }
+  }
+
+  await writePublishRecord(recordUpdates);
+  return { ok: true, restored };
+}
+
+/**
  * Commit the unpublished content surface to main and push. Refuses rather than
  * guessing whenever the repo is in a state where "just the content" is unclear.
  *
@@ -620,6 +673,7 @@ export async function publishContent(manifest, { force = false } = {}) {
  * Dev-only publish route. `apply: 'serve'` keeps it out of the static build, so
  * the live site never has it. GET reports whether publishing is available on
  * the current branch; POST commits the content surface and pushes to main.
+ * `/api/content-revert` restores unpublished content to the publish branch tip.
  *
  * @returns {import('vite').Plugin}
  */
@@ -628,18 +682,35 @@ export function publishDevWriter() {
     name: 'content-publish-dev-writer',
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use('/api/publish', async (req, res, next) => {
-        const send = (status, payload) => {
-          res.statusCode = status;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify(payload));
-        };
+      const sendJson = (res, status, payload) => {
+        res.statusCode = status;
+        res.setHeader('content-type', 'application/json');
+        res.end(JSON.stringify(payload));
+      };
 
+      server.middlewares.use('/api/content-revert', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        try {
+          const result = await revertUnpublishedContent();
+          sendJson(res, result.ok ? 200 : 409, result);
+        } catch (error) {
+          sendJson(res, 500, {
+            error: error instanceof Error ? error.message : 'Could not revert unpublished content.',
+          });
+        }
+      });
+
+      server.middlewares.use('/api/publish', async (req, res, next) => {
         if (req.method === 'GET') {
           try {
-            send(200, await publishStatus());
+            sendJson(res, 200, await publishStatus());
           } catch (error) {
-            send(500, { error: error instanceof Error ? error.message : 'Could not read git status.' });
+            sendJson(res, 500, {
+              error: error instanceof Error ? error.message : 'Could not read git status.',
+            });
           }
           return;
         }
@@ -657,10 +728,14 @@ export function publishDevWriter() {
             // `force` is Anto clicking through the rendering-code warning. The
             // branch-level check is deliberately coarse — he knows whether he
             // just used a new toggle, the check cannot.
-            const result = await publishContent(payload.manifest || {}, { force: payload.force === true });
-            send(result.ok ? 200 : 409, result);
+            const result = await publishContent(payload.manifest || {}, {
+              force: payload.force === true,
+            });
+            sendJson(res, result.ok ? 200 : 409, result);
           } catch (error) {
-            send(500, { error: error instanceof Error ? error.message : 'Could not publish.' });
+            sendJson(res, 500, {
+              error: error instanceof Error ? error.message : 'Could not publish.',
+            });
           }
         });
       });
