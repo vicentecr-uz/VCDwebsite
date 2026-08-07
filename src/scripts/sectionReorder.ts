@@ -111,6 +111,131 @@ export const resolveInsertIndexFromY = (
   return index;
 };
 
+/**
+ * Share of a cell, centred on it, that yields to a lifted block — 0.5 on each
+ * axis, so a quarter of the cell's area. The one-dimensional list uses the same
+ * idea in {@link NEIGHBOR_HIT_BAND}: a neighbour gives way once the lifted
+ * block's centre reaches the middle of it, rather than having to clear its far
+ * edge. Outside every band nothing moves, which is what keeps a block that has
+ * only been picked up — or nudged — from displacing anything.
+ */
+export const GRID_HIT_BAND = 0.5;
+
+type HitBand = { top: number; bottom: number; left: number; right: number };
+
+const bandOf = (rect: HitBand): HitBand => {
+  const insetX = ((rect.right - rect.left) * (1 - GRID_HIT_BAND)) / 2;
+  const insetY = ((rect.bottom - rect.top) * (1 - GRID_HIT_BAND)) / 2;
+  return {
+    top: rect.top + insetY,
+    bottom: rect.bottom - insetY,
+    left: rect.left + insetX,
+    right: rect.right - insetX,
+  };
+};
+
+/** -1 before the band, 1 after it, 0 inside — reading order, rows before columns. */
+const relateToBand = (x: number, y: number, band: HitBand) => {
+  if (y < band.top) return -1;
+  if (y > band.bottom) return 1;
+  if (x < band.left) return -1;
+  if (x > band.right) return 1;
+  return 0;
+};
+
+const unionRect = (rects: HitBand[]): HitBand => ({
+  top: Math.min(...rects.map((r) => r.top)),
+  bottom: Math.max(...rects.map((r) => r.bottom)),
+  left: Math.min(...rects.map((r) => r.left)),
+  right: Math.max(...rects.map((r) => r.right)),
+});
+
+/** A thing the lifted block can displace: one cell, or a whole row of them. */
+type HitTarget = { startIndex: number; endIndex: number; rect: HitBand };
+
+const cellTargets = (items: HTMLElement[]): HitTarget[] =>
+  items.map((el, index) => ({
+    startIndex: index,
+    endIndex: index + 1,
+    rect: el.getBoundingClientRect(),
+  }));
+
+/**
+ * Rows, for a block that spans the whole width. Two half-width cards sharing a
+ * row are one target with one band — a full-width block has no way to sit
+ * between them, so offering that position only orphans one of them into a row
+ * of its own and leaves an empty cell behind.
+ */
+const rowTargets = (items: HTMLElement[]): HitTarget[] => {
+  const rows: HitTarget[] = [];
+  let previousTop = 0;
+  items.forEach((el, index) => {
+    const rect = el.getBoundingClientRect();
+    const current = rows[rows.length - 1];
+    if (!current || index === 0 || rect.top - previousTop > 1) {
+      rows.push({ startIndex: index, endIndex: index + 1, rect });
+    } else {
+      current.endIndex = index + 1;
+      current.rect = unionRect([current.rect, rect]);
+    }
+    previousTop = rect.top;
+  });
+  return rows;
+};
+
+/**
+ * Insert index for a two-dimensional flow (a listing grid), where the 1-D walk
+ * above has nothing to walk: siblings sit beside each other as well as below.
+ *
+ * Same shape as {@link resolveInsertIndexFromY}, in two axes. The slot the block
+ * already holds sets the direction of travel — the block is either before it or
+ * after it — and the walk runs that way only, yielding each target whose band
+ * the block's centre has reached or passed. Sitting inside its own slot's band
+ * means it has not gone anywhere, so nothing moves.
+ *
+ * Running one direction is what stops the flicker: a band satisfies the test
+ * from both sides, so a two-way walk steps forward over a target and straight
+ * back again.
+ */
+export const resolveInsertIndexInGrid = (
+  items: HTMLElement[],
+  centerX: number,
+  centerY: number,
+  currentIndex = 0,
+  slot: HTMLElement | null = null,
+  options: { snapToRowStart?: boolean } = {},
+) => {
+  if (!items.length) return 0;
+
+  const targets = options.snapToRowStart ? rowTargets(items) : cellTargets(items);
+
+  // No slot to measure against (first frame): leave the block where it is.
+  const slotRect = slot?.getBoundingClientRect();
+  if (!slotRect || slotRect.height <= 0) return currentIndex;
+
+  const direction = relateToBand(centerX, centerY, bandOf(slotRect));
+  if (direction === 0) return currentIndex;
+
+  let index = currentIndex;
+
+  if (direction > 0) {
+    for (const target of targets) {
+      if (target.startIndex < index) continue;
+      if (relateToBand(centerX, centerY, bandOf(target.rect)) < 0) break;
+      index = target.endIndex;
+    }
+    return index;
+  }
+
+  for (let i = targets.length - 1; i >= 0; i -= 1) {
+    const target = targets[i];
+    if (target.endIndex > index) continue;
+    if (relateToBand(centerX, centerY, bandOf(target.rect)) > 0) break;
+    index = target.startIndex;
+  }
+  return index;
+};
+
 export const setLiftTransformOrigin = (
   root: HTMLElement,
   handle: HTMLElement | null,
@@ -245,6 +370,17 @@ export type ReorderClasses = {
   liftBackdrop?: string;
 };
 
+export type ResolveInsertContext = {
+  items: HTMLElement[];
+  centerX: number;
+  centerY: number;
+  currentIndex: number;
+  /** Sign of travel through the page; 0 before the block has moved. */
+  direction: number;
+  /** The drop slot as currently placed, so it can compete for the position. */
+  slot: HTMLElement | null;
+};
+
 export type ReorderHost = {
   getItems: () => HTMLElement[];
   getDropZone: () => HTMLElement | null;
@@ -265,6 +401,37 @@ export type ReorderHost = {
     sourceIndex: number,
     liftGaps: { top: string; bottom: string },
   ) => { top: string; bottom: string; marginTop?: string };
+  /** Tag for the drop slot. `div` suits a section list; a grid `<ul>` wants `li`. */
+  indicatorTag?: string;
+  /**
+   * Easing for neighbours yielding to the slot. Defaults to `ease-out`, which
+   * suits a section's long vertical travel. Grid neighbours hop a short
+   * diagonal, over which the same curve reads flat — they want a curve that
+   * front-loads more of the distance.
+   */
+  flipEasing?: string;
+  /**
+   * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
+   * wants a longer, gentler ramp than a page of full-width sections — the same
+   * pointer travel covers far more content.
+   */
+  scrollTuning?: {
+    deadZonePx?: number;
+    rampPx?: number;
+    maxScrollSpeed?: number;
+    velocitySmoothing?: number;
+  };
+  /**
+   * Where the lifted block would land. Defaults to the 1-D Y walk
+   * ({@link resolveInsertIndexFromY}); two-dimensional hosts pass
+   * {@link resolveInsertIndexInGrid}.
+   */
+  resolveInsertIndex?: (context: ResolveInsertContext) => number;
+  /**
+   * Called after the slot is placed. Hosts set whatever sizing the shared gap
+   * model does not own — a grid slot's column span, for instance.
+   */
+  onSlotSync?: (indicator: HTMLElement, insertIndex: number) => void;
   onStatus?: (text: string) => void;
 };
 
@@ -358,7 +525,7 @@ export type ReorderController = {
  * this owns placement, FLIP, indicator fade, scroll, and drop glide.
  */
 export const createReorderController = (host: ReorderHost): ReorderController => {
-  const scrollDriver = createScrollDriver();
+  const scrollDriver = createScrollDriver(host.scrollTuning);
   const liftedClass = host.classes.lifted ?? 'is-lifted';
   let state = idleState();
   let dropIndicator: HTMLElement | null = null;
@@ -496,10 +663,36 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     applySlotMetrics(insertIndex);
     placeIndicatorBeforeIndex(insertIndex);
     bindNeighbor(insertIndex);
+    if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex);
+  };
+
+  /** Centre of the lifted block in viewport space — what placement is keyed off. */
+  const liftCenter = () => ({
+    x: state.liftLeft + state.liftWidth / 2,
+    y: state.liftTop + state.blockHeight / 2,
+  });
+
+  const resolveInsert = (centerX: number, centerY: number) => {
+    if (host.resolveInsertIndex) {
+      return host.resolveInsertIndex({
+        items: host.getItems(),
+        centerX,
+        centerY,
+        currentIndex: state.placedIndex,
+        direction: travelDirection,
+        slot: getIndicatorBody(),
+      });
+    }
+    return resolveInsertIndexFromY(
+      host.getItems(),
+      centerY,
+      state.placedIndex,
+      travelDirection,
+    );
   };
 
   const createIndicator = () => {
-    const indicator = document.createElement('div');
+    const indicator = document.createElement(host.indicatorTag ?? 'div');
     indicator.className = host.classes.indicator;
     indicator.setAttribute('aria-hidden', 'true');
     const body = document.createElement('div');
@@ -588,11 +781,15 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     captureElements.forEach((el) => {
       const first = firstRects.get(el);
       if (!first) return;
-      const deltaY = first.top - el.getBoundingClientRect().top;
-      if (Math.abs(deltaY) < 0.5) return;
+      const last = el.getBoundingClientRect();
+      // Both axes: a section list only ever moves vertically (deltaX stays 0),
+      // but a grid reflows sideways as items wrap between rows.
+      const deltaX = first.left - last.left;
+      const deltaY = first.top - last.top;
+      if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
       el.classList.add(host.classes.flipMoving);
       el.style.transition = 'none';
-      el.style.transform = `translateY(${deltaY}px)`;
+      el.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
       moving.push(el);
     });
 
@@ -608,8 +805,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     flipRafId = requestAnimationFrame(() => {
       flipRafId = 0;
       if (generation !== flipGeneration) return;
+      const easing = host.flipEasing ?? 'ease-out';
       moving.forEach((el) => {
-        el.style.transition = `transform ${motionMs}ms ease-out`;
+        el.style.transition = `transform ${motionMs}ms ${easing}`;
         el.style.transform = '';
       });
       flipCleanupTimer = setTimeout(() => {
@@ -708,8 +906,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       state.liftLeft = state.pointerX - state.grabOffsetX;
       renderLift();
 
-      const centerY = state.liftTop + state.blockHeight / 2;
-      const travelY = centerY + window.scrollY;
+      const center = liftCenter();
+      const travelY = center.y + window.scrollY;
       if (lastTravelY !== null && Math.abs(travelY - lastTravelY) > TRAVEL_EPSILON_PX) {
         travelDirection = Math.sign(travelY - lastTravelY);
         lastTravelY = travelY;
@@ -717,12 +915,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         lastTravelY = travelY;
       }
 
-      state.targetIndex = resolveInsertIndexFromY(
-        host.getItems(),
-        centerY,
-        state.placedIndex,
-        travelDirection,
-      );
+      state.targetIndex = resolveInsert(center.x, center.y);
     }
 
     if (state.targetIndex !== state.placedIndex) {
@@ -996,6 +1189,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         indicatorOpacity: 0,
       };
 
+      /*
+        Scroll anchoring compensates for the lift. Taking the block out of flow
+        and dropping a stand-in where it stood is a wash for page height, but
+        the browser has already picked a visible node to hold steady, and if
+        that node is the block itself it adjusts scroll to keep it put — by
+        however far it has to, which is why the jump varied with where the
+        block sat in the viewport. Same pin performFlipRelocate uses for slot
+        moves; the lift needed it too.
+      */
+      const scrollYBeforeLift = window.scrollY;
+
       // Take the item out of flow before inserting the slot stand-in, so the
       // indicator inherits the same collapse context the section had.
       item.classList.add(liftedClass);
@@ -1009,12 +1213,26 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       setLiftTransformOrigin(item, handle);
 
       dropIndicator = createIndicator();
+      // Size and span the slot *before* it enters the flow. Inserting a bare
+      // cell and correcting it inside syncPlacement costs a frame of wrong
+      // layout — unnoticeable in a single column, violent in a grid, where a
+      // column-spanning block is briefly replaced by a one-column, zero-height
+      // cell and every card after it reflows and snaps back.
+      applySlotMetrics(sourceIndex);
+      host.onSlotSync?.(dropIndicator, sourceIndex);
       item.before(dropIndicator);
       syncPlacement(sourceIndex);
       // `is-visible` holds the vacated space open straight away, but the slot
       // waits out the lift card's fade before painting itself in.
       dropIndicator.classList.add('is-visible');
       applyIndicatorOpacity(0);
+      // Force the layout the pin is guarding, then undo any adjustment the
+      // browser made. Reading scrollY without this reads the pre-layout value
+      // and the pin silently does nothing.
+      void dropIndicator.offsetHeight;
+      if (window.scrollY !== scrollYBeforeLift) {
+        window.scrollTo(0, scrollYBeforeLift);
+      }
       indicatorAnim = {
         type: 'fadeInWait',
         until: nowMs() + REORDER_TIMING.LIFT_CARD_FADE_MS,
@@ -1173,13 +1391,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       // Same seed and direction the last tick used, so the block lands in the
       // slot the indicator is showing rather than re-deciding on drop.
+      const finalCenter = liftCenter();
       const finalIndex = followPointer
-        ? resolveInsertIndexFromY(
-          host.getItems(),
-          state.liftTop + state.blockHeight / 2,
-          state.placedIndex,
-          travelDirection,
-        )
+        ? resolveInsert(finalCenter.x, finalCenter.y)
         : state.targetIndex;
       state.targetIndex = finalIndex;
 
