@@ -808,6 +808,25 @@ const statusIcons = {
     revokeLiveHover(slug);
   };
 
+  /**
+   * "Replace cover image" is only right for one of four cases. Name the slot
+   * you are actually dropping into, and say Drop rather than Replace when
+   * there is nothing there yet — a brand new card has no cover to replace.
+   */
+  const syncDropLabel = (cover) => {
+    const label = cover.querySelector('[data-dev-drop-label]');
+    if (!(label instanceof HTMLElement)) return;
+    const hoverImg = cover.querySelector('.project-grid__img--hover');
+    if (cover.classList.contains('is-dev-hover-forced')) {
+      const empty = !(hoverImg instanceof HTMLImageElement) || hoverImg.hidden;
+      label.textContent = empty ? 'Drop hover image' : 'Replace hover image';
+      return;
+    }
+    label.textContent = cover.dataset.devCoverEmpty === 'true'
+      ? 'Drop cover image'
+      : 'Replace cover image';
+  };
+
   const clearAllCoverDropActive = () => {
     document.querySelectorAll('[data-dev-cover-drop][data-dev-drop-active]').forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
@@ -1124,6 +1143,7 @@ const statusIcons = {
 
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+    syncDropLabel(cover);
     cover.dataset.devDropActive = 'true';
   });
 
