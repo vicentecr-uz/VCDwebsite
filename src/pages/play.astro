@@ -3,9 +3,9 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
-import { getPlayGridItems } from '../lib/projects';
+import { getProjectGridListings } from '../lib/projects';
 
-const playItems = getPlayGridItems();
+const playItems = getProjectGridListings('play');
 ---
 
 <Layout title="Play — Vicente Cruz">
@@ -15,40 +15,24 @@ const playItems = getPlayGridItems();
     <main class="listing-main" style="flex: 1;">
       <ProjectGrid
         variant="play"
-        items={playItems.map((item) => {
-          if ('isLink' in item) {
-            return {
-              title: item.title,
-              subtitle: item.meta,
-              image: item.image,
-              bg: item.bg,
-              dark: item.dark,
-              href: item.href,
-              playLinkId: item.id,
-              variants: item.variants,
-              srcWidth: item.srcWidth,
-              srcHeight: item.srcHeight,
-            };
-          }
-          return {
-            title: item.title,
-            subtitle: item.subtitle,
-            image: item.image,
-            hoverImage: item.hoverImage,
-            hoverDark: item.hoverDark,
-            bg: item.bg,
-            dark: item.dark,
-            href: item.href,
-            teaser: item.teaser,
-            teaserLabel: item.teaserLabel,
-            status: item.status,
-            full: item.full,
-            slug: item.slug,
-            variants: item.variants,
-            srcWidth: item.srcWidth,
-            srcHeight: item.srcHeight,
-          };
-        })}
+        items={playItems.map((item) => ({
+          title: item.title,
+          subtitle: item.subtitle,
+          image: item.image,
+          hoverImage: item.hoverImage,
+          hoverDark: item.hoverDark,
+          bg: item.bg,
+          dark: item.dark,
+          href: item.href,
+          teaser: item.teaser,
+          teaserLabel: item.teaserLabel,
+          status: item.status,
+          full: item.full,
+          slug: item.slug,
+          variants: item.variants,
+          srcWidth: item.srcWidth,
+          srcHeight: item.srcHeight,
+        }))}
       />
     </main>
 

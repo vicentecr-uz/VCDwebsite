@@ -16,7 +16,6 @@ import {
 } from '../lib/responsiveImage';
 import {
   hasCropVariants,
-  imageDevEditAttrs,
   imageSourceDims,
   listingCoverDevEditAttrs,
 } from '../lib/projectImageFrame';
@@ -60,21 +59,11 @@ const normalized = hasCrop
   ? normalizeImageVariants(item.variants, defaultAspect, srcDims)
   : undefined;
 const projectEditable = isDev && Boolean(item.slug);
-const linkEditable = isDev && Boolean(item.playLinkId);
 const isPlaceholderCover = projectEditable && isPlaceholderCoverSrc(item.image);
 const projectEditAttrs = projectEditable
   ? listingCoverDevEditAttrs(item.slug!, variant, item, defaultAspect)
   : undefined;
-const linkEditAttrs = linkEditable
-  ? imageDevEditAttrs(true, {
-      documentKey: `play:${item.playLinkId}`,
-      path: [],
-      cropId: 'play-link',
-      variants: normalizeImageVariants(item.variants, defaultAspect, srcDims),
-      gridDefaultAspect: defaultAspect,
-    })
-  : undefined;
-const editAttrs = projectEditAttrs ?? linkEditAttrs;
+const editAttrs = projectEditAttrs;
 
 const hoverDark = item.hoverDark ?? item.dark;
 const metaStyle = [
@@ -90,7 +79,6 @@ const metaStyle = [
 <li
   class:list={['project-grid__item', item.full && 'project-grid__item--full']}
   data-dev-project-slug={item.slug}
-  data-dev-play-link={item.playLinkId}
   data-dev-status={status}
   data-dev-bg={item.bg}
   data-dev-dark={item.dark ? 'true' : 'false'}
@@ -116,7 +104,7 @@ const metaStyle = [
           !hasCrop && 'overflow-hidden',
           item.hoverImage && 'project-grid__cover--has-hover',
           hasCrop && 'project-cropped project-responsive-image',
-          (projectEditable || linkEditable) && 'dev-image-edit-target',
+          (projectEditable) && 'dev-image-edit-target',
         ]}
         style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
         data-dev-cover-drop={projectEditable ? item.slug : undefined}
@@ -204,7 +192,7 @@ const metaStyle = [
           !hasCrop && 'overflow-hidden',
           item.hoverImage && 'project-grid__cover--has-hover',
           hasCrop && 'project-cropped project-responsive-image',
-          (projectEditable || linkEditable) && 'dev-image-edit-target',
+          (projectEditable) && 'dev-image-edit-target',
         ]}
         style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
         data-dev-cover-drop={projectEditable ? item.slug : undefined}
@@ -300,13 +288,13 @@ const metaStyle = [
         </button>
         <div class="project-grid__status-menu" data-dev-status-menu hidden role="listbox">
           <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
-            Published
-          </button>
-          <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
-            Draft
+            Public
           </button>
           <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
             Teaser
+          </button>
+          <button type="button" role="option" data-dev-status-option="draft" aria-selected={status === 'draft'}>
+            Draft
           </button>
         </div>
       </div>
@@ -314,19 +302,17 @@ const metaStyle = [
   )}
   {projectEditable && (
     <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
-      {!isTeaser && (
-        <button
-          type="button"
-          class="project-grid__chip"
-          data-dev-project-hover={item.slug}
-          data-dev-hover-chip-for={item.title}
-          aria-label={`${item.title}: showing cover image — switch to hover image`}
-          aria-pressed="false"
-          title="Showing cover image — switch to hover image"
-        >
-          <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
-        </button>
-      )}
+      <button
+        type="button"
+        class="project-grid__chip"
+        data-dev-project-hover={item.slug}
+        data-dev-hover-chip-for={item.title}
+        aria-label={`${item.title}: showing cover image — switch to hover image`}
+        aria-pressed="false"
+        title="Showing cover image — switch to hover image"
+      >
+        <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+      </button>
       <button
         type="button"
         class="project-grid__chip"
@@ -337,19 +323,6 @@ const metaStyle = [
       >
         <span class="project-grid__chip-icon" aria-hidden="true" set:html={spanIconSvg} />
       </button>
-      <button
-        type="button"
-        class="project-grid__chip"
-        data-dev-edit-trigger="image"
-        aria-label={`Crop cover for ${item.title}`}
-        title="Crop cover"
-      >
-        <span class="project-grid__chip-icon" aria-hidden="true" set:html={cropIconSvg} />
-      </button>
-    </div>
-  )}
-  {linkEditable && (
-    <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
       <button
         type="button"
         class="project-grid__chip"
