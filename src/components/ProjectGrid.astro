@@ -789,21 +789,22 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     lighter on dark, darker on light — so the chip reads as a shape rather
     than a floating glyph either way.
 
-    The light ring is anchored on --color-surface-press (the click fill) but
-    darkened: press is only 1.05:1 against the control fill, which is not a
-    visible hairline. 14% of --color-text into it lands ~1.40:1, in the same
-    family as the dark ring's step. Press / latched promotes the ring colour
-    to the fill on dark; on light the ring simply stays and blends.
+    Both steps are deliberately slight. The light ring is the click fill
+    (--color-surface-press) used as-is; the dark ring sits closer to its own
+    fill than it used to (was --color-bg 36%, ~#6c6c6c, which read as a hard
+    edge). The ring is meant to define the shape, not outline it. Press /
+    latched promotes the ring colour to the fill on dark; on light the ring
+    stays and blends.
   */
   .project-grid {
     --chip-ink-on-light: var(--color-text);
     --chip-fill-on-light: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    --chip-ring-on-light: color-mix(in srgb, var(--color-text) 14%, var(--color-surface-press));
+    --chip-ring-on-light: var(--color-surface-press);
     --chip-press-on-light: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
 
     --chip-ink-on-dark: var(--color-bg);
     --chip-fill-on-dark: rgb(0 0 0 / 0.58);
-    --chip-ring-on-dark: color-mix(in srgb, var(--color-bg) 36%, #1a1a1a);
+    --chip-ring-on-dark: color-mix(in srgb, var(--color-bg) 22%, #1a1a1a);
     --chip-press-on-dark: var(--chip-ring-on-dark);
   }
 
