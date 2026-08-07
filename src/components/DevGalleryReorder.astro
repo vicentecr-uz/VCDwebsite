@@ -159,9 +159,9 @@
     measureInsertGaps: () => ({ top: '0px', bottom: '0px' }),
     resolveInsertIndex: ({ items, centerX, centerY, currentIndex, slot }) =>
       resolveInsertIndexInGrid(items, centerX, centerY, currentIndex, slot, {
-        // A full-width card can only land on a row boundary — dropping it
-        // between two half cards is a position the grid cannot represent
-        // without orphaning one of them into a row of its own.
+        // A full-width card displaces whole rows, not cells: two half cards
+        // sharing a row are one target, because there is no position between
+        // them a full-width card could actually occupy.
         snapToRowStart: dragItem?.classList.contains('project-grid__item--full') ?? false,
       }),
     // A grid packs far more content into the same pointer travel than a page of
