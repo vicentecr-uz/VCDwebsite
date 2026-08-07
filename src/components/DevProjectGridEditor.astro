@@ -286,12 +286,101 @@ const statusIcons = {
     return node;
   };
 
+  /** @type {Map<string, { item: HTMLElement, saved: { title: string, meta: string }, draft: { title: string, meta: string } }>} */
+  const playLinkCaches = new Map();
+
+  const playLinkPendingId = (id) => `play-link:${id}`;
+
+  const readPlayLinkInline = (item) => {
+    const titleNode = item.querySelector('[data-dev-project-title]');
+    const subtitleNode = item.querySelector('[data-dev-project-subtitle]');
+    return {
+      title: titleNode?.textContent?.trim() ?? '',
+      meta: subtitleNode?.textContent?.trim() ?? '',
+    };
+  };
+
+  const playLinkSnapshotsMatch = (a, b) => a.title === b.title && a.meta === b.meta;
+
+  const applyPlayLinkPreview = (item, snapshot) => {
+    const titleNode = item.querySelector('[data-dev-project-title]');
+    const subtitleNode = item.querySelector('[data-dev-project-subtitle]');
+    if (titleNode instanceof HTMLElement && document.activeElement !== titleNode) {
+      titleNode.textContent = snapshot.title;
+    }
+    if (subtitleNode instanceof HTMLElement && document.activeElement !== subtitleNode) {
+      subtitleNode.textContent = snapshot.meta;
+    }
+    enablePlayLinkEditing(item);
+  };
+
+  const ensurePlayLinkLoaded = (id, item) => {
+    let entry = playLinkCaches.get(id);
+    if (entry) return entry;
+    const inline = readPlayLinkInline(item);
+    entry = {
+      item,
+      saved: { title: inline.title, meta: inline.meta },
+      draft: { title: inline.title, meta: inline.meta },
+    };
+    playLinkCaches.set(id, entry);
+    return entry;
+  };
+
+  const syncPlayLinkPendingFor = (id) => {
+    const entry = playLinkCaches.get(id);
+    if (!entry) return;
+    const inline = readPlayLinkInline(entry.item);
+    entry.draft = { title: inline.title, meta: inline.meta };
+    const idKey = playLinkPendingId(id);
+    if (playLinkSnapshotsMatch(entry.saved, entry.draft)) {
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: idKey } }));
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+      detail: {
+        id: idKey,
+        kind: 'play-link',
+        payload: { id, title: entry.draft.title, meta: entry.draft.meta },
+        revert: () => {
+          entry.draft = structuredClone(entry.saved);
+          applyPlayLinkPreview(entry.item, entry.draft);
+        },
+      },
+    }));
+  };
+
+  const enablePlayLinkEditing = (item) => {
+    if (!(item instanceof HTMLElement) || !item.dataset.devPlayLink) return;
+    const title = item.querySelector('[data-dev-project-title]');
+    const subtitle = ensureSubtitleHost(item);
+    setEditable(title);
+    setEditable(subtitle);
+    // Astro leaves whitespace in empty hosts — clear so :empty::before placeholder shows.
+    normalizeEmptyEditable(title);
+    normalizeEmptyEditable(subtitle);
+  };
+
+  const disablePlayLinkEditing = (item) => {
+    if (!(item instanceof HTMLElement)) return;
+    item.querySelectorAll('[data-dev-project-title], [data-dev-project-subtitle]').forEach((node) => {
+      node.removeAttribute('contenteditable');
+      node.removeAttribute('spellcheck');
+    });
+  };
+
   const enableCardEditing = (item) => {
     if (!(item instanceof HTMLElement) || !item.dataset.devProjectSlug) return;
     const status = item.dataset.devStatus || 'published';
-    setEditable(item.querySelector('[data-dev-project-title]'));
-    setEditable(ensureSubtitleHost(item));
-    if (status === 'teaser') setEditable(item.querySelector('[data-dev-project-teaser-label]'));
+    const title = item.querySelector('[data-dev-project-title]');
+    const subtitle = ensureSubtitleHost(item);
+    const teaser = status === 'teaser' ? item.querySelector('[data-dev-project-teaser-label]') : null;
+    setEditable(title);
+    setEditable(subtitle);
+    if (teaser) setEditable(teaser);
+    normalizeEmptyEditable(title);
+    normalizeEmptyEditable(subtitle);
+    if (teaser) normalizeEmptyEditable(teaser);
   };
 
   const disableCardEditing = (item) => {
@@ -308,12 +397,18 @@ const statusIcons = {
     document.querySelectorAll('[data-dev-project-slug]').forEach((item) => {
       if (item instanceof HTMLElement) enableCardEditing(item);
     });
+    document.querySelectorAll('[data-dev-play-link]').forEach((item) => {
+      if (item instanceof HTMLElement) enablePlayLinkEditing(item);
+    });
     disarmCardLinks();
   };
 
   const disableAllCardEditing = () => {
     document.querySelectorAll('[data-dev-project-slug]').forEach((item) => {
       if (item instanceof HTMLElement) disableCardEditing(item);
+    });
+    document.querySelectorAll('[data-dev-play-link]').forEach((item) => {
+      if (item instanceof HTMLElement) disablePlayLinkEditing(item);
     });
     document.querySelectorAll('.is-dev-hover-forced').forEach((node) => {
       node.classList.remove('is-dev-hover-forced');
@@ -421,7 +516,7 @@ const statusIcons = {
     if (listing.hoverImage) item.dataset.devHoverImage = listing.hoverImage;
     else delete item.dataset.devHoverImage;
 
-    item.classList.toggle('project-grid__item--full', Boolean(listing.full) && grid !== 'play');
+    item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
       cover.classList.toggle('project-grid__cover--has-hover', !isTeaser && Boolean(listing.hoverImage));
       // #176 — the empty state is server-rendered, so it has to be re-derived
@@ -459,6 +554,14 @@ const statusIcons = {
       if (document.activeElement !== titleNode && titleNode.textContent !== snapshot.title) {
         titleNode.textContent = snapshot.title;
       }
+    }
+    // Subtitle (Year on home/work, Meta on play) — must restore on Revert; title
+    // was handled above but this field was missed, so clearing Year then Revert
+    // left the DOM empty while the draft snapshot had the saved year again.
+    const subtitleNode = ensureSubtitleHost(item);
+    if (subtitleNode instanceof HTMLElement && document.activeElement !== subtitleNode) {
+      const next = String(listing.subtitle ?? snapshot.subtitle ?? '');
+      if (subtitleNode.textContent !== next) subtitleNode.textContent = next;
     }
     const meta = item.querySelector('.project-grid__meta');
     if (meta instanceof HTMLElement) {
@@ -677,7 +780,6 @@ const statusIcons = {
     const slug = item.getAttribute('data-dev-project-slug');
     if (!slug) return;
     const grid = gridForItem(item);
-    if (grid === 'play') return;
     try {
       const entry = await ensureLoaded(slug, item);
       entry.draft.listing.full = Boolean(full);
@@ -1173,13 +1275,20 @@ const statusIcons = {
     }
 
     // Was buried in the crop tuner's "Card settings" button; now its own chip.
+    // Same toggle as crop: click again while open for this card closes the panel.
     const settingsButton = target.closest('[data-dev-project-settings]');
     if (settingsButton instanceof HTMLElement) {
       event.preventDefault();
       event.stopPropagation();
       const item = settingsButton.closest('[data-dev-project-slug]');
       const slug = item?.getAttribute('data-dev-project-slug');
-      if (slug) void openSettings(slug);
+      if (!slug) return;
+      const panelOpen = settingsPanel instanceof HTMLElement && !settingsPanel.hidden;
+      if (panelOpen && panelSlug === slug) {
+        closeSettingsPanel();
+        return;
+      }
+      void openSettings(slug);
       return;
     }
 
@@ -1226,6 +1335,13 @@ const statusIcons = {
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
     normalizeEmptyEditable(target);
+    const playLinkItem = target.closest('[data-dev-play-link]');
+    const playLinkId = playLinkItem?.getAttribute('data-dev-play-link');
+    if (playLinkItem instanceof HTMLElement && playLinkId) {
+      ensurePlayLinkLoaded(playLinkId, playLinkItem);
+      syncPlayLinkPendingFor(playLinkId);
+      return;
+    }
     const item = target.closest('[data-dev-project-slug]');
     const slug = item?.getAttribute('data-dev-project-slug');
     if (!(item instanceof HTMLElement) || !slug) return;
@@ -1429,6 +1545,10 @@ const statusIcons = {
       applyListingPreview(entry.item, entry.draft, entry.grid);
       if (panelSlug === slug) renderPanelFromEntry(entry);
     });
+    playLinkCaches.forEach((entry) => {
+      entry.draft = structuredClone(entry.saved);
+      applyPlayLinkPreview(entry.item, entry.draft);
+    });
   });
 
   window.addEventListener('vcd:dev-pending-committed', () => {
@@ -1438,6 +1558,9 @@ const statusIcons = {
         await promoteLiveHoverOnSave(slug, entry);
         entry.saved = structuredClone(entry.draft);
       }
+      playLinkCaches.forEach((entry) => {
+        entry.saved = structuredClone(entry.draft);
+      });
     })();
   });
 

@@ -21,10 +21,12 @@ import {
   projectDeleteDevWriter,
   projectRenameDevWriter,
   projectSettingsDevWriter,
+  playLinkSettingsDevWriter,
   publishMediaDevWriter,
   readDevDocument,
   resolveDevFieldTarget,
   resolveEditableDocument,
+  isPlayDocumentKey,
   uploadDevWriter,
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
@@ -106,13 +108,13 @@ function imageCropDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
 
           const documentKey = String(body.document || '');
-                    const fieldPath = body.path;
+          const fieldPath = body.path;
           if (
             !resolveEditableDocument(documentKey) ||
             !Array.isArray(fieldPath) ||
-            !fieldPath.length ||
             fieldPath.length > 8 ||
-            !fieldPath.every(isSafePathPart)
+            !fieldPath.every(isSafePathPart) ||
+            (fieldPath.length === 0 && !isPlayDocumentKey(documentKey))
           ) {
             send(400, { error: 'That image is not editable.' });
             return;
@@ -603,10 +605,10 @@ const applyImageWidthFlags = (target, change) => {
  */
 const applyCropChange = (data, change) => {
   const fieldPath = change.path;
-  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+  if (!Array.isArray(fieldPath) || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
     return { ok: false, error: 'That image is not editable.' };
   }
-  const target = resolvePathTarget(data, fieldPath);
+  const target = fieldPath.length === 0 ? data : resolvePathTarget(data, fieldPath);
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That image path no longer exists.' };
   }
@@ -1104,9 +1106,9 @@ function contentBatchDevWriter() {
           /** @type {Map<string, { crops: any[], grids: any[], carousels: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
           const resolveBatchChange = (documentKey, fieldPath) => {
-            // resolveDevFieldTarget throws on an unknown document or an empty
-            // path; swallow it so the caller's specific message wins over the
-            // catch-all at the bottom of the handler.
+            // resolveDevFieldTarget throws on an unknown document or an invalid
+            // path (empty path is only valid for play:* roots); swallow it so
+            // the caller's specific message wins over the catch-all below.
             let target;
             try {
               target = resolveDevFieldTarget(documentKey, '', fieldPath);
@@ -2031,6 +2033,7 @@ export default defineConfig({
       galleryMembershipDevWriter(),
       sectionOrderDevWriter(),
       projectSettingsDevWriter(),
+      playLinkSettingsDevWriter(),
       publishMediaDevWriter(),
       publishDevWriter(),
       issueDevWriter(),

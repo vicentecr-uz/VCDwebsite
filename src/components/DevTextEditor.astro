@@ -215,7 +215,7 @@
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'play-link' | 'gallery-membership';
       payload: Record<string, unknown>;
       revert: () => void;
       /** Live section root for placeholder fills — index is read from it at Save. */
@@ -1976,6 +1976,7 @@
           && detail.kind !== 'section-nav'
           && detail.kind !== 'media-remove'
           && detail.kind !== 'project-settings'
+          && detail.kind !== 'play-link'
           && detail.kind !== 'gallery-membership')
       ) {
         return;
@@ -2488,6 +2489,7 @@
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const galleryMembershipChanges = pendingChanges.filter((change) => change.kind === 'gallery-membership');
       const projectSettingsChanges = pendingChanges.filter((change) => change.kind === 'project-settings');
+      const playLinkChanges = pendingChanges.filter((change) => change.kind === 'play-link');
       const sectionOrderChanges = pendingChanges.filter((change) => change.kind === 'section-order');
       const placeholderFills = pendingChanges.filter((change) => change.kind === 'placeholder-fill');
       const styleTokenChanges = pendingChanges.filter((change) => change.kind === 'style-token');
@@ -2503,6 +2505,7 @@
           && change.kind !== 'section-nav'
           && change.kind !== 'media-remove'
           && change.kind !== 'project-settings'
+          && change.kind !== 'play-link'
         ),
       );
       if (
@@ -2522,7 +2525,7 @@
           slug?: unknown;
           slugs?: unknown;
         } | undefined;
-        const key = payload?.document ?? payload?.slug;
+        const key = payload?.document ?? payload?.slug ?? (typeof payload?.id === 'string' ? `play:${payload.id}` : undefined);
         if (typeof key === 'string' && key) documents.add(key);
         if (Array.isArray(payload?.slugs)) {
           for (const slug of payload.slugs) {
@@ -2546,6 +2549,7 @@
           listingOrder: listingChanges.length,
           galleryMembership: galleryMembershipChanges.length,
           projectSettings: projectSettingsChanges.length,
+          playLink: playLinkChanges.length,
           styleToken: styleTokenChanges.length,
           sectionNav: sectionNavChanges.length,
           mediaRemove: mediaRemoveChanges.length,
@@ -2616,6 +2620,18 @@
           const moved = payload.moved;
           if (Array.isArray(moved) && moved.length) {
             setStickyStatus(`Published ${moved.length} image(s) to public/images.`);
+          }
+        }
+
+        for (const change of playLinkChanges) {
+          const response = await fetch('/api/play-link-settings', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.payload),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok) {
+            throw new Error(String(payload.error || 'Could not save play link settings.'));
           }
         }
 

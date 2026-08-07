@@ -76,6 +76,9 @@ function rewriteDraftRefs(node, oldSlug, newSlug) {
 }
 
 async function assertModernProject(slug) {
+  if (isPlayDocumentKey(slug)) {
+    throw new Error('Play links cannot be edited through project settings.');
+  }
   const relativeFile = resolveEditableDocument(slug);
   if (!relativeFile) {
     throw new Error('Project not found.');
@@ -96,11 +99,24 @@ export async function writeDevDocument(relativeFile, data) {
   await writeProjectJson(path.join(process.cwd(), relativeFile), data);
 }
 
+export function isPlayDocumentKey(documentKey) {
+  return typeof documentKey === 'string' && documentKey.startsWith('play:');
+}
+
 export function resolveDevFieldTarget(slug, _viewId, fieldPath) {
   const relativeFile = resolveEditableDocument(slug);
   if (!relativeFile) throw new Error('Project not found.');
-  if (!Array.isArray(fieldPath) || !fieldPath.length) {
+  if (!Array.isArray(fieldPath)) {
     throw new Error('Invalid field path.');
+  }
+  // Empty path = document root. Only play-link JSON is flat (image/variants at
+  // the top level). Allowing [] on a project would stamp variants onto the
+  // project root and corrupt listings.
+  if (fieldPath.length === 0) {
+    if (!isPlayDocumentKey(slug)) {
+      throw new Error('Invalid field path.');
+    }
+    return { relativeFile, path: fieldPath, ensureOverlay: false };
   }
   return { relativeFile, path: fieldPath, ensureOverlay: false };
 }
@@ -136,6 +152,17 @@ export function resolveEditableDocument(documentKey) {
     }
   } catch {
     // projects dir may not exist yet during first scaffold
+  }
+  const playDir = path.join(process.cwd(), 'src/content/play');
+  try {
+    for (const file of readdirSync(playDir)) {
+      if (!file.endsWith('.json')) continue;
+      const id = file.replace(/\.json$/, '');
+      if (id.includes('..') || id.includes('/')) continue;
+      map.set(`play:${id}`, `src/content/play/${file}`);
+    }
+  } catch {
+    // play dir may not exist yet
   }
   return map.get(documentKey);
 }
@@ -547,6 +574,10 @@ export function uploadDevWriter() {
           }
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
+          if (isPlayDocumentKey(documentKey)) {
+            send(400, { error: 'Play links cannot receive uploads here.' });
+            return;
+          }
           if (!resolveEditableDocument(documentKey)) {
             send(400, { error: 'That document cannot receive uploads.' });
             return;
@@ -651,6 +682,10 @@ export function projectSettingsDevWriter() {
           try {
             const url = new URL(req.url ?? '/', 'http://localhost');
             const slug = String(url.searchParams.get('slug') || '');
+            if (isPlayDocumentKey(slug)) {
+              send(400, { error: 'Play links cannot be edited through project settings.' });
+              return;
+            }
             const relativeFile = resolveEditableDocument(slug);
             if (!relativeFile) {
               send(404, { error: 'Project not found.' });
@@ -692,6 +727,10 @@ export function projectSettingsDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const slug = String(body.slug || '').trim();
+          if (isPlayDocumentKey(slug)) {
+            send(400, { error: 'Play links cannot be edited through project settings.' });
+            return;
+          }
           const relativeFile = resolveEditableDocument(slug);
           if (!relativeFile) {
             send(404, { error: 'Project not found.' });
@@ -749,6 +788,10 @@ export function sectionOrderDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '').trim();
+          if (isPlayDocumentKey(documentKey)) {
+            send(400, { error: 'Play links do not have reorderable sections.' });
+            return;
+          }
           const relativeFile = resolveEditableDocument(documentKey);
           if (!relativeFile) {
             send(400, { error: 'That document cannot be updated.' });
@@ -1204,6 +1247,54 @@ export function projectRenameDevWriter() {
   };
 }
 
+export function playLinkSettingsDevWriter() {
+  return {
+    name: 'play-link-settings-dev-writer',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/play-link-settings', async (req, res, next) => {
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const id = String(body.id || '').trim();
+          if (!id || id.includes('..') || id.includes('/')) {
+            send(400, { error: 'Invalid play link id.' });
+            return;
+          }
+          const documentKey = `play:${id}`;
+          const relativeFile = resolveEditableDocument(documentKey);
+          if (!relativeFile) {
+            send(404, { error: 'Play link not found.' });
+            return;
+          }
+          const file = path.join(process.cwd(), relativeFile);
+          const data = JSON.parse(await readFile(file, 'utf8'));
+          if (typeof body.title === 'string') {
+            data.title = body.title.trim();
+          }
+          if (typeof body.meta === 'string') {
+            data.meta = body.meta.trim();
+          }
+          await writeProjectJson(file, data);
+          send(200, { ok: true });
+        } catch {
+          send(400, { error: 'Could not save play link settings.' });
+        }
+      });
+    },
+  };
+}
+
 export function publishMediaDevWriter() {
   return {
     name: 'publish-media-dev-writer',
@@ -1224,6 +1315,10 @@ export function publishMediaDevWriter() {
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const slug = String(body.slug || '').trim();
+          if (isPlayDocumentKey(slug)) {
+            send(400, { error: 'Play links cannot publish draft media through project settings.' });
+            return;
+          }
           const relativeFile = resolveEditableDocument(slug);
           if (!relativeFile) {
             send(404, { error: 'Project not found.' });
