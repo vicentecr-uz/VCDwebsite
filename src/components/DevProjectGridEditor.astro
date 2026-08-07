@@ -281,89 +281,6 @@ const statusIcons = {
     return node;
   };
 
-  /** @type {Map<string, { item: HTMLElement, saved: { title: string, meta: string }, draft: { title: string, meta: string } }>} */
-  const playLinkCaches = new Map();
-
-  const playLinkPendingId = (id) => `play-link:${id}`;
-
-  const readPlayLinkInline = (item) => {
-    const titleNode = item.querySelector('[data-dev-project-title]');
-    const subtitleNode = item.querySelector('[data-dev-project-subtitle]');
-    return {
-      title: titleNode?.textContent?.trim() ?? '',
-      meta: subtitleNode?.textContent?.trim() ?? '',
-    };
-  };
-
-  const playLinkSnapshotsMatch = (a, b) => a.title === b.title && a.meta === b.meta;
-
-  const applyPlayLinkPreview = (item, snapshot) => {
-    const titleNode = item.querySelector('[data-dev-project-title]');
-    const subtitleNode = item.querySelector('[data-dev-project-subtitle]');
-    if (titleNode instanceof HTMLElement && document.activeElement !== titleNode) {
-      titleNode.textContent = snapshot.title;
-    }
-    if (subtitleNode instanceof HTMLElement && document.activeElement !== subtitleNode) {
-      subtitleNode.textContent = snapshot.meta;
-    }
-    enablePlayLinkEditing(item);
-  };
-
-  const ensurePlayLinkLoaded = (id, item) => {
-    let entry = playLinkCaches.get(id);
-    if (entry) return entry;
-    const inline = readPlayLinkInline(item);
-    entry = {
-      item,
-      saved: { title: inline.title, meta: inline.meta },
-      draft: { title: inline.title, meta: inline.meta },
-    };
-    playLinkCaches.set(id, entry);
-    return entry;
-  };
-
-  const syncPlayLinkPendingFor = (id) => {
-    const entry = playLinkCaches.get(id);
-    if (!entry) return;
-    const inline = readPlayLinkInline(entry.item);
-    entry.draft = { title: inline.title, meta: inline.meta };
-    const idKey = playLinkPendingId(id);
-    if (playLinkSnapshotsMatch(entry.saved, entry.draft)) {
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: idKey } }));
-      return;
-    }
-    window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-      detail: {
-        id: idKey,
-        kind: 'play-link',
-        payload: { id, title: entry.draft.title, meta: entry.draft.meta },
-        revert: () => {
-          entry.draft = structuredClone(entry.saved);
-          applyPlayLinkPreview(entry.item, entry.draft);
-        },
-      },
-    }));
-  };
-
-  const enablePlayLinkEditing = (item) => {
-    if (!(item instanceof HTMLElement) || !item.dataset.devPlayLink) return;
-    const title = item.querySelector('[data-dev-project-title]');
-    const subtitle = ensureSubtitleHost(item);
-    setEditable(title);
-    setEditable(subtitle);
-    // Astro leaves whitespace in empty hosts — clear so :empty::before placeholder shows.
-    normalizeEmptyEditable(title);
-    normalizeEmptyEditable(subtitle);
-  };
-
-  const disablePlayLinkEditing = (item) => {
-    if (!(item instanceof HTMLElement)) return;
-    item.querySelectorAll('[data-dev-project-title], [data-dev-project-subtitle]').forEach((node) => {
-      node.removeAttribute('contenteditable');
-      node.removeAttribute('spellcheck');
-    });
-  };
-
   const enableCardEditing = (item) => {
     if (!(item instanceof HTMLElement) || !item.dataset.devProjectSlug) return;
     const status = item.dataset.devStatus || 'published';
@@ -392,18 +309,12 @@ const statusIcons = {
     document.querySelectorAll('[data-dev-project-slug]').forEach((item) => {
       if (item instanceof HTMLElement) enableCardEditing(item);
     });
-    document.querySelectorAll('[data-dev-play-link]').forEach((item) => {
-      if (item instanceof HTMLElement) enablePlayLinkEditing(item);
-    });
     disarmCardLinks();
   };
 
   const disableAllCardEditing = () => {
     document.querySelectorAll('[data-dev-project-slug]').forEach((item) => {
       if (item instanceof HTMLElement) disableCardEditing(item);
-    });
-    document.querySelectorAll('[data-dev-play-link]').forEach((item) => {
-      if (item instanceof HTMLElement) disablePlayLinkEditing(item);
     });
     document.querySelectorAll('.is-dev-hover-forced').forEach((node) => {
       node.classList.remove('is-dev-hover-forced');
@@ -441,7 +352,7 @@ const statusIcons = {
       dark: Boolean(listing.dark),
       full: Boolean(listing.full),
     };
-    if (status !== 'teaser' && hoverImage) {
+    if (hoverImage) {
       base.hoverImage = hoverImage;
       if (typeof listing.hoverDark === 'boolean') base.hoverDark = listing.hoverDark;
     }
@@ -513,31 +424,18 @@ const statusIcons = {
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
-      cover.classList.toggle('project-grid__cover--has-hover', !isTeaser && Boolean(listing.hoverImage));
+      cover.classList.toggle('project-grid__cover--has-hover', Boolean(listing.hoverImage));
       // #176 — the empty state is server-rendered, so it has to be re-derived
       // here or the "Drop cover image" label and its wash sit on top of the
       // image you just dropped until the next reload.
       if (isPlaceholderCover(displayImage)) cover.dataset.devCoverEmpty = 'true';
       else delete cover.dataset.devCoverEmpty;
-      // buildListingPayload drops hoverImage for teasers, so a hover drop on a
-      // card switched to teaser mid-session would vanish at Save. Markup is
-      // server-rendered and the status changes client-side, so retire the chip
-      // (and any forced-hover it left behind) here rather than only in Astro.
-      if (isTeaser) cover.classList.remove('is-dev-hover-forced');
-    }
-    const hoverChip = item.querySelector('[data-dev-project-hover]');
-    if (hoverChip instanceof HTMLElement) {
-      hoverChip.hidden = isTeaser;
-      if (isTeaser) {
-        hoverChip.setAttribute('aria-pressed', 'false');
-        setHoverChipLabel(hoverChip, false);
-      }
     }
     if (baseImg instanceof HTMLImageElement && displayImage) {
       baseImg.src = displayImage;
     }
     if (hoverImg instanceof HTMLImageElement) {
-      if (!isTeaser && (liveHover || listing.hoverImage)) {
+      if (liveHover || listing.hoverImage) {
         hoverImg.src = liveHover || listing.hoverImage;
         hoverImg.hidden = false;
       } else {
@@ -1333,13 +1231,6 @@ const statusIcons = {
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
     normalizeEmptyEditable(target);
-    const playLinkItem = target.closest('[data-dev-play-link]');
-    const playLinkId = playLinkItem?.getAttribute('data-dev-play-link');
-    if (playLinkItem instanceof HTMLElement && playLinkId) {
-      ensurePlayLinkLoaded(playLinkId, playLinkItem);
-      syncPlayLinkPendingFor(playLinkId);
-      return;
-    }
     const item = target.closest('[data-dev-project-slug]');
     const slug = item?.getAttribute('data-dev-project-slug');
     if (!(item instanceof HTMLElement) || !slug) return;
@@ -1543,10 +1434,6 @@ const statusIcons = {
       applyListingPreview(entry.item, entry.draft, entry.grid);
       if (panelSlug === slug) renderPanelFromEntry(entry);
     });
-    playLinkCaches.forEach((entry) => {
-      entry.draft = structuredClone(entry.saved);
-      applyPlayLinkPreview(entry.item, entry.draft);
-    });
   });
 
   window.addEventListener('vcd:dev-pending-committed', () => {
@@ -1556,9 +1443,6 @@ const statusIcons = {
         await promoteLiveHoverOnSave(slug, entry);
         entry.saved = structuredClone(entry.draft);
       }
-      playLinkCaches.forEach((entry) => {
-        entry.saved = structuredClone(entry.draft);
-      });
     })();
   });
 

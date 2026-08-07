@@ -66,9 +66,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
    *   srcHeight?: number,
    * }} GalleryPage */
 
-  type GridOrderEntry =
-    | { type: 'project'; slug: string; order: number; full: boolean }
-    | { type: 'play-link'; id: string; order: number };
+  type GridOrderEntry = { type: 'project'; slug: string; order: number; full: boolean };
 
   const initDevGalleryPages = () => {
     const root = document.querySelector<HTMLElement>('[data-dev-gallery-pages]');
@@ -151,10 +149,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       return [...grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)')]
         .map((item, index) => {
           const slug = item.dataset.devProjectSlug;
-          const playLink = item.dataset.devPlayLink;
           const full = item.classList.contains('project-grid__item--full');
           if (slug) return { type: 'project' as const, slug, order: index + 1, full };
-          if (playLink) return { type: 'play-link' as const, id: playLink, order: index + 1 };
           return null;
         })
         .filter((entry): entry is GridOrderEntry => entry !== null);
@@ -410,7 +406,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       if (hoverBtn) {
         hoverBtn.dataset.devProjectHover = page.slug;
         hoverBtn.dataset.devHoverChipFor = page.title;
-        hoverBtn.hidden = isTeaser;
       }
       const spanBtn = item.querySelector<HTMLElement>('[data-dev-project-span]');
       if (spanBtn) {
@@ -450,7 +445,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
         if (isPlaceholder) cover.dataset.devCoverEmpty = 'true';
         else delete cover.dataset.devCoverEmpty;
 
-        cover.classList.toggle('project-grid__cover--has-hover', !isTeaser && Boolean(page.hoverImage));
+        cover.classList.toggle('project-grid__cover--has-hover', Boolean(page.hoverImage));
         cover.classList.toggle('overflow-hidden', !hasCrop);
         cover.classList.toggle('project-cropped', hasCrop);
         cover.classList.toggle('project-responsive-image', hasCrop);
@@ -480,7 +475,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
         const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
         if (hoverImg) {
-          if (!isTeaser && page.hoverImage) {
+          if (page.hoverImage) {
             hoverImg.src = projectImage(page.hoverImage);
             hoverImg.hidden = false;
           } else {
@@ -595,26 +590,19 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       }
 
       const byProject = new Map<string, HTMLElement>();
-      const byPlay = new Map<string, HTMLElement>();
 
       for (const item of grid.querySelectorAll<HTMLElement>('.project-grid__item:not(.project-grid__item--new)')) {
         const slug = item.dataset.devProjectSlug;
-        const playLink = item.dataset.devPlayLink;
         if (slug) byProject.set(slug, item);
-        if (playLink) byPlay.set(playLink, item);
       }
       for (const [slug, item] of detachedItems) byProject.set(slug, item);
       for (const [slug, item] of createdItems) byProject.set(slug, item);
 
       const anchor = grid.querySelector('.project-grid__item--new');
       for (const entry of baselineOrder) {
-        const item = entry.type === 'project'
-          ? byProject.get(entry.slug)
-          : byPlay.get(entry.id);
+        const item = byProject.get(entry.slug);
         if (!item) continue;
-        if (entry.type === 'project') {
-          item.classList.toggle('project-grid__item--full', entry.full);
-        }
+        item.classList.toggle('project-grid__item--full', entry.full);
         if (anchor) grid.insertBefore(item, anchor);
         else grid.append(item);
       }
