@@ -1,5 +1,5 @@
 // @ts-check
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
@@ -9,9 +9,9 @@ const UNASSIGNED_SLUG = '__unassigned__';
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']);
 const DEFAULT_COVER = '/images/black-token.svg';
 
-/** @param {string} slug @param {string} filename */
-function draftMediaSrc(slug, filename) {
-  return `${DRAFT_PREFIX}${slug}/${filename}`;
+/** @param {string} filename */
+function draftMediaSrc(filename) {
+  return `${DRAFT_PREFIX}${filename}`;
 }
 
 /** @param {string} relativeFile @param {unknown} data */
@@ -108,9 +108,8 @@ function isImageFilename(filename) {
  *     id: string,
  *     src: string,
  *     url: string,
- *     projectSlug: string,
- *     onPage: boolean,
  *     filename: string,
+ *     usedBy: string[],
  *   }>,
  * }>}
  */
@@ -157,69 +156,45 @@ export async function listDevAssets(filterProject = '') {
    *   id: string,
    *   src: string,
    *   url: string,
-   *   projectSlug: string,
-   *   onPage: boolean,
    *   filename: string,
+   *   usedBy: Set<string>,
    * }>} */
   const assets = new Map();
 
-  const addAsset = (src, projectSlug, onPage) => {
+  const addAsset = (src) => {
     const token = normalizeAssetSrc(src);
     if (!token) return;
-    const key = `${projectSlug}::${token}`;
-    const existing = assets.get(key);
-    if (existing) {
-      existing.onPage = existing.onPage || onPage;
-      return;
-    }
+    if (assets.has(token)) return;
     const filename = token.startsWith(DRAFT_PREFIX)
-      ? token.slice(token.lastIndexOf('/') + 1)
+      ? token.slice(DRAFT_PREFIX.length)
       : path.basename(token);
-    assets.set(key, {
-      id: key,
+    assets.set(token, {
+      id: token,
       src: token,
       url: assetUrlFromSrc(token),
-      projectSlug,
-      onPage,
       filename,
+      usedBy: new Set(),
     });
   };
 
-  // Draft media folders — attributed to their slug.
+  // Flat draft media folder — one file per token.
   try {
-    for (const slug of readdirSync(draftsRoot)) {
-      const dir = path.join(draftsRoot, slug);
+    for (const filename of readdirSync(draftsRoot)) {
+      if (filename === '.gitkeep') continue;
+      const filePath = path.join(draftsRoot, filename);
       try {
-        if (!statSync(dir).isDirectory()) continue;
+        if (!statSync(filePath).isFile()) continue;
       } catch {
         continue;
       }
-      const refs = refsByProject.get(slug) ?? new Set();
-      for (const filename of readdirSync(dir)) {
-        if (!isImageFilename(filename)) continue;
-        const src = draftMediaSrc(slug, filename);
-        addAsset(src, slug, refs.has(src));
-      }
+      if (!isImageFilename(filename)) continue;
+      addAsset(draftMediaSrc(filename));
     }
   } catch {
     // No drafts yet.
   }
 
-  // Referenced public images — attribute to each project that references them.
-  for (const [slug, refs] of refsByProject) {
-    for (const src of refs) {
-      if (src.startsWith(DRAFT_PREFIX)) continue;
-      const filePath = resolveAssetFilePath(src);
-      if (!filePath || !existsSync(filePath)) {
-        // Still list referenced missing files as on-page so editors can see the gap.
-        addAsset(src, slug, true);
-        continue;
-      }
-      addAsset(src, slug, true);
-    }
-  }
-
-  // Unreferenced top-level public images → Unassigned.
+  // Public images.
   try {
     for (const filename of readdirSync(publicDir)) {
       if (!isImageFilename(filename)) continue;
@@ -230,25 +205,42 @@ export async function listDevAssets(filterProject = '') {
         continue;
       }
       if (filename === 'placeholder.svg' || filename === 'black-token.svg') continue;
-      if (allReferenced.has(filename)) continue;
-      addAsset(filename, UNASSIGNED_SLUG, false);
+      addAsset(filename);
     }
   } catch {
     // public/images missing
   }
 
-  let list = [...assets.values()];
-  const projectFilter = String(filterProject || '').trim();
-  if (projectFilter && projectFilter !== UNASSIGNED_SLUG) {
-    list = list.filter((asset) => asset.projectSlug === projectFilter);
-  } else if (projectFilter === UNASSIGNED_SLUG) {
-    list = list.filter((asset) => asset.projectSlug === UNASSIGNED_SLUG);
+  // Referenced files — including missing ones, so editors can see the gap.
+  for (const refs of refsByProject.values()) {
+    for (const src of refs) addAsset(src);
   }
 
-  list.sort((a, b) => {
-    if (a.projectSlug !== b.projectSlug) return a.projectSlug.localeCompare(b.projectSlug);
-    return a.filename.localeCompare(b.filename);
-  });
+  // usedBy — every project that references each token.
+  for (const [slug, refs] of refsByProject) {
+    for (const src of refs) {
+      const token = normalizeAssetSrc(src);
+      const asset = assets.get(token);
+      if (asset) asset.usedBy.add(slug);
+    }
+  }
+
+  let list = [...assets.values()].map((asset) => ({
+    id: asset.id,
+    src: asset.src,
+    url: asset.url,
+    filename: asset.filename,
+    usedBy: [...asset.usedBy].sort(),
+  }));
+
+  const projectFilter = String(filterProject || '').trim();
+  if (projectFilter && projectFilter !== UNASSIGNED_SLUG) {
+    list = list.filter((asset) => asset.usedBy.includes(projectFilter));
+  } else if (projectFilter === UNASSIGNED_SLUG) {
+    list = list.filter((asset) => asset.usedBy.length === 0);
+  }
+
+  list.sort((a, b) => a.filename.localeCompare(b.filename));
 
   const projectRows = [
     ...projects,
