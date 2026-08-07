@@ -12,6 +12,7 @@ import ProjectBodyText from '../components/project/ProjectBodyText.astro';
 import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
 import ProjectPressQuoteTicker from '../components/project/ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from '../components/project/ProjectRedditCommentCarousel.astro';
+import ProjectVideo from '../components/project/ProjectVideo.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
 import stylesNav from '../content/pages/styles.json';
 import {
@@ -75,7 +76,8 @@ type PreviewKey =
   | 'section-title'
   | 'image-grid'
   | 'press-quote-ticker'
-  | 'reddit-comment-carousel';
+  | 'reddit-comment-carousel'
+  | 'video';
 
 type ComponentEntry = {
   id: string;
@@ -229,6 +231,18 @@ const componentCatalog: ComponentEntry[] = [
     usedOn: ['Tapico'],
     checklist: 'Three-column stagger; wheel scroll passes through to page; infinite loop per column.',
     preview: 'reddit-comment-carousel',
+  },
+  {
+    id: 'component-project-video',
+    name: 'ProjectVideo',
+    category: 'project-media',
+    purpose: 'Self-hosted video player (media-chrome) with a centred play affordance and a minimal seek bar — no embed, no skin.',
+    classRef: '.project-video-player / .project-video-player__play / .project-video-player__progress',
+    source: 'src/components/project/ProjectVideo.astro',
+    props: 'src, poster?, alt?, autoplay? (default false), aspectRatio? (default "16:9"), spacing?',
+    usedOn: [],
+    checklist: 'Centre play button fades on play / reappears on hover; seek bar floats clear of all three edges and grows on hover/focus; reduced-motion disables autoplay and all transitions; missing src renders an empty black block only.',
+    preview: 'video',
   },
 ];
 
@@ -648,6 +662,18 @@ const sectionLinks = savedOutline.length
                       )}
                       {component.preview === 'reddit-comment-carousel' && (
                         <ProjectRedditCommentCarousel items={previewRedditComments} />
+                      )}
+                      {component.preview === 'video' && (
+                        <>
+                          <ProjectVideo src="sample.mp4" alt="ProjectVideo player preview" spacing="none" />
+                          <p class="preview-note">
+                            JSON shape: <code>type: "video"</code> with <code>src</code>, <code>poster?</code>,{' '}
+                            <code>alt?</code>, <code>autoplay?</code>, <code>aspectRatio?</code>,{' '}
+                            <code>spacing?</code>. Video files live in <code>public/videos/</code> —{' '}
+                            <code>sample.mp4</code> isn't in the repo yet, so this preview shows the player
+                            chrome over a black frame (no video to decode) until one is added.
+                          </p>
+                        </>
                       )}
                     </div>
                   </article>
