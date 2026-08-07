@@ -784,6 +784,20 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     pointer-events: none !important;
   }
 
+  /*
+    The title/year dash is the same affordance layer as the chips, so it
+    leaves with them — during a drop the cover is the only thing being
+    offered, and edit chrome for something else is noise. The text itself
+    stays (meta is z-index 5, above the wash); only the rule fades.
+    outline-color, not opacity: an outline has no box of its own to fade.
+  */
+  .project-grid__item:has(.project-grid__cover[data-dev-drop-active='true'])
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable],
+  .project-grid__item:has(.project-grid__cover[data-dev-crossfade-active='true'])
+    :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
+    outline-color: transparent;
+  }
+
   /* During replace: hold page white under the fades so listing `bg` never peeks. */
   .project-grid__cover[data-dev-crossfade-active='true'] {
     background-color: var(--color-bg) !important;
@@ -862,7 +876,9 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    html.is-dev-mode .project-grid__cover::before {
+    html.is-dev-mode .project-grid__cover::before,
+    html.is-dev-mode
+      :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
       transition: none;
     }
   }
@@ -873,6 +889,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     outline-offset: 0.12em;
     border-radius: 0.15em;
     cursor: text;
+    /* Matches the chips' fade out during a drop — see the drop-active rule above. */
+    transition: outline-color 0.2s ease;
     /* Shrink-wrap when filled; min-width only on :empty below (years looked padded). */
     display: inline-block;
     min-height: 1.15em;
