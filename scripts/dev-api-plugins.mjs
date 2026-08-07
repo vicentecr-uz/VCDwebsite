@@ -16,6 +16,9 @@ async function writeProjectJson(file, data) {
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser']);
 const PUBLIC_STATUSES = new Set(['published', 'teaser']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
+/** Every JSON key that can hold an image token: sections use `src`, listing cards
+ *  `image` / `hoverImage`, teasers `coverImage`. Promotion must cover all of them. */
+const DRAFT_SRC_KEYS = ['src', 'image', 'hoverImage', 'coverImage'];
 
 function validateStatus(status, fallback = 'draft') {
   const value = String(status || fallback);
@@ -440,25 +443,33 @@ export async function publishDraftMediaForProject(slug, data) {
       return;
     }
     if (!node || typeof node !== 'object') return;
-    if (typeof node.src === 'string' && node.src.startsWith('draft:')) {
-      const filename = node.src.slice('draft:'.length);
-      if (!filename.includes('/') && !filename.includes('..')) {
-        const draftToken = node.src;
-        const existingTarget = promoted.get(draftToken);
-        if (existingTarget) {
-          node.src = existingTarget;
-        } else {
-          const source = path.join(draftDir, filename);
-          const targetName = await uniqueUploadFilename(publicDir, filename);
-          const target = path.join(publicDir, targetName);
-          const file = await readFile(source);
-          await writeFile(target, file);
-          node.src = targetName;
-          moved.push(targetName);
-          publishedSources.push(source);
-          promoted.set(draftToken, targetName);
-        }
+    for (const key of DRAFT_SRC_KEYS) {
+      const raw = node[key];
+      if (typeof raw !== 'string') continue;
+      // Sections store `draft:name.jpg`; listing covers store the `/draft-media/…`
+      // URL form. normalizeAssetSrc collapses both, so a draft cover promotes on
+      // publish instead of shipping a path that only resolves in dev.
+      const draftToken = normalizeAssetSrc(raw);
+      if (!draftToken.startsWith('draft:')) continue;
+      const filename = draftToken.slice('draft:'.length);
+      if (filename.includes('/') || filename.includes('..')) {
+        console.warn(`[vcd #201] Draft asset has a path segment and was not promoted: ${draftToken}`);
+        continue;
       }
+      const existingTarget = promoted.get(draftToken);
+      if (existingTarget) {
+        node[key] = existingTarget;
+        continue;
+      }
+      const source = path.join(draftDir, filename);
+      const targetName = await uniqueUploadFilename(publicDir, filename);
+      const target = path.join(publicDir, targetName);
+      const file = await readFile(source);
+      await writeFile(target, file);
+      node[key] = targetName;
+      moved.push(targetName);
+      publishedSources.push(source);
+      promoted.set(draftToken, targetName);
     }
     for (const value of Object.values(node)) {
       await rewriteNode(value);
@@ -485,12 +496,13 @@ export async function publishDraftMediaForProject(slug, data) {
       }
       if (!node || typeof node !== 'object') return false;
       let changed = false;
-      for (const key of ['src', 'image', 'coverImage']) {
+      for (const key of DRAFT_SRC_KEYS) {
         const value = node[key];
-        if (typeof value === 'string' && promoted.has(value)) {
-          node[key] = promoted.get(value);
-          changed = true;
-        }
+        if (typeof value !== 'string') continue;
+        const token = normalizeAssetSrc(value);
+        if (!promoted.has(token)) continue;
+        node[key] = promoted.get(token);
+        changed = true;
       }
       for (const value of Object.values(node)) {
         if (rewriteOtherNode(value)) changed = true;

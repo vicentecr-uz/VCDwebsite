@@ -86,6 +86,10 @@ function collectSrcTokens(node, out) {
     const token = normalizeAssetSrc(obj.image);
     if (token) out.add(token);
   }
+  if (typeof obj.hoverImage === 'string') {
+    const token = normalizeAssetSrc(obj.hoverImage);
+    if (token) out.add(token);
+  }
   if (typeof obj.coverImage === 'string') {
     const token = normalizeAssetSrc(obj.coverImage);
     if (token) out.add(token);
@@ -338,6 +342,12 @@ export function stripAssetRefsFromDocument(data, targetSrc) {
       const card = /** @type {Record<string, unknown>} */ (listing);
       if (matches(card.image)) {
         card.image = DEFAULT_COVER;
+        removed += 1;
+      }
+      // Hover covers are a second image slot on the same card; clear rather than
+      // default, since an empty hover slot is a valid state and a default is not.
+      if (matches(card.hoverImage)) {
+        delete card.hoverImage;
         removed += 1;
       }
     }
