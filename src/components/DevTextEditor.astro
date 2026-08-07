@@ -1090,29 +1090,12 @@
       + pendingSectionInserts.length
       + persistedMediaInserts.length;
 
-    window.addEventListener('vcd:dev-mode-before-exit', (event) => {
-      const dirtyCount = unsavedChangeCount();
-      if (!dirtyCount) return;
-
-      const message = dirtyCount === 1
-        ? 'Discard 1 unsaved change?'
-        : `Discard ${dirtyCount} unsaved changes?`;
-      if (!window.confirm(message)) {
-        event.preventDefault();
-        return;
-      }
-
-      revertPendingSectionInserts();
-      revertPendingSectionDeletes();
-      revertDirtyEdits();
-      revertAllPending();
-      // Image inserts are already on disk — undo them via the delete API.
-      void revertPersistedMediaInserts().catch(() => {
-        // Best-effort; bar/status will refresh either way.
-      });
-      hideFormatBar();
-      updateActions();
-    });
+    /*
+      Esc / leaving Edit is View mode, not discard. Pending edits stay in the
+      DOM and in pendingMedia until Save, Revert, or a real navigation. The
+      leave guard is beforeunload (+ vcd:before-reload) only — do not confirm
+      or revert on vcd:dev-mode-before-exit.
+    */
 
     window.addEventListener('vcd:before-reload', (event) => {
       // Persisted media inserts survive reload (already written) — don't warn for them.
