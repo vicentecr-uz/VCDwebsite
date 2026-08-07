@@ -1,7 +1,6 @@
 <script>
   const initDevModeController = () => {
     const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
-    const GRID_EDITOR_CLASS = 'show-listing-grid-editor';
     const CHROME_FADE_MS = 280;
     const CHROME_CUE_HOLD_MS = 320;
 
@@ -24,14 +23,8 @@
     const isSectionEditor = () =>
       html.classList.contains(SECTION_EDITOR_CLASS);
 
-    const isGridEditor = () =>
-      html.classList.contains(GRID_EDITOR_CLASS);
-
     const hasSectionNav = () =>
       Boolean(document.querySelector('[data-section-nav-root]'));
-
-    const hasListingGrid = () =>
-      Boolean(document.querySelector('[data-dev-project-grid]'));
 
     const prefersReducedMotion = () =>
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -73,16 +66,6 @@
       }));
     };
 
-    const setGridEditor = (active: boolean) => {
-      const next = Boolean(active) && devMode;
-      const was = isGridEditor();
-      html.classList.toggle(GRID_EDITOR_CLASS, next);
-      if (was === next) return;
-      window.dispatchEvent(new CustomEvent('vcd:listing-grid-editor-change', {
-        detail: { active: next },
-      }));
-    };
-
     const requestDevModeExit = () => {
       const beforeExit = new CustomEvent('vcd:dev-mode-before-exit', { cancelable: true });
       window.dispatchEvent(beforeExit);
@@ -105,7 +88,6 @@
 
       if (!active) {
         setSectionEditor(false);
-        setGridEditor(false);
         devPanels().forEach((panel) => {
           panel.hidden = true;
         });
@@ -219,7 +201,7 @@
       exitDevMode();
     };
 
-    html.classList.remove(SECTION_EDITOR_CLASS, GRID_EDITOR_CLASS);
+    html.classList.remove(SECTION_EDITOR_CLASS);
     setDevModeImmediate(devMode);
 
     window.addEventListener('vcd:dev-mode-request', ((event: CustomEvent<{ active?: boolean }>) => {
@@ -229,7 +211,6 @@
     window.addEventListener('vcd:section-nav-editor-request', ((event: CustomEvent<{ active?: boolean }>) => {
       if (typeof event.detail?.active !== 'boolean') return;
       if (event.detail.active && !devMode) setDevMode(true);
-      setGridEditor(false);
       setSectionEditor(event.detail.active);
     }) as EventListener);
 
@@ -292,19 +273,13 @@
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyD') {
         event.preventDefault();
 
-        if (hasListingGrid() && !hasSectionNav()) {
-          if (!devMode) {
-            setDevMode(true);
-          } else if (!isGridEditor()) {
-            setGridEditor(true);
-          }
-          return;
-        }
-
+        // Alt+D only ever turns dev mode *on*. Escape is the way out — the
+        // same shortcut toggling both ways made it too easy to drop the whole
+        // layer with a stray press, and the section-nav branch below has
+        // always behaved this way.
         if (!hasSectionNav()) {
           setSectionEditor(false);
-          setGridEditor(false);
-          setDevMode(!devMode);
+          if (!devMode) setDevMode(true);
           return;
         }
 
@@ -312,7 +287,6 @@
         if (!devMode) {
           setDevMode(true);
         } else if (!isSectionEditor()) {
-          setGridEditor(false);
           setSectionEditor(true);
         }
         return;
@@ -327,12 +301,6 @@
       if (isSectionEditor()) {
         event.preventDefault();
         setSectionEditor(false);
-        return;
-      }
-
-      if (isGridEditor()) {
-        event.preventDefault();
-        setGridEditor(false);
         return;
       }
 

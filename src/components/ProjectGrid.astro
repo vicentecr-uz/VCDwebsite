@@ -615,10 +615,15 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     align-items: flex-end;
   }
 
-  html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__chips,
+  /*
+    All four gated on dev mode. The hover/focus pair used to stand alone, which
+    only stayed hidden because the second dev mode suppressed chips outright —
+    with that gone, hovering a card on the live site revealed the edit chips.
+  */
+  html.is-dev-mode .project-grid__chips,
   html.is-dev-mode .project-grid__chips:focus-within,
-  .project-grid__item:hover .project-grid__chips,
-  .project-grid__item:focus-within .project-grid__chips {
+  html.is-dev-mode .project-grid__item:hover .project-grid__chips,
+  html.is-dev-mode .project-grid__item:focus-within .project-grid__chips {
     opacity: 1;
     pointer-events: auto;
   }
@@ -745,11 +750,11 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /* Layer 1: titles stay readable for inline edit without hovering the card. */
-  html.is-dev-mode:not(.show-listing-grid-editor) .project-grid__meta {
+  html.is-dev-mode .project-grid__meta {
     opacity: 1;
   }
 
-  html.is-dev-mode:not(.show-listing-grid-editor)
+  html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable] {
     outline: 1px dashed color-mix(in srgb, var(--color-text-muted) 70%, transparent);
     outline-offset: 0.12em;
@@ -762,16 +767,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /* Empty fields collapse to 0×0 — keep a hit target so you can click back in. */
-  html.is-dev-mode:not(.show-listing-grid-editor)
+  html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:empty,
-  html.is-dev-mode:not(.show-listing-grid-editor)
+  html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:has(> br:only-child) {
     min-width: 2.75em;
   }
 
-  html.is-dev-mode:not(.show-listing-grid-editor)
+  html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:empty::before,
-  html.is-dev-mode:not(.show-listing-grid-editor)
+  html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:has(> br:only-child)::before {
     content: attr(data-placeholder);
     color: color-mix(in srgb, currentColor 45%, transparent);
