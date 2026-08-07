@@ -122,9 +122,11 @@ export function shouldIncludeProjectInBuild(
   options: { dev?: boolean } = {},
 ): boolean {
   const dev = options.dev ?? import.meta.env.DEV;
+  // Dev: every modern project is routable so authors can open teasers/drafts.
+  // Production: only Public (`published`). Teaser cards still appear on galleries
+  // (unclickable); their `/slug` must not exist — same non-discovery as draft (#192).
   if (dev) return true;
-  if (project.status === 'draft') return false;
-  return project.status === 'published' || project.status === 'teaser';
+  return (project.status ?? 'published') === 'published';
 }
 
 export function getModernProjectSlugsForBuild(options: { dev?: boolean } = {}): string[] {

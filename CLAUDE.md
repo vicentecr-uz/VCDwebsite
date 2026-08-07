@@ -148,7 +148,7 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 
 **Project pages** — dynamic route `src/pages/[slug].astro` for `stack: "modern"` projects:
 - Content in `src/content/projects/{slug}.json` (`sections[]`, `outline`, `listings`, `status`)
-- `status`: `published` | `draft` | `teaser` — controls public visibility and build output
+- `status`: `published` (UI: **Public**) | `draft` | `teaser` — Public alone is built/served at `/slug` in production. Teaser shows an unclickable gallery card but **no** public route (same non-discovery as draft). Draft is edit-only (hidden on public galleries). Dev still routes all three for authoring.
 - Draft images: `draft:{slug}/file.jpg` in JSON → `src/content/drafts/media/` (dev); auto-promoted to `public/images/` when project settings are saved as `published` or `teaser`
 - Dev mode: drag-and-drop images (`DevImageDrop`), text/spacing editors, crop/grid tuners
 - **New slug 404s in an already-running session:** Astro caches `getStaticPaths()` — a newly added `{slug}.json` (or checking out a branch that adds one) will hit `/404` until you restart (`bun run dev:session:stop` then `bun run dev:session`). Do not dig into routing until you've restarted.
