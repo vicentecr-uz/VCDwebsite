@@ -155,6 +155,24 @@ export interface ImageDevEditContext {
   maxVh?: MaxVhPercent;
 }
 
+/** Listing-cover crop attrs — shared by ProjectGrid SSR and Gallery Manager fill. */
+export function listingCoverDevEditAttrs(
+  slug: string,
+  grid: 'home' | 'work' | 'play',
+  item: { variants?: ImageVariants; srcWidth?: unknown; srcHeight?: unknown },
+  defaultAspect: string,
+): Record<string, string> {
+  const srcDims = imageSourceDims(item);
+  const seedVariants = normalizeImageVariants(item.variants, defaultAspect, srcDims);
+  return imageDevEditAttrs(true, {
+    documentKey: slug,
+    path: ['listings', grid],
+    cropId: `listing-${grid}`,
+    variants: seedVariants,
+    gridDefaultAspect: defaultAspect,
+  }) ?? {};
+}
+
 export function imageDevEditAttrs(
   editable: boolean,
   context: ImageDevEditContext,
