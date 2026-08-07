@@ -69,6 +69,9 @@ export type PlayLinkItem = {
   bg: string;
   dark: boolean;
   href?: string;
+  variants?: import('./responsiveImage').ImageVariants;
+  srcWidth?: number;
+  srcHeight?: number;
 };
 
 const projectModules = import.meta.glob<{ default: ProjectDocument }>(

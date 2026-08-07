@@ -88,9 +88,10 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       ? normalizeImageVariants(item.variants, defaultAspect, srcDims)
       : undefined;
     const seedVariants = normalizeImageVariants(item.variants, defaultAspect, srcDims);
-    const editable = isDev && Boolean(item.slug);
-    const isPlaceholderCover = editable && isPlaceholderCoverSrc(item.image);
-    const editAttrs = editable
+    const projectEditable = isDev && Boolean(item.slug);
+    const linkEditable = isDev && Boolean(item.playLinkId);
+    const isPlaceholderCover = projectEditable && isPlaceholderCoverSrc(item.image);
+    const projectEditAttrs = projectEditable
       ? imageDevEditAttrs(true, {
           documentKey: item.slug!,
           path: ['listings', variant],
@@ -99,6 +100,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
           gridDefaultAspect: defaultAspect,
         })
       : undefined;
+    const linkEditAttrs = linkEditable
+      ? imageDevEditAttrs(true, {
+          documentKey: `play:${item.playLinkId}`,
+          path: [],
+          cropId: 'play-link',
+          variants: seedVariants,
+          gridDefaultAspect: defaultAspect,
+        })
+      : undefined;
+    const editAttrs = projectEditAttrs ?? linkEditAttrs;
 
     // Hover ink falls back to the base `dark` value — a card whose hover
     // image was never measured (or has none) reads exactly as before.
@@ -123,11 +134,11 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
           !hasCrop && 'overflow-hidden',
           item.hoverImage && 'project-grid__cover--has-hover',
           hasCrop && 'project-cropped project-responsive-image',
-          editable && 'dev-image-edit-target',
+          (projectEditable || linkEditable) && 'dev-image-edit-target',
         ]}
         style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
-        data-dev-cover-drop={editable ? item.slug : undefined}
-        data-dev-listing-cover={editable ? variant : undefined}
+        data-dev-cover-drop={projectEditable ? item.slug : undefined}
+        data-dev-listing-cover={projectEditable ? variant : undefined}
         data-dev-cover-empty={isPlaceholderCover ? 'true' : undefined}
         {...(editAttrs ?? {})}
       >
@@ -149,7 +160,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
               loading="lazy"
             />
           )}
-          {(item.hoverImage || editable) && (
+          {(item.hoverImage || projectEditable) && (
             <img
               src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
               alt=""
@@ -167,7 +178,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             <span class="project-grid__drop-label" data-dev-drop-label>Replace cover image</span>
           </div>
         )}
-        {editable && (
+        {projectEditable && (
           <div class="project-grid__drop-veil project-grid__drop-veil--hover-empty" aria-hidden="true">
             <span class="project-grid__drop-label">Drop hover image</span>
           </div>
@@ -191,18 +202,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
                 class="project-grid__subtitle font-bold"
                 data-dev-project-subtitle
                 data-placeholder={variant === 'play' ? 'Meta' : 'Year'}
-              >
-                {item.subtitle}
-              </span>
+              >{item.subtitle ?? ''}</span>
             )}
-            {isTeaser && (
+            {/* Play uses Meta for the secondary line (including “Coming soon”).
+                Home/Work keep a separate teaser label beside Year. */}
+            {isTeaser && variant !== 'play' && (
               <span
                 class="project-grid__teaser-label font-bold"
                 data-dev-project-teaser-label
                 data-placeholder="Teaser label"
-              >
-                {item.teaserLabel ?? 'Coming soon'}
-              </span>
+              >{item.teaserLabel ?? 'Coming soon'}</span>
             )}
           </div>
         </div>
@@ -217,7 +226,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
         data-dev-status={status}
         data-dev-bg={item.bg}
         data-dev-dark={item.dark ? 'true' : 'false'}
-        data-dev-hover-dark={editable && item.hoverImage ? (hoverDark ? 'true' : 'false') : undefined}
+        data-dev-hover-dark={projectEditable && item.hoverImage ? (hoverDark ? 'true' : 'false') : undefined}
         data-dev-hover-image={item.hoverImage || undefined}
       >
         {isStatic ? (
@@ -239,7 +248,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             {cover}
           </a>
         )}
-        {editable && (
+        {projectEditable && (
           <div class="project-grid__chips project-grid__chips--start" data-dev-mode-only>
             <div class="project-grid__status-wrap">
               <button
@@ -267,7 +276,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             </div>
           </div>
         )}
-        {editable && (
+        {projectEditable && (
           <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
             {!isTeaser && (
               <button
@@ -282,18 +291,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
                 <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
               </button>
             )}
-            {variant !== 'play' && (
-              <button
-                type="button"
-                class="project-grid__chip"
-                data-dev-project-span={item.slug}
-                aria-label={`Span columns for ${item.title}`}
-                aria-pressed="false"
-                title="Span columns"
-              >
-                <span class="project-grid__chip-icon" aria-hidden="true" set:html={spanIconSvg} />
-              </button>
-            )}
+            <button
+              type="button"
+              class="project-grid__chip"
+              data-dev-project-span={item.slug}
+              aria-label={`Span columns for ${item.title}`}
+              aria-pressed="false"
+              title="Span columns"
+            >
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={spanIconSvg} />
+            </button>
             <button
               type="button"
               class="project-grid__chip"
@@ -305,7 +312,20 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             </button>
           </div>
         )}
-        {editable && (
+        {linkEditable && (
+          <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
+            <button
+              type="button"
+              class="project-grid__chip"
+              data-dev-edit-trigger="image"
+              aria-label={`Crop cover for ${item.title}`}
+              title="Crop cover"
+            >
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={cropIconSvg} />
+            </button>
+          </div>
+        )}
+        {projectEditable && (
           <div class="project-grid__chips project-grid__chips--end-bottom" data-dev-mode-only>
             <button
               type="button"
@@ -323,7 +343,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     );
   })}
   {isDev && (
-    <li class="project-grid__item project-grid__item--new" data-dev-mode-only hidden>
+    <li class="project-grid__item project-grid__item--new">
       <button type="button" class="project-grid__new-page" data-dev-project-new>
         + New page
       </button>
@@ -728,6 +748,10 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     .project-grid--work .project-grid__item--full {
       grid-column: span 1;
     }
+
+    .project-grid--play .project-grid__item--full {
+      grid-column: span 1;
+    }
   }
 
   @media (max-width: 480px) {
@@ -749,6 +773,43 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     Astro-scoped BEM modifiers were not pinning --start left (both rails
     stacked on the static position / right).
   */
+
+  /*
+    Drafts and the + New page cell are DEV-DOM only, but View must not show
+    them. Match the Edit chrome fade (0.28s); drop out of the grid after exit.
+    (New page used to toggle [hidden] immediately via data-dev-mode-only.)
+  */
+  .project-grid__item[data-dev-status='draft'],
+  .project-grid__item--new {
+    display: none;
+  }
+
+  html.is-dev-mode .project-grid__item[data-dev-status='draft'],
+  html.is-dev-mode .project-grid__item--new,
+  html.is-dev-mode-exiting .project-grid__item[data-dev-status='draft'],
+  html.is-dev-mode-exiting .project-grid__item--new {
+    display: revert;
+    opacity: 1;
+    transition: opacity 0.28s ease;
+  }
+
+  html.is-dev-mode-entering .project-grid__item[data-dev-status='draft'],
+  html.is-dev-mode-entering .project-grid__item--new,
+  html.is-dev-mode-exiting .project-grid__item[data-dev-status='draft'],
+  html.is-dev-mode-exiting .project-grid__item--new {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html.is-dev-mode .project-grid__item[data-dev-status='draft'],
+    html.is-dev-mode .project-grid__item--new,
+    html.is-dev-mode-exiting .project-grid__item[data-dev-status='draft'],
+    html.is-dev-mode-exiting .project-grid__item--new {
+      transition: none;
+    }
+  }
+
   .project-grid__chips {
     position: absolute;
     top: 0.75em;
@@ -1083,12 +1144,13 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     vertical-align: baseline;
   }
 
-  /* Empty fields collapse to 0×0 — keep a hit target so you can click back in. */
+  /* Empty fields: ::before placeholder sizes the hit target. A fixed min-width
+     (was 2.75em for Year) left a gap after shorter labels like Meta. */
   html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:empty,
   html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:has(> br:only-child) {
-    min-width: 2.75em;
+    width: max-content;
   }
 
   html.is-dev-mode
