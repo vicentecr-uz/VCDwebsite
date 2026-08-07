@@ -205,19 +205,25 @@
 
     handle.addEventListener('click', (event) => event.preventDefault());
 
+    // Firefox decides focus on mousedown, not pointerdown — preventing the
+    // pointer default does not reliably stop it. This is the canonical way to
+    // keep a control Tab-reachable while never focusing it by click.
+    handle.addEventListener('mousedown', (event) => event.preventDefault());
+
     handle.addEventListener('pointerdown', (event) => {
       if (!devModeActive) return;
       if (event.button !== 0) return;
 
       /*
-        Take focus deliberately, without the scroll that comes with it. The
-        handle is focusable for the keyboard path, and pressing a focusable
-        element makes the browser scroll it into view — the handle sits at the
-        card's centre, so for the bottom-most card on the page that is a real
-        scroll, and the whole grid lurches under a card that has not moved.
-        The section handle never hits this: it is tabIndex -1 throughout.
+        Never let a pointer press put focus on the handle. It stays focusable
+        for the keyboard path, but a focused element sitting inside a card that
+        is about to become position:fixed gives the browser a reason to scroll:
+        Firefox keeps a focused element in view when layout moves it, by
+        whatever distance that takes — which is why the jump varied. The
+        matching mousedown guard is in wireDragHandle; this is the backstop for
+        focus that arrives some other way.
       */
-      handle.focus({ preventScroll: true });
+      if (document.activeElement === handle) handle.blur();
 
       const grid = item.closest<HTMLElement>(GRID_SELECTOR);
       if (!grid) return;
