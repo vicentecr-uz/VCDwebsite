@@ -1187,8 +1187,8 @@
       } else {
         status.textContent = '';
       }
-      // Revert only undoes in-memory edits; it cannot take back a disk write.
-      revertButton.hidden = !dirtyCount;
+      // Unsaved DOM/pending OR unpublished disk content (restored via /api/content-revert).
+      revertButton.hidden = !(dirtyCount || unpublishedCount);
       // Keep Save in the layout after a successful write — greyed, not removed —
       // so the bar keeps its shape while Publish becomes the next step.
       saveButton.hidden = false;
@@ -2412,17 +2412,48 @@
 
     revertButton.addEventListener('click', () => {
       void (async () => {
-        stickyStatus = '';
-        revertPendingSectionInserts();
-        revertPendingSectionDeletes();
-        revertDirtyEdits();
-        revertAllPending();
-        try {
-          await revertPersistedMediaInserts();
-        } catch (error) {
-          setStickyStatus(error instanceof Error ? error.message : 'Could not undo image inserts.');
-          actions.hidden = false;
+        const hadDirty = hasPendingEdits();
+        const hadUnpublished = unpublishedCount > 0;
+
+        if (hadUnpublished) {
+          const n = unpublishedCount;
+          const message = n === 1
+            ? 'Restore 1 unpublished content file to match main? This cannot be undone. The page will reload.'
+            : `Restore ${n} unpublished content files to match main? This cannot be undone. The page will reload.`;
+          if (!window.confirm(message)) return;
         }
+
+        stickyStatus = '';
+        if (hadDirty) {
+          revertPendingSectionInserts();
+          revertPendingSectionDeletes();
+          revertDirtyEdits();
+          revertAllPending();
+          try {
+            await revertPersistedMediaInserts();
+          } catch (error) {
+            setStickyStatus(error instanceof Error ? error.message : 'Could not undo image inserts.');
+            actions.hidden = false;
+          }
+        }
+
+        if (hadUnpublished) {
+          try {
+            const response = await fetch('/api/content-revert', { method: 'POST' });
+            const payload = await readApiJson(response);
+            if (!response.ok) {
+              throw new Error(String(payload.error || 'Could not revert unpublished content.'));
+            }
+            window.location.reload();
+            return;
+          } catch (error) {
+            setStickyStatus(error instanceof Error ? error.message : 'Could not revert unpublished content.');
+            actions.hidden = false;
+            void refreshPublishState();
+            return;
+          }
+        }
+
         hideFormatBar();
         updateActions();
       })();

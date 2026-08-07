@@ -12,6 +12,7 @@
  * bugs in the original boundary work.
  */
 import { execFile as execFileCb } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -19,7 +20,7 @@ import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
 
-const { publishContent, publishStatus, renderingChanges } = await import('../dev-publish.mjs');
+const { publishContent, publishStatus, renderingChanges, revertUnpublishedContent } = await import('../dev-publish.mjs');
 
 let failures = 0;
 let current = '';
@@ -321,6 +322,47 @@ await inRepo('new untracked content off-branch publishes', async (repo) => {
   const result = await publishContent({});
   check('published', result.ok === true, result.error);
   check('file is on main', await originHasFile(repo, 'src/content/projects/newthing.json'));
+});
+
+await inRepo('revert restores ahead content to match main', async (repo) => {
+  await repo.git('switch', '-c', 'feat/copy-tweak');
+  await writeFile(path.join(repo.work, 'README.md'), 'engine edited\n');
+  await repo.git('commit', '-am', 'engine: tweak readme');
+  await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Local only"}\n');
+
+  check('sees unpublished content', (await publishStatus()).files.includes('src/content/projects/tapico.json'));
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check('restored tapico', Array.isArray(result.restored) && result.restored.includes('src/content/projects/tapico.json'));
+  check(
+    'working file matches main',
+    (await readFile(path.join(repo.work, 'src/content/projects/tapico.json'), 'utf8')).includes('"title":"Tapico"'),
+  );
+  check('nothing left unpublished', (await publishStatus()).files.length === 0);
+  check(
+    'engine commit left alone',
+    (await readFile(path.join(repo.work, 'README.md'), 'utf8')).includes('engine edited'),
+  );
+});
+
+await inRepo('revert deletes untracked content that never existed on main', async (repo) => {
+  await repo.git('switch', '-c', 'feat/new-page');
+  const newbie = path.join(repo.work, 'src/content/projects/newthing.json');
+  await writeFile(newbie, '{"title":"New"}\n');
+
+  check('sees the new file', (await publishStatus()).files.includes('src/content/projects/newthing.json'));
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check('listed as restored', Array.isArray(result.restored) && result.restored.includes('src/content/projects/newthing.json'));
+  check('file is gone', !existsSync(newbie));
+  check('nothing left unpublished', (await publishStatus()).files.length === 0);
+});
+
+await inRepo('revert with nothing unpublished refuses', async () => {
+  const result = await revertUnpublishedContent();
+  check('refused', result.ok === false && /No unpublished content/.test(result.error), result.error);
 });
 
 console.log(failures ? `\n${failures} failing check(s)\n` : '\nAll checks passed\n');
