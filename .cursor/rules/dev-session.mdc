@@ -55,3 +55,19 @@ bun run branch:sync:stop     # stop sync only
 bun run branch:sync:status   # running? which branch?
 bun run branch:sync:once     # single fetch/pull now
 ```
+
+## Stale transforms after the git ref moves
+
+Because `contentHmrGate` drops every Vite `full-reload`, the running dev server can keep serving a **stale transform** of a component's `<style>` block after the checked-out branch's ref moves — a `git pull` (including branch sync's own autopull), a `git switch`, or a merge landing on the current branch. A hard reload in the browser does **not** clear this; it is server-side, not a browser cache.
+
+**Recurred three times on 2026-08-07** (a pull, a switch, a same-branch merge) — treat it as expected, not exceptional.
+
+- The tell: a change appears *partially* — one `<style>` block updates, a sibling one doesn't, or new markup renders with old CSS.
+- **Restart proactively whenever the ref moves**, don't wait for a visible symptom: `bun run dev:session:stop` then `bun run dev:session`.
+- To confirm before restarting, check what is actually served, not what is on disk:
+  ```bash
+  curl -s "http://localhost:4321/src/components/Thing.astro?astro&type=style&index=0&lang.css" | grep -o 'your-selector' | wc -l
+  ```
+  `index=0` is the first `<style>` block in the file, `index=1` the next (e.g. `is:global`). Served CSS is one long line, so use `grep -o … | wc -l`, not `grep -c` (which always returns 1 and will mislead you).
+
+Canonical copy: `CLAUDE.md` → *In-page editor flow*.
