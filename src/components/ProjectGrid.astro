@@ -768,7 +768,12 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     inset: 0;
     z-index: 2;
     background: var(--color-bg);
-    opacity: 0.55;
+    /* Strong enough that whatever the cover is — black, white, or a black
+       edge around a white centre — the drop state resolves to a predictable
+       near-page ground. That is what lets the dash below be a single colour
+       instead of a per-card variant or a glow, and it doubles as the signal
+       that this image is on its way out. See #172. */
+    opacity: 0.72;
     pointer-events: none;
     transition: opacity 0.2s ease;
   }
@@ -828,14 +833,14 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     Held inside the cover edge rather than on it, and rounded, so it reads as
     a slot the image will drop into rather than as the cover's own border.
 
-    Wider (2px) and colour-independent, unlike the 1px text-field version of
-    the same token: a text field always sits on the fixed page background,
-    but this frame sits on an arbitrary cover — including a dark one, which
-    the drop wash pushes toward a *medium* grey, close enough to
-    --dev-edit-dash-color's own luminance to disappear. Same fix
-    .project-grid__drop-label already uses two rules down: a light halo plus
-    a soft dark shadow, both tracing the dash's own alpha shape, so it reads
-    the same regardless of what is under it.
+    2px rather than the text field's 1px — this frame spans a whole card, and
+    a hairline at that size reads as an artefact rather than a boundary.
+
+    Single colour on purpose. It only works because the drop wash above is
+    strong enough to flatten any cover to a near-page ground first; the dash
+    is drawn on that, not on the image. Do not reintroduce a per-card dark
+    variant here — listings.*.dark is one boolean for the whole cover and is
+    wrong for anything not at the corners (#172).
   */
   html.is-dev-mode .project-grid__cover::before {
     content: '';
@@ -846,9 +851,6 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     z-index: 3;
     border: 2px dashed var(--dev-edit-dash-color);
     border-radius: var(--radius-control);
-    filter:
-      drop-shadow(0 0 0.1em rgb(255 255 255 / 0.9))
-      drop-shadow(0 0.03em 0.15em rgb(0 0 0 / 0.4));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease;
