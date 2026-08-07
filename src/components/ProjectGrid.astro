@@ -547,7 +547,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     color: var(--chip-ink);
   }
 
-  .project-grid__chip:active {
+  /*
+    Pressed and latched share one fill, and it is --chip-press, which on dark
+    aliases --chip-ring-on-dark: holding or latching a chip promotes the ring
+    colour to the fill, so the two states are visibly the same family. These
+    selectors must stay *after* the hover group — a latched chip is also
+    hovered, and the last equal-specificity rule wins.
+  */
+  .project-grid__chip:active,
+  .project-grid__chip[aria-pressed='true'],
+  .project-grid__chip[aria-expanded='true'] {
     background: var(--chip-press);
     box-shadow: inset 0 0 0 1px var(--chip-ring);
     backdrop-filter: blur(8px);
@@ -790,7 +799,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     than a floating glyph either way.
 
     Both steps are deliberately slight. The light ring is the click fill
-    (--color-surface-press) used as-is; the dark ring sits closer to its own
+    (--color-surface-press) nudged 7% toward --color-text — press used raw is
+    1.05:1 against the control fill and vanishes; the dark ring sits closer to its own
     fill than it used to (was --color-bg 36%, ~#6c6c6c, which read as a hard
     edge). The ring is meant to define the shape, not outline it. Press /
     latched promotes the ring colour to the fill on dark; on light the ring
@@ -799,7 +809,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   .project-grid {
     --chip-ink-on-light: var(--color-text);
     --chip-fill-on-light: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    --chip-ring-on-light: var(--color-surface-press);
+    --chip-ring-on-light: color-mix(in srgb, var(--color-text) 7%, var(--color-surface-press));
     --chip-press-on-light: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
 
     --chip-ink-on-dark: var(--color-bg);
