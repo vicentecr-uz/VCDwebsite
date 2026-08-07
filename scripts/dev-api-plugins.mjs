@@ -1,6 +1,6 @@
 // @ts-check
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, readImageDimsFromSrc } from './dev-assets.mjs';
@@ -61,20 +61,6 @@ function listingCardForGrid(grid, listing, previous = {}) {
     ...base,
     year: String(listing.year || listing.meta || previous.year || ''),
   };
-}
-
-function rewriteDraftRefs(node, oldSlug, newSlug) {
-  if (Array.isArray(node)) {
-    for (const item of node) rewriteDraftRefs(item, oldSlug, newSlug);
-    return;
-  }
-  if (!node || typeof node !== 'object') return;
-  if (typeof node.src === 'string' && node.src.startsWith(`draft:${oldSlug}/`)) {
-    node.src = `draft:${newSlug}/${node.src.slice(`draft:${oldSlug}/`.length)}`;
-  }
-  for (const value of Object.values(node)) {
-    rewriteDraftRefs(value, oldSlug, newSlug);
-  }
 }
 
 async function assertModernProject(slug) {
@@ -145,8 +131,8 @@ export function resolveEditableDocument(documentKey) {
   return map.get(documentKey);
 }
 
-export function draftMediaSrc(documentKey, filename) {
-  return `draft:${documentKey}/${filename}`;
+export function draftMediaSrc(filename) {
+  return `draft:${filename}`;
 }
 
 /**
@@ -155,10 +141,10 @@ export function draftMediaSrc(documentKey, filename) {
  * them). Mirrors scripts/migrate-crop-rects.mjs, including the EXIF transpose:
  * sharp reports stored dimensions, browsers honour the orientation flag.
  */
-export async function readImageDims(documentKey, filename) {
+export async function readImageDims(filename) {
   try {
     const { default: sharp } = await import('sharp');
-    const file = path.join(process.cwd(), 'src/content/drafts/media', documentKey, filename);
+    const file = path.join(process.cwd(), 'src/content/drafts/media', filename);
     const { width, height, orientation } = await sharp(file).metadata();
     if (!width || !height) return null;
     const rotated = typeof orientation === 'number' && orientation >= 5 && orientation <= 8;
@@ -197,10 +183,10 @@ export async function buildImageSection(documentKey, filenames) {
   return {
     type: 'image',
     id,
-    src: draftMediaSrc(documentKey, filenames[0]),
+    src: draftMediaSrc(filenames[0]),
     alt: '',
     spacing: 'section',
-    ...(await readImageDims(documentKey, filenames[0]) ?? {}),
+    ...(await readImageDims(filenames[0]) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   };
 }
@@ -260,8 +246,8 @@ export async function fillPlaceholderImageSection(section, documentKey, filename
     if (!src) throw new Error('An image file is required.');
     dims = await readImageDimsFromSrc(src);
   } else {
-    src = draftMediaSrc(documentKey, filename);
-    dims = await readImageDims(documentKey, filename);
+    src = draftMediaSrc(filename);
+    dims = await readImageDims(filename);
   }
 
   section.type = 'image';
@@ -291,9 +277,9 @@ export async function buildImageGridSection(documentKey, filenames) {
   const id = `grid-${Date.now().toString(36)}`;
   const items = await Promise.all(filenames.map(async (filename, index) => ({
     id: `item-${index + 1}-${Date.now().toString(36)}`,
-    src: draftMediaSrc(documentKey, filename),
+    src: draftMediaSrc(filename),
     alt: '',
-    ...(await readImageDims(documentKey, filename) ?? {}),
+    ...(await readImageDims(filename) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
   const visible = items.map((item) => item.id);
@@ -342,9 +328,9 @@ export async function buildImageCarouselSection(documentKey, filenames) {
   const id = `carousel-${Date.now().toString(36)}`;
   const items = await Promise.all(filenames.map(async (filename, index) => ({
     id: `item-${index + 1}-${Date.now().toString(36)}`,
-    src: draftMediaSrc(documentKey, filename),
+    src: draftMediaSrc(filename),
     alt: '',
-    ...(await readImageDims(documentKey, filename) ?? {}),
+    ...(await readImageDims(filename) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
   return {
@@ -441,10 +427,12 @@ export function emptyModernProject(slug, title, grid) {
 }
 
 export async function publishDraftMediaForProject(slug, data) {
-  const draftDir = path.join(process.cwd(), 'src/content/drafts/media', slug);
+  const draftDir = path.join(process.cwd(), 'src/content/drafts/media');
   const publicDir = path.join(process.cwd(), 'public/images');
   const moved = [];
   const publishedSources = [];
+  /** Map of `draft:oldName` -> new bare filename in public/images, for cross-document rewrite. */
+  const promoted = new Map();
 
   const rewriteNode = async (node) => {
     if (Array.isArray(node)) {
@@ -452,16 +440,25 @@ export async function publishDraftMediaForProject(slug, data) {
       return;
     }
     if (!node || typeof node !== 'object') return;
-    if (typeof node.src === 'string' && node.src.startsWith(`draft:${slug}/`)) {
-      const filename = node.src.slice(`draft:${slug}/`.length);
-      const source = path.join(draftDir, filename);
-      const targetName = await uniqueUploadFilename(publicDir, filename);
-      const target = path.join(publicDir, targetName);
-      const file = await readFile(source);
-      await writeFile(target, file);
-      node.src = targetName;
-      moved.push(targetName);
-      publishedSources.push(source);
+    if (typeof node.src === 'string' && node.src.startsWith('draft:')) {
+      const filename = node.src.slice('draft:'.length);
+      if (!filename.includes('/') && !filename.includes('..')) {
+        const draftToken = node.src;
+        const existingTarget = promoted.get(draftToken);
+        if (existingTarget) {
+          node.src = existingTarget;
+        } else {
+          const source = path.join(draftDir, filename);
+          const targetName = await uniqueUploadFilename(publicDir, filename);
+          const target = path.join(publicDir, targetName);
+          const file = await readFile(source);
+          await writeFile(target, file);
+          node.src = targetName;
+          moved.push(targetName);
+          publishedSources.push(source);
+          promoted.set(draftToken, targetName);
+        }
+      }
     }
     for (const value of Object.values(node)) {
       await rewriteNode(value);
@@ -470,16 +467,49 @@ export async function publishDraftMediaForProject(slug, data) {
 
   await rewriteNode(data);
 
-  for (const source of publishedSources) {
-    await rm(source, { force: true });
+  if (promoted.size) {
+    const projectsDir = path.join(process.cwd(), 'src/content/projects');
+    let files = [];
+    try {
+      files = readdirSync(projectsDir).filter((file) => file.endsWith('.json'));
+    } catch {
+      files = [];
+    }
+    const rewriteOtherNode = (node) => {
+      if (Array.isArray(node)) {
+        let changed = false;
+        for (const item of node) {
+          if (rewriteOtherNode(item)) changed = true;
+        }
+        return changed;
+      }
+      if (!node || typeof node !== 'object') return false;
+      let changed = false;
+      for (const key of ['src', 'image', 'coverImage']) {
+        const value = node[key];
+        if (typeof value === 'string' && promoted.has(value)) {
+          node[key] = promoted.get(value);
+          changed = true;
+        }
+      }
+      for (const value of Object.values(node)) {
+        if (rewriteOtherNode(value)) changed = true;
+      }
+      return changed;
+    };
+    for (const file of files) {
+      const otherSlug = file.replace(/\.json$/, '');
+      if (otherSlug === slug) continue;
+      const filePath = path.join(projectsDir, file);
+      const otherData = JSON.parse(await readFile(filePath, 'utf8'));
+      if (rewriteOtherNode(otherData)) {
+        await writeProjectJson(filePath, otherData);
+      }
+    }
   }
 
-  try {
-    if (!readdirSync(draftDir).length) {
-      await rm(draftDir, { recursive: true, force: true });
-    }
-  } catch {
-    // Draft folder may not exist.
+  for (const source of publishedSources) {
+    await rm(source, { force: true });
   }
 
   return moved;
@@ -561,7 +591,7 @@ export function uploadDevWriter() {
             send(400, { error: 'No files were uploaded.' });
             return;
           }
-          const directory = path.join(process.cwd(), 'src/content/drafts/media', documentKey);
+          const directory = path.join(process.cwd(), 'src/content/drafts/media');
           // Draft media is watch-ignored + skipped in contentHmrGate; keep the
           // suppress call as belt-and-suspenders for any residual CSS/module path.
           suppressContentHmr();
@@ -1131,10 +1161,7 @@ export function projectDeleteDevWriter() {
           }
           const { file } = await assertModernProject(slug);
           await rm(file, { force: true });
-          await rm(path.join(process.cwd(), 'src/content/drafts/media', slug), {
-            recursive: true,
-            force: true,
-          });
+          // Draft media is site-wide; unreferenced files surface as Unassigned in the asset manager.
           send(200, { ok: true });
         } catch (error) {
           send(400, { error: error instanceof Error ? error.message : 'Could not delete the project.' });
@@ -1188,14 +1215,6 @@ export function projectRenameDevWriter() {
 
           const { file, data } = await assertModernProject(slug);
           data.slug = newSlug;
-          rewriteDraftRefs(data, slug, newSlug);
-          const draftDir = path.join(process.cwd(), 'src/content/drafts/media', slug);
-          const nextDraftDir = path.join(process.cwd(), 'src/content/drafts/media', newSlug);
-          try {
-            await rename(draftDir, nextDraftDir);
-          } catch {
-            // no draft media folder yet
-          }
           await writeProjectJson(newFile, data);
           await rm(file, { force: true });
           send(200, { ok: true, slug: newSlug });

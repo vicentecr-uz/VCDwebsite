@@ -15,8 +15,8 @@ export function projectImage(filename: string): string {
 }
 
 /** Build a draft media src token stored in project JSON. */
-export function draftProjectImageSrc(projectSlug: string, filename: string): string {
-  return `${DRAFT_SRC_PREFIX}${projectSlug}/${filename}`;
+export function draftProjectImageSrc(filename: string): string {
+  return `${DRAFT_SRC_PREFIX}${filename}`;
 }
 
 export function isDraftImageSrc(src: string): boolean {
