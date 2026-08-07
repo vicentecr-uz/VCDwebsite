@@ -399,12 +399,21 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     opacity: 0;
   }
 
+  /*
+    In dev mode the whole card holds the hover, not just the <a>. The chip
+    rails are children of the <li>, *outside* the card link, so travelling
+    from the cover to a chip drops :hover and snaps the image back — a lot of
+    motion for a pointer that never left the card. The live site keeps the
+    plain :hover semantics below.
+  */
   .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
+  :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover,
   .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
   }
 
   .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
+  :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base,
   .project-grid__cover.is-dev-hover-forced .project-grid__img--base {
     opacity: 0;
   }
@@ -440,12 +449,15 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
      gate as the image crossfade so a card with no hover image never changes
      colour. `.is-dev-hover-forced` mirrors it for the dev preview toggle. */
   :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title),
+  :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title),
   :global(.project-grid__cover.is-dev-hover-forced .project-grid__title) {
     color: var(--title-ink-hover);
   }
 
   :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
   :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label),
+  :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle),
+  :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label),
   :global(.project-grid__cover.is-dev-hover-forced .project-grid__subtitle),
   :global(.project-grid__cover.is-dev-hover-forced .project-grid__teaser-label) {
     color: var(--subtitle-ink-hover);
@@ -626,11 +638,13 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       transition: none;
     }
 
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
+    :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover {
       opacity: 0;
     }
 
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
+    :global(html.is-dev-mode) .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base {
       opacity: 1;
     }
 
@@ -639,12 +653,15 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
        never appears. `.is-dev-hover-forced` (the dev preview chip) is left
        alone here, same as the image opacity rules above: it is meant to work
        at any viewport width so authoring isn't width-gated. */
-    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title) {
+    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__title),
+    :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title) {
       color: var(--title-ink);
     }
 
     :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle),
-    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label) {
+    :global(.project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label),
+    :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle),
+    :global(html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label) {
       color: var(--subtitle-ink);
     }
 
@@ -807,7 +824,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
 
     Interim until #172 measures per control position rather than per image.
   */
-  .project-grid__item[data-dev-hover-dark='true']:has(.project-grid__card:hover .project-grid__cover--has-hover),
+  .project-grid__item[data-dev-hover-dark='true']:hover:has(.project-grid__cover--has-hover),
   .project-grid__item[data-dev-hover-dark='true']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
     --chip-ink: var(--chip-ink-on-dark);
     --chip-fill: var(--chip-fill-on-dark);
@@ -815,7 +832,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     --chip-press: var(--chip-press-on-dark);
   }
 
-  .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__card:hover .project-grid__cover--has-hover),
+  .project-grid__item[data-dev-hover-dark='false']:hover:has(.project-grid__cover--has-hover),
   .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
     --chip-ink: var(--chip-ink-on-light);
     --chip-fill: var(--chip-fill-on-light);
