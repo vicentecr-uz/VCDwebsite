@@ -209,6 +209,16 @@
       if (!devModeActive) return;
       if (event.button !== 0) return;
 
+      /*
+        Take focus deliberately, without the scroll that comes with it. The
+        handle is focusable for the keyboard path, and pressing a focusable
+        element makes the browser scroll it into view — the handle sits at the
+        card's centre, so for the bottom-most card on the page that is a real
+        scroll, and the whole grid lurches under a card that has not moved.
+        The section handle never hits this: it is tabIndex -1 throughout.
+      */
+      handle.focus({ preventScroll: true });
+
       const grid = item.closest<HTMLElement>(GRID_SELECTOR);
       if (!grid) return;
 
