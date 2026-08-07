@@ -142,8 +142,10 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
           )}
         </div>
         {isDev && item.slug && (
-          <div class="project-grid__drop-veil" aria-hidden="true">
-            <span class="project-grid__drop-label">Replace cover image</span>
+          <div class="project-grid__drop-veil" data-dev-drop-veil="active" aria-hidden="true">
+            {/* Text is rewritten per drag in DevProjectGridEditor — which slot
+                you are dropping into, and whether it already has an image. */}
+            <span class="project-grid__drop-label" data-dev-drop-label>Replace cover image</span>
           </div>
         )}
         {editable && (
@@ -354,6 +356,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     transition: opacity 0.4s ease;
   }
 
+  /*
+    The chip swap must fade too, and it has to be declared outside
+    .is-dev-hover-forced: a transition only on the forced state animates the
+    way in and snaps back on the way out. Dev mode only — the public hover
+    crossfade above is unchanged.
+  */
+  :global(html.is-dev-mode) .project-grid__cover .project-grid__img {
+    transition: opacity 0.4s ease;
+  }
+
   .project-grid__img--hover {
     opacity: 0;
   }
@@ -542,7 +554,8 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       transition: none !important;
     }
 
-    .project-grid__cover--has-hover .project-grid__img {
+    .project-grid__cover--has-hover .project-grid__img,
+    :global(html.is-dev-mode) .project-grid__cover .project-grid__img {
       transition: none;
     }
 
@@ -561,6 +574,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
 
   @media (prefers-reduced-motion: reduce) {
     .project-grid__cover--has-hover .project-grid__img,
+    :global(html.is-dev-mode) .project-grid__cover .project-grid__img,
     .project-grid__meta {
       transition: none;
     }
