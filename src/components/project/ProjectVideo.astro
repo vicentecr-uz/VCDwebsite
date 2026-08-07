@@ -1,0 +1,226 @@
+---
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+
+interface Props {
+  src?: string;
+  poster?: string;
+  alt?: string;
+  autoplay?: boolean;
+  aspectRatio?: string;
+  spacing?: ProjectStackSpacing;
+}
+
+const {
+  src,
+  poster,
+  alt = '',
+  autoplay = false,
+  aspectRatio = '16:9',
+  spacing = 'section',
+} = Astro.props;
+
+const stackClass = projectStackClass(spacing);
+
+/** `demo.mp4` → `/videos/demo.mp4`; a leading `/` is used as-is. */
+const resolveVideoSrc = (input?: string) => {
+  if (!input) return undefined;
+  return input.startsWith('/') ? input : `/videos/${input}`;
+};
+
+/** `demo-poster.jpg` → `/images/demo-poster.jpg`; a leading `/` is used as-is. */
+const resolvePosterSrc = (input?: string) => {
+  if (!input) return undefined;
+  return input.startsWith('/') ? input : `/images/${input}`;
+};
+
+const parseAspectRatio = (input: string) => {
+  const [w, h] = input.split(':').map(Number);
+  if (!w || !h) return '16 / 9';
+  return `${w} / ${h}`;
+};
+
+const resolvedSrc = resolveVideoSrc(src);
+const resolvedPoster = resolvePosterSrc(poster);
+const aspectRatioValue = parseAspectRatio(aspectRatio);
+const containerStyle = `--project-video-aspect-ratio: ${aspectRatioValue};`;
+
+if (!resolvedSrc) {
+  console.warn(`[ProjectVideo] missing "src" for video section${alt ? ` ("${alt}")` : ''} — rendering empty block.`);
+}
+---
+
+<div class:list={['project-block', stackClass]}>
+  {resolvedSrc ? (
+    <div class="project-video-player" data-project-video style={containerStyle}>
+      <media-controller class="project-video-player__controller">
+        <video
+          slot="media"
+          class="project-video-player__video"
+          src={resolvedSrc}
+          poster={resolvedPoster}
+          aria-label={alt}
+          controls
+          preload="metadata"
+          muted={autoplay ? true : undefined}
+          loop={autoplay ? true : undefined}
+          playsinline={autoplay ? true : undefined}
+          data-autoplay={autoplay ? 'true' : undefined}
+        />
+        <media-play-button class="project-video-player__play" noautohide>
+          <svg slot="play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+          </svg>
+          <svg slot="pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M7 5h4v14H7V5Zm6 0h4v14h-4V5Z" />
+          </svg>
+        </media-play-button>
+        <media-time-range class="project-video-player__progress"></media-time-range>
+      </media-controller>
+    </div>
+  ) : (
+    <div class="project-video-player project-video-player--empty" style={containerStyle}></div>
+  )}
+</div>
+
+<style>
+  @property --project-video-track-height {
+    syntax: '<length>';
+    inherits: true;
+    initial-value: 4px;
+  }
+
+  .project-video-player {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--project-video-aspect-ratio, 16 / 9);
+    overflow: hidden;
+    background: #000;
+  }
+
+  .project-video-player__controller {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .project-video-player__video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .project-video-player__play {
+    --media-control-background: rgba(0, 0, 0, 0.45);
+    --media-control-hover-background: rgba(0, 0, 0, 0.45);
+    --media-control-padding: 0;
+    --media-icon-color: #fff;
+    --media-button-icon-width: 22px;
+    --media-button-icon-height: 22px;
+    --media-focus-box-shadow: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: none;
+    box-shadow: none;
+    transform: translate(-50%, -50%) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .project-video-player__play[mediapaused],
+  .project-video-player:hover .project-video-player__play {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+
+  @media (max-width: 40em) {
+    .project-video-player__play {
+      width: 48px;
+      height: 48px;
+    }
+  }
+
+  .project-video-player__progress {
+    --project-video-track-height: 4px;
+    --media-control-display: block;
+    --media-control-background: transparent;
+    --media-control-hover-background: transparent;
+    --media-control-padding: 0;
+    --media-range-padding: 0;
+    --media-range-track-height: var(--project-video-track-height);
+    --media-range-track-background: rgba(255, 255, 255, 0.3);
+    --media-range-track-border-radius: 999px;
+    --media-range-bar-color: #fff;
+    --media-range-thumb-width: var(--project-video-track-height);
+    --media-range-thumb-height: var(--project-video-track-height);
+    --media-range-thumb-opacity: 0;
+    position: absolute;
+    left: var(--space-unit);
+    right: var(--space-unit);
+    bottom: var(--space-unit);
+    width: auto;
+    transition: --project-video-track-height 150ms ease;
+  }
+
+  .project-video-player:hover .project-video-player__progress,
+  .project-video-player__controller:focus-within .project-video-player__progress {
+    --project-video-track-height: 6px;
+  }
+
+  .project-video-player__controller:focus-within .project-video-player__progress {
+    opacity: 1 !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-video-player__play,
+    .project-video-player__progress {
+      transition: none !important;
+    }
+  }
+</style>
+
+<script>
+  import 'media-chrome';
+
+  const initProjectVideo = (root: HTMLElement) => {
+    if (root.dataset.videoInit === 'true') return;
+    root.dataset.videoInit = 'true';
+
+    const video = root.querySelector('video');
+    const progress = root.querySelector('media-time-range');
+    if (!video) return;
+
+    customElements.whenDefined('media-controller').then(() => {
+      video.removeAttribute('controls');
+    });
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion && progress) progress.setAttribute('noautohide', '');
+
+    if (!reduceMotion && video.dataset.autoplay === 'true') {
+      video.play().catch(() => {
+        /* autoplay blocked — user can press play */
+      });
+    }
+  };
+
+  const boot = () => {
+    document
+      .querySelectorAll<HTMLElement>('[data-project-video]')
+      .forEach((node) => initProjectVideo(node));
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+  document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:after-swap', boot);
+</script>

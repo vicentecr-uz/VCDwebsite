@@ -6,6 +6,7 @@ import ProjectImageGrid from './ProjectImageGrid.astro';
 import ProjectPressQuoteTicker from './ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
 import ProjectSectionTitle from './ProjectSectionTitle.astro';
+import ProjectVideo from './ProjectVideo.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
@@ -151,6 +152,19 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         captionReveal={section.captionReveal as never}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'video') {
+    return (
+      <ProjectVideo
+        src={section.src as string | undefined}
+        poster={section.poster as string | undefined}
+        alt={section.alt as string | undefined}
+        autoplay={section.autoplay === true}
+        aspectRatio={section.aspectRatio as string | undefined}
+        spacing={spacing}
       />
     );
   }
