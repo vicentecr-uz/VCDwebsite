@@ -93,6 +93,9 @@ const statusIcons = {
 
   const pendingId = (slug, grid) => `project-settings:${slug}:${grid}`;
 
+  const HOVER_CHIP_LABEL_OFF = 'Showing cover image — switch to hover image';
+  const HOVER_CHIP_LABEL_ON = 'Showing hover image — switch to cover image';
+
   const emptyListing = () => ({
     image: '',
     hoverImage: '',
@@ -222,6 +225,8 @@ const statusIcons = {
     });
     document.querySelectorAll('[data-dev-project-hover][aria-pressed="true"]').forEach((btn) => {
       btn.setAttribute('aria-pressed', 'false');
+      btn.setAttribute('aria-label', HOVER_CHIP_LABEL_OFF);
+      if (btn instanceof HTMLElement) btn.title = HOVER_CHIP_LABEL_OFF;
     });
     closeAllStatusMenus();
     restoreCardLinks();
@@ -285,6 +290,18 @@ const statusIcons = {
     liveCoverBlobs.delete(slug);
   };
 
+  /** Same lifecycle as liveCoverBlobs but for the hover slot — separate map,
+   * separate lifetime (the hover image is never visible under a choreographed
+   * crossfade at rest, so it does not share the base image's promote path). */
+  const liveHoverBlobs = new Map();
+
+  const revokeLiveHover = (slug) => {
+    const url = liveHoverBlobs.get(slug);
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    liveHoverBlobs.delete(slug);
+  };
+
   const applyListingPreview = (item, snapshot, grid) => {
     if (!item || !snapshot) return;
     const cover = item.querySelector('.project-grid__cover');
@@ -297,6 +314,7 @@ const statusIcons = {
     const listing = snapshot.listing;
     const slug = item.getAttribute('data-dev-project-slug');
     const liveCover = slug ? liveCoverBlobs.get(slug) : null;
+    const liveHover = slug ? liveHoverBlobs.get(slug) : null;
     const displayImage = liveCover
       || (isTeaser ? (snapshot.teaser.coverImage || listing.image) : listing.image);
 
@@ -314,8 +332,8 @@ const statusIcons = {
       baseImg.src = displayImage;
     }
     if (hoverImg instanceof HTMLImageElement) {
-      if (!isTeaser && listing.hoverImage) {
-        hoverImg.src = listing.hoverImage;
+      if (!isTeaser && (liveHover || listing.hoverImage)) {
+        hoverImg.src = liveHover || listing.hoverImage;
         hoverImg.hidden = false;
       } else {
         hoverImg.removeAttribute('src');
@@ -386,6 +404,7 @@ const statusIcons = {
         payload: buildSavePayload(slug, entry.grid, entry.draft),
         revert: () => {
           revokeLiveCover(slug);
+          revokeLiveHover(slug);
           entry.draft = structuredClone(entry.saved);
           applyListingPreview(entry.item, entry.draft, entry.grid);
           if (panelSlug === slug) renderPanelFromEntry(entry);
@@ -668,19 +687,24 @@ const statusIcons = {
     return `/draft-media/${slug}/${filename}`;
   };
 
-  const applyCoverFileToCard = async (slug, file, blobUrl) => {
+  const applyCoverFileToCard = async (slug, file, blobUrl, slot = 'image') => {
     if (!(file instanceof File) || !file.type.startsWith('image/')) return;
     const item = gridItemForSlug(slug);
     if (!(item instanceof HTMLElement)) return;
     try {
       const entry = await ensureLoaded(slug, item);
       const url = await uploadCoverImage(slug, file);
-      entry.draft.listing.image = url;
+      if (slot === 'hoverImage') {
+        entry.draft.listing.hoverImage = url;
+      } else {
+        entry.draft.listing.image = url;
+      }
       // DOM keeps showing the blob until Save; draft URL is save-payload only.
       if (typeof blobUrl === 'string' && blobUrl) {
-        const previous = liveCoverBlobs.get(slug);
+        const blobs = slot === 'hoverImage' ? liveHoverBlobs : liveCoverBlobs;
+        const previous = blobs.get(slug);
         if (previous && previous !== blobUrl) URL.revokeObjectURL(previous);
-        liveCoverBlobs.set(slug, blobUrl);
+        blobs.set(slug, blobUrl);
       }
       syncPendingFor(slug);
     } catch (error) {
@@ -721,6 +745,27 @@ const statusIcons = {
     overlay.remove();
     delete cover.dataset.devCrossfadeActive;
     URL.revokeObjectURL(blobUrl);
+  };
+
+  /**
+   * Hover image isn't visible at rest, so unlike the base cover it needs
+   * none of the overlay-under-blob choreography — just swap the src once the
+   * draft URL is ready and revoke the blob.
+   */
+  const promoteLiveHoverOnSave = async (slug, entry) => {
+    const blobUrl = liveHoverBlobs.get(slug);
+    if (!blobUrl) return;
+
+    const draftUrl = entry.draft?.listing?.hoverImage;
+    const hoverImg = entry.item?.querySelector('.project-grid__img--hover');
+    if (!(hoverImg instanceof HTMLImageElement) || !draftUrl) {
+      revokeLiveHover(slug);
+      return;
+    }
+
+    hoverImg.src = draftUrl;
+    await waitImageReady(hoverImg);
+    revokeLiveHover(slug);
   };
 
   const clearAllCoverDropActive = () => {
@@ -781,9 +826,10 @@ const statusIcons = {
   /**
    * Old cover fades out → short gap → new cover fades in (blob overlay).
    * Returns `{ finish, blobUrl }`. Call `finish()` to park the blob on the base
-   * under the overlay, then remove the overlay — keep the blob until Save.
+   * (or, for the hover slot, the hover image) under the overlay, then remove
+   * the overlay — keep the blob until Save.
    */
-  const playCoverCrossfade = (cover, file) => new Promise((resolve, reject) => {
+  const playCoverCrossfade = (cover, file, slot = 'image') => new Promise((resolve, reject) => {
     const blobUrl = URL.createObjectURL(file);
     const overlay = document.createElement('img');
     overlay.className = 'project-grid__crossfade';
@@ -804,10 +850,15 @@ const statusIcons = {
     };
 
     const finish = async () => {
-      const baseImg = cover.querySelector('.project-grid__img--base');
-      if (baseImg instanceof HTMLImageElement) {
-        baseImg.src = blobUrl;
-        await waitImageReady(baseImg);
+      const targetImg = cover.querySelector(
+        slot === 'hoverImage' ? '.project-grid__img--hover' : '.project-grid__img--base',
+      );
+      if (targetImg instanceof HTMLImageElement) {
+        // Hover img starts hidden when the slot is empty — unhide before
+        // assigning src, or the crossfade lands on a display:none element.
+        if (slot === 'hoverImage') targetImg.hidden = false;
+        targetImg.src = blobUrl;
+        await waitImageReady(targetImg);
       }
       if (stack instanceof HTMLElement) {
         stack.style.transition = 'none';
@@ -954,6 +1005,9 @@ const statusIcons = {
       const next = !cover.classList.contains('is-dev-hover-forced');
       cover.classList.toggle('is-dev-hover-forced', next);
       hoverBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+      const label = next ? HOVER_CHIP_LABEL_ON : HOVER_CHIP_LABEL_OFF;
+      hoverBtn.setAttribute('aria-label', label);
+      hoverBtn.title = label;
       return;
     }
 
@@ -1061,12 +1115,15 @@ const statusIcons = {
       delete cover.dataset.devDropActive;
       return;
     }
+    // Slot derived once, at drop time, from whichever image is currently forced
+    // to show — #175. Doesn't change which cover the drop targets (#176).
+    const slot = cover.classList.contains('is-dev-hover-forced') ? 'hoverImage' : 'image';
 
     void (async () => {
       try {
-        const { finish, blobUrl } = await playCoverCrossfade(cover, file);
+        const { finish, blobUrl } = await playCoverCrossfade(cover, file, slot);
         await finish();
-        await applyCoverFileToCard(slug, file, blobUrl);
+        await applyCoverFileToCard(slug, file, blobUrl, slot);
       } catch (error) {
         if (error instanceof Error && !/upload/i.test(error.message)) {
           window.alert(error.message);
@@ -1175,6 +1232,8 @@ const statusIcons = {
   window.addEventListener('vcd:dev-pending-reverted', () => {
     liveCoverBlobs.forEach((url) => URL.revokeObjectURL(url));
     liveCoverBlobs.clear();
+    liveHoverBlobs.forEach((url) => URL.revokeObjectURL(url));
+    liveHoverBlobs.clear();
     caches.forEach((entry, slug) => {
       entry.draft = structuredClone(entry.saved);
       applyListingPreview(entry.item, entry.draft, entry.grid);
@@ -1186,6 +1245,7 @@ const statusIcons = {
     void (async () => {
       for (const [slug, entry] of caches) {
         await promoteLiveCoverOnSave(slug, entry);
+        await promoteLiveHoverOnSave(slug, entry);
         entry.saved = structuredClone(entry.draft);
       }
     })();

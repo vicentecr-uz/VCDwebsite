@@ -7,6 +7,7 @@ import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import imagesIcon from 'lucide-static/icons/images.svg?raw';
 import type { ProjectStatus } from '../lib/projects';
 import { projectImage } from '../lib/images';
+import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
 import { sizeIcon } from '../lib/icons';
 import {
   normalizeImageVariants,
@@ -84,6 +85,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       : undefined;
     const seedVariants = normalizeImageVariants(item.variants, defaultAspect, srcDims);
     const editable = isDev && Boolean(item.slug);
+    const isPlaceholderCover = editable && isPlaceholderCoverSrc(item.image);
     const editAttrs = editable
       ? imageDevEditAttrs(true, {
           documentKey: item.slug!,
@@ -107,6 +109,7 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
         style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
         data-dev-cover-drop={editable ? item.slug : undefined}
         data-dev-listing-cover={editable ? variant : undefined}
+        data-dev-cover-empty={isPlaceholderCover ? 'true' : undefined}
         {...(editAttrs ?? {})}
       >
         <div class="project-grid__stack">
@@ -127,12 +130,13 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
               loading="lazy"
             />
           )}
-          {item.hoverImage && (
+          {(item.hoverImage || editable) && (
             <img
-              src={projectImage(item.hoverImage)}
+              src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
               alt=""
               class="project-grid__img project-grid__img--hover w-full h-full object-cover"
               loading="lazy"
+              hidden={!item.hoverImage}
               aria-hidden="true"
             />
           )}
@@ -140,6 +144,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
         {isDev && item.slug && (
           <div class="project-grid__drop-veil" aria-hidden="true">
             <span class="project-grid__drop-label">Replace cover image</span>
+          </div>
+        )}
+        {editable && (
+          <div class="project-grid__drop-veil project-grid__drop-veil--hover-empty" aria-hidden="true">
+            <span class="project-grid__drop-label">Drop hover image</span>
+          </div>
+        )}
+        {isPlaceholderCover && (
+          <div class="project-grid__drop-veil project-grid__drop-veil--cover-empty" aria-hidden="true">
+            <span class="project-grid__drop-label">Drop cover image</span>
           </div>
         )}
         <div class="project-grid__meta absolute bottom-0 left-0 right-0">
@@ -236,18 +250,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
         )}
         {editable && (
           <div class="project-grid__chips project-grid__chips--end" data-dev-mode-only>
-            {item.hoverImage && (
-              <button
-                type="button"
-                class="project-grid__chip"
-                data-dev-project-hover={item.slug}
-                aria-label={`Preview hover image for ${item.title}`}
-                aria-pressed="false"
-                title="Preview hover image"
-              >
-                <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
-              </button>
-            )}
+            <button
+              type="button"
+              class="project-grid__chip"
+              data-dev-project-hover={item.slug}
+              aria-label="Showing cover image — switch to hover image"
+              aria-pressed="false"
+              title="Showing cover image — switch to hover image"
+            >
+              <span class="project-grid__chip-icon" aria-hidden="true" set:html={hoverIconSvg} />
+            </button>
             {variant !== 'play' && (
               <button
                 type="button"
@@ -616,14 +628,26 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   }
 
   /*
-    All four gated on dev mode. The hover/focus pair used to stand alone, which
-    only stayed hidden because the second dev mode suppressed chips outright —
-    with that gone, hovering a card on the live site revealed the edit chips.
+    Hover-only rail (#174) — chips stay hidden until something on the card
+    asks for them. Removed the always-on selector that used to be here; keep
+    reading each of the four cases below as its own reason, not a redundant
+    restatement of :hover.
   */
-  html.is-dev-mode .project-grid__chips,
   html.is-dev-mode .project-grid__chips:focus-within,
   html.is-dev-mode .project-grid__item:hover .project-grid__chips,
-  html.is-dev-mode .project-grid__item:focus-within .project-grid__chips {
+  html.is-dev-mode .project-grid__item:focus-within .project-grid__chips,
+  /* a. Status menu open — a <button> click doesn't reliably focus it on
+        macOS, so :focus-within can't be trusted while the pointer travels
+        off the card to the menu. The menu's own hidden attribute is the
+        honest signal that the interaction is still live. */
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden])) .project-grid__chips,
+  /* b. Crop tuner open — DevProjectGridEditor adds is-dev-crop-open to
+        <html> and marks the card's cover .dev-crop-stage-host; hold the
+        rail on that card while the tuner owns it. */
+  html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host) .project-grid__chips,
+  /* c. Span mode — enterSpanMode adds is-span-mode to the <li> and latches
+        the chip; keep the rail up for the duration, not just on :hover. */
+  html.is-dev-mode .project-grid__item.is-span-mode .project-grid__chips {
     opacity: 1;
     pointer-events: auto;
   }
@@ -686,15 +710,42 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       drop-shadow(0 0.05em 0.2em rgb(0 0 0 / 0.45));
   }
 
-  .project-grid__cover[data-dev-drop-active='true'] .project-grid__drop-veil {
+  /* Base (replace) veil only — the two modifier veils below have their own triggers. */
+  .project-grid__cover[data-dev-drop-active='true']
+    .project-grid__drop-veil:not(.project-grid__drop-veil--hover-empty):not(.project-grid__drop-veil--cover-empty) {
+    opacity: 1;
+  }
+
+  /*
+    #175 — empty hover slot reads as droppable, not broken. Only ever set by
+    DevProjectGridEditor toggling .is-dev-hover-forced, so no live-site path
+    needs an html.is-dev-mode prefix here. Yields to the transient replace /
+    crossfade veil via :not() rather than fighting it on specificity.
+  */
+  .project-grid__cover.is-dev-hover-forced:not([data-dev-drop-active='true']):not([data-dev-crossfade-active='true']):has(> .project-grid__stack > .project-grid__img--hover[hidden])
+    .project-grid__drop-veil--hover-empty {
+    opacity: 1;
+  }
+
+  /*
+    #176 — placeholder cover reads as an empty slot, not a broken image.
+    data-dev-cover-empty is only emitted for editable items (isDev), but the
+    guard is kept anyway so a draft project can never show a drop affordance
+    to a visitor. Same :not() yield as the hover-empty rule above.
+  */
+  html.is-dev-mode .project-grid__cover[data-dev-cover-empty='true']:not([data-dev-drop-active='true']):not([data-dev-crossfade-active='true'])
+    .project-grid__drop-veil--cover-empty {
     opacity: 1;
   }
 
   /*
     Wash toward page white — do NOT lower stack opacity (that reveals the
-    listing card `bg` fill behind the images).
+    listing card `bg` fill behind the images). Shared by the transient
+    replace state and the two persistent empty states above.
   */
-  .project-grid__cover[data-dev-drop-active='true']::after {
+  .project-grid__cover[data-dev-drop-active='true']::after,
+  .project-grid__cover.is-dev-hover-forced:has(> .project-grid__stack > .project-grid__img--hover[hidden])::after,
+  html.is-dev-mode .project-grid__cover[data-dev-cover-empty='true']::after {
     content: '';
     position: absolute;
     inset: 0;

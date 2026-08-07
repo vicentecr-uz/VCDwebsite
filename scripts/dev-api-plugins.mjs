@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, readImageDimsFromSrc } from './dev-assets.mjs';
+import { PLACEHOLDER_COVER, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
 
 export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
 
@@ -822,14 +823,6 @@ function seedListingCard(grid, data, order) {
     ...base,
     year: String(sibling.year || sibling.meta || year),
   };
-}
-
-const PLACEHOLDER_COVER = '/images/black-token.svg';
-
-function isPlaceholderCoverSrc(src) {
-  const value = String(src || '').trim();
-  if (!value) return true;
-  return value === PLACEHOLDER_COVER || value.includes('black-token');
 }
 
 function coverForGalleryPage(data, grid) {
