@@ -12,6 +12,8 @@ export type ProjectListingCard = {
   image: string;
   /** In-context shot shown on card hover (desktop). */
   hoverImage?: string;
+  /** Title-region light/dark for `hoverImage`, measured at drop time (#182). Absent falls back to `dark`. */
+  hoverDark?: boolean;
   bg: string;
   dark: boolean;
   full?: boolean;
@@ -44,6 +46,7 @@ export type ProjectGridListing = {
   subtitle?: string;
   image: string;
   hoverImage?: string;
+  hoverDark?: boolean;
   bg: string;
   dark: boolean;
   full?: boolean;
@@ -166,6 +169,7 @@ function listingCardForGrid(
     subtitle: grid === 'play' ? listing.meta : listing.year,
     image,
     hoverImage: isTeaser ? undefined : listing.hoverImage,
+    hoverDark: isTeaser ? undefined : listing.hoverDark,
     bg: listing.bg,
     dark: listing.dark,
     full: listing.full,

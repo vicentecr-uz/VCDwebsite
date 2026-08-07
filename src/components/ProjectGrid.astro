@@ -25,6 +25,8 @@ export type ProjectGridItem = {
   title: string;
   image: string;
   hoverImage?: string;
+  /** Title-region light/dark for `hoverImage`. Absent falls back to `dark`. */
+  hoverDark?: boolean;
   bg: string;
   dark: boolean;
   /** Year on home/work; optional meta line on play. */
@@ -96,6 +98,16 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
         })
       : undefined;
 
+    // Hover ink falls back to the base `dark` value — a card whose hover
+    // image was never measured (or has none) reads exactly as before.
+    const hoverDark = item.hoverDark ?? item.dark;
+    const metaStyle = [
+      `--title-ink: ${titleColor(item.dark)}`,
+      `--subtitle-ink: ${subtitleColor(item.dark)}`,
+      `--title-ink-hover: ${titleColor(hoverDark)}`,
+      `--subtitle-ink-hover: ${subtitleColor(hoverDark)}`,
+    ].join('; ');
+
     const cover = (
       <div
         class:list={[
@@ -158,11 +170,10 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             <span class="project-grid__drop-label">Drop cover image</span>
           </div>
         )}
-        <div class="project-grid__meta absolute bottom-0 left-0 right-0">
+        <div class="project-grid__meta absolute bottom-0 left-0 right-0" style={metaStyle}>
           <div class="flex items-baseline gap-2">
             <h2
               class="project-grid__title font-bold"
-              style={`color: ${titleColor(item.dark)}`}
               data-dev-project-title
               data-placeholder="Title"
             >
@@ -171,7 +182,6 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             {(item.subtitle || isDev) && (
               <span
                 class="project-grid__subtitle font-bold"
-                style={`color: ${subtitleColor(item.dark)}`}
                 data-dev-project-subtitle
                 data-placeholder={variant === 'play' ? 'Meta' : 'Year'}
               >
@@ -181,7 +191,6 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
             {isTeaser && (
               <span
                 class="project-grid__teaser-label font-bold"
-                style={`color: ${subtitleColor(item.dark)}`}
                 data-dev-project-teaser-label
                 data-placeholder="Teaser label"
               >
@@ -389,6 +398,33 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
     font-size: 1.25rem;
     letter-spacing: -0.03em;
     line-height: 1.2;
+    /* Same 0.2s as the base <-> hover image crossfade above — a title that
+       snaps while the image fades is worse than not swapping at all. */
+    transition: color 0.2s ease;
+  }
+
+  .project-grid__title {
+    color: var(--title-ink);
+  }
+
+  .project-grid__subtitle,
+  .project-grid__teaser-label {
+    color: var(--subtitle-ink);
+  }
+
+  /* Only cards that actually have a hover image swap ink — reuses the same
+     gate as the image crossfade so a card with no hover image never changes
+     colour. `.is-dev-hover-forced` mirrors it for the dev preview toggle. */
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
+  .project-grid__cover.is-dev-hover-forced .project-grid__title {
+    color: var(--title-ink-hover);
+  }
+
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
+  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
+  .project-grid__cover.is-dev-hover-forced .project-grid__subtitle,
+  .project-grid__cover.is-dev-hover-forced .project-grid__teaser-label {
+    color: var(--subtitle-ink-hover);
   }
 
   .project-grid__meta {
@@ -570,6 +606,20 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
       opacity: 1;
     }
 
+    /* Touch: no hover image swap on a real `:hover` (above), so the ink swap
+       must not fire on it either — a title changing colour for an image that
+       never appears. `.is-dev-hover-forced` (the dev preview chip) is left
+       alone here, same as the image opacity rules above: it is meant to work
+       at any viewport width so authoring isn't width-gated. */
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title {
+      color: var(--title-ink);
+    }
+
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label {
+      color: var(--subtitle-ink);
+    }
+
     .project-grid__card--teaser .project-grid__img {
       filter: blur(10px);
     }
@@ -578,7 +628,10 @@ const coverDefaultAspect = (item: ProjectGridItem) => {
   @media (prefers-reduced-motion: reduce) {
     .project-grid__cover--has-hover .project-grid__img,
     :global(html.is-dev-mode) .project-grid__cover .project-grid__img,
-    .project-grid__meta {
+    .project-grid__meta,
+    .project-grid__title,
+    .project-grid__subtitle,
+    .project-grid__teaser-label {
       transition: none;
     }
   }

@@ -55,6 +55,11 @@ const statusIcons = {
         <input type="checkbox" data-ps-dark />
         <span>Light text on card</span>
       </label>
+
+      <label class="dev-project-settings__inline">
+        <input type="checkbox" data-ps-hover-dark />
+        <span>Light text on hover</span>
+      </label>
     </div>
 
     <div class="dev-project-settings__danger-actions">
@@ -65,6 +70,69 @@ const statusIcons = {
   </div>
 </DevOverlay>
 
+<script type="module">
+  // #182 — measurement lives in its own module (coverLuminance.ts) so #172 can
+  // lift it verbatim for runtime sampling later. The rest of this file's
+  // script is `define:vars` (inline, no `import`), so this module hands the
+  // function across on `window` instead of sharing scope directly.
+  import {
+    coverBoxRegionToSourceRegion,
+    isRegionDark,
+    measureRegionLuma,
+  } from '../scripts/coverLuminance';
+
+  /**
+   * Measure whether the dropped hover image reads dark or light under the
+   * card's title area. Returns `null` (never throws) on any failure — the
+   * caller falls back to the base `dark` value.
+   */
+  window.__vcdMeasureHoverDark = async function measureHoverDark(file, item) {
+    let objectUrl = '';
+    try {
+      const cover = item?.querySelector('.project-grid__cover');
+      const meta = item?.querySelector('.project-grid__meta');
+      if (!(cover instanceof HTMLElement) || !(meta instanceof HTMLElement)) return null;
+
+      const coverRect = cover.getBoundingClientRect();
+      const metaRect = meta.getBoundingClientRect();
+      if (!coverRect.width || !coverRect.height) return null;
+
+      // Title's region, not the whole image — derived from real geometry so
+      // it tracks the meta box's padding and the card's aspect ratio instead
+      // of a hard-coded "bottom-left" guess.
+      const region = {
+        x: (metaRect.left - coverRect.left) / coverRect.width,
+        y: (metaRect.top - coverRect.top) / coverRect.height,
+        w: metaRect.width / coverRect.width,
+        h: metaRect.height / coverRect.height,
+      };
+
+      objectUrl = URL.createObjectURL(file);
+      const img = await new Promise((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error('Could not decode image for measurement.'));
+        el.src = objectUrl;
+      });
+
+      // The hover image always renders through plain `object-fit: cover`
+      // (ProjectGrid.astro never wraps it in `.project-crop-clip`, unlike the
+      // base cover) — so this projection is exact, not an approximation.
+      const sourceRegion = coverBoxRegionToSourceRegion(
+        region,
+        { width: coverRect.width, height: coverRect.height },
+        { width: img.naturalWidth, height: img.naturalHeight },
+      );
+      const luma = measureRegionLuma(img, sourceRegion);
+      return isRegionDark(luma);
+    } catch {
+      return null;
+    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    }
+  };
+</script>
+
 <script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER }}>
   const createDialog = document.querySelector('[data-dev-project-create-dialog]');
   const createForm = document.querySelector('[data-dev-project-create-form]');
@@ -73,6 +141,7 @@ const statusIcons = {
 
   const bgInput = settingsRoot?.querySelector('[data-ps-bg]');
   const darkInput = settingsRoot?.querySelector('[data-ps-dark]');
+  const hoverDarkInput = settingsRoot?.querySelector('[data-ps-hover-dark]');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
@@ -122,6 +191,7 @@ const statusIcons = {
   const emptyListing = () => ({
     image: '',
     hoverImage: '',
+    hoverDark: undefined,
     bg: '#efefef',
     dark: false,
     full: false,
@@ -201,15 +271,11 @@ const statusIcons = {
     let node = item.querySelector('[data-dev-project-subtitle]');
     if (node instanceof HTMLElement) return node;
     const row = item.querySelector('.project-grid__meta .flex');
-    const title = item.querySelector('[data-dev-project-title]');
     if (!(row instanceof HTMLElement)) return null;
     node = document.createElement('span');
     node.className = 'project-grid__subtitle font-bold';
     node.setAttribute('data-dev-project-subtitle', '');
     node.dataset.placeholder = gridForItem(item) === 'play' ? 'Meta' : 'Year';
-    if (title instanceof HTMLElement) {
-      node.style.color = title.style.color || subtitleColor(item.dataset.devDark === 'true');
-    }
     row.append(node);
     return node;
   };
@@ -279,7 +345,10 @@ const statusIcons = {
       dark: Boolean(listing.dark),
       full: Boolean(listing.full),
     };
-    if (status !== 'teaser' && hoverImage) base.hoverImage = hoverImage;
+    if (status !== 'teaser' && hoverImage) {
+      base.hoverImage = hoverImage;
+      if (typeof listing.hoverDark === 'boolean') base.hoverDark = listing.hoverDark;
+    }
     if (grid === 'play') {
       return { ...base, meta: String(listing.subtitle || '') };
     }
@@ -384,11 +453,19 @@ const statusIcons = {
       if (document.activeElement !== titleNode && titleNode.textContent !== snapshot.title) {
         titleNode.textContent = snapshot.title;
       }
-      titleNode.style.color = titleColor(listing.dark);
     }
-    item.querySelectorAll('[data-dev-project-subtitle], [data-dev-project-teaser-label]').forEach((node) => {
-      if (node instanceof HTMLElement) node.style.color = subtitleColor(listing.dark);
-    });
+    const meta = item.querySelector('.project-grid__meta');
+    if (meta instanceof HTMLElement) {
+      // Custom properties, not inline `color` — the hover swap is a `:hover`
+      // rule in ProjectGrid.astro's CSS, which inline `style="color"` can't
+      // respond to. `hoverDark` falls back to the base `dark` value, same as
+      // the server-rendered markup.
+      const hoverDark = typeof listing.hoverDark === 'boolean' ? listing.hoverDark : listing.dark;
+      meta.style.setProperty('--title-ink', titleColor(listing.dark));
+      meta.style.setProperty('--subtitle-ink', subtitleColor(listing.dark));
+      meta.style.setProperty('--title-ink-hover', titleColor(hoverDark));
+      meta.style.setProperty('--subtitle-ink-hover', subtitleColor(hoverDark));
+    }
     if (teaserLabelNode instanceof HTMLElement && document.activeElement !== teaserLabelNode) {
       const next = snapshot.teaserLabel || 'Coming soon';
       if (teaserLabelNode.textContent !== next) teaserLabelNode.textContent = next;
@@ -477,6 +554,7 @@ const statusIcons = {
       listing: {
         image: listing.image ?? item.querySelector('.project-grid__img--base')?.getAttribute('src') ?? '',
         hoverImage: listing.hoverImage ?? item.dataset.devHoverImage ?? '',
+        hoverDark: typeof listing.hoverDark === 'boolean' ? listing.hoverDark : undefined,
         bg: listing.bg ?? item.dataset.devBg ?? '#efefef',
         dark: listing.dark ?? item.dataset.devDark === 'true',
         full: listing.full ?? item.classList.contains('project-grid__item--full'),
@@ -500,6 +578,9 @@ const statusIcons = {
   const renderPanelFromEntry = (entry) => {
     if (bgInput instanceof HTMLInputElement) bgInput.value = entry.draft.listing.bg;
     if (darkInput instanceof HTMLInputElement) darkInput.checked = entry.draft.listing.dark;
+    if (hoverDarkInput instanceof HTMLInputElement) {
+      hoverDarkInput.checked = entry.draft.listing.hoverDark ?? entry.draft.listing.dark;
+    }
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
       overlayTitle.textContent = `Project settings — ${gridLabel}`;
@@ -736,6 +817,19 @@ const statusIcons = {
       const url = await uploadCoverImage(slug, file);
       if (slot === 'hoverImage') {
         entry.draft.listing.hoverImage = url;
+        // Re-measure on every drop (replace included) — never keep a stale
+        // flag from a previous hover image. Falls back to the base `dark`
+        // value if measurement throws or the helper isn't ready.
+        let hoverDark = entry.draft.listing.dark;
+        try {
+          const measured = typeof window.__vcdMeasureHoverDark === 'function'
+            ? await window.__vcdMeasureHoverDark(file, item)
+            : null;
+          if (typeof measured === 'boolean') hoverDark = measured;
+        } catch {
+          // Keep the base `dark` fallback assigned above.
+        }
+        entry.draft.listing.hoverDark = hoverDark;
       } else {
         entry.draft.listing.image = url;
       }
@@ -1217,12 +1311,25 @@ const statusIcons = {
   settingsRoot?.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (!target.matches('[data-ps-dark]')) return;
-    if (!panelSlug) return;
-    const entry = caches.get(panelSlug);
-    if (!entry) return;
-    entry.draft.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
-    syncPendingFor(panelSlug);
+    if (target.matches('[data-ps-dark]')) {
+      if (!panelSlug) return;
+      const entry = caches.get(panelSlug);
+      if (!entry) return;
+      entry.draft.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
+      syncPendingFor(panelSlug);
+      return;
+    }
+    if (target.matches('[data-ps-hover-dark]')) {
+      // Manual override wins from here on — the measurement was a starting
+      // point, not an authority.
+      if (!panelSlug) return;
+      const entry = caches.get(panelSlug);
+      if (!entry) return;
+      entry.draft.listing.hoverDark = hoverDarkInput instanceof HTMLInputElement
+        ? hoverDarkInput.checked
+        : entry.draft.listing.dark;
+      syncPendingFor(panelSlug);
+    }
   });
 
   const openCreateDialog = () => {
