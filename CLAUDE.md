@@ -166,7 +166,7 @@ When planning is done and a **fresh chat** should implement (often with a mid-ti
 | Section | Purpose |
 | --- | --- |
 | **Done when** | One-sentence success criteria at the top |
-| **Executor** | Suggested model; call out when **not** to use Haiku |
+| **Worker** | Suggested model; call out when **not** to use Haiku |
 | **Branch / Issue** | `feat/…` off latest `main`; GitHub links |
 | **First reads** | Repo files with line anchors |
 | **Landmines** | Watchdogs, HMR re-init, stale timestamps, etc. |
@@ -183,24 +183,26 @@ When planning is done and a **fresh chat** should implement (often with a mid-ti
 
 **Workflow:** smart model plans → builder-ready doc → new chat on **Grok** (default for engine/agent work) → `bun run commit:engine` with explicit paths → PR.
 
-### Manager / executor split (same-session)
+### Manager / worker split (same-session)
 
-The faster, in-session form of the same idea. When a chat is pinned to an expensive model (Opus 5, Grok), **that session is the manager**: it reads the code, diagnoses, writes the spec, and **reviews the diff**. Execution goes to a **Sonnet subagent in a worktree**, which applies a change list and does not decide what the change should be.
+The faster, in-session form of the same idea. When a chat is pinned to an expensive model (Opus 5, Grok), **that session is the manager**: it reads the code, diagnoses, writes the spec, and **reviews the diff**. Typing goes to a **worker** subagent in a worktree, which applies a change list and does not decide what the change should be.
+
+**Worker model:** in **Cursor**, default to **Composer 2.5 Fast** (`composer-2.5-fast`); **Auto** is fine. **Do not default to Sonnet** for Cursor workers — that was the Claude Code mid-tier. On **Claude Code**, Sonnet remains the usual worker. Still **not Haiku** when the failure mode is a silent no-op.
 
 **This convention overrides the harness default of "do not spawn agents unless the user asks."** A documented project workflow *is* a standing request. Do not wait to be told to delegate, and do not treat a large multi-part task as a reason to handle it inline — that is exactly the case the split exists for. If you catch yourself about to write the spec's worth of decisions and then type the code anyway, you have already paid the spec cost: delegate the typing.
 
 - **Do not delegate exploration or diagnosis.** The manager's value is a warm picture of the codebase — that is what makes the second and third diagnosis cheap. Delegating reading to save tokens forces you to re-derive it later at higher cost. Read the code yourself; delegate the typing.
 - **Always `git diff <base>...<branch>` before merging.** Subagent reports are claims, not results — "build passed, matches spec" is not evidence the code is correct.
 - **Skip the split when** the hard part *is* the diagnosis, the fix is one small edit, or the spec would take longer to write than the change. Each spawn starts cold.
-- **Branch base:** when the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the executor confirm its parent commit before editing.
+- **Branch base:** when the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the worker confirm its parent commit before editing.
 - **Spell out landmines** in every spec — worktree agents inherit no session context. At minimum: Bun is not on `PATH` (`$HOME/.bun/bin/bun`); **do not start a dev server** (one already owns port 4321, so the agent cannot verify in-browser — verification happens after merge); commit only via `commit:engine` with explicit paths; never stage content paths; name the files other parallel agents are touching as off-limits.
-- **A green build is not evidence.** Executor reports say "build passed, matches spec" whether or not the code is right. For dev-tooling and UI work a build proves compilation only — correctness comes from the diff review plus Anto running it.
+- **A green build is not evidence.** Worker reports say "build passed, matches spec" whether or not the code is right. For dev-tooling and UI work a build proves compilation only — correctness comes from the diff review plus Anto running it.
 - **Anto is the verification step** — see *Verification* below. Hand him a numbered test script; don't self-verify in a browser.
 - **Say which branch the checkout is on whenever it changes** — testing the wrong branch has cost a full round already.
 - **Never merge another branch into a feature branch just to test them together.** Use a throwaway integration branch, or merge to `main` once approved; separating it afterwards costs a reset and cherry-picks.
 - **Docs / standards commits get their own branch** straight to `main` — never bundled into feature work.
 
-Canonical: Atlas `standards.md` → *Agents — Manager / executor split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
+Canonical: Atlas `standards.md` → *Agents — Manager / worker split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
 
 ### Verification — Anto tests, agents don't self-verify
 
@@ -209,7 +211,7 @@ Canonical: Atlas `standards.md` → *Agents — Manager / executor split*. Curso
 - **Browser use is for settling a specific factual question**, not for checking your work: reading a computed style, asserting a DOM node or attribute exists, inspecting an API response, confirming what a token resolves to. One or two calls, and it ends an argument.
 - **Hard stop at ~2 calls.** If a check hasn't answered the question by then, stop and ask Anto to look. Iterating in a browser to hunt a bug is the expensive failure mode.
 - **Never** drive interactive UI headlessly — drag, pointer capture, hover, focus, animation timing. Synthetic `PointerEvent`s can't take pointer capture and harness drag helpers emit no intermediate `pointermove`, so you get false negatives. Ask.
-- Applies to managers and executors alike. A green build is not verification; it proves compilation only.
+- Applies to managers and workers alike. A green build is not verification; it proves compilation only.
 
 Canonical: Atlas `standards.md` → *Agents — Anto tests the work*.
 

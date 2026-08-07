@@ -1,7 +1,7 @@
 # Remaining gallery work — handoff to Cursor
 
 **Written:** 2026-08-07, after #174/#175/#176/#182 shipped. `main` is at `aeb55e1`.
-**Audience:** a Cursor session acting as **manager** in the manager/executor split.
+**Audience:** a Cursor session acting as **manager** in the manager/worker split.
 
 ---
 
@@ -40,13 +40,13 @@ Lower priority, specced only as issues: **#185** (drop covers from the asset man
 - `listings.*.hoverDark` is a new field. It has to survive #171's and #167's changes — see the allowlist trap below.
 - The hover image `<img>` now renders for **every editable card**, `hidden` when empty.
 
-**Do not hand an executor a spec without telling it the anchors are stale.** That is the single most likely way this goes wrong.
+**Do not hand a worker a spec without telling it the anchors are stale.** That is the single most likely way this goes wrong.
 
 ---
 
 ## Traps worth carrying forward
 
-These cost real time on the last two branches. Put them in every executor prompt.
+These cost real time on the last two branches. Put them in every worker prompt.
 
 1. **`listingCardForGrid` (`scripts/dev-api-plugins.mjs`) is an allowlist, not a merge.** It rebuilds each listing from a fixed key set, so any new field silently vanishes on the *second* save — the first save looks fine. Fields need a `previous.*` fallback (see how `hoverImage`, `variants`, `hoverDark` do it). Test by saving twice, not once.
 
@@ -77,16 +77,16 @@ Every test script should start with whether a **dev-session restart** is needed:
 
 ---
 
-## Running manager/executor in Cursor
+## Running manager/worker in Cursor
 
-Anto's first time with this split in Cursor. The convention is in `CLAUDE.md` → *Manager / executor split* and mirrored at `.cursor/rules/agent-delegation.mdc`.
+Anto's first time with this split in Cursor. The convention is in `CLAUDE.md` → *Manager / worker split* and mirrored at `.cursor/rules/agent-delegation.mdc`. **Cursor worker default: Composer 2.5 Fast** (not Sonnet — that was Claude Code's mid-tier). Auto is fine too.
 
 The shape that worked here:
 
 1. **The expensive model is the manager.** It reads the code itself, diagnoses, writes the spec, and reviews the diff. It does **not** delegate exploration — a warm picture of the codebase is what makes the second and third diagnosis cheap.
-2. **Delegate the typing, not the decisions.** The executor applies a change list.
-3. **Always `git diff main...<branch>` before merging.** Executor reports are claims. On both branches here the report said "matches spec" and the diff had real defects — one silent-data-loss path, one CSS regression.
-4. **Ask the executor to make its report auditable**: not "done", but "here is each claim the spec asked me to verify by reading, and what I actually found". Contradictions are the most valuable thing it can return.
-5. **Spell out landmines every time** — executors inherit no context. Minimum: Bun is at `$HOME/.bun/bin/bun` and not on `PATH`; do **not** start a dev server (port 4321 is owned, so it cannot verify in-browser); commit only via `bun run commit:engine "msg" <explicit paths>`; never stage `src/content/**` or `public/images/**`.
+2. **Delegate the typing, not the decisions.** The worker applies a change list.
+3. **Always `git diff main...<branch>` before merging.** Worker reports are claims. On both branches here the report said "matches spec" and the diff had real defects — one silent-data-loss path, one CSS regression.
+4. **Ask the worker to make its report auditable**: not "done", but "here is each claim the spec asked me to verify by reading, and what I actually found". Contradictions are the most valuable thing it can return.
+5. **Spell out landmines every time** — workers inherit no context. Minimum: Bun is at `$HOME/.bun/bin/bun` and not on `PATH`; do **not** start a dev server (port 4321 is owned, so it cannot verify in-browser); commit only via `bun run commit:engine "msg" <explicit paths>`; never stage `src/content/**` or `public/images/**`.
 
-**Cursor-specific:** it has no `Agent` tool with git-worktree isolation the way Claude Code does. Use Cursor's own background/parallel agents if available, or simply run the executor as a separate chat on a branch you cut yourself (`git switch -c feat/…`). The isolation matters less than the discipline: one branch per spec, manager reviews the diff, Anto tests.
+**Cursor-specific:** it has no `Agent` tool with git-worktree isolation the way Claude Code does. Use Cursor's own background/parallel agents if available, or simply run the worker as a separate chat on a branch you cut yourself (`git switch -c feat/…`). The isolation matters less than the discipline: one branch per spec, manager reviews the diff, Anto tests.

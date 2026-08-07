@@ -2,7 +2,7 @@
 
 **Issue:** [#167](https://github.com/vcruzdesigns/VCDwebsite/issues/167) — `bug` / `gallery pages` / milestone `v2`
 **Branch:** `fix/gallery-manager-card-parity` off latest `main`
-**Executor:** Sonnet in a worktree. **Not Haiku** — the central decision here is *how not to duplicate markup*, and the naive fix is the thing that caused the bug.
+**Worker:** Composer 2.5 Fast in a worktree (Cursor default). On Claude Code, Sonnet. **Not Haiku** — the central decision here is *how not to duplicate markup*, and the naive fix is the thing that caused the bug.
 
 **Sequencing:** land **last**, after `feat/gallery-cover-chips` (#174/#175/#176) and `feat/play-card-parity` (#171). This branch's whole job is to mirror `ProjectGrid.astro`'s dev markup; doing it before those land guarantees you mirror a version that no longer exists.
 
@@ -78,7 +78,7 @@ Add it. Notes:
 
 ---
 
-## Executor landmines
+## Worker landmines
 
 - **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
 - **Do not start a dev server.** Port 4321 is owned. You cannot verify in a browser; Anto does that after merge. A green build proves compilation only — do not report it as verification.

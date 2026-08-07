@@ -2,7 +2,7 @@
 
 **Issue:** [#182](https://github.com/vcruzdesigns/VCDwebsite/issues/182) — `bug` / `gallery pages` / milestone **v1 — Launch**
 **Branch:** `fix/hover-title-legibility` off latest `main`
-**Executor:** Sonnet in a worktree. **Not Haiku** — the field has to survive a round trip through five files, and the failure mode is silent.
+**Worker:** Composer 2.5 Fast in a worktree (Cursor default). On Claude Code, Sonnet. **Not Haiku** — the field has to survive a round trip through five files, and the failure mode is silent.
 
 ---
 
@@ -22,7 +22,7 @@ This is *not* the "authored flag" #172 rejected. A human is not judging; the mac
 
 ---
 
-## Executor landmines
+## Worker landmines
 
 - **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
 - **Do not start a dev server.** Another session owns port 4321. You cannot verify in a browser — that is expected. A green `bun run build` proves compilation only; do not report it as verification.

@@ -2,7 +2,7 @@
 
 **Issues:** [#174](https://github.com/vcruzdesigns/VCDwebsite/issues/174) · [#175](https://github.com/vcruzdesigns/VCDwebsite/issues/175) · [#176](https://github.com/vcruzdesigns/VCDwebsite/issues/176) — all `enhancement` / `gallery pages` / milestone `v2`
 **Branch:** `feat/gallery-cover-chips` off latest `main`
-**Executor:** Sonnet in a worktree. **Not Haiku** — the drop handler branches on live DOM state and the blob/commit lifecycle has three interacting maps.
+**Worker:** Composer 2.5 Fast in a worktree (Cursor default). On Claude Code, Sonnet. **Not Haiku** — the drop handler branches on live DOM state and the blob/commit lifecycle has three interacting maps.
 
 Landing all three on one branch is deliberate: #176 says *"land these in an order where the second doesn't have to redo the first."* #175 and #176 both rewrite the same `drop` handler and the same cover markup. Do them together.
 
@@ -20,7 +20,7 @@ Non-negotiable: none of this leaks to the live site with dev mode off.
 
 ---
 
-## Executor landmines — read before touching anything
+## Worker landmines — read before touching anything
 
 - **Bun is not on `PATH`.** Use `$HOME/.bun/bin/bun`.
 - **Do not start a dev server.** Another session owns port 4321. You cannot verify in a browser; Anto does that after merge. A green `bun run build` proves compilation only — do not report it as verification.
