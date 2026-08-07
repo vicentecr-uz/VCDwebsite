@@ -70,7 +70,12 @@ const statusIcons = {
   </div>
 </DevOverlay>
 
-<script type="module">
+<script>
+  // NOTE: plain <script>, not type="module". Astro only bundles and rewrites
+  // imports for unadorned script tags — with type="module" it left this inline
+  // and the browser resolved `../scripts/coverLuminance` against the page URL
+  // (/work -> /scripts/coverLuminance, 404). The module never ran, so every
+  // drop silently fell back to the base `dark` value. #182.
   // #182 — measurement lives in its own module (coverLuminance.ts) so #172 can
   // lift it verbatim for runtime sampling later. The rest of this file's
   // script is `define:vars` (inline, no `import`), so this module hands the
@@ -826,8 +831,12 @@ const statusIcons = {
             ? await window.__vcdMeasureHoverDark(file, item)
             : null;
           if (typeof measured === 'boolean') hoverDark = measured;
-        } catch {
-          // Keep the base `dark` fallback assigned above.
+          // The fallback is indistinguishable from a real measurement that
+          // happens to agree with `dark`, which is exactly how a broken
+          // measurement path stayed invisible once already. Say so out loud.
+          else console.warn('[vcd #182] Hover legibility not measured — fell back to the card\'s `dark` value. Check that the coverLuminance module loaded.');
+        } catch (error) {
+          console.warn('[vcd #182] Hover legibility measurement failed — using the card\'s `dark` value.', error);
         }
         entry.draft.listing.hoverDark = hoverDark;
       } else {
