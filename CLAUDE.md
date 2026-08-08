@@ -2,6 +2,10 @@
 
 > This file is the single source of truth for project context. All memory is kept here, in the repo.
 
+> **You are not the only agent working in this repo.** Cursor agents work here too, and they do **not** read `CLAUDE.md` — they read `.cursor/rules/*.mdc`. Atlas `standards.md` is canonical for cross-project standards, and every standard there lists its **Surfaces**.
+>
+> So: **when you change a convention, update every surface it names, not just the file you happened to be editing.** For agent workflow that means all three — Atlas `standards.md`, this file, and `.cursor/rules/agent-delegation.mdc`. A rule written in one place is a rule the next agent silently won't follow, and Anto ends up re-explaining it by hand. Docs/standards commits get their own branch straight to `main` (see below) — never bundled into feature work.
+
 ## Project
 Astro + Bun + Tailwind CSS v4 + GSAP portfolio site for Vicente Cruz (industrial designer, London). Rebuilding vcruzdesigns.com as an independent site.
 
@@ -199,8 +203,15 @@ The faster, in-session form of the same idea. When a chat is pinned to an expens
 - **A green build is not evidence.** Worker reports say "build passed, matches spec" whether or not the code is right. For dev-tooling and UI work a build proves compilation only — correctness comes from the diff review plus Anto running it.
 - **Anto is the verification step** — see *Verification* below. Hand him a numbered test script; don't self-verify in a browser.
 - **Say which branch the checkout is on whenever it changes** — testing the wrong branch has cost a full round already.
+- **Tear down the worktree once you've reviewed the diff.** A worktree holds its branch **exclusively**, so a leftover one makes `git switch <branch>` fail when Anto goes to QA — which is exactly when he needs it. The harness only auto-cleans an *unchanged* worktree, and a worker that committed is never unchanged. Sequence: review → push → `git worktree remove` → open the PR. **Before handing over a test script, `git worktree list` must show only the main checkout.** It also reclaims a full second copy of the repo plus `node_modules` and `dist`.
 - **Never merge another branch into a feature branch just to test them together.** Use a throwaway integration branch, or merge to `main` once approved; separating it afterwards costs a reset and cherry-picks.
 - **Docs / standards commits get their own branch** straight to `main` — never bundled into feature work.
+- **Switch the manager's own model tier by phase, not for the whole session.** Model switching is mid-conversation and keeps context — `/model` in Claude Code, the per-message picker in Cursor — so there's no reason to run the expensive model through the cheap parts.
+  - **Cheap tier:** talking with Anto, filing issues, writing PR descriptions, worktree cleanup — anything that doesn't need reading code to understand *why*.
+  - **Switch up for one continuous block:** reading the code, diagnosing, writing the spec, dispatching the worker, and **reviewing the diff**. Don't let the review slip back to the cheap tier — it's the same warm context from the diagnosis that catches what a fresh read would miss. On the #201/#185/#197/#181 run, two of four review-caught defects depended on that continuity (a promotion rewrite missing `hoverImage`/`coverImage`; a caret-fade rule silently contradicting a decision made earlier in the same session).
+  - **Drop back down** once fixes from review are applied — test script, PR, next item.
+  - The trigger is "I'm about to read code to understand why," not "this is issue-shaped." Filing an issue can need a few reads without needing deep reasoning about them yet.
+  - Whether the manager can run the *whole* loop at a mid-tier model, not just the worker, is still an open question — worth testing deliberately, not assumed from one run.
 
 Canonical: Atlas `standards.md` → *Agents — Manager / worker split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
 
