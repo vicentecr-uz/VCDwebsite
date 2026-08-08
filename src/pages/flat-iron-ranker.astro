@@ -1,0 +1,922 @@
+---
+/** Standalone Flat Iron London location ranker — lift-and-scroll reorder from sectionReorder.ts */
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flat Iron London — rank the vibes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Flat Iron London</h1>
+      <p id="subtitle">Drag to rank by how cool they look — names stay hidden until you tap 👁</p>
+    </header>
+
+    <div class="phase-tabs" role="tablist" aria-label="Ranking mode">
+      <button type="button" role="tab" id="tab-looks" aria-selected="true" aria-controls="panel-looks">By vibes</button>
+      <button type="button" role="tab" id="tab-distance" aria-selected="false" aria-controls="panel-distance">By distance</button>
+    </div>
+
+    <div id="panel-looks">
+      <div class="toolbar">
+        <button type="button" id="btn-shuffle">Shuffle</button>
+        <button type="button" id="btn-reveal-all">Reveal all names</button>
+        <button type="button" id="btn-hide-all">Hide all names</button>
+      </div>
+      <p class="hint">Tip: tap 👁 on each card to reveal or hide a name.</p>
+    </div>
+
+    <div id="panel-distance" hidden>
+      <div class="toolbar">
+        <input type="text" id="postcode" placeholder="Your postcode (e.g. N1 9GU)" autocomplete="postal-code" inputmode="text" />
+        <button type="button" id="btn-set-location">Set location</button>
+        <button type="button" id="btn-sort-distance">Sort nearest first</button>
+      </div>
+      <p class="hint" id="location-status">Enter your postcode to show distances — then drag to re-rank.</p>
+    </div>
+
+    <ol class="rank-list" id="rank-list"></ol>
+
+    <div class="summary" id="summary" hidden>
+      <h2>Your ranking</h2>
+      <ol id="summary-list"></ol>
+    </div>
+  </div>
+
+  <script>
+    import { createReorderController, REORDER_TIMING } from '../scripts/sectionReorder';
+
+    const LOCATIONS = [
+      { id: 'borough', name: 'Borough', area: 'Clink Street', lat: 51.507218, lng: -0.091868, image: 'https://flatironsteak.co.uk/wp-content/uploads/borough-gallery-2-1024x792.jpg' },
+      { id: 'covent-garden', name: 'Covent Garden', area: 'Henrietta Street', lat: 51.510734, lng: -0.124248, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Butchery-JustinDeSouza-1-1-1024x683.jpg' },
+      { id: 'hammersmith', name: 'Hammersmith', area: 'Hammersmith Broadway', lat: 51.49347, lng: -0.2243, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Hammersmith-1-1024x683.jpg' },
+      { id: 'kensington', name: 'Kensington', area: 'Young Street', lat: 51.501743, lng: -0.189571, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Kensington-JustinDeSouza-16-1024x683.jpg' },
+      { id: 'kings-cross', name: 'Kings Cross', area: 'Caledonian Road', lat: 51.532497, lng: -0.120311, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Kings-Cross-PWF-0056-HDR-1024x683.jpg' },
+      { id: 'london-bridge', name: 'London Bridge', area: 'Tooley Street', lat: 51.504258, lng: -0.082453, image: 'https://flatironsteak.co.uk/wp-content/uploads/FP4A4275-1024x683.jpg' },
+      { id: 'marylebone', name: 'Marylebone', area: 'James Street', lat: 51.515551, lng: -0.150656, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Bond-Street-JustinDeSouza-24-1024x683.jpg' },
+      { id: 'piccadilly', name: 'Piccadilly', area: 'Denman Street', lat: 51.510644, lng: -0.134916, image: 'https://flatironsteak.co.uk/wp-content/uploads/FP4A3097-1024x1536.jpg' },
+      { id: 'shoreditch', name: 'Shoreditch', area: 'Curtain Road', lat: 51.525306, lng: -0.08053, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Shoreditch-JustinDeSouza-1-1024x683.jpg' },
+      { id: 'soho', name: 'Soho', area: 'Beak Street', lat: 51.51212, lng: -0.138401, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Soho-1-1024x684.jpg' },
+      { id: 'southbank', name: 'Southbank', area: 'Royal Festival Hall', lat: 51.505768, lng: -0.1168, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-July25-JustinDeSouza-182-1024x683.jpg' },
+      { id: 'spitalfields', name: 'Spitalfields', area: 'Commercial Street', lat: 51.519115, lng: -0.073699, image: 'https://flatironsteak.co.uk/wp-content/uploads/4V8A1309-1-1024x1536.jpg' },
+      { id: 'tottenham-court-road', name: 'Tottenham Court Road', area: 'Denmark Street', lat: 51.515064, lng: -0.129576, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Tottenham-Court-Road-1-1024x683.jpg' },
+      { id: 'victoria', name: 'Victoria', area: 'Terminus Place', lat: 51.496286, lng: -0.143642, image: 'https://flatironsteak.co.uk/wp-content/uploads/FP4A3351-1-1024x683.jpg' },
+      { id: 'waterloo', name: 'Waterloo', area: 'The Cut', lat: 51.503034, lng: -0.106711, image: 'https://flatironsteak.co.uk/wp-content/uploads/AF_Flat-Iron-Waterloo_Hero-Images-4_1-1024x731.jpg' },
+      { id: 'westfield-london', name: 'Westfield London', area: 'White City', lat: 51.508222, lng: -0.222156, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Westfield-JsutinDeSouza-124-1024x683.jpg' },
+      { id: 'clapham', name: 'Clapham', area: 'The Pavement', lat: 51.462044, lng: -0.139259, image: 'https://flatironsteak.co.uk/wp-content/uploads/Flat-Iron-Menu-photos-16-1024x683.jpg' },
+    ];
+
+    const LS_KEY = 'flat-iron-ranker-v1';
+    const DROP_INDICATOR_CLASS = 'rank-drop-indicator';
+    const DROP_INDICATOR_BODY_CLASS = 'rank-drop-indicator__body';
+    const LIFT_BACKDROP_CLASS = 'rank-lift-backdrop';
+    const DRAGGING_CLASS = 'is-rank-reorder-dragging';
+    const FLIP_MOVING_CLASS = 'is-rank-flip-moving';
+
+    const state = {
+      order: LOCATIONS.map((l) => l.id),
+      revealed: new Set(),
+      mode: 'looks',
+      userLat: null,
+      userLng: null,
+      userLabel: '',
+    };
+
+    const listEl = document.getElementById('rank-list');
+    const summaryEl = document.getElementById('summary');
+    const summaryListEl = document.getElementById('summary-list');
+    const subtitleEl = document.getElementById('subtitle');
+    const locationStatusEl = document.getElementById('location-status');
+    const panelLooks = document.getElementById('panel-looks');
+    const panelDistance = document.getElementById('panel-distance');
+    const tabLooks = document.getElementById('tab-looks');
+    const tabDistance = document.getElementById('tab-distance');
+    const postcodeInput = document.getElementById('postcode');
+
+    let dragItem = null;
+    let dragHandle = null;
+    let dragPointerId = null;
+    let liftBackdrop = null;
+    let sessionButtonDown = false;
+    let sessionPointerActive = false;
+    let activeSessionId = 0;
+    let droppingSessionId = 0;
+    let sessionSeq = 0;
+
+    const byId = (id) => LOCATIONS.find((l) => l.id === id);
+
+    const getItems = () =>
+      [...listEl.querySelectorAll('.rank-item[data-id]')].filter((el) => el !== dragItem);
+
+    const controller = createReorderController({
+      getItems,
+      getDropZone: () => listEl,
+      getDragItem: () => dragItem,
+      classes: {
+        indicator: DROP_INDICATOR_CLASS,
+        indicatorBody: DROP_INDICATOR_BODY_CLASS,
+        flipMoving: FLIP_MOVING_CLASS,
+        lifted: 'is-rank-lifted',
+        fadeGhost: 'is-rank-drop-ghost',
+        liftBackdrop: LIFT_BACKDROP_CLASS,
+      },
+      measureInsertGaps: (_insertIndex, _sourceIndex, liftGaps) => ({
+        top: '0px',
+        bottom: liftGaps.bottom,
+      }),
+    });
+
+    const setDragging = (active) => {
+      document.documentElement.classList.toggle(DRAGGING_CLASS, active);
+    };
+
+    const removeLiftBackdrop = () => {
+      liftBackdrop?.remove();
+      liftBackdrop = null;
+      dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
+    };
+
+    const attachLiftBackdrop = (root) => {
+      removeLiftBackdrop();
+      liftBackdrop = document.createElement('div');
+      liftBackdrop.className = LIFT_BACKDROP_CLASS;
+      liftBackdrop.setAttribute('aria-hidden', 'true');
+      root.prepend(liftBackdrop);
+      requestAnimationFrame(() => liftBackdrop?.classList.add('is-visible'));
+    };
+
+    const fadeOutLiftBackdrop = () => {
+      const el = liftBackdrop ?? dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`) ?? null;
+      if (!el) return Promise.resolve();
+      el.classList.remove('is-visible');
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el.remove();
+        if (liftBackdrop === el) liftBackdrop = null;
+        return Promise.resolve();
+      }
+      return new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          el.remove();
+          if (liftBackdrop === el) liftBackdrop = null;
+          resolve();
+        };
+        el.addEventListener('transitionend', finish, { once: true });
+        window.setTimeout(finish, REORDER_TIMING.LIFT_CARD_FADE_MS + 50);
+      });
+    };
+
+    // Renumber from the FULL list, not getItems() — getItems() filters out
+    // dragItem, which is still set when this runs (it's only cleared in
+    // finishPointerSession's `finally` block, after this call). Numbering
+    // off getItems() skipped the just-dropped card and off-by-one'd every
+    // card after its new position.
+    const syncOrderFromDom = () => {
+      const items = [...listEl.querySelectorAll('.rank-item[data-id]')];
+      state.order = items.map((el) => el.dataset.id);
+      items.forEach((li, i) => {
+        const num = li.querySelector('.rank-num');
+        if (num) {
+          num.textContent = String(i + 1);
+          num.setAttribute('aria-label', `Rank ${i + 1}`);
+        }
+      });
+      updateSummary();
+      saveState();
+    };
+
+    const loadState = () => {
+      try {
+        const raw = localStorage.getItem(LS_KEY);
+        if (!raw) return;
+        const saved = JSON.parse(raw);
+        if (Array.isArray(saved.order) && saved.order.length === LOCATIONS.length) {
+          const valid = saved.order.every((id) => byId(id));
+          if (valid) state.order = saved.order;
+        }
+        if (Array.isArray(saved.revealed)) state.revealed = new Set(saved.revealed);
+        if (saved.userLat != null) state.userLat = saved.userLat;
+        if (saved.userLng != null) state.userLng = saved.userLng;
+        if (saved.userLabel) state.userLabel = saved.userLabel;
+        if (saved.mode === 'distance') setMode('distance', false);
+        if (saved.postcode) postcodeInput.value = saved.postcode;
+      } catch (_) {}
+    };
+
+    const saveState = () => {
+      localStorage.setItem(LS_KEY, JSON.stringify({
+        order: state.order,
+        revealed: [...state.revealed],
+        userLat: state.userLat,
+        userLng: state.userLng,
+        userLabel: state.userLabel,
+        mode: state.mode,
+        postcode: postcodeInput.value.trim(),
+      }));
+    };
+
+    const haversineKm = (lat1, lng1, lat2, lng2) => {
+      const R = 6371;
+      const toRad = (d) => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLng = toRad(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    const formatDistance = (km) => (km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`);
+
+    const distanceFor = (id) => {
+      const loc = byId(id);
+      if (!loc || state.userLat == null) return null;
+      return haversineKm(state.userLat, state.userLng, loc.lat, loc.lng);
+    };
+
+    const setMode = (mode, save = true) => {
+      state.mode = mode;
+      const isDistance = mode === 'distance';
+      tabLooks.setAttribute('aria-selected', String(!isDistance));
+      tabDistance.setAttribute('aria-selected', String(isDistance));
+      panelLooks.hidden = isDistance;
+      panelDistance.hidden = !isDistance;
+      subtitleEl.textContent = isDistance
+        ? 'Re-rank by how close they are — distances show once you set your postcode'
+        : 'Drag to rank by how cool they look — names stay hidden until you tap 👁';
+      updateDistanceBadges();
+      updateSummary();
+      if (save) saveState();
+    };
+
+    const updateDistanceBadges = () => {
+      listEl.querySelectorAll('.rank-item[data-id]').forEach((li) => {
+        const dist = distanceFor(li.dataset.id);
+        const badge = li.querySelector('.card__distance');
+        if (!badge) return;
+        if (state.mode !== 'distance' || dist == null) {
+          badge.hidden = true;
+          badge.textContent = '';
+        } else {
+          badge.hidden = false;
+          badge.textContent = formatDistance(dist);
+        }
+      });
+    };
+
+    const syncNameVisibility = (li, id) => {
+      const revealed = state.revealed.has(id);
+      const nameEl = li.querySelector('.card__name');
+      const btn = li.querySelector('.name-toggle-btn');
+      if (nameEl) {
+        nameEl.classList.toggle('is-hidden', !revealed);
+        nameEl.setAttribute('aria-hidden', String(!revealed));
+      }
+      if (btn) {
+        btn.setAttribute('aria-pressed', String(revealed));
+        btn.setAttribute('aria-label', revealed ? `Hide ${byId(id).name}` : `Reveal ${byId(id).name}`);
+        btn.title = revealed ? 'Hide name' : 'Reveal name';
+        btn.textContent = revealed ? '🙈' : '👁';
+      }
+    };
+
+    const toggleReveal = (id) => {
+      if (state.revealed.has(id)) state.revealed.delete(id);
+      else state.revealed.add(id);
+      const li = listEl.querySelector(`.rank-item[data-id="${id}"]`);
+      if (li) syncNameVisibility(li, id);
+      updateSummary();
+      saveState();
+    };
+
+    const revealAll = () => {
+      LOCATIONS.forEach((l) => state.revealed.add(l.id));
+      listEl.querySelectorAll('.rank-item[data-id]').forEach((li) => syncNameVisibility(li, li.dataset.id));
+      updateSummary();
+      saveState();
+    };
+
+    const hideAll = () => {
+      state.revealed.clear();
+      listEl.querySelectorAll('.rank-item[data-id]').forEach((li) => syncNameVisibility(li, li.dataset.id));
+      updateSummary();
+      saveState();
+    };
+
+    const shuffleOrder = () => {
+      abortActiveSession();
+      const arr = [...state.order];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      state.order = arr;
+      render();
+      saveState();
+    };
+
+    const sortByDistance = () => {
+      if (state.userLat == null) {
+        locationStatusEl.textContent = 'Set your postcode first.';
+        return;
+      }
+      abortActiveSession();
+      state.order.sort((a, b) => distanceFor(a) - distanceFor(b));
+      render();
+      saveState();
+    };
+
+    const setUserLocation = async () => {
+      const pc = postcodeInput.value.trim();
+      if (!pc) return;
+      locationStatusEl.textContent = 'Looking up postcode…';
+      try {
+        const res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(pc)}`);
+        const data = await res.json();
+        if (!data.result) throw new Error('not found');
+        state.userLat = data.result.latitude;
+        state.userLng = data.result.longitude;
+        state.userLabel = data.result.postcode;
+        postcodeInput.value = data.result.postcode;
+        locationStatusEl.textContent = `Distances from ${data.result.postcode} — drag to tweak the order.`;
+        updateDistanceBadges();
+        saveState();
+      } catch {
+        locationStatusEl.textContent = "Couldn't find that postcode — try again.";
+      }
+    };
+
+    const buildItem = (id, rank) => {
+      const loc = byId(id);
+      const li = document.createElement('li');
+      li.className = 'rank-item';
+      li.dataset.id = id;
+
+      li.innerHTML = `
+        <div class="rank-num" aria-label="Rank ${rank}">${rank}</div>
+        <article class="card">
+          <div class="card__img-wrap">
+            <img src="${loc.image}" alt="" loading="lazy" />
+          </div>
+          <div class="card__meta">
+            <div class="card__name ${state.revealed.has(id) ? '' : 'is-hidden'}" aria-hidden="${!state.revealed.has(id)}">
+              <span>${loc.name}</span> <span class="card__area">· ${loc.area}</span>
+            </div>
+            <span class="card__distance" hidden></span>
+            <button type="button" class="name-toggle-btn" aria-pressed="${state.revealed.has(id)}">👁</button>
+          </div>
+        </article>
+        <button type="button" class="drag-handle" aria-label="Drag to reorder">
+          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true" focusable="false">
+            <circle cx="4.5" cy="3" r="1.1" fill="currentColor"/>
+            <circle cx="9.5" cy="3" r="1.1" fill="currentColor"/>
+            <circle cx="4.5" cy="7" r="1.1" fill="currentColor"/>
+            <circle cx="9.5" cy="7" r="1.1" fill="currentColor"/>
+            <circle cx="4.5" cy="11" r="1.1" fill="currentColor"/>
+            <circle cx="9.5" cy="11" r="1.1" fill="currentColor"/>
+          </svg>
+        </button>
+      `;
+
+      syncNameVisibility(li, id);
+      li.querySelector('.name-toggle-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleReveal(id);
+      });
+
+      const handle = li.querySelector('.drag-handle');
+      handle.addEventListener('click', (e) => e.preventDefault());
+      handle.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return;
+        enterLift(li, handle, e.pointerId, e.clientX, e.clientY);
+        e.preventDefault();
+      });
+
+      return li;
+    };
+
+    const enterLift = (root, handle, pointerId, x, y) => {
+      const previous = dragItem;
+      let resumed = false;
+      if (controller.isActive()) {
+        if (root === previous) {
+          if (!controller.resumeLift(root, handle, x, y)) return;
+          resumed = true;
+        } else if (!controller.settleNow()) {
+          return;
+        }
+      }
+
+      dragItem = root;
+      dragHandle = handle;
+      dragPointerId = pointerId;
+      sessionButtonDown = true;
+      sessionSeq += 1;
+      activeSessionId = sessionSeq;
+
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch (_) {}
+
+      if (!resumed) {
+        const items = [...listEl.querySelectorAll('.rank-item[data-id]')];
+        let sourceIndex = items.indexOf(root);
+        if (sourceIndex < 0) sourceIndex = 0;
+        controller.beginLift(root, handle, x, y, sourceIndex);
+        attachLiftBackdrop(root);
+      }
+
+      root.classList.add('is-rank-lifted-session');
+      setDragging(true);
+      bindSessionPointerListeners();
+    };
+
+    const finishPointerSession = async () => {
+      if (!dragItem || droppingSessionId === activeSessionId) return;
+      if (!controller.isActive() && !sessionButtonDown) return;
+
+      const root = dragItem;
+      const sessionId = activeSessionId;
+      sessionButtonDown = false;
+      unbindSessionPointerListeners();
+
+      if (dragHandle && dragPointerId != null) {
+        try { dragItem?.releasePointerCapture(dragPointerId); } catch (_) {}
+        try { dragHandle.releasePointerCapture(dragPointerId); } catch (_) {}
+      }
+
+      droppingSessionId = sessionId;
+      try {
+        if (controller.isActive()) await controller.endDrop();
+        if (sessionId === activeSessionId) await fadeOutLiftBackdrop();
+        if (sessionId === activeSessionId) {
+          removeLiftBackdrop();
+          syncOrderFromDom();
+        }
+      } finally {
+        if (droppingSessionId === sessionId) droppingSessionId = 0;
+        if (sessionId === activeSessionId) {
+          setDragging(false);
+          dragItem = null;
+          dragHandle = null;
+          dragPointerId = null;
+          root.classList.remove('is-rank-lifted-session');
+        }
+      }
+    };
+
+    const onSessionPointerUp = (event) => {
+      if (!sessionButtonDown || !dragItem) return;
+      if (dragPointerId !== null && event.pointerId !== dragPointerId) return;
+      void finishPointerSession();
+    };
+
+    const bindSessionPointerListeners = () => {
+      if (sessionPointerActive) return;
+      sessionPointerActive = true;
+      document.addEventListener('pointerup', onSessionPointerUp, { capture: true });
+      document.addEventListener('mouseup', onSessionPointerUp, { capture: true });
+    };
+
+    const unbindSessionPointerListeners = () => {
+      if (!sessionPointerActive) return;
+      sessionPointerActive = false;
+      document.removeEventListener('pointerup', onSessionPointerUp, { capture: true });
+      document.removeEventListener('mouseup', onSessionPointerUp, { capture: true });
+    };
+
+    const abortActiveSession = () => {
+      if (!controller.isActive() && !dragItem) return;
+      const root = dragItem;
+      activeSessionId = 0;
+      droppingSessionId = 0;
+      sessionButtonDown = false;
+      unbindSessionPointerListeners();
+      controller.destroy();
+      removeLiftBackdrop();
+      if (root) root.classList.remove('is-rank-lifted-session');
+      setDragging(false);
+      dragItem = null;
+      dragHandle = null;
+      dragPointerId = null;
+    };
+
+    document.addEventListener('pointermove', (e) => controller.setPointer(e.clientX, e.clientY), { capture: true, passive: true });
+
+    const render = () => {
+      abortActiveSession();
+      listEl.replaceChildren();
+      state.order.forEach((id, i) => listEl.appendChild(buildItem(id, i + 1)));
+      updateDistanceBadges();
+      updateSummary();
+    };
+
+    const updateSummary = () => {
+      const allRevealed = LOCATIONS.every((l) => state.revealed.has(l.id));
+      if (!allRevealed && state.mode === 'looks') {
+        summaryEl.hidden = true;
+        return;
+      }
+      summaryEl.hidden = false;
+      summaryListEl.replaceChildren();
+      state.order.forEach((id, i) => {
+        const loc = byId(id);
+        const li = document.createElement('li');
+        const dist = distanceFor(id);
+        const distStr = dist != null ? ` — ${formatDistance(dist)}` : '';
+        li.textContent = `${i + 1}. ${loc.name} (${loc.area})${distStr}`;
+        summaryListEl.appendChild(li);
+      });
+    };
+
+    document.getElementById('btn-shuffle').addEventListener('click', shuffleOrder);
+    document.getElementById('btn-reveal-all').addEventListener('click', revealAll);
+    document.getElementById('btn-hide-all').addEventListener('click', hideAll);
+    document.getElementById('btn-set-location').addEventListener('click', () => void setUserLocation());
+    document.getElementById('btn-sort-distance').addEventListener('click', sortByDistance);
+    postcodeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') void setUserLocation(); });
+    tabLooks.addEventListener('click', () => setMode('looks'));
+    tabDistance.addEventListener('click', () => setMode('distance'));
+
+    loadState();
+    render();
+    if (state.userLabel) {
+      locationStatusEl.textContent = `Distances from ${state.userLabel} — drag to tweak the order.`;
+    }
+  </script>
+</body>
+</html>
+
+<style is:global>
+  :root {
+    --bg: #f7f5f2;
+    --surface: #fff;
+    --ink: #1a1a1a;
+    --muted: #6b6560;
+    --accent: #9c3b1f;
+    --accent-soft: #f5e6de;
+    --border: #e4ded6;
+    --rank-size: 2.25rem;
+    --radius: 0.75rem;
+    --shadow: 0 4px 24px rgba(26, 26, 26, 0.08);
+    --lift-card-inset: 0.5rem;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    font-family: "Hanken Grotesk", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.4;
+  }
+
+  .wrap {
+    max-width: 42rem;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 4rem;
+  }
+
+  header { text-align: center; margin-bottom: 1.5rem; }
+  header h1 { margin: 0 0 0.35rem; font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; }
+  header p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+  .phase-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.25rem;
+  }
+
+  .phase-tabs button {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    padding: 0.6rem 0.75rem;
+    border-radius: 999px;
+    cursor: pointer;
+    color: var(--muted);
+    transition: background 0.15s, color 0.15s;
+    /* Meets the ~44px minimum touch target height on its own. */
+    min-height: 2.75rem;
+  }
+
+  .phase-tabs button[aria-selected="true"] {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 1.25rem;
+  }
+
+  .toolbar button,
+  .toolbar input {
+    font: inherit;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border);
+    padding: 0.6rem 0.75rem;
+    background: var(--surface);
+    min-height: 2.75rem;
+  }
+
+  .toolbar button { font-size: 0.875rem; font-weight: 600; cursor: pointer; }
+  .toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+  /* 16px minimum — under that, iOS Safari zooms the whole page in on focus. */
+  .toolbar input { flex: 1; min-width: 8rem; font-size: 1rem; }
+  .toolbar input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+  .hint { font-size: 0.8rem; color: var(--muted); margin: -0.5rem 0 1rem; }
+
+  .rank-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    position: relative;
+    isolation: isolate;
+    z-index: 1;
+  }
+
+  .rank-item {
+    display: grid;
+    grid-template-columns: var(--rank-size) 1fr auto;
+    gap: 0.75rem;
+    align-items: stretch;
+    position: relative;
+  }
+
+  .rank-num {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: var(--radius);
+    min-height: 100%;
+  }
+
+  .card {
+    background: var(--surface);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card__img-wrap {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    background: #ddd;
+  }
+
+  .card__img-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .card__meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.85rem;
+    border-top: 1px solid var(--border);
+  }
+
+  .card__name { font-weight: 600; font-size: 1rem; letter-spacing: -0.01em; flex: 1; min-width: 0; }
+  .card__area { font-weight: 400; color: var(--muted); }
+
+  .card__name.is-hidden {
+    filter: blur(6px);
+    user-select: none;
+    color: transparent;
+    text-shadow: 0 0 12px rgba(26, 26, 26, 0.55);
+  }
+
+  .card__name.is-hidden::before {
+    content: "????";
+    color: var(--muted);
+    filter: none;
+    text-shadow: none;
+  }
+
+  .card__name.is-hidden span { display: none; }
+
+  .card__distance {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  .card__distance[hidden] { display: none; }
+
+  .name-toggle-btn {
+    flex-shrink: 0;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    border-radius: 0.4rem;
+    /* 38px — up from the original 32px, closer to the ~44px touch-target
+       guideline while staying visually in scale with the card. */
+    width: 2.375rem;
+    height: 2.375rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.95rem;
+    line-height: 1;
+  }
+
+  .name-toggle-btn:hover { border-color: var(--accent); }
+
+  .drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    align-self: center;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 0.5rem;
+    width: 2.5rem;
+    height: 2.75rem;
+    padding: 0;
+    color: var(--muted);
+    cursor: grab;
+    touch-action: none;
+    box-shadow: 0 2px 8px rgba(26, 26, 26, 0.06);
+  }
+
+  .drag-handle:hover { border-color: var(--accent); color: var(--accent); }
+
+  .summary {
+    margin-top: 2rem;
+    padding: 1rem 1.1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+  }
+
+  .summary h2 {
+    margin: 0 0 0.5rem;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  .summary ol { margin: 0; padding-left: 1.2rem; }
+  .summary li { margin: 0.2rem 0; }
+
+  /* Lift + drop — same model as DevSectionReorderEditor */
+  .is-rank-lifted {
+    position: relative;
+    isolation: isolate;
+    pointer-events: none;
+    touch-action: none;
+    transform: scale(1);
+    transition: transform 200ms ease-out;
+  }
+
+  .is-rank-lifted.is-dropping { transition: none; transform: scale(1); }
+  .is-rank-lifted.is-lifted-raised { transform: scale(1.02); }
+  .is-rank-lifted.is-lifted-raised.is-dropping { transform: scale(1.02); }
+  .is-rank-lifted.is-rank-lifted-session { pointer-events: auto; }
+
+  .rank-lift-backdrop {
+    position: absolute;
+    inset: calc(-1 * var(--lift-card-inset));
+    z-index: -1;
+    background: var(--bg);
+    border-radius: var(--radius);
+    opacity: 0;
+    box-shadow: none;
+    pointer-events: none;
+    transition: opacity 200ms ease-out, box-shadow 200ms ease-out;
+  }
+
+  .rank-lift-backdrop.is-visible {
+    opacity: 1;
+    box-shadow: 0 0.85em 2.4em rgba(0, 0, 0, 0.18);
+  }
+
+  .is-rank-flip-moving {
+    position: relative;
+    z-index: 90;
+    will-change: transform;
+  }
+
+  .is-rank-flip-moving::before {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--lift-card-inset));
+    z-index: -1;
+    background: var(--bg);
+    border-radius: var(--radius);
+    pointer-events: none;
+  }
+
+  html.is-rank-reorder-dragging {
+    touch-action: none;
+    user-select: none;
+    cursor: grabbing;
+    overflow-anchor: none;
+  }
+
+  html.is-rank-reorder-dragging .drag-handle { cursor: grabbing; }
+
+  .rank-drop-indicator {
+    display: grid;
+    grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+    overflow: visible;
+    pointer-events: none;
+    grid-column: 1 / -1;
+  }
+
+  .rank-drop-indicator__body {
+    position: relative;
+    grid-row: 2;
+    box-sizing: border-box;
+    min-height: 0;
+    height: 0;
+    width: 100%;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    opacity: 0;
+    overflow: visible;
+    pointer-events: none;
+    transition: height 140ms ease-out, opacity 90ms ease-out;
+  }
+
+  .rank-drop-indicator__body::after {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--lift-card-inset) + 2px);
+    box-sizing: border-box;
+    border: 2px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+    pointer-events: none;
+  }
+
+  .rank-drop-indicator.is-visible .rank-drop-indicator__body {
+    height: var(--gap-height, 0px);
+    opacity: 1;
+  }
+
+  .is-rank-drop-ghost {
+    position: fixed;
+    z-index: 99;
+    pointer-events: none;
+  }
+
+  @media (min-width: 50em) {
+    .wrap { max-width: 48rem; padding-top: 2rem; }
+    header h1 { font-size: 2rem; }
+    :root { --rank-size: 2.75rem; }
+    .rank-num { font-size: 1.6rem; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .is-rank-lifted { transition: none; }
+    .rank-lift-backdrop { transition: none; }
+    .rank-lift-backdrop.is-visible { box-shadow: 0 0.35em 1.2em rgba(0, 0, 0, 0.12); }
+  }
+</style>
