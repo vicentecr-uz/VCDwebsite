@@ -12,7 +12,7 @@ import {
   buildImageSection,
   buildImageSectionFromSrcs,
   buildPlaceholderImageSection,
-  draftMediaDevServer,
+  mediaDevServer,
   fillPlaceholderImageSection,
   listingOrderDevWriter,
   galleryMembershipDevWriter,
@@ -21,7 +21,6 @@ import {
   projectDeleteDevWriter,
   projectRenameDevWriter,
   projectSettingsDevWriter,
-  publishMediaDevWriter,
   readDevDocument,
   resolveDevFieldTarget,
   resolveEditableDocument,
@@ -37,6 +36,7 @@ import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.m
 import { publishDevWriter } from './scripts/dev-publish.mjs';
 import { issueDevWriter } from './scripts/dev-issue.mjs';
 import { commitEngineDevWriter } from './scripts/dev-commit-engine.mjs';
+import { mediaCollectorIntegration } from './scripts/collect-shipped-assets.mjs';
 
 const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
@@ -2007,6 +2007,7 @@ function contentNavDevWriter() {
 // https://astro.build/config
 export default defineConfig({
   devToolbar: { enabled: false },
+  integrations: [mediaCollectorIntegration()],
   // Bind 0.0.0.0 so phones / other devices on the LAN can hit the dev server.
   // (Astro's top-level server.host — vite.server.host alone is not enough.)
   server: {
@@ -2021,7 +2022,7 @@ export default defineConfig({
     plugins: [
       tailwindcss(),
       contentHmrGate(),
-      draftMediaDevServer(),
+      mediaDevServer(),
       uploadDevWriter(),
       assetsDevWriter(),
       projectCreateDevWriter(),
@@ -2031,7 +2032,6 @@ export default defineConfig({
       galleryMembershipDevWriter(),
       sectionOrderDevWriter(),
       projectSettingsDevWriter(),
-      publishMediaDevWriter(),
       publishDevWriter(),
       issueDevWriter(),
       commitEngineDevWriter(),
@@ -2049,15 +2049,15 @@ export default defineConfig({
     },
     server: {
       watch: {
-        // Content + published images are not Vite modules. Watching them
-        // fires full-reloads on Save / branch-sync pulls — calm HMR
-        // (contentHmrGate) also drops full-reload WS, but ignoring here
-        // keeps the watcher quiet. Manual refresh when you want new content.
+        // Content + media are not Vite modules. Watching them fires
+        // full-reloads on Save / branch-sync pulls — calm HMR (contentHmrGate)
+        // also drops full-reload WS, but ignoring here keeps the watcher quiet.
+        // Manual refresh when you want new content.
         ignored: [
           '**/ROADMAP.md',
           '**/sitemap/**',
           '**/src/content/**',
-          '**/public/images/**',
+          '**/media/**',
         ],
       }
     }

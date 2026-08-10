@@ -4,15 +4,9 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 
-const DRAFT_PREFIX = 'draft:';
 const UNASSIGNED_SLUG = '__unassigned__';
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']);
-const DEFAULT_COVER = '/images/black-token.svg';
-
-/** @param {string} filename */
-function draftMediaSrc(filename) {
-  return `${DRAFT_PREFIX}${filename}`;
-}
+const DEFAULT_COVER = 'black-token.svg';
 
 /** @param {string} relativeFile @param {unknown} data */
 async function writeProjectJson(relativeFile, data) {
@@ -24,13 +18,19 @@ async function writeProjectJson(relativeFile, data) {
   );
 }
 
-/** @param {string} value */
+/**
+ * Collapse every legacy ref form onto one: decoded, relative to `media/`, no
+ * prefix, no leading slash. Legacy input branches (`draft:`, `/draft-media/`)
+ * are kept so a stale client (or old JSON that hasn't gone through the
+ * one-shot migration) still resolves.
+ * @param {string} value
+ */
 export function normalizeAssetSrc(value) {
   const raw = String(value || '').trim();
   if (!raw || raw === 'placeholder.svg' || raw.endsWith('/placeholder.svg')) return '';
-  if (raw.startsWith(DRAFT_PREFIX)) return raw;
+  if (raw.startsWith('draft:')) return decodeURIComponent(raw.slice('draft:'.length));
   if (raw.startsWith('/draft-media/')) {
-    return `${DRAFT_PREFIX}${decodeURIComponent(raw.slice('/draft-media/'.length))}`;
+    return decodeURIComponent(raw.slice('/draft-media/'.length));
   }
   if (raw.startsWith('/images/')) {
     return decodeURIComponent(raw.slice('/images/'.length));
@@ -43,24 +43,14 @@ export function normalizeAssetSrc(value) {
 export function assetUrlFromSrc(src) {
   const token = normalizeAssetSrc(src);
   if (!token) return '';
-  if (token.startsWith(DRAFT_PREFIX)) {
-    const draftPath = token.slice(DRAFT_PREFIX.length);
-    return `/draft-media/${draftPath.split('/').map(encodeURIComponent).join('/')}`;
-  }
   return `/images/${token.split('/').map(encodeURIComponent).join('/')}`;
 }
 
 /** @param {string} src */
 export function resolveAssetFilePath(src) {
   const token = normalizeAssetSrc(src);
-  if (!token) return null;
-  if (token.startsWith(DRAFT_PREFIX)) {
-    const relative = token.slice(DRAFT_PREFIX.length);
-    if (!relative || relative.includes('..')) return null;
-    return path.join(process.cwd(), 'src/content/drafts/media', relative);
-  }
-  if (token.includes('..')) return null;
-  return path.join(process.cwd(), 'public/images', token);
+  if (!token || token.includes('..')) return null;
+  return path.join(process.cwd(), 'media', token);
 }
 
 /**
@@ -119,8 +109,7 @@ function isImageFilename(filename) {
  */
 export async function listDevAssets(filterProject = '') {
   const projectsDir = path.join(process.cwd(), 'src/content/projects');
-  const draftsRoot = path.join(process.cwd(), 'src/content/drafts/media');
-  const publicDir = path.join(process.cwd(), 'public/images');
+  const mediaDir = path.join(process.cwd(), 'media');
 
   /** @type {Array<{ slug: string, title: string }>} */
   const projects = [];
@@ -169,40 +158,21 @@ export async function listDevAssets(filterProject = '') {
     const token = normalizeAssetSrc(src);
     if (!token) return;
     if (assets.has(token)) return;
-    const filename = token.startsWith(DRAFT_PREFIX)
-      ? token.slice(DRAFT_PREFIX.length)
-      : path.basename(token);
     assets.set(token, {
       id: token,
       src: token,
       url: assetUrlFromSrc(token),
-      filename,
+      filename: path.basename(token),
       usedBy: new Set(),
     });
   };
 
-  // Flat draft media folder — one file per token.
+  // Flat, site-wide media library — one file per token (top level only; the
+  // asset manager UI does not surface subdirectory files — see #204).
   try {
-    for (const filename of readdirSync(draftsRoot)) {
-      if (filename === '.gitkeep') continue;
-      const filePath = path.join(draftsRoot, filename);
-      try {
-        if (!statSync(filePath).isFile()) continue;
-      } catch {
-        continue;
-      }
+    for (const filename of readdirSync(mediaDir)) {
       if (!isImageFilename(filename)) continue;
-      addAsset(draftMediaSrc(filename));
-    }
-  } catch {
-    // No drafts yet.
-  }
-
-  // Public images.
-  try {
-    for (const filename of readdirSync(publicDir)) {
-      if (!isImageFilename(filename)) continue;
-      const filePath = path.join(publicDir, filename);
+      const filePath = path.join(mediaDir, filename);
       try {
         if (!statSync(filePath).isFile()) continue;
       } catch {
@@ -212,7 +182,7 @@ export async function listDevAssets(filterProject = '') {
       addAsset(filename);
     }
   } catch {
-    // public/images missing
+    // media/ missing
   }
 
   // Referenced files — including missing ones, so editors can see the gap.
