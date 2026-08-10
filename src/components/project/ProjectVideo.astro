@@ -1,5 +1,8 @@
 ---
+import playIcon from 'lucide-static/icons/play.svg?raw';
+import pauseIcon from 'lucide-static/icons/pause.svg?raw';
 import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import { sizeIcon } from '../../lib/icons';
 
 interface Props {
   src?: string;
@@ -20,6 +23,10 @@ const {
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing);
+
+/** media-chrome picks the icon by slot name; sizeIcon handles the 24→28 resize. */
+const playSvg = sizeIcon(playIcon, 28).replace('<svg', '<svg slot="play"');
+const pauseSvg = sizeIcon(pauseIcon, 28).replace('<svg', '<svg slot="pause"');
 
 /** `demo.mp4` → `/videos/demo.mp4`; a leading `/` is used as-is. */
 const resolveVideoSrc = (input?: string) => {
@@ -67,14 +74,10 @@ if (!resolvedSrc) {
           data-autoplay={autoplay ? 'true' : undefined}
         />
         <media-play-button class="project-video-player__play" noautohide>
-          <svg slot="play" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M8 5.5v13l11-6.5-11-6.5Z" />
-          </svg>
-          <svg slot="pause" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d="M7 5h4v14H7V5Zm6 0h4v14h-4V5Z" />
-          </svg>
+          <Fragment set:html={playSvg} />
+          <Fragment set:html={pauseSvg} />
         </media-play-button>
-        <media-time-range class="project-video-player__progress"></media-time-range>
+        <media-time-range class="project-video-player__progress" noautohide></media-time-range>
       </media-controller>
     </div>
   ) : (
@@ -111,25 +114,32 @@ if (!resolvedSrc) {
   }
 
   .project-video-player__play {
-    --media-control-background: rgba(0, 0, 0, 0.45);
-    --media-control-hover-background: rgba(0, 0, 0, 0.45);
+    --media-control-background: transparent;
+    --media-control-hover-background: transparent;
     --media-control-padding: 0;
     --media-icon-color: #fff;
-    --media-button-icon-width: 22px;
-    --media-button-icon-height: 22px;
+    --media-button-icon-width: 28px;
+    --media-button-icon-height: 28px;
     --media-focus-box-shadow: none;
     position: absolute;
     top: 50%;
     left: 50%;
     width: 64px;
     height: 64px;
-    border-radius: 50%;
     border: none;
     box-shadow: none;
+    /* Lucide icons are stroked, not filled — without the old scrim they need
+       their own separation from bright footage. */
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.55));
     transform: translate(-50%, -50%) scale(0.96);
     opacity: 0;
     pointer-events: none;
     transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .project-video-player__play svg {
+    width: 28px;
+    height: 28px;
   }
 
   .project-video-player__play[mediapaused],
@@ -141,8 +151,15 @@ if (!resolvedSrc) {
 
   @media (max-width: 40em) {
     .project-video-player__play {
+      --media-button-icon-width: 22px;
+      --media-button-icon-height: 22px;
       width: 48px;
       height: 48px;
+    }
+
+    .project-video-player__play svg {
+      width: 22px;
+      height: 22px;
     }
   }
 
@@ -157,6 +174,10 @@ if (!resolvedSrc) {
     --media-range-track-background: rgba(255, 255, 255, 0.3);
     --media-range-track-border-radius: 999px;
     --media-range-bar-color: #fff;
+    /* Unset, media-chrome paints its own default and you get a third tone that
+       stops short of the end wherever buffering has got to. Only played
+       progress should read. */
+    --media-time-range-buffered-color: rgba(255, 255, 255, 0.3);
     --media-range-thumb-width: var(--project-video-track-height);
     --media-range-thumb-height: var(--project-video-track-height);
     --media-range-thumb-opacity: 0;
@@ -165,22 +186,36 @@ if (!resolvedSrc) {
     right: var(--space-unit);
     bottom: var(--space-unit);
     width: auto;
-    transition: --project-video-track-height 150ms ease;
+    opacity: 0;
+    /* Delay on the way out only — appears instantly on hover, lingers 2s after
+       the pointer leaves. The delay is dropped by the reveal rules below. */
+    transition: --project-video-track-height 150ms ease, opacity 200ms ease 2s;
   }
 
   .project-video-player:hover .project-video-player__progress,
-  .project-video-player__controller:focus-within .project-video-player__progress {
+  .project-video-player:has(:focus-visible) .project-video-player__progress {
     --project-video-track-height: 6px;
+    opacity: 1;
+    transition-delay: 0s;
   }
 
-  .project-video-player__controller:focus-within .project-video-player__progress {
-    opacity: 1 !important;
+  /* No JS: the custom elements never upgrade, so their slotted icons would
+     otherwise render raw over the video and swallow clicks meant for the
+     native controls. */
+  media-play-button:not(:defined),
+  media-time-range:not(:defined) {
+    display: none;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .project-video-player__play,
-    .project-video-player__progress {
+    .project-video-player__play {
       transition: none !important;
+    }
+
+    /* Fades go; the 4→6px track thickness is too small a move to be worth
+       suppressing, so it keeps its transition. */
+    .project-video-player__progress {
+      transition: --project-video-track-height 150ms ease;
     }
   }
 </style>
@@ -193,7 +228,6 @@ if (!resolvedSrc) {
     root.dataset.videoInit = 'true';
 
     const video = root.querySelector('video');
-    const progress = root.querySelector('media-time-range');
     if (!video) return;
 
     customElements.whenDefined('media-controller').then(() => {
@@ -201,7 +235,6 @@ if (!resolvedSrc) {
     });
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduceMotion && progress) progress.setAttribute('noautohide', '');
 
     if (!reduceMotion && video.dataset.autoplay === 'true') {
       video.play().catch(() => {
