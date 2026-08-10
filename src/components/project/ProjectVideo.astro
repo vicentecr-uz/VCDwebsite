@@ -1,0 +1,283 @@
+---
+import playIcon from 'lucide-static/icons/play.svg?raw';
+import pauseIcon from 'lucide-static/icons/pause.svg?raw';
+import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import { sizeIcon } from '../../lib/icons';
+
+interface Props {
+  src?: string;
+  poster?: string;
+  alt?: string;
+  autoplay?: boolean;
+  aspectRatio?: string;
+  spacing?: ProjectStackSpacing;
+}
+
+const {
+  src,
+  poster,
+  alt = '',
+  autoplay = false,
+  aspectRatio = '16:9',
+  spacing = 'section',
+} = Astro.props;
+
+const stackClass = projectStackClass(spacing);
+
+/** media-chrome picks the icon by slot name; sizeIcon handles the 24→28 resize. */
+const playSvg = sizeIcon(playIcon, 28).replace('<svg', '<svg slot="play"');
+const pauseSvg = sizeIcon(pauseIcon, 28).replace('<svg', '<svg slot="pause"');
+
+/** `demo.mp4` → `/videos/demo.mp4`; a leading `/` is used as-is. */
+const resolveVideoSrc = (input?: string) => {
+  if (!input) return undefined;
+  return input.startsWith('/') ? input : `/videos/${input}`;
+};
+
+/** `demo-poster.jpg` → `/images/demo-poster.jpg`; a leading `/` is used as-is. */
+const resolvePosterSrc = (input?: string) => {
+  if (!input) return undefined;
+  return input.startsWith('/') ? input : `/images/${input}`;
+};
+
+const parseAspectRatio = (input: string) => {
+  const [w, h] = input.split(':').map(Number);
+  if (!w || !h) return '16 / 9';
+  return `${w} / ${h}`;
+};
+
+const resolvedSrc = resolveVideoSrc(src);
+const resolvedPoster = resolvePosterSrc(poster);
+const aspectRatioValue = parseAspectRatio(aspectRatio);
+const containerStyle = `--project-video-aspect-ratio: ${aspectRatioValue};`;
+
+if (!resolvedSrc) {
+  console.warn(`[ProjectVideo] missing "src" for video section${alt ? ` ("${alt}")` : ''} — rendering empty block.`);
+}
+---
+
+<div class:list={['project-block', stackClass]}>
+  {resolvedSrc ? (
+    <div class="project-video-player" data-project-video style={containerStyle}>
+      <media-controller
+        class="project-video-player__controller"
+        keyboardforwardseekoffset="5"
+        keyboardbackwardseekoffset="5"
+      >
+        <video
+          slot="media"
+          class="project-video-player__video"
+          src={resolvedSrc}
+          poster={resolvedPoster}
+          aria-label={alt || undefined}
+          controls
+          preload="metadata"
+          muted={autoplay ? true : undefined}
+          loop={autoplay ? true : undefined}
+          playsinline
+          data-autoplay={autoplay ? 'true' : undefined}
+        />
+        <media-play-button class="project-video-player__play" noautohide>
+          <Fragment set:html={playSvg} />
+          <Fragment set:html={pauseSvg} />
+        </media-play-button>
+        <media-time-range class="project-video-player__progress" noautohide></media-time-range>
+      </media-controller>
+    </div>
+  ) : (
+    <div class="project-video-player project-video-player--empty" style={containerStyle}></div>
+  )}
+</div>
+
+<style>
+  @property --project-video-track-height {
+    syntax: '<length>';
+    inherits: true;
+    initial-value: 4px;
+  }
+
+  .project-video-player {
+    position: relative;
+    width: 100%;
+    aspect-ratio: var(--project-video-aspect-ratio, 16 / 9);
+    overflow: hidden;
+    background: #000;
+  }
+
+  .project-video-player__controller {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .project-video-player__video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .project-video-player__play {
+    --media-control-background: transparent;
+    --media-control-hover-background: transparent;
+    --media-control-padding: 0;
+    --media-icon-color: #fff;
+    /* Lucide strokes with currentColor, which media-chrome resolves from
+       --media-primary-color, not --media-icon-color. Setting only the latter
+       left a #eee outline around a white fill. */
+    --media-primary-color: #fff;
+    --media-button-icon-width: 28px;
+    --media-button-icon-height: 28px;
+    --media-focus-box-shadow: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 64px;
+    height: 64px;
+    border: none;
+    box-shadow: none;
+    /* Lucide icons are stroked, not filled — without the old scrim they need
+       their own separation from bright footage. */
+    filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
+    transform: translate(-50%, -50%) scale(0.96);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .project-video-player__play svg {
+    width: 28px;
+    height: 28px;
+    /* Lucide ships these stroked with fill:none. Filling with the stroke's own
+       colour turns the outline into a solid icon while stroke-linejoin:round
+       keeps the corners Lucide draws them with. */
+    fill: currentColor;
+  }
+
+  .project-video-player__play[mediapaused],
+  .project-video-player:hover .project-video-player__play {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+
+  @media (max-width: 40em) {
+    .project-video-player__play {
+      --media-button-icon-width: 22px;
+      --media-button-icon-height: 22px;
+      width: 48px;
+      height: 48px;
+    }
+
+    .project-video-player__play svg {
+      width: 22px;
+      height: 22px;
+    }
+  }
+
+  .project-video-player__progress {
+    --project-video-track-height: 4px;
+    --media-control-display: block;
+    --media-control-background: transparent;
+    --media-control-hover-background: transparent;
+    --media-control-padding: 0;
+    --media-range-padding: 0;
+    --media-range-track-height: var(--project-video-track-height);
+    --media-range-track-background: rgba(255, 255, 255, 0.25);
+    --media-range-track-border-radius: 999px;
+    --media-range-bar-color: #fff;
+    /* The buffered layer sits ON TOP of the track background rather than
+       replacing it, so matching the track's own value composites to roughly
+       double the alpha and reads brighter, not invisible. This is picked for
+       how it lands over the track: 0.2 over 0.25 ≈ 0.4. */
+    --media-time-range-buffered-color: rgba(255, 255, 255, 0.2);
+    --media-range-thumb-width: var(--project-video-track-height);
+    --media-range-thumb-height: var(--project-video-track-height);
+    --media-range-thumb-opacity: 0;
+    position: absolute;
+    left: var(--space-unit);
+    right: var(--space-unit);
+    bottom: var(--space-unit);
+    width: auto;
+    opacity: 0;
+    /* Matches the play button's shadow — the track has no box of its own
+       (its rounded pill is drawn in shadow DOM), so drop-shadow follows that
+       rendered shape rather than the element's rectangular bounds. */
+    filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.35));
+    /* Delay on the way out only — appears instantly on hover, lingers 2s after
+       the pointer leaves. The delay is dropped by the reveal rules below. */
+    transition: --project-video-track-height 150ms ease, opacity 200ms ease 2s;
+  }
+
+  .project-video-player:hover .project-video-player__progress,
+  .project-video-player:has(:focus-visible) .project-video-player__progress {
+    --project-video-track-height: 6px;
+    opacity: 1;
+    transition-delay: 0s;
+  }
+
+  /* Both bars are plain rectangles pinned to the track's left edge, clipped by
+     the track's own overflow. Rounding them alone would round the left cap too,
+     so at 0% the two halves meet and read as a dot sitting in the track.
+     Extending each bar left by one radius pushes that cap outside the clip:
+     only the right end is ever visible, and it grows in from off-track.
+     content-box keeps `width` — which media-chrome sets inline — the distance
+     from the track's left edge to the visible cap. */
+  .project-video-player__progress::part(progress),
+  .project-video-player__progress::part(buffered) {
+    box-sizing: content-box;
+    border-radius: 999px;
+    margin-left: calc(var(--project-video-track-height) * -1);
+    padding-left: var(--project-video-track-height);
+  }
+
+  /* No JS: the custom elements never upgrade, so their slotted icons would
+     otherwise render raw over the video and swallow clicks meant for the
+     native controls. */
+  media-play-button:not(:defined),
+  media-time-range:not(:defined) {
+    display: none;
+  }
+
+  /* No reduced-motion branch by design: the player's only movement is a fade
+     and a 2px track thickness change, and splitting the behaviour made the
+     progress bar vanish instantly instead of matching the normal build. */
+</style>
+
+<script>
+  import 'media-chrome';
+
+  const initProjectVideo = (root: HTMLElement) => {
+    if (root.dataset.videoInit === 'true') return;
+    root.dataset.videoInit = 'true';
+
+    const video = root.querySelector('video');
+    if (!video) return;
+
+    customElements.whenDefined('media-controller').then(() => {
+      video.removeAttribute('controls');
+    });
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!reduceMotion && video.dataset.autoplay === 'true') {
+      video.play().catch(() => {
+        /* autoplay blocked — user can press play */
+      });
+    }
+  };
+
+  const boot = () => {
+    document
+      .querySelectorAll<HTMLElement>('[data-project-video]')
+      .forEach((node) => initProjectVideo(node));
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+  document.addEventListener('astro:page-load', boot);
+  document.addEventListener('astro:after-swap', boot);
+</script>
