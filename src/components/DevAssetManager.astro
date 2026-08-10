@@ -54,9 +54,8 @@ const { documentKey } = Astro.props;
    *   id: string,
    *   src: string,
    *   url: string,
-   *   projectSlug: string,
-   *   onPage: boolean,
    *   filename: string,
+   *   usedBy: string[],
    * }} Asset */
 
   const dialog = document.querySelector('[data-dev-asset-manager]');
@@ -108,11 +107,21 @@ const { documentKey } = Astro.props;
     }
   };
 
+  const onPageFor = (asset) => (selectedProject
+    ? asset.usedBy.includes(selectedProject)
+    : asset.usedBy.length > 0);
+
   const visibleAssets = () => {
     return assets.filter((asset) => {
-      if (selectedProject && asset.projectSlug !== selectedProject) return false;
-      if (filter === 'onPage' && !asset.onPage) return false;
-      if (filter === 'library' && asset.onPage) return false;
+      if (selectedProject) {
+        const inProject = selectedProject === UNASSIGNED
+          ? asset.usedBy.length === 0
+          : asset.usedBy.includes(selectedProject);
+        if (!inProject) return false;
+      }
+      const onPage = onPageFor(asset);
+      if (filter === 'onPage' && !onPage) return false;
+      if (filter === 'library' && onPage) return false;
       return true;
     });
   };
@@ -171,17 +180,18 @@ const { documentKey } = Astro.props;
     setStatus(`${list.length} image${list.length === 1 ? '' : 's'}`);
 
     for (const asset of list) {
+      const onPage = onPageFor(asset);
       const card = document.createElement('div');
       card.className = 'dev-asset-manager__card';
       card.dataset.assetId = asset.id;
       card.classList.toggle('is-selected', selected.has(asset.id));
-      card.classList.toggle('is-library', !asset.onPage);
+      card.classList.toggle('is-library', !onPage);
 
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'dev-asset-manager__thumb';
       button.title = asset.filename;
-      button.setAttribute('aria-label', `${asset.filename}${asset.onPage ? '' : ' (library only)'}`);
+      button.setAttribute('aria-label', `${asset.filename}${onPage ? '' : ' (library only)'}`);
       button.setAttribute('aria-pressed', selected.has(asset.id) ? 'true' : 'false');
 
       const img = document.createElement('img');
@@ -192,7 +202,7 @@ const { documentKey } = Astro.props;
 
       const badge = document.createElement('span');
       badge.className = 'dev-asset-manager__badge';
-      badge.textContent = asset.onPage ? 'On page' : 'Library';
+      badge.textContent = onPage ? 'On page' : 'Library';
       card.append(badge);
 
       const trash = document.createElement('button');
