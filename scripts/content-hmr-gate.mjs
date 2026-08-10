@@ -1,13 +1,16 @@
 // @ts-check
+import path from 'node:path';
 
 /** @type {number} */
 let suppressUntil = 0;
 
 const isContentPath = (file = '') =>
-  /[/\\]src[/\\]content[/\\](projects|drafts|pages)[/\\]/.test(file);
+  /[/\\]src[/\\]content[/\\](projects|pages)[/\\]/.test(file);
 
-const isDraftMediaPath = (file = '') =>
-  /[/\\]src[/\\]content[/\\]drafts[/\\]media[/\\]/.test(file);
+/** Anchored to the repo root's `media/` — a bare `media` regex would also
+ *  match an unrelated `media/` directory under node_modules. */
+const MEDIA_ROOT = path.join(process.cwd(), 'media') + path.sep;
+const isMediaPath = (file = '') => file.startsWith(MEDIA_ROOT);
 
 /** Colour-token Saves write this file; the live preview already matches. */
 const isStyleTokenPath = (file = '') =>
@@ -34,7 +37,7 @@ export function isContentHmrSuppressed() {
  * `is-dev-mode` / the save bar and surprises mid-edit when branch sync
  * pulls engine or content files. Here we:
  *   1. Drop every `full-reload` WebSocket payload.
- *   2. Skip hot-update for content JSON / draft media (not modules).
+ *   2. Skip hot-update for content JSON / media (not modules).
  *   3. Still allow normal HMR `update` for .astro / .css / .ts.
  *
  * Server restarts (astro.config / package.json changes) are unchanged —
@@ -61,9 +64,9 @@ export function contentHmrGate() {
      * @param {{ file: string }} ctx
      */
     handleHotUpdate({ file }) {
-      // Draft media + content JSON: served/read outside the module graph.
+      // Media + content JSON: served/read outside the module graph.
       // Branch sync / Save writing these must not invalidate modules.
-      if (isDraftMediaPath(file) || isContentPath(file)) return [];
+      if (isMediaPath(file) || isContentPath(file)) return [];
       // Colour-token Save already applied live — skip CSS HMR flash.
       if (isContentHmrSuppressed() && isStyleTokenPath(file)) return [];
       // .astro / CSS / TS: let Vite HMR update proceed (no full-reload).
