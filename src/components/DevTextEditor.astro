@@ -560,9 +560,24 @@
       });
     };
 
+    /** Text entry proper — not a checkbox, range or select a tuner uses for settings. */
+    const isTextEntryField = (element: HTMLElement) => {
+      if (element instanceof HTMLTextAreaElement) return true;
+      if (!(element instanceof HTMLInputElement)) return false;
+      return ['text', 'search', 'url', 'email', 'tel'].includes(element.type);
+    };
+
     const isDevTextCaretActive = () => {
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return false;
+      // Generic first: any focused editing host — grid card titles
+      // (DevProjectGridEditor), inline captions, section nav labels — counts,
+      // not just this component's own tracked body-text fields.
+      if (active.isContentEditable) return true;
+      // Panel text fields count too. Clicking into an existing caption enables
+      // inline contenteditable, but "Add caption" focuses the tuner's own
+      // <textarea>, which is just as much an active text affordance.
+      if (isTextEntryField(active)) return true;
       return textStates.some(
         (state) => state.element === active || state.element.contains(active),
       );
@@ -739,6 +754,25 @@
       syncPageTopGapStacking();
     };
 
+    // Caret suppression is about *any* editing surface, not gap controls, so it
+    // registers unconditionally. Gallery pages carry no spacing elements, and
+    // while these lived inside the `spacingStates.length` guard below they never
+    // bound there at all — which is why a caret in a card title faded nothing.
+    document.addEventListener('focusin', syncSpacingCaretSuppression);
+    document.addEventListener('focusout', () => {
+      // focusout fires before the next focus target is active
+      requestAnimationFrame(() => {
+        syncSpacingCaretSuppression();
+        // Drop sticky section chrome when leaving a text field so the drag
+        // grip doesn't linger after click-away while controls-visible is set.
+        if (!isDevTextCaretActive()) {
+          document.querySelectorAll<HTMLElement>('.is-dev-section-controls-visible').forEach((el) => {
+            if (!el.matches(':hover')) el.classList.remove('is-dev-section-controls-visible');
+          });
+        }
+      });
+    });
+
     if (spacingStates.length) {
       document.addEventListener(
         'pointermove',
@@ -773,20 +807,6 @@
           clearGapProximity(control);
         });
         document.documentElement.classList.remove('is-page-top-gap-above-header');
-      });
-      document.addEventListener('focusin', syncSpacingCaretSuppression);
-      document.addEventListener('focusout', () => {
-        // focusout fires before the next focus target is active
-        requestAnimationFrame(() => {
-          syncSpacingCaretSuppression();
-          // Drop sticky section chrome when leaving a text field so the drag
-          // grip doesn't linger after click-away while controls-visible is set.
-          if (!isDevTextCaretActive()) {
-            document.querySelectorAll<HTMLElement>('.is-dev-section-controls-visible').forEach((el) => {
-              if (!el.matches(':hover')) el.classList.remove('is-dev-section-controls-visible');
-            });
-          }
-        });
       });
       // Tuner click doesn't move the pointer — drop near-gap classes immediately.
       window.addEventListener('vcd:dev-edit-open', clearGapProximityAll);
@@ -2284,9 +2304,14 @@
     const deselectDevTextCaret = () => {
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return false;
-      if (!textStates.some((state) => state.element === active || state.element.contains(active))) {
-        return false;
-      }
+      // Any editing surface, not just this component's tracked body-text fields:
+      // a caret in a gallery card title or an inline caption is a level to
+      // escape from too, and matching only textStates left those falling through
+      // to DevModeController, which exited Dev Mode outright.
+      const isEditingSurface = active.isContentEditable
+        || isTextEntryField(active)
+        || textStates.some((state) => state.element === active || state.element.contains(active));
+      if (!isEditingSurface) return false;
       // Tuner / overlay fields keep their own Esc layering.
       if (active.closest('[data-dev-panel-key], .dev-overlay')) return false;
 
