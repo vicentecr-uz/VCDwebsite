@@ -360,6 +360,47 @@ await inRepo('revert deletes untracked content that never existed on main', asyn
   check('nothing left unpublished', (await publishStatus()).files.length === 0);
 });
 
+await inRepo('revert keeps content committed on the branch but absent from main', async (repo) => {
+  // The #211 shape: a whole content directory created and committed on a branch
+  // main has never seen. Every file in it is "absent from main", which the old
+  // revert read as untracked and deleted — 289 files on the real branch.
+  await repo.git('switch', '-c', 'feat/media-store');
+  const committed = path.join(repo.work, 'src/content/projects/branchnew.json');
+  await writeFile(committed, '{"title":"Committed on branch"}\n');
+  await repo.git('add', 'src/content/projects/branchnew.json');
+  await repo.git('commit', '-m', 'content: add branch-new document (schema migration)');
+
+  const stray = path.join(repo.work, 'src/content/projects/stray.json');
+  await writeFile(stray, '{"title":"Never committed"}\n');
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check('committed file survives', existsSync(committed));
+  check(
+    'committed file keeps its contents',
+    (await readFile(committed, 'utf8')).includes('Committed on branch'),
+  );
+  check('genuinely untracked file still deleted', !existsSync(stray));
+});
+
+await inRepo('revert restores an uncommitted edit to branch-committed content', async (repo) => {
+  await repo.git('switch', '-c', 'feat/media-edit');
+  const committed = path.join(repo.work, 'src/content/projects/branchnew.json');
+  await writeFile(committed, '{"title":"Committed on branch"}\n');
+  await repo.git('add', 'src/content/projects/branchnew.json');
+  await repo.git('commit', '-m', 'content: add branch-new document (schema migration)');
+
+  await writeFile(committed, '{"title":"Edited after commit"}\n');
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check('file survives', existsSync(committed));
+  check(
+    'restored to the committed version, not deleted',
+    (await readFile(committed, 'utf8')).includes('Committed on branch'),
+  );
+});
+
 await inRepo('revert with nothing unpublished refuses', async () => {
   const result = await revertUnpublishedContent();
   check('refused', result.ok === false && /No unpublished content/.test(result.error), result.error);

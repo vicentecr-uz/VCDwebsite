@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
 # Commit engine work only — everything OUTSIDE the content surface.
 #
-# The content surface (src/content, public/images) is published straight to
+# The content surface (src/content, media) is published straight to
 # main from the dev save bar, so it must never ride along in a feature commit.
 # See CLAUDE.md → "Content vs engine".
 #
 #   bun run commit:engine "message"                  # every dirty engine file
 #   bun run commit:engine "message" path/a path/b    # only these paths
+#   bun run commit:engine --schema-migration "message" path/a path/b
 #
 # Prefer the second form. The first cannot tell your edits apart from anything
 # else dirty in the tree — another agent's work, a half-finished experiment —
 # and will commit all of it under your message.
+#
+# --schema-migration is the documented exception in CLAUDE.md for a change
+# that requires touching content JSON alongside the code that reads it. It
+# only lifts the content-path refusal for THIS invocation — say so in the
+# message, and pass explicit paths (never the no-paths sweep) alongside it.
 set -euo pipefail
+
+schema_migration=0
+if [ "${1:-}" = "--schema-migration" ]; then
+  schema_migration=1
+  shift
+fi
 
 message="${1:-}"
 if [ -z "$message" ]; then
@@ -24,8 +36,9 @@ paths=("$@")
 cd "$(git rev-parse --show-toplevel)"
 
 is_content_path() {
+  if [ "$schema_migration" = "1" ]; then return 1; fi
   case "$1" in
-    src/content|src/content/*|public/images|public/images/*) return 0 ;;
+    src/content|src/content/*|media|media/*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -39,8 +52,12 @@ if [ ${#paths[@]} -gt 0 ]; then
     fi
   done
   git add -- "${paths[@]}"
+elif [ "$schema_migration" = "1" ]; then
+  echo "usage: bun run commit:engine --schema-migration \"message\" path [path ...]" >&2
+  echo "The no-paths sweep is refused under --schema-migration." >&2
+  exit 1
 else
-  git add -- . ':!src/content' ':!public/images'
+  git add -- . ':!src/content' ':!media'
 fi
 
 if git diff --cached --quiet; then
@@ -63,7 +80,7 @@ if [ ${#paths[@]} -eq 0 ] && [ "$staged_count" -gt 0 ]; then
   echo "      git reset && bun run commit:engine \"$message\" <your paths>"
 fi
 
-held_back="$(git status --porcelain -- src/content public/images)"
+held_back="$(git status --porcelain -- src/content media)"
 if [ -n "$held_back" ]; then
   echo
   echo "Left alone (content — publish from the save bar):"

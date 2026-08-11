@@ -3,7 +3,7 @@ import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
-import { normalizeAssetSrc, readImageDimsFromSrc } from './dev-assets.mjs';
+import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
 import { PLACEHOLDER_COVER, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
 
 export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
@@ -14,11 +14,7 @@ async function writeProjectJson(file, data) {
 }
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser']);
-const PUBLIC_STATUSES = new Set(['published', 'teaser']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
-/** Every JSON key that can hold an image token: sections use `src`, listing cards
- *  `image` / `hoverImage`, teasers `coverImage`. Promotion must cover all of them. */
-const DRAFT_SRC_KEYS = ['src', 'image', 'hoverImage', 'coverImage'];
 
 function validateStatus(status, fallback = 'draft') {
   const value = String(status || fallback);
@@ -26,10 +22,12 @@ function validateStatus(status, fallback = 'draft') {
 }
 
 function listingCardForGrid(grid, listing, previous = {}) {
-  const hoverImage = String(listing.hoverImage || previous.hoverImage || '').trim();
+  // Normalize here rather than trust the client: the settings panel sends a
+  // ready-to-use URL (for live preview), but storage wants the bare token.
+  const hoverImage = normalizeAssetSrc(String(listing.hoverImage || previous.hoverImage || ''));
   const base = {
     order: previous.order ?? 999,
-    image: String(listing.image || ''),
+    image: normalizeAssetSrc(String(listing.image || '')),
     bg: String(listing.bg || '#efefef'),
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
@@ -134,29 +132,6 @@ export function resolveEditableDocument(documentKey) {
   return map.get(documentKey);
 }
 
-export function draftMediaSrc(filename) {
-  return `draft:${filename}`;
-}
-
-/**
- * Natural dimensions for a freshly dropped draft image, stamped onto the node so
- * frames resolve server-side (an `aspect: "original"` frame has no shape without
- * them). Mirrors scripts/migrate-crop-rects.mjs, including the EXIF transpose:
- * sharp reports stored dimensions, browsers honour the orientation flag.
- */
-export async function readImageDims(filename) {
-  try {
-    const { default: sharp } = await import('sharp');
-    const file = path.join(process.cwd(), 'src/content/drafts/media', filename);
-    const { width, height, orientation } = await sharp(file).metadata();
-    if (!width || !height) return null;
-    const rotated = typeof orientation === 'number' && orientation >= 5 && orientation <= 8;
-    return rotated ? { srcWidth: height, srcHeight: width } : { srcWidth: width, srcHeight: height };
-  } catch {
-    return null;
-  }
-}
-
 export function sanitizeUploadFilename(filename) {
   const base = path.basename(String(filename || 'image.jpg'))
     .replace(/[^a-zA-Z0-9._ -]+/g, '')
@@ -186,15 +161,15 @@ export async function buildImageSection(documentKey, filenames) {
   return {
     type: 'image',
     id,
-    src: draftMediaSrc(filenames[0]),
+    src: filenames[0],
     alt: '',
     spacing: 'section',
-    ...(await readImageDims(filenames[0]) ?? {}),
+    ...(await readImageDimsFromSrc(filenames[0]) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   };
 }
 
-/** Build an image section from an existing canonical src token (draft: or public filename). */
+/** Build an image section from an existing canonical src token. */
 export async function buildImageSectionFromSrcs(srcs) {
   const src = normalizeAssetSrc(srcs[0]);
   if (!src) throw new Error('An image file is required.');
@@ -247,11 +222,11 @@ export async function fillPlaceholderImageSection(section, documentKey, filename
   if (existingSrc) {
     src = normalizeAssetSrc(existingSrc);
     if (!src) throw new Error('An image file is required.');
-    dims = await readImageDimsFromSrc(src);
   } else {
-    src = draftMediaSrc(filename);
-    dims = await readImageDims(filename);
+    src = normalizeAssetSrc(filename);
+    if (!src) throw new Error('An image file is required.');
   }
+  dims = await readImageDimsFromSrc(src);
 
   section.type = 'image';
   section.src = src;
@@ -280,9 +255,9 @@ export async function buildImageGridSection(documentKey, filenames) {
   const id = `grid-${Date.now().toString(36)}`;
   const items = await Promise.all(filenames.map(async (filename, index) => ({
     id: `item-${index + 1}-${Date.now().toString(36)}`,
-    src: draftMediaSrc(filename),
+    src: filename,
     alt: '',
-    ...(await readImageDims(filename) ?? {}),
+    ...(await readImageDimsFromSrc(filename) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
   const visible = items.map((item) => item.id);
@@ -300,7 +275,7 @@ export async function buildImageGridSection(documentKey, filenames) {
   };
 }
 
-/** Build an image grid from existing canonical src tokens (draft: or public filenames). */
+/** Build an image grid from existing canonical src tokens. */
 export async function buildImageGridSectionFromSrcs(srcs) {
   const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
   if (!tokens.length) throw new Error('At least one image file is required.');
@@ -331,9 +306,9 @@ export async function buildImageCarouselSection(documentKey, filenames) {
   const id = `carousel-${Date.now().toString(36)}`;
   const items = await Promise.all(filenames.map(async (filename, index) => ({
     id: `item-${index + 1}-${Date.now().toString(36)}`,
-    src: draftMediaSrc(filename),
+    src: filename,
     alt: '',
-    ...(await readImageDims(filename) ?? {}),
+    ...(await readImageDimsFromSrc(filename) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   })));
   return {
@@ -349,7 +324,7 @@ export async function buildImageCarouselSection(documentKey, filenames) {
   };
 }
 
-/** Build an image carousel from existing canonical src tokens (draft: or public filenames). */
+/** Build an image carousel from existing canonical src tokens. */
 export async function buildImageCarouselSectionFromSrcs(srcs) {
   const tokens = srcs.map((value) => normalizeAssetSrc(value)).filter(Boolean);
   if (!tokens.length) throw new Error('At least one image file is required.');
@@ -380,7 +355,7 @@ export function emptyModernProject(slug, title, grid) {
     ? {
         order: 999,
         meta: '',
-        image: '/images/black-token.svg',
+        image: 'black-token.svg',
         bg: '#efefef',
         dark: false,
         full: false,
@@ -388,7 +363,7 @@ export function emptyModernProject(slug, title, grid) {
     : {
         order: 999,
         year,
-        image: '/images/black-token.svg',
+        image: 'black-token.svg',
         bg: '#efefef',
         dark: false,
         full: false,
@@ -429,110 +404,12 @@ export function emptyModernProject(slug, title, grid) {
   };
 }
 
-export async function publishDraftMediaForProject(slug, data) {
-  const draftDir = path.join(process.cwd(), 'src/content/drafts/media');
-  const publicDir = path.join(process.cwd(), 'public/images');
-  const moved = [];
-  const publishedSources = [];
-  /** Map of `draft:oldName` -> new bare filename in public/images, for cross-document rewrite. */
-  const promoted = new Map();
-
-  const rewriteNode = async (node) => {
-    if (Array.isArray(node)) {
-      for (const item of node) await rewriteNode(item);
-      return;
-    }
-    if (!node || typeof node !== 'object') return;
-    for (const key of DRAFT_SRC_KEYS) {
-      const raw = node[key];
-      if (typeof raw !== 'string') continue;
-      // Sections store `draft:name.jpg`; listing covers store the `/draft-media/…`
-      // URL form. normalizeAssetSrc collapses both, so a draft cover promotes on
-      // publish instead of shipping a path that only resolves in dev.
-      const draftToken = normalizeAssetSrc(raw);
-      if (!draftToken.startsWith('draft:')) continue;
-      const filename = draftToken.slice('draft:'.length);
-      if (filename.includes('/') || filename.includes('..')) {
-        console.warn(`[vcd #201] Draft asset has a path segment and was not promoted: ${draftToken}`);
-        continue;
-      }
-      const existingTarget = promoted.get(draftToken);
-      if (existingTarget) {
-        node[key] = existingTarget;
-        continue;
-      }
-      const source = path.join(draftDir, filename);
-      const targetName = await uniqueUploadFilename(publicDir, filename);
-      const target = path.join(publicDir, targetName);
-      const file = await readFile(source);
-      await writeFile(target, file);
-      node[key] = targetName;
-      moved.push(targetName);
-      publishedSources.push(source);
-      promoted.set(draftToken, targetName);
-    }
-    for (const value of Object.values(node)) {
-      await rewriteNode(value);
-    }
-  };
-
-  await rewriteNode(data);
-
-  if (promoted.size) {
-    const projectsDir = path.join(process.cwd(), 'src/content/projects');
-    let files = [];
-    try {
-      files = readdirSync(projectsDir).filter((file) => file.endsWith('.json'));
-    } catch {
-      files = [];
-    }
-    const rewriteOtherNode = (node) => {
-      if (Array.isArray(node)) {
-        let changed = false;
-        for (const item of node) {
-          if (rewriteOtherNode(item)) changed = true;
-        }
-        return changed;
-      }
-      if (!node || typeof node !== 'object') return false;
-      let changed = false;
-      for (const key of DRAFT_SRC_KEYS) {
-        const value = node[key];
-        if (typeof value !== 'string') continue;
-        const token = normalizeAssetSrc(value);
-        if (!promoted.has(token)) continue;
-        node[key] = promoted.get(token);
-        changed = true;
-      }
-      for (const value of Object.values(node)) {
-        if (rewriteOtherNode(value)) changed = true;
-      }
-      return changed;
-    };
-    for (const file of files) {
-      const otherSlug = file.replace(/\.json$/, '');
-      if (otherSlug === slug) continue;
-      const filePath = path.join(projectsDir, file);
-      const otherData = JSON.parse(await readFile(filePath, 'utf8'));
-      if (rewriteOtherNode(otherData)) {
-        await writeProjectJson(filePath, otherData);
-      }
-    }
-  }
-
-  for (const source of publishedSources) {
-    await rm(source, { force: true });
-  }
-
-  return moved;
-}
-
-export function draftMediaDevServer() {
+export function mediaDevServer() {
   return {
-    name: 'draft-media-dev-server',
+    name: 'media-dev-server',
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use('/draft-media', async (req, res, next) => {
+      server.middlewares.use('/images', async (req, res, next) => {
         if (req.method !== 'GET') {
           next();
           return;
@@ -544,7 +421,7 @@ export function draftMediaDevServer() {
           res.end('Bad request');
           return;
         }
-        const filePath = path.join(process.cwd(), 'src/content/drafts/media', relative);
+        const filePath = path.join(process.cwd(), 'media', relative);
         try {
           const file = await readFile(filePath);
           const ext = path.extname(filePath).toLowerCase();
@@ -554,7 +431,11 @@ export function draftMediaDevServer() {
               ? 'image/webp'
               : ext === '.gif'
                 ? 'image/gif'
-                : 'image/jpeg';
+                : ext === '.svg'
+                  ? 'image/svg+xml'
+                  : ext === '.avif'
+                    ? 'image/avif'
+                    : 'image/jpeg';
           res.statusCode = 200;
           res.setHeader('content-type', type);
           res.end(file);
@@ -603,8 +484,8 @@ export function uploadDevWriter() {
             send(400, { error: 'No files were uploaded.' });
             return;
           }
-          const directory = path.join(process.cwd(), 'src/content/drafts/media');
-          // Draft media is watch-ignored + skipped in contentHmrGate; keep the
+          const directory = path.join(process.cwd(), 'media');
+          // media/ is watch-ignored + skipped in contentHmrGate; keep the
           // suppress call as belt-and-suspenders for any residual CSS/module path.
           suppressContentHmr();
           await mkdir(directory, { recursive: true });
@@ -706,22 +587,35 @@ export function projectSettingsDevWriter() {
             const data = JSON.parse(await readFile(path.join(process.cwd(), relativeFile), 'utf8'));
             const grid = ['home', 'work', 'play'].find((key) => data.listings?.[key]) ?? 'work';
             const listing = data.listings?.[grid] ?? {};
+            // Storage holds bare tokens; the client wants ready-to-use URLs for
+            // live preview (it assigns these straight to <img src>).
+            const resolvedListings = {};
+            for (const [key, value] of Object.entries(data.listings ?? {})) {
+              resolvedListings[key] = {
+                ...value,
+                image: value.image ? assetUrlFromSrc(value.image) : '',
+                ...(value.hoverImage ? { hoverImage: assetUrlFromSrc(value.hoverImage) } : {}),
+              };
+            }
             send(200, {
               slug,
               title: data.title,
               description: data.description ?? '',
               status: data.status ?? 'draft',
-              listings: data.listings ?? {},
+              listings: resolvedListings,
               listing: {
-                image: listing.image ?? '',
-                hoverImage: listing.hoverImage ?? '',
+                image: listing.image ? assetUrlFromSrc(listing.image) : '',
+                hoverImage: listing.hoverImage ? assetUrlFromSrc(listing.hoverImage) : '',
                 hoverDark: typeof listing.hoverDark === 'boolean' ? listing.hoverDark : undefined,
                 bg: listing.bg ?? '#efefef',
                 dark: Boolean(listing.dark),
                 full: Boolean(listing.full),
                 subtitle: listing.year ?? listing.meta ?? '',
               },
-              teaser: data.teaser ?? {},
+              teaser: {
+                ...(data.teaser ?? {}),
+                coverImage: data.teaser?.coverImage ? assetUrlFromSrc(data.teaser.coverImage) : '',
+              },
             });
           } catch {
             send(400, { error: 'Could not load project settings.' });
@@ -760,14 +654,10 @@ export function projectSettingsDevWriter() {
           }
           data.teaser = {
             label: String(body.teaser?.label || ''),
-            coverImage: String(body.teaser?.coverImage || ''),
+            coverImage: normalizeAssetSrc(String(body.teaser?.coverImage || '')),
           };
-          let moved = [];
-          if (PUBLIC_STATUSES.has(data.status)) {
-            moved = await publishDraftMediaForProject(slug, data);
-          }
           await writeProjectJson(file, data);
-          send(200, { ok: true, moved });
+          send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not save project settings.' });
         }
@@ -841,17 +731,6 @@ export function sectionOrderDevWriter() {
   };
 }
 
-function listingImageUrl(src) {
-  const value = String(src || '').trim();
-  if (!value) return '/images/black-token.svg';
-  if (value.startsWith('draft:')) {
-    const draftPath = value.slice('draft:'.length);
-    return `/draft-media/${draftPath.split('/').map(encodeURIComponent).join('/')}`;
-  }
-  if (value.startsWith('/')) return value;
-  return `/images/${value.split('/').map(encodeURIComponent).join('/')}`;
-}
-
 function seedListingCard(grid, data, order) {
   const previous = data.listings && typeof data.listings === 'object' ? data.listings : {};
   const sibling = LISTING_GRIDS.map((key) => previous[key]).find(Boolean) ?? {};
@@ -859,7 +738,7 @@ function seedListingCard(grid, data, order) {
   const image = String(
     sibling.image
     || data.teaser?.coverImage
-    || '/images/black-token.svg',
+    || 'black-token.svg',
   );
   const base = {
     order,
@@ -905,7 +784,7 @@ function coverForGalleryPage(data, grid) {
     onGallery,
     hasCover,
     image,
-    coverUrl: hasCover ? listingImageUrl(image) : '',
+    coverUrl: hasCover ? assetUrlFromSrc(image) : '',
     bg: String(listing.bg || '#efefef'),
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
@@ -1238,40 +1117,3 @@ export function projectRenameDevWriter() {
   };
 }
 
-export function publishMediaDevWriter() {
-  return {
-    name: 'publish-media-dev-writer',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/api/publish-media', async (req, res, next) => {
-        if (req.method !== 'POST') {
-          next();
-          return;
-        }
-        const send = (status, payload) => {
-          res.statusCode = status;
-          res.setHeader('content-type', 'application/json');
-          res.end(JSON.stringify(payload));
-        };
-        try {
-          const chunks = [];
-          for await (const chunk of req) chunks.push(chunk);
-          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const slug = String(body.slug || '').trim();
-          const relativeFile = resolveEditableDocument(slug);
-          if (!relativeFile) {
-            send(404, { error: 'Project not found.' });
-            return;
-          }
-          const file = path.join(process.cwd(), relativeFile);
-          const data = JSON.parse(await readFile(file, 'utf8'));
-          const moved = await publishDraftMediaForProject(slug, data);
-          await writeProjectJson(file, data);
-          send(200, { ok: true, moved });
-        } catch {
-          send(400, { error: 'Could not publish media.' });
-        }
-      });
-    },
-  };
-}
