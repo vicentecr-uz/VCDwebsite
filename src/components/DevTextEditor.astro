@@ -2415,16 +2415,12 @@
         const hadDirty = hasPendingEdits();
         const hadUnpublished = unpublishedCount > 0;
 
-        if (hadUnpublished) {
-          const n = unpublishedCount;
-          const message = n === 1
-            ? 'Restore 1 unpublished content file to match main? This cannot be undone. The page will reload.'
-            : `Restore ${n} unpublished content files to match main? This cannot be undone. The page will reload.`;
-          if (!window.confirm(message)) return;
-        }
-
-        stickyStatus = '';
+        // Unsaved edits are the nearer, smaller undo, so they take the whole
+        // click: reverting them AND resetting the disk to main would throw away
+        // saved work nobody asked about. Only once nothing is left in memory
+        // does Revert mean the on-disk unpublished content (#196).
         if (hadDirty) {
+          stickyStatus = '';
           revertPendingSectionInserts();
           revertPendingSectionDeletes();
           revertDirtyEdits();
@@ -2435,7 +2431,20 @@
             setStickyStatus(error instanceof Error ? error.message : 'Could not undo image inserts.');
             actions.hidden = false;
           }
+          hideFormatBar();
+          updateActions();
+          return;
         }
+
+        if (hadUnpublished) {
+          const n = unpublishedCount;
+          const message = n === 1
+            ? 'Restore 1 unpublished content file to match main? This cannot be undone. The page will reload.'
+            : `Restore ${n} unpublished content files to match main? This cannot be undone. The page will reload.`;
+          if (!window.confirm(message)) return;
+        }
+
+        stickyStatus = '';
 
         if (hadUnpublished) {
           try {
