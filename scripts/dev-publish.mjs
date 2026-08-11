@@ -632,6 +632,18 @@ export async function revertUnpublishedContent() {
         ? await git('hash-object', '--', absolute)
         : onBase;
     } else if (existsSync(absolute)) {
+      // Absent from main is not the same as unpublished. A file committed on
+      // this branch is branch work that main has simply not seen yet, and
+      // deleting it throws away a commit rather than an edit. An entire
+      // branch-new content directory looks exactly like this from main's side
+      // — media/ before #211 lands is 289 files that all pass the old test —
+      // so restore the committed version and leave the publish record alone.
+      const onHead = await blobAt('HEAD', file);
+      if (onHead) {
+        await git('checkout', 'HEAD', '--', file);
+        restored.push(file);
+        continue;
+      }
       await rm(absolute, { force: true });
       restored.push(file);
       recordUpdates[file] = null;
