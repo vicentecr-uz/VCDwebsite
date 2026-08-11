@@ -14,7 +14,7 @@ const execFile = promisify(execFileCb);
  * to main; everything else is engine work and belongs on a feature branch.
  * Keep in sync with scripts/commit-engine.sh and CLAUDE.md.
  */
-export const CONTENT_PATHS = ['src/content', 'public/images'];
+export const CONTENT_PATHS = ['src/content', 'media'];
 const PUBLISH_BRANCH = 'main';
 
 /**
@@ -47,6 +47,8 @@ const RENDERING_PATHS = [
   // content JSON, so a change to them can produce JSON main cannot read.
   'astro.config.mjs',
   'scripts/dev-api-plugins.mjs',
+  // Decides which media/ files ship to dist/images/ — rendering-adjacent.
+  'scripts/collect-shipped-assets.mjs',
 ];
 
 /**
@@ -630,6 +632,18 @@ export async function revertUnpublishedContent() {
         ? await git('hash-object', '--', absolute)
         : onBase;
     } else if (existsSync(absolute)) {
+      // Absent from main is not the same as unpublished. A file committed on
+      // this branch is branch work that main has simply not seen yet, and
+      // deleting it throws away a commit rather than an edit. An entire
+      // branch-new content directory looks exactly like this from main's side
+      // — media/ before #211 lands is 289 files that all pass the old test —
+      // so restore the committed version and leave the publish record alone.
+      const onHead = await blobAt('HEAD', file);
+      if (onHead) {
+        await git('checkout', 'HEAD', '--', file);
+        restored.push(file);
+        continue;
+      }
       await rm(absolute, { force: true });
       restored.push(file);
       recordUpdates[file] = null;

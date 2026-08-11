@@ -155,7 +155,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
     resolveImageGridConstrained,
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
-  import { projectImage, draftProjectImageSrc } from '../../lib/images';
+  import { projectImage } from '../../lib/images';
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
@@ -608,9 +608,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
     const canonicalSrcFromUrl = (url: string) => {
       try {
         const pathname = new URL(url, window.location.origin).pathname;
-        if (pathname.startsWith('/draft-media/')) {
-          return `draft:${decodeURIComponent(pathname.slice('/draft-media/'.length))}`;
-        }
         if (pathname.startsWith('/images/')) {
           return decodeURIComponent(pathname.slice('/images/'.length));
         }
@@ -2070,7 +2067,7 @@ const lockSvg = sizeIcon(lockIcon, 14);
       if (!response.ok) throw new Error(result.error || 'Upload failed.');
       const filename = Array.isArray(result.filenames) ? String(result.filenames[0] || '') : '';
       if (!filename) throw new Error('Upload failed.');
-      return draftProjectImageSrc(filename);
+      return filename;
     };
 
     const pickReplaceFromAssetManager = () => new Promise<{ srcs: string[] }>((resolve, reject) => {

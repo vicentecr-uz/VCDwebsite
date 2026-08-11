@@ -210,7 +210,7 @@ export function emptyModernProjectDocument(
         ? {
             order: 999,
             meta: '',
-            image: '/images/black-token.svg',
+            image: 'black-token.svg',
             bg: '#efefef',
             dark: false,
             full: false,
@@ -218,7 +218,7 @@ export function emptyModernProjectDocument(
         : {
             order: 999,
             year: new Date().getFullYear().toString().slice(-2).padStart(2, "'"),
-            image: '/images/black-token.svg',
+            image: 'black-token.svg',
             bg: '#efefef',
             dark: false,
             full: false,

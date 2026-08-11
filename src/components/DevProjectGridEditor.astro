@@ -809,8 +809,8 @@ const statusIcons = {
     const filename = payload.filenames?.[0];
     if (!filename) throw new Error('Could not upload the cover image.');
     window.dispatchEvent(new CustomEvent('vcd:dev-content-written'));
-    // Draft media is a flat site-wide library (#201) — no per-project segment.
-    return `/draft-media/${filename}`;
+    // Media is a flat site-wide library (#201/#211) — no per-project segment.
+    return `/images/${encodeURIComponent(filename)}`;
   };
 
   const applyCoverFileToCard = async (slug, file, blobUrl, slot = 'image') => {
