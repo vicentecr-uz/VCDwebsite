@@ -563,6 +563,12 @@
     const isDevTextCaretActive = () => {
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return false;
+      // Generic first: any focused editing host — grid card titles
+      // (DevProjectGridEditor), captions (ProjectImageCaptionTuner), section
+      // nav labels — counts, not just this component's own tracked body-text
+      // fields. The listeners below are already document-wide; only the
+      // question they ask was scoped too narrowly.
+      if (active.isContentEditable) return true;
       return textStates.some(
         (state) => state.element === active || state.element.contains(active),
       );

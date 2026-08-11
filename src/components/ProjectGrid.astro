@@ -812,20 +812,10 @@ const gridCardTemplateSeed: ProjectGridItem = {
     transition: opacity var(--dev-suppress-duration) ease;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden]))
-      .project-grid__chip:not([data-dev-project-status]),
-    html.is-dev-mode .project-grid__item.is-span-mode .project-grid__chip:not([data-dev-project-span]),
-    html.is-dev-mode .project-grid__item.is-span-mode
-      :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable],
-    html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
-      .project-grid__chip:not([data-dev-edit-trigger='image']),
-    html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
-      :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable],
-    html.is-dev-text-caret .project-grid__item:has([contenteditable]:focus) .project-grid__chip {
-      transition: none;
-    }
-  }
+  /* No reduced-motion override here by design: every rule above is a fade
+     (opacity / outline-color), never a move or resize, so it matches the
+     iOS pattern of crossfading state changes instead of animating position —
+     the appropriate reduced-motion behaviour already, not an exception to it. */
 
   /* During replace: hold page white under the fades so listing `bg` never peeks. */
   .project-grid__cover[data-dev-crossfade-active='true'] {
