@@ -274,11 +274,18 @@ const gridCardTemplateSeed: ProjectGridItem = {
     line-height: 1;
     cursor: pointer;
     box-shadow: none;
+    /* opacity here matters even though the resting state is always opacity: 1 —
+       the transition shorthand replaces the whole list, not merges it. The
+       suppress rules below declare their own `transition: opacity …` while
+       active, which covers the fade OUT; the instant this chip falls back to
+       this base rule, THIS list is what governs the fade back IN, and without
+       an opacity entry here that transition is dropped and it snaps to 1. */
     transition:
       background-color 0.15s ease,
       box-shadow 0.15s ease,
       transform 0.15s ease,
-      color 0.15s ease;
+      color 0.15s ease,
+      opacity var(--dev-suppress-duration) ease;
   }
 
   .project-grid__chip-icon {
