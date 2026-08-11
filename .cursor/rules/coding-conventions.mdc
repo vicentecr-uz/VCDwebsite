@@ -16,4 +16,21 @@ Never use raw `svh` (or `vh`) for a height constraint that matters visually — 
 Dev chrome (and similar UI) should not pop in or out:
 - **Standalone panels** (e.g. `DevOverlay` tuners) — fade in with a slight rise; mirror on exit. See `DevOverlay.astro`.
 - **Covering veils** over an existing component (e.g. cancel / status overlays) — fade only, no rise.
-Respect `prefers-reduced-motion`.
+
+## `prefers-reduced-motion` — suppress movement, not fades
+
+**Reduced motion means "don't move things", not "don't animate".** A fade keeps its easing; only travel and resize are removed. The reference is iOS itself: with Reduce Motion on, switching apps still animates — it crossfades instead of sliding. Users who set the preference are avoiding vestibular triggers, not asking for a UI that snaps.
+
+Apply it per property, not per component:
+
+| Animating | Under reduced motion |
+| --- | --- |
+| `opacity` | **Keep the transition unchanged.** |
+| `transform: translate` / a rise | Drop the movement, keep the fade — set the offset to `0`, not the duration. |
+| `transform: scale`, `width`/`height`, layout shift | Suppress the transition; let it settle instantly, or crossfade between states. |
+
+**Do not reach for `transition: none` on a rule that only fades**, and do not zero a shared duration variable that a fade also reads — that is how you remove the one kind of motion that was safe to keep.
+
+**This applies to JS timing too, and that is where it usually hides.** A `prefersReducedMotion()` check that returns a `0` duration, skips the enter/exit class dance, or calls the "finish" path immediately makes the UI snap no matter how correct the CSS is. Three separate bugs in `#205` were exactly this shape — `chromeFadeMs()` returning `0` in `DevModeController.astro`, and `DevOverlay.astro` setting `hidden` in the same frame so the panel vanished rather than faded. Grep for `prefers-reduced-motion` in **script** blocks as well as styles.
+
+Genuine movement still gets suppressed — the section-lift `scale(1.02)`, the drop-indicator height animation, and the crop-stage transforms all keep their overrides.
