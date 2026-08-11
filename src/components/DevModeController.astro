@@ -26,10 +26,14 @@
     const hasSectionNav = () =>
       Boolean(document.querySelector('[data-section-nav-root]'));
 
-    const prefersReducedMotion = () =>
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    const chromeFadeMs = () => (prefersReducedMotion() ? 0 : CHROME_FADE_MS);
+    /*
+      Not reduced-motion-gated. Entering and exiting dev mode is entirely
+      opacity — the chrome fades, and the layout cue is an ::after ring fading
+      in; nothing travels or resizes. Returning 0 here made enterDevMode skip
+      the transition classes outright and exitDevMode snap, which removed the
+      one kind of motion that is safe to keep. Suppress movement, not fades.
+    */
+    const chromeFadeMs = () => CHROME_FADE_MS;
 
     const clearChromeTransitionClasses = () => {
       html.classList.remove(
@@ -266,8 +270,12 @@
       }
     }, true);
 
+    // isContentEditable, not [contenteditable="true"]: editable hosts are set to
+    // 'plaintext-only' where the browser supports it (card titles, captions), and
+    // the attribute selector misses those — which let Esc in a card title fall
+    // through to "leave Dev Mode" instead of leaving the field.
     const isTypingTarget = (target: HTMLElement | null) =>
-      Boolean(target?.closest('input, textarea, select, [contenteditable="true"]'));
+      Boolean(target && (target.isContentEditable || target.closest('input, textarea, select')));
 
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyD') {

@@ -2304,9 +2304,14 @@
     const deselectDevTextCaret = () => {
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return false;
-      if (!textStates.some((state) => state.element === active || state.element.contains(active))) {
-        return false;
-      }
+      // Any editing surface, not just this component's tracked body-text fields:
+      // a caret in a gallery card title or an inline caption is a level to
+      // escape from too, and matching only textStates left those falling through
+      // to DevModeController, which exited Dev Mode outright.
+      const isEditingSurface = active.isContentEditable
+        || isTextEntryField(active)
+        || textStates.some((state) => state.element === active || state.element.contains(active));
+      if (!isEditingSurface) return false;
       // Tuner / overlay fields keep their own Esc layering.
       if (active.closest('[data-dev-panel-key], .dev-overlay')) return false;
 
