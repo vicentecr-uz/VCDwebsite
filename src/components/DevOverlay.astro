@@ -69,8 +69,6 @@ const hideSvg = sizeIcon(xIcon, 10);
 
 <script>
   const MOTION_MS = 180;
-  const prefersReducedMotion = () =>
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const nativeHidden = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
 
@@ -168,10 +166,6 @@ const hideSvg = sizeIcon(xIcon, 10);
       // Start from the resting "closed" pose, then open on the next frame.
       overlay.classList.remove('is-dev-overlay-open');
       void overlay.offsetWidth;
-      if (prefersReducedMotion()) {
-        overlay.classList.add('is-dev-overlay-open');
-        return;
-      }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (!wantVisible) return;
@@ -204,7 +198,11 @@ const hideSvg = sizeIcon(xIcon, 10);
       clearMotionTimer();
       overlay.classList.remove('is-dev-overlay-open');
 
-      if (prefersReducedMotion() || overlay.hasAttribute('hidden')) {
+      // Only skip the wait when there is nothing to wait for. Skipping it under
+      // reduced motion set `hidden` in the same frame, so the panel vanished
+      // instead of fading — the CSS drops the rise and keeps the fade, and this
+      // has to let that fade actually run.
+      if (overlay.hasAttribute('hidden')) {
         finishHide(generation);
         return;
       }
