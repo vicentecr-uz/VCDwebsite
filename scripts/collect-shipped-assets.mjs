@@ -120,7 +120,10 @@ export async function collectShippedAssets(distDir, mediaDir) {
     );
   }
 
-  const totalInMedia = (await listFilesRecursive(mediaDir)).length;
+  // Dotfiles are not assets — counting .DS_Store here makes the totals look
+  // wrong against `find media -type f` and invites a hunt for a bug.
+  const totalInMedia = (await listFilesRecursive(mediaDir))
+    .filter((file) => !path.basename(file).startsWith('.')).length;
   console.log(
     `assets: copied ${copied} of ${totalInMedia} files in media/ `
     + `(${totalInMedia - copied} unreferenced, not shipped)`,
