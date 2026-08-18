@@ -92,15 +92,42 @@ Create these before any component, so bindings exist when you need them.
 | Token | On Light | On Dark |
 | --- | --- | --- |
 | `button/ink` | `#1a1a1a` | `#ffffff` |
-| `button/fill-soft` | `#e7e7e9` | `rgb(0 0 0 / 0.58)` |
+| `button/fill-soft` | `#e7e7e9` @ 92% | `#000000` @ 58% |
 | `button/fill-solid` | `#1a1a1a` | `#ffffff` |
-| `button/ring` | `#e2e2e5` | `color-mix(bg 22%, #1a1a1a)` |
-| `button/fill-press` | `#e2e2e5` | `color-mix(bg 12%, #1a1a1a)` |
+| `button/ring` | `#d4d4d7` | `#4c4c4c` |
+| `button/fill-press` | `#e2e2e5` @ 92% | `#353535` |
 
 **Flat tokens (no mode):** `color/danger` `#6a1010`, `color/danger-soft`
 `#fff0f0`, `color/danger-border` `#dd8888` — per #234.
 
-Bind everything. A typed hex here defeats the point of the exercise.
+### About `color-mix` in the source
+
+The chip palette in `ProjectGrid.astro` defines several of these with
+`color-mix()`. Figma variables hold literal values or aliases only — there is no
+computed colour — so the two kinds resolve differently:
+
+| Source form | Figma equivalent |
+| --- | --- |
+| `color-mix(in srgb, X 92%, transparent)` | **expressible** — colour `X` at 92% opacity |
+| `color-mix(in srgb, A 22%, B)` | **not expressible** — enter the resolved hex |
+
+Mixing with `transparent` is just alpha, and Figma colour variables carry alpha
+fine. Mixing two opaque colours has to be flattened to a literal. Resolved
+values, for reference:
+
+| Source | Resolves to |
+| --- | --- |
+| `color-mix(bg 22%, #1a1a1a)` | `#4c4c4c` |
+| `color-mix(bg 12%, #1a1a1a)` | `#353535` |
+| `color-mix(text 7%, surface-press)` | `#d4d4d7` |
+
+**This creates a real drift risk.** Those three hexes are computed from
+`--color-bg`, `--color-text` and `--color-surface-press`. If any of those change
+in `global.css`, the Figma literals silently stop matching. Worth a comment on
+the variable in Figma noting what it was derived from.
+
+Bind where a token exists. Where a value is derived, a literal is correct — but
+note where it came from.
 
 ---
 
