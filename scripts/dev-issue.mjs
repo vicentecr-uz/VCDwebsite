@@ -17,21 +17,10 @@ const execFile = promisify(execFileCb);
 
 const REPO = 'vcruzdesigns/VCDwebsite';
 const ASSETS_BRANCH = 'issue-assets';
-const TYPE_LABELS = new Set([
-  'bug',
-  'enhancement',
-  'documentation',
-  'question',
-  'duplicate',
-  'new page',
-]);
-
-const PAGE_LABELS = new Set([
-  'gallery pages',
-  'about page',
-  'project pages',
-  'home page',
-]);
+// No hardcoded label list: listMeta() pulls every label straight from the
+// repo on each load, so a label created on GitHub shows up here without a
+// code change. The only split kept is "page" labels (name contains "page")
+// vs everything else, purely to keep the form's two dropdowns meaningful.
 
 const git = async (...args) => {
   const { stdout } = await execFile('git', args, { cwd: process.cwd(), maxBuffer: 32 * 1024 * 1024 });
@@ -161,13 +150,14 @@ async function listMeta() {
   ]);
 
   const repoLabels = JSON.parse(labelsRaw).map((row) => row.name);
+  const isPageLabel = (name) => /page/i.test(name);
 
   const labels = repoLabels
-    .filter((name) => TYPE_LABELS.has(name))
+    .filter((name) => !isPageLabel(name))
     .sort((a, b) => a.localeCompare(b));
 
   const pageLabels = repoLabels
-    .filter((name) => PAGE_LABELS.has(name))
+    .filter(isPageLabel)
     .sort((a, b) => a.localeCompare(b));
 
   const milestones = JSON.parse(milestonesRaw)
@@ -197,8 +187,7 @@ async function createIssue(payload) {
 
   if (!title) throw new Error('Title is required.');
   if (!body) throw new Error('Description is required.');
-  if (!TYPE_LABELS.has(label)) throw new Error('Pick a label.');
-  if (pageLabel && !PAGE_LABELS.has(pageLabel)) throw new Error('Pick a page label.');
+  if (!label) throw new Error('Pick a label.');
   if (!milestone) throw new Error('Pick a milestone.');
 
   const uploaded = await pushIssueAssets(attachments);
