@@ -7,6 +7,20 @@ alwaysApply: true
 
 Cursor doesn't read `CLAUDE.md` automatically, so cross-cutting conventions that matter to both agent types are mirrored here. `CLAUDE.md` → **Key conventions** is the canonical, fuller list — check it too.
 
+## Labels only — no explanatory copy on screen
+
+Every surface in this repo — the site and the dev layer alike — ships with **labels only**. A control names itself and stops there. It has to be obvious from **how it looks and how it behaves**, not from prose sitting next to it explaining what it is for.
+
+**Do not put on screen:** sub-titles that restate the heading above them; helper or "meta" text under a field, toggle, or panel ("Choose an option below", "This controls the grid gap"); *what this panel does* intros; parenthetical hints; onboarding blurbs; explanatory paragraphs in empty states; tooltips written as an explanation rather than a name.
+
+**Still fine:** the label itself; a unit or format shown inline (`px`, `%`) where it is part of the value, not commentary; error text that says what broke and what to do next; the site's actual editorial content (About, case studies) — this rule governs **chrome**, not copy; and **accessible names** (`aria-label`, `title` on an icon-only control), which are invisible to sighted users and mandatory for everyone else. Never strip an accessible name to satisfy this rule.
+
+The explanation goes in a **source comment**, `CLAUDE.md`, or `docs/` — explaining in the source is free, explaining on screen is paid for by every reader afterwards.
+
+**The test:** if a control needs a sentence, the control is wrong. Fix the affordance — truer label, clearer grouping, more obvious interaction — rather than annotating a weak one. The dev layer's dashed hairline is the model: it is legible because a dashed line *means* editable, not because a caption says so.
+
+Canonical personal standard: Atlas `standards.md` → *Design — Labels only in a UI*. Also mirrored in `CLAUDE.md` → **Key conventions**.
+
 ## Viewport height units
 
 Never use raw `svh` (or `vh`) for a height constraint that matters visually — Microsoft Edge on iOS doesn't reliably honor `svh`, letting it track the address bar's show/hide mid-scroll and shove blocks below it up/down. Use the shared helper `src/lib/safeVh.ts` (`bindSafeVh()` in `Layout.astro`), which sets `--vh-safe` once on load and only recomputes on a genuine width change (never on the height-only resize an iOS toolbar toggle fires). Keep `svh` only as the pre-JS/no-JS fallback: `calc(var(--vh-safe, 1svh) * N)`. Do not re-implement this per component. See issues #96 / #97.
