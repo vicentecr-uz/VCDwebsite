@@ -161,6 +161,8 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 
 **Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes. `LegacyProjectGrid` is case-study media clusters — not the same as site `ProjectGrid` listings.
 
+**Button Base hitbox:** any interactive element built from Button Base (or its variants) needs a tappable/clickable area extending `space/hit-inset` (8px, Figma Primitives collection) beyond the element's visual bounds on all sides. This is documented on the component in Figma but deliberately **not modeled as Figma geometry** — Figma has no primitive for "sibling size = parent size + N," so a literal overlay frame would just go stale every time content changes. Implement it in code instead: `inset: -8px` on a `::before`/`::after` pseudo-element (recalculates live against the parent box), or an equivalently padded interactive wrapper. Don't hardcode `8px` — reference it as a token if/when `space/hit-inset` gets exported to CSS custom properties.
+
 Ask before introducing anything not on `/styles`.
 
 ## Plans & implementation handoffs
