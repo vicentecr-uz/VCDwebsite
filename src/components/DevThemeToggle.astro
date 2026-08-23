@@ -1,0 +1,161 @@
+<div class="dev-theme-toggle" data-dev-theme-toggle role="group" aria-label="Theme">
+  <button type="button" data-theme-mode="system" aria-label="Follow system theme" title="Follow system theme" aria-pressed="false">
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <rect width="13.333" height="9.333" x="1.333" y="2" rx="1.333" />
+      <line x1="5.333" x2="10.667" y1="14" y2="14" />
+      <line x1="8" x2="8" y1="11.333" y2="14" />
+    </svg>
+  </button>
+  <button type="button" data-theme-mode="light" aria-label="Light theme" title="Light theme" aria-pressed="false">
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <circle cx="8" cy="8" r="2.667" />
+      <path d="M8 1.333v1.333" />
+      <path d="M8 13.333v1.333" />
+      <path d="m3.287 3.287 0.94 0.94" />
+      <path d="m11.773 11.773 0.94 0.94" />
+      <path d="M1.333 8h1.333" />
+      <path d="M13.333 8h1.333" />
+      <path d="m4.227 11.773 -0.94 0.94" />
+      <path d="m12.713 3.287 -0.94 0.94" />
+    </svg>
+  </button>
+  <button type="button" data-theme-mode="dark" aria-label="Dark theme" title="Dark theme" aria-pressed="false">
+    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M13.99 8.324a6 6 0 1 1-6.315-6.315c.27-.015.411.307.268.535a4 4 0 0 0 5.512 5.512c.229-.143.55-.003.535.267" />
+    </svg>
+  </button>
+</div>
+
+<style>
+  .dev-theme-toggle {
+    display: none;
+    align-items: center;
+    gap: 0.25em;
+    padding: 0.25em;
+    border: 1px solid var(--sys-color-outline);
+    border-radius: 999px;
+    background: var(--sys-color-srf-variant);
+  }
+
+  :global(html.is-dev-mode) .dev-theme-toggle {
+    display: inline-flex;
+  }
+
+  .dev-theme-toggle button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75em;
+    height: 1.75em;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--sys-color-on-srf-variant);
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+  }
+
+  .dev-theme-toggle button[aria-pressed='true'] {
+    background: var(--sys-color-srf);
+    color: var(--sys-color-on-srf);
+  }
+
+  .dev-theme-toggle button:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+  }
+
+  /*
+    Selection state here is a plain background/color fade, not a moving
+    indicator — nothing travels, so prefers-reduced-motion needs no override:
+    suppressing movement only applies to a rule that has movement to remove.
+  */
+</style>
+
+<script>
+  type ThemeMode = 'system' | 'light' | 'dark';
+
+  const STORAGE_KEY = 'vcd:theme';
+
+  const isThemeMode = (value: unknown): value is ThemeMode =>
+    value === 'system' || value === 'light' || value === 'dark';
+
+  const readStoredMode = (): ThemeMode => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return isThemeMode(stored) ? stored : 'system';
+    } catch {
+      return 'system';
+    }
+  };
+
+  const persistMode = (mode: ThemeMode) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, mode);
+    } catch {
+      /* private mode / storage disabled — mode still applies for this load */
+    }
+  };
+
+  const applyMode = (mode: ThemeMode) => {
+    if (mode === 'system') {
+      document.documentElement.removeAttribute('data-theme');
+    } else {
+      document.documentElement.setAttribute('data-theme', mode);
+    }
+  };
+
+  const root = document.querySelector<HTMLElement>('[data-dev-theme-toggle]');
+  const buttons = root
+    ? [...root.querySelectorAll<HTMLButtonElement>('button[data-theme-mode]')]
+    : [];
+
+  const updatePressedState = (mode: ThemeMode) => {
+    buttons.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.themeMode === mode));
+    });
+  };
+
+  let currentMode: ThemeMode = readStoredMode();
+  updatePressedState(currentMode);
+
+  const setMode = (mode: ThemeMode) => {
+    currentMode = mode;
+    applyMode(mode);
+    persistMode(mode);
+    updatePressedState(mode);
+    window.dispatchEvent(new CustomEvent('vcd:theme-change', { detail: { mode } }));
+  };
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.dataset.themeMode;
+      if (isThemeMode(mode)) setMode(mode);
+    });
+  });
+
+  const isTypingTarget = (target: EventTarget | null) => {
+    const el = target instanceof HTMLElement ? target : null;
+    return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
+  };
+
+  document.addEventListener('keydown', (event) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyT')) return;
+    if (isTypingTarget(event.target)) return;
+
+    event.preventDefault();
+
+    let nextMode: ThemeMode;
+    if (currentMode === 'light') {
+      nextMode = 'dark';
+    } else if (currentMode === 'dark') {
+      nextMode = 'light';
+    } else {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      nextMode = systemPrefersDark ? 'light' : 'dark';
+    }
+    setMode(nextMode);
+  });
+</script>
