@@ -5,6 +5,8 @@
  *    tokens/design-tokens.json
  *  - any leftover `--color-*` reference anywhere in src/
  *  - src/styles/global.css not matching what the generator would produce
+ *  - the token name set drifting from the Figma snapshot in
+ *    tokens/figma-tokens.json (refresh that file when Figma variables change)
  *
  * `bun run tokens:check`
  */
@@ -20,6 +22,7 @@ import {
 
 const root = process.cwd();
 const tokensPath = path.join(root, TOKENS_RELATIVE_PATH);
+const figmaPath = path.join(root, 'tokens/figma-tokens.json');
 const cssPath = path.join(root, CSS_RELATIVE_PATH);
 const srcDir = path.join(root, 'src');
 
@@ -88,6 +91,26 @@ const { changed } = applyTokenBlock(cssSource, generatedBlock);
 if (changed) {
   ok = false;
   problems.push(`${CSS_RELATIVE_PATH} is stale — run \`bun run tokens:build\` and commit the result.`);
+}
+
+// Figma is the design side of the same contract. Names are derived from it by a
+// pure string rule, so any divergence means one side moved without the other.
+try {
+  const figma = JSON.parse(readFileSync(figmaPath, 'utf8'));
+  const figmaNames = new Set(figma.names);
+  const missingInJson = [...figmaNames].filter((n) => !definedNames.has(n)).sort();
+  const missingInFigma = [...definedNames].filter((n) => !figmaNames.has(n)).sort();
+
+  if (missingInJson.length || missingInFigma.length) {
+    ok = false;
+    problems.push('Figma / source token drift:');
+    for (const n of missingInJson) problems.push(`  in Figma, missing from design-tokens.json: ${n}`);
+    for (const n of missingInFigma) problems.push(`  in design-tokens.json, missing from Figma: ${n}`);
+    problems.push('  If Figma is the one that moved, refresh tokens/figma-tokens.json.');
+  }
+} catch (error) {
+  ok = false;
+  problems.push(`Could not read tokens/figma-tokens.json: ${error instanceof Error ? error.message : error}`);
 }
 
 if (!ok) {
