@@ -278,21 +278,19 @@ const readCssToken = (name: string, fallback: string) =>
   globalCssSource.match(new RegExp(`^\\s*${name}:\\s*([^;]+);`, 'm'))?.[1].trim() ?? fallback;
 
 const colorTokens = [
-  { name: '--color-bg', fallback: '#ffffff', role: 'Primary page background' },
-  { name: '--color-surface-soft', fallback: '#f7f5f1', role: 'Borderless cards and controls' },
-  { name: '--color-surface-chip', fallback: '#e8e8e8', role: 'Frosted chips on dark media (grid settings ⋮)' },
-  { name: '--color-surface-strong', fallback: '#eeebe5', role: 'Selected and nested surfaces' },
-  { name: '--color-surface-press', fallback: '#e2e2e5', role: 'Pressed fill for frosted edit chips (Edit image / grid / caption)' },
-  { name: '--color-text', fallback: '#1a1a1a', role: 'Main reading text' },
-  { name: '--color-text-soft', fallback: '#5a5a5a', role: 'Header menu links and subtle emphasis text' },
-  { name: '--color-link-strong', fallback: 'var(--color-text)', role: 'Default for dark links' },
-  { name: '--color-link-strong-hover', fallback: 'var(--color-text-soft)', role: 'Hover for dark links' },
-  { name: '--color-link-soft', fallback: 'var(--color-text-soft)', role: 'Default for softer links' },
-  { name: '--color-link-soft-hover', fallback: 'var(--color-text)', role: 'Hover for softer links' },
-  { name: '--color-text-muted', fallback: '#888888', role: 'Secondary labels and UI hints' },
-  { name: '--color-border', fallback: '#e0ddd8', role: 'Necessary separators and diagrams' },
-  { name: '--color-surface-control', fallback: '#b4b4ba', role: 'Dev control fill that must read with no border or shadow' },
-  { name: '--color-surface-control-strong', fallback: '#8e8e94', role: 'Hover/active fill for the same controls' },
+  { name: '--sys-color-srf', fallback: '#ffffff', role: 'Primary page background' },
+  { name: '--sys-color-srf-variant', fallback: '#f7f5f1', role: 'Borderless cards and controls' },
+  { name: '--sys-color-srf-container', fallback: '#e8e8e8', role: 'Frosted chips on dark media (grid settings ⋮)' },
+  { name: '--sys-color-srf-container-high', fallback: '#eeebe5', role: 'Selected and nested surfaces' },
+  { name: '--sys-color-srf-container-high', fallback: '#e2e2e5', role: 'Pressed fill for frosted edit chips (Edit image / grid / caption)' },
+  { name: '--sys-color-on-srf', fallback: '#1a1a1a', role: 'Main reading text' },
+  { name: '--sys-color-on-srf-variant', fallback: '#5a5a5a', role: 'Header menu links and subtle emphasis text' },
+  { name: '--sys-color-link', fallback: 'var(--sys-color-on-srf)', role: 'Default for dark links' },
+  { name: '--sys-color-link-soft', fallback: 'var(--sys-color-on-srf-variant)', role: 'Default for softer links' },
+  { name: '--sys-color-link-soft-hover', fallback: 'var(--sys-color-on-srf)', role: 'Hover for softer links' },
+  { name: '--sys-color-on-srf-muted', fallback: '#888888', role: 'Secondary labels and UI hints' },
+  { name: '--sys-color-outline-variant', fallback: '#e0ddd8', role: 'Necessary separators and diagrams' },
+  { name: '--sys-color-srf-container', fallback: '#b4b4ba', role: 'Dev control fill that must read with no border or shadow' },
 ].map((token) => ({
   ...token,
   value: readCssToken(token.name, token.fallback),
@@ -777,7 +775,7 @@ const sectionLinks = savedOutline.length
   .section-note {
     max-width: 62ch;
     line-height: 1.55;
-    color: color-mix(in srgb, var(--color-text) 85%, transparent);
+    color: color-mix(in srgb, var(--sys-color-on-srf) 85%, transparent);
   }
 
   .intro-copy code,
@@ -832,7 +830,7 @@ const sectionLinks = savedOutline.length
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
     padding: 1em;
-    background-color: var(--color-surface-soft);
+    background-color: var(--sys-color-srf-variant);
   }
 
   /*
@@ -844,7 +842,7 @@ const sectionLinks = savedOutline.length
     border: 0;
     border-radius: var(--radius-card-smooth);
     padding: 1em;
-    background-color: var(--color-surface-soft);
+    background-color: var(--sys-color-srf-variant);
     display: flex;
     flex-direction: column;
     gap: 0.6em;
@@ -877,7 +875,7 @@ const sectionLinks = savedOutline.length
 
   :global(html.is-dev-mode) button.token-card__swatch:hover,
   :global(html.is-dev-mode) button.token-card__swatch:focus-visible {
-    box-shadow: 0 0 0 0.12em var(--color-text);
+    box-shadow: 0 0 0 0.12em var(--sys-color-on-srf);
   }
 
   .type-card {
@@ -892,7 +890,7 @@ const sectionLinks = savedOutline.length
     justify-content: space-between;
     gap: 1em;
     flex-wrap: wrap;
-    border-bottom: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--sys-color-outline-variant);
     padding-bottom: 0.8em;
   }
 
@@ -960,7 +958,7 @@ const sectionLinks = savedOutline.length
     border-radius: var(--radius-control-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-    background: var(--color-surface-strong);
+    background: var(--sys-color-srf-container-high);
     padding: 0.75em;
     display: flex;
     align-items: center;
@@ -996,12 +994,12 @@ const sectionLinks = savedOutline.length
 
   .token-value {
     font-family: var(--font-serif);
-    color: color-mix(in srgb, var(--color-text) 70%, transparent);
+    color: color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent);
   }
 
   .token-note {
     margin-top: 0.2em;
-    color: var(--color-text-muted);
+    color: var(--sys-color-on-srf-muted);
     line-height: 1.45;
   }
 
@@ -1014,11 +1012,11 @@ const sectionLinks = savedOutline.length
   .component-group__title {
     margin-top: 0.5em;
     padding-top: 0.5em;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--sys-color-outline-variant);
     font-size: 0.85rem;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: var(--color-text-muted);
+    color: var(--sys-color-on-srf-muted);
   }
 
   .component-group:first-of-type .component-group__title {
@@ -1041,7 +1039,7 @@ const sectionLinks = savedOutline.length
   .component-card__head p {
     margin-top: 0.35em;
     line-height: 1.45;
-    color: color-mix(in srgb, var(--color-text) 82%, transparent);
+    color: color-mix(in srgb, var(--sys-color-on-srf) 82%, transparent);
     max-width: 56ch;
   }
 
@@ -1049,7 +1047,7 @@ const sectionLinks = savedOutline.length
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.8em;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--sys-color-outline-variant);
     padding-top: 0.8em;
   }
 
@@ -1058,7 +1056,7 @@ const sectionLinks = savedOutline.length
   }
 
   .component-preview {
-    border-top: 1px solid var(--color-border);
+    border-top: 1px solid var(--sys-color-outline-variant);
     padding-top: 0.8em;
     overflow: hidden;
   }
@@ -1089,16 +1087,16 @@ const sectionLinks = savedOutline.length
     border-radius: var(--radius-control-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-    background: var(--color-surface-strong);
+    background: var(--sys-color-srf-container-high);
     line-height: 1.45;
-    color: color-mix(in srgb, var(--color-text) 80%, transparent);
+    color: color-mix(in srgb, var(--sys-color-on-srf) 80%, transparent);
   }
 
   .meta-label {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.07em;
-    color: var(--color-text-muted);
+    color: var(--sys-color-on-srf-muted);
     margin-bottom: 0.35em;
   }
 
