@@ -277,23 +277,50 @@ const legacyPatterns = [
 const readCssToken = (name: string, fallback: string) =>
   globalCssSource.match(new RegExp(`^\\s*${name}:\\s*([^;]+);`, 'm'))?.[1].trim() ?? fallback;
 
-const colorTokens = [
-  { name: '--sys-color-srf', fallback: '#ffffff', role: 'Primary page background' },
-  { name: '--sys-color-srf-variant', fallback: '#f7f5f1', role: 'Borderless cards and controls' },
-  { name: '--sys-color-srf-container', fallback: '#e8e8e8', role: 'Frosted chips on dark media (grid settings ⋮)' },
-  { name: '--sys-color-srf-container-high', fallback: '#eeebe5', role: 'Selected and nested surfaces' },
-  { name: '--sys-color-srf-container-high', fallback: '#e2e2e5', role: 'Pressed fill for frosted edit chips (Edit image / grid / caption)' },
-  { name: '--sys-color-on-srf', fallback: '#1a1a1a', role: 'Main reading text' },
-  { name: '--sys-color-on-srf-variant', fallback: '#5a5a5a', role: 'Header menu links and subtle emphasis text' },
-  { name: '--sys-color-link', fallback: 'var(--sys-color-on-srf)', role: 'Default for dark links' },
-  { name: '--sys-color-link-soft', fallback: 'var(--sys-color-on-srf-variant)', role: 'Default for softer links' },
-  { name: '--sys-color-link-soft-hover', fallback: 'var(--sys-color-on-srf)', role: 'Hover for softer links' },
-  { name: '--sys-color-on-srf-muted', fallback: '#888888', role: 'Secondary labels and UI hints' },
-  { name: '--sys-color-outline-variant', fallback: '#e0ddd8', role: 'Necessary separators and diagrams' },
-  { name: '--sys-color-srf-container', fallback: '#b4b4ba', role: 'Dev control fill that must read with no border or shadow' },
+/**
+ * Follow a `var(--x)` chain down to the literal it eventually resolves to.
+ * Only `ref` tokens hold literal hex, so a `sys` role has to be walked to
+ * find the swatch colour — and to know which palette entry backs it.
+ */
+const resolveCssToken = (name: string, seen = new Set<string>()): string => {
+  if (seen.has(name)) return '';
+  seen.add(name);
+  const raw = readCssToken(name, '');
+  const alias = /^var\(\s*(--[a-z0-9-]+)\s*\)$/i.exec(raw);
+  return alias ? resolveCssToken(alias[1], seen) : raw;
+};
+
+/** The `ref` palette — the only tier holding literal hex, so the only editable one. */
+const paletteTokens = [...globalCssSource.matchAll(/^\s*(--ref-palette-[a-z0-9-]+):\s*(#[0-9a-f]{3,8});/gim)]
+  .map((m) => ({ name: m[1], value: m[2] }))
+  .filter((token, i, all) => all.findIndex((t) => t.name === token.name) === i);
+
+/**
+ * `sys` roles. Derived, never hand-edited — edit the palette entry each one
+ * points at instead. Listed in dependency order, not alphabetically.
+ */
+const roleTokens = [
+  { name: '--sys-color-srf', role: 'The page itself' },
+  { name: '--sys-color-srf-variant', role: 'Subtly raised — panels, soft button fills' },
+  { name: '--sys-color-srf-container', role: 'Filled control that reads as a shape with no border' },
+  { name: '--sys-color-srf-container-high', role: 'Strongest normal surface — pressed states' },
+  { name: '--sys-color-inverse-srf', role: 'Deliberately opposes the page — solid buttons' },
+  { name: '--sys-color-on-srf', role: 'Default ink' },
+  { name: '--sys-color-on-srf-variant', role: 'Secondary ink — menu links, subtle emphasis' },
+  { name: '--sys-color-on-srf-muted', role: 'Muted ink — captions, field labels' },
+  { name: '--sys-color-inverse-on-srf', role: 'Ink sitting on inverse-srf' },
+  { name: '--sys-color-outline', role: 'Visible edge — button rings, dividers' },
+  { name: '--sys-color-outline-variant', role: 'Quieter hairline — separators' },
+  { name: '--sys-color-error', role: 'Danger accent' },
+  { name: '--sys-color-error-container', role: 'Danger surface' },
+  { name: '--sys-color-on-error-container', role: 'Ink on a danger surface' },
+  { name: '--sys-color-link', role: 'Default link' },
+  { name: '--sys-color-link-soft', role: 'Softer link' },
+  { name: '--sys-color-link-soft-hover', role: 'Hover for softer links' },
 ].map((token) => ({
   ...token,
-  value: readCssToken(token.name, token.fallback),
+  alias: readCssToken(token.name, ''),
+  value: resolveCssToken(token.name),
 }));
 
 const typographyScale = [
@@ -450,9 +477,11 @@ const sectionLinks = savedOutline.length
 
         <section id="styles-colors" class="section-block">
           <h2>Color tokens</h2>
+
+          <h3 class="token-tier-heading">ref &middot; palette</h3>
           <div class="token-grid">
-            {colorTokens.map((token) => {
-              const editable = import.meta.env.DEV && /^#[0-9a-f]{3,6}$/i.test(token.value);
+            {paletteTokens.map((token) => {
+              const editable = import.meta.env.DEV;
               return (
                 <article class="token-card">
                   {editable ? (
@@ -472,10 +501,21 @@ const sectionLinks = savedOutline.length
                   )}
                   <p class="meta-label">{token.name}</p>
                   <p class="meta-values" data-token-value>{token.value}</p>
-                  <p class="token-note">{token.role}</p>
                 </article>
               );
             })}
+          </div>
+
+          <h3 class="token-tier-heading">sys &middot; roles</h3>
+          <div class="token-grid">
+            {roleTokens.map((token) => (
+              <article class="token-card">
+                <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
+                <p class="meta-label">{token.name}</p>
+                <p class="meta-values" data-token-value>{token.alias}</p>
+                <p class="token-note">{token.role}</p>
+              </article>
+            ))}
           </div>
         </section>
 
@@ -846,6 +886,18 @@ const sectionLinks = savedOutline.length
     display: flex;
     flex-direction: column;
     gap: 0.6em;
+  }
+
+  .token-tier-heading {
+    font-size: 0.85rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    color: var(--sys-color-on-srf-muted);
+    margin-block: 1.4em 0.6em;
+  }
+
+  .token-tier-heading:first-of-type {
+    margin-block-start: 0;
   }
 
   .token-grid {
