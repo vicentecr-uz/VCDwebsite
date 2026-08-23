@@ -33,7 +33,9 @@
     gap: 0.25em;
     padding: 0.25em;
     border: 1px solid var(--sys-color-outline);
-    border-radius: 999px;
+    /* Concentric with the buttons: outer radius = inner radius + the gap
+       between the two edges (padding + border width). */
+    border-radius: calc(var(--radius-control) + 0.25em + 1px);
     background: var(--sys-color-srf-container-low);
   }
 
@@ -141,7 +143,9 @@
   };
 
   document.addEventListener('keydown', (event) => {
-    if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    // Deliberately NOT gated on is-dev-mode: the shortcut switches which theme
+    // you are looking at, which is useful while working on the page itself.
+    // The whole component is dev-build-only, so this never reaches production.
     if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyT')) return;
     if (isTypingTarget(event.target)) return;
 
