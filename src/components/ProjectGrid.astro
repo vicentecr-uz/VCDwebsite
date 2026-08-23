@@ -255,7 +255,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /*
     Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
-    Light covers: press darkens the fill slightly (--color-surface-press).
+    Light covers: press darkens the fill slightly (--sys-color-srf-container-high).
     Dark covers override outline / press fill in the global block (#154).
   */
   .project-grid__chip {
@@ -331,8 +331,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
     min-width: 7.5em;
     padding: var(--status-menu-pad);
     border-radius: var(--radius-control);
-    /* Same page surface as crop/grid tuner overlays — tracks --color-bg. */
-    background: var(--color-bg);
+    /* Same page surface as crop/grid tuner overlays — tracks --sys-color-srf. */
+    background: var(--sys-color-srf);
     box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.12);
   }
 
@@ -342,7 +342,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     /* Concentric with the menu card: outer radius − padding. */
     border-radius: calc(var(--radius-control) - var(--status-menu-pad));
     background: transparent;
-    color: var(--color-text);
+    color: var(--sys-color-on-srf);
     font: inherit;
     font-size: 0.75rem;
     text-align: left;
@@ -351,7 +351,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__status-menu button:hover,
   .project-grid__status-menu button[aria-selected='true'] {
-    background: var(--color-surface-chip);
+    background: var(--sys-color-srf-container);
   }
 
   .project-grid__new-page {
@@ -599,25 +599,25 @@ const gridCardTemplateSeed: ProjectGridItem = {
     JSON also describe the ground, not the text.
 
     Light — ring a step *darker* than its fill: fill #e7e7e9, ring #d4d4d7 (the
-    click fill nudged 7% toward --color-text; used raw it is 1.05:1 and
+    click fill nudged 7% toward --sys-color-on-srf; used raw it is 1.05:1 and
     vanishes). Dark — ring a step *lighter* than its fill: hover fill is the
     translucent black overlay (reads as ring-only on dark covers); ring
-    #4c4c4c (22% toward --color-bg). Press fill is a step darker (#353535,
-    12% toward --color-bg) with the same lighter ring.
+    #4c4c4c (22% toward --sys-color-srf). Press fill is a step darker (#353535,
+    12% toward --sys-color-srf) with the same lighter ring.
 
     Both steps are deliberately slight; the ring defines the shape rather than
     outlining it.
   */
   .project-grid {
-    --chip-ink-on-light: var(--color-text);
-    --chip-fill-on-light: color-mix(in srgb, var(--color-surface-control) 92%, transparent);
-    --chip-ring-on-light: color-mix(in srgb, var(--color-text) 7%, var(--color-surface-press));
-    --chip-press-on-light: color-mix(in srgb, var(--color-surface-press) 92%, transparent);
+    --chip-ink-on-light: var(--sys-color-on-srf);
+    --chip-fill-on-light: color-mix(in srgb, var(--sys-color-srf-container) 92%, transparent);
+    --chip-ring-on-light: color-mix(in srgb, var(--sys-color-on-srf) 7%, var(--sys-color-srf-container-high));
+    --chip-press-on-light: color-mix(in srgb, var(--sys-color-srf-container-high) 92%, transparent);
 
-    --chip-ink-on-dark: var(--color-bg);
+    --chip-ink-on-dark: var(--sys-color-srf);
     --chip-fill-on-dark: rgb(0 0 0 / 0.58);
-    --chip-ring-on-dark: color-mix(in srgb, var(--color-bg) 22%, #1a1a1a);
-    --chip-press-on-dark: color-mix(in srgb, var(--color-bg) 12%, #1a1a1a);
+    --chip-ring-on-dark: color-mix(in srgb, var(--sys-color-srf) 22%, #1a1a1a);
+    --chip-press-on-dark: color-mix(in srgb, var(--sys-color-srf) 12%, #1a1a1a);
   }
 
   .project-grid__item {
@@ -678,7 +678,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   .project-grid__drop-label {
-    color: var(--color-text);
+    color: var(--sys-color-on-srf);
     font-size: 0.8125rem;
     font-weight: 600;
     letter-spacing: -0.02em;
@@ -731,7 +731,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     position: absolute;
     inset: 0;
     z-index: 2;
-    background: var(--color-bg);
+    background: var(--sys-color-srf);
     /* Strong enough that whatever the cover is — black, white, or a black
        edge around a white centre — the drop state resolves to a predictable
        near-page ground. That is what lets the dash below be a single colour
@@ -826,7 +826,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /* During replace: hold page white under the fades so listing `bg` never peeks. */
   .project-grid__cover[data-dev-crossfade-active='true'] {
-    background-color: var(--color-bg) !important;
+    background-color: var(--sys-color-srf) !important;
   }
 
   .project-grid__cover[data-dev-crossfade-active='true'] .project-grid__stack {
@@ -971,10 +971,10 @@ const gridCardTemplateSeed: ProjectGridItem = {
     position: absolute;
     inset: 0;
     z-index: 4;
-    border: 1.5px solid color-mix(in srgb, var(--color-text) 55%, transparent);
+    border: 1.5px solid color-mix(in srgb, var(--sys-color-on-srf) 55%, transparent);
     border-radius: 0;
     pointer-events: none;
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-bg) 40%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-srf) 40%, transparent);
   }
 
   .project-grid__item.is-span-mode .project-grid__span-handle {
@@ -984,9 +984,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
     width: 1.1em;
     height: 1.1em;
     padding: 0;
-    border: 1.5px solid color-mix(in srgb, var(--color-text) 70%, transparent);
+    border: 1.5px solid color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent);
     border-radius: 0.15em;
-    background: color-mix(in srgb, var(--color-surface-control) 94%, transparent);
+    background: color-mix(in srgb, var(--sys-color-srf-container) 94%, transparent);
     backdrop-filter: blur(8px);
     cursor: ew-resize;
     pointer-events: auto;
