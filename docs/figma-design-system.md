@@ -305,7 +305,7 @@ if a swatch ever looks wrong, the token is wrong). A change-summary frame sits a
 LGTM documenting the token refactor. Full Button system (25 variants), Field/Field Base, Checkbox
 (2×3), Segmented Control, Button Container, Panel Actions, Select Field, Text Field,
 Text Area, Toggle Row, dev-overlay__head, traffic lights, DevPanel Base + Content,
-10 icons, 5 type components.
+14 icons (incl. Lock/Unlock/AlignCenterX/AlignCenterY), Grid Thumb Base, 5 type components.
 
 **Dev Panels assembled: 2 of 5** — Project settings, Caption. Both fully LGTM-sourced.
 
