@@ -109,8 +109,8 @@ different mode structure**, and modes are per-collection:
 
 | Collection | Modes | Purpose |
 | --- | --- | --- |
-| `ref` | Value | Raw palette. `palette/grey/0–1000`, `palette/red/50–950`, `palette/warm/800`, `palette/brand/*`. Literal hex, theme-invariant. |
-| `sys` | Light / Dark | Semantic roles — `color/srf`, `color/on-srf`, `color/outline`, `color/error*`. **The only tier that carries light/dark.** |
+| `ref` | Value | Raw palette — **the whole Tailwind v4 set**: 17 chromatic hues × 11 steps, plus the 13-step custom `grey`, `warm/800` and `brand/*`. 203 tokens. Literal hex, theme-invariant. |
+| `sys` | Light / Dark | Semantic roles — `color/srf`, `color/on-srf`, `color/outline`, `color/error*`. **The only tier that carries light/dark.** Surface ladder is M3's: `srf` → `srf-container-low` → `srf-container` → `srf-container-high`. |
 | `comp` | Value | One component's rules — `button/*`, `traffic-light/*`. **One mode on purpose.** |
 | `Content` | Ink / Ink-Solid / Danger-Text / Bg | Which ink **role** for icon + label inside a control. |
 | `Ink Emphasis` | Full / Subtle | How **strong** that ink is. |
@@ -137,13 +137,25 @@ comp · button/filled/label    →  --comp-button-filled-label
 ref  · palette/grey/100       →  --ref-palette-grey-100
 ```
 
-**The grey ramp runs dark→light: `grey/0` is black, `grey/1000` is white** (Material 3
-tone direction). This is inverted from the pre-refactor ramp. The red ramp is
-deliberately *not* inverted — it is Tailwind's published scale verbatim (50 lightest,
-950 darkest). That inconsistency is known and accepted; flipping it is a one-line
-change in the DTCG file.
+**Every ramp runs dark→light** (Material 3 tone direction): `grey/0` is black,
+`grey/1000` is white, `red/50` is the darkest red, `red/950` the lightest.
+
+The rule for the Tailwind hues is **ours = 1000 − Tailwind step**. It mirrors around
+500, so every mapped step lands on a real Tailwind step (50↔950, 200↔800, 500↔500),
+and `grey/N`, `red/N` and `blue/N` all mean the same lightness. **Watch out:** the
+number is the same as Tailwind's but the *meaning* is inverted — our `red/50` is
+Tailwind's `red-950`.
+
+Values are Tailwind **v4** (read from `node_modules/tailwindcss/theme.css` and
+converted oklch→hex). The original red ramp was v3, so danger colours shifted slightly
+when the palette landed.
 
 `surface` is abbreviated **`srf`** throughout, matching how Anto writes it by hand.
+
+**Two roles were deliberately retired**, so don't reintroduce them: `on-srf-muted`
+(merged into `on-srf-variant` — M3 carries two ink weights, not three) and
+`srf-variant` (replaced by `srf-container-low`; M3 has effectively retired
+`surface-variant`, and only the `on-surface-variant` pairing survives).
 
 ### The two-axis discovery — read this before adding modes
 
