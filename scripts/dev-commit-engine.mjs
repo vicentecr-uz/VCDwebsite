@@ -17,8 +17,8 @@ import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
 
-/** The only engine path the save bar may publish to main. */
-export const STYLE_TOKEN_PATH = 'src/styles/global.css';
+/** The only engine paths the save bar may publish to main. */
+export const STYLE_TOKEN_PATHS = ['src/styles/global.css', 'tokens/design-tokens.json'];
 const PUBLISH_BRANCH = 'main';
 const DEFAULT_MESSAGE = 'styles: update colour tokens';
 
@@ -152,20 +152,20 @@ async function unpublishedStyles() {
   const base = await publishBaseRef();
 
   if (!base) {
-    const porcelain = await gitRaw('status', '--porcelain', '--', STYLE_TOKEN_PATH);
+    const porcelain = await gitRaw('status', '--porcelain', '--', ...STYLE_TOKEN_PATHS);
     const files = porcelain
       .split('\n')
       .filter(Boolean)
       .map((line) => line.replace(/^..\s+/, '').replace(/^.* -> /, ''))
-      .filter((file) => file === STYLE_TOKEN_PATH);
+      .filter((file) => STYLE_TOKEN_PATHS.includes(file));
     return { files, behind: [] };
   }
 
   const changed = new Set();
-  for (const file of lines(await git('diff', '--name-only', base, '--', STYLE_TOKEN_PATH))) {
+  for (const file of lines(await git('diff', '--name-only', base, '--', ...STYLE_TOKEN_PATHS))) {
     changed.add(file);
   }
-  for (const file of lines(await git('ls-files', '--others', '--exclude-standard', '--', STYLE_TOKEN_PATH))) {
+  for (const file of lines(await git('ls-files', '--others', '--exclude-standard', '--', ...STYLE_TOKEN_PATHS))) {
     changed.add(file);
   }
   return splitAheadBehind([...changed].sort(), base);
@@ -187,7 +187,7 @@ export async function stylesPublishStatus() {
 
 async function publishStylesInPlace(message) {
   const staged = lines(await git('diff', '--cached', '--name-only'));
-  const strays = staged.filter((file) => file !== STYLE_TOKEN_PATH);
+  const strays = staged.filter((file) => !STYLE_TOKEN_PATHS.includes(file));
   if (strays.length) {
     return {
       ok: false,
@@ -195,9 +195,9 @@ async function publishStylesInPlace(message) {
     };
   }
 
-  await git('add', '--', STYLE_TOKEN_PATH);
+  await git('add', '--', ...STYLE_TOKEN_PATHS);
   const stagedNow = lines(await git('diff', '--cached', '--name-only'));
-  if (!stagedNow.length || !stagedNow.includes(STYLE_TOKEN_PATH)) {
+  if (!stagedNow.length || !stagedNow.some((file) => STYLE_TOKEN_PATHS.includes(file))) {
     return { ok: false, error: 'No style changes to publish.' };
   }
 
@@ -302,7 +302,7 @@ export async function commitStyleTokensOnBranch(payload = {}) {
   }
 
   const staged = lines(await git('diff', '--cached', '--name-only'));
-  const strays = staged.filter((file) => file !== STYLE_TOKEN_PATH);
+  const strays = staged.filter((file) => !STYLE_TOKEN_PATHS.includes(file));
   if (strays.length) {
     return {
       ok: false,
@@ -310,7 +310,7 @@ export async function commitStyleTokensOnBranch(payload = {}) {
     };
   }
 
-  const diffHead = await gitRaw('diff', 'HEAD', '--', STYLE_TOKEN_PATH);
+  const diffHead = await gitRaw('diff', 'HEAD', '--', ...STYLE_TOKEN_PATHS);
   if (!diffHead.trim()) {
     return { ok: true, skipped: true, message: 'Already committed.' };
   }
@@ -318,9 +318,9 @@ export async function commitStyleTokensOnBranch(payload = {}) {
   const message = String(payload.message || '').trim()
     || buildSaveMessage(Array.isArray(payload.tokens) ? payload.tokens : []);
 
-  await git('add', '--', STYLE_TOKEN_PATH);
+  await git('add', '--', ...STYLE_TOKEN_PATHS);
   const stagedNow = lines(await git('diff', '--cached', '--name-only'));
-  if (!stagedNow.length || !stagedNow.includes(STYLE_TOKEN_PATH)) {
+  if (!stagedNow.length || !stagedNow.some((file) => STYLE_TOKEN_PATHS.includes(file))) {
     return { ok: false, error: 'No style changes to commit.' };
   }
 

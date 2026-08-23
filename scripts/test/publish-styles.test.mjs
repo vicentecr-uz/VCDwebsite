@@ -11,7 +11,9 @@ import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
 
-const { publishStyles, stylesPublishStatus, commitStyleTokensOnBranch, STYLE_TOKEN_PATH } = await import('../dev-commit-engine.mjs');
+const { publishStyles, stylesPublishStatus, commitStyleTokensOnBranch, STYLE_TOKEN_PATHS } = await import('../dev-commit-engine.mjs');
+/** These fixtures only touch the CSS half of STYLE_TOKEN_PATHS — the design-tokens.json half is exercised for real by tokens:check/build. */
+const STYLE_TOKEN_PATH = STYLE_TOKEN_PATHS[0];
 
 let failures = 0;
 
@@ -37,8 +39,10 @@ async function makeRepo() {
   await git('config', 'user.name', 'Styles Test');
 
   await mkdir(path.join(work, 'src/styles'), { recursive: true });
+  await mkdir(path.join(work, 'tokens'), { recursive: true });
   await mkdir(path.join(work, 'src/content/projects'), { recursive: true });
-  await writeFile(path.join(work, STYLE_TOKEN_PATH), ':root { --color-bg: #ffffff; }\n');
+  await writeFile(path.join(work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #ffffff; }\n');
+  await writeFile(path.join(work, STYLE_TOKEN_PATHS[1]), '{"ref":{"palette":{"grey":{"1000":{"$type":"color","$value":"#ffffff"}}}}}\n');
   await writeFile(path.join(work, 'src/content/projects/tapico.json'), '{"title":"Tapico"}\n');
   await writeFile(path.join(work, 'README.md'), 'engine\n');
   await git('add', '.');
@@ -77,7 +81,7 @@ await inRepo('on main, clean → nothing to publish', async () => {
 });
 
 await inRepo('on main, dirty global.css → publishes in place', async (repo) => {
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #111111; }\n');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #111111; }\n');
   const status = await stylesPublishStatus();
   check('sees dirty file', status.files.includes(STYLE_TOKEN_PATH), status.files.join(', '));
 
@@ -89,9 +93,9 @@ await inRepo('on main, dirty global.css → publishes in place', async (repo) =>
 
 await inRepo('off main, save commits on branch before publish', async (repo) => {
   await repo.git('switch', '-c', 'feat/tokens');
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #abcdef; }\n');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #abcdef; }\n');
 
-  const commit = await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  const commit = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
   check('committed on branch', commit.ok === true && commit.committed === true, commit.error);
 
   const beforeBranch = (await repo.git('branch', '--show-current')).stdout.trim();
@@ -111,20 +115,20 @@ await inRepo('off main, save commits on branch before publish', async (repo) => 
 
 await inRepo('save commit is idempotent when already committed', async (repo) => {
   await repo.git('switch', '-c', 'feat/tokens');
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #abcdef; }\n');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #abcdef; }\n');
 
-  const first = await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  const first = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
   check('first commit', first.ok === true && first.committed === true, first.error);
 
-  const second = await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  const second = await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
   check('second skipped', second.ok === true && second.skipped === true, second.error);
 });
 
 await inRepo('content stays out of a styles publish', async (repo) => {
   await repo.git('switch', '-c', 'feat/tokens-only');
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #222222; }\n');
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #222222; }\n');
   await writeFile(path.join(repo.work, 'src/content/projects/tapico.json'), '{"title":"Should not ship"}\n');
-  await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
 
   const result = await publishStyles({});
   check('published styles', result.ok === true, result.error);
@@ -139,14 +143,14 @@ await inRepo('content stays out of a styles publish', async (repo) => {
 
 await inRepo('main moved on global.css → refuses to clobber', async (repo) => {
   await repo.git('switch', '-c', 'feat/stale');
-  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --color-bg: #aaaaaa; }\n');
-  await commitStyleTokensOnBranch({ tokens: ['--color-bg'] });
+  await writeFile(path.join(repo.work, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #aaaaaa; }\n');
+  await commitStyleTokensOnBranch({ tokens: ['--sys-color-srf'] });
 
   const other = path.join(repo.root, 'other');
   await execFile('git', ['clone', repo.origin, other]);
   await execFile('git', ['config', 'user.email', 'other@example.com'], { cwd: other });
   await execFile('git', ['config', 'user.name', 'Other'], { cwd: other });
-  await writeFile(path.join(other, STYLE_TOKEN_PATH), ':root { --color-bg: #bbbbbb; }\n');
+  await writeFile(path.join(other, STYLE_TOKEN_PATH), ':root { --sys-color-srf: #bbbbbb; }\n');
   await execFile('git', ['commit', '-am', 'styles: elsewhere'], { cwd: other });
   await execFile('git', ['push', 'origin', 'main'], { cwd: other });
 
