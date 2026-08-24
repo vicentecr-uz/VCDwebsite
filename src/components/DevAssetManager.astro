@@ -10,7 +10,7 @@ const { documentKey } = Astro.props;
   <div class="dev-asset-manager__panel">
     <header class="dev-asset-manager__header">
       <h2>Asset Manager</h2>
-      <button type="button" data-asset-close aria-label="Close">Close</button>
+      <button type="button" class="dev-btn dev-btn--ghost" data-asset-close aria-label="Close">Close</button>
     </header>
 
     <div class="dev-asset-manager__body">
@@ -20,9 +20,9 @@ const { documentKey } = Astro.props;
         <hr class="dev-asset-manager__divider" />
         <p class="dev-asset-manager__sidebar-label">Filter</p>
         <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
-          <button type="button" data-asset-filter="all" class="is-active">All</button>
-          <button type="button" data-asset-filter="onPage">On page</button>
-          <button type="button" data-asset-filter="library">Library only</button>
+          <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill is-active" data-asset-filter="all">All</button>
+          <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" data-asset-filter="onPage">On page</button>
+          <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" data-asset-filter="library">Library only</button>
         </div>
       </aside>
 
@@ -34,11 +34,11 @@ const { documentKey } = Astro.props;
 
     <footer class="dev-asset-manager__footer">
       <p class="dev-asset-manager__count" data-asset-count></p>
-      <div class="dev-asset-manager__actions">
-        <button type="button" data-asset-pick="image" disabled>Single image</button>
-        <button type="button" data-asset-pick="imageGrid" disabled>Image grid</button>
-        <button type="button" data-asset-pick="imageCarousel" disabled>Carousel</button>
-        <button type="button" data-asset-cancel>Cancel</button>
+      <div class="dev-asset-manager__actions dev-panel-actions">
+        <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="image" disabled>Single image</button>
+        <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageGrid" disabled>Image grid</button>
+        <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageCarousel" disabled>Carousel</button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-asset-cancel>Cancel</button>
       </div>
     </footer>
   </div>
@@ -383,8 +383,10 @@ const { documentKey } = Astro.props;
     display: none !important;
   }
 
+  /* sys.color.scrim is still unassigned in the token file (placeholder
+     magenta) — literal black scrim until that lands. */
   .dev-asset-manager::backdrop {
-    background: rgba(255, 255, 255, 0.72);
+    background: rgb(0 0 0 / 0.4);
     backdrop-filter: blur(8px);
   }
 
@@ -398,58 +400,60 @@ const { documentKey } = Astro.props;
   .dev-asset-manager__panel {
     display: grid;
     grid-template-rows: auto 1fr auto;
+    gap: var(--dev-panel-gap);
     width: min(56em, calc(100vw - 2em));
     height: min(36em, calc(100vh - 2em));
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
-    background: #fff;
+    padding: var(--dev-panel-pad);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-panel);
+    background: var(--sys-color-srf);
+    box-shadow: var(--dev-panel-shadow);
     overflow: hidden;
   }
 
-  .dev-asset-manager__header,
+  .dev-asset-manager__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding-bottom: var(--dev-panel-spacing);
+  }
+
   .dev-asset-manager__footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75em;
-    padding: 0.65em 0.85em;
-    border-bottom: 1px solid #eee;
-  }
-
-  .dev-asset-manager__footer {
-    border-bottom: 0;
-    border-top: 1px solid #eee;
+    padding-top: var(--dev-panel-spacing);
   }
 
   .dev-asset-manager__header h2 {
     margin: 0;
-    font-size: 0.92em;
-    font-weight: 600;
-    letter-spacing: -0.02em;
+    font: var(--dev-text-panel-title);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-asset-manager__body {
-    display: grid;
-    grid-template-columns: 11em 1fr;
+    display: flex;
+    gap: 12px;
     min-height: 0;
   }
 
   .dev-asset-manager__sidebar {
-    display: grid;
-    align-content: start;
-    gap: 0.35em;
-    padding: 0.7em;
-    border-right: 1px solid #eee;
-    background: #fafafa;
+    width: 176px;
+    flex: 0 0 176px;
+    align-self: stretch;
+    padding: 11px;
+    border-radius: var(--dev-radius-control);
+    background: var(--sys-color-srf-container-low);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     overflow: auto;
   }
 
   .dev-asset-manager__sidebar-label {
     margin: 0;
-    color: #777;
-    font-size: 0.65em;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font: var(--dev-text-field-label);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-asset-manager__projects {
@@ -457,25 +461,28 @@ const { documentKey } = Astro.props;
     gap: 0.15em;
   }
 
-  .dev-asset-manager__project,
-  .dev-asset-manager__filters button,
-  .dev-asset-manager__header button,
-  .dev-asset-manager__actions button {
-    padding: 0.3em 0.5em;
-    border: 1px solid transparent;
-    border-radius: 0.3em;
-    background: transparent;
-    font: inherit;
-    font-size: 0.78em;
-    line-height: 1.25;
-    text-align: left;
-    cursor: pointer;
-  }
-
   .dev-asset-manager__project {
     display: flex;
     align-items: center;
-    gap: 0.4em;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-ghost-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .dev-asset-manager__project:hover {
+    background: var(--comp-button-ghost-container-hover);
+  }
+
+  .dev-asset-manager__project.is-active {
+    background: var(--comp-button-page-container);
   }
 
   .dev-asset-manager__project::before {
@@ -498,44 +505,41 @@ const { documentKey } = Astro.props;
     white-space: nowrap;
   }
 
-  .dev-asset-manager__project.is-active,
-  .dev-asset-manager__filters button.is-active {
-    border-color: #ccc;
-    background: #fff;
-  }
-
   .dev-asset-manager__divider {
-    width: 100%;
-    margin: 0.35em 0;
     border: 0;
-    border-top: 1px solid #e5e5e5;
+    margin: 0;
+    height: 1px;
+    width: 100%;
+    background: var(--sys-color-outline);
   }
 
   .dev-asset-manager__filters {
-    display: grid;
-    gap: 0.15em;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
   }
 
   .dev-asset-manager__main {
-    display: grid;
-    grid-template-rows: auto 1fr;
-    min-height: 0;
-    padding: 0.7em;
-    gap: 0.5em;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .dev-asset-manager__status,
   .dev-asset-manager__count {
     margin: 0;
-    color: #555;
-    font-size: 0.78em;
+    font: var(--dev-text-status);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-asset-manager__grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(7.5em, 1fr));
     grid-auto-rows: min-content;
-    gap: 0.65em;
+    gap: 8px;
     align-content: start;
     align-items: start;
     justify-items: stretch;
@@ -547,28 +551,27 @@ const { documentKey } = Astro.props;
   .dev-asset-manager__card {
     position: relative;
     width: 100%;
-    /* In-flow square sizer — aspect-ratio alone fails here when the only
+    /* In-flow 4:3 sizer — aspect-ratio alone fails here when the only
        children are abspos (max-content height = 0), so many rows share the
        panel height and look like stacked strips. padding-bottom % is always
        relative to width. */
     height: auto;
     max-height: none;
-    border: 1px solid #ddd;
-    border-radius: 0.35em;
+    border: 0;
+    border-radius: var(--dev-radius-control);
     overflow: hidden;
-    background: #f3f3f3;
+    background: var(--sys-color-srf-container);
   }
 
   .dev-asset-manager__card::before {
     content: '';
     display: block;
     width: 100%;
-    padding-bottom: 100%;
+    padding-bottom: 75%;
   }
 
   .dev-asset-manager__card.is-selected {
-    outline: 2px solid #222;
-    outline-offset: 1px;
+    box-shadow: inset 0 0 0 1px var(--sys-color-outline);
   }
 
   .dev-asset-manager__thumb {
@@ -593,20 +596,18 @@ const { documentKey } = Astro.props;
   .dev-asset-manager__badge {
     position: absolute;
     z-index: 1;
-    top: 0.35em;
-    left: 0.35em;
-    padding: 0.12em 0.35em;
-    border-radius: 0.25em;
-    background: rgba(255, 255, 255, 0.9);
-    color: #333;
-    font-size: 0.6em;
-    letter-spacing: 0.02em;
+    top: 4px;
+    left: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--comp-button-soft-container);
+    color: var(--sys-color-on-srf);
+    font: var(--dev-text-badge);
+    white-space: nowrap;
     pointer-events: none;
-  }
-
-  .dev-asset-manager__card.is-library .dev-asset-manager__badge {
-    background: rgba(34, 34, 34, 0.82);
-    color: #fff;
   }
 
   .dev-asset-manager__trash {
@@ -619,13 +620,13 @@ const { documentKey } = Astro.props;
     width: 1.55em;
     height: 1.55em;
     padding: 0;
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 0.3em;
-    background: rgba(255, 255, 255, 0.92);
-    color: #444;
+    border: 0;
+    border-radius: var(--dev-radius-control-in-container);
+    background: var(--comp-button-soft-container);
+    color: var(--sys-color-on-srf);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.12s ease;
+    transition: opacity 0.12s ease, background-color 0.2s ease, color 0.2s ease;
   }
 
   .dev-asset-manager__card:hover .dev-asset-manager__trash,
@@ -635,36 +636,23 @@ const { documentKey } = Astro.props;
   }
 
   .dev-asset-manager__trash:hover {
-    color: #b00000;
-    border-color: #d8a0a0;
-  }
-
-  .dev-asset-manager__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35em;
-  }
-
-  .dev-asset-manager__actions button,
-  .dev-asset-manager__header button {
-    border-color: #ccc;
-    background: #f7f7f7;
+    background: var(--comp-button-danger-container);
+    color: var(--comp-button-danger-label);
   }
 
   .dev-asset-manager__actions button:disabled {
-    opacity: 0.45;
+    opacity: var(--dev-opacity-disabled);
     cursor: not-allowed;
   }
 
   @media (max-width: 40em) {
     .dev-asset-manager__body {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr;
+      flex-direction: column;
     }
 
     .dev-asset-manager__sidebar {
-      border-right: 0;
-      border-bottom: 1px solid #eee;
+      width: 100%;
+      flex: 0 0 auto;
     }
 
     .dev-asset-manager__panel {
