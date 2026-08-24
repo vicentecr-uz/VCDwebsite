@@ -2,13 +2,13 @@
 import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
-const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
+const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 ---
 
 <div class="dev-text-actions" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
-    <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
     <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
+    <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
     <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
@@ -3149,30 +3149,30 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
   }
 
   /*
-    Same split as DevOverlay: outer keeps box-shadow, inner keeps squircle clip +
-    backdrop blur so Hyperellipse layer-mode does not leave a rectangular blur fringe.
+    Outer keeps the box-shadow; the split exists only so the shadow isn't
+    clipped by the bar's own overflow: hidden. The signed bar is a flat solid
+    surface, not a blurred one — no backdrop-filter, no squircle.
   */
   .dev-text-actions {
     position: fixed;
     right: max(1em, env(safe-area-inset-right));
     bottom: max(1em, env(safe-area-inset-bottom));
     z-index: 90;
-    border-radius: var(--radius-control-smooth);
+    border-radius: 12px;
     background: transparent;
     padding: 0;
-    box-shadow: 0 0.4em 1.4em rgb(0 0 0 / 0.12);
+    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
   }
 
   .dev-text-actions__surface {
     display: flex;
     align-items: center;
-    gap: 0.4em;
-    padding: 0.4em;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 94%, transparent);
-    backdrop-filter: blur(12px);
+    gap: 6px;
+    padding: 6px;
+    overflow: hidden;
+    border-radius: 12px; /* literal in Figma; no radius token covers 12px */
+    border: 1px solid var(--sys-color-srf-container-low); /* Figma button/toolbars/save-bar-outline #f5f5f7 — no source token */
+    background: var(--sys-color-srf);
   }
 
   .dev-text-actions[hidden] {
@@ -3180,9 +3180,9 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
   }
 
   .dev-text-actions__status {
-    padding-inline: 0.45em;
+    padding-inline: 7px;
     color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
+    font: 400 12px/normal var(--font-sans);
     white-space: nowrap;
   }
 
@@ -3190,11 +3190,16 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
     max-width: 12em;
     overflow: hidden;
     border-left: 1px solid var(--sys-color-outline-variant);
-    padding-inline: 0.6em 0.45em;
+    padding-inline: 10px 7px;
     color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
+    font: 400 12px/normal var(--font-sans);
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  /* Idle: no Status text to separate from, so the rule clears. */
+  .dev-text-actions__surface:has(.dev-text-actions__status:empty) .dev-text-actions__branch {
+    border-left: 0;
   }
 
   .dev-text-actions__branch[hidden] {
@@ -3210,7 +3215,7 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
   .dev-text-actions__warn {
     display: inline-flex;
     align-items: center;
-    padding-inline: 0.2em;
+    padding-left: 8px;
     color: #b26a00;
     line-height: 1;
     cursor: help;
@@ -3225,19 +3230,28 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
   }
 
   .dev-text-actions button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: var(--dev-control-min-width);
+    min-height: var(--dev-control-height);
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.55em 0.75em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-ghost-container);
+    padding: 8px;
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     cursor: pointer;
   }
 
   .dev-text-actions button:hover {
-    background: var(--sys-color-srf-container-high);
+    background: var(--comp-button-ghost-container-hover);
+  }
+
+  .dev-text-actions button:active {
+    background: var(--comp-button-ghost-container-pressed);
   }
 
   .dev-text-actions button:disabled {
@@ -3250,13 +3264,26 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
     opacity: 0.55;
   }
 
-  .dev-text-actions .dev-text-actions__save {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+  .dev-text-actions [data-dev-text-commit-styles] {
+    background: var(--comp-button-soft-container);
   }
 
-  .dev-text-actions .dev-text-actions__save:hover:not(:disabled) {
-    background: var(--sys-color-on-srf-variant);
+  .dev-text-actions [data-dev-text-commit-styles]:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-text-actions [data-dev-text-commit-styles]:active {
+    background: var(--comp-button-soft-container-pressed);
+  }
+
+  .dev-text-actions .dev-text-actions__save {
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
+  }
+
+  .dev-text-actions .dev-text-actions__save:hover:not(:disabled),
+  .dev-text-actions .dev-text-actions__save:active:not(:disabled) {
+    background: var(--comp-button-filled-container-hover);
   }
 
   /* Publish only disables while a publish is in flight. */
@@ -3268,17 +3295,17 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
     cursor: wait;
   }
 
-  /* Rendering code changed on this branch: step Publish down from the filled
-     default — soft surface + border so it stays a visible control, not a ghost
-     outline that disappears against the bar. Still asks for confirmation. */
+  /* Rendering code changed on this branch: Publish steps down to Soft, not
+     filled and not ringed — a plain surface, still clickable, still asks for
+     confirmation. */
   .dev-text-actions .dev-text-actions__save.is-dev-publish-warn {
-    background: var(--sys-color-srf-container-low);
-    box-shadow: inset 0 0 0 1px var(--sys-color-outline-variant);
-    color: var(--sys-color-on-srf);
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
   }
 
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled) {
-    background: var(--sys-color-srf-container-high);
+  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled),
+  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:active:not(:disabled) {
+    background: var(--comp-button-soft-container-hover);
   }
 
   /* ── Selection formatting popup ───────────────────────── */
