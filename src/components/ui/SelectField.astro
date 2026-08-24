@@ -1,0 +1,36 @@
+---
+import Field from './Field.astro';
+
+interface Props {
+  label: string;
+  options: { value: string; label: string }[];
+  value?: string;
+  disabled?: boolean;
+  [key: string]: any;
+}
+
+const { label, options, value, disabled = false, class: className, ...rest } = Astro.props;
+---
+
+<Field label={label} class={className}>
+  <select value={value} disabled={disabled} class="ui-select-field__select" {...rest}>
+    {options.map((opt) => <option value={opt.value}>{opt.label}</option>)}
+  </select>
+</Field>
+
+<style>
+  .ui-select-field__select {
+    background: transparent;
+    border: none;
+    outline: none;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+
+  .ui-select-field__select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+</style>

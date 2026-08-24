@@ -19,6 +19,8 @@ import SegmentedControl from '../components/ui/SegmentedControl.astro';
 import DevPanel from '../components/ui/DevPanel.astro';
 import Field from '../components/ui/Field.astro';
 import TextField from '../components/ui/TextField.astro';
+import TextArea from '../components/ui/TextArea.astro';
+import SelectField from '../components/ui/SelectField.astro';
 import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
 import stylesNav from '../content/pages/styles.json';
@@ -90,6 +92,8 @@ type PreviewKey =
   | 'ui-dev-panel'
   | 'ui-field'
   | 'ui-text-field'
+  | 'ui-text-area'
+  | 'ui-select-field'
   | 'ui-toggle-row'
   | 'ui-panel-actions';
 
@@ -275,12 +279,12 @@ const componentCatalog: ComponentEntry[] = [
     id: 'component-ui-segmented-control',
     name: 'SegmentedControl',
     category: 'ui-primitives',
-    purpose: 'Presentational shell mirroring the Figma Segmented Control — selection state and wiring stay with the caller.',
+    purpose: 'Presentational shell mirroring the Figma Segmented Control — composed examples below (Viewport Selector, Axis Selector) show a selected segment; selection state and wiring stay with the caller.',
     classRef: '.ui-segmented-control',
     source: 'src/components/ui/SegmentedControl.astro',
     props: 'label, ...rest (children passed via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Concentric border radius with slotted buttons; role="group" with aria-label; renders correctly in both themes.',
+    checklist: 'Concentric border radius with slotted buttons; role="group" with aria-label; Page emphasis Button with selected renders the selected segment fill; renders correctly in both themes.',
     preview: 'ui-segmented-control',
   },
   {
@@ -318,6 +322,30 @@ const componentCatalog: ComponentEntry[] = [
     usedOn: ['Not yet adopted — Stage 1 primitive'],
     checklist: 'Input is chromeless (Field supplies background/radius); disabled state dims; renders correctly in both themes.',
     preview: 'ui-text-field',
+  },
+  {
+    id: 'component-ui-text-area',
+    name: 'TextArea',
+    category: 'ui-primitives',
+    purpose: 'Multi-line text input composed on Field — auto-resizes to typed content, with a native vertical drag handle.',
+    classRef: '.ui-field / .ui-text-area__textarea',
+    source: 'src/components/ui/TextArea.astro',
+    props: 'label, value?, placeholder?, disabled?, rows? (default 3), ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'Chromeless textarea (Field supplies background/radius); field-sizing: content grows with typed text; native vertical resize handle; disabled state dims; renders correctly in both themes.',
+    preview: 'ui-text-area',
+  },
+  {
+    id: 'component-ui-select-field',
+    name: 'SelectField',
+    category: 'ui-primitives',
+    purpose: 'Select input composed on Field — uses the system’s native select picker.',
+    classRef: '.ui-field / .ui-select-field__select',
+    source: 'src/components/ui/SelectField.astro',
+    props: 'label, options ({ value, label }[]), value?, disabled?, ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'Chromeless select (Field supplies background/radius); native OS dropdown chrome left as-is; disabled state dims; renders correctly in both themes.',
+    preview: 'ui-select-field',
   },
   {
     id: 'component-ui-toggle-row',
@@ -824,12 +852,19 @@ const sectionLinks = savedOutline.length
                         </div>
                       )}
                       {component.preview === 'ui-segmented-control' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
-                          <SegmentedControl label="Preview">
-                            <Button emphasis="page" label="One" />
-                            <Button emphasis="page" label="Two" />
-                            <Button emphasis="page" label="Three" />
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 1.5em;">
+                          <SegmentedControl label="Viewport">
+                            <Button emphasis="page" label="Desktop" selected />
+                            <Button emphasis="page" label="Tablet" />
+                            <Button emphasis="page" label="Mobile" />
                           </SegmentedControl>
+                          <div style="display: flex; flex-direction: column; gap: 0.4em;">
+                            <span style="font-size: 0.85em; color: var(--sys-color-on-srf-variant);">Axis</span>
+                            <SegmentedControl label="Axis">
+                              <Button emphasis="page" label="X" selected />
+                              <Button emphasis="page" label="Y" />
+                            </SegmentedControl>
+                          </div>
                         </div>
                       )}
                       {component.preview === 'ui-dev-panel' && (
@@ -847,6 +882,26 @@ const sectionLinks = savedOutline.length
                       {component.preview === 'ui-text-field' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
                           <TextField label="Label" placeholder="Placeholder" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-text-area' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                          <TextArea
+                            label="Notes"
+                            value={'First line of notes.\nSecond line with a bit more detail.\nThird line.'}
+                          />
+                        </div>
+                      )}
+                      {component.preview === 'ui-select-field' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                          <SelectField
+                            label="Label"
+                            options={[
+                              { value: 'a', label: 'Option A' },
+                              { value: 'b', label: 'Option B' },
+                              { value: 'c', label: 'Option C' },
+                            ]}
+                          />
                         </div>
                       )}
                       {component.preview === 'ui-toggle-row' && (
