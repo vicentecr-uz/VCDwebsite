@@ -200,6 +200,23 @@
   cursor: not-allowed;
 }
 
+/* DevOverlay clips with overflow: hidden, so an outer outline is cut off —
+   ring the value box from the inside instead. */
+.dev-field__value:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--sys-color-on-srf);
+}
+
+/* Figma Select Field: 16px trailing Icon/Chevron at Emphasis=Subtle. Masked,
+   not a coloured data-URI, so the ink follows the token into dark mode. */
+.dev-field__value:has(> .dev-field__input--select)::after {
+  content: '';
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  background: var(--comp-button-label-subtle);
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>') center / 14px 14px no-repeat;
+}
+
 .dev-toggle {
   display: flex;
   align-items: center;
@@ -378,4 +395,41 @@
   flex-direction: column;
   gap: var(--dev-panel-content-gap);
   width: 100%;
+}
+
+/* Drag Area Base (596:4734). The dashed hairline is the project's one
+   "you can drop/edit here" signal — it uses --dev-edit-dash so the whole dev
+   layer moves together. 16px is a literal in Figma; no radius token covers it. */
+.dev-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--sys-color-srf-container-low);
+  box-sizing: border-box;
+  cursor: pointer;
+}
+
+.dev-drop__well {
+  display: flex;
+  flex: 1 0 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 90px;
+  padding-block: 12px;
+  border: var(--dev-edit-dash);
+  border-radius: var(--dev-radius-control);
+  color: var(--sys-color-on-srf-variant);
+  font: var(--dev-text-status);
+  text-align: center;
+}
+
+.dev-drop.is-dragover .dev-drop__well {
+  border-color: var(--sys-color-on-srf);
+  color: var(--sys-color-on-srf);
 }
