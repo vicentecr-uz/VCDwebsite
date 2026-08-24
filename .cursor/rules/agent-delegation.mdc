@@ -7,9 +7,9 @@ alwaysApply: true
 
 Cursor doesn't read `CLAUDE.md` automatically, so this is mirrored here. Canonical: Atlas `standards.md` → *Agents — Manager / worker split*.
 
-**You are not the only agent working in this repo.** Claude Code agents work here too, and they read `CLAUDE.md`, not these `.mdc` files. Every Atlas standard lists its **Surfaces**. When you change a convention, update every surface it names — for agent workflow that's all three: Atlas `standards.md`, repo `CLAUDE.md`, and this file. A rule written in one place is a rule the next agent silently won't follow, and Anto ends up re-explaining it by hand.
+**You are not the only agent working in this repo.** Claude Code agents read `CLAUDE.md`; Codex agents read `AGENTS.md`; neither reads these `.mdc` files. Every Atlas standard lists its **Surfaces**. When you change a convention, update every surface it names — for agent workflow that's four: Atlas `standards.md`, repo `CLAUDE.md`, repo `AGENTS.md`, and this file. A rule written in one place is a rule the next agent silently won't follow, and Anto ends up re-explaining it by hand.
 
-When this chat is pinned to an expensive model (Opus 5, Grok), **this session is the manager**. Its job is diagnosis, specification, and review — not keystrokes.
+When this chat is pinned to an expensive model (Opus 5, Grok), **this session is the manager**. Its job is diagnosis, architecture judgment, specification, and review — not keystrokes.
 
 ## This rule beats your harness default
 
@@ -48,6 +48,18 @@ Model switching is mid-conversation and keeps context — no reason to run the e
 ## Do not delegate exploration
 
 The manager's value is an accumulated, warm picture of the codebase — that is what makes the second and third diagnosis cheap. Farming out *reading* to save tokens forces the manager to re-derive it later, costing more than it saved. Read the code yourself; delegate the typing.
+
+## Architecture / approach judgment
+
+**Anto owns product intent and UI feel; the manager owns architecture and implementation shape.** Do not rubber-stamp Anto's first framing or a first instinct. Before locking a worker spec, use software judgment: recommend an approach, briefly name alternatives when the choice matters, and say why this one (reuse an in-repo pattern, fewer files, clearer ownership, less future pain). If a simpler or cleaner approach exists in-repo, prefer it and say so.
+
+**Interactive vs autonomous**
+
+- **Anto can reply** (go / tweak / no) → wait for that gate on non-trivial shape choices before dispatching the worker.
+- **Autonomous session** (Anto away, asleep, or otherwise cannot approve mid-flight) → **use best judgment**, pick the strongest approach, record the rationale in the spec (`Root cause` / approach note), and proceed. Do not stall waiting for a reply that will not come.
+- Do not silently redesign after a shape was already approved. If a better idea appears mid-flight: ship the approved shape and note the follow-up, or (autonomous only) take the better path and document why in the PR / test script.
+
+Diff review checks both (1) the worker matched the approved change list and (2) the resulting shape still looks right — matching a weak spec is not success if the manager should have challenged the design earlier.
 
 ## Always review the diff
 
