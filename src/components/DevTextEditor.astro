@@ -1,7 +1,14 @@
+---
+import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
+import { sizeIcon } from '../lib/icons';
+
+const publishWarnSvg = sizeIcon(triangleAlertIcon, 14);
+---
+
 <div class="dev-text-actions" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
     <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
-    <span class="dev-text-actions__warn" data-dev-text-warn hidden>⚠</span>
+    <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
     <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
@@ -3199,13 +3206,18 @@
   }
 
   /* The one colour in dev chrome. Everything else here is monochrome, so amber
-     on a single glyph is enough to read as a warning without a palette token. */
+     on a single icon is enough to read as a warning without a palette token. */
   .dev-text-actions__warn {
+    display: inline-flex;
+    align-items: center;
     padding-inline: 0.2em;
     color: #b26a00;
-    font-size: 0.8rem;
     line-height: 1;
     cursor: help;
+  }
+
+  .dev-text-actions__warn svg {
+    display: block;
   }
 
   .dev-text-actions__warn[hidden] {
