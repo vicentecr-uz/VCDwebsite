@@ -272,7 +272,15 @@ a viable way to stamp agent-touched nodes if the "who changed this" problem recu
    component instance. Toggling it did nothing. **If a boolean seems inert, check
    `componentPropertyReferences` on the target child.**
 
-9. **Nested-instance IDs invalidate mid-loop.** Updating a master while iterating over
+9. **A cloned variant inherits the source's variable-mode overrides.** `Emphasis=Page`
+   was cloned from `Emphasis=Solid` and silently kept Solid's `Content=Ink-Solid` mode.
+   That is correct for Solid (dark fill, white ink) and wrong for Page (fill *is* the
+   page), so every icon placed in a Page button rendered white-on-white — invisible,
+   with correct geometry, visibility and strokes. **Fills and inks were rebound; the
+   mode override was not, because it isn't a fill.** After cloning a variant, check
+   `explicitVariableModes`, not just paints.
+
+10. **Nested-instance IDs invalidate mid-loop.** Updating a master while iterating over
    instances nested inside placed copies throws "node not found". Sequence it: fix the
    master template → fix placed overrides → sweep the file → then delete the old master.
 
@@ -319,11 +327,26 @@ LGTM documenting the token refactor. Full Button system (25 variants), Field/Fie
 Text Area, Toggle Row, dev-overlay__head, traffic lights, DevPanel Base + Content,
 14 icons (incl. Lock/Unlock/AlignCenterX/AlignCenterY), Grid Thumb Base, 5 type components.
 
-**Dev Panels assembled: 2 of 5** — Project settings, Caption. Both fully LGTM-sourced.
+**Dev Panels assembled: 5 of 5** — Project settings, Caption, Edit image, Edit grid,
+Edit carousel. All fully LGTM-sourced, all mirrored into the Dark column.
 
-**Remaining 3 panels** — Edit image, Edit grid, Edit carousel. Each needs its body
-extracted into `DevPanel Content` as a new variant, same as Caption. Titles already
-exist for all five.
+Relative to the legacy panels, the new ones deliberately **drop sub-titles, hint
+paragraphs and status lines** (`p[data-*-status]`, `p.*__hint`, the toggle hints, and
+the crop stage's "Drag to reposition" caption). Labels only — if a control needs a
+sentence, the control is wrong. Board labels (`Visible` / `Parking lot`) stay, because
+they name a thing rather than explain it.
+
+**Components built for those panels** (all in LGTM, all token-bound):
+
+| Component | Tier | Notes |
+| --- | --- | --- |
+| `Grid Thumb` | Atom Variants | `State=Rest/Hover` on `Grid Thumb Base`; Hover turns the Remove label `sys.color.error`. |
+| `Slider Row` | Elements | Label, track with fill + knob, value readout. Edit image zoom. |
+| `Crop Toolbar` | Elements | Centre-X, centre-Y, crop lock. Uses `Icon/AlignCenterX/Y` + `Icon/Lock`. |
+| `Crop Stage` | Elements | Crop frame, eight resize handles, centre reposition handle. |
+| `Thumb Board` | Elements | Label + tray of `Grid Thumb`. One per breakpoint board. |
+| `Viewport Selector` | Dev Panel Components | **Now a real master** — was a bare instance with overrides. Desktop/Tablet/Mobile. |
+| `Theme Selector` | Dev Panel Components | System/Light/Dark, icon-only. Mirrors `DevThemeToggle.astro`. |
 
 **Components still needed** (all still legacy-only in Ref):
 
