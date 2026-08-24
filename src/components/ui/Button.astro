@@ -1,0 +1,110 @@
+---
+interface Props {
+  emphasis?: 'ghost' | 'soft' | 'filled' | 'page' | 'danger';
+  label: string;
+  type?: 'button' | 'submit';
+  disabled?: boolean;
+  [key: string]: any;
+}
+
+const { emphasis = 'soft', label, type = 'button', disabled = false, class: className, ...rest } = Astro.props;
+---
+
+<button
+  type={type}
+  disabled={disabled}
+  class:list={['ui-button', `ui-button--${emphasis}`, className]}
+  {...rest}
+>
+  <slot>{label}</slot>
+</button>
+
+<style>
+  .ui-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    padding: 0.5em 1em;
+    border: none;
+    border-radius: var(--radius-control);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .ui-button:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+  }
+
+  .ui-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .ui-button--ghost {
+    background: transparent;
+    border: 1px solid var(--comp-button-outline);
+    color: var(--comp-button-label);
+  }
+
+  .ui-button--ghost:hover {
+    background: var(--sys-color-srf-container-low);
+  }
+
+  .ui-button--ghost:active {
+    background: var(--sys-color-srf-container);
+  }
+
+  .ui-button--soft {
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
+  }
+
+  .ui-button--soft:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .ui-button--soft:active {
+    background: var(--comp-button-soft-container-pressed);
+  }
+
+  .ui-button--filled {
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
+  }
+
+  .ui-button--filled:hover,
+  .ui-button--filled:active {
+    background: var(--comp-button-filled-container-hover);
+  }
+
+  .ui-button--page {
+    background: var(--comp-button-page-container);
+    border: 1px solid var(--sys-color-outline);
+    color: var(--comp-button-label);
+  }
+
+  .ui-button--page:hover {
+    background: var(--comp-button-page-container-hover);
+  }
+
+  .ui-button--page:active {
+    background: var(--comp-button-page-container-pressed);
+  }
+
+  .ui-button--danger {
+    background: var(--comp-button-danger-container);
+    color: var(--comp-button-danger-label);
+  }
+
+  .ui-button--danger:hover {
+    background: var(--comp-button-danger-container-hover);
+  }
+
+  .ui-button--danger:active {
+    background: var(--comp-button-danger-container-pressed);
+  }
+</style>
