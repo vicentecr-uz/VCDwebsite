@@ -1,4 +1,6 @@
 ---
+import '../../styles/dev-chrome.css';
+
 interface Props {
   title: string;
   layout?: 'portrait' | 'landscape';
@@ -8,77 +10,15 @@ interface Props {
 const { title, layout = 'portrait', class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['ui-dev-panel', `ui-dev-panel--${layout}`, className]} {...rest}>
-  <header class="ui-dev-panel__header">
-    <p class="ui-dev-panel__title">{title}</p>
-    <span class="ui-dev-panel__lights" aria-hidden="true">
-      <span class="ui-dev-panel__light"></span>
-      <span class="ui-dev-panel__light"></span>
+<div class:list={['dev-panel', `dev-panel--${layout}`, className]} {...rest}>
+  <header class="dev-panel__header">
+    <p class="dev-panel__title">{title}</p>
+    <span class="dev-panel__lights" aria-hidden="true">
+      <span class="dev-panel__light"></span>
+      <span class="dev-panel__light"></span>
     </span>
   </header>
-  <div class="ui-dev-panel__body">
+  <div class="dev-panel__body">
     <slot />
   </div>
 </div>
-
-<style>
-  .ui-dev-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--dev-panel-gap);
-    padding: var(--dev-panel-pad);
-    background: var(--sys-color-srf);
-    border: 1px solid var(--sys-color-srf-container-low);
-    border-radius: var(--dev-radius-panel);
-    box-shadow: var(--dev-panel-shadow);
-    color: var(--sys-color-on-srf);
-    font-family: var(--font-sans);
-  }
-
-  .ui-dev-panel--portrait {
-    width: var(--dev-panel-width);
-  }
-
-  .ui-dev-panel--landscape {
-    width: var(--dev-panel-width-landscape);
-    min-width: var(--dev-panel-min-width-landscape);
-    max-width: 100%;
-    resize: both;
-    overflow: auto;
-  }
-
-  .ui-dev-panel__header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding-bottom: var(--dev-panel-spacing);
-    width: 100%;
-  }
-
-  .ui-dev-panel__title {
-    margin: 0;
-    font: var(--dev-text-panel-title);
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .ui-dev-panel__lights {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 0 0 auto;
-  }
-
-  .ui-dev-panel__light {
-    width: 15px;
-    height: 15px;
-    border-radius: 8px;
-    background: var(--comp-traffic-light-rest);
-  }
-
-  .ui-dev-panel__body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--dev-panel-content-gap);
-    width: 100%;
-  }
-</style>

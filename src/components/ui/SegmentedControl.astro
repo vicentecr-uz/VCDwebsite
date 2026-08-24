@@ -1,4 +1,6 @@
 ---
+import '../../styles/dev-chrome.css';
+
 interface Props {
   label: string;
   [key: string]: any;
@@ -7,28 +9,6 @@ interface Props {
 const { label, class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['ui-segmented-control', className]} role="group" aria-label={label} {...rest}>
+<div class:list={['dev-segmented', className]} role="group" aria-label={label} {...rest}>
   <slot />
 </div>
-
-<style>
-  .ui-segmented-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: var(--dev-control-padding);
-    background: var(--sys-color-srf-container-low);
-    /* Concentric with the buttons: outer radius (10, radius/control-in-container)
-       = inner button radius (8) + the 2px padding between them. */
-    border-radius: var(--dev-radius-control-in-container);
-  }
-
-  .ui-segmented-control :global(.ui-button) {
-    padding: 6px 8px;
-    min-height: 28px;
-    /* Segments sit 4px apart — closer than the 8px hit-inset, so the slop
-       would reach over a neighbour's visible edge. Segments are adjacent by
-       design; the pill itself is the enlarged target. */
-    --ui-button-hit-inset: 0px;
-  }
-</style>

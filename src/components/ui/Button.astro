@@ -1,4 +1,6 @@
 ---
+import '../../styles/dev-chrome.css';
+
 interface Props {
   emphasis?: 'ghost' | 'soft' | 'filled' | 'page' | 'danger';
   label: string;
@@ -30,153 +32,18 @@ const hasIcon = Astro.slots.has('icon');
   disabled={disabled}
   aria-pressed={selected ? 'true' : undefined}
   class:list={[
-    'ui-button',
-    `ui-button--${emphasis}`,
-    `ui-button--align-${align}`,
-    { 'is-selected': selected, 'ui-button--fill': width === 'fill' },
+    'dev-btn',
+    `dev-btn--${emphasis}`,
+    `dev-btn--align-${align}`,
+    { 'is-selected': selected, 'dev-btn--fill': width === 'fill' },
     className,
   ]}
   {...rest}
 >
   {hasIcon && (
-    <span class="ui-button__icon">
+    <span class="dev-btn__icon">
       <slot name="icon" />
     </span>
   )}
   <slot>{label}</slot>
 </button>
-
-<style>
-  .ui-button {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    padding: 8px;
-    border: none;
-    border-radius: var(--dev-radius-control);
-    min-height: var(--dev-control-height);
-    box-sizing: border-box;
-    font: var(--dev-text-label);
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-      transform var(--motion-press-duration) ease-out;
-  }
-
-  /* Button Base hitbox: the tappable area extends space/hit-inset beyond the
-     visual bounds. Containers that pack buttons closer than the inset (the
-     Segmented Control's 4px gap) zero --ui-button-hit-inset so a neighbour's
-     slop can't steal clicks off this button's own visible edge. */
-  .ui-button::before {
-    content: '';
-    position: absolute;
-    inset: calc(var(--ui-button-hit-inset, var(--dev-hit-inset)) * -1);
-  }
-
-  .ui-button--align-start {
-    justify-content: flex-start;
-  }
-
-  .ui-button--fill {
-    width: 100%;
-  }
-
-  .ui-button__icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 16px;
-    height: 16px;
-    flex: 0 0 auto;
-  }
-
-  .ui-button__icon :global(svg) {
-    display: block;
-  }
-
-  .ui-button:focus-visible {
-    outline: 2px solid var(--sys-color-outline);
-    outline-offset: 2px;
-  }
-
-  .ui-button:active:not(:disabled) {
-    transform: scale(var(--motion-press-scale));
-  }
-
-  .ui-button:disabled {
-    opacity: var(--dev-opacity-disabled);
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-
-  .ui-button--ghost {
-    background: var(--comp-button-ghost-container);
-    color: var(--comp-button-label);
-    min-width: 0;
-  }
-
-  .ui-button--ghost:hover,
-  .ui-button--ghost.is-selected {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  .ui-button--ghost:active {
-    background: var(--comp-button-ghost-container-pressed);
-  }
-
-  .ui-button--soft {
-    background: var(--comp-button-soft-container);
-    color: var(--comp-button-label);
-    min-width: var(--dev-control-min-width);
-  }
-
-  .ui-button--soft:hover,
-  .ui-button--soft.is-selected {
-    background: var(--comp-button-soft-container-hover);
-  }
-
-  .ui-button--soft:active {
-    background: var(--comp-button-soft-container-pressed);
-  }
-
-  .ui-button--filled {
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
-    min-width: var(--dev-control-min-width);
-  }
-
-  .ui-button--filled:hover,
-  .ui-button--filled:active {
-    background: var(--comp-button-filled-container-hover);
-  }
-
-  .ui-button--page {
-    background: var(--comp-button-page-container);
-    color: var(--comp-button-label);
-    min-width: var(--dev-control-min-width);
-  }
-
-  .ui-button--page:hover,
-  .ui-button--page.is-selected {
-    background: var(--comp-button-page-container-hover);
-  }
-
-  .ui-button--page:active {
-    background: var(--comp-button-page-container-pressed);
-  }
-
-  .ui-button--danger {
-    background: var(--comp-button-danger-container);
-    color: var(--comp-button-danger-label);
-    min-width: var(--dev-control-min-width);
-  }
-
-  .ui-button--danger:hover {
-    background: var(--comp-button-danger-container-hover);
-  }
-
-  .ui-button--danger:active {
-    background: var(--comp-button-danger-container-pressed);
-  }
-</style>
