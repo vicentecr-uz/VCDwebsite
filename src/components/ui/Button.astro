@@ -30,12 +30,17 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, class: clas
     border-radius: var(--radius-control);
     font: inherit;
     cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+      transform var(--motion-press-duration) ease-out;
   }
 
   .ui-button:focus-visible {
     outline: 2px solid var(--sys-color-outline);
     outline-offset: 2px;
+  }
+
+  .ui-button:active:not(:disabled) {
+    transform: scale(var(--motion-press-scale));
   }
 
   .ui-button:disabled {
@@ -45,17 +50,17 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, class: clas
   }
 
   .ui-button--ghost {
-    background: transparent;
+    background: var(--comp-button-ghost-container);
     border: 1px solid var(--comp-button-outline);
     color: var(--comp-button-label);
   }
 
   .ui-button--ghost:hover {
-    background: var(--sys-color-srf-container-low);
+    background: var(--comp-button-ghost-container-hover);
   }
 
   .ui-button--ghost:active {
-    background: var(--sys-color-srf-container);
+    background: var(--comp-button-ghost-container-pressed);
   }
 
   .ui-button--soft {

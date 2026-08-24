@@ -245,7 +245,9 @@
   --sys-color-inverse-primary: #ff00ff;
   --sys-color-scrim: #ff00ff;
   --sys-color-shadow: #ff00ff;
-  --comp-button-ghost-container: var(--sys-color-outline);
+  --comp-button-ghost-container: transparent;
+  --comp-button-ghost-container-hover: var(--sys-color-srf-container-low);
+  --comp-button-ghost-container-pressed: var(--sys-color-srf-container);
   --comp-button-soft-container: var(--sys-color-srf-container-low);
   --comp-button-soft-container-hover: var(--sys-color-srf-container);
   --comp-button-soft-container-pressed: var(--sys-color-srf-container-high);
@@ -263,6 +265,7 @@
   --comp-button-label-subtle: var(--sys-color-on-srf-subtle);
   --comp-button-label-inverse-subtle: var(--sys-color-inverse-on-srf-subtle);
   --comp-button-outline: var(--sys-color-outline);
+  --comp-field-container: var(--comp-button-soft-container);
   --comp-traffic-light-rest: var(--sys-color-outline);
   --comp-traffic-light-hide-hover: var(--ref-palette-brand-traffic-hide);
   --comp-traffic-light-minimize-hover: var(--ref-palette-brand-traffic-minimize);
@@ -374,6 +377,14 @@
   --dev-suppress-duration: 0.2s;
   --radius-card: 1em;
   --radius-control: 0.7em;
+  /* Figma: motion/press-scale, motion/press-duration. The one exception to
+     "reduced-motion suppresses movement" (see CLAUDE.md) — travel is small
+     enough (~3% on an element under ~50px) that it stays on even with
+     prefers-reduced-motion. Scope stays limited to small pressable controls;
+     don't extend to larger scale transforms (cards, panels) without deciding
+     that deliberately. */
+  --motion-press-scale: 0.97;
+  --motion-press-duration: 150ms;
   /* Corner curvature knob: superellipse(1)=round, 1.5=soft squircle, 2=squircle(pointier), higher=squarer.
      Squircle shaping is disabled (issue #161) — set to plain round. Re-enable by restoring superellipse(1.5). */
   --squircle-shape: superellipse(1);
