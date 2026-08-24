@@ -9,7 +9,12 @@ const { label, checked = false, class: className, ...rest } = Astro.props;
 ---
 
 <label class:list={['ui-toggle-row', className]}>
-  <input type="checkbox" checked={checked} class="ui-toggle-row__checkbox" {...rest} />
+  <span class="ui-toggle-row__box">
+    <input type="checkbox" checked={checked} class="ui-toggle-row__checkbox" {...rest} />
+    <svg class="ui-toggle-row__check" viewBox="0 0 16 16" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.667" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+      <path d="M3.5 8.5l3 3 6-6" />
+    </svg>
+  </span>
   <span class="ui-toggle-row__label">{label}</span>
 </label>
 
@@ -21,7 +26,16 @@ const { label, checked = false, class: className, ...rest } = Astro.props;
     cursor: pointer;
   }
 
+  .ui-toggle-row__box {
+    position: relative;
+    display: inline-flex;
+    width: 1.1em;
+    height: 1.1em;
+  }
+
   .ui-toggle-row__checkbox {
+    position: absolute;
+    inset: 0;
     width: 1.1em;
     height: 1.1em;
     border-radius: 0.25em;
@@ -34,6 +48,20 @@ const { label, checked = false, class: className, ...rest } = Astro.props;
   .ui-toggle-row__checkbox:checked {
     background: var(--comp-button-filled-container);
     border-color: var(--comp-button-filled-container);
+  }
+
+  .ui-toggle-row__check {
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    color: var(--comp-button-filled-label);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+  }
+
+  .ui-toggle-row__checkbox:checked ~ .ui-toggle-row__check {
+    opacity: 1;
   }
 
   .ui-toggle-row__label {
