@@ -34,7 +34,7 @@ const { documentKey } = Astro.props;
 
     <footer class="dev-asset-manager__footer">
       <p class="dev-asset-manager__count" data-asset-count></p>
-      <div class="dev-asset-manager__actions dev-panel-actions">
+      <div class="dev-asset-manager__actions">
         <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="image" disabled>Single image</button>
         <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageGrid" disabled>Image grid</button>
         <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageCarousel" disabled>Carousel</button>
@@ -383,10 +383,10 @@ const { documentKey } = Astro.props;
     display: none !important;
   }
 
-  /* sys.color.scrim is still unassigned in the token file (placeholder
-     magenta) — literal black scrim until that lands. */
+  /* Unchanged: the master does not model the modal backdrop, and
+     sys.color.scrim is still an unassigned placeholder in the token file. */
   .dev-asset-manager::backdrop {
-    background: rgb(0 0 0 / 0.4);
+    background: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(8px);
   }
 
@@ -638,6 +638,15 @@ const { documentKey } = Astro.props;
   .dev-asset-manager__trash:hover {
     background: var(--comp-button-danger-container);
     color: var(--comp-button-danger-label);
+  }
+
+  /* Not .dev-panel-actions: that atom is a full-width bottom row, and this is
+     the right half of a space-between footer — its width:100% would push the
+     count out and its padding-top would stack on the footer's own. */
+  .dev-asset-manager__actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
 
   .dev-asset-manager__actions button:disabled {
