@@ -73,10 +73,12 @@
   min-width: 0;
 }
 
-/* aria-pressed is the accessible expression of a selected control — panels
-   that toggle it should not each re-declare the selected fill. */
+/* aria-pressed is the accessible expression of a selected control, is-active
+   the class-state equivalent — panels that toggle either should not each
+   re-declare the selected fill. */
 .dev-btn--ghost:hover,
 .dev-btn--ghost.is-selected,
+.dev-btn--ghost.is-active,
 .dev-btn--ghost[aria-pressed='true'] {
   background: var(--comp-button-ghost-container-hover);
 }
@@ -93,6 +95,7 @@
 
 .dev-btn--soft:hover,
 .dev-btn--soft.is-selected,
+.dev-btn--soft.is-active,
 .dev-btn--soft[aria-pressed='true'] {
   background: var(--comp-button-soft-container-hover);
 }
@@ -120,6 +123,7 @@
 
 .dev-btn--page:hover,
 .dev-btn--page.is-selected,
+.dev-btn--page.is-active,
 .dev-btn--page[aria-pressed='true'] {
   background: var(--comp-button-page-container-hover);
 }
@@ -303,6 +307,35 @@
      would reach over a neighbour's visible edge. Segments are adjacent by
      design; the pill itself is the enlarged target. */
   --dev-btn-hit-inset: 0px;
+}
+
+/* Eye Button Base (597:4708) — the shown/hidden toggle pinned into a gallery
+   or asset thumb's top-right corner. Icon-only, so it keeps an accessible
+   name from its aria-label; the variant is the glyph, not the fill. */
+.dev-eye {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--dev-radius-control-in-container);
+  background: var(--sys-color-srf-container);
+  color: var(--sys-color-on-srf);
+  cursor: pointer;
+}
+
+.dev-eye svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.dev-eye[hidden] {
+  display: none;
 }
 
 .dev-panel-actions {

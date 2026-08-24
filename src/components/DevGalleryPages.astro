@@ -4,14 +4,15 @@ import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
-const eyeIconSvg = sizeIcon(eyeIcon, 12);
-const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
+const eyeIconSvg = sizeIcon(eyeIcon, 16);
+const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 ---
 
 <DevOverlay
   title="Gallery Manager"
   storageKey="gallery-pages"
   panelKey="gallery-pages"
+  layout="landscape"
   defaultHidden
 >
   <div
@@ -20,10 +21,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
   >
-    <div class="dev-gallery-pages__filters" role="group" aria-label="Gallery filter">
-      <button type="button" data-gallery-filter="all" class="is-active">All</button>
-      <button type="button" data-gallery-filter="on">On this page</button>
-      <button type="button" data-gallery-filter="off">Not on page</button>
+    <div class="dev-gallery-pages__filters dev-segmented" role="group" aria-label="Gallery filter">
+      <button type="button" data-gallery-filter="all" class="dev-btn dev-btn--page is-active">All</button>
+      <button type="button" data-gallery-filter="on" class="dev-btn dev-btn--page">On this page</button>
+      <button type="button" data-gallery-filter="off" class="dev-btn dev-btn--page">Not on page</button>
     </div>
 
     <p class="dev-gallery-pages__status" data-gallery-status aria-live="polite">Loading…</p>
@@ -712,7 +713,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
         const badge = document.createElement('button');
         badge.type = 'button';
-        badge.className = 'dev-gallery-pages__badge';
+        badge.className = 'dev-gallery-pages__badge dev-eye';
         badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
         badge.setAttribute(
           'aria-label',
@@ -838,51 +839,31 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
 <style is:global>
   .dev-overlay[data-dev-panel-key='gallery-pages'] {
-    width: min(34em, calc(100vw - 2em));
     z-index: 50;
   }
 
   .dev-gallery-pages {
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
-    font-size: 0.85rem;
+    gap: var(--dev-panel-content-gap);
     max-height: min(28em, calc(100vh - 8em));
   }
 
   .dev-gallery-pages__status,
   .dev-gallery-pages__count {
     margin: 0;
-    color: #555;
-    font-size: 0.78em;
+    font: var(--dev-text-status);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-gallery-pages__filters {
-    display: flex;
     flex-wrap: wrap;
-    gap: 0.3em;
-  }
-
-  .dev-gallery-pages__filters button {
-    padding: 0.3em 0.55em;
-    border: 1px solid transparent;
-    border-radius: 0.3em;
-    background: transparent;
-    font: inherit;
-    font-size: 0.78em;
-    line-height: 1.25;
-    cursor: pointer;
-  }
-
-  .dev-gallery-pages__filters button.is-active {
-    border-color: #ccc;
-    background: #f7f7f7;
   }
 
   .dev-gallery-pages__grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0.55em;
+    gap: 8px;
     overflow: auto;
     min-height: 0;
     max-height: min(25em, calc(100vh - 14em));
@@ -892,17 +873,17 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
   .dev-gallery-pages__card {
     position: relative;
     width: 100%;
-    border: 1px solid #ddd;
-    border-radius: 0.35em;
+    border: 0;
+    border-radius: var(--dev-radius-control);
     overflow: hidden;
-    background: #efefef;
+    background: var(--sys-color-srf-container);
     transition: transform 150ms ease;
   }
 
   .dev-gallery-pages__card.is-dragging {
     z-index: 2;
     transition: none;
-    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.28);
+    box-shadow: 0 8px 19px rgb(0 0 0 / 0.28);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -920,8 +901,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
   }
 
   .dev-gallery-pages__card.is-selected {
-    /* Inset grey ring — thinner than the old 2px black outline. */
-    box-shadow: inset 0 0 0 1px #bbb;
+    box-shadow: inset 0 0 0 1px var(--sys-color-outline);
   }
 
   .dev-gallery-pages__thumb {
@@ -931,7 +911,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     place-items: center;
     width: 100%;
     height: 100%;
-    padding: 0.55em;
+    padding: 8px;
     border: 0;
     background: transparent;
     cursor: default;
@@ -967,10 +947,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     position: relative;
     z-index: 0;
     max-width: 100%;
-    color: #6d6d6d;
-    font-size: 0.72em;
+    color: var(--sys-color-on-srf-subtle);
+    font: var(--dev-text-status);
     font-weight: 700;
-    line-height: 1.25;
     letter-spacing: -0.02em;
     text-align: center;
     overflow: hidden;
@@ -980,38 +959,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     cursor: inherit;
   }
 
-  .dev-gallery-pages__badge {
-    position: absolute;
-    z-index: 1;
-    top: 0.35em;
-    left: 0.35em;
-    display: grid;
-    place-items: center;
-    width: 1.45em;
-    height: 1.45em;
-    border-radius: 0.25em;
-    background: rgba(255, 255, 255, 0.92);
-    color: #333;
-    border: 0;
-    padding: 0;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .dev-gallery-pages__card.is-off .dev-gallery-pages__badge {
-    background: rgba(34, 34, 34, 0.82);
-    color: #fff;
-  }
-
+  /* Dimmed thumbnail, not a disabled control — deliberately not the 45%
+     opacity/disabled token used for disabled controls. */
   .dev-gallery-pages__card.is-off .dev-gallery-pages__thumb img {
     opacity: 0.55;
   }
 
   .dev-gallery-pages__card.is-off.is-placeholder .dev-gallery-pages__placeholder-title {
     opacity: 0.55;
-  }
-
-  .dev-gallery-pages__badge svg {
-    display: block;
   }
 </style>
