@@ -103,17 +103,59 @@ than the layer saving for a control this small. Don't "optimise" it back.
 
 ## Token architecture
 
-Seven collections:
+Colour follows Material 3's **class** structure with the `md.` prefix dropped —
+`ref` / `sys` / `comp`. Each tier is its own Figma collection **because each needs a
+different mode structure**, and modes are per-collection:
 
 | Collection | Modes | Purpose |
 | --- | --- | --- |
-| `Color Palette` | Mode 1 | Raw ramps: `grey/0–1000`, `red/50–950`. Tailwind's red scale. |
-| `Color - Theme` | Light / Dark | Semantic. `button/*` (new system), `color/*` (mirrors `global.css`). |
+| `ref` | Value | Raw palette — **the whole Tailwind v4 set**: 17 chromatic hues × 11 steps, plus the 13-step custom `grey`, `warm/800` and `brand/*`. 203 tokens. Literal hex, theme-invariant. |
+| `sys` | Light / Dark | Semantic roles — `color/srf`, `color/on-srf`, `color/outline`, `color/error*`. **The only tier that carries light/dark.** Surface ladder is M3's: `srf` → `srf-container-low` → `srf-container` → `srf-container-high`. |
+| `comp` | Value | One component's rules — `button/*`, `traffic-light/*`. **One mode on purpose.** |
 | `Content` | Ink / Ink-Solid / Danger-Text / Bg | Which ink **role** for icon + label inside a control. |
 | `Ink Emphasis` | Full / Subtle | How **strong** that ink is. |
 | `Primitives` | Mode 1 | Radii, spacing, motion, opacity. |
 | `Responsive` | Desktop / Mobile | `space/unit` only. |
-| `Color - Adaptive` | On Light / On Dark | `color/title` only (legacy). |
+| `_deprecated Color Palette` / `_deprecated Color - Theme` / `_deprecated Color - Adaptive` | — | The pre-refactor collections, kept as the undo path. Nothing binds to them. Safe to delete once the new system has bedded in. |
+
+### Why the tiers are separate collections
+
+`comp` having **one mode is the load-bearing decision.** There is no dark slot to
+hardcode, so every `comp` token *must* alias a `sys` role — which means dark mode is
+inherited rather than re-decided per component. Before the refactor, ~20 `button/*`
+tokens each carried their own Light and Dark values; that was the same theme decision
+made twenty times, and it is why dark mode was painful.
+
+Naming is a **mechanical transform in both directions**, so no lookup table exists or
+is needed:
+
+```
+CSS name = "--" + collection + "-" + variable path with "/" → "-"
+
+sys  · color/on-srf           →  --sys-color-on-srf
+comp · button/filled/label    →  --comp-button-filled-label
+ref  · palette/grey/100       →  --ref-palette-grey-100
+```
+
+**Every ramp runs dark→light** (Material 3 tone direction): `grey/0` is black,
+`grey/1000` is white, `red/50` is the darkest red, `red/950` the lightest.
+
+The rule for the Tailwind hues is **ours = 1000 − Tailwind step**. It mirrors around
+500, so every mapped step lands on a real Tailwind step (50↔950, 200↔800, 500↔500),
+and `grey/N`, `red/N` and `blue/N` all mean the same lightness. **Watch out:** the
+number is the same as Tailwind's but the *meaning* is inverted — our `red/50` is
+Tailwind's `red-950`.
+
+Values are Tailwind **v4** (read from `node_modules/tailwindcss/theme.css` and
+converted oklch→hex). The original red ramp was v3, so danger colours shifted slightly
+when the palette landed.
+
+`surface` is abbreviated **`srf`** throughout, matching how Anto writes it by hand.
+
+**Two roles were deliberately retired**, so don't reintroduce them: `on-srf-muted`
+(merged into `on-srf-variant` — M3 carries two ink weights, not three) and
+`srf-variant` (replaced by `srf-container-low`; M3 has effectively retired
+`surface-variant`, and only the `on-surface-variant` pairing survives).
 
 ### The two-axis discovery — read this before adding modes
 
@@ -182,7 +224,12 @@ These cost real time to discover. All were tested directly against live nodes.
 
 **There is no per-node edit attribution.** `lastModifiedBy`, `lastModified`,
 `updatedAt`, `editedBy` are all absent; `currentUser`/`activeUsers` are blocked in
-the MCP context. `saveVersionHistoryAsync` exists but is file-level.
+the MCP context. **`saveVersionHistoryAsync` is NOT available through the MCP bridge**
+— it throws *"not a supported API"* (verified 2026-08-23; an earlier version of this
+doc wrongly listed it as usable). There is no way to create a *named* restore point
+from an agent. Figma's own autosave history still works from the UI, and the practical
+substitute is to export the frame as a PNG (`exportAsync` → `figma.createImage`) and
+park it beside the original as a frozen visual reference.
 
 `getSharedPluginData`/`setSharedPluginData` **are** available and currently unused —
 a viable way to stamp agent-touched nodes if the "who changed this" problem recurs.
@@ -225,7 +272,15 @@ a viable way to stamp agent-touched nodes if the "who changed this" problem recu
    component instance. Toggling it did nothing. **If a boolean seems inert, check
    `componentPropertyReferences` on the target child.**
 
-9. **Nested-instance IDs invalidate mid-loop.** Updating a master while iterating over
+9. **A cloned variant inherits the source's variable-mode overrides.** `Emphasis=Page`
+   was cloned from `Emphasis=Solid` and silently kept Solid's `Content=Ink-Solid` mode.
+   That is correct for Solid (dark fill, white ink) and wrong for Page (fill *is* the
+   page), so every icon placed in a Page button rendered white-on-white — invisible,
+   with correct geometry, visibility and strokes. **Fills and inks were rebound; the
+   mode override was not, because it isn't a fill.** After cloning a variant, check
+   `explicitVariableModes`, not just paints.
+
+10. **Nested-instance IDs invalidate mid-loop.** Updating a master while iterating over
    instances nested inside placed copies throws "node not found". Sequence it: fix the
    master template → fix placed overrides → sweep the file → then delete the old master.
 
@@ -233,40 +288,72 @@ a viable way to stamp agent-touched nodes if the "who changed this" problem recu
 
 ## Relationship to code
 
-**The Figma `button/*` tokens do not exist in the codebase.** They're new work.
+**The two sides are now one system, wired through a generated file.** This replaced the
+old arrangement where `color/*` was a hand-kept transcription of `global.css`.
 
-The `color/*` family in `Color - Theme` is a 1:1 mirror of the 15 colour custom
-properties in `src/styles/global.css`. That's the "Figma mirrors the source" origin.
+- `tokens/design-tokens.json` (DTCG format) is the **single source of truth** for colour.
+- `bun run tokens:build` regenerates the block between `/* @tokens:start */` and
+  `/* @tokens:end */` in `src/styles/global.css`. Idempotent; never hand-edit that block.
+- `bun run tokens:check` fails on drift — an undefined `var(--ref|sys|comp-*)`, a
+  leftover `--color-*`, stale generated CSS, **or** a mismatch against the Figma name
+  snapshot in `tokens/figma-tokens.json`.
 
-So the two token families are two clean layers nobody labelled:
-`color/*` is *what the site currently is*, `button/*` is *what it's being designed into*.
-The migration ahead is teaching the source about `button/*`.
+**`tokens/figma-tokens.json` is a manual snapshot.** It is what closes the Figma↔source
+loop, and nothing refreshes it automatically. **After adding or renaming a Figma
+variable, re-export the `ref`/`sys`/`comp` collections and rewrite it**, or
+`tokens:check` will fail (which is the point).
 
-Genuinely dead in the source (0 `var()` references): `--color-link-strong-hover`,
-`--color-surface-control-strong`. Everything else in `color/*` is live — `--color-text`
-alone has 126 uses. **Don't delete `color/*` tokens on the basis of Figma usage.**
+### Editing a colour
+
+Only `ref` tokens hold literal hex, so **only `ref` tokens are editable**. `sys` and
+`comp` are alias expressions — you change what a role *points at*, not its value.
+`/styles` reflects this: an editable **ref · palette** section, and a read-only
+**sys · roles** section showing what each role resolves to. `/api/style-token` accepts
+only `ref` names and rejects everything else.
+
+`tokens/design-tokens.json` is stored pre-normalised to `JSON.stringify(json, null, 2)`
+— the exact shape the editor writes — so a one-colour edit is a one-line diff instead of
+reformatting all 441 lines. **Don't reformat it.**
 
 ---
 
 ## Current state
 
-**Built and in LGTM:** full Button system (20 variants), Field/Field Base, Checkbox
+**Built and in LGTM:** `Tokens Group` in both Light and Dark columns (swatches are
+**bound to the variables**, not literal, so the same structure resolves per theme —
+if a swatch ever looks wrong, the token is wrong). A change-summary frame sits above
+LGTM documenting the token refactor. Full Button system (25 variants), Field/Field Base, Checkbox
 (2×3), Segmented Control, Button Container, Panel Actions, Select Field, Text Field,
 Text Area, Toggle Row, dev-overlay__head, traffic lights, DevPanel Base + Content,
-10 icons, 5 type components.
+14 icons (incl. Lock/Unlock/AlignCenterX/AlignCenterY), Grid Thumb Base, 5 type components.
 
-**Dev Panels assembled: 2 of 5** — Project settings, Caption. Both fully LGTM-sourced.
+**Dev Panels assembled: 5 of 5** — Project settings, Caption, Edit image, Edit grid,
+Edit carousel. All fully LGTM-sourced, all mirrored into the Dark column.
 
-**Remaining 3 panels** — Edit image, Edit grid, Edit carousel. Each needs its body
-extracted into `DevPanel Content` as a new variant, same as Caption. Titles already
-exist for all five.
+Relative to the legacy panels, the new ones deliberately **drop sub-titles, hint
+paragraphs and status lines** (`p[data-*-status]`, `p.*__hint`, the toggle hints, and
+the crop stage's "Drag to reposition" caption). Labels only — if a control needs a
+sentence, the control is wrong. Board labels (`Visible` / `Parking lot`) stay, because
+they name a thing rather than explain it.
+
+**Components built for those panels** (all in LGTM, all token-bound):
+
+| Component | Tier | Notes |
+| --- | --- | --- |
+| `Grid Thumb` | Atom Variants | `State=Rest/Hover` on `Grid Thumb Base`; Hover turns the Remove label `sys.color.error`. |
+| `Slider Row` | Elements | Label, track with fill + knob, value readout. Edit image zoom. |
+| `Crop Toolbar` | Elements | Centre-X, centre-Y, crop lock. Uses `Icon/AlignCenterX/Y` + `Icon/Lock`. |
+| `Crop Stage` | Elements | Crop frame, eight resize handles, centre reposition handle. |
+| `Thumb Board` | Elements | Label + tray of `Grid Thumb`. One per breakpoint board. |
+| `Viewport Selector` | Dev Panel Components | **Now a real master** — was a bare instance with overrides. Desktop/Tablet/Mobile. |
+| `Theme Selector` | Dev Panel Components | System/Light/Dark, icon-only. Mirrors `DevThemeToggle.astro`. |
 
 **Components still needed** (all still legacy-only in Ref):
 
-- **Grid Thumb** — image thumbnail with remove-on-hover. **15 instances** across Edit grid + Edit carousel — the single biggest remaining dependency. Related: `Board — Drop Target`, `project-grid-tuner__thumb.is-dragging` (the image re-order interaction).
+- **Grid Thumb variants** — `Grid Thumb Base` now exists in Atoms (72-wide media slot, radius 3, centred Remove affordance, bound to `sys` tokens). Still needs the `State=Rest/Hover` variant set on top of it, where Hover swaps the Remove label to `sys.color.error`. **15 instances** across Edit grid + Edit carousel. Related: `Board — Drop Target`, `project-grid-tuner__thumb.is-dragging` (the image re-order interaction).
 - **Slider track / Slider Row** — Edit image's zoom control.
-- **Crop lock toggle** — needs `Icon/Lock` + `Icon/Unlock` (currently 🔒 emoji).
-- **Crop center controls** — needs `Icon/AlignCenterX` / `Icon/AlignCenterY`. **Decided:** two distinct Lucide icons (`align-center-horizontal` / `align-center-vertical`), re-weighted from Lucide's stroke-2/24px to match the existing ~1.17–1.33 stroke on a 16px grid.
+- ~~**Crop lock toggle**~~ — `Icon/Lock` + `Icon/Unlock` built (2026-08-23), replacing the 🔒 emoji.
+- ~~**Crop center controls**~~ — `Icon/AlignCenterX` / `Icon/AlignCenterY` built (2026-08-23) from Lucide `align-center-vertical` / `align-center-horizontal`, re-weighted to the house 16px / 1.167-stroke grid. Bars are rounded rectangles at radius 0.7; at radius 1.167 (Lucide's rx scaled) the rounding dominated at 16px and they read as pills.
 
 Legacy components in Ref that are **superseded, not migrated** — `Button Default/Dark/Outline/Danger`, `SegButton *`, `Text Pill`, `Icon Chip`, `Icon Control`, plus the three `*Hover` components that only existed because the old system had no State axis.
 

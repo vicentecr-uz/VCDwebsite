@@ -37,25 +37,41 @@ import { publishDevWriter } from './scripts/dev-publish.mjs';
 import { issueDevWriter } from './scripts/dev-issue.mjs';
 import { commitEngineDevWriter } from './scripts/dev-commit-engine.mjs';
 import { mediaCollectorIntegration } from './scripts/collect-shipped-assets.mjs';
+import {
+  TOKENS_RELATIVE_PATH,
+  CSS_RELATIVE_PATH,
+  generateTokenBlock,
+  applyTokenBlock,
+} from './scripts/build-tokens.mjs';
 
-const GLOBAL_STYLES = 'src/styles/global.css';
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
   part !== '__proto__' &&
   part !== 'prototype' &&
   part !== 'constructor'
 );
-const EDITABLE_COLOR_TOKENS = new Set([
-  '--color-bg',
-  '--color-surface-soft',
-  '--color-surface-strong',
-  '--color-surface-control',
-  '--color-surface-control-strong',
-  '--color-text',
-  '--color-text-soft',
-  '--color-text-muted',
-  '--color-border',
-]);
+
+/**
+ * Only `ref` tokens hold literal hex — `sys` and `comp` are aliases that
+ * inherit whatever their referenced `ref` token resolves to. Walk the `ref`
+ * branch of the token tree to build the editable set fresh on every request,
+ * so a hand-edit to the JSON is picked up without restarting the dev server.
+ */
+const collectRefTokenEntries = (refNode) => {
+  /** @type {Map<string, Array<string | number>>} */
+  const entries = new Map();
+  const walk = (node, pathParts) => {
+    if (node && typeof node === 'object' && !Array.isArray(node) && Object.prototype.hasOwnProperty.call(node, '$value')) {
+      entries.set(`--${pathParts.join('-')}`, pathParts);
+      return;
+    }
+    if (node && typeof node === 'object' && !Array.isArray(node)) {
+      for (const key of Object.keys(node)) walk(node[key], [...pathParts, key]);
+    }
+  };
+  walk(refNode, ['ref']);
+  return entries;
+};
 const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
 /** Presets plus freeform `W:H` from the crop-frame handles. */
 const isAllowedAspectRatio = (value) => {
@@ -321,7 +337,9 @@ function imageGridDevWriter() {
 }
 
 /**
- * Dev-only writer for literal colour tokens in global.css.
+ * Dev-only writer for literal (ref-tier) colour tokens. Writes the new hex
+ * into tokens/design-tokens.json at the token's path, then regenerates
+ * global.css from it — the JSON stays the single source of truth.
  *
  * @returns {import('vite').Plugin}
  */
@@ -349,7 +367,12 @@ function styleTokenDevWriter() {
           const token = String(body.token || '');
           const rawValue = String(body.value || '').trim();
 
-          if (!EDITABLE_COLOR_TOKENS.has(token)) {
+          const tokensFile = path.join(process.cwd(), TOKENS_RELATIVE_PATH);
+          const tokensJson = JSON.parse(await readFile(tokensFile, 'utf8'));
+          const editableTokens = collectRefTokenEntries(tokensJson.ref);
+          const tokenPath = editableTokens.get(token);
+
+          if (!tokenPath) {
             send(400, { error: 'That colour token is not editable.' });
             return;
           }
@@ -364,19 +387,21 @@ function styleTokenDevWriter() {
           const value = shortHex
             ? `#${[...shortHex[1]].map((digit) => digit.repeat(2)).join('')}`.toLowerCase()
             : rawValue.toLowerCase();
-          const file = path.join(process.cwd(), GLOBAL_STYLES);
-          const source = await readFile(file, 'utf8');
-          const declaration = new RegExp(`(^\\s*${token}:\\s*)(#[0-9a-fA-F]{3,6})(\\s*;)`, 'm');
 
-          if (!declaration.test(source)) {
-            send(500, { error: `Could not find ${token} in global.css.` });
-            return;
-          }
+          let node = tokensJson;
+          for (const part of tokenPath.slice(0, -1)) node = node[part];
+          node[tokenPath.at(-1)].$value = value;
+
+          const cssFile = path.join(process.cwd(), CSS_RELATIVE_PATH);
+          const cssSource = await readFile(cssFile, 'utf8');
+          const block = generateTokenBlock(tokensJson);
+          const { next: nextCss } = applyTokenBlock(cssSource, block);
 
           // Live preview already applied the colour — skip CSS HMR invalidation
           // so is-dev-mode and the save bar stay up (full-reload is always blocked).
           suppressContentHmr();
-          await writeFile(file, source.replace(declaration, `$1${value}$3`), 'utf8');
+          await writeFile(tokensFile, `${JSON.stringify(tokensJson, null, 2)}\n`, 'utf8');
+          await writeFile(cssFile, nextCss, 'utf8');
           send(200, { ok: true, token, value });
         } catch {
           send(400, { error: 'Could not parse or write the colour token.' });
