@@ -10,6 +10,7 @@ interface Props {
   showMinimize?: boolean;
   panelKey?: string;
   defaultHidden?: boolean;
+  layout?: 'portrait' | 'landscape';
 }
 
 const {
@@ -19,15 +20,16 @@ const {
   showMinimize = true,
   panelKey,
   defaultHidden = false,
+  layout = 'portrait',
 } = Astro.props;
 
-/* Fit inside --dev-overlay-light-size (0.9em); stroke still currentColor. */
-const minimizeSvg = sizeIcon(minusIcon, 10);
-const hideSvg = sizeIcon(xIcon, 10);
+/* Figma glyphs are 8×8 inside the 15px light. */
+const minimizeSvg = sizeIcon(minusIcon, 8);
+const hideSvg = sizeIcon(xIcon, 8);
 ---
 
 <aside
-  class="dev-overlay"
+  class:list={['dev-overlay', `dev-overlay--${layout}`]}
   data-dev-overlay
   data-storage-key={storageKey}
   data-default-minimized={defaultMinimized ? 'true' : 'false'}
@@ -338,37 +340,41 @@ const hideSvg = sizeIcon(xIcon, 10);
   .dev-overlay {
     --dev-overlay-motion-ms: 180ms;
     --dev-overlay-rise: 0.35em;
-    --dev-overlay-pad: 0.75em;
-    --dev-overlay-light-size: 0.9em;
-    /* Former panel fill colour (surface-soft), solid — translucent color-mix
-       with `transparent` (black@0) reads as a near-black hairline as outline. */
-    --dev-overlay-outline: var(--sys-color-srf-container-low);
+    --dev-overlay-light-size: 15px;
     position: fixed;
     right: 1em;
     bottom: 1em;
     z-index: 40;
-    width: min(22em, calc(100vw - 2em));
+    width: min(var(--dev-panel-width), calc(100vw - 2em));
     max-height: calc(100dvh - 2em);
     /* Border, not outline: an outline paints outside the border box in its own
        pass, so on a curve its antialiased inner edge met the fill's outer edge
        and the page bled through the join. A border sits on top of the fill —
        background-clip is border-box — so there is no join to bleed through. */
-    border: 2px solid var(--dev-overlay-outline);
-    border-radius: var(--radius-card-smooth);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-panel);
     background: var(--sys-color-srf);
-    padding: var(--dev-overlay-pad);
+    padding: var(--dev-panel-pad);
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
+    gap: var(--dev-panel-gap);
     overflow: hidden;
     font-family: var(--font-sans);
     color: var(--sys-color-on-srf);
-    box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+    box-shadow: var(--dev-panel-shadow);
     opacity: 0;
     transform: translateY(var(--dev-overlay-rise));
     transition:
       opacity var(--dev-overlay-motion-ms) ease,
       transform var(--dev-overlay-motion-ms) ease;
+  }
+
+  /* Landscape (Gallery Manager, Asset Manager) resizes on both axes in
+     source; overflow: hidden on .dev-overlay is what makes resize legal. */
+  .dev-overlay--landscape {
+    width: min(var(--dev-panel-width-landscape), calc(100vw - 2em));
+    min-width: var(--dev-panel-min-width-landscape);
+    resize: both;
   }
 
   .dev-overlay.is-dev-overlay-open {
@@ -396,10 +402,11 @@ const hideSvg = sizeIcon(xIcon, 10);
 
   .dev-overlay__head {
     display: flex;
-    align-items: center;
-    /* Reserve the corner for traffic lights (2 × size + gap). */
-    padding-right: calc(var(--dev-overlay-light-size) * 2 + 0.4em + 0.35em);
-    min-height: var(--dev-overlay-light-size);
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding-bottom: var(--dev-panel-spacing);
     cursor: grab;
     user-select: none;
     touch-action: none;
@@ -411,26 +418,18 @@ const hideSvg = sizeIcon(xIcon, 10);
 
   .dev-overlay__title {
     margin: 0;
-    font-size: 0.75rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font: var(--dev-text-panel-title);
     color: var(--sys-color-on-srf-variant);
   }
 
-  /*
-    Park lights on the top-right corner diagonal: equal inset from top and right
-    so a 45° line from the squared corner passes through the hide button’s centre.
-  */
+  /* Hover slop now comes from the light's own ::before (below), not from
+     padding on the group, because padding would push the lights off the
+     header's right edge. */
   .dev-overlay__lights {
-    position: absolute;
-    top: calc(var(--dev-overlay-pad) - 0.35em);
-    right: calc(var(--dev-overlay-pad) - 0.35em);
-    z-index: 1;
     display: flex;
     align-items: center;
-    gap: 0.4em;
-    /* Hover slop around the circles; compensated in top/right so visuals stay on the pad. */
-    padding: 0.35em;
+    gap: 8px;
+    flex: 0 0 auto;
     cursor: default;
   }
 
@@ -441,13 +440,21 @@ const hideSvg = sizeIcon(xIcon, 10);
     height: var(--dev-overlay-light-size);
     flex: 0 0 auto;
     border: 0;
-    border-radius: 50%;
+    border-radius: 8px;
     padding: 0;
-    background: color-mix(in srgb, var(--sys-color-on-srf) 18%, transparent);
+    background: var(--comp-traffic-light-rest);
     color: transparent;
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
+  }
+
+  /* The two lights sit 8px apart, so each one's hit slop meets its
+     neighbour's in the gap without reaching over its visible edge. */
+  .dev-overlay__light::before {
+    content: '';
+    position: absolute;
+    inset: calc(var(--dev-hit-inset) * -1);
   }
 
   .dev-overlay__light-icon {
@@ -467,13 +474,13 @@ const hideSvg = sizeIcon(xIcon, 10);
 
   .dev-overlay__lights:hover .dev-overlay__light--hide,
   .dev-overlay__light--hide:focus-visible {
-    background: #ff5f57;
+    background: var(--comp-traffic-light-hide-hover);
     color: #4d0000;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--minimize,
   .dev-overlay__light--minimize:focus-visible {
-    background: #febc2e;
+    background: var(--comp-traffic-light-minimize-hover);
     color: #995700;
   }
 
@@ -485,7 +492,7 @@ const hideSvg = sizeIcon(xIcon, 10);
   .dev-overlay__body {
     display: flex;
     flex-direction: column;
-    gap: 0.6em;
+    gap: var(--dev-panel-content-gap);
     min-height: 0;
     flex: 1 1 auto;
     overflow-x: hidden;
