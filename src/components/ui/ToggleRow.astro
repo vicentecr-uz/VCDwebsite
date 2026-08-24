@@ -1,4 +1,6 @@
 ---
+import '../../styles/dev-chrome.css';
+
 interface Props {
   label: string;
   checked?: boolean;
@@ -8,82 +10,12 @@ interface Props {
 const { label, checked = false, class: className, ...rest } = Astro.props;
 ---
 
-<label class:list={['ui-toggle-row', className]}>
-  <span class="ui-toggle-row__box">
-    <input type="checkbox" checked={checked} class="ui-toggle-row__checkbox" {...rest} />
-    <svg class="ui-toggle-row__check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.667" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+<label class:list={['dev-toggle', className]}>
+  <span class="dev-toggle__box">
+    <input type="checkbox" checked={checked} class="dev-toggle__checkbox" {...rest} />
+    <svg class="dev-toggle__check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.667" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
       <path d="M3.5 8.5l3 3 6-6" />
     </svg>
   </span>
-  <span class="ui-toggle-row__label">{label}</span>
+  <span class="dev-toggle__label">{label}</span>
 </label>
-
-<style>
-  .ui-toggle-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-  }
-
-  .ui-toggle-row:has(.ui-toggle-row__checkbox:disabled) {
-    opacity: var(--dev-opacity-disabled);
-  }
-
-  .ui-toggle-row__box {
-    position: relative;
-    display: inline-flex;
-    width: 16px;
-    height: 16px;
-  }
-
-  .ui-toggle-row__checkbox {
-    position: absolute;
-    inset: 0;
-    width: 16px;
-    height: 16px;
-    border-radius: var(--dev-radius-checkbox);
-    border: 1px solid var(--sys-color-outline);
-    background: var(--sys-color-srf);
-    appearance: none;
-    cursor: pointer;
-    margin: 0;
-  }
-
-  .ui-toggle-row__checkbox:hover {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  .ui-toggle-row__checkbox:checked {
-    background: var(--comp-button-filled-container);
-    border-color: var(--comp-button-filled-container);
-  }
-
-  .ui-toggle-row__checkbox:checked:hover {
-    background: var(--comp-button-filled-container-hover);
-    border-color: var(--comp-button-filled-container-hover);
-  }
-
-  .ui-toggle-row__checkbox:disabled {
-    cursor: not-allowed;
-  }
-
-  .ui-toggle-row__check {
-    position: absolute;
-    inset: 0;
-    margin: auto;
-    color: var(--comp-button-filled-label);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease;
-  }
-
-  .ui-toggle-row__checkbox:checked ~ .ui-toggle-row__check {
-    opacity: 1;
-  }
-
-  .ui-toggle-row__label {
-    font: var(--dev-text-label);
-    color: var(--sys-color-on-srf);
-  }
-</style>

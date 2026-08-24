@@ -1,4 +1,6 @@
 ---
+import '../../styles/dev-chrome.css';
+
 interface Props {
   label: string;
   [key: string]: any;
@@ -7,41 +9,9 @@ interface Props {
 const { label, class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['ui-field', className]} {...rest}>
-  <span class="ui-field__label">{label}</span>
-  <div class="ui-field__value">
+<div class:list={['dev-field', className]} {...rest}>
+  <span class="dev-field__label">{label}</span>
+  <div class="dev-field__value">
     <slot />
   </div>
 </div>
-
-<style>
-  .ui-field {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-    gap: var(--dev-panel-label-gap);
-  }
-
-  .ui-field__label {
-    font: var(--dev-text-field-label);
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .ui-field__value {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 8px;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-field-container);
-    color: var(--sys-color-on-srf);
-    font: var(--dev-text-label);
-    box-sizing: border-box;
-  }
-
-  .ui-field:hover .ui-field__value {
-    background: var(--comp-button-soft-container-hover);
-  }
-</style>
