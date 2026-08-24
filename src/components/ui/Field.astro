@@ -1,0 +1,35 @@
+---
+interface Props {
+  label: string;
+  [key: string]: any;
+}
+
+const { label, class: className, ...rest } = Astro.props;
+---
+
+<div class:list={['ui-field', className]} {...rest}>
+  <span class="ui-field__label">{label}</span>
+  <div class="ui-field__value">
+    <slot />
+  </div>
+</div>
+
+<style>
+  .ui-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4em;
+  }
+
+  .ui-field__label {
+    font-size: 0.85em;
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  .ui-field__value {
+    background: var(--comp-field-container);
+    border-radius: var(--radius-control);
+    padding: 0.5em 0.75em;
+    color: var(--sys-color-on-srf);
+  }
+</style>
