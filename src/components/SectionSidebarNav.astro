@@ -1285,11 +1285,17 @@ const easingOptions = [
       const sectionHeight = rect.height;
       /**
        * Short sections pin near the top (under the header offset).
-       * Tall ones (≥ ~65% of the viewport) centre vertically so large
-       * images aren't cropped awkwardly at the fold.
+       * Hero-sized ones (~0.65–2x the viewport) centre vertically so large
+       * images aren't cropped awkwardly at the fold. Anything taller than
+       * that is a catalog/wrapper section (e.g. the whole component
+       * library), not a single hero — centring on its full height would
+       * land the scroll somewhere in its middle, so it falls back to the
+       * top offset instead.
        */
       const centerThreshold = viewportHeight * 0.65;
-      const rawTargetTop = sectionHeight >= centerThreshold
+      const centerCeiling = viewportHeight * 2;
+      const shouldCenter = sectionHeight >= centerThreshold && sectionHeight <= centerCeiling;
+      const rawTargetTop = shouldCenter
         ? startY + rect.top - (viewportHeight - sectionHeight) / 2
         : startY + rect.top - clickOffsetPx;
       const targetTop = Math.min(Math.max(rawTargetTop, 0), maxScroll);
