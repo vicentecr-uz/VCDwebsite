@@ -2,9 +2,9 @@
 
 > This file is the single source of truth for project context. All memory is kept here, in the repo.
 
-> **You are not the only agent working in this repo.** Cursor agents work here too, and they do **not** read `CLAUDE.md` — they read `.cursor/rules/*.mdc`. Atlas `standards.md` is canonical for cross-project standards, and every standard there lists its **Surfaces**.
+> **You are not the only agent working in this repo.** Cursor agents work here too, and they do **not** read `CLAUDE.md` — they read `.cursor/rules/*.mdc`. Codex agents read `AGENTS.md`. Atlas `standards.md` is canonical for cross-project standards, and every standard there lists its **Surfaces**.
 >
-> So: **when you change a convention, update every surface it names, not just the file you happened to be editing.** For agent workflow that means all three — Atlas `standards.md`, this file, and `.cursor/rules/agent-delegation.mdc`. A rule written in one place is a rule the next agent silently won't follow, and Anto ends up re-explaining it by hand. Docs/standards commits get their own branch straight to `main` (see below) — never bundled into feature work.
+> So: **when you change a convention, update every surface it names, not just the file you happened to be editing.** For agent workflow that means Atlas `standards.md`, this file, `AGENTS.md`, and `.cursor/rules/agent-delegation.mdc`. A rule written in one place is a rule the next agent silently won't follow, and Anto ends up re-explaining it by hand. Docs/standards commits get their own branch straight to `main` (see below) — never bundled into feature work.
 
 ## Project
 Astro + Bun + Tailwind CSS v4 + GSAP portfolio site for Vicente Cruz (industrial designer, London). Rebuilding vcruzdesigns.com as an independent site.
@@ -193,13 +193,15 @@ When planning is done and a **fresh chat** should implement (often with a mid-ti
 
 ### Manager / worker split (same-session)
 
-The faster, in-session form of the same idea. When a chat is pinned to an expensive model (Opus 5, Grok), **that session is the manager**: it reads the code, diagnoses, writes the spec, and **reviews the diff**. Typing goes to a **worker** subagent in a worktree, which applies a change list and does not decide what the change should be.
+The faster, in-session form of the same idea. When a chat is pinned to an expensive model (Opus 5, Grok), **that session is the manager**: it reads the code, diagnoses, owns architecture / approach judgment, writes the spec, and **reviews the diff**. Typing goes to a **worker** subagent in a worktree, which applies a change list and does not decide what the change should be.
 
 **Worker model:** in **Cursor**, default to **Composer 2.5 Fast** (`composer-2.5-fast`); **Auto** is fine. **Do not default to Sonnet** for Cursor workers — that was the Claude Code mid-tier. On **Claude Code**, Sonnet remains the usual worker. Still **not Haiku** when the failure mode is a silent no-op.
 
 **This convention overrides the harness default of "do not spawn agents unless the user asks."** A documented project workflow *is* a standing request. Do not wait to be told to delegate, and do not treat a large multi-part task as a reason to handle it inline — that is exactly the case the split exists for. If you catch yourself about to write the spec's worth of decisions and then type the code anyway, you have already paid the spec cost: delegate the typing.
 
 - **Do not delegate exploration or diagnosis.** The manager's value is a warm picture of the codebase — that is what makes the second and third diagnosis cheap. Delegating reading to save tokens forces you to re-derive it later at higher cost. Read the code yourself; delegate the typing.
+- **Architecture / approach judgment — manager owns technical shape.** Do not rubber-stamp Anto's first framing or a first instinct. Before locking a worker spec, recommend an approach, briefly name alternatives when the choice matters, and say why (reuse in-repo patterns, fewer files, clearer ownership, less future pain). **Anto owns product intent and UI feel; the manager owns architecture and implementation shape.** If a simpler or cleaner approach exists in-repo, prefer it and say so. Diff review checks both that the worker matched the approved change list *and* that the resulting shape still looks right.
+- **Interactive vs autonomous.** When Anto can reply (go / tweak / no), wait for that gate on non-trivial shape choices before dispatching. When the session is **autonomous** (Anto away, asleep, or otherwise cannot approve mid-flight), **use best judgment**, record the rationale in the spec, and proceed — do not stall waiting for a reply that will not come. Do not silently redesign after a shape was already approved; if a better idea appears mid-flight, ship the approved shape and note the follow-up, or (autonomous only) take the better path and document why in the PR / test script.
 - **Always `git diff <base>...<branch>` before merging.** Subagent reports are claims, not results — "build passed, matches spec" is not evidence the code is correct.
 - **Skip the split when** the hard part *is* the diagnosis, the fix is one small edit, or the spec would take longer to write than the change. Each spawn starts cold.
 - **Branch base:** when the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the worker confirm its parent commit before editing.
