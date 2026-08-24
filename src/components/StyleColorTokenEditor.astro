@@ -9,37 +9,40 @@ import DevOverlay from './DevOverlay.astro';
   defaultHidden
 >
   <div class="color-token-editor" data-color-token-editor>
-    <p class="color-token-editor__name" data-token-name>Choose a colour token</p>
-
-    <label class="color-token-editor__field">
-      <span>Hex</span>
-      <div class="color-token-editor__hex-row">
-        <input
-          type="text"
-          class="color-token-editor__input"
-          inputmode="text"
-          maxlength="7"
-          autocomplete="off"
-          spellcheck="false"
-          data-token-hex
-        />
-        <button
-          type="button"
-          class="color-token-editor__swatch"
-          aria-label="Open colour picker"
-          data-token-swatch
-        ></button>
-      </div>
-    </label>
-
-    <div class="color-token-editor__actions">
-      <button type="button" data-token-done>Done</button>
-      <button type="button" data-token-revert>Revert changes</button>
+    <div class="color-token-editor__token">
+      <span class="dev-field__label">Color token</span>
+      <p class="color-token-editor__name" data-token-name>Choose a colour token</p>
     </div>
 
-    <p class="color-token-editor__status" data-token-status aria-live="polite">
-      Changes preview live — use Save in the page bar to write.
-    </p>
+    <div class="color-token-editor__hex-row">
+      <label class="color-token-editor__field dev-field">
+        <span class="dev-field__label">Hex</span>
+        <div class="dev-field__value">
+          <input
+            type="text"
+            class="color-token-editor__input dev-field__input"
+            inputmode="text"
+            maxlength="7"
+            autocomplete="off"
+            spellcheck="false"
+            data-token-hex
+          />
+        </div>
+      </label>
+      <button
+        type="button"
+        class="color-token-editor__swatch"
+        aria-label="Open colour picker"
+        data-token-swatch
+      ></button>
+    </div>
+
+    <div class="color-token-editor__actions dev-panel-actions">
+      <button type="button" class="dev-btn dev-btn--ghost" data-token-revert>Revert changes</button>
+      <button type="button" class="dev-btn dev-btn--filled" data-token-done>Done</button>
+    </div>
+
+    <p class="color-token-editor__status" data-token-status aria-live="polite"></p>
 
     <color-picker
       data-token-picker
@@ -246,86 +249,56 @@ import DevOverlay from './DevOverlay.astro';
   .color-token-editor {
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
+    gap: var(--dev-panel-content-gap);
+  }
+
+  .color-token-editor__token {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .color-token-editor__name {
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-  }
-
-  .color-token-editor__field {
-    display: grid;
-    grid-template-columns: 4em 1fr;
-    align-items: center;
-    gap: 0.65em;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.8rem;
+    margin: 0;
+    font: var(--dev-text-status);
+    color: var(--sys-color-on-srf);
+    word-break: break-all;
   }
 
   .color-token-editor__hex-row {
-    display: grid;
-    grid-template-columns: 1fr 2.4em;
-    gap: 0.4em;
-    align-items: center;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
   }
 
-  .color-token-editor__field input {
-    width: 100%;
-    min-height: 2.4em;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
-    color: var(--sys-color-on-srf);
-    font: inherit;
+  .color-token-editor__field {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .color-token-editor__input {
-    padding: 0.5em 0.65em;
     font-family: ui-monospace, monospace;
   }
 
   .color-token-editor__swatch {
-    width: 2.4em;
-    height: 2.4em;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
+    width: 33px;
+    height: 33px;
+    border: 1px solid var(--sys-color-outline);
+    border-radius: var(--dev-radius-control);
     padding: 0;
+    flex: 0 0 auto;
     cursor: pointer;
-  }
-
-  .color-token-editor__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.4em;
-  }
-
-  .color-token-editor__actions button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
-    padding: 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .color-token-editor__actions button:first-child {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
   }
 
   .color-token-editor__actions button:disabled {
     cursor: wait;
-    opacity: 0.55;
+    opacity: var(--dev-opacity-disabled);
   }
 
   .color-token-editor__status {
+    margin: 0;
+    font: var(--dev-text-status);
     color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
-    line-height: 1.35;
   }
 
   color-picker {
