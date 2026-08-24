@@ -1,8 +1,16 @@
 ---
 import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
+import boldIcon from 'lucide-static/icons/bold.svg?raw';
+import italicIcon from 'lucide-static/icons/italic.svg?raw';
+import underlineIcon from 'lucide-static/icons/underline.svg?raw';
+import linkIcon from 'lucide-static/icons/link.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
+const formatBoldSvg = sizeIcon(boldIcon, 16);
+const formatItalicSvg = sizeIcon(italicIcon, 16);
+const formatUnderlineSvg = sizeIcon(underlineIcon, 16);
+const formatLinkSvg = sizeIcon(linkIcon, 16);
 ---
 
 <div class="dev-text-actions" data-dev-text-actions hidden>
@@ -21,19 +29,20 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
   <div class="dev-text-format__surface">
     <div class="dev-text-format__buttons">
       <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
-        <span aria-hidden="true"><b>B</b></span>
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatBoldSvg} />
       </button>
       <button type="button" data-dev-format="italic" title="Italic (⌘I)" aria-label="Italic" aria-pressed="false">
-        <span aria-hidden="true"><i>I</i></span>
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatItalicSvg} />
       </button>
       <button type="button" data-dev-format="underline" title="Underline (⌘U)" aria-label="Underline" aria-pressed="false">
-        <span aria-hidden="true"><u>U</u></span>
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatUnderlineSvg} />
       </button>
       <button type="button" data-dev-format="link" title="Link (⌘K)" aria-label="Link" aria-pressed="false">
-        Link
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatLinkSvg} />
       </button>
     </div>
     <form class="dev-text-format__link" data-dev-text-link-panel hidden>
+      <button type="button" data-dev-text-unlink>Unlink</button>
       <input
         type="url"
         data-dev-text-link-input
@@ -43,7 +52,6 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
         aria-label="Link URL"
       />
       <button type="submit">Apply</button>
-      <button type="button" data-dev-text-unlink>Unlink</button>
     </form>
   </div>
 </div>
@@ -3312,10 +3320,10 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
   .dev-text-format {
     position: fixed;
     z-index: 95;
-    border-radius: var(--radius-control-smooth);
+    border-radius: 12px;
     background: transparent;
     padding: 0;
-    box-shadow: 0 0.35em 1.2em rgb(0 0 0 / 0.14);
+    box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
   }
 
   .dev-text-format[hidden] {
@@ -3325,13 +3333,11 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
   .dev-text-format__surface {
     display: flex;
     flex-direction: column;
-    gap: 0.35em;
-    padding: 0.35em;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 94%, transparent);
-    backdrop-filter: blur(12px);
+    gap: 4px;
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    background: var(--sys-color-srf);
   }
 
   /* Keep the URL field on the side away from the selection. */
@@ -3346,36 +3352,54 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
   .dev-text-format__buttons {
     display: flex;
     align-items: center;
-    gap: 0.15em;
+    gap: 4px;
   }
 
   .dev-text-format__buttons button {
+    padding: 8px;
+    gap: 8px;
+    border-radius: var(--dev-radius-control);
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    min-width: 2em;
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1;
+    min-width: 0;
+    background: var(--comp-button-ghost-container);
+    color: var(--comp-button-label);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
   }
 
   .dev-text-format__buttons button:hover {
-    background: var(--sys-color-srf-container-high);
+    background: var(--comp-button-ghost-container-hover);
   }
 
+  .dev-text-format__buttons button:active {
+    background: var(--comp-button-ghost-container-pressed);
+  }
+
+  /* Divergence: Figma's Ghost/Selected variant binds button/ghost/container
+     (transparent) with a ~16% paint opacity that has no exported token, and
+     at 32px on a white bar would not read as "on" — so active borrows the
+     Filled tokens instead of the signed Ghost/Selected treatment. */
   .dev-text-format__buttons button.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
+  }
+
+  .dev-text-format__icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+  }
+
+  .dev-text-format__icon :global(svg) {
+    display: block;
   }
 
   .dev-text-format__link {
     display: flex;
     align-items: center;
-    gap: 0.25em;
-    padding-inline: 0.1em;
+    gap: 4px;
   }
 
   .dev-text-format__link[hidden] {
@@ -3383,16 +3407,14 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
   }
 
   .dev-text-format__link input {
-    width: 14em;
-    max-width: min(14em, 55vw);
+    width: 180px;
+    max-width: min(180px, 55vw);
+    padding: 8px;
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.25em);
-    background: var(--sys-color-srf);
-    padding: 0.45em 0.55em;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-field-container);
     color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.2;
+    font: var(--dev-text-label);
   }
 
   .dev-text-format__link input:focus {
@@ -3401,29 +3423,42 @@ const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
   }
 
   .dev-text-format__link button {
+    padding: 8px;
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.45em 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1;
-    cursor: pointer;
+    border-radius: var(--dev-radius-control);
+    font: var(--dev-text-label);
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     white-space: nowrap;
+    cursor: pointer;
+    width: 72px;
+    min-width: var(--dev-control-min-width);
   }
 
-  .dev-text-format__link button:hover {
-    background: var(--sys-color-srf-container-high);
+  .dev-text-format__link button[data-dev-text-unlink] {
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
+  }
+
+  .dev-text-format__link button[data-dev-text-unlink]:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-text-format__link button[data-dev-text-unlink]:active {
+    background: var(--comp-button-soft-container-pressed);
   }
 
   .dev-text-format__link button[type='submit'] {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
   }
 
-  .dev-text-format__link button[type='submit']:hover {
-    background: var(--sys-color-on-srf-variant);
+  .dev-text-format__link button[type='submit']:hover,
+  .dev-text-format__link button[type='submit']:active {
+    background: var(--comp-button-filled-container-hover);
   }
 
   /* ── Section gap toolbar (DEV) ──────────────────────────── */
