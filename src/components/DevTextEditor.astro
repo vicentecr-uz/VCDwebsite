@@ -3547,17 +3547,18 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     display: flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
+    padding: 8px;
     border: 0;
-    /* Match .dev-image-edit-trigger / grid / caption chips. */
-    border-radius: var(--radius-control);
-    /* Icon-only at rest; fill + scale on hover; shadow only on press/open. */
-    background: transparent;
-    padding: 0.45em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1;
-    box-shadow: none;
+    /* Standalone here, not inside the master's pill segment: a 72px-wide
+       floating + in the middle of a page gap is not what the master draws,
+       so min-width stays 0 (72px belongs to the pill's spacing chips). */
+    min-width: 0;
+    min-height: var(--dev-control-height);
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     cursor: pointer;
     transition:
       background-color 0.15s ease,
@@ -3565,13 +3566,21 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       transform 0.15s ease;
   }
 
+  .dev-gap-toolbar__add > span {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+  }
+
+  .dev-gap-toolbar__add :global(svg) {
+    display: block;
+  }
+
   .dev-gap-toolbar__add:hover,
   .dev-gap-toolbar__add:focus-visible,
   .dev-gap-toolbar__add:active,
   .dev-gap-toolbar__add[aria-expanded='true'] {
-    /* Same chip fill as drag handle / delete. */
-    background: color-mix(in srgb, var(--sys-color-srf-container) 92%, transparent);
-    backdrop-filter: blur(8px);
+    background: var(--comp-button-soft-container-hover);
     transform: scale(1.08);
   }
 
@@ -3580,6 +3589,8 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
   }
 
+  /* Master: menu has no surface of its own — a bare column, each item
+     carries its own fill/border/shadow. */
   .dev-gap-toolbar__menu {
     position: absolute;
     top: calc(100% + 0.35em);
@@ -3587,13 +3598,8 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.15em;
+    gap: 4px;
     min-width: 10em;
-    padding: 0.25em;
-    border-radius: var(--radius-control-smooth);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 96%, transparent);
-    box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
-    backdrop-filter: blur(12px);
     transform: translateX(-50%);
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
@@ -3603,63 +3609,85 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     display: none;
   }
 
+  /* Page emphasis, Align=Start. */
   .dev-gap-toolbar__menu button {
-    border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    min-width: var(--dev-control-min-width);
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-page-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     text-align: left;
-    cursor: pointer;
     white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
   }
 
   .dev-gap-toolbar__menu button:hover {
-    background: var(--sys-color-srf-container-high);
+    background: var(--comp-button-page-container-hover);
   }
 
+  .dev-gap-toolbar__menu button:active {
+    background: var(--comp-button-page-container-pressed);
+  }
+
+  /* Spacing Toolbar Base (630:5633). */
   .dev-gap-toolbar__spacing {
     position: absolute;
     right: 0;
     display: flex;
-    flex-direction: column;
-    gap: 0.15em;
-    padding: 0.25em;
-    border-radius: var(--radius-control-smooth);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 94%, transparent);
-    box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
-    backdrop-filter: blur(12px);
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: 12px;
+    background: var(--sys-color-srf);
+    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
   }
 
+  /* Ghost Button Base at 72px. */
   .dev-spacing-control__btn {
     display: flex;
     align-items: center;
-    gap: 0.4em;
+    justify-content: center;
+    gap: 8px;
+    width: 72px;
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    padding: 8px;
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.35em 0.45em;
-    color: var(--sys-color-on-srf-variant);
-    font: inherit;
-    font-size: 0.7rem;
-    line-height: 1;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-ghost-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     cursor: pointer;
     white-space: nowrap;
   }
 
   .dev-spacing-control__btn:hover {
-    background: var(--sys-color-srf-container-high);
-    color: var(--sys-color-on-srf);
+    background: var(--comp-button-ghost-container-hover);
   }
 
+  /* Divergence: the signed master shows the current chip on
+     button/ghost/container-hover, the same fill a hovered chip gets, so a
+     selected chip would be indistinguishable from a hovered one. This group
+     is a radio — exactly one option is always on — so active borrows the
+     Filled tokens instead, matching the Format bar's active treatment. */
   .dev-spacing-control__btn.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
   }
 
+  /* Affordance the static master doesn't draw — its chips are label-only. */
   .dev-spacing-control__mark {
     display: block;
     width: 1.1em;
