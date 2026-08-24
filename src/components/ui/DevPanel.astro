@@ -1,15 +1,20 @@
 ---
 interface Props {
   title: string;
+  layout?: 'portrait' | 'landscape';
   [key: string]: any;
 }
 
-const { title, class: className, ...rest } = Astro.props;
+const { title, layout = 'portrait', class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['ui-dev-panel', className]} {...rest}>
+<div class:list={['ui-dev-panel', `ui-dev-panel--${layout}`, className]} {...rest}>
   <header class="ui-dev-panel__header">
-    <h2>{title}</h2>
+    <p class="ui-dev-panel__title">{title}</p>
+    <span class="ui-dev-panel__lights" aria-hidden="true">
+      <span class="ui-dev-panel__light"></span>
+      <span class="ui-dev-panel__light"></span>
+    </span>
   </header>
   <div class="ui-dev-panel__body">
     <slot />
@@ -18,27 +23,62 @@ const { title, class: className, ...rest } = Astro.props;
 
 <style>
   .ui-dev-panel {
-    width: 352px;
-    background: var(--sys-color-srf-container-low);
-    border: 1px solid var(--sys-color-outline);
-    border-radius: var(--radius-control);
-    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-gap);
+    padding: var(--dev-panel-pad);
+    background: var(--sys-color-srf);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-panel);
+    box-shadow: var(--dev-panel-shadow);
+    color: var(--sys-color-on-srf);
+    font-family: var(--font-sans);
+  }
+
+  .ui-dev-panel--portrait {
+    width: var(--dev-panel-width);
+  }
+
+  .ui-dev-panel--landscape {
+    width: var(--dev-panel-width-landscape);
+    min-width: var(--dev-panel-min-width-landscape);
+    max-width: 100%;
+    resize: both;
+    overflow: auto;
   }
 
   .ui-dev-panel__header {
-    padding: 1em;
-    border-bottom: 1px solid var(--sys-color-outline);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding-bottom: var(--dev-panel-spacing);
+    width: 100%;
   }
 
-  .ui-dev-panel__header h2 {
+  .ui-dev-panel__title {
     margin: 0;
-    font-size: 0.92em;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-    color: var(--sys-color-on-srf);
+    font: var(--dev-text-panel-title);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  .ui-dev-panel__lights {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+  }
+
+  .ui-dev-panel__light {
+    width: 15px;
+    height: 15px;
+    border-radius: 8px;
+    background: var(--comp-traffic-light-rest);
   }
 
   .ui-dev-panel__body {
-    padding: 1em;
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-content-gap);
+    width: 100%;
   }
 </style>

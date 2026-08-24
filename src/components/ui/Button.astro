@@ -5,35 +5,90 @@ interface Props {
   type?: 'button' | 'submit';
   disabled?: boolean;
   selected?: boolean;
+  align?: 'center' | 'start';
+  width?: 'hug' | 'fill';
   [key: string]: any;
 }
 
-const { emphasis = 'soft', label, type = 'button', disabled = false, selected = false, class: className, ...rest } = Astro.props;
+const {
+  emphasis = 'soft',
+  label,
+  type = 'button',
+  disabled = false,
+  selected = false,
+  align = 'center',
+  width = 'hug',
+  class: className,
+  ...rest
+} = Astro.props;
+
+const hasIcon = Astro.slots.has('icon');
 ---
 
 <button
   type={type}
   disabled={disabled}
   aria-pressed={selected ? 'true' : undefined}
-  class:list={['ui-button', `ui-button--${emphasis}`, { 'is-selected': selected }, className]}
+  class:list={[
+    'ui-button',
+    `ui-button--${emphasis}`,
+    `ui-button--align-${align}`,
+    { 'is-selected': selected, 'ui-button--fill': width === 'fill' },
+    className,
+  ]}
   {...rest}
 >
+  {hasIcon && (
+    <span class="ui-button__icon">
+      <slot name="icon" />
+    </span>
+  )}
   <slot>{label}</slot>
 </button>
 
 <style>
   .ui-button {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.4em;
-    padding: 0.5em 1em;
+    gap: 8px;
+    padding: 8px;
     border: none;
-    border-radius: var(--radius-control);
-    font: inherit;
+    border-radius: var(--dev-radius-control);
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    font: var(--dev-text-label);
     cursor: pointer;
     transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
       transform var(--motion-press-duration) ease-out;
+  }
+
+  .ui-button::before {
+    content: '';
+    position: absolute;
+    inset: calc(var(--dev-hit-inset) * -1);
+  }
+
+  .ui-button--align-start {
+    justify-content: flex-start;
+  }
+
+  .ui-button--fill {
+    width: 100%;
+  }
+
+  .ui-button__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+  }
+
+  .ui-button__icon :global(svg) {
+    display: block;
   }
 
   .ui-button:focus-visible {
@@ -46,7 +101,7 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, selected = 
   }
 
   .ui-button:disabled {
-    opacity: 0.5;
+    opacity: var(--dev-opacity-disabled);
     cursor: not-allowed;
     pointer-events: none;
   }
@@ -54,6 +109,7 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, selected = 
   .ui-button--ghost {
     background: var(--comp-button-ghost-container);
     color: var(--comp-button-label);
+    min-width: 0;
   }
 
   .ui-button--ghost:hover,
@@ -68,6 +124,7 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, selected = 
   .ui-button--soft {
     background: var(--comp-button-soft-container);
     color: var(--comp-button-label);
+    min-width: var(--dev-control-min-width);
   }
 
   .ui-button--soft:hover,
@@ -82,6 +139,7 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, selected = 
   .ui-button--filled {
     background: var(--comp-button-filled-container);
     color: var(--comp-button-filled-label);
+    min-width: var(--dev-control-min-width);
   }
 
   .ui-button--filled:hover,
@@ -92,6 +150,7 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, selected = 
   .ui-button--page {
     background: var(--comp-button-page-container);
     color: var(--comp-button-label);
+    min-width: var(--dev-control-min-width);
   }
 
   .ui-button--page:hover,
@@ -106,6 +165,7 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, selected = 
   .ui-button--danger {
     background: var(--comp-button-danger-container);
     color: var(--comp-button-danger-label);
+    min-width: var(--dev-control-min-width);
   }
 
   .ui-button--danger:hover {
