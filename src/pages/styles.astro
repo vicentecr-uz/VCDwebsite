@@ -23,6 +23,8 @@ import TextArea from '../components/ui/TextArea.astro';
 import SelectField from '../components/ui/SelectField.astro';
 import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
+import Badge from '../components/ui/Badge.astro';
+import Hairline from '../components/ui/Hairline.astro';
 import stylesNav from '../content/pages/styles.json';
 import {
   deriveNavFromOutline,
@@ -95,7 +97,9 @@ type PreviewKey =
   | 'ui-text-area'
   | 'ui-select-field'
   | 'ui-toggle-row'
-  | 'ui-panel-actions';
+  | 'ui-panel-actions'
+  | 'ui-badge'
+  | 'ui-hairline';
 
 type ComponentEntry = {
   id: string;
@@ -294,9 +298,9 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'Outer chrome shell (header + body) mirroring the Figma DevPanel Base — used to build dev-mode panels.',
     classRef: '.ui-dev-panel / .ui-dev-panel__header / .ui-dev-panel__body',
     source: 'src/components/ui/DevPanel.astro',
-    props: 'title, ...rest (body content via default slot)',
+    props: 'title, layout? (portrait | landscape, default portrait), ...rest (body content via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Fixed 352px width matches assembled Figma panels; header/body divider; renders correctly in both themes.',
+    checklist: 'Portrait 352px fixed width; Landscape 597px (min 344px, resizable); 18px panel radius; renders correctly in both themes.',
     preview: 'ui-dev-panel',
   },
   {
@@ -370,6 +374,30 @@ const componentCatalog: ComponentEntry[] = [
     usedOn: ['Not yet adopted — Stage 1 primitive'],
     checklist: 'Right-aligned row with top divider; renders correctly in both themes.',
     preview: 'ui-panel-actions',
+  },
+  {
+    id: 'component-ui-badge',
+    name: 'Badge',
+    category: 'ui-primitives',
+    purpose: 'Small status label mirroring the Figma Badge — e.g. gallery/asset thumb overlays.',
+    classRef: '.ui-badge',
+    source: 'src/components/ui/Badge.astro',
+    props: 'label, ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'soft/container fill, 5px radius (literal, no token), Type/Dev/Badge; renders correctly in both themes.',
+    preview: 'ui-badge',
+  },
+  {
+    id: 'component-ui-hairline',
+    name: 'Hairline',
+    category: 'ui-primitives',
+    purpose: '1px rule mirroring the Figma Hairline — dividers inside dev-chrome layouts.',
+    classRef: '.ui-hairline',
+    source: 'src/components/ui/Hairline.astro',
+    props: '...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'sys.color.outline fill (binding, not the description’s outline-variant); renders correctly in both themes.',
+    preview: 'ui-hairline',
   },
 ];
 
@@ -868,8 +896,11 @@ const sectionLinks = savedOutline.length
                         </div>
                       )}
                       {component.preview === 'ui-dev-panel' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-wrap: wrap; gap: 1.5em;">
                           <DevPanel title="Panel title">
+                            <p class="preview-note">Body content</p>
+                          </DevPanel>
+                          <DevPanel title="Panel title" layout="landscape">
                             <p class="preview-note">Body content</p>
                           </DevPanel>
                         </div>
@@ -916,6 +947,20 @@ const sectionLinks = savedOutline.length
                             <Button emphasis="soft" label="Cancel" />
                             <Button emphasis="filled" label="Save" />
                           </PanelActions>
+                        </div>
+                      )}
+                      {component.preview === 'ui-badge' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.5em;">
+                          <Badge label="On page" />
+                          <Badge label="Library" />
+                          <Badge label="Draft" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-hairline' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.75em; max-width: 20em;">
+                          <p class="preview-note">Line above</p>
+                          <Hairline />
+                          <p class="preview-note">Line below</p>
                         </div>
                       )}
                     </div>

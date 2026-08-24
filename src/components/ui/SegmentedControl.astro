@@ -15,12 +15,16 @@ const { label, class: className, ...rest } = Astro.props;
   .ui-segmented-control {
     display: inline-flex;
     align-items: center;
-    gap: 0.25em;
-    padding: 0.25em;
-    border: 1px solid var(--sys-color-outline);
+    gap: 4px;
+    padding: var(--dev-control-padding);
     background: var(--sys-color-srf-container-low);
-    /* Concentric with the buttons: outer radius = inner radius + the gap
-       between the two edges (padding + border width). */
-    border-radius: calc(var(--radius-control) + 0.25em + 1px);
+    /* Concentric with the buttons: outer radius (10, radius/control-in-container)
+       = inner button radius (8) + the 2px padding between them. */
+    border-radius: var(--dev-radius-control-in-container);
+  }
+
+  .ui-segmented-control :global(.ui-button) {
+    padding: 6px 8px;
+    min-height: 28px;
   }
 </style>
