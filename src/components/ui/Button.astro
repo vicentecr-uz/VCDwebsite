@@ -4,16 +4,18 @@ interface Props {
   label: string;
   type?: 'button' | 'submit';
   disabled?: boolean;
+  selected?: boolean;
   [key: string]: any;
 }
 
-const { emphasis = 'soft', label, type = 'button', disabled = false, class: className, ...rest } = Astro.props;
+const { emphasis = 'soft', label, type = 'button', disabled = false, selected = false, class: className, ...rest } = Astro.props;
 ---
 
 <button
   type={type}
   disabled={disabled}
-  class:list={['ui-button', `ui-button--${emphasis}`, className]}
+  aria-pressed={selected ? 'true' : undefined}
+  class:list={['ui-button', `ui-button--${emphasis}`, { 'is-selected': selected }, className]}
   {...rest}
 >
   <slot>{label}</slot>
@@ -51,11 +53,11 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, class: clas
 
   .ui-button--ghost {
     background: var(--comp-button-ghost-container);
-    border: 1px solid var(--comp-button-outline);
     color: var(--comp-button-label);
   }
 
-  .ui-button--ghost:hover {
+  .ui-button--ghost:hover,
+  .ui-button--ghost.is-selected {
     background: var(--comp-button-ghost-container-hover);
   }
 
@@ -68,7 +70,8 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, class: clas
     color: var(--comp-button-label);
   }
 
-  .ui-button--soft:hover {
+  .ui-button--soft:hover,
+  .ui-button--soft.is-selected {
     background: var(--comp-button-soft-container-hover);
   }
 
@@ -88,11 +91,11 @@ const { emphasis = 'soft', label, type = 'button', disabled = false, class: clas
 
   .ui-button--page {
     background: var(--comp-button-page-container);
-    border: 1px solid var(--sys-color-outline);
     color: var(--comp-button-label);
   }
 
-  .ui-button--page:hover {
+  .ui-button--page:hover,
+  .ui-button--page.is-selected {
     background: var(--comp-button-page-container-hover);
   }
 
