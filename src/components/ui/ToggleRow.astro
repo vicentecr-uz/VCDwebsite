@@ -1,0 +1,42 @@
+---
+interface Props {
+  label: string;
+  checked?: boolean;
+  [key: string]: any;
+}
+
+const { label, checked = false, class: className, ...rest } = Astro.props;
+---
+
+<label class:list={['ui-toggle-row', className]}>
+  <input type="checkbox" checked={checked} class="ui-toggle-row__checkbox" {...rest} />
+  <span class="ui-toggle-row__label">{label}</span>
+</label>
+
+<style>
+  .ui-toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+    cursor: pointer;
+  }
+
+  .ui-toggle-row__checkbox {
+    width: 1.1em;
+    height: 1.1em;
+    border-radius: 0.25em;
+    border: 1px solid var(--sys-color-outline-variant);
+    appearance: none;
+    cursor: pointer;
+    margin: 0;
+  }
+
+  .ui-toggle-row__checkbox:checked {
+    background: var(--comp-button-filled-container);
+    border-color: var(--comp-button-filled-container);
+  }
+
+  .ui-toggle-row__label {
+    color: var(--sys-color-on-srf);
+  }
+</style>

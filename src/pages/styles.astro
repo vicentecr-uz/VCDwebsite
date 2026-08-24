@@ -17,6 +17,10 @@ import ProjectGrid from '../components/ProjectGrid.astro';
 import Button from '../components/ui/Button.astro';
 import SegmentedControl from '../components/ui/SegmentedControl.astro';
 import DevPanel from '../components/ui/DevPanel.astro';
+import Field from '../components/ui/Field.astro';
+import TextField from '../components/ui/TextField.astro';
+import ToggleRow from '../components/ui/ToggleRow.astro';
+import PanelActions from '../components/ui/PanelActions.astro';
 import stylesNav from '../content/pages/styles.json';
 import {
   deriveNavFromOutline,
@@ -83,7 +87,11 @@ type PreviewKey =
   | 'video'
   | 'ui-button'
   | 'ui-segmented-control'
-  | 'ui-dev-panel';
+  | 'ui-dev-panel'
+  | 'ui-field'
+  | 'ui-text-field'
+  | 'ui-toggle-row'
+  | 'ui-panel-actions';
 
 type ComponentEntry = {
   id: string;
@@ -286,6 +294,54 @@ const componentCatalog: ComponentEntry[] = [
     usedOn: ['Not yet adopted — Stage 1 primitive'],
     checklist: 'Fixed 352px width matches assembled Figma panels; header/body divider; renders correctly in both themes.',
     preview: 'ui-dev-panel',
+  },
+  {
+    id: 'component-ui-field',
+    name: 'Field',
+    category: 'ui-primitives',
+    purpose: 'Shared label-over-value shell mirroring the Figma Field Base — every field-like control composes on top of it.',
+    classRef: '.ui-field / .ui-field__value',
+    source: 'src/components/ui/Field.astro',
+    props: 'label, ...rest (value content via default slot)',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'Label uses on-srf-variant, value box uses field/container and on-srf; renders correctly in both themes.',
+    preview: 'ui-field',
+  },
+  {
+    id: 'component-ui-text-field',
+    name: 'TextField',
+    category: 'ui-primitives',
+    purpose: 'Text input composed on Field — mirrors the Figma Text Field.',
+    classRef: '.ui-field / .ui-text-field__input',
+    source: 'src/components/ui/TextField.astro',
+    props: 'label, value?, placeholder?, disabled?, ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'Input is chromeless (Field supplies background/radius); disabled state dims; renders correctly in both themes.',
+    preview: 'ui-text-field',
+  },
+  {
+    id: 'component-ui-toggle-row',
+    name: 'ToggleRow',
+    category: 'ui-primitives',
+    purpose: 'Labelled checkbox row mirroring the Figma Toggle Row.',
+    classRef: '.ui-toggle-row / .ui-toggle-row__checkbox',
+    source: 'src/components/ui/ToggleRow.astro',
+    props: 'label, checked?, ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'Unchecked stroke uses outline-variant; checked fill uses button/filled/container; renders correctly in both themes.',
+    preview: 'ui-toggle-row',
+  },
+  {
+    id: 'component-ui-panel-actions',
+    name: 'PanelActions',
+    category: 'ui-primitives',
+    purpose: 'Layout wrapper for a trailing row of Button instances, mirroring the Figma Panel Actions composition.',
+    classRef: '.ui-panel-actions',
+    source: 'src/components/ui/PanelActions.astro',
+    props: '...rest (Button instances via default slot)',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'Right-aligned row with top divider; renders correctly in both themes.',
+    preview: 'ui-panel-actions',
   },
 ];
 
@@ -781,6 +837,30 @@ const sectionLinks = savedOutline.length
                           <DevPanel title="Panel title">
                             <p class="preview-note">Body content</p>
                           </DevPanel>
+                        </div>
+                      )}
+                      {component.preview === 'ui-field' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                          <Field label="Label">Value</Field>
+                        </div>
+                      )}
+                      {component.preview === 'ui-text-field' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                          <TextField label="Label" placeholder="Placeholder" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-toggle-row' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.5em;">
+                          <ToggleRow label="Unchecked" />
+                          <ToggleRow label="Checked" checked />
+                        </div>
+                      )}
+                      {component.preview === 'ui-panel-actions' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
+                          <PanelActions>
+                            <Button emphasis="soft" label="Cancel" />
+                            <Button emphasis="filled" label="Save" />
+                          </PanelActions>
                         </div>
                       )}
                     </div>
