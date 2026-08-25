@@ -11,6 +11,7 @@ interface Props {
   panelKey?: string;
   defaultHidden?: boolean;
   layout?: 'portrait' | 'landscape';
+  [key: string]: any;
 }
 
 const {
@@ -21,6 +22,7 @@ const {
   panelKey,
   defaultHidden = false,
   layout = 'portrait',
+  ...rest
 } = Astro.props;
 
 /* Figma glyphs are 8×8 inside the 15px light. */
@@ -35,6 +37,7 @@ const hideSvg = sizeIcon(xIcon, 8);
   data-default-minimized={defaultMinimized ? 'true' : 'false'}
   data-dev-panel-key={panelKey}
   hidden={defaultHidden}
+  {...rest}
 >
   <div class="dev-overlay__head" data-drag-handle>
     <p class="dev-overlay__title">{title}</p>

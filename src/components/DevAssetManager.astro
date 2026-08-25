@@ -1,4 +1,6 @@
 ---
+import DevOverlay from './DevOverlay.astro';
+
 interface Props {
   documentKey: string;
 }
@@ -6,43 +8,53 @@ interface Props {
 const { documentKey } = Astro.props;
 ---
 
-<dialog class="dev-asset-manager" data-dev-asset-manager data-document-key={documentKey}>
-  <div class="dev-asset-manager__panel">
-    <header class="dev-asset-manager__header">
-      <h2>Asset Manager</h2>
-      <button type="button" class="dev-btn dev-btn--ghost" data-asset-close aria-label="Close">Close</button>
-    </header>
-
-    <div class="dev-asset-manager__body">
-      <aside class="dev-asset-manager__sidebar">
-        <p class="dev-asset-manager__sidebar-label">Projects</p>
-        <div class="dev-asset-manager__projects" data-asset-projects></div>
-        <hr class="dev-asset-manager__divider" />
-        <p class="dev-asset-manager__sidebar-label">Filter</p>
-        <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
-          <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill is-active" data-asset-filter="all">All</button>
-          <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" data-asset-filter="onPage">On page</button>
-          <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" data-asset-filter="library">Library only</button>
-        </div>
-      </aside>
-
-      <section class="dev-asset-manager__main">
-        <p class="dev-asset-manager__status" data-asset-status aria-live="polite">Loading…</p>
-        <div class="dev-asset-manager__grid" data-asset-grid></div>
-      </section>
-    </div>
-
-    <footer class="dev-asset-manager__footer">
-      <p class="dev-asset-manager__count" data-asset-count></p>
-      <div class="dev-asset-manager__actions">
-        <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="image" disabled>Single image</button>
-        <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageGrid" disabled>Image grid</button>
-        <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageCarousel" disabled>Carousel</button>
-        <button type="button" class="dev-btn dev-btn--ghost" data-asset-cancel>Cancel</button>
+<DevOverlay
+  title="Asset Manager"
+  storageKey="asset-manager"
+  panelKey="asset-manager"
+  layout="landscape"
+  data-dev-asset-manager
+  data-document-key={documentKey}
+  defaultHidden
+>
+  <div class="dev-asset-manager__body">
+    <aside class="dev-asset-manager__sidebar">
+      <p class="dev-asset-manager__sidebar-label">Projects</p>
+      <div class="dev-asset-manager__projects" data-asset-projects></div>
+      <hr class="dev-asset-manager__divider" />
+      <p class="dev-asset-manager__sidebar-label">Filter</p>
+      <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
+        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill is-active" data-asset-filter="all">All</button>
+        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" data-asset-filter="onPage">On page</button>
+        <button type="button" class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill" data-asset-filter="library">Library only</button>
       </div>
-    </footer>
+    </aside>
+
+    <section class="dev-asset-manager__main">
+      <p class="dev-asset-manager__status" data-asset-status aria-live="polite">Loading…</p>
+      <div class="dev-asset-manager__grid" data-asset-grid></div>
+    </section>
   </div>
-</dialog>
+
+  <!--
+    Not in the signed master, which has no footer at all — insertion there is
+    drag-to-page + a cursor popup, which doesn't exist in source yet (see
+    Atlas/handoffs/260825-vcd-dev-chrome-source-followups.md §B). Until that
+    lands, this is the ONLY way DevImageDrop's "choose from library" and
+    ProjectImageCropTuner's "replace from library" can resolve — so it stays,
+    but only appears while a pick is actually in progress, not as permanent
+    browsing chrome.
+  -->
+  <div class="dev-asset-manager__footer" data-asset-footer hidden>
+    <p class="dev-asset-manager__count" data-asset-count></p>
+    <div class="dev-asset-manager__actions">
+      <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="image" disabled>Single image</button>
+      <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageGrid" disabled>Image grid</button>
+      <button type="button" class="dev-btn dev-btn--soft" data-asset-pick="imageCarousel" disabled>Carousel</button>
+      <button type="button" class="dev-btn dev-btn--ghost" data-asset-cancel>Cancel</button>
+    </div>
+  </div>
+</DevOverlay>
 
 <script>
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
@@ -58,15 +70,15 @@ const { documentKey } = Astro.props;
    *   usedBy: string[],
    * }} Asset */
 
-  const dialog = document.querySelector('[data-dev-asset-manager]');
-  const documentKey = dialog instanceof HTMLElement ? (dialog.dataset.documentKey || '') : '';
+  const overlay = document.querySelector('[data-dev-asset-manager]');
+  const documentKey = overlay instanceof HTMLElement ? (overlay.dataset.documentKey || '') : '';
   const projectsEl = document.querySelector('[data-asset-projects]');
   const gridEl = document.querySelector('[data-asset-grid]');
   const statusEl = document.querySelector('[data-asset-status]');
   const countEl = document.querySelector('[data-asset-count]');
   const filterButtons = document.querySelectorAll('[data-asset-filter]');
   const pickButtons = document.querySelectorAll('[data-asset-pick]');
-  const closeButton = document.querySelector('[data-asset-close]');
+  const footerEl = document.querySelector('[data-asset-footer]');
   const cancelButton = document.querySelector('[data-asset-cancel]');
 
   /** @type {Asset[]} */
@@ -96,8 +108,8 @@ const { documentKey } = Astro.props;
       if (type === 'image') button.disabled = count < 1;
       else if (type === 'imageGrid') button.disabled = count < 1;
       else if (type === 'imageCarousel') button.disabled = count < 1;
-      button.hidden = !pickMode;
     });
+    if (footerEl instanceof HTMLElement) footerEl.hidden = !pickMode;
     if (countEl instanceof HTMLElement) {
       countEl.textContent = count
         ? `${count} selected`
@@ -208,8 +220,8 @@ const { documentKey } = Astro.props;
       const trash = document.createElement('button');
       trash.type = 'button';
       trash.className = 'dev-asset-manager__trash';
-      trash.title = 'Delete forever';
-      trash.setAttribute('aria-label', `Delete ${asset.filename} forever`);
+      trash.title = 'Delete from cloud';
+      trash.setAttribute('aria-label', `Delete ${asset.filename} from cloud`);
       trash.innerHTML = sizeIcon(trashIcon);
 
       button.addEventListener('click', () => {
@@ -279,8 +291,9 @@ const { documentKey } = Astro.props;
     }
   };
 
-  const closeDialog = (cancelled = true) => {
-    if (dialog instanceof HTMLDialogElement && dialog.open) dialog.close();
+  const closePanel = (cancelled = true) => {
+    if (overlay instanceof HTMLElement) overlay.hidden = true;
+    setAssetManagerOpen(false);
     if (cancelled && rejectPick) {
       const reject = rejectPick;
       resolvePick = null;
@@ -301,7 +314,8 @@ const { documentKey } = Astro.props;
     const resolve = resolvePick;
     resolvePick = null;
     rejectPick = null;
-    if (dialog instanceof HTMLDialogElement && dialog.open) dialog.close();
+    if (overlay instanceof HTMLElement) overlay.hidden = true;
+    setAssetManagerOpen(false);
     resolve?.({ srcs, type });
   };
 
@@ -326,17 +340,22 @@ const { documentKey } = Astro.props;
     });
   });
 
-  closeButton?.addEventListener('click', () => closeDialog(true));
-  cancelButton?.addEventListener('click', () => closeDialog(true));
+  cancelButton?.addEventListener('click', () => closePanel(true));
 
-  dialog?.addEventListener('cancel', (event) => {
-    event.preventDefault();
-    closeDialog(true);
-  });
-
-  dialog?.addEventListener('close', () => {
+  // DevOverlay's own traffic-light Hide bypasses closePanel() entirely — it
+  // sets `overlay.hidden = true` internally and announces itself here, which
+  // is the one place a pending pick still needs to be rejected.
+  window.addEventListener('vcd:dev-edit-close', ((event) => {
+    const detail = event.detail ?? {};
+    if (detail.panel !== overlay) return;
     setAssetManagerOpen(false);
-  });
+    if (rejectPick) {
+      const reject = rejectPick;
+      resolvePick = null;
+      rejectPick = null;
+      reject(new Error('cancelled'));
+    }
+  }));
 
   window.addEventListener('vcd:dev-asset-manager-open', ((event) => {
     const detail = event.detail ?? {};
@@ -359,8 +378,8 @@ const { documentKey } = Astro.props;
     });
     syncPickButtons();
 
-    if (dialog instanceof HTMLDialogElement) {
-      dialog.showModal();
+    if (overlay instanceof HTMLElement) {
+      overlay.hidden = false;
       setAssetManagerOpen(true);
     }
     void loadAssets().catch((error) => {
@@ -370,71 +389,24 @@ const { documentKey } = Astro.props;
 </script>
 
 <style is:global>
-  .dev-asset-manager {
-    border: 0;
-    padding: 0;
-    margin: auto;
-    background: transparent;
-    max-width: calc(100vw - 2em);
-    max-height: calc(100vh - 2em);
-  }
-
-  .dev-asset-manager:not([open]) {
-    display: none !important;
-  }
-
-  /* Unchanged: the master does not model the modal backdrop, and
-     sys.color.scrim is still an unassigned placeholder in the token file. */
-  .dev-asset-manager::backdrop {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(8px);
-  }
-
-  /* Gap proximity still tracks pointermove under the modal backdrop — suppress it. */
-  html.is-dev-asset-manager-open .dev-gap-toolbar__add,
-  html.is-dev-asset-manager-open .dev-gap-toolbar__spacing {
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-
-  .dev-asset-manager__panel {
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    gap: var(--dev-panel-gap);
-    width: min(56em, calc(100vw - 2em));
+  /* Grid area needs a bounded height so it scrolls internally rather than the
+     whole panel growing to fit every image — resize:both (from DevPanel
+     Layout=Landscape) still lets the user grow past this. */
+  .dev-overlay[data-dev-panel-key='asset-manager'] {
     height: min(36em, calc(100vh - 2em));
-    padding: var(--dev-panel-pad);
-    border: 1px solid var(--sys-color-srf-container-low);
-    border-radius: var(--dev-radius-panel);
-    background: var(--sys-color-srf);
-    box-shadow: var(--dev-panel-shadow);
-    overflow: hidden;
   }
 
-  .dev-asset-manager__header {
+  .dev-asset-manager__body {
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding-bottom: var(--dev-panel-spacing);
+    gap: 12px;
   }
 
   .dev-asset-manager__footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-top: var(--dev-panel-spacing);
-  }
-
-  .dev-asset-manager__header h2 {
-    margin: 0;
-    font: var(--dev-text-panel-title);
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .dev-asset-manager__body {
-    display: flex;
-    gap: 12px;
-    min-height: 0;
   }
 
   .dev-asset-manager__sidebar {
@@ -640,9 +612,6 @@ const { documentKey } = Astro.props;
     color: var(--comp-button-danger-label);
   }
 
-  /* Not .dev-panel-actions: that atom is a full-width bottom row, and this is
-     the right half of a space-between footer — its width:100% would push the
-     count out and its padding-top would stack on the footer's own. */
   .dev-asset-manager__actions {
     display: flex;
     align-items: center;
@@ -652,6 +621,13 @@ const { documentKey } = Astro.props;
   .dev-asset-manager__actions button:disabled {
     opacity: var(--dev-opacity-disabled);
     cursor: not-allowed;
+  }
+
+  /* Gap proximity still tracks pointermove while the panel covers the page. */
+  html.is-dev-asset-manager-open .dev-gap-toolbar__add,
+  html.is-dev-asset-manager-open .dev-gap-toolbar__spacing {
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 
   @media (max-width: 40em) {
@@ -664,7 +640,7 @@ const { documentKey } = Astro.props;
       flex: 0 0 auto;
     }
 
-    .dev-asset-manager__panel {
+    .dev-overlay[data-dev-panel-key='asset-manager'] {
       height: min(90vh, calc(100vh - 2em));
     }
   }
