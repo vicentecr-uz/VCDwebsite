@@ -423,8 +423,34 @@ export function mediaDevServer() {
         }
         const filePath = path.join(process.cwd(), 'media', relative);
         try {
-          const file = await readFile(filePath);
           const ext = path.extname(filePath).toLowerCase();
+          const widthParam = url.searchParams.get('w');
+          const skipResize = !widthParam || ext === '.svg' || ext === '.gif';
+
+          if (!skipResize) {
+            const width = Math.min(640, Math.max(32, Number.parseInt(widthParam, 10)));
+            if (!Number.isFinite(width)) {
+              res.statusCode = 400;
+              res.end('Bad request');
+              return;
+            }
+            const { default: sharp } = await import('sharp');
+            let pipeline = sharp(filePath).rotate().resize({ width, withoutEnlargement: true });
+            if (ext === '.png' || ext === '.webp' || ext === '.avif') {
+              pipeline = pipeline.webp({ quality: 80 });
+            } else {
+              pipeline = pipeline.jpeg({ quality: 80 });
+            }
+            const file = await pipeline.toBuffer();
+            const type = ext === '.png' || ext === '.webp' || ext === '.avif' ? 'image/webp' : 'image/jpeg';
+            res.statusCode = 200;
+            res.setHeader('content-type', type);
+            res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+            res.end(file);
+            return;
+          }
+
+          const file = await readFile(filePath);
           const type = ext === '.png'
             ? 'image/png'
             : ext === '.webp'
