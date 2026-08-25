@@ -320,16 +320,19 @@ const hideSvg = sizeIcon(xIcon, 8);
         const bodyBox = body.clientHeight;
         const prevFlex = body.style.flex;
         const prevMin = body.style.minHeight;
+        const prevOverflowX = body.style.overflowX;
         const hadScrollable = overlay.classList.contains('is-body-scrollable');
         // Measure in hugged overflow (hidden, no stable gutter). overflow:visible
-        // undersizes; measuring with scrollable gutter on caps ~1px short and
-        // reserves a lane that forces first-open scroll.
+        // undersizes; overflow-x:hidden + scrollbar-gutter:stable reserves a lane
+        // that narrows content, wraps taller, clips the top label, and chin.
         setBodyScrollable(false);
+        body.style.overflowX = 'auto';
         body.style.flex = '0 0 auto';
         body.style.minHeight = 'auto';
         const bodyHug = body.offsetHeight;
         body.style.flex = prevFlex;
         body.style.minHeight = prevMin;
+        body.style.overflowX = prevOverflowX;
         if (hadScrollable) setBodyScrollable(true);
         return frame - bodyBox + bodyHug;
       };
