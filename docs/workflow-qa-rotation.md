@@ -1,29 +1,51 @@
 # QA rotation workflow
 
-A named session rhythm for live QA of a feature branch. Anto tests panels one by one
-in the running site; the agent he is talking to is the **manager**; fixes go to
-**worker** subagents so QA never blocks on a fix. First run: `feat/figma-dev-chrome`
-dev-chrome QA pass, 2026-08-25.
+A named session rhythm for working through a queue with Anto live: he reviews or
+requests work item by item; the agent he is talking to is the **manager**; doing
+goes to **worker** subagents so the loop never blocks on a fix. First run:
+`feat/figma-dev-chrome` dev-chrome QA pass, 2026-08-25.
 
-**Trigger:** Anto says "let's work with the QA rotation workflow" (or just "rotation").
-If you are the agent he is talking to, you are the manager. Do not ask who manages.
+**Trigger:** Anto says "let's work with the QA rotation workflow" (or just
+"rotation"). If you are the agent he is talking to, you are the manager. Do not
+ask who manages.
+
+## Setup — the manager writes the plan
+
+The rotation starts before the first item, because the plan **is** the queue:
+
+1. **Get the scope.** Either Anto points you at an existing task list (issue,
+   handoff doc, plan file) or he describes what he wants in chat. Both are fine.
+2. **The manager writes `.cursor/plans/*.plan.md`** — one todo per item, in the
+   order Anto will take them. Because the manager knows this plan will drive the
+   rotation, write each item as a **checkable outcome**, not a vague title:
+   what "pass" looks like, and the seeds of the test script. A plan written for
+   the rotation reads as a QA script; a plan written for the drawer doesn't.
+3. **Confirm the order with Anto, then start.** He QAs / requests top to bottom.
+
+Items are not only "verify finished work." **New work Anto points out joins the
+same queue** — as its own plan item, specced by the manager, built by a worker,
+then reviewed by Anto in the same loop. The rotation doesn't distinguish
+"QA of done work" from "small new thing": both are queue items with a pass
+condition and a worker when they need one.
 
 ## The loop
 
-1. **Anto QAs top to bottom** through an agreed queue. He reports "pass" (or "lgtm")
-   or describes what's wrong — a screenshot helps.
+1. **Anto takes items top to bottom.** For each he reports "pass" (or "lgtm"),
+   describes what's wrong — a screenshot helps — or asks for something new.
 2. **Pass → mark done in the plan, name what's next.** The chat must always answer
    "what am I testing now, and what's after it."
-3. **Fail → dispatch a worker immediately, with a written spec, while Anto moves on
-   to the next item.** If a second fail arrives before the first worker lands,
-   dispatch a second worker. Workers run in parallel; the manager never types a
-   fix inline while Anto is waiting.
+3. **Fail or new ask → dispatch a worker immediately, with a written spec, while
+   Anto moves on to the next item.** If a second fail arrives before the first
+   worker lands, dispatch a second worker. Workers run in parallel; the manager
+   never types a fix inline while Anto is waiting. A *new* ask that's bigger
+   than a fix gets planned first (a short spec Anto can sanity-check), then
+   dispatched the same way.
 4. **Worker lands → manager reviews the diff, pushes, and recaps.** The recap is
    what Anto reads: what to hard-refresh, what to try step by step, the commit
    hash, and what the commit *didn't* touch. Anto signs off or sends more
    feedback (same item, new worker).
-5. **New asks are queued, not interruptions.** Bigger-than-a-fix requests join the
-   plan as their own item; the current item keeps moving.
+5. **Queued, not interruptions.** Requests that arrive mid-item join the plan as
+   their own item; the current item keeps moving.
 
 ## The plan is the manager's memory
 
