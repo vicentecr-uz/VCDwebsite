@@ -380,6 +380,25 @@ const hideSvg = sizeIcon(xIcon, 8);
     resize: both;
   }
 
+  /* No visible grip glyph on either layout — the cursor change over the
+     resizable edge is signal enough. */
+  .dev-overlay--landscape::-webkit-resizer {
+    display: none;
+  }
+
+  /* Portrait resizes in height only — width is the signed 352px contract.
+     min-height keeps a drag from collapsing the header itself; there is no
+     visible grip (the cursor change over the bottom edge is enough), so the
+     native resizer glyph is hidden on the engines that draw one. */
+  .dev-overlay--portrait {
+    resize: vertical;
+    min-height: calc(2 * var(--dev-panel-pad) + 32px);
+  }
+
+  .dev-overlay--portrait::-webkit-resizer {
+    display: none;
+  }
+
   .dev-overlay.is-dev-overlay-open {
     opacity: 1;
     transform: translateY(0);
@@ -501,5 +520,8 @@ const hideSvg = sizeIcon(xIcon, 8);
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Reserve the scrollbar's own lane so it tracks beside content instead of
+       drawing over it once the body actually scrolls. */
+    scrollbar-gutter: stable;
   }
 </style>
