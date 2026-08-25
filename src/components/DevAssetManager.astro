@@ -632,9 +632,14 @@ const { documentKey } = Astro.props;
     padding-bottom: 75%;
   }
 
-  /* Outer ring — inset was clipped by overflow:hidden on the card. */
-  .dev-asset-manager__card.is-selected {
-    box-shadow: 0 0 0 1px var(--sys-color-outline);
+  .dev-asset-manager__card.is-selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--sys-color-outline);
+    pointer-events: none;
   }
 
   .dev-asset-manager__thumb {
