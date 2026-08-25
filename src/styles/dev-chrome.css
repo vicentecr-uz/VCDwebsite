@@ -121,10 +121,7 @@
   min-width: var(--dev-control-min-width);
 }
 
-.dev-btn--page:hover,
-.dev-btn--page.is-selected,
-.dev-btn--page.is-active,
-.dev-btn--page[aria-pressed='true'] {
+.dev-btn--page:hover {
   background: var(--comp-button-page-container-hover);
 }
 
@@ -197,6 +194,10 @@
 }
 
 .dev-field__input--select {
+  /* Without this the browser's own chevron renders alongside the masked one
+     below — two arrows on every select. */
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
 }
 
@@ -307,6 +308,20 @@
      would reach over a neighbour's visible edge. Segments are adjacent by
      design; the pill itself is the enlarged target. */
   --dev-btn-hit-inset: 0px;
+}
+
+/* Figma: an unselected segment is Ghost (transparent, showing the pill's own
+   grey backdrop); the selected one is Page — it reads as the page surface
+   poking through, same white as Page's own rest fill (button/page/
+   container-selected = button/page/container, confirmed against the file).
+   Scoped to .dev-segmented, not the base emphasis classes, so a segment can
+   be authored as dev-btn--ghost throughout and just pick up the selected
+   look from its state — Format bar and the spacing chips use their own
+   higher-specificity Soft override instead and are unaffected. */
+.dev-segmented .dev-btn.is-selected,
+.dev-segmented .dev-btn.is-active,
+.dev-segmented .dev-btn[aria-pressed='true'] {
+  background: var(--comp-button-page-container);
 }
 
 /* Eye Button Base (597:4708) — the shown/hidden toggle pinned into a gallery

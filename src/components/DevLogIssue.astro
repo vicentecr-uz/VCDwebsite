@@ -573,11 +573,27 @@ import DevOverlay from './DevOverlay.astro';
       }
     };
 
-    drop.addEventListener('click', () => fileInput.click());
+    // Single click only focuses the well so it can receive a paste — there is
+    // no separate "File system" button in this state, so the file picker
+    // needs its own gesture. Double-click opens it; Enter/Space do too, since
+    // a keyboard user has no double-click.
+    drop.addEventListener('click', () => drop.focus());
+    drop.addEventListener('dblclick', () => fileInput.click());
     drop.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         fileInput.click();
+      }
+    });
+    drop.addEventListener('paste', (event) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      const files = [...items]
+        .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
+        .filter((file) => file !== null);
+      if (files.length) {
+        event.preventDefault();
+        void addFiles(files);
       }
     });
     fileInput.addEventListener('change', () => {
