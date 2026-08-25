@@ -440,10 +440,12 @@ const hideSvg = sizeIcon(xIcon, 8);
       event.preventDefault();
 
       const bounds = overlay.getBoundingClientRect();
-      overlay.style.left = `${bounds.left}px`;
-      overlay.style.top = `${bounds.top}px`;
+      // Clear bottom-right anchoring before left/top so the panel does not
+      // reflow between reads — same bounds feed origin and inline position.
       overlay.style.right = 'auto';
       overlay.style.bottom = 'auto';
+      overlay.style.left = `${bounds.left}px`;
+      overlay.style.top = `${bounds.top}px`;
 
       dragPointerId = event.pointerId;
       dragStartX = event.clientX;
