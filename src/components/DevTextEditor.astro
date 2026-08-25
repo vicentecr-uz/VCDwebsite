@@ -2269,20 +2269,18 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       formatBar.dataset.placement = formatPlacement;
 
       /*
-        Place the CLOSED bar as if the link row were already open, so
-        clicking Link only fills the reserved gap — the icon row does not
-        move. Grow to the right of the icons, not by recentering.
+        Slot is always openWidth, clamped to the viewport. Closed pill nests in
+        the slot center so Link grows equally left and right — icons stay put.
       */
       let top = preferAbove
         ? rect.top - openHeight - FORMAT_BAR_GAP
         : rect.bottom + FORMAT_BAR_GAP;
-      let left = rect.left + rect.width / 2 - iconWidth / 2;
 
       const pad = 8;
-      left = Math.min(
-        Math.max(pad, left),
-        window.innerWidth - Math.max(iconWidth, openWidth) - pad,
-      );
+      const currentWidth = linkPanelOpen ? openWidth : iconWidth;
+      let slotLeft = rect.left + rect.width / 2 - openWidth / 2;
+      slotLeft = Math.min(Math.max(pad, slotLeft), window.innerWidth - openWidth - pad);
+      let left = slotLeft + (openWidth - currentWidth) / 2;
       top = Math.min(
         Math.max(pad, top),
         window.innerHeight - openHeight - pad,
@@ -2461,6 +2459,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
           }
           captureFormatRects(savedFormatRange);
           setLinkPanelOpen(true);
+          positionFormatBar(savedFormatRange);
           syncFormatButtons();
         }
       });
@@ -2622,7 +2621,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
       captureFormatRects(savedFormatRange);
       setLinkPanelOpen(true);
-      if (formatBar.hidden && savedFormatRange) positionFormatBar(savedFormatRange);
+      if (savedFormatRange) positionFormatBar(savedFormatRange);
       syncFormatButtons();
     });
 
