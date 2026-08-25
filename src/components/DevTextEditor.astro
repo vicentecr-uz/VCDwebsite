@@ -449,25 +449,27 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         const devEnabled = document.documentElement.classList.contains('is-dev-mode');
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
         control.innerHTML = `
-          <button
-            type="button"
-            class="dev-gap-toolbar__add"
-            data-dev-section-add
-            title="Add section"
-            aria-label="Add section"
-            aria-expanded="false"
-            aria-haspopup="menu"
-          >
-            <span aria-hidden="true">${sizeIcon(plusIcon)}</span>
-          </button>
+          <div class="dev-gap-toolbar__pill">
+            <button
+              type="button"
+              class="dev-gap-toolbar__add"
+              data-dev-section-add
+              title="Add section"
+              aria-label="Add section"
+              aria-expanded="false"
+              aria-haspopup="menu"
+            >
+              <span aria-hidden="true">${sizeIcon(plusIcon)}</span>
+            </button>
+            <div class="dev-gap-toolbar__spacing">
+              ${spacingButtonsHtml(pageTop)}
+            </div>
+          </div>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
             <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
             <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
             <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
-          </div>
-          <div class="dev-gap-toolbar__spacing">
-            ${spacingButtonsHtml(pageTop)}
           </div>
         `;
 
@@ -3377,13 +3379,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     background: var(--comp-button-ghost-container-pressed);
   }
 
-  /* Divergence: Figma's Ghost/Selected variant binds button/ghost/container
-     (transparent) with a ~16% paint opacity that has no exported token, and
-     at 32px on a white bar would not read as "on" — so active borrows the
-     Filled tokens instead of the signed Ghost/Selected treatment. */
+  /* Ghost/Selected binds button/ghost/container at ~16% paint opacity, which
+     has no exported token — Soft is the explicit fallback (Anto, 2026-08-25). */
   .dev-text-format__buttons button.is-active {
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
+    background: var(--comp-button-soft-container-hover);
+    color: var(--comp-button-label);
   }
 
   .dev-text-format__icon {
@@ -3506,41 +3506,51 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     top: calc(var(--space-related) / -2);
   }
 
-  /* + (centre) and spacing (right) reveal independently via proximity. */
-  .dev-gap-toolbar__add,
-  .dev-gap-toolbar__spacing {
+  /* Unified pill (2026-08-25): Add + the spacing chips now live in one
+     surface, matching Figma. The two proximity zones (centre / right-edge)
+     stay independent in JS — is-near-add and is-near-spacing are still
+     computed exactly as before — but either one now reveals the whole pill,
+     since there is only one thing to reveal. */
+  .dev-gap-toolbar__pill {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
   }
 
-  .is-dev-mode .dev-gap-toolbar.is-near-add > .dev-gap-toolbar__add,
-  .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__add,
-  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__add:focus-visible, > .dev-gap-toolbar__menu:focus-within)
-    > .dev-gap-toolbar__add {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .is-dev-mode .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__spacing,
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__spacing,
-  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__spacing:focus-within) > .dev-gap-toolbar__spacing {
+  .is-dev-mode .dev-gap-toolbar.is-near-add > .dev-gap-toolbar__pill,
+  .is-dev-mode .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__pill,
+  .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__pill,
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__pill,
+  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__pill:focus-within, > .dev-gap-toolbar__menu:focus-within)
+    > .dev-gap-toolbar__pill {
     opacity: 1;
     pointer-events: auto;
   }
 
   /* Keep gap controls out of the way while editing text. */
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__add,
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__spacing {
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__pill {
     opacity: 0;
     pointer-events: none;
   }
 
   /* Tuner open: force-hide even dirty / near chips (same as asset manager). */
-  html.is-dev-tuner-open .dev-gap-toolbar__add,
-  html.is-dev-tuner-open .dev-gap-toolbar__spacing {
+  html.is-dev-tuner-open .dev-gap-toolbar__pill {
     opacity: 0 !important;
     pointer-events: none !important;
+  }
+
+  /* Unified pill (630:5633, Spacing Toolbar Base) — Add + the spacing chips
+     as one surface, matching Figma. Previously two separate floating
+     elements at Anto's request; reversed 2026-08-25. */
+  .dev-gap-toolbar__pill {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: 12px;
+    background: var(--sys-color-srf);
+    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
   }
 
   .dev-gap-toolbar__add {
@@ -3548,22 +3558,16 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
+    width: 72px;
     padding: 8px;
     border: 0;
-    /* Standalone here, not inside the master's pill segment: a 72px-wide
-       floating + in the middle of a page gap is not what the master draws,
-       so min-width stays 0 (72px belongs to the pill's spacing chips). */
-    min-width: 0;
     min-height: var(--dev-control-height);
     border-radius: var(--dev-radius-control);
     background: var(--comp-button-soft-container);
     color: var(--comp-button-label);
     font: var(--dev-text-label);
     cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      box-shadow 0.15s ease,
-      transform 0.15s ease;
+    transition: background-color 0.15s ease;
   }
 
   .dev-gap-toolbar__add > span {
@@ -3581,12 +3585,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
   .dev-gap-toolbar__add:active,
   .dev-gap-toolbar__add[aria-expanded='true'] {
     background: var(--comp-button-soft-container-hover);
-    transform: scale(1.08);
   }
 
   .dev-gap-toolbar__add:active,
   .dev-gap-toolbar__add[aria-expanded='true'] {
-    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    background: var(--comp-button-soft-container-pressed);
   }
 
   /* Master: menu has no surface of its own — a bare column, each item
@@ -3639,19 +3642,12 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     background: var(--comp-button-page-container-pressed);
   }
 
-  /* Spacing Toolbar Base (630:5633). */
+  /* Surface now lives on .dev-gap-toolbar__pill — this is just the row of
+     chips inside it. */
   .dev-gap-toolbar__spacing {
-    position: absolute;
-    right: 0;
     display: flex;
-    flex-direction: row;
     align-items: center;
     gap: 4px;
-    padding: 6px;
-    border: 1px solid var(--sys-color-srf-container-low);
-    border-radius: 12px;
-    background: var(--sys-color-srf);
-    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
   }
 
   /* Ghost Button Base at 72px. */
@@ -3677,14 +3673,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     background: var(--comp-button-ghost-container-hover);
   }
 
-  /* Divergence: the signed master shows the current chip on
-     button/ghost/container-hover, the same fill a hovered chip gets, so a
-     selected chip would be indistinguishable from a hovered one. This group
-     is a radio — exactly one option is always on — so active borrows the
-     Filled tokens instead, matching the Format bar's active treatment. */
+  /* Soft, per Anto (2026-08-25) — same fallback as the Format bar's active
+     glyphs, for the same reason (Ghost/Selected's ~16% opacity has no token). */
   .dev-spacing-control__btn.is-active {
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
+    background: var(--comp-button-soft-container-hover);
+    color: var(--comp-button-label);
   }
 
   /* Affordance the static master doesn't draw — its chips are label-only. */
