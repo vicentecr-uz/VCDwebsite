@@ -391,10 +391,10 @@ const componentCatalog: ComponentEntry[] = [
     id: 'component-ui-hairline',
     name: 'Hairline',
     category: 'ui-primitives',
-    purpose: '1px rule mirroring the Figma Hairline — dividers inside dev-chrome layouts.',
-    classRef: '.dev-hairline',
+    purpose: '1px rule mirroring the Figma Hairline — dividers inside dev-chrome layouts. orientation=vertical for in-row splits (Add vs gap chips).',
+    classRef: '.dev-hairline / .dev-hairline--vertical',
     source: 'src/components/ui/Hairline.astro',
-    props: '...rest',
+    props: 'orientation, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
     checklist: 'sys.color.outline fill (binding, not the description’s outline-variant); renders correctly in both themes.',
     preview: 'ui-hairline',
@@ -961,6 +961,11 @@ const sectionLinks = savedOutline.length
                           <p class="preview-note">Line above</p>
                           <Hairline />
                           <p class="preview-note">Line below</p>
+                          <div style="display: flex; align-items: stretch; gap: 0.75em; min-height: 2em;">
+                            <p class="preview-note" style="margin: 0;">Left</p>
+                            <Hairline orientation="vertical" />
+                            <p class="preview-note" style="margin: 0;">Right</p>
+                          </div>
                         </div>
                       )}
                     </div>

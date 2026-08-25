@@ -2,10 +2,15 @@
 import '../../styles/dev-chrome.css';
 
 interface Props {
+  orientation?: 'horizontal' | 'vertical';
   [key: string]: any;
 }
 
-const { class: className, ...rest } = Astro.props;
+const { orientation = 'horizontal', class: className, ...rest } = Astro.props;
 ---
 
-<span class:list={['dev-hairline', className]} role="presentation" {...rest} />
+<span
+  class:list={['dev-hairline', orientation === 'vertical' && 'dev-hairline--vertical', className]}
+  role="presentation"
+  {...rest}
+/>
