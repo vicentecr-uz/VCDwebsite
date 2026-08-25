@@ -311,19 +311,26 @@ const hideSvg = sizeIcon(xIcon, 8);
         return window.innerHeight - 2 * em;
       };
 
+      const setBodyScrollable = (scrollable: boolean) => {
+        overlay.classList.toggle('is-body-scrollable', scrollable);
+      };
+
       const naturalHeightPx = () => {
         const frame = overlay.offsetHeight;
         const bodyBox = body.clientHeight;
         const prevFlex = body.style.flex;
         const prevMin = body.style.minHeight;
-        // Hug with the same overflow + scrollbar-gutter as the laid-out body.
-        // overflow: visible drops the gutter and measures ~15px short, which
-        // clips the top field and flushes the bottom row against the cap.
+        const hadScrollable = overlay.classList.contains('is-body-scrollable');
+        // Measure in hugged overflow (hidden, no stable gutter). overflow:visible
+        // undersizes; measuring with scrollable gutter on caps ~1px short and
+        // reserves a lane that forces first-open scroll.
+        setBodyScrollable(false);
         body.style.flex = '0 0 auto';
         body.style.minHeight = 'auto';
         const bodyHug = body.offsetHeight;
         body.style.flex = prevFlex;
         body.style.minHeight = prevMin;
+        if (hadScrollable) setBodyScrollable(true);
         return frame - bodyBox + bodyHug;
       };
 
@@ -331,6 +338,7 @@ const hideSvg = sizeIcon(xIcon, 8);
         if (overlay.classList.contains('is-minimized')) {
           overlay.style.maxHeight = '';
           huggedNatural = true;
+          setBodyScrollable(false);
           return;
         }
         const natural = naturalHeightPx();
@@ -341,20 +349,24 @@ const hideSvg = sizeIcon(xIcon, 8);
         const px = Number.parseFloat(inline);
         if (!inline || !Number.isFinite(px)) {
           huggedNatural = true;
+          setBodyScrollable(false);
           return;
         }
         if (px > cap) {
           overlay.style.height = '';
           huggedNatural = true;
+          setBodyScrollable(false);
           return;
         }
         const inSticky = px >= cap - STICKY_AROUND_NATURAL;
         if (inSticky && !huggedNatural) {
           overlay.style.height = '';
           huggedNatural = true;
+          setBodyScrollable(false);
           return;
         }
         if (!inSticky) huggedNatural = false;
+        setBodyScrollable(!huggedNatural);
       };
 
       const scheduleConstrain = () => {
@@ -720,6 +732,12 @@ const hideSvg = sizeIcon(xIcon, 8);
     /* Reserve the scrollbar's own lane so it tracks beside content instead of
        drawing over it once the body actually scrolls. */
     scrollbar-gutter: stable;
+  }
+
+  /* Portrait hug: no gutter until the user shrinks below the content cap. */
+  .dev-overlay--portrait:not(.is-body-scrollable) .dev-overlay__body {
+    overflow-y: hidden;
+    scrollbar-gutter: auto;
   }
 
   /* display:flex above beats the UA [hidden] rule, so minimize was collapsing
