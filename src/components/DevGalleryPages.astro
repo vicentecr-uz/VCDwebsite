@@ -104,7 +104,97 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     let drag: { pointerId: number; slug: string; cancel: () => void } | null = null;
     const DRAG_THRESHOLD = 4;
+    const GRID_GAP = 8;
+    const GRID_COLUMNS = 3;
+    let layoutCapsRaf = 0;
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const readLandscapeDefaultInnerWidth = () => {
+      const styles = getComputedStyle(document.documentElement);
+      const panelWidth = Number.parseFloat(styles.getPropertyValue('--dev-panel-width-landscape')) || 597;
+      const panelPad = Number.parseFloat(styles.getPropertyValue('--dev-panel-pad')) || 12;
+      return panelWidth - 2 * panelPad;
+    };
+
+    /** Thumb width from the signed 597px landscape body, not the current resize. */
+    const computeThumbWidth = () => {
+      const innerBodyW = readLandscapeDefaultInnerWidth();
+      if (!gridEl) {
+        return Math.round((innerBodyW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS);
+      }
+      const gridStyle = getComputedStyle(gridEl);
+      const gridPadX = Number.parseFloat(gridStyle.paddingLeft) + Number.parseFloat(gridStyle.paddingRight);
+      const available = innerBodyW - gridPadX - (GRID_COLUMNS - 1) * GRID_GAP;
+      return Math.round(available / GRID_COLUMNS);
+    };
+
+    const viewportCapPx = () => {
+      const em = Number.parseFloat(getComputedStyle(panel).fontSize) || 16;
+      return {
+        width: window.innerWidth - 2 * em,
+        height: window.innerHeight - 2 * em,
+      };
+    };
+
+    const measureOverlayHug = (): { width: number; height: number } | null => {
+      if (panel.hidden) return null;
+      const prevWidth = panel.style.width;
+      const prevHeight = panel.style.height;
+      const prevMaxWidth = panel.style.maxWidth;
+      const prevMaxHeight = panel.style.maxHeight;
+      panel.style.width = '';
+      panel.style.height = '';
+      panel.style.maxWidth = '';
+      panel.style.maxHeight = '';
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
+      panel.style.width = prevWidth;
+      panel.style.height = prevHeight;
+      panel.style.maxWidth = prevMaxWidth;
+      panel.style.maxHeight = prevMaxHeight;
+      if (!width || !height) return null;
+      return { width, height };
+    };
+
+    const applyLayoutCaps = () => {
+      if (panel.hidden) return;
+      root.style.setProperty('--dev-gallery-thumb-w', `${computeThumbWidth()}px`);
+      const hug = measureOverlayHug();
+      if (!hug) return;
+
+      const minLandscape = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--dev-panel-min-width-landscape'),
+      ) || 344;
+      const viewport = viewportCapPx();
+
+      if (hug.width < minLandscape) {
+        panel.style.minWidth = `${hug.width}px`;
+        panel.style.maxWidth = `${hug.width}px`;
+      } else {
+        panel.style.minWidth = '';
+        panel.style.maxWidth = `${Math.min(hug.width, viewport.width)}px`;
+      }
+      panel.style.maxHeight = `${Math.min(hug.height, viewport.height)}px`;
+
+      const capW = Number.parseFloat(panel.style.maxWidth);
+      const capH = Number.parseFloat(panel.style.maxHeight);
+      const inlineW = Number.parseFloat(panel.style.width);
+      const inlineH = Number.parseFloat(panel.style.height);
+      if (Number.isFinite(inlineW) && Number.isFinite(capW) && inlineW > capW) {
+        panel.style.width = '';
+      }
+      if (Number.isFinite(inlineH) && Number.isFinite(capH) && inlineH > capH) {
+        panel.style.height = '';
+      }
+    };
+
+    const scheduleLayoutCaps = () => {
+      if (layoutCapsRaf) return;
+      layoutCapsRaf = requestAnimationFrame(() => {
+        layoutCapsRaf = 0;
+        applyLayoutCaps();
+      });
+    };
 
     const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
     const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
@@ -674,6 +764,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
             ? 'Every project page is already on this gallery.'
             : 'No project pages found.');
         syncCount();
+        scheduleLayoutCaps();
         return;
       }
 
@@ -738,6 +829,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       }
 
       syncCount();
+      scheduleLayoutCaps();
     };
 
     const loadPages = async () => {
@@ -831,6 +923,15 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       if (drag) drag.cancel();
       if (!panel.hidden) closePanel();
     }) as EventListener);
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel) return;
+      scheduleLayoutCaps();
+    }) as EventListener);
+
+    new MutationObserver(() => {
+      if (!panel.hidden) scheduleLayoutCaps();
+    }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
   };
 
   initDevGalleryPages();
@@ -845,7 +946,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
-    max-height: min(28em, calc(100vh - 8em));
+    min-height: 0;
   }
 
   .dev-gallery-pages__status,
@@ -857,21 +958,22 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
   .dev-gallery-pages__filters {
     flex-wrap: wrap;
+    align-self: flex-start;
   }
 
   .dev-gallery-pages__grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, var(--dev-gallery-thumb-w, 1fr));
     gap: 8px;
-    overflow: auto;
+    width: max-content;
+    max-width: 100%;
     min-height: 0;
-    max-height: min(25em, calc(100vh - 14em));
     padding: 0.15em;
   }
 
   .dev-gallery-pages__card {
     position: relative;
-    width: 100%;
+    width: var(--dev-gallery-thumb-w);
     border: 0;
     border-radius: var(--dev-radius-control);
     overflow: hidden;
