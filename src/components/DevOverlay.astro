@@ -116,13 +116,17 @@ const hideSvg = sizeIcon(xIcon, 8);
       }
     };
 
+    const getAnchorRect = () =>
+      overlay.offsetParent?.getBoundingClientRect() ?? { left: 0, top: 0 };
+
     const applyPosition = (left: number, top: number, persist: boolean) => {
       const maxLeft = Math.max(0, window.innerWidth - overlay.offsetWidth);
       const maxTop = Math.max(0, window.innerHeight - overlay.offsetHeight);
       const nextLeft = clamp(left, 0, maxLeft);
       const nextTop = clamp(top, 0, maxTop);
-      overlay.style.left = `${nextLeft}px`;
-      overlay.style.top = `${nextTop}px`;
+      const anchorRect = getAnchorRect();
+      overlay.style.left = `${nextLeft - anchorRect.left}px`;
+      overlay.style.top = `${nextTop - anchorRect.top}px`;
       overlay.style.right = 'auto';
       overlay.style.bottom = 'auto';
       if (persist) savePosition(nextLeft, nextTop);
@@ -195,6 +199,9 @@ const hideSvg = sizeIcon(xIcon, 8);
 
     const finishShow = () => {
       setNativeHidden(false);
+      if (overlay.classList.contains('dev-overlay--portrait') && body.scrollTop !== 0) {
+        body.scrollTop = 0;
+      }
       // Start from the resting "closed" pose, then open on the next frame.
       overlay.classList.remove('is-dev-overlay-open');
       void overlay.offsetWidth;
@@ -313,6 +320,7 @@ const hideSvg = sizeIcon(xIcon, 8);
 
       const setBodyScrollable = (scrollable: boolean) => {
         overlay.classList.toggle('is-body-scrollable', scrollable);
+        if (!scrollable && body.scrollTop !== 0) body.scrollTop = 0;
       };
 
       const naturalHeightPx = () => {
@@ -443,12 +451,19 @@ const hideSvg = sizeIcon(xIcon, 8);
       event.preventDefault();
 
       const bounds = overlay.getBoundingClientRect();
+      const anchorRect = getAnchorRect();
+      const writtenTop = bounds.top - anchorRect.top;
       // Clear bottom-right anchoring before left/top so the panel does not
       // reflow between reads — same bounds feed origin and inline position.
       overlay.style.right = 'auto';
       overlay.style.bottom = 'auto';
-      overlay.style.left = `${bounds.left}px`;
-      overlay.style.top = `${bounds.top}px`;
+      overlay.style.left = `${bounds.left - anchorRect.left}px`;
+      overlay.style.top = `${writtenTop}px`;
+      console.debug('[dev-overlay drag]', {
+        beforeTop: bounds.top,
+        writtenTop,
+        delta: writtenTop - bounds.top,
+      });
 
       dragPointerId = event.pointerId;
       dragStartX = event.clientX;
@@ -476,10 +491,11 @@ const hideSvg = sizeIcon(xIcon, 8);
         dragRaf = 0;
         applyPosition(pendingDragLeft, pendingDragTop, false);
       }
+      const anchorRect = getAnchorRect();
       const left = Number.parseFloat(overlay.style.left);
       const top = Number.parseFloat(overlay.style.top);
       if (Number.isFinite(left) && Number.isFinite(top)) {
-        savePosition(left, top);
+        savePosition(left + anchorRect.left, top + anchorRect.top);
       }
       if (dragHandle.hasPointerCapture(event.pointerId)) {
         dragHandle.releasePointerCapture(event.pointerId);
@@ -507,10 +523,11 @@ const hideSvg = sizeIcon(xIcon, 8);
     });
 
     window.addEventListener('resize', () => {
+      const anchorRect = getAnchorRect();
       const left = Number.parseFloat(overlay.style.left);
       const top = Number.parseFloat(overlay.style.top);
       if (!Number.isFinite(left) || !Number.isFinite(top)) return;
-      setPosition(left, top);
+      setPosition(left + anchorRect.left, top + anchorRect.top);
     });
   };
 
@@ -745,6 +762,13 @@ const hideSvg = sizeIcon(xIcon, 8);
   /* Portrait hug: no gutter until the user shrinks below the content cap. */
   .dev-overlay--portrait:not(.is-body-scrollable) .dev-overlay__body {
     overflow-y: hidden;
+    scrollbar-gutter: auto;
+  }
+
+  /* Landscape bodies don't scroll themselves — Gallery sets overflow-y: hidden;
+     Asset manager's grid owns its own scrolling. Without this, stable reserves
+     a lane the body never uses and the inner clip misses the bottom-right curve. */
+  .dev-overlay--landscape .dev-overlay__body {
     scrollbar-gutter: auto;
   }
 
