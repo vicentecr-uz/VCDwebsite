@@ -312,14 +312,14 @@ const hideSvg = sizeIcon(xIcon, 8);
         const bodyBox = body.clientHeight;
         const prevFlex = body.style.flex;
         const prevMin = body.style.minHeight;
-        const prevOverflow = body.style.overflow;
+        // Hug with the same overflow + scrollbar-gutter as the laid-out body.
+        // overflow: visible drops the gutter and measures ~15px short, which
+        // clips the top field and flushes the bottom row against the cap.
         body.style.flex = '0 0 auto';
         body.style.minHeight = 'auto';
-        body.style.overflow = 'visible';
         const bodyHug = body.offsetHeight;
         body.style.flex = prevFlex;
         body.style.minHeight = prevMin;
-        body.style.overflow = prevOverflow;
         return frame - bodyBox + bodyHug;
       };
 
