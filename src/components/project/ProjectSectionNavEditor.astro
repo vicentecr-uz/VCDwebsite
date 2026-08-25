@@ -591,18 +591,16 @@ import DevOverlay from '../DevOverlay.astro';
       sectionLabelInput.value = sectionMarker?.label || '';
       syncMarkerFields();
 
+      // Dropped per Anto (2026-08-25): no explanatory status line — the
+      // element stays (other code still queries it) but never shows text.
+      // The range highlight it used to gate on is still worth keeping live.
       const owned = owningSectionForBlock(block);
+      belongsEl.hidden = true;
       if (owned.section && !sectionMarker) {
-        const groupBit = owned.group ? `${owned.group.label} › ` : '';
-        belongsEl.hidden = false;
-        belongsEl.textContent = `Already in range: ${groupBit}${owned.section.label} (no extra marker needed)`;
         highlightSectionRange(owned.section);
       } else if (sectionMarker) {
-        belongsEl.hidden = false;
-        belongsEl.textContent = 'This section covers blocks below until the next section or group.';
         highlightSectionRange(sectionMarker);
       } else {
-        belongsEl.hidden = true;
         clearRangeHighlights();
       }
 
