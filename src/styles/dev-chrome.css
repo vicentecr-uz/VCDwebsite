@@ -199,6 +199,9 @@
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
+  /* Room for the masked chevron (::after on .dev-field__value) — select fills
+     the value box so clicks on the icon area still hit the native menu. */
+  padding-right: 24px;
 }
 
 .dev-field__input--select:disabled {
@@ -213,11 +216,19 @@
 
 /* Figma Select Field: 16px trailing Icon/Chevron at Emphasis=Subtle. Masked,
    not a coloured data-URI, so the ink follows the token into dark mode. */
+.dev-field__value:has(> .dev-field__input--select) {
+  position: relative;
+}
+
 .dev-field__value:has(> .dev-field__input--select)::after {
   content: '';
-  flex: 0 0 auto;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   width: 16px;
   height: 16px;
+  pointer-events: none;
   background: var(--comp-button-label-subtle);
   mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>') center / 14px 14px no-repeat;
 }
@@ -476,6 +487,12 @@
   background: var(--sys-color-srf-container-low);
   box-sizing: border-box;
   cursor: pointer;
+}
+
+.dev-drop:focus,
+.dev-drop:focus-visible {
+  outline: none;
+  background: var(--comp-button-soft-container-pressed);
 }
 
 .dev-drop__well {
