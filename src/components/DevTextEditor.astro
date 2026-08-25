@@ -41,7 +41,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         <span class="dev-text-format__icon" aria-hidden="true" set:html={formatLinkSvg} />
       </button>
     </div>
-    <form class="dev-text-format__link" data-dev-text-link-panel hidden>
+    <form class="dev-text-format__link" data-dev-text-link-panel aria-hidden="true">
       <button type="button" data-dev-text-unlink>Unlink</button>
       <input
         type="text"
@@ -316,7 +316,8 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
           const href = (node.getAttribute('href') || '').trim();
           const safeHref = SAFE_HREF.test(href) ? href.replaceAll('"', '%22') : '';
           if (!safeHref || !inner) return inner;
-          return `<a href="${safeHref}">${inner}</a>`;
+          const off = node.classList.contains('is-underline-off');
+          return `<a href="${safeHref}"${off ? ' class="is-underline-off"' : ''}>${inner}</a>`;
         }
         return inner;
       };
@@ -476,6 +477,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
             >
               <span aria-hidden="true">${sizeIcon(plusIcon)}</span>
             </button>
+            <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
             <div class="dev-gap-toolbar__spacing">
               ${spacingButtonsHtml(pageTop)}
             </div>
@@ -662,6 +664,24 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       state.element.classList.contains('is-dev-spacing-dirty') ||
       state.spacingGroup.contains(document.activeElement);
 
+    const isPointerOverToolbarHitbox = (
+      state: EditableSpacingState,
+      clientX: number,
+      clientY: number,
+    ) => {
+      const pill = state.control.querySelector<HTMLElement>('.dev-gap-toolbar__pill');
+      const boxes = [pill, state.menu].filter((el): el is HTMLElement => Boolean(el && !el.hidden));
+      return boxes.some((el) => {
+        const box = el.getBoundingClientRect();
+        return (
+          clientX >= box.left &&
+          clientX <= box.right &&
+          clientY >= box.top &&
+          clientY <= box.bottom
+        );
+      });
+    };
+
     const isPageTopGapControl = (control: HTMLElement) => control.dataset.pageTop === 'true';
 
     /** Escape drop-zone isolation so page-top chips paint/hit above the sticky header. */
@@ -774,13 +794,21 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
           return;
         }
         const allowNear = !overHeader || isPageTopGapControl(control);
+        const alreadyVisible =
+          control.classList.contains('is-near-add') ||
+          control.classList.contains('is-near-spacing') ||
+          control.classList.contains('is-menu-open') ||
+          state.element.classList.contains('is-dev-spacing-dirty');
+        // Vicinity reveals the pill; once it's up, the pill (and open menu)
+        // is the hitbox that keeps it up — 12em sits outside both radii.
+        const overHitbox = alreadyVisible && isPointerOverToolbarHitbox(state, clientX, clientY);
         control.classList.toggle(
           'is-near-add',
-          isAddControlPinned(state) || (allowNear && state === nearestAdd),
+          isAddControlPinned(state) || overHitbox || (allowNear && state === nearestAdd),
         );
         control.classList.toggle(
           'is-near-spacing',
-          isSpacingControlPinned(state) || (allowNear && state === nearestSpacing),
+          isSpacingControlPinned(state) || overHitbox || (allowNear && state === nearestSpacing),
         );
       });
       syncPageTopGapStacking();
@@ -2032,9 +2060,16 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
     /* ── Selection formatting popup ───────────────────────── */
     let savedFormatRange: Range | null = null;
+    /** Fallback paint when collapsed selection empties getClientRects (Edge). */
+    let savedFormatRects: DOMRect[] = [];
     let linkPanelOpen = false;
     let formatPlacement: 'above' | 'below' = 'above';
     let formatRaf = 0;
+
+    const canCustomHighlight =
+      typeof CSS !== 'undefined'
+      && Boolean(CSS.highlights)
+      && typeof Highlight !== 'undefined';
 
     const paragraphStates = () => textStates.filter((state) => state.kind === 'paragraphs');
 
@@ -2069,54 +2104,96 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       return savedFormatRange;
     };
 
+    const FORMAT_HIGHLIGHT = 'vcd-format-sel';
+    const FORMAT_BAR_GAP = 20;
+
+    const getFormatRangeRects = (range: Range): DOMRect[] => {
+      let rects = [...range.getClientRects()];
+      if (!rects.length) {
+        const bound = range.getBoundingClientRect();
+        if (bound.width || bound.height) rects = [bound];
+      }
+      return rects;
+    };
+
+    const captureFormatRects = (range: Range | null) => {
+      savedFormatRects = range ? getFormatRangeRects(range) : [];
+    };
+
+    /** Link row is visibility:hidden while closed — measure as if open so height never reads 0. */
+    const measureLinkRowHeight = (): number => {
+      const wasOpen = formatBar.dataset.linkOpen === 'true';
+      if (!wasOpen) formatBar.dataset.linkOpen = 'true';
+      const height = linkPanel.offsetHeight || linkPanel.getBoundingClientRect().height;
+      if (!wasOpen) formatBar.dataset.linkOpen = 'false';
+      return height || 32;
+    };
+
     const hideFormatBar = () => {
       formatBar.hidden = true;
-      linkPanel.hidden = true;
       linkPanelOpen = false;
+      formatBar.dataset.linkOpen = 'false';
+      linkPanel.setAttribute('aria-hidden', 'true');
       linkInput.value = '';
       savedFormatRange = null;
+      savedFormatRects = [];
       formatBar.dataset.placement = 'above';
+      const surface = formatBar.querySelector<HTMLElement>('.dev-text-format__surface');
+      if (surface) surface.style.minHeight = '';
       syncFormatSelectionOverlay();
     };
 
     const setLinkPanelOpen = (open: boolean) => {
       linkPanelOpen = open;
-      linkPanel.hidden = !open;
       formatBar.dataset.linkOpen = open ? 'true' : 'false';
+      linkPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (open) {
+        if (savedFormatRange) captureFormatRects(savedFormatRange);
         const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
         linkInput.value = anchor?.getAttribute('href') || '';
+        // Paint stand-in before focus collapses the native selection (Edge).
+        syncFormatSelectionOverlay();
         requestAnimationFrame(() => {
           linkInput.focus();
           linkInput.select();
+          syncFormatSelectionOverlay();
         });
       } else {
         linkInput.value = '';
+        syncFormatSelectionOverlay();
       }
     };
 
     const syncFormatSelectionOverlay = () => {
+      const show = Boolean(savedFormatRange && !formatBar.hidden && linkPanelOpen);
+      if (canCustomHighlight) {
+        if (show && savedFormatRange) {
+          CSS.highlights.set(FORMAT_HIGHLIGHT, new Highlight(savedFormatRange));
+        } else {
+          CSS.highlights.delete(FORMAT_HIGHLIGHT);
+        }
+      }
+
       formatSel.replaceChildren();
-      const live = window.getSelection();
-      const nativeVisible = Boolean(live && !live.isCollapsed && live.rangeCount);
-      const needsPaint = Boolean(
-        savedFormatRange &&
-        !formatBar.hidden &&
-        (linkPanelOpen || !nativeVisible),
-      );
-      if (!needsPaint || !savedFormatRange) {
+      if (!show || !savedFormatRange) {
         formatSel.hidden = true;
         return;
       }
       formatSel.hidden = false;
-      for (const r of savedFormatRange.getClientRects()) {
-        if (r.width < 1 || r.height < 1) continue;
+      let rects = getFormatRangeRects(savedFormatRange);
+      if (!rects.length && savedFormatRects.length) rects = savedFormatRects;
+      for (const r of rects) {
+        if (r.width < 1 && r.height < 1) continue;
         const box = document.createElement('div');
-        box.className = 'dev-text-format-sel__rect';
-        box.style.top = `${r.top}px`;
-        box.style.left = `${r.left}px`;
-        box.style.width = `${r.width}px`;
-        box.style.height = `${r.height}px`;
+        box.style.cssText = [
+          'position:fixed',
+          `top:${r.top}px`,
+          `left:${r.left}px`,
+          `width:${Math.max(r.width, 1)}px`,
+          `height:${Math.max(r.height, 1)}px`,
+          'background:color-mix(in srgb, CanvasText 18%, transparent)',
+          'pointer-events:none',
+        ].join(';');
         formatSel.append(box);
       }
     };
@@ -2125,11 +2202,22 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       formatButtons.forEach((button) => {
         const command = button.dataset.devFormat;
         let active = false;
-        if (command === 'bold' || command === 'italic' || command === 'underline') {
+        if (command === 'bold' || command === 'italic') {
           try {
             active = document.queryCommandState(command);
           } catch {
             active = false;
+          }
+        } else if (command === 'underline') {
+          const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
+          if (anchor) {
+            active = !anchor.classList.contains('is-underline-off');
+          } else {
+            try {
+              active = document.queryCommandState('underline');
+            } catch {
+              active = false;
+            }
           }
         } else if (command === 'link') {
           active = Boolean(closestAnchor(savedFormatRange?.commonAncestorContainer ?? null))
@@ -2142,58 +2230,56 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
     const positionFormatBar = (range: Range) => {
       const rect = range.getBoundingClientRect();
-      if (!rect.width && !rect.height) {
+      if (!rect.width && !rect.height && !linkPanelOpen) {
         hideFormatBar();
         return;
       }
 
       formatBar.hidden = false;
-
-      /*
-        Always reserve the OPEN box (icons + Unlink/URL/Apply) when placing
-        above the selection, so the link row can appear below the icons
-        without covering the text and without moving the icon row. Measure
-        with the bar invisible so un-hiding the link panel doesn't flash.
-      */
-      const prevVisibility = formatBar.style.visibility;
-      const linkWasHidden = linkPanel.hidden;
-      formatBar.style.visibility = 'hidden';
-      linkPanel.hidden = false;
-      const openRect = formatBar.getBoundingClientRect();
-      linkPanel.hidden = linkWasHidden;
-      formatBar.style.visibility = prevVisibility;
+      formatBar.dataset.linkOpen = linkPanelOpen ? 'true' : 'false';
 
       const buttons = formatBar.querySelector<HTMLElement>('.dev-text-format__buttons');
       const surface = formatBar.querySelector<HTMLElement>('.dev-text-format__surface');
       const surfaceStyle = surface ? getComputedStyle(surface) : null;
       const padX = surfaceStyle
         ? Number.parseFloat(surfaceStyle.paddingLeft) + Number.parseFloat(surfaceStyle.paddingRight)
-        : 0;
-      const iconWidth = (buttons?.getBoundingClientRect().width ?? openRect.width) + padX;
+        : 12;
+      const padY = surfaceStyle
+        ? Number.parseFloat(surfaceStyle.paddingTop) + Number.parseFloat(surfaceStyle.paddingBottom)
+        : 12;
+      const flexGap = surfaceStyle ? Number.parseFloat(surfaceStyle.rowGap || surfaceStyle.gap) || 4 : 4;
+      const buttonsRect = buttons?.getBoundingClientRect();
+      const buttonsH = buttonsRect?.height ?? 32;
+      const iconWidth = (buttonsRect?.width ?? 0) + padX;
+      const linkH = measureLinkRowHeight();
+      const openHeight = padY + buttonsH + flexGap + linkH;
+      if (surface) surface.style.minHeight = `${Math.round(openHeight)}px`;
 
-      const gap = 8;
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
-      const preferAbove = spaceAbove >= openRect.height + gap || spaceAbove >= spaceBelow;
+      const preferAbove = spaceAbove >= openHeight + FORMAT_BAR_GAP || spaceAbove >= spaceBelow;
 
       formatPlacement = preferAbove ? 'above' : 'below';
       formatBar.dataset.placement = formatPlacement;
 
+      /*
+        Place the CLOSED bar as if the link row were already open, so
+        clicking Link only fills the reserved gap — the icon row does not
+        move. Grow to the right of the icons, not by recentering.
+      */
       let top = preferAbove
-        ? rect.top - openRect.height - gap
-        : rect.bottom + gap;
-      // Centre on the icon row, not the wider link row, so opening Link
-      // grows to the right instead of sliding B/I/U.
+        ? rect.top - openHeight - FORMAT_BAR_GAP
+        : rect.bottom + FORMAT_BAR_GAP;
       let left = rect.left + rect.width / 2 - iconWidth / 2;
 
       const pad = 8;
       left = Math.min(
         Math.max(pad, left),
-        window.innerWidth - openRect.width - pad,
+        window.innerWidth - Math.max(iconWidth, linkPanel.getBoundingClientRect().width + padX) - pad,
       );
       top = Math.min(
         Math.max(pad, top),
-        window.innerHeight - openRect.height - pad,
+        window.innerHeight - openHeight - pad,
       );
 
       formatBar.style.top = `${Math.round(top)}px`;
@@ -2262,8 +2348,29 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       });
     };
 
+    const anchorsInRange = (range: Range): HTMLAnchorElement[] => {
+      const root = range.commonAncestorContainer;
+      const scope = root instanceof Element ? root : root.parentElement;
+      if (!scope) return [];
+      if (scope instanceof HTMLAnchorElement) return [scope];
+      const closest = closestAnchor(range.startContainer);
+      const found = [...scope.querySelectorAll('a')].filter((anchor) => range.intersectsNode(anchor));
+      if (closest && !found.includes(closest)) found.unshift(closest);
+      return found;
+    };
+
     const runFormatCommand = (command: 'bold' | 'italic' | 'underline') => {
-      if (!restoreFormatRange()) return;
+      if (!restoreFormatRange() || !savedFormatRange) return;
+      if (command === 'underline') {
+        const anchors = anchorsInRange(savedFormatRange);
+        if (anchors.length) {
+          const turnOff = anchors.some((anchor) => !anchor.classList.contains('is-underline-off'));
+          anchors.forEach((anchor) => anchor.classList.toggle('is-underline-off', turnOff));
+          refreshFormatBarAfterCommand();
+          updateActions();
+          return;
+        }
+      }
       document.execCommand(command);
       refreshFormatBarAfterCommand();
       updateActions();
@@ -2337,6 +2444,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
             scheduleFormatBarUpdate();
             return;
           }
+          captureFormatRects(savedFormatRange);
           setLinkPanelOpen(true);
           positionFormatBar(savedFormatRange);
           syncFormatButtons();
@@ -2461,10 +2569,15 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
       if (formatCommand) {
         event.preventDefault();
-        document.execCommand(formatCommand);
-        // Re-read selection after execCommand — the pre-command Range can be
-        // detached, which left the format bar stuck on the previous state.
-        refreshFormatBarAfterCommand();
+        if (!savedFormatRange) captureFormatRange();
+        if (formatCommand === 'underline') {
+          runFormatCommand('underline');
+        } else {
+          document.execCommand(formatCommand);
+          // Re-read selection after execCommand — the pre-command Range can be
+          // detached, which left the format bar stuck on the previous state.
+          refreshFormatBarAfterCommand();
+        }
         updateActions();
         return;
       }
@@ -2489,6 +2602,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         return;
       }
 
+      captureFormatRects(savedFormatRange);
       setLinkPanelOpen(true);
       if (savedFormatRange) positionFormatBar(savedFormatRange);
       syncFormatButtons();
@@ -3467,8 +3581,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     gap: 4px;
   }
 
-  .dev-text-format__link[hidden] {
-    display: none;
+  /* Stay in flex layout while closed (visibility only) so the icon row never
+     shifts when Link opens; min-height on the surface reserves the slot. */
+  .dev-text-format:not([data-link-open='true']) .dev-text-format__link {
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .dev-text-format__link input {
@@ -3591,10 +3708,9 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
   }
 
   /* Unified pill (2026-08-25): Add + the spacing chips now live in one
-     surface, matching Figma. The two proximity zones (centre / right-edge)
-     stay independent in JS — is-near-add and is-near-spacing are still
-     computed exactly as before — but either one now reveals the whole pill,
-     since there is only one thing to reveal. */
+     surface, matching Figma. Vicinity (centre / right-edge) still reveals
+     the pill; once visible, the pill hitbox keeps it up until the cursor
+     leaves — is-near-add / is-near-spacing are the CSS hooks either way. */
   .dev-gap-toolbar__pill {
     opacity: 0;
     pointer-events: none;
