@@ -170,12 +170,13 @@
   box-sizing: border-box;
 }
 
-/* Same outer slop as Button Base — pseudo is decoration; control keeps hits. */
+/* Same outer slop as Button Base: a click just outside the value box still
+   hits the control — the pseudo is part of .dev-field__value, so events land
+   on the box and reach the input/select inside. No pointer-events:none. */
 .dev-field__value::before {
   content: '';
   position: absolute;
   inset: calc(var(--dev-hit-inset) * -1);
-  pointer-events: none;
 }
 
 .dev-field:hover .dev-field__value {
