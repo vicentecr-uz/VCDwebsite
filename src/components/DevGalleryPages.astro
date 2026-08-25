@@ -942,11 +942,15 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     z-index: 50;
   }
 
+  .dev-overlay[data-dev-panel-key='gallery-pages'] .dev-overlay__body {
+    overflow-y: hidden;
+  }
+
   .dev-gallery-pages {
+    --dev-gallery-thumb-h: calc(var(--dev-gallery-thumb-w) * 3 / 4);
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
-    min-height: 0;
   }
 
   .dev-gallery-pages__status,
@@ -964,16 +968,24 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
   .dev-gallery-pages__grid {
     display: grid;
     grid-template-columns: repeat(3, var(--dev-gallery-thumb-w, 1fr));
+    grid-auto-rows: var(--dev-gallery-thumb-h);
+    align-content: start;
     gap: 8px;
     width: max-content;
     max-width: 100%;
-    min-height: 0;
+    height: max-content;
+    flex: 0 0 auto;
     padding: 0.15em;
   }
 
   .dev-gallery-pages__card {
     position: relative;
     width: var(--dev-gallery-thumb-w);
+    height: var(--dev-gallery-thumb-h);
+    min-height: var(--dev-gallery-thumb-h);
+    max-height: var(--dev-gallery-thumb-h);
+    flex-shrink: 0;
+    align-self: start;
     border: 0;
     border-radius: var(--dev-radius-control);
     overflow: hidden;
@@ -991,14 +1003,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     .dev-gallery-pages__card {
       transition: none;
     }
-  }
-
-  /* 4:3 frame — padding-bottom % is width-relative (aspect-ratio fails with abspos kids). */
-  .dev-gallery-pages__card::before {
-    content: '';
-    display: block;
-    width: 100%;
-    padding-bottom: 75%;
   }
 
   .dev-gallery-pages__card.is-selected {
