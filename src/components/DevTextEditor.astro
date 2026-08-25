@@ -2120,13 +2120,21 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       savedFormatRects = range ? getFormatRangeRects(range) : [];
     };
 
-    /** Link row is visibility:hidden while closed — measure as if open so height never reads 0. */
-    const measureLinkRowHeight = (): number => {
-      const wasOpen = formatBar.dataset.linkOpen === 'true';
-      if (!wasOpen) formatBar.dataset.linkOpen = 'true';
-      const height = linkPanel.offsetHeight || linkPanel.getBoundingClientRect().height;
-      if (!wasOpen) formatBar.dataset.linkOpen = 'false';
-      return height || 32;
+    /** Out of flow while closed — measure open size without affecting layout. */
+    const measureLinkPanel = (): { height: number; width: number } => {
+      const prev = {
+        display: linkPanel.style.display,
+        position: linkPanel.style.position,
+        visibility: linkPanel.style.visibility,
+      };
+      linkPanel.style.display = 'flex';
+      linkPanel.style.position = 'absolute';
+      linkPanel.style.visibility = 'hidden';
+      const rect = linkPanel.getBoundingClientRect();
+      linkPanel.style.display = prev.display;
+      linkPanel.style.position = prev.position;
+      linkPanel.style.visibility = prev.visibility;
+      return { height: rect.height || 33, width: rect.width || 332 };
     };
 
     const hideFormatBar = () => {
@@ -2138,8 +2146,6 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       savedFormatRange = null;
       savedFormatRects = [];
       formatBar.dataset.placement = 'above';
-      const surface = formatBar.querySelector<HTMLElement>('.dev-text-format__surface');
-      if (surface) surface.style.minHeight = '';
       syncFormatSelectionOverlay();
     };
 
@@ -2251,9 +2257,9 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       const buttonsRect = buttons?.getBoundingClientRect();
       const buttonsH = buttonsRect?.height ?? 32;
       const iconWidth = (buttonsRect?.width ?? 0) + padX;
-      const linkH = measureLinkRowHeight();
-      const openHeight = padY + buttonsH + flexGap + linkH;
-      if (surface) surface.style.minHeight = `${Math.round(openHeight)}px`;
+      const linkPanelSize = measureLinkPanel();
+      const openHeight = padY + buttonsH + flexGap + linkPanelSize.height;
+      const openWidth = linkPanelSize.width + padX;
 
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
@@ -2275,7 +2281,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       const pad = 8;
       left = Math.min(
         Math.max(pad, left),
-        window.innerWidth - Math.max(iconWidth, linkPanel.getBoundingClientRect().width + padX) - pad,
+        window.innerWidth - Math.max(iconWidth, openWidth) - pad,
       );
       top = Math.min(
         Math.max(pad, top),
@@ -2446,7 +2452,6 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
           }
           captureFormatRects(savedFormatRange);
           setLinkPanelOpen(true);
-          positionFormatBar(savedFormatRange);
           syncFormatButtons();
         }
       });
@@ -2604,7 +2609,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
       captureFormatRects(savedFormatRange);
       setLinkPanelOpen(true);
-      if (savedFormatRange) positionFormatBar(savedFormatRange);
+      if (formatBar.hidden && savedFormatRange) positionFormatBar(savedFormatRange);
       syncFormatButtons();
     });
 
@@ -3519,11 +3524,13 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
   .dev-text-format__surface {
     display: flex;
     flex-direction: column;
+    align-items: flex-start;
     gap: 4px;
     padding: 6px;
     border-radius: 12px;
     border: 1px solid var(--sys-color-srf-container-low);
     background: var(--sys-color-srf);
+    width: fit-content;
   }
 
   .dev-text-format__buttons {
@@ -3581,11 +3588,12 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     gap: 4px;
   }
 
-  /* Stay in flex layout while closed (visibility only) so the icon row never
-     shifts when Link opens; min-height on the surface reserves the slot. */
   .dev-text-format:not([data-link-open='true']) .dev-text-format__link {
-    visibility: hidden;
-    pointer-events: none;
+    display: none;
+  }
+
+  .dev-text-format[data-link-open='true'] .dev-text-format__link {
+    display: flex;
   }
 
   .dev-text-format__link input {
