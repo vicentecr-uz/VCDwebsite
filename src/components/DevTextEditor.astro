@@ -44,9 +44,10 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     <form class="dev-text-format__link" data-dev-text-link-panel hidden>
       <button type="button" data-dev-text-unlink>Unlink</button>
       <input
-        type="url"
+        type="text"
+        inputmode="url"
         data-dev-text-link-input
-        placeholder="https://…"
+        placeholder="google.com"
         autocomplete="off"
         spellcheck="false"
         aria-label="Link URL"
@@ -55,6 +56,8 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     </form>
   </div>
 </div>
+
+<div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
   import {
@@ -175,7 +178,18 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
    */
   const SIDEBAR_TITLE_HIDDEN_MQ = '(min-width: 88.5em)';
 
+  /** http(s), in-page path, hash, mailto — also the shape we persist. */
   const SAFE_HREF = /^(https?:\/\/|\/|#|mailto:)/i;
+  /** google.com, vcruzdesigns.com, www.foo.co.uk/path — no scheme, no spaces. */
+  const BARE_HOST = /^(?:[\w-]+\.)+[a-z]{2,}(?:[/:?#].*)?$/i;
+
+  const normalizeHref = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (SAFE_HREF.test(trimmed)) return trimmed;
+    if (BARE_HOST.test(trimmed)) return `https://${trimmed}`;
+    return null;
+  };
 
   const applySpacingClass = (element: HTMLElement, spacing: SpacingValue) => {
     Object.values(STACK_CLASS).forEach((className) => {
@@ -210,6 +224,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
     const warnLabel = actions?.querySelector<HTMLElement>('[data-dev-text-warn]');
     const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
+    const formatSel = document.querySelector<HTMLElement>('[data-dev-text-format-sel]');
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
@@ -223,7 +238,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
-    if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -2061,6 +2076,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       linkInput.value = '';
       savedFormatRange = null;
       formatBar.dataset.placement = 'above';
+      syncFormatSelectionOverlay();
     };
 
     const setLinkPanelOpen = (open: boolean) => {
@@ -2076,6 +2092,32 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         });
       } else {
         linkInput.value = '';
+      }
+    };
+
+    const syncFormatSelectionOverlay = () => {
+      formatSel.replaceChildren();
+      const live = window.getSelection();
+      const nativeVisible = Boolean(live && !live.isCollapsed && live.rangeCount);
+      const needsPaint = Boolean(
+        savedFormatRange &&
+        !formatBar.hidden &&
+        (linkPanelOpen || !nativeVisible),
+      );
+      if (!needsPaint || !savedFormatRange) {
+        formatSel.hidden = true;
+        return;
+      }
+      formatSel.hidden = false;
+      for (const r of savedFormatRange.getClientRects()) {
+        if (r.width < 1 || r.height < 1) continue;
+        const box = document.createElement('div');
+        box.className = 'dev-text-format-sel__rect';
+        box.style.top = `${r.top}px`;
+        box.style.left = `${r.left}px`;
+        box.style.width = `${r.width}px`;
+        box.style.height = `${r.height}px`;
+        formatSel.append(box);
       }
     };
 
@@ -2106,35 +2148,57 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       }
 
       formatBar.hidden = false;
-      // Measure with current link-panel state so placement accounts for height.
-      const barRect = formatBar.getBoundingClientRect();
+
+      /*
+        Always reserve the OPEN box (icons + Unlink/URL/Apply) when placing
+        above the selection, so the link row can appear below the icons
+        without covering the text and without moving the icon row. Measure
+        with the bar invisible so un-hiding the link panel doesn't flash.
+      */
+      const prevVisibility = formatBar.style.visibility;
+      const linkWasHidden = linkPanel.hidden;
+      formatBar.style.visibility = 'hidden';
+      linkPanel.hidden = false;
+      const openRect = formatBar.getBoundingClientRect();
+      linkPanel.hidden = linkWasHidden;
+      formatBar.style.visibility = prevVisibility;
+
+      const buttons = formatBar.querySelector<HTMLElement>('.dev-text-format__buttons');
+      const surface = formatBar.querySelector<HTMLElement>('.dev-text-format__surface');
+      const surfaceStyle = surface ? getComputedStyle(surface) : null;
+      const padX = surfaceStyle
+        ? Number.parseFloat(surfaceStyle.paddingLeft) + Number.parseFloat(surfaceStyle.paddingRight)
+        : 0;
+      const iconWidth = (buttons?.getBoundingClientRect().width ?? openRect.width) + padX;
+
       const gap = 8;
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
-      const preferAbove = spaceAbove >= barRect.height + gap || spaceAbove >= spaceBelow;
+      const preferAbove = spaceAbove >= openRect.height + gap || spaceAbove >= spaceBelow;
 
       formatPlacement = preferAbove ? 'above' : 'below';
       formatBar.dataset.placement = formatPlacement;
 
-      // Re-measure after placement attribute flips link panel order.
-      const measured = formatBar.getBoundingClientRect();
       let top = preferAbove
-        ? rect.top - measured.height - gap
+        ? rect.top - openRect.height - gap
         : rect.bottom + gap;
-      let left = rect.left + rect.width / 2 - measured.width / 2;
+      // Centre on the icon row, not the wider link row, so opening Link
+      // grows to the right instead of sliding B/I/U.
+      let left = rect.left + rect.width / 2 - iconWidth / 2;
 
       const pad = 8;
       left = Math.min(
         Math.max(pad, left),
-        window.innerWidth - measured.width - pad,
+        window.innerWidth - openRect.width - pad,
       );
       top = Math.min(
         Math.max(pad, top),
-        window.innerHeight - measured.height - pad,
+        window.innerHeight - openRect.height - pad,
       );
 
       formatBar.style.top = `${Math.round(top)}px`;
       formatBar.style.left = `${Math.round(left)}px`;
+      syncFormatSelectionOverlay();
     };
 
     const updateFormatBar = () => {
@@ -2206,15 +2270,15 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     };
 
     const applyLink = (href: string) => {
-      const trimmed = href.trim();
-      if (!SAFE_HREF.test(trimmed)) {
-        linkInput.setCustomValidity('Use http(s)://, /, #, or mailto:');
+      const normalized = normalizeHref(href);
+      if (!normalized) {
+        linkInput.setCustomValidity('Use a URL like google.com, https://…, /path, #hash, or mailto:');
         linkInput.reportValidity();
         return false;
       }
       linkInput.setCustomValidity('');
       if (!restoreFormatRange()) return false;
-      document.execCommand('createLink', false, trimmed);
+      document.execCommand('createLink', false, normalized);
       // Ensure serializer-safe href on the created anchor(s).
       const selection = window.getSelection();
       if (selection?.rangeCount) {
@@ -2223,11 +2287,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         const scope = root instanceof Element ? root : root.parentElement;
         scope?.querySelectorAll('a').forEach((anchor) => {
           if (range.intersectsNode(anchor)) {
-            anchor.setAttribute('href', trimmed);
+            anchor.setAttribute('href', normalized);
           }
         });
         if (scope instanceof HTMLAnchorElement) {
-          scope.setAttribute('href', trimmed);
+          scope.setAttribute('href', normalized);
         }
       }
       captureFormatRange();
@@ -2288,6 +2352,10 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     unlinkButton.addEventListener('click', (event) => {
       event.preventDefault();
       removeLink();
+    });
+
+    linkInput.addEventListener('input', () => {
+      linkInput.setCustomValidity('');
     });
 
     linkInput.addEventListener('keydown', (event) => {
@@ -3344,15 +3412,6 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     background: var(--sys-color-srf);
   }
 
-  /* Keep the URL field on the side away from the selection. */
-  .dev-text-format[data-placement='above'] .dev-text-format__surface {
-    flex-direction: column-reverse;
-  }
-
-  .dev-text-format[data-placement='below'] .dev-text-format__surface {
-    flex-direction: column;
-  }
-
   .dev-text-format__buttons {
     display: flex;
     align-items: center;
@@ -3423,6 +3482,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     font: var(--dev-text-label);
   }
 
+  .dev-text-format__link input:focus,
+  .dev-text-format__link input:focus-visible {
+    outline: none;
+  }
+
   .dev-text-format__link button {
     padding: 8px;
     border: 0;
@@ -3460,6 +3524,25 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
   .dev-text-format__link button[type='submit']:hover,
   .dev-text-format__link button[type='submit']:active {
     background: var(--comp-button-filled-container-hover);
+  }
+
+  /* Stand-in for the native selection while the URL field has focus.
+     Notion-style grey so the linked run stays visible after click. */
+  .dev-text-format-sel {
+    position: fixed;
+    inset: 0;
+    z-index: 94;
+    pointer-events: none;
+  }
+
+  .dev-text-format-sel[hidden] {
+    display: none;
+  }
+
+  .dev-text-format-sel__rect,
+  .dev-text-format-sel :global(.dev-text-format-sel__rect) {
+    position: fixed;
+    background: color-mix(in srgb, var(--sys-color-on-srf) 16%, transparent);
   }
 
   /* ── Section gap toolbar (DEV) ──────────────────────────── */
