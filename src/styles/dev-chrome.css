@@ -199,8 +199,11 @@
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
-  /* Room for the masked chevron (::after on .dev-field__value) — select fills
-     the value box so clicks on the icon area still hit the native menu. */
+  box-sizing: border-box;
+  /* Padding lives on the select, not .dev-field__value — otherwise the 8px
+     around the label is outside the native menu's hit target. Trailing room
+     for the masked chevron (::after on .dev-field__value). */
+  padding: 8px;
   padding-right: 24px;
 }
 
@@ -218,6 +221,7 @@
    not a coloured data-URI, so the ink follows the token into dark mode. */
 .dev-field__value:has(> .dev-field__input--select) {
   position: relative;
+  padding: 0;
 }
 
 .dev-field__value:has(> .dev-field__input--select)::after {
@@ -371,6 +375,13 @@
   gap: 8px;
   width: 100%;
   padding-top: var(--dev-panel-spacing);
+}
+
+/* Buttons sit 8px apart — halve the hit-inset so slop meets in the gap
+   instead of stealing the neighbour's visible face. Isolated buttons keep
+   the full --dev-hit-inset token. */
+.dev-panel-actions .dev-btn {
+  --dev-btn-hit-inset: 4px;
 }
 
 .dev-badge {
