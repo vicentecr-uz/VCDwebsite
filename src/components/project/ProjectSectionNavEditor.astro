@@ -906,12 +906,72 @@ import DevOverlay from '../DevOverlay.astro';
       onApply();
     });
 
+    const PANEL_RESIZE_SLOP = 16;
+    let panelGestureActive = false;
+
+    const isPointerOnPanelOrSlop = (
+      clientX: number,
+      clientY: number,
+      target: EventTarget | null,
+    ) => {
+      if (target instanceof Element && target.closest('[data-dev-panel-key="section-nav"]')) {
+        return true;
+      }
+      if (popoverPanel.hidden) return false;
+      const rect = popoverPanel.getBoundingClientRect();
+      return (
+        clientX >= rect.left - PANEL_RESIZE_SLOP &&
+        clientX <= rect.right + PANEL_RESIZE_SLOP &&
+        clientY >= rect.top - PANEL_RESIZE_SLOP &&
+        clientY <= rect.bottom + PANEL_RESIZE_SLOP
+      );
+    };
+
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!isActive()) return;
+        if (event.button !== 0) return;
+        if (
+          !popoverPanel.hidden &&
+          isPointerOnPanelOrSlop(event.clientX, event.clientY, event.target)
+        ) {
+          panelGestureActive = true;
+        }
+      },
+      true,
+    );
+
+    document.addEventListener(
+      'pointerup',
+      () => {
+        // Defer so the subsequent click (resize-up) still sees the flag.
+        window.setTimeout(() => {
+          panelGestureActive = false;
+        }, 0);
+      },
+      true,
+    );
+
+    document.addEventListener(
+      'pointercancel',
+      () => {
+        panelGestureActive = false;
+      },
+      true,
+    );
+
     document.addEventListener(
       'click',
       (event) => {
         if (!isActive()) return;
         const target = event.target as HTMLElement | null;
         if (!target) return;
+        // Native vertical resize fires click with target outside the overlay.
+        if (panelGestureActive) {
+          panelGestureActive = false;
+          return;
+        }
         // The whole DevOverlay panel, not just the inner content — its own
         // head (drag handle, traffic lights) sits outside [data-nav-popover].
         if (target.closest('[data-dev-panel-key="section-nav"]')) return;
