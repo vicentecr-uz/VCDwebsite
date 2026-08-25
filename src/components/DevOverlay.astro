@@ -144,6 +144,7 @@ const hideSvg = sizeIcon(xIcon, 8);
           overlay.dataset.restoredHeight = current;
         }
         overlay.style.height = '';
+        overlay.style.maxHeight = '';
       } else {
         const restored = overlay.dataset.restoredHeight;
         if (restored) {
@@ -278,29 +279,113 @@ const hideSvg = sizeIcon(xIcon, 8);
     setMinimized(readMinimized());
 
     /*
-      Snap-to-minimize: a downward resize drag that takes an open portrait
-      panel below the threshold collapses it instead of parking at the
-      min-height floor. 72px = the header-only bar (~41px: 12+15+12 padding
-      and content, plus border) with a small body allowance — and it must
-      sit above the 56px open floor, or the floor would make the snap band
-      unreachable. Loop guards: setMinimized collapses the body and so
-      re-fires this observer, hence the is-minimized bail; and the snap only
-      triggers on a shrink, because expanding also fires the observer and a
-      panel with a naturally small open height must not bounce straight back
-      to minimized. Hidden panels report 0 and only re-baseline. Deliberately
-      no auto-expand when dragging a minimized bar taller — out of scope.
+      Portrait height constraints, all in one observer:
+      1) Snap-to-minimize: a downward drag below 72px collapses to the header
+         bar instead of parking at the 56px open floor. 72 sits above that
+         floor so the band is reachable. Loop guards: setMinimized collapses
+         the body and re-fires this observer, hence the is-minimized bail;
+         snap only on a shrink, so a naturally short open panel does not
+         bounce straight to minimized. Hidden panels report 0 and only
+         re-baseline. No auto-expand from a minimized bar — out of scope.
+      2) Content cap: CSS resize will grow past the content (the body is
+         flex:1, so surplus is empty space). fit-content in max-height is
+         dropped by Gecko, so the cap is an inline max-height measured from
+         the body's unstretched hug. Same-turn style restore, no paint.
+      3) Sticky around natural: dragging back to within 24px of hug drops
+         the inline height so the panel is truly auto again. Hysteresis:
+         leaving natural (first pixels of a shrink) is allowed through,
+         otherwise the magnet would trap the panel at hug.
     */
     if (overlay.classList.contains('dev-overlay--portrait')) {
+      const STICKY_AROUND_NATURAL = 24;
       let lastObservedHeight: number | null = null;
+      let huggedNatural = !overlay.style.height;
+      let constrainRaf = 0;
+
+      const viewportCapPx = () => {
+        const em = Number.parseFloat(getComputedStyle(overlay).fontSize) || 16;
+        return window.innerHeight - 2 * em;
+      };
+
+      const naturalHeightPx = () => {
+        const frame = overlay.offsetHeight;
+        const bodyBox = body.clientHeight;
+        const prevFlex = body.style.flex;
+        const prevMin = body.style.minHeight;
+        const prevOverflow = body.style.overflow;
+        body.style.flex = '0 0 auto';
+        body.style.minHeight = 'auto';
+        body.style.overflow = 'visible';
+        const bodyHug = body.offsetHeight;
+        body.style.flex = prevFlex;
+        body.style.minHeight = prevMin;
+        body.style.overflow = prevOverflow;
+        return frame - bodyBox + bodyHug;
+      };
+
+      const constrainPortraitHeight = () => {
+        if (overlay.classList.contains('is-minimized')) {
+          overlay.style.maxHeight = '';
+          huggedNatural = true;
+          return;
+        }
+        const natural = naturalHeightPx();
+        const cap = Math.max(0, Math.min(Math.ceil(natural), viewportCapPx()));
+        overlay.style.maxHeight = `${Math.round(cap)}px`;
+
+        const inline = overlay.style.height;
+        const px = Number.parseFloat(inline);
+        if (!inline || !Number.isFinite(px)) {
+          huggedNatural = true;
+          return;
+        }
+        if (px > cap) {
+          overlay.style.height = '';
+          huggedNatural = true;
+          return;
+        }
+        const inSticky = px >= cap - STICKY_AROUND_NATURAL;
+        if (inSticky && !huggedNatural) {
+          overlay.style.height = '';
+          huggedNatural = true;
+          return;
+        }
+        if (!inSticky) huggedNatural = false;
+      };
+
+      const scheduleConstrain = () => {
+        if (constrainRaf) return;
+        constrainRaf = requestAnimationFrame(() => {
+          constrainRaf = 0;
+          constrainPortraitHeight();
+        });
+      };
+
       new ResizeObserver((entries) => {
         const entry = entries[0];
         const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
         const previous = lastObservedHeight;
         lastObservedHeight = height;
-        if (overlay.classList.contains('is-minimized')) return;
-        if (previous === null || previous === 0 || height === 0) return;
-        if (height < SNAP_TO_MINIMIZE_BELOW && height < previous) setMinimized(true);
+        if (overlay.classList.contains('is-minimized')) {
+          overlay.style.maxHeight = '';
+          return;
+        }
+        if (previous !== null && previous !== 0 && height !== 0) {
+          if (height < SNAP_TO_MINIMIZE_BELOW && height < previous) {
+            setMinimized(true);
+            return;
+          }
+        }
+        scheduleConstrain();
       }).observe(overlay);
+
+      new MutationObserver(scheduleConstrain).observe(body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+
+      scheduleConstrain();
     }
 
     const storedPosition = readPosition();
@@ -436,17 +521,13 @@ const hideSvg = sizeIcon(xIcon, 8);
 
   /* Portrait resizes in height only — width is the signed 352px contract.
      There is no visible grip (the cursor change over the bottom edge is
-     enough), so the native resizer glyph is hidden on engines that draw one. */
+     enough), so the native resizer glyph is hidden on engines that draw one.
+     The content cap (never resizable taller than the panel's own content)
+     lives in the ResizeObserver below, not in CSS: max-height must see the
+     laid-out content height, and fit-content inside min() is dropped by
+     Gecko/WebKit and mis-resolves against the flex column even in Blink. */
   .dev-overlay--portrait {
     resize: vertical;
-    /* Down only, never past content: an oversize drag would otherwise park
-       dead space under the last control. The min() form caps at the smaller
-       of content height and the viewport cap; engines that reject
-       fit-content inside min() (Gecko, WebKit — fit-content is not a valid
-       calc operand there) drop it and keep the plain viewport cap, which is
-       the previous behaviour. Blink honours it. */
-    max-height: calc(100dvh - 2em);
-    max-height: min(fit-content, calc(100dvh - 2em));
   }
 
   /* The floor keeps an open panel's resize drag from collapsing the header
