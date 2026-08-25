@@ -279,26 +279,26 @@ const hideSvg = sizeIcon(xIcon, 8);
     setMinimized(readMinimized());
 
     /*
-      Portrait height constraints, all in one observer:
-      1) Snap-to-minimize: a downward drag below 72px collapses to the header
-         bar instead of parking at the 56px open floor. 72 sits above that
-         floor so the band is reachable. Loop guards: setMinimized collapses
-         the body and re-fires this observer, hence the is-minimized bail;
-         snap only on a shrink, so a naturally short open panel does not
-         bounce straight to minimized. Hidden panels report 0 and only
-         re-baseline. No auto-expand from a minimized bar — out of scope.
-      2) Content cap: CSS resize will grow past the content (the body is
+      Snap-to-minimize (all overlays): a downward drag below 72px collapses
+      to the header bar. Loop guards: setMinimized collapses the body and
+      re-fires the observer, hence the is-minimized bail; snap only on a
+      shrink; hidden panels report 0 and only re-baseline. No auto-expand
+      from a minimized bar — out of scope.
+
+      Portrait-only height constraints (same observer, after snap check):
+      1) Content cap: CSS resize will grow past the content (the body is
          flex:1, so surplus is empty space). fit-content in max-height is
          dropped by Gecko, so the cap is an inline max-height measured from
          the body's unstretched hug. Same-turn style restore, no paint.
-      3) Sticky around natural: dragging back to within 24px of hug drops
+      2) Sticky around natural: dragging back to within 24px of hug drops
          the inline height so the panel is truly auto again. Hysteresis:
          leaving natural (first pixels of a shrink) is allowed through,
          otherwise the magnet would trap the panel at hug.
     */
+    let portraitScheduleConstrain: (() => void) | null = null;
+
     if (overlay.classList.contains('dev-overlay--portrait')) {
       const STICKY_AROUND_NATURAL = 24;
-      let lastObservedHeight: number | null = null;
       let huggedNatural = !overlay.style.height;
       let constrainRaf = 0;
 
@@ -361,23 +361,7 @@ const hideSvg = sizeIcon(xIcon, 8);
         });
       };
 
-      new ResizeObserver((entries) => {
-        const entry = entries[0];
-        const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-        const previous = lastObservedHeight;
-        lastObservedHeight = height;
-        if (overlay.classList.contains('is-minimized')) {
-          overlay.style.maxHeight = '';
-          return;
-        }
-        if (previous !== null && previous !== 0 && height !== 0) {
-          if (height < SNAP_TO_MINIMIZE_BELOW && height < previous) {
-            setMinimized(true);
-            return;
-          }
-        }
-        scheduleConstrain();
-      }).observe(overlay);
+      portraitScheduleConstrain = scheduleConstrain;
 
       new MutationObserver(scheduleConstrain).observe(body, {
         childList: true,
@@ -389,6 +373,25 @@ const hideSvg = sizeIcon(xIcon, 8);
 
       scheduleConstrain();
     }
+
+    let lastObservedHeight: number | null = null;
+    new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      const previous = lastObservedHeight;
+      lastObservedHeight = height;
+      if (overlay.classList.contains('is-minimized')) {
+        if (portraitScheduleConstrain) overlay.style.maxHeight = '';
+        return;
+      }
+      if (previous !== null && previous !== 0 && height !== 0) {
+        if (height < SNAP_TO_MINIMIZE_BELOW && height < previous) {
+          setMinimized(true);
+          return;
+        }
+      }
+      portraitScheduleConstrain?.();
+    }).observe(overlay);
 
     const storedPosition = readPosition();
     if (storedPosition) {

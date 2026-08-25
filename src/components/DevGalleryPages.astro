@@ -158,6 +158,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const applyLayoutCaps = () => {
       if (panel.hidden) return;
+      if (panel.classList.contains('is-minimized')) return;
       root.style.setProperty('--dev-gallery-thumb-w', `${computeThumbWidth()}px`);
       const hug = measureOverlayHug();
       if (!hug) return;
@@ -931,7 +932,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     new MutationObserver(() => {
       if (!panel.hidden) scheduleLayoutCaps();
-    }).observe(panel, { attributes: true, attributeFilter: ['hidden'] });
+    }).observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] });
   };
 
   initDevGalleryPages();
