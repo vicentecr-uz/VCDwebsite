@@ -157,6 +157,7 @@
 }
 
 .dev-field__value {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -167,6 +168,14 @@
   color: var(--sys-color-on-srf);
   font: var(--dev-text-label);
   box-sizing: border-box;
+}
+
+/* Same outer slop as Button Base — pseudo is decoration; control keeps hits. */
+.dev-field__value::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--dev-hit-inset) * -1);
+  pointer-events: none;
 }
 
 .dev-field:hover .dev-field__value {
@@ -377,13 +386,6 @@
   padding-top: var(--dev-panel-spacing);
 }
 
-/* Buttons sit 8px apart — halve the hit-inset so slop meets in the gap
-   instead of stealing the neighbour's visible face. Isolated buttons keep
-   the full --dev-hit-inset token. */
-.dev-panel-actions .dev-btn {
-  --dev-btn-hit-inset: 4px;
-}
-
 .dev-badge {
   display: inline-flex;
   align-items: center;
@@ -503,6 +505,11 @@
 .dev-drop:focus,
 .dev-drop:focus-visible {
   outline: none;
+}
+
+/* Pressed fill on the well only — ghost buttons inside keep their own hover. */
+.dev-drop:focus .dev-drop__well,
+.dev-drop:focus-visible .dev-drop__well {
   background: var(--comp-button-soft-container-pressed);
 }
 
