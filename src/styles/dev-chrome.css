@@ -170,26 +170,26 @@
   box-sizing: border-box;
 }
 
-/* Same outer slop as Button Base: a click just outside the value box still
-   hits the control — the pseudo is part of .dev-field__value, so events land
-   on the box and reach the input/select inside. No pointer-events:none. */
-.dev-field__value::before {
-  content: '';
-  position: absolute;
-  inset: calc(var(--dev-hit-inset) * -1);
-}
-
-.dev-field:hover .dev-field__value {
-  background: var(--comp-button-soft-container-hover);
-}
-
+/* Field hit slop, same --dev-hit-inset as Button Base. A ::before on the box
+   cannot do this: pseudo clicks target the box, not the control, so it would
+   swallow select-menu clicks. Instead the control overflows the box by the
+   inset (negative margin), and matching padding pushes the glyphs back so
+   nothing moves visually. The box is transparent and only clips at the panel
+   edge; every slop pixel is the real input/select hit target. */
 .dev-field__input {
   background: transparent;
   border: none;
   outline: none;
-  width: 100%;
   font: inherit;
   color: inherit;
+  box-sizing: border-box;
+  margin: calc(var(--dev-hit-inset) * -1);
+  padding: var(--dev-hit-inset);
+  width: calc(100% + 2 * var(--dev-hit-inset));
+}
+
+.dev-field:hover .dev-field__value {
+  background: var(--comp-button-soft-container-hover);
 }
 
 .dev-field__input:disabled {
@@ -211,10 +211,12 @@
   cursor: pointer;
   box-sizing: border-box;
   /* Padding lives on the select, not .dev-field__value — otherwise the 8px
-     around the label is outside the native menu's hit target. Trailing room
+     around the label is outside the native menu's hit target. + hit-inset on
+     top of it: the base rule's negative margin extends the hit box past the
+     value box, this pushes the glyphs back so nothing moves. Trailing room
      for the masked chevron (::after on .dev-field__value). */
-  padding: 8px;
-  padding-right: 24px;
+  padding: calc(8px + var(--dev-hit-inset));
+  padding-right: calc(24px + var(--dev-hit-inset));
 }
 
 .dev-field__input--select:disabled {
