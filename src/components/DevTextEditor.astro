@@ -2308,6 +2308,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
       const selection = window.getSelection();
       if (!selection?.rangeCount || selection.isCollapsed) {
+        if (!formatBar.hidden && savedFormatRange) {
+          positionFormatBar(savedFormatRange);
+          syncFormatButtons();
+          return;
+        }
         hideFormatBar();
         return;
       }
@@ -2447,7 +2452,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         if (command === 'link') {
           if (linkPanelOpen) {
             setLinkPanelOpen(false);
-            scheduleFormatBarUpdate();
+            restoreFormatRange();
+            if (savedFormatRange) {
+              positionFormatBar(savedFormatRange);
+              syncFormatButtons();
+            }
             return;
           }
           captureFormatRects(savedFormatRange);
@@ -2603,7 +2612,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 
       if (linkPanelOpen) {
         setLinkPanelOpen(false);
-        scheduleFormatBarUpdate();
+        restoreFormatRange();
+        if (savedFormatRange) {
+          positionFormatBar(savedFormatRange);
+          syncFormatButtons();
+        }
         return;
       }
 
@@ -3524,7 +3537,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
   .dev-text-format__surface {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 4px;
     padding: 6px;
     border-radius: 12px;
