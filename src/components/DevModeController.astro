@@ -27,6 +27,95 @@
       Boolean(document.querySelector('[data-section-nav-root]'));
 
     /*
+      Alt+M launcher. Panels that need a live target from the page (a selected
+      image, a colour swatch, an outline node) stay listed but disabled — the
+      trigger itself supplies the context, and dispatching the open without it
+      would no-op anyway. Opening a tuner this way is NOT wired: these listen
+      for their own component events (e.g. ProjectImageCaptionTuner binds its
+      editTarget on the caption's trigger click), so the launcher can only
+      surface the reminder, not a working window.
+    */
+    const LAUNCHER_CONTEXT_HINTS: Record<string, string> = {
+      'image': 'Open from an image',
+      'caption': 'Open from an image caption',
+      'grid': 'Open from an image grid',
+      'carousel': 'Open from a carousel',
+      'style-color-token': 'Open from a colour swatch',
+      'section-nav': 'Open from an outline item',
+      'project-settings': 'Open from a gallery card',
+      'caption-shadow': 'Open from a caption',
+    };
+
+    let launcher: HTMLElement | null = null;
+
+    const removeLauncher = () => {
+      launcher?.remove();
+      launcher = null;
+    };
+
+    const openLauncherPanel = (panel: HTMLElement) => {
+      removeLauncher();
+      if (panel.dataset.devPanelKey === 'asset-manager') {
+        window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
+          detail: { mode: 'browse', documentKey: panel.dataset.documentKey || '' },
+        }));
+        return;
+      }
+      panel.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+        detail: { panel },
+      }));
+    };
+
+    const toggleLauncher = () => {
+      if (launcher) {
+        removeLauncher();
+        return;
+      }
+      const panels = devPanels();
+      if (!panels.length) return;
+
+      const menu = document.createElement('div');
+      menu.className = 'dev-launcher';
+      menu.setAttribute('role', 'menu');
+
+      panels.forEach((panel, index) => {
+        const key = panel.dataset.devPanelKey || '';
+        const title = panel.querySelector('.dev-overlay__title')?.textContent?.trim() || key;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill';
+        item.setAttribute('role', 'menuitem');
+        item.textContent = title;
+        const hint = LAUNCHER_CONTEXT_HINTS[key];
+        if (hint) {
+          item.disabled = true;
+          item.title = hint;
+        } else {
+          item.addEventListener('click', () => openLauncherPanel(panel));
+        }
+        if (index === 0) item.tabIndex = 0;
+        menu.appendChild(item);
+      });
+
+      const enabled = [...menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
+      menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        if (!enabled.length) return;
+        const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'ArrowDown'
+          ? (current + 1) % enabled.length
+          : (current - 1 + enabled.length) % enabled.length;
+        enabled[next].focus();
+      });
+
+      document.body.appendChild(menu);
+      launcher = menu;
+      (enabled[0] ?? menu.querySelector('button'))?.focus();
+    };
+
+    /*
       Not reduced-motion-gated. Entering and exiting dev mode is entirely
       opacity — the chrome fades, and the layout cue is an ::after ring fading
       in; nothing travels or resizes. Returning 0 here made enterDevMode skip
@@ -237,6 +326,7 @@
         const panelKey = editTrigger.dataset.devEditTrigger;
         const panel = devPanels().find((candidate) => candidate.dataset.devPanelKey === panelKey);
         if (!panel) return;
+        removeLauncher();
         panel.hidden = !panel.hidden;
         if (!panel.hidden) {
           window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
@@ -278,6 +368,23 @@
       Boolean(target && (target.isContentEditable || target.closest('input, textarea, select')));
 
     document.addEventListener('keydown', (event) => {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
+        // Alt+M types 'µ' in an editable — never intercept it there.
+        if (!devMode || isTypingTarget(event.target as HTMLElement | null)) return;
+        event.preventDefault();
+        toggleLauncher();
+        return;
+      }
+
+      if (launcher) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          removeLauncher();
+        }
+        return;
+      }
+
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyD') {
         event.preventDefault();
 
@@ -332,6 +439,17 @@
       event.preventDefault();
       setDevMode(false);
     });
+
+    document.addEventListener('pointerdown', (event) => {
+      if (!launcher) return;
+      const target = event.target as Node | null;
+      if (target && launcher.contains(target)) return;
+      removeLauncher();
+    }, true);
+
+    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (event.detail?.active === false) removeLauncher();
+    }) as EventListener);
 
     window.addEventListener('vcd:dev-edit-open', syncTunerOpenClass);
     window.addEventListener('vcd:dev-edit-close', syncTunerOpenClass);
