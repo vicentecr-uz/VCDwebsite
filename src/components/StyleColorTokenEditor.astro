@@ -42,8 +42,6 @@ import DevOverlay from './DevOverlay.astro';
       <button type="button" class="dev-btn dev-btn--filled" data-token-done>Done</button>
     </div>
 
-    <p class="color-token-editor__status" data-token-status aria-live="polite"></p>
-
     <color-picker
       data-token-picker
       label-title="Colour"
@@ -75,9 +73,8 @@ import DevOverlay from './DevOverlay.astro';
     const picker = editor.querySelector<ColorPickerElement>('[data-token-picker]');
     const doneButton = editor.querySelector<HTMLButtonElement>('[data-token-done]');
     const revertButton = editor.querySelector<HTMLButtonElement>('[data-token-revert]');
-    const status = editor.querySelector<HTMLElement>('[data-token-status]');
     const panel = editor.closest<HTMLElement>('[data-dev-overlay]');
-    if (!name || !hexInput || !swatch || !picker || !doneButton || !revertButton || !status) {
+    if (!name || !hexInput || !swatch || !picker || !doneButton || !revertButton) {
       return;
     }
 
@@ -137,7 +134,6 @@ import DevOverlay from './DevOverlay.astro';
               savedValue = baseline;
               syncHexField(baseline);
               picker.setAttribute('hex', toPickerHex(baseline));
-              status.textContent = 'Reverted to the last saved colour.';
             }
           },
         },
@@ -151,9 +147,6 @@ import DevOverlay from './DevOverlay.astro';
       swatch.style.background = value;
       if (rewriteField) syncHexField(value);
       syncPending(activeToken, value, savedValue);
-      status.textContent = value === savedValue
-        ? 'Changes preview live — use Save in the page bar to write.'
-        : 'Unsaved — use Save in the page bar to write.';
     };
 
     const openPicker = (hex: string) => {
@@ -180,9 +173,6 @@ import DevOverlay from './DevOverlay.astro';
       name.textContent = token;
       syncHexField(current);
       picker.setAttribute('hex', toPickerHex(current));
-      status.textContent = current === savedValue
-        ? 'Changes preview live — use Save in the page bar to write.'
-        : 'Unsaved — use Save in the page bar to write.';
       if (current !== savedValue) syncPending(token, current, savedValue);
     }) as EventListener);
 
@@ -193,7 +183,6 @@ import DevOverlay from './DevOverlay.astro';
       savedValue = live;
       activeTrigger.dataset.colorTokenSavedValue = live;
       activeTrigger.dataset.colorTokenValue = live;
-      status.textContent = 'Saved — publish styles from the page bar when ready.';
     });
 
     hexInput.addEventListener('focus', () => hexInput.select());
@@ -201,10 +190,7 @@ import DevOverlay from './DevOverlay.astro';
     hexInput.addEventListener('input', () => {
       if (syncingField) return;
       const value = normalizeHex(hexInput.value);
-      if (!value) {
-        status.textContent = 'Enter a 3- or 6-digit hex colour.';
-        return;
-      }
+      if (!value) return;
       // Don't rewrite the input while typing — that resets the caret.
       preview(value, false);
       picker.setAttribute('hex', toPickerHex(value));
@@ -219,10 +205,7 @@ import DevOverlay from './DevOverlay.astro';
 
     swatch.addEventListener('click', () => {
       const value = normalizeHex(hexInput.value) || savedValue;
-      if (!value) {
-        status.textContent = 'Enter a valid hex colour first.';
-        return;
-      }
+      if (!value) return;
       openPicker(value);
     });
 
@@ -236,7 +219,6 @@ import DevOverlay from './DevOverlay.astro';
       if (!activeToken || !savedValue) return;
       preview(savedValue);
       picker.setAttribute('hex', toPickerHex(savedValue));
-      status.textContent = 'Reverted to the last saved colour.';
     });
 
     doneButton.addEventListener('click', () => {
@@ -249,6 +231,7 @@ import DevOverlay from './DevOverlay.astro';
 
 <style>
   .color-token-editor {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
@@ -297,16 +280,11 @@ import DevOverlay from './DevOverlay.astro';
     opacity: var(--dev-opacity-disabled);
   }
 
-  .color-token-editor__status {
-    margin: 0;
-    font: var(--dev-text-status);
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  /* Empty at rest — the script only writes here when there is something to
-     say, and a blank line would still claim a 16px gap in the panel stack. */
-  .color-token-editor__status:empty {
-    display: none;
+  color-picker[data-token-picker] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
   }
 
   color-picker {
