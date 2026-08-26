@@ -271,6 +271,9 @@ const hideSvg = sizeIcon(xIcon, 8);
 
     const showOverlay = () => {
       raiseOverlay(overlay);
+      if (embedded && overlay.classList.contains('is-minimized')) {
+        setMinimized(false);
+      }
       if (wantVisible && !overlay.hasAttribute('hidden') && overlay.classList.contains('is-dev-overlay-open')) {
         return;
       }
@@ -420,6 +423,7 @@ const hideSvg = sizeIcon(xIcon, 8);
       };
 
       const constrainPortraitHeight = () => {
+        if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
         if (overlay.classList.contains('is-minimized')) {
           overlay.style.maxHeight = '';
           huggedNatural = true;
@@ -482,6 +486,7 @@ const hideSvg = sizeIcon(xIcon, 8);
       const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
       const previous = lastObservedHeight;
       lastObservedHeight = height;
+      if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
       if (overlay.classList.contains('is-minimized')) {
         if (portraitScheduleConstrain) overlay.style.maxHeight = '';
         return;
