@@ -43,9 +43,10 @@ const hideSvg = sizeIcon(xIcon, 8);
   data-storage-key={storageKey}
   data-default-minimized={defaultMinimized ? 'true' : 'false'}
   data-dev-panel-key={panelKey}
-  data-embedded={embedded ? '' : undefined}
-  hidden={defaultHidden}
+  data-embedded={embedded ? 'true' : undefined}
+  hidden={defaultHidden ? true : undefined}
   {...rest}
+  style={embedded ? 'position:relative;inset:auto;opacity:1;transform:none;z-index:auto' : undefined}
 >
   <div class="dev-overlay__head" data-drag-handle>
     <p class="dev-overlay__title">{title}</p>
@@ -343,7 +344,9 @@ const hideSvg = sizeIcon(xIcon, 8);
     */
     let portraitScheduleConstrain: (() => void) | null = null;
 
-    if (overlay.classList.contains('dev-overlay--portrait')) {
+    /* Catalog specimens stay in-flow; hug-cap JS would write max-height:0
+       when first measured unlaid-out and collapse the preview well. */
+    if (!embedded && overlay.classList.contains('dev-overlay--portrait')) {
       const STICKY_AROUND_NATURAL = 24;
       let huggedNatural = !overlay.style.height;
       let constrainRaf = 0;
@@ -809,18 +812,22 @@ const hideSvg = sizeIcon(xIcon, 8);
   }
 
   /* Catalog / in-flow specimen: stay in the document, skip the entrance rise.
-     Two classes so this beats `.dev-overlay` (fixed + bottom-right + opacity 0). */
-  .dev-overlay.dev-overlay--embedded {
+     [data-embedded] beats a stale transform that still has position:fixed
+     on .dev-overlay and no --embedded class rules. */
+  .dev-overlay.dev-overlay--embedded,
+  .dev-overlay[data-embedded] {
     position: relative;
     right: auto;
     bottom: auto;
+    inset: auto;
     z-index: auto;
     opacity: 1;
     transform: none;
     max-width: 100%;
   }
 
-  .dev-overlay--embedded.dev-overlay--landscape {
+  .dev-overlay--embedded.dev-overlay--landscape,
+  .dev-overlay[data-embedded].dev-overlay--landscape {
     width: min(var(--dev-panel-width-landscape), 100%);
   }
 

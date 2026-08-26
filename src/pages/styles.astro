@@ -896,7 +896,7 @@ const sectionLinks = savedOutline.length
                         </div>
                       )}
                       {component.preview === 'ui-dev-panel' && (
-                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
+                        <div class="component-preview__overlays" style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
                           <DevOverlay title="Panel title" layout="portrait" embedded storageKey="styles-preview-portrait" panelKey="styles-preview-portrait">
                             <p class="preview-note">Body content</p>
                             <p class="preview-note">Body content</p>
@@ -1374,6 +1374,12 @@ const sectionLinks = savedOutline.length
     border-top: 1px solid var(--sys-color-outline-variant);
     padding-top: 0.8em;
     overflow: hidden;
+  }
+
+  /* Embedded DevOverlays hug in-flow; overflow:hidden on the well clips
+     their shadow and can zero-out the first layout measure. */
+  .component-preview:has(.dev-overlay--embedded) {
+    overflow: visible;
   }
 
   .component-preview :global(.project-block) {
