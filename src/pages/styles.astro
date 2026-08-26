@@ -16,7 +16,7 @@ import ProjectVideo from '../components/project/ProjectVideo.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
 import Button from '../components/ui/Button.astro';
 import SegmentedControl from '../components/ui/SegmentedControl.astro';
-import DevPanel from '../components/ui/DevPanel.astro';
+import DevOverlay from '../components/DevOverlay.astro';
 import Field from '../components/ui/Field.astro';
 import TextField from '../components/ui/TextField.astro';
 import TextArea from '../components/ui/TextArea.astro';
@@ -295,12 +295,12 @@ const componentCatalog: ComponentEntry[] = [
     id: 'component-ui-dev-panel',
     name: 'DevPanel',
     category: 'ui-primitives',
-    purpose: 'Outer chrome shell (header + body) mirroring the Figma DevPanel Base — used to build dev-mode panels.',
-    classRef: '.dev-panel / .dev-panel__header / .dev-panel__body',
-    source: 'src/components/ui/DevPanel.astro',
-    props: 'title, layout? (portrait | landscape, default portrait), ...rest (body content via default slot)',
-    usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Portrait 352px fixed width; Landscape 597px (min 344px, resizable); 18px panel radius; renders correctly in both themes.',
+    purpose: 'Live overlay chrome (header, body, traffic lights, resize). Catalog specimens are the same component in embedded mode — dummy title and body only.',
+    classRef: '.dev-overlay / .dev-overlay--portrait / .dev-overlay--landscape / .dev-overlay--embedded',
+    source: 'src/components/DevOverlay.astro',
+    props: 'title, layout? (portrait | landscape, default portrait), embedded?, storageKey?, panelKey?, defaultHidden?, defaultMinimized?, showMinimize?, ...rest (body via default slot)',
+    usedOn: ['Gallery manager', 'Asset manager', 'Log issue', 'Crop / grid / caption tuners', 'Project settings'],
+    checklist: 'Portrait 352px + vertical resize + snap-to-minimize; landscape 597px (min 344) + all-edge resize; 18px radius; body clips to the inner corner on resize; no native resize glyph; renders correctly in both themes.',
     preview: 'ui-dev-panel',
   },
   {
@@ -897,12 +897,20 @@ const sectionLinks = savedOutline.length
                       )}
                       {component.preview === 'ui-dev-panel' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
-                          <DevPanel title="Panel title">
+                          <DevOverlay title="Panel title" layout="portrait" embedded storageKey="styles-preview-portrait" panelKey="styles-preview-portrait">
                             <p class="preview-note">Body content</p>
-                          </DevPanel>
-                          <DevPanel title="Panel title" layout="landscape">
                             <p class="preview-note">Body content</p>
-                          </DevPanel>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                          </DevOverlay>
+                          <DevOverlay title="Panel title" layout="landscape" embedded storageKey="styles-preview-landscape" panelKey="styles-preview-landscape">
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                          </DevOverlay>
                         </div>
                       )}
                       {component.preview === 'ui-field' && (
