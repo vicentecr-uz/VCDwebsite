@@ -116,19 +116,33 @@ const hideSvg = sizeIcon(xIcon, 8);
       }
     };
 
-    const getAnchorRect = () =>
-      overlay.offsetParent?.getBoundingClientRect() ?? { left: 0, top: 0 };
+    /**
+     * Viewport `left`/`top` → local `style.left`/`top` via a 0,0 probe of
+     * the real containing block (`position: fixed` is not `offsetParent`).
+     * Clears CSS `translate` (drag) only — `transform` stays the entrance rise.
+     * All writes are one synchronous turn so the 0,0 probe never paints.
+     */
+    const writeLocalFromViewport = (viewportLeft: number, viewportTop: number) => {
+      const prevTransition = overlay.style.transition;
+      overlay.style.transition = 'none';
+      void overlay.offsetWidth;
+      overlay.style.translate = 'none';
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      const origin = overlay.getBoundingClientRect();
+      overlay.style.left = `${viewportLeft - origin.left}px`;
+      overlay.style.top = `${viewportTop - origin.top}px`;
+      overlay.style.transition = prevTransition;
+    };
 
     const applyPosition = (left: number, top: number, persist: boolean) => {
       const maxLeft = Math.max(0, window.innerWidth - overlay.offsetWidth);
       const maxTop = Math.max(0, window.innerHeight - overlay.offsetHeight);
       const nextLeft = clamp(left, 0, maxLeft);
       const nextTop = clamp(top, 0, maxTop);
-      const anchorRect = getAnchorRect();
-      overlay.style.left = `${nextLeft - anchorRect.left}px`;
-      overlay.style.top = `${nextTop - anchorRect.top}px`;
-      overlay.style.right = 'auto';
-      overlay.style.bottom = 'auto';
+      writeLocalFromViewport(nextLeft, nextTop);
       if (persist) savePosition(nextLeft, nextTop);
     };
 
@@ -428,19 +442,17 @@ const hideSvg = sizeIcon(xIcon, 8);
     let dragPointerId: number | null = null;
     let dragStartX = 0;
     let dragStartY = 0;
-    let dragOriginLeft = 0;
-    let dragOriginTop = 0;
     let dragRaf = 0;
-    let pendingDragLeft = 0;
-    let pendingDragTop = 0;
+    let pendingDx = 0;
+    let pendingDy = 0;
 
-    const scheduleDragPosition = (left: number, top: number) => {
-      pendingDragLeft = left;
-      pendingDragTop = top;
+    const scheduleDragTranslate = (dx: number, dy: number) => {
+      pendingDx = dx;
+      pendingDy = dy;
       if (dragRaf) return;
       dragRaf = requestAnimationFrame(() => {
         dragRaf = 0;
-        applyPosition(pendingDragLeft, pendingDragTop, false);
+        overlay.style.translate = `${pendingDx}px ${pendingDy}px`;
       });
     };
 
@@ -450,26 +462,11 @@ const hideSvg = sizeIcon(xIcon, 8);
       if (target?.closest('[data-drag-ignore]')) return;
       event.preventDefault();
 
-      const bounds = overlay.getBoundingClientRect();
-      const anchorRect = getAnchorRect();
-      const writtenTop = bounds.top - anchorRect.top;
-      // Clear bottom-right anchoring before left/top so the panel does not
-      // reflow between reads — same bounds feed origin and inline position.
-      overlay.style.right = 'auto';
-      overlay.style.bottom = 'auto';
-      overlay.style.left = `${bounds.left - anchorRect.left}px`;
-      overlay.style.top = `${writtenTop}px`;
-      console.debug('[dev-overlay drag]', {
-        beforeTop: bounds.top,
-        writtenTop,
-        delta: writtenTop - bounds.top,
-      });
-
       dragPointerId = event.pointerId;
       dragStartX = event.clientX;
       dragStartY = event.clientY;
-      dragOriginLeft = bounds.left;
-      dragOriginTop = bounds.top;
+      pendingDx = 0;
+      pendingDy = 0;
 
       overlay.classList.add('is-dragging');
       dragHandle.setPointerCapture(event.pointerId);
@@ -477,26 +474,21 @@ const hideSvg = sizeIcon(xIcon, 8);
 
     dragHandle.addEventListener('pointermove', (event) => {
       if (dragPointerId !== event.pointerId) return;
-      const dx = event.clientX - dragStartX;
-      const dy = event.clientY - dragStartY;
-      scheduleDragPosition(dragOriginLeft + dx, dragOriginTop + dy);
+      scheduleDragTranslate(event.clientX - dragStartX, event.clientY - dragStartY);
     });
 
     const endDrag = (event: PointerEvent) => {
       if (dragPointerId !== event.pointerId) return;
       dragPointerId = null;
-      overlay.classList.remove('is-dragging');
       if (dragRaf) {
         cancelAnimationFrame(dragRaf);
         dragRaf = 0;
-        applyPosition(pendingDragLeft, pendingDragTop, false);
+        overlay.style.translate = `${pendingDx}px ${pendingDy}px`;
       }
-      const anchorRect = getAnchorRect();
-      const left = Number.parseFloat(overlay.style.left);
-      const top = Number.parseFloat(overlay.style.top);
-      if (Number.isFinite(left) && Number.isFinite(top)) {
-        savePosition(left + anchorRect.left, top + anchorRect.top);
-      }
+      const visual = overlay.getBoundingClientRect();
+      writeLocalFromViewport(visual.left, visual.top);
+      overlay.classList.remove('is-dragging');
+      savePosition(visual.left, visual.top);
       if (dragHandle.hasPointerCapture(event.pointerId)) {
         dragHandle.releasePointerCapture(event.pointerId);
       }
@@ -523,11 +515,11 @@ const hideSvg = sizeIcon(xIcon, 8);
     });
 
     window.addEventListener('resize', () => {
-      const anchorRect = getAnchorRect();
       const left = Number.parseFloat(overlay.style.left);
       const top = Number.parseFloat(overlay.style.top);
       if (!Number.isFinite(left) || !Number.isFinite(top)) return;
-      setPosition(left + anchorRect.left, top + anchorRect.top);
+      const visual = overlay.getBoundingClientRect();
+      setPosition(visual.left, visual.top);
     });
   };
 
@@ -657,6 +649,13 @@ const hideSvg = sizeIcon(xIcon, 8);
     cursor: grab;
     user-select: none;
     touch-action: none;
+  }
+
+  .dev-overlay.is-dragging {
+    /* Keep the fade; drop the transform transition so baking left/top
+       cannot restart the entrance rise. `translate` is not listed on the
+       resting transition and is never animated. */
+    transition: opacity var(--dev-overlay-motion-ms) ease;
   }
 
   .dev-overlay.is-dragging .dev-overlay__head {
