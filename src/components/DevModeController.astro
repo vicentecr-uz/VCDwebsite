@@ -419,17 +419,22 @@
       if (!devMode) return;
       if (html.classList.contains('is-dev-mode-exiting')) return;
 
-      // Layer Esc: open tuner windows dismiss first (cancel + close). Only when
-      // none are open does Esc leave the whole Dev Mode layer.
+      // Layer Esc: dismiss the frontmost open tuner (highest computed z-index;
+      // last in document order on a tie). This is "frontmost panel", not a
+      // general interaction-undo stack. Only when none are open does Esc leave
+      // the whole Dev Mode layer.
       const openPanels = devPanels().filter((panel) => !panel.hidden);
       if (openPanels.length) {
         event.preventDefault();
-        openPanels.forEach((panel) => {
-          panel.hidden = true;
-          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
-            detail: { panel },
-          }));
+        const frontmost = openPanels.reduce((front, panel) => {
+          const panelZ = Number.parseInt(getComputedStyle(panel).zIndex, 10) || 0;
+          const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
+          return panelZ >= frontZ ? panel : front;
         });
+        frontmost.hidden = true;
+        window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+          detail: { panel: frontmost },
+        }));
         return;
       }
 
