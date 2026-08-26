@@ -3,6 +3,8 @@ import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import SelectField from '../ui/SelectField.astro';
 import ToggleRow from '../ui/ToggleRow.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
 ---
 
 <DevOverlay
@@ -100,11 +102,11 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
     <p class="project-grid-tuner__hint" hidden></p>
 
-    <div class="project-grid-tuner__actions">
-      <button type="button" data-grid-clear-override hidden>Clear</button>
-      <button type="button" data-grid-revert>Revert changes</button>
-      <button type="button" data-grid-save>Save changes</button>
-    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Clear" hidden data-grid-clear-override />
+      <Button emphasis="ghost" label="Revert changes" data-grid-revert />
+      <Button emphasis="filled" label="Save changes" data-grid-save />
+    </PanelActions>
 
     <p class="project-grid-tuner__status" data-grid-status aria-live="polite"></p>
   </div>
@@ -1063,30 +1065,4 @@ import ToggleRow from '../ui/ToggleRow.astro';
     border: 0;
   }
 
-  .project-grid-tuner__actions {
-    display: flex;
-    gap: 0.45em;
-    flex-wrap: wrap;
-  }
-
-  .project-grid-tuner__actions button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.5em 0.7em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .project-grid-tuner__actions button[data-grid-save] {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-    margin-left: auto;
-  }
-
-  .project-grid-tuner__actions button[hidden] {
-    display: none;
-  }
 </style>

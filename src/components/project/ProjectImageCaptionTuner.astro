@@ -3,6 +3,8 @@ import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import TextArea from '../ui/TextArea.astro';
 import SelectField from '../ui/SelectField.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
 import {
   IMAGE_CAPTION_POSITIONS,
   IMAGE_CAPTION_REVEALS,
@@ -42,11 +44,11 @@ import {
       options={IMAGE_CAPTION_REVEALS.map((r) => ({ value: r.id, label: r.label }))}
     />
 
-    <div class="project-caption-tuner__actions">
-      <button type="button" data-caption-clear>Clear</button>
-      <button type="button" data-caption-revert>Revert changes</button>
-      <button type="button" data-caption-save>Save changes</button>
-    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Clear" data-caption-clear />
+      <Button emphasis="ghost" label="Revert changes" data-caption-revert />
+      <Button emphasis="filled" label="Save changes" data-caption-save />
+    </PanelActions>
 
     <p class="project-caption-tuner__status" data-caption-status aria-live="polite"></p>
   </div>
@@ -926,34 +928,6 @@ import {
   .project-caption-tuner__pair:has([hidden]) {
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .project-caption-tuner__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em;
-  }
-
-  .project-caption-tuner__actions button {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    padding: 0.5em 0.7em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .project-caption-tuner__actions button:hover {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .project-caption-tuner__actions [data-caption-save] {
-    margin-left: auto;
-    background: var(--sys-color-srf-container-high);
   }
 
   /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must

@@ -3,6 +3,8 @@ import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import SelectField from '../ui/SelectField.astro';
 import ToggleRow from '../ui/ToggleRow.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
 import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
 import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
 import lockIcon from 'lucide-static/icons/lock.svg?raw';
@@ -155,12 +157,12 @@ const globeSvg = sizeIcon(globeIcon, 16);
       </div>
     </div>
 
-    <div class="tapico-crop-tuner__actions">
-      <button type="button" data-crop-reset hidden>Reset</button>
-      <button type="button" data-crop-revert>Revert changes</button>
-      <button type="button" data-crop-use-grid-default hidden>Use grid default</button>
-      <button type="button" data-crop-save>Save changes</button>
-    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Reset" hidden data-crop-reset />
+      <Button emphasis="ghost" label="Revert changes" data-crop-revert />
+      <Button emphasis="ghost" label="Use grid default" hidden data-crop-use-grid-default />
+      <Button emphasis="filled" label="Save changes" data-crop-save />
+    </PanelActions>
 
     <!-- JS early-returns if this node is missing. Figma dropped status lines;
          clip it so aria-live can still announce upload/replace errors. -->
@@ -2605,41 +2607,4 @@ const globeSvg = sizeIcon(globeIcon, 16);
     border: 0;
   }
 
-  .tapico-crop-tuner__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em;
-  }
-
-  .tapico-crop-tuner__actions button {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__actions button[data-crop-save] {
-    background: var(--sys-color-on-srf);
-    color: #ffffff;
-    margin-left: auto;
-  }
-
-  .tapico-crop-tuner__actions button:hover {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__actions button[data-crop-save]:hover {
-    background: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__actions button[hidden] {
-    display: none;
-  }
 </style>
