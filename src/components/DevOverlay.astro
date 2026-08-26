@@ -1,5 +1,6 @@
 ---
 import minusIcon from 'lucide-static/icons/minus.svg?raw';
+import plusIcon from 'lucide-static/icons/plus.svg?raw';
 import xIcon from 'lucide-static/icons/x.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
@@ -29,6 +30,7 @@ const {
 
 /* Figma glyphs are 8×8 inside the 15px light. */
 const minimizeSvg = sizeIcon(minusIcon, 8);
+const expandSvg = sizeIcon(plusIcon, 8);
 const hideSvg = sizeIcon(xIcon, 8);
 ---
 
@@ -61,7 +63,8 @@ const hideSvg = sizeIcon(xIcon, 8);
             title="Minimize"
             aria-expanded="true"
           >
-            <span class="dev-overlay__light-icon" aria-hidden="true" set:html={minimizeSvg} />
+            <span class="dev-overlay__light-icon" data-light-glyph="minus" aria-hidden="true" set:html={minimizeSvg} />
+            <span class="dev-overlay__light-icon" data-light-glyph="plus" hidden aria-hidden="true" set:html={expandSvg} />
           </button>
           <button
             type="button"
@@ -192,11 +195,27 @@ const hideSvg = sizeIcon(xIcon, 8);
 
     /*
       CSS resize writes an inline height. Hiding the body does not shrink
-      the frame unless that value is beaten. A snap-to-minimize drag leaves
-      a sub-threshold height that must not come back as a sliver on expand;
-      a real user resize is remembered so expand returns to it.
+      the frame unless that value is beaten. Snap-to-minimize restores the
+      size from before the resize gesture that caused the snap — not the
+      sliver under 72, and not "last height that happened to be >= 72".
     */
     const SNAP_TO_MINIMIZE_BELOW = 72;
+    let portraitScheduleConstrain: (() => void) | null = null;
+    let heightBeforeResizeGesture: string | null = null;
+    let expanding = false;
+
+    const syncMinimizeLight = (minimized: boolean) => {
+      if (!minimizeBtn) return;
+      minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
+      minimizeBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
+      minimizeBtn.title = minimized ? 'Expand' : 'Minimize';
+      minimizeBtn.classList.toggle('dev-overlay__light--minimize', !minimized);
+      minimizeBtn.classList.toggle('dev-overlay__light--expand', minimized);
+      const minus = minimizeBtn.querySelector<HTMLElement>('[data-light-glyph="minus"]');
+      const plus = minimizeBtn.querySelector<HTMLElement>('[data-light-glyph="plus"]');
+      if (minus) minus.hidden = minimized;
+      if (plus) plus.hidden = !minimized;
+    };
 
     const setMinimized = (minimized: boolean) => {
       if (minimized) {
@@ -207,20 +226,26 @@ const hideSvg = sizeIcon(xIcon, 8);
         }
         overlay.style.height = '';
         overlay.style.maxHeight = '';
+        overlay.classList.add('is-minimized');
+        body.hidden = true;
       } else {
+        const wasMinimized = overlay.classList.contains('is-minimized');
+        if (wasMinimized) expanding = true;
+        overlay.classList.remove('is-minimized');
+        body.hidden = false;
         const restored = overlay.dataset.restoredHeight;
         if (restored) {
           overlay.style.height = restored;
           delete overlay.dataset.restoredHeight;
         }
+        if (wasMinimized) {
+          requestAnimationFrame(() => {
+            expanding = false;
+            portraitScheduleConstrain?.();
+          });
+        }
       }
-      overlay.classList.toggle('is-minimized', minimized);
-      body.hidden = minimized;
-      if (minimizeBtn) {
-        minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
-        minimizeBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
-        minimizeBtn.title = minimized ? 'Expand' : 'Minimize';
-      }
+      syncMinimizeLight(minimized);
       if (embedded) return;
       try {
         window.localStorage.setItem(minimizedStorageKey, minimized ? 'true' : 'false');
@@ -378,8 +403,6 @@ const hideSvg = sizeIcon(xIcon, 8);
          leaving natural (first pixels of a shrink) is allowed through,
          otherwise the magnet would trap the panel at hug.
     */
-    let portraitScheduleConstrain: (() => void) | null = null;
-
     const isPortrait = overlay.classList.contains('dev-overlay--portrait');
 
     /* Catalog used to skip this: first measure of an unlaid-out specimen
@@ -487,12 +510,18 @@ const hideSvg = sizeIcon(xIcon, 8);
       const previous = lastObservedHeight;
       lastObservedHeight = height;
       if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
+      if (expanding) return;
       if (overlay.classList.contains('is-minimized')) {
         if (portraitScheduleConstrain) overlay.style.maxHeight = '';
         return;
       }
       if (previous !== null && previous !== 0 && height !== 0) {
         if (height < SNAP_TO_MINIMIZE_BELOW && height < previous) {
+          const pre = heightBeforeResizeGesture;
+          const prePx = pre ? Number.parseFloat(pre) : NaN;
+          if (pre && Number.isFinite(prePx) && prePx >= SNAP_TO_MINIMIZE_BELOW) {
+            overlay.dataset.restoredHeight = pre;
+          }
           setMinimized(true);
           return;
         }
@@ -679,6 +708,7 @@ const hideSvg = sizeIcon(xIcon, 8);
         resizeMoveW = !isPortrait && (dir === 'w' || dir === 'nw' || dir === 'sw');
 
         const visual = overlay.getBoundingClientRect();
+        heightBeforeResizeGesture = overlay.style.height || `${visual.height}px`;
         if (!embedded) {
           writeLocalFromViewport(visual.left, visual.top);
           if (!isPortrait) overlay.style.width = `${visual.width}px`;
@@ -736,6 +766,12 @@ const hideSvg = sizeIcon(xIcon, 8);
         const visual = overlay.getBoundingClientRect();
         savePosition(visual.left, visual.top);
         overlay.classList.remove('is-resizing');
+        if (
+          !overlay.classList.contains('is-minimized') &&
+          visual.height >= SNAP_TO_MINIMIZE_BELOW
+        ) {
+          heightBeforeResizeGesture = null;
+        }
         if (resizeHandle?.hasPointerCapture(event.pointerId)) {
           resizeHandle.releasePointerCapture(event.pointerId);
         }
@@ -1096,6 +1132,12 @@ const hideSvg = sizeIcon(xIcon, 8);
   .dev-overlay__light--minimize:focus-visible {
     background: var(--comp-traffic-light-minimize-hover);
     color: #995700;
+  }
+
+  .dev-overlay__lights:hover .dev-overlay__light--expand,
+  .dev-overlay__light--expand:focus-visible {
+    background: var(--comp-traffic-light-expand-hover);
+    color: #00520a;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light-icon,
