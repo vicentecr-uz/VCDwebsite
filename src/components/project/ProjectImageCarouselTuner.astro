@@ -30,9 +30,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
 
     <ViewportSelector dataAttr="data-carousel-viewport" />
 
-    <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden>
-      Inheriting from larger breakpoint — change a setting to create an override.
-    </p>
+    <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden></p>
 
     <label class="project-carousel-tuner__select">
       <span>Position dots</span>
@@ -69,10 +67,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
       <input type="checkbox" data-carousel-scroll-pinned />
       <span>Advance on page scroll</span>
     </label>
-    <p class="project-carousel-tuner__hint project-carousel-tuner__hint--indent">
-      Pins the block mid-viewport and steps through every image as the reader
-      scrolls. Saved, but not wired up yet — swipe still drives the carousel.
-    </p>
+    <p class="project-carousel-tuner__hint project-carousel-tuner__hint--indent" hidden></p>
 
     <div class="project-carousel-tuner__board">
       <p class="project-carousel-tuner__board-label">Visible</p>
@@ -88,15 +83,11 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
         data-carousel-parking
         data-carousel-drop="parking"
       >
-        <span class="project-carousel-tuner__parking-hint" data-carousel-parking-hint>
-          Drag images here to omit them at this breakpoint
-        </span>
+        <span class="project-carousel-tuner__parking-hint" data-carousel-parking-hint hidden></span>
       </div>
     </div>
 
-    <p class="project-carousel-tuner__hint">
-      Parking hides an image at this width only. Use Remove from page on a thumb to drop it from the carousel while keeping the file in the asset manager.
-    </p>
+    <p class="project-carousel-tuner__hint" hidden></p>
 
     <div class="project-carousel-tuner__actions">
       <button type="button" data-carousel-clear-override hidden>Clear override</button>
@@ -104,9 +95,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
       <button type="button" data-carousel-save>Save changes</button>
     </div>
 
-    <p class="project-carousel-tuner__status" data-carousel-status aria-live="polite">
-      Pick a carousel to edit its direction, height, and images.
-    </p>
+    <p class="project-carousel-tuner__status" data-carousel-status aria-live="polite"></p>
   </div>
 </DevOverlay>
 
@@ -907,6 +896,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
 
 <style>
   .project-carousel-tuner {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.7em;
@@ -914,11 +904,10 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
     max-width: 24em;
   }
 
-  .project-carousel-tuner__inherit {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
+  .project-carousel-tuner__inherit,
+  .project-carousel-tuner__hint,
+  .project-carousel-tuner__parking-hint {
+    display: none;
   }
 
   .project-carousel-tuner__select {
@@ -996,14 +985,6 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
     background: color-mix(in srgb, var(--sys-color-on-srf) 8%, var(--sys-color-srf-container-low));
   }
 
-  .project-carousel-tuner__parking-hint {
-    grid-column: 1 / -1;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.3;
-    pointer-events: none;
-  }
-
   .project-carousel-tuner__thumb-wrap {
     display: grid;
     grid-template-rows: auto auto;
@@ -1057,21 +1038,18 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
     color: #b00000;
   }
 
-  .project-carousel-tuner__hint,
+  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
+     stay in the a11y tree. */
   .project-carousel-tuner__status {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
-  }
-
-  .project-carousel-tuner__hint--indent {
-    margin-top: -0.25em;
-    padding-left: 1.55em;
-  }
-
-  .project-carousel-tuner__status {
-    font-size: 0.75rem;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .project-carousel-tuner__actions {

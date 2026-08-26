@@ -12,9 +12,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
   <div class="project-grid-tuner" data-project-image-grid-tuner>
     <ViewportSelector dataAttr="data-grid-viewport" />
 
-    <p class="project-grid-tuner__inherit" data-grid-inherit hidden>
-      Inheriting from larger breakpoint — drag to create an override.
-    </p>
+    <p class="project-grid-tuner__inherit" data-grid-inherit hidden></p>
 
     <label class="project-grid-tuner__select">
       <span>Columns</span>
@@ -71,9 +69,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
       <input type="checkbox" data-grid-match-height />
       <span>Match row height</span>
     </label>
-    <p class="project-grid-tuner__toggle-hint">
-      Scale cells so each row shares one height; widths follow aspect ratios.
-    </p>
+    <p class="project-grid-tuner__toggle-hint" hidden></p>
 
     <div class="project-grid-tuner__board">
       <p class="project-grid-tuner__board-label">Visible</p>
@@ -89,15 +85,11 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
         data-grid-parking
         data-grid-drop="parking"
       >
-        <span class="project-grid-tuner__parking-hint" data-grid-parking-hint>
-          Drag images here to hide them at this breakpoint
-        </span>
+        <span class="project-grid-tuner__parking-hint" data-grid-parking-hint hidden></span>
       </div>
     </div>
 
-    <p class="project-grid-tuner__hint">
-      Parking hides an image at this width only. Use Remove on a thumb to drop it from the grid while keeping the file in the asset manager.
-    </p>
+    <p class="project-grid-tuner__hint" hidden></p>
 
     <div class="project-grid-tuner__actions">
       <button type="button" data-grid-clear-override hidden>Clear override</button>
@@ -105,9 +97,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
       <button type="button" data-grid-save>Save changes</button>
     </div>
 
-    <p class="project-grid-tuner__status" data-grid-status aria-live="polite">
-      Pick a grid to edit layout, columns, width, aspect, and match-height.
-    </p>
+    <p class="project-grid-tuner__status" data-grid-status aria-live="polite"></p>
   </div>
 </DevOverlay>
 
@@ -935,6 +925,7 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
 
 <style>
   .project-grid-tuner {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.7em;
@@ -942,11 +933,11 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
     max-width: 24em;
   }
 
-  .project-grid-tuner__inherit {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
+  .project-grid-tuner__inherit,
+  .project-grid-tuner__toggle-hint,
+  .project-grid-tuner__hint,
+  .project-grid-tuner__parking-hint {
+    display: none;
   }
 
   .project-grid-tuner__select {
@@ -977,14 +968,6 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
 
   .project-grid-tuner__toggle input {
     margin: 0;
-  }
-
-  .project-grid-tuner__toggle-hint {
-    margin: -0.25em 0 0;
-    padding-left: 1.55em;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
   }
 
   .project-grid-tuner__board {
@@ -1031,14 +1014,6 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
   .project-grid-tuner__visible.is-drop-target,
   .project-grid-tuner__parking.is-drop-target {
     background: color-mix(in srgb, var(--sys-color-on-srf) 8%, var(--sys-color-srf-container-low));
-  }
-
-  .project-grid-tuner__parking-hint {
-    grid-column: 1 / -1;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.3;
-    pointer-events: none;
   }
 
   .project-grid-tuner__thumb-wrap {
@@ -1094,12 +1069,18 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
     color: #b00000;
   }
 
-  .project-grid-tuner__hint,
+  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
+     stay in the a11y tree. */
   .project-grid-tuner__status {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
-    line-height: 1.35;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .project-grid-tuner__actions {
