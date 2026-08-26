@@ -35,7 +35,6 @@ const statusIcons = {
 </dialog>
 
 <DevOverlay
-  title="Project settings"
   storageKey="project-settings"
   panelKey="project-settings"
   defaultHidden
@@ -84,6 +83,9 @@ const statusIcons = {
     isRegionDark,
     measureRegionLuma,
   } from '../scripts/coverLuminance';
+  import { resolveDevPanelTitle } from '../lib/devPanelTitles';
+
+  window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
 
   window.__vcdMeasureHoverDark = async function measureHoverDark(file, item) {
     let objectUrl = '';
@@ -586,7 +588,7 @@ const statusIcons = {
     }
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
-      overlayTitle.textContent = `Project settings — ${gridLabel}`;
+      overlayTitle.textContent = window.__vcdResolveDevPanelTitle('project-settings', { suffix: gridLabel });
     }
     if (statusLine instanceof HTMLElement) {
       statusLine.textContent = 'Card background and text colour. Title, visibility, cover, and span edit on the card.';
