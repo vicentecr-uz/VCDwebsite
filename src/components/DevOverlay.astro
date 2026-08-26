@@ -46,7 +46,7 @@ const hideSvg = sizeIcon(xIcon, 8);
   data-embedded={embedded ? 'true' : undefined}
   hidden={defaultHidden ? true : undefined}
   {...rest}
-  style={embedded ? 'position:relative;inset:auto;opacity:1;transform:none;z-index:auto' : undefined}
+  style={embedded ? 'position:relative;inset:auto;z-index:auto' : undefined}
 >
   <div class="dev-overlay__head" data-drag-handle>
     <p class="dev-overlay__title">{title}</p>
@@ -93,6 +93,7 @@ const hideSvg = sizeIcon(xIcon, 8);
 
 <script>
   const MOTION_MS = 180;
+  const EMBEDDED_RESTORE_MS = 1000;
   /* CSS rest is 40. Stay below the save bar (90). Session-only — never persisted. */
   let overlayStackZ = 40;
 
@@ -237,6 +238,7 @@ const hideSvg = sizeIcon(xIcon, 8);
     let wantVisible = !overlay.hasAttribute('hidden');
     let motionTimer = 0;
     let motionGeneration = 0;
+    let hideFinished = false;
 
     const setNativeHidden = (hidden: boolean) => {
       if (nativeHidden?.set) nativeHidden.set.call(overlay, hidden);
@@ -267,13 +269,6 @@ const hideSvg = sizeIcon(xIcon, 8);
       });
     };
 
-    const finishHide = (generation: number) => {
-      if (generation !== motionGeneration || wantVisible) return;
-      overlay.classList.remove('is-dev-overlay-open');
-      setNativeHidden(true);
-      clearMotionTimer();
-    };
-
     const showOverlay = () => {
       raiseOverlay(overlay);
       if (wantVisible && !overlay.hasAttribute('hidden') && overlay.classList.contains('is-dev-overlay-open')) {
@@ -285,9 +280,28 @@ const hideSvg = sizeIcon(xIcon, 8);
       finishShow();
     };
 
+    const finishHide = (generation: number) => {
+      if (generation !== motionGeneration || wantVisible) return;
+      if (hideFinished) return;
+      hideFinished = true;
+      overlay.classList.remove('is-dev-overlay-open');
+      clearMotionTimer();
+      // Catalog: keep the in-flow box (no [hidden]) so the well does not
+      // collapse, then restore after 1s. Live: fade, then display:none.
+      if (embedded) {
+        motionTimer = window.setTimeout(() => {
+          if (generation !== motionGeneration || wantVisible) return;
+          showOverlay();
+        }, EMBEDDED_RESTORE_MS);
+        return;
+      }
+      setNativeHidden(true);
+    };
+
     const hideOverlayAnimated = () => {
       if (!wantVisible && overlay.hasAttribute('hidden')) return;
       wantVisible = false;
+      hideFinished = false;
       const generation = ++motionGeneration;
       clearMotionTimer();
       overlay.classList.remove('is-dev-overlay-open');
@@ -363,9 +377,12 @@ const hideSvg = sizeIcon(xIcon, 8);
     */
     let portraitScheduleConstrain: (() => void) | null = null;
 
-    /* Catalog specimens stay in-flow; hug-cap JS would write max-height:0
-       when first measured unlaid-out and collapse the preview well. */
-    if (!embedded && overlay.classList.contains('dev-overlay--portrait')) {
+    const isPortrait = overlay.classList.contains('dev-overlay--portrait');
+
+    /* Catalog used to skip this: first measure of an unlaid-out specimen
+       wrote max-height:0 and collapsed the well. Guard natural <= 0
+       instead of skipping embedded entirely. */
+    if (isPortrait) {
       const STICKY_AROUND_NATURAL = 24;
       let huggedNatural = !overlay.style.height;
       let constrainRaf = 0;
@@ -410,6 +427,7 @@ const hideSvg = sizeIcon(xIcon, 8);
           return;
         }
         const natural = naturalHeightPx();
+        if (natural <= 0) return;
         const cap = Math.max(0, Math.min(Math.ceil(natural), viewportCapPx()));
         overlay.style.maxHeight = `${Math.round(cap)}px`;
 
@@ -544,7 +562,7 @@ const hideSvg = sizeIcon(xIcon, 8);
     }
 
     const resizeLayer = overlay.querySelector<HTMLElement>('[data-resize-handles]');
-    if (overlay.classList.contains('dev-overlay--landscape') && resizeLayer) {
+    if (resizeLayer) {
       const usedPx = (value: string, fallback: number) => {
         if (!value || value === 'none' || value === 'auto') return fallback;
         const px = Number.parseFloat(value);
@@ -574,12 +592,14 @@ const hideSvg = sizeIcon(xIcon, 8);
       let resizeMaxHeight = 0;
 
       const writeResizeRect = (left: number, top: number, width: number, height: number) => {
-        overlay.style.left = `${left - resizeOriginLeft}px`;
-        overlay.style.top = `${top - resizeOriginTop}px`;
-        overlay.style.width = `${width}px`;
+        if (!embedded) {
+          overlay.style.left = `${left - resizeOriginLeft}px`;
+          overlay.style.top = `${top - resizeOriginTop}px`;
+          overlay.style.right = 'auto';
+          overlay.style.bottom = 'auto';
+        }
+        if (!isPortrait) overlay.style.width = `${width}px`;
         overlay.style.height = `${height}px`;
-        overlay.style.right = 'auto';
-        overlay.style.bottom = 'auto';
       };
 
       const applyResizeFrame = (clientX: number, clientY: number) => {
@@ -603,25 +623,27 @@ const hideSvg = sizeIcon(xIcon, 8);
         let left = resizeMoveW ? startRight - width : resizeStartLeft;
         let top = resizeMoveN ? startBottom - height : resizeStartTop;
 
-        if (resizeMoveW && left < 0) {
-          left = 0;
-          width = startRight - left;
-          width = clamp(width, resizeMinWidth, resizeMaxWidth);
-          left = startRight - width;
-          if (left < 0) left = 0;
-        }
-        if (resizeMoveE && left + width > vw) {
-          width = Math.max(0, vw - left);
-        }
-        if (resizeMoveN && top < 0) {
-          top = 0;
-          height = startBottom - top;
-          height = clamp(height, resizeMinHeight, resizeMaxHeight);
-          top = startBottom - height;
-          if (top < 0) top = 0;
-        }
-        if (resizeMoveS && top + height > vh) {
-          height = Math.max(0, vh - top);
+        if (!embedded) {
+          if (resizeMoveW && left < 0) {
+            left = 0;
+            width = startRight - left;
+            width = clamp(width, resizeMinWidth, resizeMaxWidth);
+            left = startRight - width;
+            if (left < 0) left = 0;
+          }
+          if (resizeMoveE && left + width > vw) {
+            width = Math.max(0, vw - left);
+          }
+          if (resizeMoveN && top < 0) {
+            top = 0;
+            height = startBottom - top;
+            height = clamp(height, resizeMinHeight, resizeMaxHeight);
+            top = startBottom - height;
+            if (top < 0) top = 0;
+          }
+          if (resizeMoveS && top + height > vh) {
+            height = Math.max(0, vh - top);
+          }
         }
 
         writeResizeRect(left, top, width, height);
@@ -639,7 +661,6 @@ const hideSvg = sizeIcon(xIcon, 8);
 
       resizeLayer.addEventListener('pointerdown', (event) => {
         if (event.button !== 0) return;
-        if (!overlay.classList.contains('dev-overlay--landscape')) return;
         if (overlay.classList.contains('is-minimized')) return;
         if (overlay.classList.contains('is-dragging')) return;
         const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resize]');
@@ -649,23 +670,33 @@ const hideSvg = sizeIcon(xIcon, 8);
         const dir = handle.dataset.resize ?? '';
         resizeMoveN = dir === 'n' || dir === 'ne' || dir === 'nw';
         resizeMoveS = dir === 's' || dir === 'se' || dir === 'sw';
-        resizeMoveE = dir === 'e' || dir === 'ne' || dir === 'se';
-        resizeMoveW = dir === 'w' || dir === 'nw' || dir === 'sw';
+        resizeMoveE = !isPortrait && (dir === 'e' || dir === 'ne' || dir === 'se');
+        resizeMoveW = !isPortrait && (dir === 'w' || dir === 'nw' || dir === 'sw');
 
         const visual = overlay.getBoundingClientRect();
-        writeLocalFromViewport(visual.left, visual.top);
-        overlay.style.width = `${visual.width}px`;
-        overlay.style.height = `${visual.height}px`;
-        resizeOriginLeft = visual.left - Number.parseFloat(overlay.style.left);
-        resizeOriginTop = visual.top - Number.parseFloat(overlay.style.top);
+        if (!embedded) {
+          writeLocalFromViewport(visual.left, visual.top);
+          if (!isPortrait) overlay.style.width = `${visual.width}px`;
+          overlay.style.height = `${visual.height}px`;
+          resizeOriginLeft = visual.left - Number.parseFloat(overlay.style.left);
+          resizeOriginTop = visual.top - Number.parseFloat(overlay.style.top);
+        } else {
+          if (!isPortrait) overlay.style.width = `${visual.width}px`;
+          overlay.style.height = `${visual.height}px`;
+          resizeOriginLeft = 0;
+          resizeOriginTop = 0;
+        }
 
         const cs = getComputedStyle(overlay);
         const vw = window.innerWidth;
         const vh = window.innerHeight;
         resizeMinWidth = usedPx(cs.minWidth, 0);
-        resizeMaxWidth = Math.min(usedPx(cs.maxWidth, vw), vw);
+        resizeMaxWidth = embedded ? usedPx(cs.maxWidth, Number.POSITIVE_INFINITY) : Math.min(usedPx(cs.maxWidth, vw), vw);
         resizeMinHeight = usedPx(cs.minHeight, 0);
-        resizeMaxHeight = Math.min(usedPx(cs.maxHeight, vh), vh);
+        // Portrait hug-cap is an inline max-height; south-drag must not pass it.
+        resizeMaxHeight = embedded
+          ? usedPx(cs.maxHeight, Number.POSITIVE_INFINITY)
+          : Math.min(usedPx(cs.maxHeight, vh), vh);
         if (resizeMaxWidth < resizeMinWidth) resizeMaxWidth = resizeMinWidth;
         if (resizeMaxHeight < resizeMinHeight) resizeMaxHeight = resizeMinHeight;
 
@@ -791,14 +822,10 @@ const hideSvg = sizeIcon(xIcon, 8);
   }
 
   /* Portrait resizes in height only — width is the signed 352px contract.
-     There is no visible grip (the cursor change over the bottom edge is
-     enough), so the native resizer glyph is hidden on engines that draw one.
-     The content cap (never resizable taller than the panel's own content)
-     lives in the ResizeObserver below, not in CSS: max-height must see the
-     laid-out content height, and fit-content inside min() is dropped by
-     Gecko/WebKit and mis-resolves against the flex column even in Blink. */
+     Custom edge/corner hit strips (same layer as landscape); E/W strips
+     are hidden. Native SE resize is off so there is no UA glyph. */
   .dev-overlay--portrait {
-    resize: vertical;
+    resize: none;
   }
 
   /* The floor keeps an open panel's resize drag from collapsing the header
@@ -833,9 +860,10 @@ const hideSvg = sizeIcon(xIcon, 8);
     transform: translateY(0);
   }
 
-  /* Catalog / in-flow specimen: stay in the document, skip the entrance rise.
-     [data-embedded] beats a stale transform that still has position:fixed
-     on .dev-overlay and no --embedded class rules. */
+  /* Catalog / in-flow specimen: stay in the document. Open pose is
+     `.is-dev-overlay-open` only — do not pin opacity/transform here or
+     hide cannot play the exit fade. Width must not cap at 100% or a
+     597px landscape specimen collapses to the card. */
   .dev-overlay.dev-overlay--embedded,
   .dev-overlay[data-embedded] {
     position: relative;
@@ -843,14 +871,12 @@ const hideSvg = sizeIcon(xIcon, 8);
     bottom: auto;
     inset: auto;
     z-index: auto;
-    opacity: 1;
-    transform: none;
-    max-width: 100%;
   }
 
   .dev-overlay--embedded.dev-overlay--landscape,
   .dev-overlay[data-embedded].dev-overlay--landscape {
-    width: min(var(--dev-panel-width-landscape), 100%);
+    width: var(--dev-panel-width-landscape);
+    min-width: var(--dev-panel-min-width-landscape);
   }
 
   /* Closed / mid-exit: don't intercept clicks under a fading panel. */
@@ -909,8 +935,14 @@ const hideSvg = sizeIcon(xIcon, 8);
     pointer-events: none;
   }
 
-  .dev-overlay.is-minimized .dev-overlay__resize,
-  .dev-overlay--portrait .dev-overlay__resize {
+  .dev-overlay.is-minimized .dev-overlay__resize {
+    display: none;
+  }
+
+  /* Portrait: height only — hide the east/west strips. Corners stay so
+     N/S drags remain reachable at the sides; JS ignores E/W on those. */
+  .dev-overlay--portrait .dev-overlay__resize [data-resize='e'],
+  .dev-overlay--portrait .dev-overlay__resize [data-resize='w'] {
     display: none;
   }
 

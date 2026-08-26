@@ -1377,8 +1377,10 @@ const sectionLinks = savedOutline.length
   }
 
   /* Embedded DevOverlays hug in-flow; overflow:hidden on the well clips
-     their shadow and can zero-out the first layout measure. */
-  .component-preview:has(.dev-overlay--embedded) {
+     their shadow and a 597px landscape specimen. :has() must be :global —
+     the overlay class is scoped in DevOverlay.astro, so a local :has
+     never matches. */
+  .component-preview:has(:global(.dev-overlay--embedded)) {
     overflow: visible;
   }
 
