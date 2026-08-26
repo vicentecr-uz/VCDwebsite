@@ -106,22 +106,26 @@ function buildDeclarations(json) {
 }
 
 /**
- * Assemble the three-selector token CSS (light :root, dark media, data-theme="dark").
+ * Assemble token CSS. Production omits the OS media query — dark is opt-in
+ * via data-theme="dark" (DEV toggle) until #256 ships. DEV alarms still
+ * include the media query so unfilled tokens scream under OS dark locally.
  * Empty selector groups are omitted.
  */
-function assembleTokenCss(startMarker, endMarker, rootDecls, sysDarkDecls) {
+function assembleTokenCss(startMarker, endMarker, rootDecls, sysDarkDecls, { includeOsMedia = false } = {}) {
   const body = [];
   if (rootDecls.length) {
     body.push([':root {', ...rootDecls, '}'].join('\n'));
   }
   if (sysDarkDecls.length) {
-    body.push([
-      '@media (prefers-color-scheme: dark) {',
-      '  :root:not([data-theme="light"]) {',
-      ...sysDarkDecls.map((line) => `  ${line}`),
-      '  }',
-      '}',
-    ].join('\n'));
+    if (includeOsMedia) {
+      body.push([
+        '@media (prefers-color-scheme: dark) {',
+        '  :root:not([data-theme="light"]) {',
+        ...sysDarkDecls.map((line) => `  ${line}`),
+        '  }',
+        '}',
+      ].join('\n'));
+    }
     body.push([':root[data-theme="dark"] {', ...sysDarkDecls, '}'].join('\n'));
   }
   const interleaved = [];
@@ -140,6 +144,7 @@ export function generateTokenBlock(json) {
     END_MARKER,
     [...withoutAlarms(refDecls), ...withoutAlarms(sysLightDecls), ...withoutAlarms(compDecls)],
     withoutAlarms(sysDarkDecls),
+    { includeOsMedia: false },
   );
 }
 
@@ -151,6 +156,7 @@ export function generateAlarmBlock(json) {
     ALARM_END_MARKER,
     [...onlyAlarms(refDecls), ...onlyAlarms(sysLightDecls), ...onlyAlarms(compDecls)],
     onlyAlarms(sysDarkDecls),
+    { includeOsMedia: true },
   );
 }
 

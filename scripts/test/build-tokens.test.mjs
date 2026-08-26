@@ -50,6 +50,8 @@ const alarms = generateAlarmBlock(fixture);
 
 check('production omits #ff00ff', !/#ff00ff/i.test(production));
 check('production keeps filled sys tokens', production.includes('--sys-color-srf: #ffffff'));
+check('production has no OS dark media query', !production.includes('prefers-color-scheme'));
+check('production still has data-theme="dark"', production.includes(':root[data-theme="dark"]'));
 check('alarm generator contains #ff00ff', /#ff00ff/i.test(alarms));
 check('alarm generator includes the unfilled token', alarms.includes('--sys-color-primary:'));
 check('alarm generator omits filled tokens', !alarms.includes('--sys-color-srf:'));
