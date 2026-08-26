@@ -16,7 +16,8 @@
     const modeOnlyControls = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-mode-only]')];
     const devPanels = () =>
-      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')];
+      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')]
+        .filter((panel) => !panel.hasAttribute('data-embedded'));
     const imageTargets = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
 
@@ -348,6 +349,20 @@
     // through to "leave Dev Mode" instead of leaving the field.
     const isTypingTarget = (target: HTMLElement | null) =>
       Boolean(target && (target.isContentEditable || target.closest('input, textarea, select')));
+
+    // Capture so Log issue's Esc-cancel does not fire first. Focused Drop Area
+    // blurs back to Rest; a second Esc still closes the panel.
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target as HTMLElement | null;
+      const drop = target?.closest?.('.dev-drop');
+      if (!(drop instanceof HTMLElement)) return;
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !drop.contains(active)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      active.blur();
+    }, true);
 
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
