@@ -1,6 +1,7 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
 import SegmentedControl from '../ui/SegmentedControl.astro';
+import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import SelectField from '../ui/SelectField.astro';
@@ -91,11 +92,11 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
     <p class="project-carousel-tuner__hint" hidden></p>
 
-    <div class="project-carousel-tuner__actions">
-      <button type="button" data-carousel-clear-override hidden>Clear</button>
-      <button type="button" data-carousel-revert>Revert changes</button>
-      <button type="button" data-carousel-save>Save changes</button>
-    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Clear" hidden data-carousel-clear-override />
+      <Button emphasis="ghost" label="Revert changes" data-carousel-revert />
+      <Button emphasis="filled" label="Save changes" data-carousel-save />
+    </PanelActions>
 
     <p class="project-carousel-tuner__status" data-carousel-status aria-live="polite"></p>
   </div>
@@ -1021,26 +1022,4 @@ import ToggleRow from '../ui/ToggleRow.astro';
     border: 0;
   }
 
-  .project-carousel-tuner__actions {
-    display: flex;
-    gap: 0.45em;
-    flex-wrap: wrap;
-  }
-
-  .project-carousel-tuner__actions button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.5em 0.7em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .project-carousel-tuner__actions button[data-carousel-save] {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-    margin-left: auto;
-  }
 </style>
