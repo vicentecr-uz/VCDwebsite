@@ -28,10 +28,14 @@ const {
   ...rest
 } = Astro.props;
 
-/* Figma glyphs are 8×8 inside the 15px light. */
-const minimizeSvg = sizeIcon(minusIcon, 8);
-const expandSvg = sizeIcon(plusIcon, 8);
-const hideSvg = sizeIcon(xIcon, 8);
+/* Figma glyphs are 8×8 inside the 15px light, 1px round stroke.
+   Lucide's stroke-width 2 in a 24 viewBox would paint at 2×8/24 ≈ 0.67px
+   and the round caps vanish — bump the user-unit width so 8px → 1px. */
+const trafficLightIcon = (svg: string) =>
+  sizeIcon(svg, 8).replace(/stroke-width="2"/, 'stroke-width="3"');
+const minimizeSvg = trafficLightIcon(minusIcon);
+const expandSvg = trafficLightIcon(plusIcon);
+const hideSvg = trafficLightIcon(xIcon);
 ---
 
 <aside
@@ -1102,7 +1106,9 @@ const hideSvg = sizeIcon(xIcon, 8);
     -webkit-appearance: none;
     font-size: 0;
     line-height: 0;
-    overflow: hidden;
+    /* Round stroke caps sit on the 8px box edge; clipping here squared them
+       off and made the glyph look shifted up-right. */
+    overflow: visible;
   }
 
   /* The two lights sit 8px apart, so each one's hit slop meets its
@@ -1114,23 +1120,37 @@ const hideSvg = sizeIcon(xIcon, 8);
   }
 
   .dev-overlay__light-icon {
-    position: relative;
-    display: block;
+    position: absolute;
+    top: 50%;
+    left: 50%;
     width: 8px;
     height: 8px;
+    margin: -4px 0 0 -4px;
+    display: block;
     opacity: 0;
     pointer-events: none;
     line-height: 0;
+    overflow: visible;
+  }
+
+  .dev-overlay__light-icon[hidden] {
+    display: none;
   }
 
   .dev-overlay__light-icon :global(svg) {
     display: block;
     width: 8px;
     height: 8px;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    overflow: visible;
+    shape-rendering: geometricPrecision;
+  }
+
+  .dev-overlay__light-icon :global(path) {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    /* Figma paints a 1px round stroke in the 8px frame, not Lucide's scaled 0.67. */
+    vector-effect: non-scaling-stroke;
+    stroke-width: 1px;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--hide,
