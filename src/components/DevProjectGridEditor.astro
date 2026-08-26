@@ -593,11 +593,14 @@ const statusIcons = {
     }
   };
 
-  const openSettingsPanel = () => {
+  const openSettingsPanel = (trigger) => {
     if (!(settingsPanel instanceof HTMLElement)) return;
     settingsPanel.hidden = false;
     window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
-      detail: { panel: settingsPanel },
+      detail: {
+        panel: settingsPanel,
+        ...(trigger instanceof HTMLElement ? { trigger } : {}),
+      },
     }));
     window.dispatchEvent(new Event('resize'));
   };
@@ -610,7 +613,7 @@ const statusIcons = {
     }
   };
 
-  const openSettings = async (slug) => {
+  const openSettings = async (slug, trigger) => {
     const item = gridItemForSlug(slug);
     if (!(item instanceof HTMLElement)) {
       window.alert('Could not find that project on this page.');
@@ -620,7 +623,7 @@ const statusIcons = {
       const entry = await ensureLoaded(slug, item);
       panelSlug = slug;
       renderPanelFromEntry(entry);
-      openSettingsPanel();
+      openSettingsPanel(trigger);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not load project settings.');
     }
@@ -628,7 +631,10 @@ const statusIcons = {
 
   window.addEventListener('vcd:dev-project-settings-open', ((event) => {
     const slug = String(event.detail?.slug || '').trim();
-    if (slug) void openSettings(slug);
+    const trigger = event.detail?.trigger;
+    if (slug) {
+      void openSettings(slug, trigger instanceof HTMLElement ? trigger : undefined);
+    }
   }));
 
   /** @type {HTMLElement | null} */
@@ -1183,7 +1189,7 @@ const statusIcons = {
         closeSettingsPanel();
         return;
       }
-      void openSettings(slug);
+      void openSettings(slug, settingsButton);
       return;
     }
 

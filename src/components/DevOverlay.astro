@@ -205,14 +205,28 @@ const hideSvg = trafficLightIcon(xIcon);
       const w = overlay.offsetWidth;
       const h = overlay.offsetHeight;
       if (w <= 0 || h <= 0) return;
+      const layoutEl =
+        trigger.closest('[data-dev-project-grid], .project-page__main, main, .styles-main')
+        || document.querySelector('.project-page__main, main, [data-dev-project-grid], .styles-main')
+        || document.documentElement;
+      const layoutRect = layoutEl.getBoundingClientRect();
+      const layoutMid = (layoutRect.left + layoutRect.right) / 2;
+      const trigMid = (trig.left + trig.right) / 2;
+      const preferLeft = trigMid < layoutMid;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const roomRight = vw - VIEW_INSET - (trig.right + GAP);
       const roomLeft = trig.left - GAP - VIEW_INSET;
       let left: number;
-      if (roomRight >= w) left = trig.right + GAP;
-      else if (roomLeft >= w) left = trig.left - GAP - w;
-      else left = roomRight >= roomLeft ? trig.right + GAP : trig.left - GAP - w;
+      if (preferLeft) {
+        if (roomLeft >= w) left = trig.left - GAP - w;
+        else if (roomRight >= w) left = trig.right + GAP;
+        else left = roomLeft >= roomRight ? trig.left - GAP - w : trig.right + GAP;
+      } else {
+        if (roomRight >= w) left = trig.right + GAP;
+        else if (roomLeft >= w) left = trig.left - GAP - w;
+        else left = roomRight >= roomLeft ? trig.right + GAP : trig.left - GAP - w;
+      }
       let top = trig.top;
       if (top + h > vh - VIEW_INSET) top = vh - VIEW_INSET - h;
       if (top < VIEW_INSET) top = VIEW_INSET;
@@ -818,7 +832,12 @@ const hideSvg = trafficLightIcon(xIcon);
         const { trigger, panel } = event.detail ?? {};
         if (panel !== overlay || !(trigger instanceof HTMLElement)) return;
         if (overlay.classList.contains('is-minimized')) setMinimized(false);
-        const place = () => placeBesideTrigger(trigger);
+        const place = () => {
+          const w = overlay.offsetWidth;
+          const h = overlay.offsetHeight;
+          if (w <= 0 || h <= 0) return;
+          placeBesideTrigger(trigger);
+        };
         requestAnimationFrame(() => requestAnimationFrame(place));
       }) as EventListener);
     }
