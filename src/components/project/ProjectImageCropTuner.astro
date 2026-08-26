@@ -1,5 +1,6 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
 import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
 import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
 import lockIcon from 'lucide-static/icons/lock.svg?raw';
@@ -21,11 +22,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   defaultHidden
 >
   <div class="tapico-crop-tuner" data-project-image-crop-tuner>
-    <div class="tapico-crop-tuner__viewports" aria-label="Display width">
-      <button type="button" data-crop-viewport="desktop">Desktop</button>
-      <button type="button" data-crop-viewport="tablet">Tablet</button>
-      <button type="button" data-crop-viewport="mobile">Mobile</button>
-    </div>
+    <ViewportSelector dataAttr="data-crop-viewport" />
 
     <label class="tapico-crop-tuner__select">
       <span>Aspect ratio</span>
@@ -2340,13 +2337,6 @@ const globeSvg = sizeIcon(globeIcon, 16);
     gap: 0.7em;
   }
 
-  .tapico-crop-tuner__viewports {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4em;
-  }
-
-  .tapico-crop-tuner__viewports button,
   .tapico-crop-tuner__select select {
     border: 0;
     background: var(--sys-color-srf-container-low);
@@ -2355,30 +2345,9 @@ const globeSvg = sizeIcon(globeIcon, 16);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1.1;
-  }
-
-  /*
-    Plain radius on viewport chips: inset active ring + Hyperellipse corner-shape
-    draws uneven side strokes (same clash as .dev-image-edit-trigger / colour swatches).
-  */
-  .tapico-crop-tuner__viewports button {
-    border-radius: var(--radius-control);
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__select select {
     border-radius: var(--radius-control-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-  }
-
-  .tapico-crop-tuner__viewports button:hover,
-  .tapico-crop-tuner__viewports button.is-active {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__viewports button.is-active {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-srf) 30%, transparent);
   }
 
   .tapico-crop-tuner__select {

@@ -1,5 +1,8 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import Button from '../ui/Button.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
 ---
 
 <DevOverlay
@@ -9,16 +12,23 @@ import DevOverlay from '../DevOverlay.astro';
   defaultHidden
 >
   <div class="project-carousel-tuner" data-project-image-carousel-tuner>
-    <div class="project-carousel-tuner__segmented" aria-label="Direction">
-      <button type="button" data-carousel-orientation="horizontal">Left to right</button>
-      <button type="button" data-carousel-orientation="vertical">Up to down</button>
-    </div>
+    <SegmentedControl label="Direction">
+      <Button
+        emphasis="soft"
+        width="fill"
+        label="Left to right"
+        class="is-active"
+        data-carousel-orientation="horizontal"
+      />
+      <Button
+        emphasis="soft"
+        width="fill"
+        label="Up to down"
+        data-carousel-orientation="vertical"
+      />
+    </SegmentedControl>
 
-    <div class="project-carousel-tuner__viewports" aria-label="Display width">
-      <button type="button" data-carousel-viewport="desktop">Desktop</button>
-      <button type="button" data-carousel-viewport="tablet">Tablet</button>
-      <button type="button" data-carousel-viewport="mobile">Mobile</button>
-    </div>
+    <ViewportSelector dataAttr="data-carousel-viewport" />
 
     <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden>
       Inheriting from larger breakpoint — change a setting to create an override.
@@ -902,38 +912,6 @@ import DevOverlay from '../DevOverlay.astro';
     gap: 0.7em;
     min-width: 18em;
     max-width: 24em;
-  }
-
-  .project-carousel-tuner__segmented,
-  .project-carousel-tuner__viewports {
-    display: grid;
-    gap: 0.4em;
-  }
-
-  .project-carousel-tuner__segmented {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .project-carousel-tuner__viewports {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .project-carousel-tuner__segmented button,
-  .project-carousel-tuner__viewports button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.45em 0.4em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .project-carousel-tuner__segmented button.is-active,
-  .project-carousel-tuner__viewports button.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
   }
 
   .project-carousel-tuner__inherit {
