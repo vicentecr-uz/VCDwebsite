@@ -70,6 +70,16 @@ const hideSvg = sizeIcon(xIcon, 8);
   <div class="dev-overlay__body" data-overlay-body>
     <slot />
   </div>
+  <div class="dev-overlay__resize" data-resize-handles aria-hidden="true">
+    <span data-resize="n"></span>
+    <span data-resize="s"></span>
+    <span data-resize="e"></span>
+    <span data-resize="w"></span>
+    <span data-resize="ne"></span>
+    <span data-resize="nw"></span>
+    <span data-resize="se"></span>
+    <span data-resize="sw"></span>
+  </div>
 </aside>
 
 <script>
@@ -458,6 +468,7 @@ const hideSvg = sizeIcon(xIcon, 8);
 
     dragHandle.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
+      if (overlay.classList.contains('is-resizing')) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('[data-drag-ignore]')) return;
       event.preventDefault();
@@ -496,6 +507,173 @@ const hideSvg = sizeIcon(xIcon, 8);
 
     dragHandle.addEventListener('pointerup', endDrag);
     dragHandle.addEventListener('pointercancel', endDrag);
+
+    const resizeLayer = overlay.querySelector<HTMLElement>('[data-resize-handles]');
+    if (overlay.classList.contains('dev-overlay--landscape') && resizeLayer) {
+      const usedPx = (value: string, fallback: number) => {
+        if (!value || value === 'none' || value === 'auto') return fallback;
+        const px = Number.parseFloat(value);
+        return Number.isFinite(px) ? px : fallback;
+      };
+
+      let resizePointerId: number | null = null;
+      let resizeHandle: HTMLElement | null = null;
+      let resizeRaf = 0;
+      let pendingResizeX = 0;
+      let pendingResizeY = 0;
+      let resizeOriginLeft = 0;
+      let resizeOriginTop = 0;
+      let resizeStartX = 0;
+      let resizeStartY = 0;
+      let resizeStartLeft = 0;
+      let resizeStartTop = 0;
+      let resizeStartWidth = 0;
+      let resizeStartHeight = 0;
+      let resizeMoveN = false;
+      let resizeMoveS = false;
+      let resizeMoveE = false;
+      let resizeMoveW = false;
+      let resizeMinWidth = 0;
+      let resizeMaxWidth = 0;
+      let resizeMinHeight = 0;
+      let resizeMaxHeight = 0;
+
+      const writeResizeRect = (left: number, top: number, width: number, height: number) => {
+        overlay.style.left = `${left - resizeOriginLeft}px`;
+        overlay.style.top = `${top - resizeOriginTop}px`;
+        overlay.style.width = `${width}px`;
+        overlay.style.height = `${height}px`;
+        overlay.style.right = 'auto';
+        overlay.style.bottom = 'auto';
+      };
+
+      const applyResizeFrame = (clientX: number, clientY: number) => {
+        const dx = clientX - resizeStartX;
+        const dy = clientY - resizeStartY;
+        const startRight = resizeStartLeft + resizeStartWidth;
+        const startBottom = resizeStartTop + resizeStartHeight;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let width = resizeStartWidth;
+        let height = resizeStartHeight;
+        if (resizeMoveE) width = resizeStartWidth + dx;
+        if (resizeMoveW) width = resizeStartWidth - dx;
+        if (resizeMoveS) height = resizeStartHeight + dy;
+        if (resizeMoveN) height = resizeStartHeight - dy;
+
+        width = clamp(width, resizeMinWidth, resizeMaxWidth);
+        height = clamp(height, resizeMinHeight, resizeMaxHeight);
+
+        let left = resizeMoveW ? startRight - width : resizeStartLeft;
+        let top = resizeMoveN ? startBottom - height : resizeStartTop;
+
+        if (resizeMoveW && left < 0) {
+          left = 0;
+          width = startRight - left;
+          width = clamp(width, resizeMinWidth, resizeMaxWidth);
+          left = startRight - width;
+          if (left < 0) left = 0;
+        }
+        if (resizeMoveE && left + width > vw) {
+          width = Math.max(0, vw - left);
+        }
+        if (resizeMoveN && top < 0) {
+          top = 0;
+          height = startBottom - top;
+          height = clamp(height, resizeMinHeight, resizeMaxHeight);
+          top = startBottom - height;
+          if (top < 0) top = 0;
+        }
+        if (resizeMoveS && top + height > vh) {
+          height = Math.max(0, vh - top);
+        }
+
+        writeResizeRect(left, top, width, height);
+      };
+
+      const scheduleResize = (clientX: number, clientY: number) => {
+        pendingResizeX = clientX;
+        pendingResizeY = clientY;
+        if (resizeRaf) return;
+        resizeRaf = requestAnimationFrame(() => {
+          resizeRaf = 0;
+          applyResizeFrame(pendingResizeX, pendingResizeY);
+        });
+      };
+
+      resizeLayer.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        if (!overlay.classList.contains('dev-overlay--landscape')) return;
+        if (overlay.classList.contains('is-minimized')) return;
+        if (overlay.classList.contains('is-dragging')) return;
+        const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resize]');
+        if (!handle || !resizeLayer.contains(handle)) return;
+        event.preventDefault();
+
+        const dir = handle.dataset.resize ?? '';
+        resizeMoveN = dir === 'n' || dir === 'ne' || dir === 'nw';
+        resizeMoveS = dir === 's' || dir === 'se' || dir === 'sw';
+        resizeMoveE = dir === 'e' || dir === 'ne' || dir === 'se';
+        resizeMoveW = dir === 'w' || dir === 'nw' || dir === 'sw';
+
+        const visual = overlay.getBoundingClientRect();
+        writeLocalFromViewport(visual.left, visual.top);
+        overlay.style.width = `${visual.width}px`;
+        overlay.style.height = `${visual.height}px`;
+        resizeOriginLeft = visual.left - Number.parseFloat(overlay.style.left);
+        resizeOriginTop = visual.top - Number.parseFloat(overlay.style.top);
+
+        const cs = getComputedStyle(overlay);
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        resizeMinWidth = usedPx(cs.minWidth, 0);
+        resizeMaxWidth = Math.min(usedPx(cs.maxWidth, vw), vw);
+        resizeMinHeight = usedPx(cs.minHeight, 0);
+        resizeMaxHeight = Math.min(usedPx(cs.maxHeight, vh), vh);
+        if (resizeMaxWidth < resizeMinWidth) resizeMaxWidth = resizeMinWidth;
+        if (resizeMaxHeight < resizeMinHeight) resizeMaxHeight = resizeMinHeight;
+
+        resizePointerId = event.pointerId;
+        resizeHandle = handle;
+        resizeStartX = event.clientX;
+        resizeStartY = event.clientY;
+        resizeStartLeft = visual.left;
+        resizeStartTop = visual.top;
+        resizeStartWidth = visual.width;
+        resizeStartHeight = visual.height;
+        pendingResizeX = event.clientX;
+        pendingResizeY = event.clientY;
+
+        overlay.classList.add('is-resizing');
+        handle.setPointerCapture(event.pointerId);
+      });
+
+      resizeLayer.addEventListener('pointermove', (event) => {
+        if (resizePointerId !== event.pointerId) return;
+        scheduleResize(event.clientX, event.clientY);
+      });
+
+      const endResize = (event: PointerEvent) => {
+        if (resizePointerId !== event.pointerId) return;
+        resizePointerId = null;
+        if (resizeRaf) {
+          cancelAnimationFrame(resizeRaf);
+          resizeRaf = 0;
+          applyResizeFrame(pendingResizeX, pendingResizeY);
+        }
+        const visual = overlay.getBoundingClientRect();
+        savePosition(visual.left, visual.top);
+        overlay.classList.remove('is-resizing');
+        if (resizeHandle?.hasPointerCapture(event.pointerId)) {
+          resizeHandle.releasePointerCapture(event.pointerId);
+        }
+        resizeHandle = null;
+      };
+
+      resizeLayer.addEventListener('pointerup', endResize);
+      resizeLayer.addEventListener('pointercancel', endResize);
+    }
 
     hideBtn?.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -564,18 +742,12 @@ const hideSvg = sizeIcon(xIcon, 8);
       transform var(--dev-overlay-motion-ms) ease;
   }
 
-  /* Landscape (Gallery Manager, Asset Manager) resizes on both axes in
-     source; overflow: hidden on .dev-overlay is what makes resize legal. */
+  /* Landscape resizes from custom edge/corner hit strips, not CSS resize
+     (which is SE-only). overflow: hidden still clips to the rounded corners. */
   .dev-overlay--landscape {
     width: min(var(--dev-panel-width-landscape), calc(100vw - 2em));
     min-width: var(--dev-panel-min-width-landscape);
-    resize: both;
-  }
-
-  /* No visible grip glyph on either layout — the cursor change over the
-     resizable edge is signal enough. */
-  .dev-overlay--landscape::-webkit-resizer {
-    display: none;
+    resize: none;
   }
 
   /* Portrait resizes in height only — width is the signed 352px contract.
@@ -651,15 +823,107 @@ const hideSvg = sizeIcon(xIcon, 8);
     touch-action: none;
   }
 
-  .dev-overlay.is-dragging {
+  .dev-overlay.is-dragging,
+  .dev-overlay.is-resizing {
     /* Keep the fade; drop the transform transition so baking left/top
        cannot restart the entrance rise. `translate` is not listed on the
        resting transition and is never animated. */
     transition: opacity var(--dev-overlay-motion-ms) ease;
   }
 
+  .dev-overlay.is-resizing {
+    user-select: none;
+  }
+
   .dev-overlay.is-dragging .dev-overlay__head {
     cursor: grabbing;
+  }
+
+  /*
+    Eight hit strips live in the 12px pad ring so overflow:hidden does not
+    clip them and they do not cover the header drag or traffic lights.
+  */
+  .dev-overlay__resize {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .dev-overlay.is-minimized .dev-overlay__resize,
+  .dev-overlay--portrait .dev-overlay__resize {
+    display: none;
+  }
+
+  .dev-overlay__resize [data-resize] {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .dev-overlay__resize [data-resize='n'] {
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+  }
+
+  .dev-overlay__resize [data-resize='s'] {
+    bottom: 0;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+  }
+
+  .dev-overlay__resize [data-resize='e'] {
+    top: 8px;
+    right: 0;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+
+  .dev-overlay__resize [data-resize='w'] {
+    top: 8px;
+    left: 0;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+
+  .dev-overlay__resize [data-resize='ne'],
+  .dev-overlay__resize [data-resize='nw'],
+  .dev-overlay__resize [data-resize='se'],
+  .dev-overlay__resize [data-resize='sw'] {
+    width: 8px;
+    height: 8px;
+    z-index: 1;
+  }
+
+  .dev-overlay__resize [data-resize='ne'] {
+    top: 0;
+    right: 0;
+    cursor: nesw-resize;
+  }
+
+  .dev-overlay__resize [data-resize='nw'] {
+    top: 0;
+    left: 0;
+    cursor: nwse-resize;
+  }
+
+  .dev-overlay__resize [data-resize='se'] {
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
+  }
+
+  .dev-overlay__resize [data-resize='sw'] {
+    bottom: 0;
+    left: 0;
+    cursor: nesw-resize;
   }
 
   /* Collapsed to header-only: the body is display:none so the panel's own
