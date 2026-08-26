@@ -484,9 +484,10 @@
   width: 100%;
 }
 
-/* Drag Area Base (596:4734). The dashed hairline is the project's one
+/* Drop Area Base (596:4734). The dashed hairline is the project's one
    "you can drop/edit here" signal — it uses --dev-edit-dash so the whole dev
-   layer moves together. 16px is a literal in Figma; no radius token covers it. */
+   layer moves together. 16px is a literal in Figma; no radius token covers it.
+   Fills: Drop Area States Rest/Hover/Pressed → --comp-droparea-*. */
 .dev-drop {
   display: flex;
   align-items: center;
@@ -494,18 +495,23 @@
   width: 100%;
   padding: 8px;
   border-radius: 16px;
-  background: var(--sys-color-srf-container-low);
+  background: var(--comp-droparea-rest);
   box-sizing: border-box;
-  cursor: pointer;
+  cursor: default;
 }
 
-/* Pressed fill on the container — Figma Drag Area States binds it on the
+.dev-drop:hover {
+  background: var(--comp-droparea-hover);
+}
+
+/* Pressed fill on the container — Figma Drop Area States binds it on the
    Base (16px radius), not the dashed well. Ghost buttons inside keep their
    own hover; a container background never touches them. */
 .dev-drop:focus,
-.dev-drop:focus-visible {
+.dev-drop:focus-visible,
+.dev-drop.is-dragover {
   outline: none;
-  background: var(--comp-button-soft-container-pressed);
+  background: var(--comp-droparea-pressed);
 }
 
 .dev-drop__well {
