@@ -93,6 +93,8 @@ const { documentKey } = Astro.props;
   /** @type {((reason?: Error) => void) | null} */
   let rejectPick = null;
   let pickMode = false;
+  /** @type {HTMLElement | null} */
+  let pickOpener = null;
   /** @type {'image' | 'imageGrid' | 'imageCarousel'} */
   let pickType = 'image';
 
@@ -343,15 +345,37 @@ const { documentKey } = Astro.props;
     }
   };
 
+  const clearPickSession = () => {
+    pickOpener = null;
+    resolvePick = null;
+    rejectPick = null;
+  };
+
+  const findPickOpener = (detail) => {
+    if (detail.opener instanceof HTMLElement) return detail.opener;
+    /** @type {HTMLElement | null} */
+    let best = null;
+    let bestZ = -Infinity;
+    document.querySelectorAll('[data-dev-overlay]').forEach((panel) => {
+      if (!(panel instanceof HTMLElement) || panel === overlay) return;
+      if (panel.hasAttribute('data-embedded')) return;
+      if (panel.hidden) return;
+      const z = Number.parseFloat(getComputedStyle(panel).zIndex);
+      const zValue = Number.isFinite(z) ? z : 0;
+      if (zValue >= bestZ) {
+        bestZ = zValue;
+        best = panel;
+      }
+    });
+    return best;
+  };
+
   const closePanel = (cancelled = true) => {
     if (overlay instanceof HTMLElement) overlay.hidden = true;
     setAssetManagerOpen(false);
-    if (cancelled && rejectPick) {
-      const reject = rejectPick;
-      resolvePick = null;
-      rejectPick = null;
-      reject(new Error('cancelled'));
-    }
+    const reject = cancelled ? rejectPick : null;
+    clearPickSession();
+    if (reject) reject(new Error('cancelled'));
   };
 
   const confirmPick = () => {
@@ -362,8 +386,7 @@ const { documentKey } = Astro.props;
       .filter(Boolean);
     if (!srcs.length) return;
     const resolve = resolvePick;
-    resolvePick = null;
-    rejectPick = null;
+    clearPickSession();
     if (overlay instanceof HTMLElement) overlay.hidden = true;
     setAssetManagerOpen(false);
     resolve?.({ srcs, type: pickType });
@@ -396,11 +419,21 @@ const { documentKey } = Astro.props;
     setAssetManagerOpen(false);
     if (rejectPick) {
       const reject = rejectPick;
-      resolvePick = null;
-      rejectPick = null;
+      clearPickSession();
       reject(new Error('cancelled'));
+    } else {
+      pickOpener = null;
     }
   }));
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!pickMode || !pickOpener) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (!pickOpener.contains(target)) return;
+    if (overlay instanceof Node && overlay.contains(target)) return;
+    closePanel(true);
+  }, true);
 
   window.addEventListener('vcd:dev-asset-manager-open', ((event) => {
     const detail = event.detail ?? {};
@@ -408,8 +441,7 @@ const { documentKey } = Astro.props;
 
     if (rejectPick) {
       rejectPick(new Error('cancelled'));
-      resolvePick = null;
-      rejectPick = null;
+      clearPickSession();
     }
 
     pickMode = detail.mode !== 'browse';
@@ -418,6 +450,7 @@ const { documentKey } = Astro.props;
     }
     resolvePick = typeof detail.resolve === 'function' ? detail.resolve : null;
     rejectPick = typeof detail.reject === 'function' ? detail.reject : null;
+    pickOpener = pickMode ? findPickOpener(detail) : null;
     selected.clear();
     selectedProject = detail.project || documentKey || selectedProject;
     filter = 'all';
