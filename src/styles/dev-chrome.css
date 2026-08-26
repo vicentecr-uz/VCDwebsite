@@ -209,6 +209,11 @@
   box-sizing: border-box;
   margin: -8px;
   padding: 8px;
+  /* Negative margin alone does not widen a flex item — 10dfa33 dropped this
+     and the control hugged its text, so only the glyphs (not the grey box /
+     chevron) received clicks. 16px = the 8px overflow on each side. */
+  width: calc(100% + 16px);
+  min-width: 0;
 }
 
 .dev-field:hover .dev-field__value {
@@ -224,6 +229,9 @@
   resize: vertical;
   field-sizing: content;
   min-height: calc(1.4em * var(--rows, 3) + 16px);
+  /* field-sizing: content would otherwise hug the typed line and park the
+     native resize glyph under the text instead of the box's bottom-right. */
+  min-width: calc(100% + 16px);
 }
 
 .dev-field__input--select {
@@ -235,6 +243,9 @@
   margin: -4px;
   padding: 12px;
   padding-right: 28px;
+  /* Value box padding is 0 for selects (55afc2c) — 100% is already the grey
+     box; +8px matches the -4px overflow so the native menu covers the chevron. */
+  width: calc(100% + 8px);
 }
 
 .dev-field__input--select:disabled {
