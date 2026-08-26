@@ -4,15 +4,27 @@ import '../../styles/dev-chrome.css';
 interface Props {
   label: string;
   checked?: boolean;
+  hidden?: boolean;
   [key: string]: any;
 }
 
-const { label, checked = false, class: className, ...rest } = Astro.props;
+const { label, checked = false, hidden, class: className, ...rest } = Astro.props;
+
+const labelRest: Record<string, unknown> = {};
+const inputRest: Record<string, unknown> = {};
+
+for (const [key, propValue] of Object.entries(rest)) {
+  if (key.endsWith('-wrap')) {
+    labelRest[key] = propValue;
+  } else {
+    inputRest[key] = propValue;
+  }
+}
 ---
 
-<label class:list={['dev-toggle', className]}>
+<label class:list={['dev-toggle', className]} hidden={hidden} {...labelRest}>
   <span class="dev-toggle__box">
-    <input type="checkbox" checked={checked} class="dev-toggle__checkbox" {...rest} />
+    <input type="checkbox" checked={checked} class="dev-toggle__checkbox" {...inputRest} />
     <svg class="dev-toggle__check" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.667" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
       <path d="M3.5 8.5l3 3 6-6" />
     </svg>

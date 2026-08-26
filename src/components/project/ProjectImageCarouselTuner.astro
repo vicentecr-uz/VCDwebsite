@@ -3,6 +3,8 @@ import DevOverlay from '../DevOverlay.astro';
 import SegmentedControl from '../ui/SegmentedControl.astro';
 import Button from '../ui/Button.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
+import SelectField from '../ui/SelectField.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
 ---
 
 <DevOverlay
@@ -32,41 +34,41 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
 
     <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden></p>
 
-    <label class="project-carousel-tuner__select">
-      <span>Position dots</span>
-      <select data-carousel-dots-placement>
-        <option value="outside">Below</option>
-        <option value="over">Over images</option>
-        <option value="hidden">Hidden</option>
-      </select>
-    </label>
+    <SelectField
+      label="Position dots"
+      data-carousel-dots-placement
+      options={[
+        { value: 'outside', label: 'Below' },
+        { value: 'over', label: 'Over images' },
+        { value: 'hidden', label: 'Hidden' },
+      ]}
+    />
 
-    <label class="project-carousel-tuner__select">
-      <span>Block height</span>
-      <select data-carousel-height-mode>
-        <option value="dynamic">Follow each image</option>
-        <option value="tallest">Pin to tallest</option>
-      </select>
-    </label>
+    <SelectField
+      label="Block height"
+      data-carousel-height-mode
+      options={[
+        { value: 'dynamic', label: 'Follow each image' },
+        { value: 'tallest', label: 'Pin to tallest' },
+      ]}
+    />
 
-    <label class="project-carousel-tuner__select">
-      <span>Max height</span>
-      <select data-carousel-max-vh>
-        <option value="">Off</option>
-        <option value="90">90% of screen</option>
-        <option value="80">80% of screen</option>
-        <option value="70">70% of screen</option>
-        <option value="60">60% of screen</option>
-        <option value="50">50% of screen</option>
-        <option value="40">40% of screen</option>
-        <option value="30">30% of screen</option>
-      </select>
-    </label>
+    <SelectField
+      label="Max height"
+      data-carousel-max-vh
+      options={[
+        { value: '', label: 'Off' },
+        { value: '90', label: '90% of screen' },
+        { value: '80', label: '80% of screen' },
+        { value: '70', label: '70% of screen' },
+        { value: '60', label: '60% of screen' },
+        { value: '50', label: '50% of screen' },
+        { value: '40', label: '40% of screen' },
+        { value: '30', label: '30% of screen' },
+      ]}
+    />
 
-    <label class="project-carousel-tuner__toggle">
-      <input type="checkbox" data-carousel-scroll-pinned />
-      <span>Advance on page scroll</span>
-    </label>
+    <ToggleRow label="Advance on page scroll" data-carousel-scroll-pinned />
     <p class="project-carousel-tuner__hint project-carousel-tuner__hint--indent" hidden></p>
 
     <div class="project-carousel-tuner__board">
@@ -909,40 +911,6 @@ import ViewportSelector from '../ui/ViewportSelector.astro';
   .project-carousel-tuner__hint,
   .project-carousel-tuner__parking-hint {
     display: none;
-  }
-
-  .project-carousel-tuner__select {
-    display: grid;
-    grid-template-columns: 7.5em 1fr;
-    gap: 0.5em;
-    align-items: center;
-    font-size: 0.85rem;
-  }
-
-  .project-carousel-tuner__select[hidden] {
-    display: none;
-  }
-
-  .project-carousel-tuner__select select {
-    width: 100%;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.45em 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-  }
-
-  .project-carousel-tuner__toggle {
-    display: flex;
-    gap: 0.55em;
-    align-items: center;
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-
-  .project-carousel-tuner__toggle input {
-    margin: 0;
   }
 
   .project-carousel-tuner__board {

@@ -1,6 +1,8 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
+import TextArea from '../ui/TextArea.astro';
+import SelectField from '../ui/SelectField.astro';
 import {
   IMAGE_CAPTION_POSITIONS,
   IMAGE_CAPTION_REVEALS,
@@ -17,39 +19,28 @@ import {
   <div class="project-caption-tuner" data-project-image-caption-tuner>
     <ViewportSelector dataAttr="data-caption-viewport" />
 
-    <label class="project-caption-tuner__field">
-      <span>Caption</span>
-      <textarea data-caption-text rows="3" placeholder="Type here"></textarea>
-    </label>
+    <TextArea label="Caption" placeholder="Type here" rows={3} data-caption-text />
 
     <div class="project-caption-tuner__pair">
-      <label class="project-caption-tuner__select">
-        <span>Style</span>
-        <select data-caption-style>
-          {IMAGE_CAPTION_STYLES.map((style) => (
-            <option value={style.id}>{style.label}</option>
-          ))}
-        </select>
-      </label>
-
-      <label class="project-caption-tuner__select" data-caption-overlay-only>
-        <span>Position</span>
-        <select data-caption-position>
-          {IMAGE_CAPTION_POSITIONS.map((position) => (
-            <option value={position.id}>{position.label}</option>
-          ))}
-        </select>
-      </label>
+      <SelectField
+        label="Style"
+        data-caption-style
+        options={IMAGE_CAPTION_STYLES.map((s) => ({ value: s.id, label: s.label }))}
+      />
+      <SelectField
+        label="Position"
+        data-caption-overlay-only
+        data-caption-position
+        options={IMAGE_CAPTION_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
+      />
     </div>
 
-    <label class="project-caption-tuner__select" data-caption-overlay-only>
-      <span>Show caption</span>
-      <select data-caption-reveal>
-        {IMAGE_CAPTION_REVEALS.map((reveal) => (
-          <option value={reveal.id}>{reveal.label}</option>
-        ))}
-      </select>
-    </label>
+    <SelectField
+      label="Show caption"
+      data-caption-overlay-only
+      data-caption-reveal
+      options={IMAGE_CAPTION_REVEALS.map((r) => ({ value: r.id, label: r.label }))}
+    />
 
     <div class="project-caption-tuner__actions">
       <button type="button" data-caption-clear>Clear</button>
@@ -921,60 +912,20 @@ import {
     gap: 0.7em;
   }
 
-  .project-caption-tuner__select select,
-  .project-caption-tuner__field textarea {
-    border: 0;
-    background: var(--sys-color-srf-container-low);
-    padding: 0.5em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-  }
-
-  .project-caption-tuner__select,
-  .project-caption-tuner__field {
-    display: grid;
-    gap: 0.45em;
-    font-size: 0.8rem;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .project-caption-tuner__select {
-    grid-template-columns: 7em 1fr;
-    align-items: center;
-  }
-
   .project-caption-tuner__pair {
     display: flex;
     gap: 0.7em;
     align-items: start;
   }
 
-  .project-caption-tuner__pair > .project-caption-tuner__select {
+  .project-caption-tuner__pair > :global(.dev-field) {
     flex: 1 1 0;
     min-width: 0;
-    grid-template-columns: 1fr;
   }
 
   .project-caption-tuner__pair:has([hidden]) {
     display: grid;
     grid-template-columns: 1fr;
-  }
-
-  .project-caption-tuner__select select,
-  .project-caption-tuner__field textarea {
-    width: 100%;
-  }
-
-  .project-caption-tuner__field textarea {
-    min-height: 4.5em;
-    resize: vertical;
-    line-height: 1.35;
-    cursor: text;
   }
 
   .project-caption-tuner__actions {
