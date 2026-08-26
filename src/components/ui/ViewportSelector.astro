@@ -1,0 +1,45 @@
+---
+import SegmentedControl from './SegmentedControl.astro';
+import Button from './Button.astro';
+
+/* `selected` paints via `is-active`, not Button's `selected`/`aria-pressed`.
+   Tuner JS toggles `is-active` (and often `aria-pressed`) and never clears
+   `is-selected`, so a baked-in Button selected would leave Desktop Page after
+   the user picks Tablet. */
+
+const VIEWPORTS = ['desktop', 'tablet', 'mobile'] as const;
+type Viewport = (typeof VIEWPORTS)[number];
+
+interface Props {
+  label?: string;
+  dataAttr: string;
+  selected?: Viewport;
+  [key: string]: any;
+}
+
+const {
+  label = 'Display width',
+  dataAttr,
+  selected = 'desktop',
+  class: className,
+  ...rest
+} = Astro.props;
+
+const LABELS: Record<Viewport, string> = {
+  desktop: 'Desktop',
+  tablet: 'Tablet',
+  mobile: 'Mobile',
+};
+---
+
+<SegmentedControl label={label} class={className} {...rest}>
+  {VIEWPORTS.map((bp) => (
+    <Button
+      emphasis="soft"
+      width="fill"
+      label={LABELS[bp]}
+      class={selected === bp ? 'is-active' : undefined}
+      {...{ [dataAttr]: bp }}
+    />
+  ))}
+</SegmentedControl>

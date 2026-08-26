@@ -76,11 +76,14 @@
 /* aria-pressed is the accessible expression of a selected control, is-active
    the class-state equivalent — panels that toggle either should not each
    re-declare the selected fill. */
-.dev-btn--ghost:hover,
+.dev-btn--ghost:hover {
+  background: var(--comp-button-ghost-container-hover);
+}
+
 .dev-btn--ghost.is-selected,
 .dev-btn--ghost.is-active,
 .dev-btn--ghost[aria-pressed='true'] {
-  background: var(--comp-button-ghost-container-hover);
+  background: var(--comp-button-ghost-container-selected);
 }
 
 .dev-btn--ghost:active {
@@ -118,6 +121,12 @@
   background: var(--comp-button-filled-container-hover);
 }
 
+.dev-btn--filled.is-selected,
+.dev-btn--filled.is-active,
+.dev-btn--filled[aria-pressed='true'] {
+  background: var(--comp-button-filled-container-selected);
+}
+
 .dev-btn--page {
   background: var(--comp-button-page-container);
   color: var(--comp-button-label);
@@ -132,6 +141,12 @@
   background: var(--comp-button-page-container-pressed);
 }
 
+.dev-btn--page.is-selected,
+.dev-btn--page.is-active,
+.dev-btn--page[aria-pressed='true'] {
+  background: var(--comp-button-page-container-selected);
+}
+
 .dev-btn--danger {
   background: var(--comp-button-danger-container);
   color: var(--comp-button-danger-label);
@@ -144,6 +159,12 @@
 
 .dev-btn--danger:active {
   background: var(--comp-button-danger-container-pressed);
+}
+
+.dev-btn--danger.is-selected,
+.dev-btn--danger.is-active,
+.dev-btn--danger[aria-pressed='true'] {
+  background: var(--comp-button-danger-container-selected);
 }
 
 .dev-field {
@@ -315,11 +336,12 @@
 }
 
 .dev-segmented {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   align-items: center;
   gap: 4px;
   padding: var(--dev-control-padding);
-  background: var(--sys-color-srf-container-low);
+  background: var(--comp-segmentedcontrol-bg);
   /* Concentric with the buttons: outer radius (10, radius/control-in-container)
      = inner button radius (8) + the 2px padding between them. */
   border-radius: var(--dev-radius-control-in-container);
@@ -328,24 +350,40 @@
 .dev-segmented .dev-btn {
   padding: 6px 8px;
   min-height: 28px;
+  flex: 1 1 0;
+  min-width: 0;
   /* Segments sit 4px apart — closer than the 8px hit-inset, so the slop
      would reach over a neighbour's visible edge. Segments are adjacent by
      design; the pill itself is the enlarged target. */
   --dev-btn-hit-inset: 0px;
 }
 
-/* Figma: an unselected segment is Ghost (transparent, showing the pill's own
-   grey backdrop); the selected one is Page — it reads as the page surface
-   poking through, same white as Page's own rest fill
-   (--comp-button-page-container-selected aliases --comp-button-page-container,
-   confirmed against the file).
+/* Three fill buttons in one row — flex-basis 0 already equalizes; override
+   the base .dev-btn--fill width:100% so they don't each claim the pill. */
+.dev-segmented .dev-btn--fill {
+  width: 0;
+}
+
+/* Figma: unselected segment is Soft (same grey as the pill at rest; hover
+   is --comp-button-soft-container-hover so it is visible on the pill).
+   Selected is Page — the page surface poking through
+   (--comp-button-page-container-selected aliases --comp-button-page-container).
    Scoped to .dev-segmented, not the base emphasis classes, so a segment can
-   be authored as dev-btn--ghost throughout and just pick up the selected
-   look from its state — Format bar and the spacing chips use their own
-   higher-specificity Soft override instead and are unaffected. */
+   be authored as Soft throughout and just pick up the selected look from its
+   state — Format bar and the spacing chips use their own higher-specificity
+   Soft override instead and are unaffected. */
 .dev-segmented .dev-btn.is-selected,
 .dev-segmented .dev-btn.is-active,
 .dev-segmented .dev-btn[aria-pressed='true'] {
+  background: var(--comp-button-page-container-selected);
+  box-shadow: none;
+}
+
+/* Soft hover and Page hover are both the pill grey — lock selected to Page
+   so the white chip does not vanish under the pointer. */
+.dev-segmented .dev-btn.is-selected:hover,
+.dev-segmented .dev-btn.is-active:hover,
+.dev-segmented .dev-btn[aria-pressed='true']:hover {
   background: var(--comp-button-page-container-selected);
 }
 

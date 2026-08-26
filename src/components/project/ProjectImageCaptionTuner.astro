@@ -1,5 +1,6 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
 import {
   IMAGE_CAPTION_POSITIONS,
   IMAGE_CAPTION_REVEALS,
@@ -14,11 +15,7 @@ import {
   defaultHidden
 >
   <div class="project-caption-tuner" data-project-image-caption-tuner>
-    <div class="project-caption-tuner__viewports" aria-label="Display width">
-      <button type="button" data-caption-viewport="desktop">Desktop</button>
-      <button type="button" data-caption-viewport="tablet">Tablet</button>
-      <button type="button" data-caption-viewport="mobile">Mobile</button>
-    </div>
+    <ViewportSelector dataAttr="data-caption-viewport" />
 
     <label class="project-caption-tuner__select">
       <span>Caption style</span>
@@ -923,13 +920,6 @@ import {
     gap: 0.7em;
   }
 
-  .project-caption-tuner__viewports {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4em;
-  }
-
-  .project-caption-tuner__viewports button,
   .project-caption-tuner__select select,
   .project-caption-tuner__field textarea {
     border: 0;
@@ -939,27 +929,9 @@ import {
     font: inherit;
     font-size: 0.75rem;
     line-height: 1.1;
-  }
-
-  .project-caption-tuner__viewports button {
-    border-radius: var(--radius-control);
-    cursor: pointer;
-  }
-
-  .project-caption-tuner__select select,
-  .project-caption-tuner__field textarea {
     border-radius: var(--radius-control-smooth);
     corner-shape: var(--squircle-shape);
     --corner-shape: var(--squircle-shape);
-  }
-
-  .project-caption-tuner__viewports button:hover,
-  .project-caption-tuner__viewports button.is-active {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .project-caption-tuner__viewports button.is-active {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-srf) 30%, transparent);
   }
 
   .project-caption-tuner__select,
