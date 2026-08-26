@@ -131,14 +131,17 @@ deliberately no `on-srf-container-low`.
 yet", as distinct from "broken". Same for `srf-dim`, `srf-bright`, the outer
 container steps, `inverse-primary`, `scrim` and `shadow`.
 
-They stay pink until a brand accent is chosen. Note that `inverse-srf` already
-gives "black on light, white on dark" for free, because opposing the page is what
-it *means* — a black `primary` would need its dark value set by hand, since
-`primary` does not flip.
+They stay pink in `tokens/design-tokens.json`; generated production CSS omits
+`#ff00ff`, and local DEV loads `src/styles/dev-token-alarms.css`. Production
+also omits the `prefers-color-scheme: dark` media query (dark is opt-in via
+`data-theme="dark"` / the DEV toggle) so OS-dark visitors stay on the light
+sheet until #256. Note that `inverse-srf` already gives "black on light, white
+on dark" for free, because opposing the page is what it *means* — a black
+`primary` would need its dark value set by hand, since `primary` does not flip.
 
 ## Guard rails
 
-- `bun run tokens:build` — regenerates the block in `global.css`. Idempotent.
+- `bun run tokens:build` — regenerates the block in `global.css` and `dev-token-alarms.css`. Idempotent.
 - `bun run tokens:check` — fails on an undefined token, a leftover `--color-*`,
   stale generated CSS, **or** drift against `tokens/figma-tokens.json`.
 
