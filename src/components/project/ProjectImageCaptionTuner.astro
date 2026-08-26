@@ -9,7 +9,7 @@ import {
 ---
 
 <DevOverlay
-  title="Edit caption"
+  title="Caption"
   storageKey="project-image-caption"
   panelKey="caption"
   defaultHidden
@@ -19,26 +19,28 @@ import {
 
     <label class="project-caption-tuner__field">
       <span>Caption</span>
-      <textarea data-caption-text rows="3" placeholder="Caption title"></textarea>
+      <textarea data-caption-text rows="3" placeholder="Type here"></textarea>
     </label>
 
-    <label class="project-caption-tuner__select">
-      <span>Style</span>
-      <select data-caption-style>
-        {IMAGE_CAPTION_STYLES.map((style) => (
-          <option value={style.id}>{style.label}</option>
-        ))}
-      </select>
-    </label>
+    <div class="project-caption-tuner__pair">
+      <label class="project-caption-tuner__select">
+        <span>Style</span>
+        <select data-caption-style>
+          {IMAGE_CAPTION_STYLES.map((style) => (
+            <option value={style.id}>{style.label}</option>
+          ))}
+        </select>
+      </label>
 
-    <label class="project-caption-tuner__select" data-caption-overlay-only>
-      <span>Position</span>
-      <select data-caption-position>
-        {IMAGE_CAPTION_POSITIONS.map((position) => (
-          <option value={position.id}>{position.label}</option>
-        ))}
-      </select>
-    </label>
+      <label class="project-caption-tuner__select" data-caption-overlay-only>
+        <span>Position</span>
+        <select data-caption-position>
+          {IMAGE_CAPTION_POSITIONS.map((position) => (
+            <option value={position.id}>{position.label}</option>
+          ))}
+        </select>
+      </label>
+    </div>
 
     <label class="project-caption-tuner__select" data-caption-overlay-only>
       <span>Show caption</span>
@@ -944,6 +946,23 @@ import {
   .project-caption-tuner__select {
     grid-template-columns: 7em 1fr;
     align-items: center;
+  }
+
+  .project-caption-tuner__pair {
+    display: flex;
+    gap: 0.7em;
+    align-items: start;
+  }
+
+  .project-caption-tuner__pair > .project-caption-tuner__select {
+    flex: 1 1 0;
+    min-width: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .project-caption-tuner__pair:has([hidden]) {
+    display: grid;
+    grid-template-columns: 1fr;
   }
 
   .project-caption-tuner__select select,
