@@ -93,6 +93,24 @@ const hideSvg = sizeIcon(xIcon, 8);
 
 <script>
   const MOTION_MS = 180;
+  /* CSS rest is 40. Stay below the save bar (90). Session-only — never persisted. */
+  let overlayStackZ = 40;
+
+  const raiseOverlay = (overlay: HTMLElement) => {
+    if (overlay.hasAttribute('data-embedded')) return;
+    if (overlayStackZ + 1 >= 90) {
+      document
+        .querySelectorAll<HTMLElement>('[data-dev-overlay]:not([data-embedded]):not([hidden])')
+        .forEach((el) => {
+          el.style.zIndex = '40';
+        });
+      overlay.style.zIndex = '41';
+      overlayStackZ = 41;
+      return;
+    }
+    overlayStackZ += 1;
+    overlay.style.zIndex = String(overlayStackZ);
+  };
 
   const nativeHidden = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
 
@@ -257,6 +275,7 @@ const hideSvg = sizeIcon(xIcon, 8);
     };
 
     const showOverlay = () => {
+      raiseOverlay(overlay);
       if (wantVisible && !overlay.hasAttribute('hidden') && overlay.classList.contains('is-dev-overlay-open')) {
         return;
       }
@@ -709,6 +728,9 @@ const hideSvg = sizeIcon(xIcon, 8);
     });
 
     if (!embedded) {
+      overlay.addEventListener('pointerdown', () => {
+        raiseOverlay(overlay);
+      });
       window.addEventListener('resize', () => {
         const left = Number.parseFloat(overlay.style.left);
         const top = Number.parseFloat(overlay.style.top);
