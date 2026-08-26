@@ -18,6 +18,7 @@ import Button from '../components/ui/Button.astro';
 import SegmentedControl from '../components/ui/SegmentedControl.astro';
 import ViewportSelector from '../components/ui/ViewportSelector.astro';
 import DevOverlay from '../components/DevOverlay.astro';
+import DevPanelTitle from '../components/ui/DevPanelTitle.astro';
 import Field from '../components/ui/Field.astro';
 import TextField from '../components/ui/TextField.astro';
 import TextArea from '../components/ui/TextArea.astro';
@@ -93,6 +94,7 @@ type PreviewKey =
   | 'ui-button'
   | 'ui-segmented-control'
   | 'ui-dev-panel'
+  | 'ui-dev-panel-title'
   | 'ui-field'
   | 'ui-text-field'
   | 'ui-text-area'
@@ -311,10 +313,22 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'Live overlay chrome (header, body, traffic lights, resize). Catalog specimens are the same component in embedded mode — dummy title and body only.',
     classRef: '.dev-overlay / .dev-overlay--portrait / .dev-overlay--landscape / .dev-overlay--embedded',
     source: 'src/components/DevOverlay.astro',
-    props: 'title, layout? (portrait | landscape, default portrait), embedded?, storageKey?, panelKey?, defaultHidden?, defaultMinimized?, showMinimize?, ...rest (body via default slot)',
+    props: 'title? (override only), titleSuffix?, layout? (portrait | landscape, default portrait), embedded?, storageKey?, panelKey?, defaultHidden?, defaultMinimized?, showMinimize?, ...rest (body via default slot; header from panelKey via DevPanelTitle)',
     usedOn: ['Gallery manager', 'Asset manager', 'Log issue', 'Crop / grid / caption tuners', 'Project settings'],
     checklist: 'Portrait 352px + vertical resize + snap-to-minimize; landscape 597px (min 344) + all-edge resize; 18px radius; body clips to the inner corner on resize; no native resize glyph; renders correctly in both themes.',
     preview: 'ui-dev-panel',
+  },
+  {
+    id: 'component-ui-dev-panel-title',
+    name: 'DevPanelTitle',
+    category: 'ui-primitives',
+    purpose: 'Figma Dev Panel Title variants — panelKey is the variant; live overlays resolve the header from the shared title map.',
+    classRef: '.dev-overlay__title',
+    source: 'src/components/ui/DevPanelTitle.astro, src/lib/devPanelTitles.ts',
+    props: 'panelKey?, suffix?, title? (override only)',
+    usedOn: ['DevOverlay header on every live dev panel'],
+    checklist: 'Title typography matches dev-overlay__title; known panelKey resolves from DEV_PANEL_TITLES; suffix appends em dash label; override wins for catalog dummies.',
+    preview: 'ui-dev-panel-title',
   },
   {
     id: 'component-ui-field',
@@ -929,6 +943,13 @@ const sectionLinks = savedOutline.length
                             <p class="preview-note">Body content</p>
                             <p class="preview-note">Body content</p>
                           </DevOverlay>
+                        </div>
+                      )}
+                      {component.preview === 'ui-dev-panel-title' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.75em;">
+                          <DevPanelTitle panelKey="image" />
+                          <DevPanelTitle panelKey="caption" />
+                          <DevPanelTitle panelKey="grid" />
                         </div>
                       )}
                       {component.preview === 'ui-field' && (

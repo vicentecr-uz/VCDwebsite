@@ -9,7 +9,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 ---
 
 <DevOverlay
-  title="Gallery manager"
   storageKey="gallery-pages"
   panelKey="gallery-pages"
   layout="landscape"
@@ -34,6 +33,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
 <script>
   import { projectImage } from '../lib/images';
+  import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
   import {
     hasCropVariants,
@@ -855,7 +855,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       const grid = currentGrid();
       if (!grid) return;
       activeGrid = grid;
-      if (overlayTitle) overlayTitle.textContent = `Gallery Manager — ${gridLabel(grid)}`;
+      if (overlayTitle) overlayTitle.textContent = resolveDevPanelTitle('gallery-pages', { suffix: gridLabel(grid) });
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       panel.hidden = false;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel } }));

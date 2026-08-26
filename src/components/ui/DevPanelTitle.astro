@@ -1,0 +1,12 @@
+---
+import { resolveDevPanelTitle } from '../../lib/devPanelTitles';
+interface Props {
+  panelKey?: string;
+  suffix?: string;
+  title?: string; // override only (catalog dummy)
+  [key: string]: any;
+}
+const { panelKey, suffix, title, class: className, ...rest } = Astro.props;
+const label = resolveDevPanelTitle(panelKey, { suffix, override: title });
+---
+<p class:list={['dev-overlay__title', className]} {...rest}>{label}</p>
