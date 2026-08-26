@@ -284,7 +284,7 @@ const componentCatalog: ComponentEntry[] = [
     id: 'component-ui-segmented-control',
     name: 'SegmentedControl',
     category: 'ui-primitives',
-    purpose: 'Presentational shell mirroring the Figma Segmented Control — composed examples below (Viewport Selector, Axis Selector) show a selected segment; selection state and wiring stay with the caller.',
+    purpose: 'Presentational shell mirroring the Figma Segmented Control — click a segment in the catalog to move selection; live panels wire their own data-* hooks.',
     classRef: '.dev-segmented',
     source: 'src/components/ui/SegmentedControl.astro',
     props: 'label, ...rest (children passed via default slot)',
@@ -1471,3 +1471,18 @@ const sectionLinks = savedOutline.length
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll('.component-preview .dev-segmented').forEach((group) => {
+    group.addEventListener('click', (event) => {
+      const btn = (event.target as HTMLElement | null)?.closest('.dev-btn');
+      if (!(btn instanceof HTMLElement) || !group.contains(btn)) return;
+      group.querySelectorAll('.dev-btn').forEach((sibling) => {
+        sibling.classList.remove('is-selected', 'is-active');
+        sibling.removeAttribute('aria-pressed');
+      });
+      btn.classList.add('is-selected', 'is-active');
+      btn.setAttribute('aria-pressed', 'true');
+    });
+  });
+</script>
