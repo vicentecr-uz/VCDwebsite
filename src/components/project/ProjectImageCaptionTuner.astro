@@ -845,6 +845,12 @@ import {
         if (!target) return;
 
         selectTarget(target);
+        window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+          detail: {
+            trigger: captionNode,
+            panel: tuner.closest('[data-dev-panel-key]'),
+          },
+        }));
         const live = matchImageCaptionViewport();
         selectedViewport = live;
         renderFields();
