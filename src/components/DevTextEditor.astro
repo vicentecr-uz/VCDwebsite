@@ -1,7 +1,22 @@
+---
+import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
+import boldIcon from 'lucide-static/icons/bold.svg?raw';
+import italicIcon from 'lucide-static/icons/italic.svg?raw';
+import underlineIcon from 'lucide-static/icons/underline.svg?raw';
+import linkIcon from 'lucide-static/icons/link.svg?raw';
+import { sizeIcon } from '../lib/icons';
+
+const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
+const formatBoldSvg = sizeIcon(boldIcon, 16);
+const formatItalicSvg = sizeIcon(italicIcon, 16);
+const formatUnderlineSvg = sizeIcon(underlineIcon, 16);
+const formatLinkSvg = sizeIcon(linkIcon, 16);
+---
+
 <div class="dev-text-actions" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
+    <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
     <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
-    <span class="dev-text-actions__warn" data-dev-text-warn hidden>⚠</span>
     <span class="dev-text-actions__branch" data-dev-text-branch hidden></span>
     <button type="button" data-dev-text-revert>Revert changes</button>
     <button type="button" data-dev-text-save>Save</button>
@@ -14,32 +29,35 @@
   <div class="dev-text-format__surface">
     <div class="dev-text-format__buttons">
       <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
-        <span aria-hidden="true"><b>B</b></span>
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatBoldSvg} />
       </button>
       <button type="button" data-dev-format="italic" title="Italic (⌘I)" aria-label="Italic" aria-pressed="false">
-        <span aria-hidden="true"><i>I</i></span>
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatItalicSvg} />
       </button>
       <button type="button" data-dev-format="underline" title="Underline (⌘U)" aria-label="Underline" aria-pressed="false">
-        <span aria-hidden="true"><u>U</u></span>
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatUnderlineSvg} />
       </button>
       <button type="button" data-dev-format="link" title="Link (⌘K)" aria-label="Link" aria-pressed="false">
-        Link
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatLinkSvg} />
       </button>
     </div>
-    <form class="dev-text-format__link" data-dev-text-link-panel hidden>
+    <form class="dev-text-format__link" data-dev-text-link-panel aria-hidden="true">
+      <button type="button" data-dev-text-unlink>Unlink</button>
       <input
-        type="url"
+        type="text"
+        inputmode="url"
         data-dev-text-link-input
-        placeholder="https://…"
+        placeholder="google.com"
         autocomplete="off"
         spellcheck="false"
         aria-label="Link URL"
       />
       <button type="submit">Apply</button>
-      <button type="button" data-dev-text-unlink>Unlink</button>
     </form>
   </div>
 </div>
+
+<div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
   import {
@@ -160,7 +178,18 @@
    */
   const SIDEBAR_TITLE_HIDDEN_MQ = '(min-width: 88.5em)';
 
+  /** http(s), in-page path, hash, mailto — also the shape we persist. */
   const SAFE_HREF = /^(https?:\/\/|\/|#|mailto:)/i;
+  /** google.com, vcruzdesigns.com, www.foo.co.uk/path — no scheme, no spaces. */
+  const BARE_HOST = /^(?:[\w-]+\.)+[a-z]{2,}(?:[/:?#].*)?$/i;
+
+  const normalizeHref = (raw: string): string | null => {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (SAFE_HREF.test(trimmed)) return trimmed;
+    if (BARE_HOST.test(trimmed)) return `https://${trimmed}`;
+    return null;
+  };
 
   const applySpacingClass = (element: HTMLElement, spacing: SpacingValue) => {
     Object.values(STACK_CLASS).forEach((className) => {
@@ -195,6 +224,7 @@
     const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
     const warnLabel = actions?.querySelector<HTMLElement>('[data-dev-text-warn]');
     const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
+    const formatSel = document.querySelector<HTMLElement>('[data-dev-text-format-sel]');
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
@@ -208,7 +238,7 @@
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
-    if (!formatBar || !linkPanel || !linkInput || !unlinkButton) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -286,7 +316,8 @@
           const href = (node.getAttribute('href') || '').trim();
           const safeHref = SAFE_HREF.test(href) ? href.replaceAll('"', '%22') : '';
           if (!safeHref || !inner) return inner;
-          return `<a href="${safeHref}">${inner}</a>`;
+          const off = node.classList.contains('is-underline-off');
+          return `<a href="${safeHref}"${off ? ' class="is-underline-off"' : ''}>${inner}</a>`;
         }
         return inner;
       };
@@ -434,25 +465,28 @@
         const devEnabled = document.documentElement.classList.contains('is-dev-mode');
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
         control.innerHTML = `
-          <button
-            type="button"
-            class="dev-gap-toolbar__add"
-            data-dev-section-add
-            title="Add section"
-            aria-label="Add section"
-            aria-expanded="false"
-            aria-haspopup="menu"
-          >
-            <span aria-hidden="true">${sizeIcon(plusIcon)}</span>
-          </button>
+          <div class="dev-gap-toolbar__pill">
+            <button
+              type="button"
+              class="dev-gap-toolbar__add"
+              data-dev-section-add
+              title="Add section"
+              aria-label="Add section"
+              aria-expanded="false"
+              aria-haspopup="menu"
+            >
+              <span aria-hidden="true">${sizeIcon(plusIcon)}</span>
+            </button>
+            <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
+            <div class="dev-gap-toolbar__spacing">
+              ${spacingButtonsHtml(pageTop)}
+            </div>
+          </div>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
             <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
             <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
             <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
-          </div>
-          <div class="dev-gap-toolbar__spacing">
-            ${spacingButtonsHtml(pageTop)}
           </div>
         `;
 
@@ -630,6 +664,24 @@
       state.element.classList.contains('is-dev-spacing-dirty') ||
       state.spacingGroup.contains(document.activeElement);
 
+    const isPointerOverToolbarHitbox = (
+      state: EditableSpacingState,
+      clientX: number,
+      clientY: number,
+    ) => {
+      const pill = state.control.querySelector<HTMLElement>('.dev-gap-toolbar__pill');
+      const boxes = [pill, state.menu].filter((el): el is HTMLElement => Boolean(el && !el.hidden));
+      return boxes.some((el) => {
+        const box = el.getBoundingClientRect();
+        return (
+          clientX >= box.left &&
+          clientX <= box.right &&
+          clientY >= box.top &&
+          clientY <= box.bottom
+        );
+      });
+    };
+
     const isPageTopGapControl = (control: HTMLElement) => control.dataset.pageTop === 'true';
 
     /** Escape drop-zone isolation so page-top chips paint/hit above the sticky header. */
@@ -742,13 +794,21 @@
           return;
         }
         const allowNear = !overHeader || isPageTopGapControl(control);
+        const alreadyVisible =
+          control.classList.contains('is-near-add') ||
+          control.classList.contains('is-near-spacing') ||
+          control.classList.contains('is-menu-open') ||
+          state.element.classList.contains('is-dev-spacing-dirty');
+        // Vicinity reveals the pill; once it's up, the pill (and open menu)
+        // is the hitbox that keeps it up — 12em sits outside both radii.
+        const overHitbox = alreadyVisible && isPointerOverToolbarHitbox(state, clientX, clientY);
         control.classList.toggle(
           'is-near-add',
-          isAddControlPinned(state) || (allowNear && state === nearestAdd),
+          isAddControlPinned(state) || overHitbox || (allowNear && state === nearestAdd),
         );
         control.classList.toggle(
           'is-near-spacing',
-          isSpacingControlPinned(state) || (allowNear && state === nearestSpacing),
+          isSpacingControlPinned(state) || overHitbox || (allowNear && state === nearestSpacing),
         );
       });
       syncPageTopGapStacking();
@@ -2000,9 +2060,16 @@
 
     /* ── Selection formatting popup ───────────────────────── */
     let savedFormatRange: Range | null = null;
+    /** Fallback paint when collapsed selection empties getClientRects (Edge). */
+    let savedFormatRects: DOMRect[] = [];
     let linkPanelOpen = false;
     let formatPlacement: 'above' | 'below' = 'above';
     let formatRaf = 0;
+
+    const canCustomHighlight =
+      typeof CSS !== 'undefined'
+      && Boolean(CSS.highlights)
+      && typeof Highlight !== 'undefined';
 
     const paragraphStates = () => textStates.filter((state) => state.kind === 'paragraphs');
 
@@ -2037,28 +2104,103 @@
       return savedFormatRange;
     };
 
+    const FORMAT_HIGHLIGHT = 'vcd-format-sel';
+    const FORMAT_BAR_GAP = 20;
+
+    const getFormatRangeRects = (range: Range): DOMRect[] => {
+      let rects = [...range.getClientRects()];
+      if (!rects.length) {
+        const bound = range.getBoundingClientRect();
+        if (bound.width || bound.height) rects = [bound];
+      }
+      return rects;
+    };
+
+    const captureFormatRects = (range: Range | null) => {
+      savedFormatRects = range ? getFormatRangeRects(range) : [];
+    };
+
+    /** Out of flow while closed — measure open size without affecting layout. */
+    const measureLinkPanel = (): { height: number; width: number } => {
+      const prev = {
+        display: linkPanel.style.display,
+        position: linkPanel.style.position,
+        visibility: linkPanel.style.visibility,
+      };
+      linkPanel.style.display = 'flex';
+      linkPanel.style.position = 'absolute';
+      linkPanel.style.visibility = 'hidden';
+      const rect = linkPanel.getBoundingClientRect();
+      linkPanel.style.display = prev.display;
+      linkPanel.style.position = prev.position;
+      linkPanel.style.visibility = prev.visibility;
+      return { height: rect.height || 33, width: rect.width || 332 };
+    };
+
     const hideFormatBar = () => {
       formatBar.hidden = true;
-      linkPanel.hidden = true;
       linkPanelOpen = false;
+      formatBar.dataset.linkOpen = 'false';
+      linkPanel.setAttribute('aria-hidden', 'true');
       linkInput.value = '';
       savedFormatRange = null;
+      savedFormatRects = [];
       formatBar.dataset.placement = 'above';
+      syncFormatSelectionOverlay();
     };
 
     const setLinkPanelOpen = (open: boolean) => {
       linkPanelOpen = open;
-      linkPanel.hidden = !open;
       formatBar.dataset.linkOpen = open ? 'true' : 'false';
+      linkPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (open) {
+        if (savedFormatRange) captureFormatRects(savedFormatRange);
         const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
         linkInput.value = anchor?.getAttribute('href') || '';
+        // Paint stand-in before focus collapses the native selection (Edge).
+        syncFormatSelectionOverlay();
         requestAnimationFrame(() => {
           linkInput.focus();
           linkInput.select();
+          syncFormatSelectionOverlay();
         });
       } else {
         linkInput.value = '';
+        syncFormatSelectionOverlay();
+      }
+    };
+
+    const syncFormatSelectionOverlay = () => {
+      const show = Boolean(savedFormatRange && !formatBar.hidden && linkPanelOpen);
+      if (canCustomHighlight) {
+        if (show && savedFormatRange) {
+          CSS.highlights.set(FORMAT_HIGHLIGHT, new Highlight(savedFormatRange));
+        } else {
+          CSS.highlights.delete(FORMAT_HIGHLIGHT);
+        }
+      }
+
+      formatSel.replaceChildren();
+      if (!show || !savedFormatRange) {
+        formatSel.hidden = true;
+        return;
+      }
+      formatSel.hidden = false;
+      let rects = getFormatRangeRects(savedFormatRange);
+      if (!rects.length && savedFormatRects.length) rects = savedFormatRects;
+      for (const r of rects) {
+        if (r.width < 1 && r.height < 1) continue;
+        const box = document.createElement('div');
+        box.style.cssText = [
+          'position:fixed',
+          `top:${r.top}px`,
+          `left:${r.left}px`,
+          `width:${Math.max(r.width, 1)}px`,
+          `height:${Math.max(r.height, 1)}px`,
+          'background:color-mix(in srgb, CanvasText 18%, transparent)',
+          'pointer-events:none',
+        ].join(';');
+        formatSel.append(box);
       }
     };
 
@@ -2066,11 +2208,22 @@
       formatButtons.forEach((button) => {
         const command = button.dataset.devFormat;
         let active = false;
-        if (command === 'bold' || command === 'italic' || command === 'underline') {
+        if (command === 'bold' || command === 'italic') {
           try {
             active = document.queryCommandState(command);
           } catch {
             active = false;
+          }
+        } else if (command === 'underline') {
+          const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
+          if (anchor) {
+            active = !anchor.classList.contains('is-underline-off');
+          } else {
+            try {
+              active = document.queryCommandState('underline');
+            } catch {
+              active = false;
+            }
           }
         } else if (command === 'link') {
           active = Boolean(closestAnchor(savedFormatRange?.commonAncestorContainer ?? null))
@@ -2083,41 +2236,59 @@
 
     const positionFormatBar = (range: Range) => {
       const rect = range.getBoundingClientRect();
-      if (!rect.width && !rect.height) {
+      if (!rect.width && !rect.height && !linkPanelOpen) {
         hideFormatBar();
         return;
       }
 
       formatBar.hidden = false;
-      // Measure with current link-panel state so placement accounts for height.
-      const barRect = formatBar.getBoundingClientRect();
-      const gap = 8;
+      formatBar.dataset.linkOpen = linkPanelOpen ? 'true' : 'false';
+
+      const buttons = formatBar.querySelector<HTMLElement>('.dev-text-format__buttons');
+      const surface = formatBar.querySelector<HTMLElement>('.dev-text-format__surface');
+      const surfaceStyle = surface ? getComputedStyle(surface) : null;
+      const padX = surfaceStyle
+        ? Number.parseFloat(surfaceStyle.paddingLeft) + Number.parseFloat(surfaceStyle.paddingRight)
+        : 12;
+      const padY = surfaceStyle
+        ? Number.parseFloat(surfaceStyle.paddingTop) + Number.parseFloat(surfaceStyle.paddingBottom)
+        : 12;
+      const flexGap = surfaceStyle ? Number.parseFloat(surfaceStyle.rowGap || surfaceStyle.gap) || 4 : 4;
+      const buttonsRect = buttons?.getBoundingClientRect();
+      const buttonsH = buttonsRect?.height ?? 32;
+      const iconWidth = (buttonsRect?.width ?? 0) + padX;
+      const linkPanelSize = measureLinkPanel();
+      const openHeight = padY + buttonsH + flexGap + linkPanelSize.height;
+      const openWidth = linkPanelSize.width + padX;
+
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
-      const preferAbove = spaceAbove >= barRect.height + gap || spaceAbove >= spaceBelow;
+      const preferAbove = spaceAbove >= openHeight + FORMAT_BAR_GAP || spaceAbove >= spaceBelow;
 
       formatPlacement = preferAbove ? 'above' : 'below';
       formatBar.dataset.placement = formatPlacement;
 
-      // Re-measure after placement attribute flips link panel order.
-      const measured = formatBar.getBoundingClientRect();
+      /*
+        Slot is always openWidth, clamped to the viewport. Closed pill nests in
+        the slot center so Link grows equally left and right — icons stay put.
+      */
       let top = preferAbove
-        ? rect.top - measured.height - gap
-        : rect.bottom + gap;
-      let left = rect.left + rect.width / 2 - measured.width / 2;
+        ? rect.top - openHeight - FORMAT_BAR_GAP
+        : rect.bottom + FORMAT_BAR_GAP;
 
       const pad = 8;
-      left = Math.min(
-        Math.max(pad, left),
-        window.innerWidth - measured.width - pad,
-      );
+      const currentWidth = linkPanelOpen ? openWidth : iconWidth;
+      let slotLeft = rect.left + rect.width / 2 - openWidth / 2;
+      slotLeft = Math.min(Math.max(pad, slotLeft), window.innerWidth - openWidth - pad);
+      let left = slotLeft + (openWidth - currentWidth) / 2;
       top = Math.min(
         Math.max(pad, top),
-        window.innerHeight - measured.height - pad,
+        window.innerHeight - openHeight - pad,
       );
 
       formatBar.style.top = `${Math.round(top)}px`;
       formatBar.style.left = `${Math.round(left)}px`;
+      syncFormatSelectionOverlay();
     };
 
     const updateFormatBar = () => {
@@ -2135,6 +2306,11 @@
 
       const selection = window.getSelection();
       if (!selection?.rangeCount || selection.isCollapsed) {
+        if (!formatBar.hidden && savedFormatRange) {
+          positionFormatBar(savedFormatRange);
+          syncFormatButtons();
+          return;
+        }
         hideFormatBar();
         return;
       }
@@ -2181,23 +2357,44 @@
       });
     };
 
+    const anchorsInRange = (range: Range): HTMLAnchorElement[] => {
+      const root = range.commonAncestorContainer;
+      const scope = root instanceof Element ? root : root.parentElement;
+      if (!scope) return [];
+      if (scope instanceof HTMLAnchorElement) return [scope];
+      const closest = closestAnchor(range.startContainer);
+      const found = [...scope.querySelectorAll('a')].filter((anchor) => range.intersectsNode(anchor));
+      if (closest && !found.includes(closest)) found.unshift(closest);
+      return found;
+    };
+
     const runFormatCommand = (command: 'bold' | 'italic' | 'underline') => {
-      if (!restoreFormatRange()) return;
+      if (!restoreFormatRange() || !savedFormatRange) return;
+      if (command === 'underline') {
+        const anchors = anchorsInRange(savedFormatRange);
+        if (anchors.length) {
+          const turnOff = anchors.some((anchor) => !anchor.classList.contains('is-underline-off'));
+          anchors.forEach((anchor) => anchor.classList.toggle('is-underline-off', turnOff));
+          refreshFormatBarAfterCommand();
+          updateActions();
+          return;
+        }
+      }
       document.execCommand(command);
       refreshFormatBarAfterCommand();
       updateActions();
     };
 
     const applyLink = (href: string) => {
-      const trimmed = href.trim();
-      if (!SAFE_HREF.test(trimmed)) {
-        linkInput.setCustomValidity('Use http(s)://, /, #, or mailto:');
+      const normalized = normalizeHref(href);
+      if (!normalized) {
+        linkInput.setCustomValidity('Use a URL like google.com, https://…, /path, #hash, or mailto:');
         linkInput.reportValidity();
         return false;
       }
       linkInput.setCustomValidity('');
       if (!restoreFormatRange()) return false;
-      document.execCommand('createLink', false, trimmed);
+      document.execCommand('createLink', false, normalized);
       // Ensure serializer-safe href on the created anchor(s).
       const selection = window.getSelection();
       if (selection?.rangeCount) {
@@ -2206,11 +2403,11 @@
         const scope = root instanceof Element ? root : root.parentElement;
         scope?.querySelectorAll('a').forEach((anchor) => {
           if (range.intersectsNode(anchor)) {
-            anchor.setAttribute('href', trimmed);
+            anchor.setAttribute('href', normalized);
           }
         });
         if (scope instanceof HTMLAnchorElement) {
-          scope.setAttribute('href', trimmed);
+          scope.setAttribute('href', normalized);
         }
       }
       captureFormatRange();
@@ -2253,9 +2450,14 @@
         if (command === 'link') {
           if (linkPanelOpen) {
             setLinkPanelOpen(false);
-            scheduleFormatBarUpdate();
+            restoreFormatRange();
+            if (savedFormatRange) {
+              positionFormatBar(savedFormatRange);
+              syncFormatButtons();
+            }
             return;
           }
+          captureFormatRects(savedFormatRange);
           setLinkPanelOpen(true);
           positionFormatBar(savedFormatRange);
           syncFormatButtons();
@@ -2271,6 +2473,10 @@
     unlinkButton.addEventListener('click', (event) => {
       event.preventDefault();
       removeLink();
+    });
+
+    linkInput.addEventListener('input', () => {
+      linkInput.setCustomValidity('');
     });
 
     linkInput.addEventListener('keydown', (event) => {
@@ -2376,10 +2582,15 @@
 
       if (formatCommand) {
         event.preventDefault();
-        document.execCommand(formatCommand);
-        // Re-read selection after execCommand — the pre-command Range can be
-        // detached, which left the format bar stuck on the previous state.
-        refreshFormatBarAfterCommand();
+        if (!savedFormatRange) captureFormatRange();
+        if (formatCommand === 'underline') {
+          runFormatCommand('underline');
+        } else {
+          document.execCommand(formatCommand);
+          // Re-read selection after execCommand — the pre-command Range can be
+          // detached, which left the format bar stuck on the previous state.
+          refreshFormatBarAfterCommand();
+        }
         updateActions();
         return;
       }
@@ -2400,10 +2611,15 @@
 
       if (linkPanelOpen) {
         setLinkPanelOpen(false);
-        scheduleFormatBarUpdate();
+        restoreFormatRange();
+        if (savedFormatRange) {
+          positionFormatBar(savedFormatRange);
+          syncFormatButtons();
+        }
         return;
       }
 
+      captureFormatRects(savedFormatRange);
       setLinkPanelOpen(true);
       if (savedFormatRange) positionFormatBar(savedFormatRange);
       syncFormatButtons();
@@ -3142,30 +3358,31 @@
   }
 
   /*
-    Same split as DevOverlay: outer keeps box-shadow, inner keeps squircle clip +
-    backdrop blur so Hyperellipse layer-mode does not leave a rectangular blur fringe.
+    Outer keeps the box-shadow; the split exists only so the shadow isn't
+    clipped by the bar's own overflow: hidden. The signed bar is a flat solid
+    surface, not a blurred one — no backdrop-filter, no squircle.
   */
   .dev-text-actions {
     position: fixed;
     right: max(1em, env(safe-area-inset-right));
     bottom: max(1em, env(safe-area-inset-bottom));
     z-index: 90;
-    border-radius: var(--radius-control-smooth);
+    border-radius: 12px;
     background: transparent;
     padding: 0;
-    box-shadow: 0 0.4em 1.4em rgb(0 0 0 / 0.12);
+    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
+    transition: opacity 0.28s ease;
   }
 
   .dev-text-actions__surface {
     display: flex;
     align-items: center;
-    gap: 0.4em;
-    padding: 0.4em;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 94%, transparent);
-    backdrop-filter: blur(12px);
+    gap: 6px;
+    padding: 6px;
+    overflow: hidden;
+    border-radius: 12px; /* literal in Figma; no radius token covers 12px */
+    border: 1px solid var(--sys-color-srf-container-low); /* Figma button/toolbars/save-bar-outline #f5f5f7 — no source token */
+    background: var(--sys-color-srf);
   }
 
   .dev-text-actions[hidden] {
@@ -3173,9 +3390,9 @@
   }
 
   .dev-text-actions__status {
-    padding-inline: 0.45em;
+    padding-inline: 7px;
     color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
+    font: 400 12px/normal var(--font-sans);
     white-space: nowrap;
   }
 
@@ -3183,11 +3400,16 @@
     max-width: 12em;
     overflow: hidden;
     border-left: 1px solid var(--sys-color-outline-variant);
-    padding-inline: 0.6em 0.45em;
+    padding-inline: 10px 7px;
     color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
+    font: 400 12px/normal var(--font-sans);
     white-space: nowrap;
     text-overflow: ellipsis;
+  }
+
+  /* Idle: no Status text to separate from, so the rule clears. */
+  .dev-text-actions__surface:has(.dev-text-actions__status:empty) .dev-text-actions__branch {
+    border-left: 0;
   }
 
   .dev-text-actions__branch[hidden] {
@@ -3199,13 +3421,18 @@
   }
 
   /* The one colour in dev chrome. Everything else here is monochrome, so amber
-     on a single glyph is enough to read as a warning without a palette token. */
+     on a single icon is enough to read as a warning without a palette token. */
   .dev-text-actions__warn {
-    padding-inline: 0.2em;
+    display: inline-flex;
+    align-items: center;
+    padding-left: 8px;
     color: #b26a00;
-    font-size: 0.8rem;
     line-height: 1;
     cursor: help;
+  }
+
+  .dev-text-actions__warn svg {
+    display: block;
   }
 
   .dev-text-actions__warn[hidden] {
@@ -3213,38 +3440,62 @@
   }
 
   .dev-text-actions button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: var(--dev-control-min-width);
+    min-height: var(--dev-control-height);
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.55em 0.75em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-ghost-container);
+    padding: 8px;
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     cursor: pointer;
   }
 
   .dev-text-actions button:hover {
-    background: var(--sys-color-srf-container-high);
+    background: var(--comp-button-ghost-container-hover);
+  }
+
+  .dev-text-actions button:active {
+    background: var(--comp-button-ghost-container-pressed);
   }
 
   .dev-text-actions button:disabled {
     opacity: 0.45;
-    cursor: default;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 
   .dev-text-actions button.is-dev-actions-busy:disabled {
     cursor: wait;
     opacity: 0.55;
+    pointer-events: none;
+  }
+
+  .dev-text-actions [data-dev-text-commit-styles] {
+    background: var(--comp-button-soft-container);
+  }
+
+  .dev-text-actions [data-dev-text-commit-styles]:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-text-actions [data-dev-text-commit-styles]:active {
+    background: var(--comp-button-soft-container-pressed);
   }
 
   .dev-text-actions .dev-text-actions__save {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
   }
 
-  .dev-text-actions .dev-text-actions__save:hover:not(:disabled) {
-    background: var(--sys-color-on-srf-variant);
+  .dev-text-actions .dev-text-actions__save:hover:not(:disabled),
+  .dev-text-actions .dev-text-actions__save:active:not(:disabled) {
+    background: var(--comp-button-filled-container-hover);
   }
 
   /* Publish only disables while a publish is in flight. */
@@ -3256,27 +3507,27 @@
     cursor: wait;
   }
 
-  /* Rendering code changed on this branch: step Publish down from the filled
-     default — soft surface + border so it stays a visible control, not a ghost
-     outline that disappears against the bar. Still asks for confirmation. */
+  /* Rendering code changed on this branch: Publish steps down to Soft, not
+     filled and not ringed — a plain surface, still clickable, still asks for
+     confirmation. */
   .dev-text-actions .dev-text-actions__save.is-dev-publish-warn {
-    background: var(--sys-color-srf-container-low);
-    box-shadow: inset 0 0 0 1px var(--sys-color-outline-variant);
-    color: var(--sys-color-on-srf);
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
   }
 
-  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled) {
-    background: var(--sys-color-srf-container-high);
+  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:hover:not(:disabled),
+  .dev-text-actions .dev-text-actions__save.is-dev-publish-warn:active:not(:disabled) {
+    background: var(--comp-button-soft-container-hover);
   }
 
   /* ── Selection formatting popup ───────────────────────── */
   .dev-text-format {
     position: fixed;
     z-index: 95;
-    border-radius: var(--radius-control-smooth);
+    border-radius: 12px;
     background: transparent;
     padding: 0;
-    box-shadow: 0 0.35em 1.2em rgb(0 0 0 / 0.14);
+    box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
   }
 
   .dev-text-format[hidden] {
@@ -3286,105 +3537,150 @@
   .dev-text-format__surface {
     display: flex;
     flex-direction: column;
-    gap: 0.35em;
-    padding: 0.35em;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 94%, transparent);
-    backdrop-filter: blur(12px);
-  }
-
-  /* Keep the URL field on the side away from the selection. */
-  .dev-text-format[data-placement='above'] .dev-text-format__surface {
-    flex-direction: column-reverse;
-  }
-
-  .dev-text-format[data-placement='below'] .dev-text-format__surface {
-    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    background: var(--sys-color-srf);
+    width: fit-content;
   }
 
   .dev-text-format__buttons {
     display: flex;
     align-items: center;
-    gap: 0.15em;
+    gap: 4px;
   }
 
   .dev-text-format__buttons button {
+    padding: 8px;
+    gap: 8px;
+    border-radius: var(--dev-radius-control);
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    min-width: 2em;
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1;
+    min-width: 0;
+    background: var(--comp-button-ghost-container);
+    color: var(--comp-button-label);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
   }
 
   .dev-text-format__buttons button:hover {
-    background: var(--sys-color-srf-container-high);
+    background: var(--comp-button-ghost-container-hover);
   }
 
+  .dev-text-format__buttons button:active {
+    background: var(--comp-button-ghost-container-pressed);
+  }
+
+  .dev-text-format__buttons button:focus-visible {
+    outline: none;
+  }
+
+  /* Ghost/Selected binds button/ghost/container at ~16% paint opacity, which
+     has no exported token — Soft is the explicit fallback (Anto, 2026-08-25). */
   .dev-text-format__buttons button.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-soft-container-hover);
+    color: var(--comp-button-label);
+  }
+
+  .dev-text-format__icon {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+  }
+
+  .dev-text-format__icon :global(svg) {
+    display: block;
   }
 
   .dev-text-format__link {
     display: flex;
     align-items: center;
-    gap: 0.25em;
-    padding-inline: 0.1em;
+    gap: 4px;
   }
 
-  .dev-text-format__link[hidden] {
+  .dev-text-format:not([data-link-open='true']) .dev-text-format__link {
     display: none;
   }
 
-  .dev-text-format__link input {
-    width: 14em;
-    max-width: min(14em, 55vw);
-    border: 0;
-    border-radius: calc(var(--radius-control) - 0.25em);
-    background: var(--sys-color-srf);
-    padding: 0.45em 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.2;
+  .dev-text-format[data-link-open='true'] .dev-text-format__link {
+    display: flex;
   }
 
-  .dev-text-format__link input:focus {
-    outline: 1px solid color-mix(in srgb, var(--sys-color-on-srf-variant) 70%, transparent);
-    outline-offset: 0;
+  .dev-text-format__link input {
+    width: 180px;
+    max-width: min(180px, 55vw);
+    padding: 8px;
+    border: 0;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-field-container);
+    color: var(--sys-color-on-srf);
+    font: var(--dev-text-label);
+  }
+
+  .dev-text-format__link input:focus,
+  .dev-text-format__link input:focus-visible {
+    outline: none;
   }
 
   .dev-text-format__link button {
+    padding: 8px;
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.45em 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1;
-    cursor: pointer;
+    border-radius: var(--dev-radius-control);
+    font: var(--dev-text-label);
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     white-space: nowrap;
+    cursor: pointer;
+    width: 72px;
+    min-width: var(--dev-control-min-width);
   }
 
-  .dev-text-format__link button:hover {
-    background: var(--sys-color-srf-container-high);
+  .dev-text-format__link button[data-dev-text-unlink] {
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
+  }
+
+  .dev-text-format__link button[data-dev-text-unlink]:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-text-format__link button[data-dev-text-unlink]:active {
+    background: var(--comp-button-soft-container-pressed);
   }
 
   .dev-text-format__link button[type='submit'] {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
   }
 
-  .dev-text-format__link button[type='submit']:hover {
-    background: var(--sys-color-on-srf-variant);
+  .dev-text-format__link button[type='submit']:hover,
+  .dev-text-format__link button[type='submit']:active {
+    background: var(--comp-button-filled-container-hover);
+  }
+
+  /* Stand-in for the native selection while the URL field has focus.
+     Notion-style grey so the linked run stays visible after click. */
+  .dev-text-format-sel {
+    position: fixed;
+    inset: 0;
+    z-index: 94;
+    pointer-events: none;
+  }
+
+  .dev-text-format-sel[hidden] {
+    display: none;
+  }
+
+  .dev-text-format-sel__rect,
+  .dev-text-format-sel :global(.dev-text-format-sel__rect) {
+    position: fixed;
+    background: color-mix(in srgb, var(--sys-color-on-srf) 16%, transparent);
   }
 
   /* ── Section gap toolbar (DEV) ──────────────────────────── */
@@ -3432,80 +3728,97 @@
     top: calc(var(--space-related) / -2);
   }
 
-  /* + (centre) and spacing (right) reveal independently via proximity. */
-  .dev-gap-toolbar__add,
-  .dev-gap-toolbar__spacing {
+  /* Unified pill (2026-08-25): Add + the spacing chips now live in one
+     surface, matching Figma. Vicinity (centre / right-edge) still reveals
+     the pill; once visible, the pill hitbox keeps it up until the cursor
+     leaves — is-near-add / is-near-spacing are the CSS hooks either way. */
+  .dev-gap-toolbar__pill {
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.15s ease;
   }
 
-  .is-dev-mode .dev-gap-toolbar.is-near-add > .dev-gap-toolbar__add,
-  .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__add,
-  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__add:focus-visible, > .dev-gap-toolbar__menu:focus-within)
-    > .dev-gap-toolbar__add {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .is-dev-mode .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__spacing,
-  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__spacing,
-  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__spacing:focus-within) > .dev-gap-toolbar__spacing {
+  .is-dev-mode .dev-gap-toolbar.is-near-add > .dev-gap-toolbar__pill,
+  .is-dev-mode .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__pill,
+  .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__pill,
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__pill,
+  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__pill:focus-within, > .dev-gap-toolbar__menu:focus-within)
+    > .dev-gap-toolbar__pill {
     opacity: 1;
     pointer-events: auto;
   }
 
   /* Keep gap controls out of the way while editing text. */
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__add,
-  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__spacing {
+  .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__pill {
     opacity: 0;
     pointer-events: none;
   }
 
   /* Tuner open: force-hide even dirty / near chips (same as asset manager). */
-  html.is-dev-tuner-open .dev-gap-toolbar__add,
-  html.is-dev-tuner-open .dev-gap-toolbar__spacing {
+  html.is-dev-tuner-open .dev-gap-toolbar__pill {
     opacity: 0 !important;
     pointer-events: none !important;
+  }
+
+  /* Unified pill (630:5633, Spacing Toolbar Base) — Add + the spacing chips
+     as one surface, matching Figma. Previously two separate floating
+     elements at Anto's request; reversed 2026-08-25. */
+  .dev-gap-toolbar__pill {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: 12px;
+    background: var(--sys-color-srf);
+    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
+  }
+
+  .dev-gap-toolbar__pill > .dev-hairline--vertical {
+    align-self: stretch;
   }
 
   .dev-gap-toolbar__add {
     display: flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
+    width: 72px;
+    padding: 8px;
     border: 0;
-    /* Match .dev-image-edit-trigger / grid / caption chips. */
-    border-radius: var(--radius-control);
-    /* Icon-only at rest; fill + scale on hover; shadow only on press/open. */
-    background: transparent;
-    padding: 0.45em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1;
-    box-shadow: none;
+    min-height: var(--dev-control-height);
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-ghost-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     cursor: pointer;
-    transition:
-      background-color 0.15s ease,
-      box-shadow 0.15s ease,
-      transform 0.15s ease;
+    transition: background-color 0.15s ease;
+  }
+
+  .dev-gap-toolbar__add > span {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+  }
+
+  .dev-gap-toolbar__add :global(svg) {
+    display: block;
   }
 
   .dev-gap-toolbar__add:hover,
   .dev-gap-toolbar__add:focus-visible,
   .dev-gap-toolbar__add:active,
   .dev-gap-toolbar__add[aria-expanded='true'] {
-    /* Same chip fill as drag handle / delete. */
-    background: color-mix(in srgb, var(--sys-color-srf-container) 92%, transparent);
-    backdrop-filter: blur(8px);
-    transform: scale(1.08);
+    background: var(--comp-button-ghost-container-hover);
   }
 
   .dev-gap-toolbar__add:active,
   .dev-gap-toolbar__add[aria-expanded='true'] {
-    box-shadow: 0 0.35em 1.1em rgb(0 0 0 / 0.16);
+    background: var(--comp-button-ghost-container-pressed);
   }
 
+  /* Master: menu has no surface of its own — a bare column, each item
+     carries its own fill/border/shadow. */
   .dev-gap-toolbar__menu {
     position: absolute;
     top: calc(100% + 0.35em);
@@ -3513,13 +3826,8 @@
     z-index: 1;
     display: flex;
     flex-direction: column;
-    gap: 0.15em;
+    gap: 4px;
     min-width: 10em;
-    padding: 0.25em;
-    border-radius: var(--radius-control-smooth);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 96%, transparent);
-    box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
-    backdrop-filter: blur(12px);
     transform: translateX(-50%);
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
@@ -3529,63 +3837,75 @@
     display: none;
   }
 
+  /* Page emphasis, Align=Start. */
   .dev-gap-toolbar__menu button {
-    border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.2;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    min-width: var(--dev-control-min-width);
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    padding: 8px;
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-page-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     text-align: left;
-    cursor: pointer;
     white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
   }
 
   .dev-gap-toolbar__menu button:hover {
-    background: var(--sys-color-srf-container-high);
+    background: var(--comp-button-page-container-hover);
   }
 
+  .dev-gap-toolbar__menu button:active {
+    background: var(--comp-button-page-container-pressed);
+  }
+
+  /* Surface now lives on .dev-gap-toolbar__pill — this is just the row of
+     chips inside it. */
   .dev-gap-toolbar__spacing {
-    position: absolute;
-    right: 0;
     display: flex;
-    flex-direction: column;
-    gap: 0.15em;
-    padding: 0.25em;
-    border-radius: var(--radius-control-smooth);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 94%, transparent);
-    box-shadow: 0 0.25em 0.9em rgb(0 0 0 / 0.12);
-    backdrop-filter: blur(12px);
+    align-items: center;
+    gap: 4px;
   }
 
+  /* Ghost Button Base at 72px. */
   .dev-spacing-control__btn {
     display: flex;
     align-items: center;
-    gap: 0.4em;
+    justify-content: center;
+    gap: 8px;
+    width: 72px;
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    padding: 8px;
     border: 0;
-    border-radius: calc(var(--radius-control) - 0.2em);
-    background: transparent;
-    padding: 0.35em 0.45em;
-    color: var(--sys-color-on-srf-variant);
-    font: inherit;
-    font-size: 0.7rem;
-    line-height: 1;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-ghost-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
     cursor: pointer;
     white-space: nowrap;
   }
 
   .dev-spacing-control__btn:hover {
-    background: var(--sys-color-srf-container-high);
-    color: var(--sys-color-on-srf);
+    background: var(--comp-button-ghost-container-hover);
   }
 
+  /* Ghost hover — Figma Spacing Toolbar Base uses Ghost/Hover for the
+     selected-looking chip, not Soft. */
   .dev-spacing-control__btn.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
+    background: var(--comp-button-ghost-container-hover);
+    color: var(--comp-button-label);
   }
 
+  /* Affordance the static master doesn't draw — its chips are label-only. */
   .dev-spacing-control__mark {
     display: block;
     width: 1.1em;

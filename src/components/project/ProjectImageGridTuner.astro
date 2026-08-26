@@ -1,82 +1,85 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
+import SelectField from '../ui/SelectField.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
 ---
 
 <DevOverlay
-  title="Edit grid"
   storageKey="project-image-grid"
   panelKey="grid"
   defaultHidden
 >
   <div class="project-grid-tuner" data-project-image-grid-tuner>
-    <div class="project-grid-tuner__viewports" aria-label="Display width">
-      <button type="button" data-grid-viewport="desktop">Desktop</button>
-      <button type="button" data-grid-viewport="tablet">Tablet</button>
-      <button type="button" data-grid-viewport="mobile">Mobile</button>
-    </div>
+    <ViewportSelector dataAttr="data-grid-viewport" />
 
-    <p class="project-grid-tuner__inherit" data-grid-inherit hidden>
-      Inheriting from larger breakpoint — drag to create an override.
-    </p>
+    <p class="project-grid-tuner__inherit" data-grid-inherit hidden></p>
 
-    <label class="project-grid-tuner__select">
-      <span>Columns</span>
-      <select data-grid-columns>
-        <option value="1">1</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-        <option value="4">4</option>
-        <option value="5">5</option>
-        <option value="6">6</option>
-      </select>
-    </label>
+    <SelectField
+      label="Columns"
+      data-grid-columns
+      options={[
+        { value: '1', label: '1' },
+        { value: '2', label: '2' },
+        { value: '3', label: '3' },
+        { value: '4', label: '4' },
+        { value: '5', label: '5' },
+        { value: '6', label: '6' },
+      ]}
+    />
 
-    <label class="project-grid-tuner__select">
-      <span>Width</span>
-      <select data-grid-constrained>
-        <option value="100">Full</option>
-        <option value="90">90%</option>
-        <option value="80">80% (constrained)</option>
-        <option value="70">70%</option>
-        <option value="60">60%</option>
-        <option value="50">50%</option>
-        <option value="40">40%</option>
-        <option value="30">30%</option>
-      </select>
-    </label>
+    <SelectField
+      label="Width"
+      data-grid-constrained
+      options={[
+        { value: '100', label: 'Full' },
+        { value: '90', label: '90%' },
+        { value: '80', label: '80% (constrained)' },
+        { value: '70', label: '70%' },
+        { value: '60', label: '60%' },
+        { value: '50', label: '50%' },
+        { value: '40', label: '40%' },
+        { value: '30', label: '30%' },
+      ]}
+    />
 
-    <label class="project-grid-tuner__select">
-      <span>Default image aspect</span>
-      <select data-grid-aspect-ratio>
-        <option value="original">Original</option>
-        <optgroup label="Landscape">
-          <option value="16:9">16:9</option>
-          <option value="16:10">16:10</option>
-          <option value="3:2">3:2</option>
-          <option value="4:3">4:3</option>
-          <option value="5:4">5:4</option>
-        </optgroup>
-        <optgroup label="Square">
-          <option value="1:1">1:1</option>
-        </optgroup>
-        <optgroup label="Portrait">
-          <option value="5:6">5:6</option>
-          <option value="4:5">4:5</option>
-          <option value="3:4">3:4</option>
-          <option value="2:3">2:3</option>
-          <option value="10:16">10:16</option>
-          <option value="9:16">9:16</option>
-        </optgroup>
-      </select>
-    </label>
+    <SelectField
+      label="Default image aspect"
+      data-grid-aspect-ratio
+      options={[
+        { value: 'original', label: 'Original' },
+        {
+          label: 'Landscape',
+          options: [
+            { value: '16:9', label: '16:9' },
+            { value: '16:10', label: '16:10' },
+            { value: '3:2', label: '3:2' },
+            { value: '4:3', label: '4:3' },
+            { value: '5:4', label: '5:4' },
+          ],
+        },
+        {
+          label: 'Square',
+          options: [{ value: '1:1', label: '1:1' }],
+        },
+        {
+          label: 'Portrait',
+          options: [
+            { value: '5:6', label: '5:6' },
+            { value: '4:5', label: '4:5' },
+            { value: '3:4', label: '3:4' },
+            { value: '2:3', label: '2:3' },
+            { value: '10:16', label: '10:16' },
+            { value: '9:16', label: '9:16' },
+          ],
+        },
+      ]}
+    />
 
-    <label class="project-grid-tuner__toggle">
-      <input type="checkbox" data-grid-match-height />
-      <span>Match row height</span>
-    </label>
-    <p class="project-grid-tuner__toggle-hint">
-      Scale cells so each row shares one height; widths follow aspect ratios.
-    </p>
+    <ToggleRow label="Match row height" data-grid-match-height />
+    <p class="project-grid-tuner__toggle-hint" hidden></p>
 
     <div class="project-grid-tuner__board">
       <p class="project-grid-tuner__board-label">Visible</p>
@@ -86,31 +89,25 @@ import DevOverlay from '../DevOverlay.astro';
         data-grid-drop="visible"
       ></div>
 
-      <p class="project-grid-tuner__board-label">Parking lot</p>
+      <p class="project-grid-tuner__board-label">Parking Lot</p>
       <div
         class="project-grid-tuner__parking"
         data-grid-parking
         data-grid-drop="parking"
       >
-        <span class="project-grid-tuner__parking-hint" data-grid-parking-hint>
-          Drag images here to hide them at this breakpoint
-        </span>
+        <span class="project-grid-tuner__parking-hint" data-grid-parking-hint hidden></span>
       </div>
     </div>
 
-    <p class="project-grid-tuner__hint">
-      Parking hides an image at this width only. Use Remove on a thumb to drop it from the grid while keeping the file in the asset manager.
-    </p>
+    <p class="project-grid-tuner__hint" hidden></p>
 
-    <div class="project-grid-tuner__actions">
-      <button type="button" data-grid-clear-override hidden>Clear override</button>
-      <button type="button" data-grid-revert>Revert changes</button>
-      <button type="button" data-grid-save>Save changes</button>
-    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Clear" hidden data-grid-clear-override />
+      <Button emphasis="ghost" label="Revert changes" data-grid-revert />
+      <Button emphasis="filled" label="Save changes" data-grid-save />
+    </PanelActions>
 
-    <p class="project-grid-tuner__status" data-grid-status aria-live="polite">
-      Pick a grid to edit layout, columns, width, aspect, and match-height.
-    </p>
+    <p class="project-grid-tuner__status" data-grid-status aria-live="polite"></p>
   </div>
 </DevOverlay>
 
@@ -747,7 +744,8 @@ import DevOverlay from '../DevOverlay.astro';
       parkingHint.hidden = parked.length > 0;
 
       inheritNote.hidden = selectedViewport === 'desktop' || resolved.overridden;
-      clearOverrideButton.hidden = selectedViewport === 'desktop' || !resolved.overridden;
+      // Figma Panel Actions: Revert + Save only.
+      clearOverrideButton.hidden = true;
     };
 
     const renderDraft = () => {
@@ -938,6 +936,7 @@ import DevOverlay from '../DevOverlay.astro';
 
 <style>
   .project-grid-tuner {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.7em;
@@ -945,71 +944,11 @@ import DevOverlay from '../DevOverlay.astro';
     max-width: 24em;
   }
 
-  .project-grid-tuner__viewports {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4em;
-  }
-
-  .project-grid-tuner__viewports button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.45em 0.4em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .project-grid-tuner__viewports button.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-  }
-
-  .project-grid-tuner__inherit {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
-  }
-
-  .project-grid-tuner__select {
-    display: grid;
-    grid-template-columns: 7.5em 1fr;
-    gap: 0.5em;
-    align-items: center;
-    font-size: 0.85rem;
-  }
-
-  .project-grid-tuner__select select {
-    width: 100%;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.45em 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-  }
-
-  .project-grid-tuner__toggle {
-    display: flex;
-    gap: 0.55em;
-    align-items: center;
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-
-  .project-grid-tuner__toggle input {
-    margin: 0;
-  }
-
-  .project-grid-tuner__toggle-hint {
-    margin: -0.25em 0 0;
-    padding-left: 1.55em;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
+  .project-grid-tuner__inherit,
+  .project-grid-tuner__toggle-hint,
+  .project-grid-tuner__hint,
+  .project-grid-tuner__parking-hint {
+    display: none;
   }
 
   .project-grid-tuner__board {
@@ -1056,14 +995,6 @@ import DevOverlay from '../DevOverlay.astro';
   .project-grid-tuner__visible.is-drop-target,
   .project-grid-tuner__parking.is-drop-target {
     background: color-mix(in srgb, var(--sys-color-on-srf) 8%, var(--sys-color-srf-container-low));
-  }
-
-  .project-grid-tuner__parking-hint {
-    grid-column: 1 / -1;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.3;
-    pointer-events: none;
   }
 
   .project-grid-tuner__thumb-wrap {
@@ -1119,38 +1050,18 @@ import DevOverlay from '../DevOverlay.astro';
     color: #b00000;
   }
 
-  .project-grid-tuner__hint,
+  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
+     stay in the a11y tree. */
   .project-grid-tuner__status {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
-    line-height: 1.35;
-  }
-
-  .project-grid-tuner__actions {
-    display: flex;
-    gap: 0.45em;
-    flex-wrap: wrap;
-  }
-
-  .project-grid-tuner__actions button {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
     border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.5em 0.7em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
   }
 
-  .project-grid-tuner__actions button[data-grid-save] {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-    margin-left: auto;
-  }
-
-  .project-grid-tuner__actions button[hidden] {
-    display: none;
-  }
 </style>

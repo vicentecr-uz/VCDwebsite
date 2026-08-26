@@ -1,4 +1,6 @@
 ---
+import DevOverlay from './DevOverlay.astro';
+
 interface Props {
   documentKey: string;
 }
@@ -6,43 +8,50 @@ interface Props {
 const { documentKey } = Astro.props;
 ---
 
-<dialog class="dev-asset-manager" data-dev-asset-manager data-document-key={documentKey}>
-  <div class="dev-asset-manager__panel">
-    <header class="dev-asset-manager__header">
-      <h2>Asset Manager</h2>
-      <button type="button" data-asset-close aria-label="Close">Close</button>
-    </header>
-
-    <div class="dev-asset-manager__body">
-      <aside class="dev-asset-manager__sidebar">
-        <p class="dev-asset-manager__sidebar-label">Projects</p>
-        <div class="dev-asset-manager__projects" data-asset-projects></div>
-        <hr class="dev-asset-manager__divider" />
-        <p class="dev-asset-manager__sidebar-label">Filter</p>
-        <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
-          <button type="button" data-asset-filter="all" class="is-active">All</button>
-          <button type="button" data-asset-filter="onPage">On page</button>
-          <button type="button" data-asset-filter="library">Library only</button>
-        </div>
-      </aside>
-
-      <section class="dev-asset-manager__main">
-        <p class="dev-asset-manager__status" data-asset-status aria-live="polite">Loading…</p>
-        <div class="dev-asset-manager__grid" data-asset-grid></div>
-      </section>
-    </div>
-
-    <footer class="dev-asset-manager__footer">
-      <p class="dev-asset-manager__count" data-asset-count></p>
-      <div class="dev-asset-manager__actions">
-        <button type="button" data-asset-pick="image" disabled>Single image</button>
-        <button type="button" data-asset-pick="imageGrid" disabled>Image grid</button>
-        <button type="button" data-asset-pick="imageCarousel" disabled>Carousel</button>
-        <button type="button" data-asset-cancel>Cancel</button>
+<DevOverlay
+  storageKey="asset-manager"
+  panelKey="asset-manager"
+  layout="landscape"
+  data-dev-asset-manager
+  data-document-key={documentKey}
+  defaultHidden
+>
+  <div class="dev-asset-manager__body">
+    <aside class="dev-asset-manager__sidebar">
+      <p class="dev-asset-manager__sidebar-label">Projects</p>
+      <div class="dev-asset-manager__projects" data-asset-projects></div>
+      <hr class="dev-asset-manager__divider" />
+      <p class="dev-asset-manager__sidebar-label">Filter</p>
+      <div class="dev-asset-manager__filters" role="group" aria-label="Usage filter">
+        <button type="button" class="dev-btn dev-btn--soft dev-btn--align-start dev-btn--fill is-active" data-asset-filter="all">All</button>
+        <button type="button" class="dev-btn dev-btn--soft dev-btn--align-start dev-btn--fill" data-asset-filter="onPage">On page</button>
+        <button type="button" class="dev-btn dev-btn--soft dev-btn--align-start dev-btn--fill" data-asset-filter="library">Library only</button>
       </div>
-    </footer>
+    </aside>
+
+    <section class="dev-asset-manager__main">
+      <p class="dev-asset-manager__status" data-asset-status aria-live="polite">Loading…</p>
+      <div class="dev-asset-manager__grid" data-asset-grid></div>
+    </section>
   </div>
-</dialog>
+
+  <!--
+    Not in the signed master, which has no footer at all — insertion there is
+    drag-to-page + a cursor popup, which doesn't exist in source yet (see
+    Atlas/handoffs/260825-vcd-dev-chrome-source-followups.md §B). Until that
+    lands, this is the ONLY way DevImageDrop's "choose from library" and
+    ProjectImageCropTuner's "replace from library" can resolve — so it stays,
+    but only appears while a pick is actually in progress, not as permanent
+    browsing chrome.
+  -->
+  <div class="dev-asset-manager__footer" data-asset-footer hidden>
+    <p class="dev-asset-manager__count" data-asset-count></p>
+    <div class="dev-asset-manager__actions">
+      <button type="button" class="dev-btn dev-btn--ghost" data-asset-cancel>Cancel</button>
+      <button type="button" class="dev-btn dev-btn--filled" data-asset-select disabled>Select</button>
+    </div>
+  </div>
+</DevOverlay>
 
 <script>
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
@@ -58,16 +67,16 @@ const { documentKey } = Astro.props;
    *   usedBy: string[],
    * }} Asset */
 
-  const dialog = document.querySelector('[data-dev-asset-manager]');
-  const documentKey = dialog instanceof HTMLElement ? (dialog.dataset.documentKey || '') : '';
+  const overlay = document.querySelector('[data-dev-asset-manager]');
+  const documentKey = overlay instanceof HTMLElement ? (overlay.dataset.documentKey || '') : '';
   const projectsEl = document.querySelector('[data-asset-projects]');
   const gridEl = document.querySelector('[data-asset-grid]');
   const statusEl = document.querySelector('[data-asset-status]');
   const countEl = document.querySelector('[data-asset-count]');
   const filterButtons = document.querySelectorAll('[data-asset-filter]');
-  const pickButtons = document.querySelectorAll('[data-asset-pick]');
-  const closeButton = document.querySelector('[data-asset-close]');
+  const footerEl = document.querySelector('[data-asset-footer]');
   const cancelButton = document.querySelector('[data-asset-cancel]');
+  const selectButton = document.querySelector('[data-asset-select]');
 
   /** @type {Asset[]} */
   let assets = [];
@@ -83,6 +92,10 @@ const { documentKey } = Astro.props;
   /** @type {((reason?: Error) => void) | null} */
   let rejectPick = null;
   let pickMode = false;
+  /** @type {HTMLElement | null} */
+  let pickOpener = null;
+  /** @type {'image' | 'imageGrid' | 'imageCarousel'} */
+  let pickType = 'image';
 
   const setStatus = (message) => {
     if (statusEl instanceof HTMLElement) statusEl.textContent = message;
@@ -90,14 +103,10 @@ const { documentKey } = Astro.props;
 
   const syncPickButtons = () => {
     const count = selected.size;
-    pickButtons.forEach((button) => {
-      if (!(button instanceof HTMLButtonElement)) return;
-      const type = button.getAttribute('data-asset-pick');
-      if (type === 'image') button.disabled = count < 1;
-      else if (type === 'imageGrid') button.disabled = count < 1;
-      else if (type === 'imageCarousel') button.disabled = count < 1;
-      button.hidden = !pickMode;
-    });
+    if (selectButton instanceof HTMLButtonElement) {
+      selectButton.disabled = count < 1;
+    }
+    if (footerEl instanceof HTMLElement) footerEl.hidden = !pickMode;
     if (countEl instanceof HTMLElement) {
       countEl.textContent = count
         ? `${count} selected`
@@ -123,6 +132,59 @@ const { documentKey } = Astro.props;
       if (filter === 'onPage' && !onPage) return false;
       if (filter === 'library' && onPage) return false;
       return true;
+    });
+  };
+
+  const THUMB_WIDTH = 320;
+  const THUMB_ROOT_MARGIN = '250px';
+
+  /** @type {IntersectionObserver | null} */
+  let thumbObserver = null;
+
+  const thumbUrlFor = (asset) => {
+    const lower = asset.filename.toLowerCase();
+    if (lower.endsWith('.svg') || lower.endsWith('.gif')) return asset.url;
+    return `${asset.url}?w=${THUMB_WIDTH}`;
+  };
+
+  const disconnectThumbObserver = () => {
+    thumbObserver?.disconnect();
+    thumbObserver = null;
+  };
+
+  const setupThumbObserver = () => {
+    disconnectThumbObserver();
+    if (!(gridEl instanceof HTMLElement)) return;
+
+    thumbObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const img = entry.target;
+        if (!(img instanceof HTMLImageElement)) continue;
+        const src = img.dataset.thumbSrc;
+        if (src && !img.hasAttribute('src')) {
+          img.src = src;
+        }
+        thumbObserver?.unobserve(img);
+      }
+    }, { root: gridEl, rootMargin: THUMB_ROOT_MARGIN });
+
+    gridEl.querySelectorAll('.dev-asset-manager__thumb img[data-thumb-src]').forEach((img) => {
+      thumbObserver?.observe(img);
+    });
+  };
+
+  const syncSelectionUI = () => {
+    if (!(gridEl instanceof HTMLElement)) return;
+    gridEl.querySelectorAll('[data-asset-id]').forEach((card) => {
+      if (!(card instanceof HTMLElement)) return;
+      const id = card.dataset.assetId || '';
+      const isSelected = selected.has(id);
+      card.classList.toggle('is-selected', isSelected);
+      const thumb = card.querySelector('.dev-asset-manager__thumb');
+      if (thumb instanceof HTMLButtonElement) {
+        thumb.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+      }
     });
   };
 
@@ -166,6 +228,7 @@ const { documentKey } = Astro.props;
   const renderGrid = () => {
     if (!(gridEl instanceof HTMLElement)) return;
     const list = visibleAssets();
+    disconnectThumbObserver();
     gridEl.replaceChildren();
 
     if (!list.length) {
@@ -195,9 +258,9 @@ const { documentKey } = Astro.props;
       button.setAttribute('aria-pressed', selected.has(asset.id) ? 'true' : 'false');
 
       const img = document.createElement('img');
-      img.src = asset.url;
       img.alt = '';
-      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.dataset.thumbSrc = thumbUrlFor(asset);
       button.append(img);
 
       const badge = document.createElement('span');
@@ -208,8 +271,8 @@ const { documentKey } = Astro.props;
       const trash = document.createElement('button');
       trash.type = 'button';
       trash.className = 'dev-asset-manager__trash';
-      trash.title = 'Delete forever';
-      trash.setAttribute('aria-label', `Delete ${asset.filename} forever`);
+      trash.title = 'Delete from cloud';
+      trash.setAttribute('aria-label', `Delete ${asset.filename} from cloud`);
       trash.innerHTML = sizeIcon(trashIcon);
 
       button.addEventListener('click', () => {
@@ -224,7 +287,7 @@ const { documentKey } = Astro.props;
         } else {
           selected.add(asset.id);
         }
-        renderGrid();
+        syncSelectionUI();
         syncPickButtons();
       });
 
@@ -236,6 +299,8 @@ const { documentKey } = Astro.props;
       card.append(button, trash);
       gridEl.append(card);
     }
+
+    setupThumbObserver();
   };
 
   const loadAssets = async () => {
@@ -279,30 +344,51 @@ const { documentKey } = Astro.props;
     }
   };
 
-  const closeDialog = (cancelled = true) => {
-    if (dialog instanceof HTMLDialogElement && dialog.open) dialog.close();
-    if (cancelled && rejectPick) {
-      const reject = rejectPick;
-      resolvePick = null;
-      rejectPick = null;
-      reject(new Error('cancelled'));
-    }
+  const clearPickSession = () => {
+    pickOpener = null;
+    resolvePick = null;
+    rejectPick = null;
   };
 
-  const confirmPick = (type) => {
+  const findPickOpener = (detail) => {
+    if (detail.opener instanceof HTMLElement) return detail.opener;
+    /** @type {HTMLElement | null} */
+    let best = null;
+    let bestZ = -Infinity;
+    document.querySelectorAll('[data-dev-overlay]').forEach((panel) => {
+      if (!(panel instanceof HTMLElement) || panel === overlay) return;
+      if (panel.hasAttribute('data-embedded')) return;
+      if (panel.hidden) return;
+      const z = Number.parseFloat(getComputedStyle(panel).zIndex);
+      const zValue = Number.isFinite(z) ? z : 0;
+      if (zValue >= bestZ) {
+        bestZ = zValue;
+        best = panel;
+      }
+    });
+    return best;
+  };
+
+  const closePanel = (cancelled = true) => {
+    if (overlay instanceof HTMLElement) overlay.hidden = true;
+    setAssetManagerOpen(false);
+    const reject = cancelled ? rejectPick : null;
+    clearPickSession();
+    if (reject) reject(new Error('cancelled'));
+  };
+
+  const confirmPick = () => {
     // Iterate the Set so order matches click selection, not grid order.
     const byId = new Map(assets.map((asset) => [asset.id, asset]));
     const srcs = [...selected]
       .map((id) => byId.get(id)?.src)
       .filter(Boolean);
     if (!srcs.length) return;
-    if (type === 'imageGrid' && srcs.length < 1) return;
-    if (type === 'imageCarousel' && srcs.length < 1) return;
     const resolve = resolvePick;
-    resolvePick = null;
-    rejectPick = null;
-    if (dialog instanceof HTMLDialogElement && dialog.open) dialog.close();
-    resolve?.({ srcs, type });
+    clearPickSession();
+    if (overlay instanceof HTMLElement) overlay.hidden = true;
+    setAssetManagerOpen(false);
+    resolve?.({ srcs, type: pickType });
   };
 
   filterButtons.forEach((button) => {
@@ -319,24 +405,34 @@ const { documentKey } = Astro.props;
     });
   });
 
-  pickButtons.forEach((button) => {
-    button.addEventListener('click', () => {
-      const type = button.getAttribute('data-asset-pick');
-      if (type === 'image' || type === 'imageGrid' || type === 'imageCarousel') confirmPick(type);
-    });
-  });
+  selectButton?.addEventListener('click', () => confirmPick());
 
-  closeButton?.addEventListener('click', () => closeDialog(true));
-  cancelButton?.addEventListener('click', () => closeDialog(true));
+  cancelButton?.addEventListener('click', () => closePanel(true));
 
-  dialog?.addEventListener('cancel', (event) => {
-    event.preventDefault();
-    closeDialog(true);
-  });
-
-  dialog?.addEventListener('close', () => {
+  // DevOverlay's own traffic-light Hide bypasses closePanel() entirely — it
+  // sets `overlay.hidden = true` internally and announces itself here, which
+  // is the one place a pending pick still needs to be rejected.
+  window.addEventListener('vcd:dev-edit-close', ((event) => {
+    const detail = event.detail ?? {};
+    if (detail.panel !== overlay) return;
     setAssetManagerOpen(false);
-  });
+    if (rejectPick) {
+      const reject = rejectPick;
+      clearPickSession();
+      reject(new Error('cancelled'));
+    } else {
+      pickOpener = null;
+    }
+  }));
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!pickMode || !pickOpener) return;
+    const target = event.target;
+    if (!(target instanceof Node)) return;
+    if (!pickOpener.contains(target)) return;
+    if (overlay instanceof Node && overlay.contains(target)) return;
+    closePanel(true);
+  }, true);
 
   window.addEventListener('vcd:dev-asset-manager-open', ((event) => {
     const detail = event.detail ?? {};
@@ -344,13 +440,16 @@ const { documentKey } = Astro.props;
 
     if (rejectPick) {
       rejectPick(new Error('cancelled'));
-      resolvePick = null;
-      rejectPick = null;
+      clearPickSession();
     }
 
     pickMode = detail.mode !== 'browse';
+    if (detail.type === 'image' || detail.type === 'imageGrid' || detail.type === 'imageCarousel') {
+      pickType = detail.type;
+    }
     resolvePick = typeof detail.resolve === 'function' ? detail.resolve : null;
     rejectPick = typeof detail.reject === 'function' ? detail.reject : null;
+    pickOpener = pickMode ? findPickOpener(detail) : null;
     selected.clear();
     selectedProject = detail.project || documentKey || selectedProject;
     filter = 'all';
@@ -359,8 +458,10 @@ const { documentKey } = Astro.props;
     });
     syncPickButtons();
 
-    if (dialog instanceof HTMLDialogElement) {
-      dialog.showModal();
+    if (overlay instanceof HTMLElement) {
+      overlay.hidden = false;
+      overlay.tabIndex = -1;
+      overlay.focus({ preventScroll: true });
       setAssetManagerOpen(true);
     }
     void loadAssets().catch((error) => {
@@ -370,86 +471,48 @@ const { documentKey } = Astro.props;
 </script>
 
 <style is:global>
-  .dev-asset-manager {
-    border: 0;
-    padding: 0;
-    margin: auto;
-    background: transparent;
-    max-width: calc(100vw - 2em);
-    max-height: calc(100vh - 2em);
-  }
-
-  .dev-asset-manager:not([open]) {
-    display: none !important;
-  }
-
-  .dev-asset-manager::backdrop {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(8px);
-  }
-
-  /* Gap proximity still tracks pointermove under the modal backdrop — suppress it. */
-  html.is-dev-asset-manager-open .dev-gap-toolbar__add,
-  html.is-dev-asset-manager-open .dev-gap-toolbar__spacing {
-    opacity: 0 !important;
-    pointer-events: none !important;
-  }
-
-  .dev-asset-manager__panel {
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    width: min(56em, calc(100vw - 2em));
+  /* Grid area needs a bounded height so it scrolls internally rather than the
+     whole panel growing to fit every image — resize:both (from DevPanel
+     Layout=Landscape) still lets the user grow past this. */
+  .dev-overlay[data-dev-panel-key='asset-manager'] {
     height: min(36em, calc(100vh - 2em));
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
-    background: #fff;
-    overflow: hidden;
   }
 
-  .dev-asset-manager__header,
+  .dev-asset-manager__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    gap: 12px;
+  }
+
   .dev-asset-manager__footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75em;
-    padding: 0.65em 0.85em;
-    border-bottom: 1px solid #eee;
   }
 
-  .dev-asset-manager__footer {
-    border-bottom: 0;
-    border-top: 1px solid #eee;
-  }
-
-  .dev-asset-manager__header h2 {
-    margin: 0;
-    font-size: 0.92em;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-
-  .dev-asset-manager__body {
-    display: grid;
-    grid-template-columns: 11em 1fr;
-    min-height: 0;
+  /* display:flex above beats the UA [hidden] rule — same trap as dev-chrome.css. */
+  .dev-asset-manager__footer[hidden] {
+    display: none;
   }
 
   .dev-asset-manager__sidebar {
-    display: grid;
-    align-content: start;
-    gap: 0.35em;
-    padding: 0.7em;
-    border-right: 1px solid #eee;
-    background: #fafafa;
+    width: 176px;
+    flex: 0 0 176px;
+    align-self: stretch;
+    padding: 11px;
+    border-radius: var(--dev-radius-control);
+    background: var(--sys-color-srf-container-low);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
     overflow: auto;
   }
 
   .dev-asset-manager__sidebar-label {
     margin: 0;
-    color: #777;
-    font-size: 0.65em;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    font: var(--dev-text-field-label);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-asset-manager__projects {
@@ -457,25 +520,64 @@ const { documentKey } = Astro.props;
     gap: 0.15em;
   }
 
-  .dev-asset-manager__project,
-  .dev-asset-manager__filters button,
-  .dev-asset-manager__header button,
-  .dev-asset-manager__actions button {
-    padding: 0.3em 0.5em;
-    border: 1px solid transparent;
-    border-radius: 0.3em;
-    background: transparent;
-    font: inherit;
-    font-size: 0.78em;
-    line-height: 1.25;
-    text-align: left;
-    cursor: pointer;
-  }
-
   .dev-asset-manager__project {
     display: flex;
     align-items: center;
-    gap: 0.4em;
+    justify-content: flex-start;
+    gap: 8px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: var(--dev-radius-control);
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .dev-asset-manager__project:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-asset-manager__project:active {
+    background: var(--comp-button-soft-container-pressed);
+  }
+
+  .dev-asset-manager__project.is-active {
+    background: var(--comp-button-page-container);
+    color: var(--comp-button-label);
+  }
+
+  .dev-asset-manager__project.is-active:hover {
+    background: var(--comp-button-page-container);
+  }
+
+  .dev-asset-manager__project.is-active:active {
+    background: var(--comp-button-page-container);
+  }
+
+  .dev-asset-manager__filters .dev-btn {
+    background: var(--comp-button-soft-container);
+    color: var(--comp-button-label);
+  }
+
+  .dev-asset-manager__filters .dev-btn:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-asset-manager__filters .dev-btn:active {
+    background: var(--comp-button-soft-container-pressed);
+  }
+
+  .dev-asset-manager__filters .dev-btn.is-active {
+    background: var(--comp-button-page-container);
+    color: var(--comp-button-label);
+  }
+
+  .dev-asset-manager__filters .dev-btn.is-active:hover,
+  .dev-asset-manager__filters .dev-btn.is-active:active {
+    background: var(--comp-button-page-container);
   }
 
   .dev-asset-manager__project::before {
@@ -498,77 +600,80 @@ const { documentKey } = Astro.props;
     white-space: nowrap;
   }
 
-  .dev-asset-manager__project.is-active,
-  .dev-asset-manager__filters button.is-active {
-    border-color: #ccc;
-    background: #fff;
-  }
-
   .dev-asset-manager__divider {
-    width: 100%;
-    margin: 0.35em 0;
     border: 0;
-    border-top: 1px solid #e5e5e5;
+    margin: 0;
+    height: 1px;
+    width: 100%;
+    background: var(--sys-color-outline);
   }
 
   .dev-asset-manager__filters {
-    display: grid;
-    gap: 0.15em;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    width: 100%;
   }
 
   .dev-asset-manager__main {
-    display: grid;
-    grid-template-rows: auto 1fr;
+    flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
-    padding: 0.7em;
-    gap: 0.5em;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
   }
 
   .dev-asset-manager__status,
   .dev-asset-manager__count {
     margin: 0;
-    color: #555;
-    font-size: 0.78em;
+    font: var(--dev-text-status);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-asset-manager__grid {
+    flex: 1 1 auto;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(7.5em, 1fr));
     grid-auto-rows: min-content;
-    gap: 0.65em;
+    gap: 8px;
     align-content: start;
     align-items: start;
     justify-items: stretch;
     overflow: auto;
     min-height: 0;
-    height: 100%;
   }
 
   .dev-asset-manager__card {
     position: relative;
     width: 100%;
-    /* In-flow square sizer — aspect-ratio alone fails here when the only
+    /* In-flow 4:3 sizer — aspect-ratio alone fails here when the only
        children are abspos (max-content height = 0), so many rows share the
        panel height and look like stacked strips. padding-bottom % is always
        relative to width. */
     height: auto;
     max-height: none;
-    border: 1px solid #ddd;
-    border-radius: 0.35em;
+    border: 0;
+    border-radius: var(--dev-radius-control);
     overflow: hidden;
-    background: #f3f3f3;
+    background: var(--sys-color-srf-container);
   }
 
   .dev-asset-manager__card::before {
     content: '';
     display: block;
     width: 100%;
-    padding-bottom: 100%;
+    padding-bottom: 75%;
   }
 
-  .dev-asset-manager__card.is-selected {
-    outline: 2px solid #222;
-    outline-offset: 1px;
+  .dev-asset-manager__card.is-selected::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px var(--sys-color-outline);
+    pointer-events: none;
   }
 
   .dev-asset-manager__thumb {
@@ -593,20 +698,18 @@ const { documentKey } = Astro.props;
   .dev-asset-manager__badge {
     position: absolute;
     z-index: 1;
-    top: 0.35em;
-    left: 0.35em;
-    padding: 0.12em 0.35em;
-    border-radius: 0.25em;
-    background: rgba(255, 255, 255, 0.9);
-    color: #333;
-    font-size: 0.6em;
-    letter-spacing: 0.02em;
+    top: 4px;
+    left: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 6px;
+    border-radius: 5px;
+    background: var(--comp-button-soft-container);
+    color: var(--sys-color-on-srf);
+    font: var(--dev-text-badge);
+    white-space: nowrap;
     pointer-events: none;
-  }
-
-  .dev-asset-manager__card.is-library .dev-asset-manager__badge {
-    background: rgba(34, 34, 34, 0.82);
-    color: #fff;
   }
 
   .dev-asset-manager__trash {
@@ -619,13 +722,13 @@ const { documentKey } = Astro.props;
     width: 1.55em;
     height: 1.55em;
     padding: 0;
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 0.3em;
-    background: rgba(255, 255, 255, 0.92);
-    color: #444;
+    border: 0;
+    border-radius: var(--dev-radius-control-in-container);
+    background: var(--comp-button-soft-container);
+    color: var(--sys-color-on-srf);
     cursor: pointer;
     opacity: 0;
-    transition: opacity 0.12s ease;
+    transition: opacity 0.12s ease, background-color 0.2s ease, color 0.2s ease;
   }
 
   .dev-asset-manager__card:hover .dev-asset-manager__trash,
@@ -635,39 +738,39 @@ const { documentKey } = Astro.props;
   }
 
   .dev-asset-manager__trash:hover {
-    color: #b00000;
-    border-color: #d8a0a0;
+    background: var(--comp-button-danger-container);
+    color: var(--comp-button-danger-label);
   }
 
   .dev-asset-manager__actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.35em;
-  }
-
-  .dev-asset-manager__actions button,
-  .dev-asset-manager__header button {
-    border-color: #ccc;
-    background: #f7f7f7;
+    align-items: center;
+    gap: 8px;
   }
 
   .dev-asset-manager__actions button:disabled {
-    opacity: 0.45;
+    opacity: var(--dev-opacity-disabled);
     cursor: not-allowed;
+  }
+
+  /* Gap proximity still tracks pointermove while the panel covers the page. */
+  html.is-dev-asset-manager-open .dev-gap-toolbar__add,
+  html.is-dev-asset-manager-open .dev-gap-toolbar__spacing {
+    opacity: 0 !important;
+    pointer-events: none !important;
   }
 
   @media (max-width: 40em) {
     .dev-asset-manager__body {
-      grid-template-columns: 1fr;
-      grid-template-rows: auto 1fr;
+      flex-direction: column;
     }
 
     .dev-asset-manager__sidebar {
-      border-right: 0;
-      border-bottom: 1px solid #eee;
+      width: 100%;
+      flex: 0 0 auto;
     }
 
-    .dev-asset-manager__panel {
+    .dev-overlay[data-dev-panel-key='asset-manager'] {
       height: min(90vh, calc(100vh - 2em));
     }
   }

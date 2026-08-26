@@ -1,0 +1,652 @@
+/* This file owns the signed Figma dev-chrome atoms as global, unscoped
+   classes so that both .astro components and runtime innerHTML-built dev
+   toolbars can use the same rules. Geometry comes from the --dev-*
+   custom properties in global.css, which mirror the Figma Primitives
+   collection. */
+
+.dev-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border: none;
+  border-radius: var(--dev-radius-control);
+  min-height: var(--dev-control-height);
+  box-sizing: border-box;
+  font: var(--dev-text-label);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    transform var(--motion-press-duration) ease-out;
+}
+
+/* Button Base hitbox: the tappable area extends space/hit-inset beyond the
+   visual bounds. Containers that pack buttons closer than the inset (the
+   Segmented Control's 4px gap) zero --dev-btn-hit-inset so a neighbour's
+   slop can't steal clicks off this button's own visible edge. */
+.dev-btn::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--dev-btn-hit-inset, var(--dev-hit-inset)) * -1);
+}
+
+.dev-btn--align-start {
+  justify-content: flex-start;
+}
+
+.dev-btn--fill {
+  width: 100%;
+}
+
+.dev-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.dev-btn__icon svg {
+  display: block;
+}
+
+.dev-btn:focus-visible {
+  outline: 2px solid var(--sys-color-outline);
+  outline-offset: 2px;
+}
+
+.dev-btn:active:not(:disabled) {
+  transform: scale(var(--motion-press-scale));
+}
+
+.dev-btn:disabled {
+  opacity: var(--dev-opacity-disabled);
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.dev-btn--ghost {
+  background: var(--comp-button-ghost-container);
+  color: var(--comp-button-label);
+  min-width: 0;
+}
+
+/* aria-pressed is the accessible expression of a selected control, is-active
+   the class-state equivalent — panels that toggle either should not each
+   re-declare the selected fill. */
+.dev-btn--ghost:hover {
+  background: var(--comp-button-ghost-container-hover);
+}
+
+.dev-btn--ghost.is-selected,
+.dev-btn--ghost.is-active,
+.dev-btn--ghost[aria-pressed='true'] {
+  background: var(--comp-button-ghost-container-selected);
+}
+
+.dev-btn--ghost:active {
+  background: var(--comp-button-ghost-container-pressed);
+}
+
+.dev-btn--soft {
+  background: var(--comp-button-soft-container);
+  color: var(--comp-button-label);
+  min-width: var(--dev-control-min-width);
+}
+
+.dev-btn--soft:hover {
+  background: var(--comp-button-soft-container-hover);
+}
+
+.dev-btn--soft.is-selected,
+.dev-btn--soft.is-active,
+.dev-btn--soft[aria-pressed='true'] {
+  background: var(--comp-button-soft-container-selected);
+}
+
+.dev-btn--soft:active {
+  background: var(--comp-button-soft-container-pressed);
+}
+
+.dev-btn--filled {
+  background: var(--comp-button-filled-container);
+  color: var(--comp-button-filled-label);
+  min-width: var(--dev-control-min-width);
+}
+
+.dev-btn--filled:hover,
+.dev-btn--filled:active {
+  background: var(--comp-button-filled-container-hover);
+}
+
+.dev-btn--filled.is-selected,
+.dev-btn--filled.is-active,
+.dev-btn--filled[aria-pressed='true'] {
+  background: var(--comp-button-filled-container-selected);
+}
+
+.dev-btn--page {
+  background: var(--comp-button-page-container);
+  color: var(--comp-button-label);
+  min-width: var(--dev-control-min-width);
+}
+
+.dev-btn--page:hover {
+  background: var(--comp-button-page-container-hover);
+}
+
+.dev-btn--page:active {
+  background: var(--comp-button-page-container-pressed);
+}
+
+.dev-btn--page.is-selected,
+.dev-btn--page.is-active,
+.dev-btn--page[aria-pressed='true'] {
+  background: var(--comp-button-page-container-selected);
+}
+
+.dev-btn--danger {
+  background: var(--comp-button-danger-container);
+  color: var(--comp-button-danger-label);
+  min-width: var(--dev-control-min-width);
+}
+
+.dev-btn--danger:hover {
+  background: var(--comp-button-danger-container-hover);
+}
+
+.dev-btn--danger:active {
+  background: var(--comp-button-danger-container-pressed);
+}
+
+.dev-btn--danger.is-selected,
+.dev-btn--danger.is-active,
+.dev-btn--danger[aria-pressed='true'] {
+  background: var(--comp-button-danger-container-selected);
+}
+
+.dev-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  gap: var(--dev-panel-label-gap);
+}
+
+.dev-field__label {
+  font: var(--dev-text-field-label);
+  color: var(--sys-color-on-srf-variant);
+}
+
+.dev-field__value {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border-radius: var(--dev-radius-control);
+  background: var(--comp-field-container);
+  color: var(--sys-color-on-srf);
+  font: var(--dev-text-label);
+  box-sizing: border-box;
+}
+
+/* Field hit slop, same --dev-hit-inset as Button Base. A ::before on the box
+   cannot do this: pseudo clicks target the box, not the control, so it would
+   swallow select-menu clicks. Instead the control overflows the box by the
+   inset (negative margin), and matching padding pushes the glyphs back so
+   nothing moves visually. The box is transparent and only clips at the panel
+   edge; every slop pixel is the real input/select hit target. */
+.dev-field__input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: inherit;
+  box-sizing: border-box;
+  margin: -8px;
+  padding: 8px;
+  /* Negative margin alone does not widen a flex item — 10dfa33 dropped this
+     and the control hugged its text, so only the glyphs (not the grey box /
+     chevron) received clicks. 16px = the 8px overflow on each side. */
+  width: calc(100% + 16px);
+  min-width: 0;
+}
+
+.dev-field:hover .dev-field__value {
+  background: var(--comp-button-soft-container-hover);
+}
+
+.dev-field__input:disabled {
+  opacity: var(--dev-opacity-disabled);
+}
+
+.dev-field__input--area {
+  line-height: 1.4;
+  resize: vertical;
+  field-sizing: content;
+  min-height: calc(1.4em * var(--rows, 3) + 16px);
+  /* field-sizing: content would otherwise hug the typed line and park the
+     native resize glyph under the text instead of the box's bottom-right. */
+  min-width: calc(100% + 16px);
+}
+
+.dev-field__input--select {
+  /* Without this the browser's own chevron renders alongside the masked one
+     below — two arrows on every select. */
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  margin: -4px;
+  padding: 12px;
+  padding-right: 28px;
+  /* Value box padding is 0 for selects (55afc2c) — 100% is already the grey
+     box; +8px matches the -4px overflow so the native menu covers the chevron. */
+  width: calc(100% + 8px);
+}
+
+.dev-field__input--select:disabled {
+  cursor: not-allowed;
+}
+
+/* DevOverlay clips with overflow: hidden, so an outer outline is cut off —
+   ring the value box from the inside instead. */
+.dev-field__value:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--sys-color-on-srf);
+}
+
+/* Figma Select Field: 16px trailing Icon/Chevron at Emphasis=Subtle. Masked,
+   not a coloured data-URI, so the ink follows the token into dark mode. */
+.dev-field__value:has(> .dev-field__input--select) {
+  position: relative;
+  padding: 0;
+}
+
+.dev-field__value:has(> .dev-field__input--select)::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  pointer-events: none;
+  background: var(--comp-button-label-subtle);
+  mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>') center / 14px 14px no-repeat;
+}
+
+.dev-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.dev-toggle:has(.dev-toggle__checkbox:disabled) {
+  opacity: var(--dev-opacity-disabled);
+}
+
+.dev-toggle__box {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.dev-toggle__checkbox {
+  position: absolute;
+  inset: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: var(--dev-radius-checkbox);
+  border: 1px solid var(--sys-color-outline);
+  background: var(--sys-color-srf);
+  appearance: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+.dev-toggle__checkbox:hover {
+  background: var(--comp-button-ghost-container-hover);
+}
+
+.dev-toggle__checkbox:checked {
+  background: var(--comp-button-filled-container);
+  border-color: var(--comp-button-filled-container);
+}
+
+.dev-toggle__checkbox:checked:hover {
+  background: var(--comp-button-filled-container-hover);
+  border-color: var(--comp-button-filled-container-hover);
+}
+
+.dev-toggle__checkbox:disabled {
+  cursor: not-allowed;
+}
+
+.dev-toggle__check {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  color: var(--comp-button-filled-label);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.dev-toggle__checkbox:checked ~ .dev-toggle__check {
+  opacity: 1;
+}
+
+.dev-toggle__label {
+  font: var(--dev-text-label);
+  color: var(--sys-color-on-srf);
+}
+
+.dev-segmented {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 4px;
+  padding: var(--dev-control-padding);
+  background: var(--comp-segmentedcontrol-bg);
+  /* Concentric with the buttons: outer radius (10, radius/control-in-container)
+     = inner button radius (8) + the 2px padding between them. */
+  border-radius: var(--dev-radius-control-in-container);
+  /* Selected fill today is Page. If that later became Filled, retarget this;
+     unselected hover/press mix toward it. */
+  --dev-segmented-selected-fill: var(--comp-button-page-container-selected);
+}
+
+.dev-segmented .dev-btn {
+  padding: 6px 8px;
+  min-height: 28px;
+  flex: 1 1 0;
+  min-width: 0;
+  /* Unselected type is secondary ink — softer than selected, still
+     readable on segmentedcontrol/bg. label-subtle (grey-600 on the
+     pill) was too low-contrast. Hover/press keep Ghost fill + the
+     OKLCH mix; only the ink is set here. */
+  color: var(--sys-color-on-srf-variant);
+  /* Segments sit 4px apart — closer than the 8px hit-inset, so the slop
+     would reach over a neighbour's visible edge. Segments are adjacent by
+     design; the pill itself is the enlarged target. */
+  --dev-btn-hit-inset: 0px;
+}
+
+/* Three fill buttons in one row — flex-basis 0 already equalizes; override
+   the base .dev-btn--fill width:100% so they don't each claim the pill. */
+.dev-segmented .dev-btn--fill {
+  width: 0;
+}
+
+/* Unselected segments are Ghost (transparent, same as the pill). Selected is
+   Page — the page surface poking through. Scoped to .dev-segmented, not the
+   base emphasis classes. Format bar and spacing chips stay Soft and are
+   unaffected (they are not .dev-segmented). */
+.dev-segmented .dev-btn.is-selected,
+.dev-segmented .dev-btn.is-active,
+.dev-segmented .dev-btn[aria-pressed='true'] {
+  background: var(--dev-segmented-selected-fill);
+  color: var(--comp-button-label);
+  box-shadow: none;
+}
+
+/* Lock selected hover to Page so the white chip does not vanish under the
+   pointer. Ghost hover is srf-container-low — the same as the pill — so it
+   is invisible there; unselected hover/press mix toward the selected fill
+   instead (lighten, not climb the container ladder). Must beat
+   .dev-btn--ghost:hover / :active. */
+.dev-segmented .dev-btn.is-selected:hover,
+.dev-segmented .dev-btn.is-active:hover,
+.dev-segmented .dev-btn[aria-pressed='true']:hover {
+  background: var(--dev-segmented-selected-fill);
+}
+
+.dev-segmented .dev-btn:hover:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+}
+.dev-segmented .dev-btn:active:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 75%, transparent);
+}
+
+/* Eye Button Base (597:4708) — the shown/hidden toggle pinned into a gallery
+   or asset thumb's top-right corner. Icon-only, so it keeps an accessible
+   name from its aria-label; the variant is the glyph, not the fill. */
+.dev-eye {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--dev-radius-control-in-container);
+  background: var(--sys-color-srf-container);
+  color: var(--sys-color-on-srf);
+  cursor: pointer;
+}
+
+.dev-eye svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.dev-eye[hidden] {
+  display: none;
+}
+
+.dev-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  padding-top: var(--dev-panel-spacing);
+}
+
+.dev-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  /* 5px is a literal in Figma — no radius token exists for it. */
+  border-radius: 5px;
+  background: var(--comp-button-soft-container);
+  color: var(--sys-color-on-srf);
+  font: var(--dev-text-badge);
+  white-space: nowrap;
+}
+
+/* Figma's Hairline description names sys.color.outline-variant, but the
+   node's actual fill binding resolves to #d3d3d6 = sys.color.outline;
+   the binding is what LGTM renders, so it wins here. */
+.dev-hairline {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: var(--sys-color-outline);
+  flex: 0 0 auto;
+}
+
+.dev-hairline--vertical {
+  width: 1px;
+  height: auto;
+  align-self: stretch;
+  flex: 0 0 1px;
+}
+
+.dev-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dev-panel-gap);
+  padding: var(--dev-panel-pad);
+  background: var(--sys-color-srf);
+  border: 1px solid var(--sys-color-srf-container-low);
+  border-radius: var(--dev-radius-panel);
+  box-shadow: var(--dev-panel-shadow);
+  color: var(--sys-color-on-srf);
+  font-family: var(--font-sans);
+}
+
+.dev-panel--portrait {
+  width: var(--dev-panel-width);
+}
+
+.dev-panel--landscape {
+  width: var(--dev-panel-width-landscape);
+  min-width: var(--dev-panel-min-width-landscape);
+  max-width: 100%;
+  resize: both;
+  overflow: auto;
+}
+
+.dev-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: var(--dev-panel-spacing);
+  width: 100%;
+}
+
+.dev-panel__title {
+  margin: 0;
+  font: var(--dev-text-panel-title);
+  color: var(--sys-color-on-srf-variant);
+}
+
+.dev-panel__lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.dev-panel__light {
+  width: 15px;
+  height: 15px;
+  border-radius: 8px;
+  background: var(--comp-traffic-light-rest);
+}
+
+/* Decorative here (this is the /styles specimen, not the live draggable
+   DevOverlay), but should still preview the same hover colours. */
+.dev-panel__lights:hover .dev-panel__light:first-child {
+  background: var(--comp-traffic-light-minimize-hover);
+}
+
+.dev-panel__lights:hover .dev-panel__light:last-child {
+  background: var(--comp-traffic-light-hide-hover);
+}
+
+.dev-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dev-panel-content-gap);
+  width: 100%;
+}
+
+/* Drop Area Base (596:4734). The dashed hairline is the project's one
+   "you can drop/edit here" signal — it uses --dev-edit-dash so the whole dev
+   layer moves together. 16px is a literal in Figma; no radius token covers it.
+   Fills: Drop Area States Rest/Hover/Pressed → --comp-droparea-*. */
+.dev-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px;
+  border-radius: 16px;
+  background: var(--comp-droparea-rest);
+  box-sizing: border-box;
+  cursor: default;
+}
+
+.dev-drop:hover {
+  background: var(--comp-droparea-hover);
+}
+
+/* Pressed fill on the container — Figma Drop Area States binds it on the
+   Base (16px radius), not the dashed well. Ghost buttons inside keep their
+   own hover; a container background never touches them. */
+.dev-drop:focus,
+.dev-drop:focus-visible,
+.dev-drop.is-dragover {
+  outline: none;
+  background: var(--comp-droparea-pressed);
+}
+
+.dev-drop__well {
+  display: flex;
+  flex: 1 0 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  min-height: 90px;
+  padding-block: 12px;
+  /* Figma binds this exact solid colour (color/outline-container =
+     sys.color.outline), not the site-wide --dev-edit-dash mix — the master
+     wins over the general convention here. */
+  border: 1px dashed var(--sys-color-outline);
+  border-radius: var(--dev-radius-control);
+  color: var(--sys-color-on-srf-variant);
+  font: var(--dev-text-status);
+  text-align: center;
+}
+
+.dev-drop.is-dragover .dev-drop__well {
+  border-color: var(--sys-color-on-srf);
+  color: var(--sys-color-on-srf);
+}
+
+/* Every class above sets an explicit `display`, and this sheet is an author
+   stylesheet — so it outranks the UA's `[hidden] { display: none }` and a
+   panel that hides an atom with the `hidden` attribute would still see it.
+   One guard here beats one per panel. */
+.dev-btn[hidden],
+.dev-btn__icon[hidden],
+.dev-field[hidden],
+.dev-field__value[hidden],
+.dev-toggle[hidden],
+.dev-toggle__box[hidden],
+.dev-segmented[hidden],
+.dev-panel-actions[hidden],
+.dev-badge[hidden],
+.dev-hairline[hidden],
+.dev-drop[hidden],
+.dev-drop__well[hidden],
+.dev-panel[hidden],
+.dev-panel__header[hidden],
+.dev-panel__lights[hidden],
+.dev-panel__body[hidden] {
+  display: none;
+}
+
+/* Alt+M panel launcher. No signed Figma master — new chrome copying the
+   signed .dev-gap-toolbar__menu treatment: a bare column with no surface of
+   its own, each item carrying the Page fill plus its own border + shadow.
+   z-index 100 sits above the save bar (90) and format bar (95). */
+.dev-launcher {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 10em;
+}
+
+.dev-launcher .dev-btn {
+  border: 1px solid var(--sys-color-srf-container-low);
+  box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
+}

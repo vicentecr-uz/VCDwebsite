@@ -1,118 +1,49 @@
 ---
+import '../../styles/dev-chrome.css';
+
 interface Props {
   emphasis?: 'ghost' | 'soft' | 'filled' | 'page' | 'danger';
   label: string;
   type?: 'button' | 'submit';
   disabled?: boolean;
   selected?: boolean;
+  align?: 'center' | 'start';
+  width?: 'hug' | 'fill';
   [key: string]: any;
 }
 
-const { emphasis = 'soft', label, type = 'button', disabled = false, selected = false, class: className, ...rest } = Astro.props;
+const {
+  emphasis = 'soft',
+  label,
+  type = 'button',
+  disabled = false,
+  selected = false,
+  align = 'center',
+  width = 'hug',
+  class: className,
+  ...rest
+} = Astro.props;
+
+const hasIcon = Astro.slots.has('icon');
 ---
 
 <button
   type={type}
   disabled={disabled}
   aria-pressed={selected ? 'true' : undefined}
-  class:list={['ui-button', `ui-button--${emphasis}`, { 'is-selected': selected }, className]}
+  class:list={[
+    'dev-btn',
+    `dev-btn--${emphasis}`,
+    `dev-btn--align-${align}`,
+    { 'is-selected': selected, 'dev-btn--fill': width === 'fill' },
+    className,
+  ]}
   {...rest}
 >
+  {hasIcon && (
+    <span class="dev-btn__icon">
+      <slot name="icon" />
+    </span>
+  )}
   <slot>{label}</slot>
 </button>
-
-<style>
-  .ui-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4em;
-    padding: 0.5em 1em;
-    border: none;
-    border-radius: var(--radius-control);
-    font: inherit;
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
-      transform var(--motion-press-duration) ease-out;
-  }
-
-  .ui-button:focus-visible {
-    outline: 2px solid var(--sys-color-outline);
-    outline-offset: 2px;
-  }
-
-  .ui-button:active:not(:disabled) {
-    transform: scale(var(--motion-press-scale));
-  }
-
-  .ui-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
-  }
-
-  .ui-button--ghost {
-    background: var(--comp-button-ghost-container);
-    color: var(--comp-button-label);
-  }
-
-  .ui-button--ghost:hover,
-  .ui-button--ghost.is-selected {
-    background: var(--comp-button-ghost-container-hover);
-  }
-
-  .ui-button--ghost:active {
-    background: var(--comp-button-ghost-container-pressed);
-  }
-
-  .ui-button--soft {
-    background: var(--comp-button-soft-container);
-    color: var(--comp-button-label);
-  }
-
-  .ui-button--soft:hover,
-  .ui-button--soft.is-selected {
-    background: var(--comp-button-soft-container-hover);
-  }
-
-  .ui-button--soft:active {
-    background: var(--comp-button-soft-container-pressed);
-  }
-
-  .ui-button--filled {
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
-  }
-
-  .ui-button--filled:hover,
-  .ui-button--filled:active {
-    background: var(--comp-button-filled-container-hover);
-  }
-
-  .ui-button--page {
-    background: var(--comp-button-page-container);
-    color: var(--comp-button-label);
-  }
-
-  .ui-button--page:hover,
-  .ui-button--page.is-selected {
-    background: var(--comp-button-page-container-hover);
-  }
-
-  .ui-button--page:active {
-    background: var(--comp-button-page-container-pressed);
-  }
-
-  .ui-button--danger {
-    background: var(--comp-button-danger-container);
-    color: var(--comp-button-danger-label);
-  }
-
-  .ui-button--danger:hover {
-    background: var(--comp-button-danger-container-hover);
-  }
-
-  .ui-button--danger:active {
-    background: var(--comp-button-danger-container-pressed);
-  }
-</style>

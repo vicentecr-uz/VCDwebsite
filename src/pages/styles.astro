@@ -16,13 +16,17 @@ import ProjectVideo from '../components/project/ProjectVideo.astro';
 import ProjectGrid from '../components/ProjectGrid.astro';
 import Button from '../components/ui/Button.astro';
 import SegmentedControl from '../components/ui/SegmentedControl.astro';
-import DevPanel from '../components/ui/DevPanel.astro';
+import ViewportSelector from '../components/ui/ViewportSelector.astro';
+import DevOverlay from '../components/DevOverlay.astro';
+import DevPanelTitle from '../components/ui/DevPanelTitle.astro';
 import Field from '../components/ui/Field.astro';
 import TextField from '../components/ui/TextField.astro';
 import TextArea from '../components/ui/TextArea.astro';
 import SelectField from '../components/ui/SelectField.astro';
 import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
+import Badge from '../components/ui/Badge.astro';
+import Hairline from '../components/ui/Hairline.astro';
 import stylesNav from '../content/pages/styles.json';
 import {
   deriveNavFromOutline,
@@ -90,12 +94,15 @@ type PreviewKey =
   | 'ui-button'
   | 'ui-segmented-control'
   | 'ui-dev-panel'
+  | 'ui-dev-panel-title'
   | 'ui-field'
   | 'ui-text-field'
   | 'ui-text-area'
   | 'ui-select-field'
   | 'ui-toggle-row'
-  | 'ui-panel-actions';
+  | 'ui-panel-actions'
+  | 'ui-badge'
+  | 'ui-hairline';
 
 type ComponentEntry = {
   id: string;
@@ -268,7 +275,7 @@ const componentCatalog: ComponentEntry[] = [
     name: 'Button',
     category: 'ui-primitives',
     purpose: 'Presentational button primitive mirroring the Figma Button (Emphasis × State).',
-    classRef: '.ui-button / .ui-button--{ghost,soft,filled,page,danger}',
+    classRef: '.dev-btn / .dev-btn--{ghost,soft,filled,page,danger}',
     source: 'src/components/ui/Button.astro',
     props: 'emphasis? (ghost | soft | filled | page | danger, default soft), label, type?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
@@ -279,32 +286,56 @@ const componentCatalog: ComponentEntry[] = [
     id: 'component-ui-segmented-control',
     name: 'SegmentedControl',
     category: 'ui-primitives',
-    purpose: 'Presentational shell mirroring the Figma Segmented Control — composed examples below (Viewport Selector, Axis Selector) show a selected segment; selection state and wiring stay with the caller.',
-    classRef: '.ui-segmented-control',
+    purpose: 'Presentational shell mirroring the Figma Segmented Control — click a segment in the catalog to move selection; live panels wire their own data-* hooks.',
+    classRef: '.dev-segmented',
     source: 'src/components/ui/SegmentedControl.astro',
     props: 'label, ...rest (children passed via default slot)',
-    usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Concentric border radius with slotted buttons; role="group" with aria-label; Page emphasis Button with selected renders the selected segment fill; renders correctly in both themes.',
+    usedOn: ['ViewportSelector', 'Edit carousel Direction', 'Gallery manager', 'Section title visibility'],
+    checklist: 'Concentric border radius with slotted Ghost buttons; role="group" with aria-label; Ghost + selected paints Page via the segmented override; hover on unselected mixes toward Page; renders correctly in both themes.',
     preview: 'ui-segmented-control',
+  },
+  {
+    id: 'component-ui-viewport-selector',
+    name: 'ViewportSelector',
+    category: 'ui-primitives',
+    purpose: 'Figma Dev Panel Viewport Selector — one 3-button Segmented Control with Desktop / Tablet / Mobile baked in.',
+    classRef: '.dev-segmented',
+    source: 'src/components/ui/ViewportSelector.astro',
+    props: 'label? (default "Display width"), dataAttr (required), selected? (desktop | tablet | mobile, default desktop), class, ...rest on the group',
+    usedOn: ['Edit image', 'Edit caption', 'Edit grid', 'Edit carousel'],
+    checklist: 'Ghost unselected, Desktop selected (Page via CSS); fill segments in one row; dataAttr lands on each button; renders correctly in both themes.',
+    preview: 'ui-viewport-selector',
   },
   {
     id: 'component-ui-dev-panel',
     name: 'DevPanel',
     category: 'ui-primitives',
-    purpose: 'Outer chrome shell (header + body) mirroring the Figma DevPanel Base — used to build dev-mode panels.',
-    classRef: '.ui-dev-panel / .ui-dev-panel__header / .ui-dev-panel__body',
-    source: 'src/components/ui/DevPanel.astro',
-    props: 'title, ...rest (body content via default slot)',
-    usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Fixed 352px width matches assembled Figma panels; header/body divider; renders correctly in both themes.',
+    purpose: 'Live overlay chrome (header, body, traffic lights, resize). Catalog specimens are the same component in embedded mode — dummy title and body only.',
+    classRef: '.dev-overlay / .dev-overlay--portrait / .dev-overlay--landscape / .dev-overlay--embedded',
+    source: 'src/components/DevOverlay.astro',
+    props: 'title? (override only), titleSuffix?, layout? (portrait | landscape, default portrait), embedded?, storageKey?, panelKey?, defaultHidden?, defaultMinimized?, showMinimize?, ...rest (body via default slot; header from panelKey via DevPanelTitle)',
+    usedOn: ['Gallery manager', 'Asset manager', 'Log issue', 'Crop / grid / caption tuners', 'Project settings'],
+    checklist: 'Portrait 352px + vertical resize + snap-to-minimize; landscape 597px (min 344) + all-edge resize; 18px radius; body clips to the inner corner on resize; no native resize glyph; renders correctly in both themes.',
     preview: 'ui-dev-panel',
+  },
+  {
+    id: 'component-ui-dev-panel-title',
+    name: 'DevPanelTitle',
+    category: 'ui-primitives',
+    purpose: 'Figma Dev Panel Title variants — panelKey is the variant; live overlays resolve the header from the shared title map.',
+    classRef: '.dev-overlay__title',
+    source: 'src/components/ui/DevPanelTitle.astro, src/lib/devPanelTitles.ts',
+    props: 'panelKey?, suffix?, title? (override only)',
+    usedOn: ['DevOverlay header on every live dev panel'],
+    checklist: 'Title typography matches dev-overlay__title; known panelKey resolves from DEV_PANEL_TITLES; suffix appends em dash label; override wins for catalog dummies.',
+    preview: 'ui-dev-panel-title',
   },
   {
     id: 'component-ui-field',
     name: 'Field',
     category: 'ui-primitives',
     purpose: 'Shared label-over-value shell mirroring the Figma Field Base — every field-like control composes on top of it.',
-    classRef: '.ui-field / .ui-field__value',
+    classRef: '.dev-field / .dev-field__value',
     source: 'src/components/ui/Field.astro',
     props: 'label, ...rest (value content via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
@@ -316,7 +347,7 @@ const componentCatalog: ComponentEntry[] = [
     name: 'TextField',
     category: 'ui-primitives',
     purpose: 'Text input composed on Field — mirrors the Figma Text Field.',
-    classRef: '.ui-field / .ui-text-field__input',
+    classRef: '.dev-field / .dev-field__input',
     source: 'src/components/ui/TextField.astro',
     props: 'label, value?, placeholder?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
@@ -328,7 +359,7 @@ const componentCatalog: ComponentEntry[] = [
     name: 'TextArea',
     category: 'ui-primitives',
     purpose: 'Multi-line text input composed on Field — auto-resizes to typed content, with a native vertical drag handle.',
-    classRef: '.ui-field / .ui-text-area__textarea',
+    classRef: '.dev-field / .dev-field__input--area',
     source: 'src/components/ui/TextArea.astro',
     props: 'label, value?, placeholder?, disabled?, rows? (default 3), ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
@@ -340,7 +371,7 @@ const componentCatalog: ComponentEntry[] = [
     name: 'SelectField',
     category: 'ui-primitives',
     purpose: 'Select input composed on Field — uses the system’s native select picker.',
-    classRef: '.ui-field / .ui-select-field__select',
+    classRef: '.dev-field / .dev-field__input--select',
     source: 'src/components/ui/SelectField.astro',
     props: 'label, options ({ value, label }[]), value?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
@@ -352,7 +383,7 @@ const componentCatalog: ComponentEntry[] = [
     name: 'ToggleRow',
     category: 'ui-primitives',
     purpose: 'Labelled checkbox row mirroring the Figma Toggle Row.',
-    classRef: '.ui-toggle-row / .ui-toggle-row__checkbox',
+    classRef: '.dev-toggle / .dev-toggle__checkbox',
     source: 'src/components/ui/ToggleRow.astro',
     props: 'label, checked?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
@@ -364,12 +395,36 @@ const componentCatalog: ComponentEntry[] = [
     name: 'PanelActions',
     category: 'ui-primitives',
     purpose: 'Layout wrapper for a trailing row of Button instances, mirroring the Figma Panel Actions composition.',
-    classRef: '.ui-panel-actions',
+    classRef: '.dev-panel-actions',
     source: 'src/components/ui/PanelActions.astro',
     props: '...rest (Button instances via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Right-aligned row with top divider; renders correctly in both themes.',
+    checklist: 'Right-aligned row, 8px gap, 8px padding-top, no divider (Figma Panel Actions has none); renders correctly in both themes.',
     preview: 'ui-panel-actions',
+  },
+  {
+    id: 'component-ui-badge',
+    name: 'Badge',
+    category: 'ui-primitives',
+    purpose: 'Small status label mirroring the Figma Badge — e.g. gallery/asset thumb overlays.',
+    classRef: '.dev-badge',
+    source: 'src/components/ui/Badge.astro',
+    props: 'label, ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'soft/container fill, 5px radius (literal, no token), Type/Dev/Badge; renders correctly in both themes.',
+    preview: 'ui-badge',
+  },
+  {
+    id: 'component-ui-hairline',
+    name: 'Hairline',
+    category: 'ui-primitives',
+    purpose: '1px rule mirroring the Figma Hairline — dividers inside dev-chrome layouts. orientation=vertical for in-row splits (Add vs gap chips).',
+    classRef: '.dev-hairline / .dev-hairline--vertical',
+    source: 'src/components/ui/Hairline.astro',
+    props: 'orientation, ...rest',
+    usedOn: ['Not yet adopted — Stage 1 primitive'],
+    checklist: 'sys.color.outline fill (binding, not the description’s outline-variant); renders correctly in both themes.',
+    preview: 'ui-hairline',
   },
 ];
 
@@ -854,24 +909,47 @@ const sectionLinks = savedOutline.length
                       {component.preview === 'ui-segmented-control' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 1.5em;">
                           <SegmentedControl label="Viewport">
-                            <Button emphasis="page" label="Desktop" selected />
-                            <Button emphasis="page" label="Tablet" />
-                            <Button emphasis="page" label="Mobile" />
+                            <Button emphasis="ghost" width="fill" label="Desktop" selected />
+                            <Button emphasis="ghost" width="fill" label="Tablet" />
+                            <Button emphasis="ghost" width="fill" label="Mobile" />
                           </SegmentedControl>
                           <div style="display: flex; flex-direction: column; gap: 0.4em;">
                             <span style="font-size: 0.85em; color: var(--sys-color-on-srf-variant);">Axis</span>
                             <SegmentedControl label="Axis">
-                              <Button emphasis="page" label="X" selected />
-                              <Button emphasis="page" label="Y" />
+                              <Button emphasis="ghost" width="fill" label="X" selected />
+                              <Button emphasis="ghost" width="fill" label="Y" />
                             </SegmentedControl>
                           </div>
                         </div>
                       )}
-                      {component.preview === 'ui-dev-panel' && (
+                      {component.preview === 'ui-viewport-selector' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
-                          <DevPanel title="Panel title">
+                          <ViewportSelector dataAttr="data-viewport" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-dev-panel' && (
+                        <div class="component-preview__overlays" style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; align-items: flex-start; gap: 1.5em;">
+                          <DevOverlay title="Panel title" layout="portrait" embedded storageKey="styles-preview-portrait" panelKey="styles-preview-portrait">
                             <p class="preview-note">Body content</p>
-                          </DevPanel>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                          </DevOverlay>
+                          <DevOverlay title="Panel title" layout="landscape" embedded storageKey="styles-preview-landscape" panelKey="styles-preview-landscape">
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                            <p class="preview-note">Body content</p>
+                          </DevOverlay>
+                        </div>
+                      )}
+                      {component.preview === 'ui-dev-panel-title' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.75em;">
+                          <DevPanelTitle panelKey="image" />
+                          <DevPanelTitle panelKey="caption" />
+                          <DevPanelTitle panelKey="grid" />
                         </div>
                       )}
                       {component.preview === 'ui-field' && (
@@ -913,9 +991,28 @@ const sectionLinks = savedOutline.length
                       {component.preview === 'ui-panel-actions' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em;">
                           <PanelActions>
-                            <Button emphasis="soft" label="Cancel" />
+                            <Button emphasis="ghost" label="Cancel" />
                             <Button emphasis="filled" label="Save" />
                           </PanelActions>
+                        </div>
+                      )}
+                      {component.preview === 'ui-badge' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.5em;">
+                          <Badge label="On page" />
+                          <Badge label="Library" />
+                          <Badge label="Draft" />
+                        </div>
+                      )}
+                      {component.preview === 'ui-hairline' && (
+                        <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-direction: column; gap: 0.75em; max-width: 20em;">
+                          <p class="preview-note">Line above</p>
+                          <Hairline />
+                          <p class="preview-note">Line below</p>
+                          <div style="display: flex; align-items: stretch; gap: 0.75em; min-height: 2em;">
+                            <p class="preview-note" style="margin: 0;">Left</p>
+                            <Hairline orientation="vertical" />
+                            <p class="preview-note" style="margin: 0;">Right</p>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1318,6 +1415,14 @@ const sectionLinks = savedOutline.length
     overflow: hidden;
   }
 
+  /* Embedded DevOverlays hug in-flow; overflow:hidden on the well clips
+     their shadow and a 597px landscape specimen. :has() must be :global —
+     the overlay class is scoped in DevOverlay.astro, so a local :has
+     never matches. */
+  .component-preview:has(:global(.dev-overlay--embedded)) {
+    overflow: visible;
+  }
+
   .component-preview :global(.project-block) {
     padding-top: 1em;
     padding-bottom: 1em;
@@ -1387,3 +1492,18 @@ const sectionLinks = savedOutline.length
     }
   }
 </style>
+
+<script>
+  document.querySelectorAll('.component-preview .dev-segmented').forEach((group) => {
+    group.addEventListener('click', (event) => {
+      const btn = (event.target as HTMLElement | null)?.closest('.dev-btn');
+      if (!(btn instanceof HTMLElement) || !group.contains(btn)) return;
+      group.querySelectorAll('.dev-btn').forEach((sibling) => {
+        sibling.classList.remove('is-selected', 'is-active');
+        sibling.removeAttribute('aria-pressed');
+      });
+      btn.classList.add('is-selected', 'is-active');
+      btn.setAttribute('aria-pressed', 'true');
+    });
+  });
+</script>

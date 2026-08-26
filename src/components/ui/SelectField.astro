@@ -1,36 +1,54 @@
 ---
+import '../../styles/dev-chrome.css';
 import Field from './Field.astro';
+
+type SelectOption = { value: string; label: string };
+type SelectGroup = { label: string; options: SelectOption[] };
 
 interface Props {
   label: string;
-  options: { value: string; label: string }[];
+  options: Array<SelectOption | SelectGroup>;
   value?: string;
   disabled?: boolean;
+  hidden?: boolean;
   [key: string]: any;
 }
 
-const { label, options, value, disabled = false, class: className, ...rest } = Astro.props;
+const {
+  label,
+  options,
+  value,
+  disabled = false,
+  hidden,
+  class: className,
+  ...rest
+} = Astro.props;
+
+const fieldRest: Record<string, unknown> = {};
+const selectRest: Record<string, unknown> = {};
+
+for (const [key, propValue] of Object.entries(rest)) {
+  if (key === 'data-caption-overlay-only' || key.endsWith('-wrap')) {
+    fieldRest[key] = propValue;
+  } else {
+    selectRest[key] = propValue;
+  }
+}
+
+const isGroup = (item: SelectOption | SelectGroup): item is SelectGroup =>
+  Array.isArray((item as SelectGroup).options);
 ---
 
-<Field label={label} class={className}>
-  <select value={value} disabled={disabled} class="ui-select-field__select" {...rest}>
-    {options.map((opt) => <option value={opt.value}>{opt.label}</option>)}
+<Field label={label} class={className} hidden={hidden} {...fieldRest}>
+  <select value={value} disabled={disabled} class="dev-field__input dev-field__input--select" {...selectRest}>
+    {options.map((item) =>
+      isGroup(item) ? (
+        <optgroup label={item.label}>
+          {item.options.map((opt) => <option value={opt.value}>{opt.label}</option>)}
+        </optgroup>
+      ) : (
+        <option value={item.value}>{item.label}</option>
+      ),
+    )}
   </select>
 </Field>
-
-<style>
-  .ui-select-field__select {
-    background: transparent;
-    border: none;
-    outline: none;
-    width: 100%;
-    font: inherit;
-    color: inherit;
-    cursor: pointer;
-  }
-
-  .ui-select-field__select:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-</style>

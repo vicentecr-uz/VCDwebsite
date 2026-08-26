@@ -1,79 +1,89 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
+import SelectField from '../ui/SelectField.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
 import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
 import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
 import lockIcon from 'lucide-static/icons/lock.svg?raw';
+import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 
 const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
 const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
 const lockSvg = sizeIcon(lockIcon, 14);
+const monitorSvg = sizeIcon(monitorIcon, 16);
+const globeSvg = sizeIcon(globeIcon, 16);
 ---
 
 <DevOverlay
-  title="Edit image"
   storageKey="project-image-crop"
   panelKey="image"
   defaultHidden
 >
   <div class="tapico-crop-tuner" data-project-image-crop-tuner>
-    <div class="tapico-crop-tuner__viewports" aria-label="Display width">
-      <button type="button" data-crop-viewport="desktop">Desktop</button>
-      <button type="button" data-crop-viewport="tablet">Tablet</button>
-      <button type="button" data-crop-viewport="mobile">Mobile</button>
-    </div>
+    <ViewportSelector dataAttr="data-crop-viewport" />
 
-    <label class="tapico-crop-tuner__select">
-      <span>Aspect ratio</span>
-      <select data-crop-aspect-ratio>
-        <option value="original">Original</option>
-        <optgroup label="Landscape">
-          <option value="16:9">16:9</option>
-          <option value="16:10">16:10</option>
-          <option value="3:2">3:2</option>
-          <option value="4:3">4:3</option>
-          <option value="5:4">5:4</option>
-        </optgroup>
-        <optgroup label="Square">
-          <option value="1:1">1:1</option>
-        </optgroup>
-        <optgroup label="Portrait">
-          <option value="5:6">5:6</option>
-          <option value="4:5">4:5</option>
-          <option value="3:4">3:4</option>
-          <option value="2:3">2:3</option>
-          <option value="10:16">10:16</option>
-          <option value="9:16">9:16</option>
-        </optgroup>
-      </select>
-    </label>
+    <SelectField
+      label="Aspect ratio"
+      data-crop-aspect-ratio
+      options={[
+        { value: 'original', label: 'Original' },
+        {
+          label: 'Landscape',
+          options: [
+            { value: '16:9', label: '16:9' },
+            { value: '16:10', label: '16:10' },
+            { value: '3:2', label: '3:2' },
+            { value: '4:3', label: '4:3' },
+            { value: '5:4', label: '5:4' },
+          ],
+        },
+        {
+          label: 'Square',
+          options: [{ value: '1:1', label: '1:1' }],
+        },
+        {
+          label: 'Portrait',
+          options: [
+            { value: '5:6', label: '5:6' },
+            { value: '4:5', label: '4:5' },
+            { value: '3:4', label: '3:4' },
+            { value: '2:3', label: '2:3' },
+            { value: '10:16', label: '10:16' },
+            { value: '9:16', label: '9:16' },
+          ],
+        },
+      ]}
+    />
 
-    <label class="tapico-crop-tuner__toggle" data-crop-width-constrain-wrap hidden>
-      <input type="checkbox" data-crop-width-constrain />
-      <span>Constrain width</span>
-      <span class="tapico-crop-tuner__toggle-hint">80% · centred</span>
-    </label>
+    <ToggleRow label="Constrain width" hidden data-crop-width-constrain-wrap data-crop-width-constrain />
 
-    <label class="tapico-crop-tuner__select" data-crop-height-constrain-wrap hidden>
-      <span>Max view height</span>
-      <select data-crop-max-vh>
-        <option value="">Off</option>
-        <option value="90">90%</option>
-        <option value="80">80%</option>
-        <option value="70">70%</option>
-        <option value="60">60%</option>
-        <option value="50">50%</option>
-        <option value="40">40%</option>
-        <option value="30">30%</option>
-      </select>
-    </label>
+    <SelectField
+      label="Max view height"
+      hidden
+      data-crop-height-constrain-wrap
+      data-crop-max-vh
+      options={[
+        { value: '', label: 'Off' },
+        { value: '90', label: '90%' },
+        { value: '80', label: '80%' },
+        { value: '70', label: '70%' },
+        { value: '60', label: '60%' },
+        { value: '50', label: '50%' },
+        { value: '40', label: '40%' },
+        { value: '30', label: '30%' },
+      ]}
+    />
 
     <div class="tapico-crop-tuner__stage">
       <div class="tapico-crop-tuner__preview" data-crop-preview>
         <div class="tapico-crop-tuner__preview-clip">
           <img alt="" data-crop-image draggable="false" />
           <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
-          <span class="tapico-crop-tuner__drag-label">Drag to reposition</span>
         </div>
         <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--n" data-crop-resize="n" aria-hidden="true"></span>
         <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--s" data-crop-resize="s" aria-hidden="true"></span>
@@ -109,42 +119,53 @@ const lockSvg = sizeIcon(lockIcon, 14);
       </button>
     </div>
 
-    <label class="tapico-crop-tuner__control">
+    <!-- Removed from the panel per Anto (2026-08-25) — wheel/pinch already
+         zoom directly on the image. The input stays as the tuner's internal
+         zoom-state store; a lot of the drag/wheel/pinch logic below reads
+         and writes zoomInput.value directly. -->
+    <label class="tapico-crop-tuner__control" hidden>
       <span>Zoom</span>
       <input data-crop-zoom type="range" min="1" max="1.5" step="0.005" value="1" />
       <output data-crop-zoom-output>100%</output>
     </label>
 
-    <p class="tapico-crop-tuner__readout" data-crop-readout>shows 100% of width · centre 0.500, 0.500</p>
+    <!-- JS writes readout.textContent and early-returns if the node is missing.
+         Figma dropped this line; keep the node, do not paint it. -->
+    <p class="tapico-crop-tuner__readout" data-crop-readout hidden>shows 100% of width · centre 0.500, 0.500</p>
 
-    <button type="button" class="tapico-crop-tuner__replace" data-crop-replace>
-      Replace image
-    </button>
-
-    <div class="tapico-crop-tuner__actions">
-      <button type="button" data-crop-reset>Reset</button>
-      <button type="button" data-crop-revert>Revert changes</button>
-      <button type="button" data-crop-use-grid-default hidden>Use grid default</button>
-      <button type="button" data-crop-save>Save changes</button>
-    </div>
-
-    <p class="tapico-crop-tuner__status" data-crop-status aria-live="polite">
-      Hold Shift while dragging to lock movement to one axis.
-    </p>
-
-    <div
-      class="tapico-crop-tuner__replace-overlay"
-      data-crop-replace-overlay
-      aria-hidden="true"
-    >
-      <div class="tapico-crop-tuner__replace-drop" data-crop-replace-dropzone>
-        <p class="tapico-crop-tuner__replace-label">Drop image here</p>
-        <button type="button" data-crop-replace-choose>Choose from Finder</button>
-        <button type="button" data-crop-replace-assets>Choose from asset manager</button>
-        <button type="button" data-crop-replace-cancel>Cancel</button>
-        <input type="file" accept="image/*" hidden data-crop-replace-file />
+    <div class="dev-field">
+      <span class="dev-field__label">Replace image</span>
+      <div
+        class="dev-drop"
+        data-crop-replace-drop
+        tabindex="0"
+        role="button"
+        aria-label="Replace image"
+      >
+        <div class="dev-drop__well">
+          <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-choose>
+            <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
+            File system
+          </button>
+          <button type="button" class="dev-btn dev-btn--ghost" data-crop-replace-assets>
+            <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
+            Asset manager
+          </button>
+          <input type="file" accept="image/*" hidden data-crop-replace-file />
+        </div>
       </div>
     </div>
+
+    <PanelActions>
+      <Button emphasis="ghost" label="Reset" hidden data-crop-reset />
+      <Button emphasis="ghost" label="Revert changes" data-crop-revert />
+      <Button emphasis="ghost" label="Use grid default" hidden data-crop-use-grid-default />
+      <Button emphasis="filled" label="Save changes" data-crop-save />
+    </PanelActions>
+
+    <!-- JS early-returns if this node is missing. Figma dropped status lines;
+         clip it so aria-live can still announce upload/replace errors. -->
+    <p class="tapico-crop-tuner__status" data-crop-status aria-live="polite"></p>
   </div>
 </DevOverlay>
 
@@ -205,12 +226,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
-    const replaceButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace]');
-    const replaceOverlay = tuner.querySelector<HTMLElement>('[data-crop-replace-overlay]');
-    const replaceDropzone = tuner.querySelector<HTMLElement>('[data-crop-replace-dropzone]');
+    const replaceDrop = tuner.querySelector<HTMLElement>('[data-crop-replace-drop]');
     const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
     const replaceAssetsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-assets]');
-    const replaceCancelButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-cancel]');
     const replaceFileInput = tuner.querySelector<HTMLInputElement>('[data-crop-replace-file]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
@@ -236,22 +254,13 @@ const lockSvg = sizeIcon(lockIcon, 14);
       !revertButton ||
       !resetButton ||
       !useGridDefaultButton ||
-      !replaceButton ||
-      !replaceOverlay ||
-      !replaceDropzone ||
+      !replaceDrop ||
       !replaceChooseButton ||
       !replaceAssetsButton ||
-      !replaceCancelButton ||
       !replaceFileInput ||
       !initialTarget ||
       !initialImage
     ) return;
-
-    // Park the replace overlay on the modal panel so it covers the whole panel.
-    const overlayPanel = tuner.closest<HTMLElement>('.dev-overlay');
-    if (overlayPanel && replaceOverlay.parentElement !== overlayPanel) {
-      overlayPanel.appendChild(replaceOverlay);
-    }
 
     // Untouched images render at natural ratio on the page — mirror that in the editor.
     const defaults: CropState = { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 };
@@ -503,8 +512,8 @@ const lockSvg = sizeIcon(lockIcon, 14);
     };
 
     const syncUseGridDefaultButton = () => {
-      const show = isGridTarget(editTarget) && editTarget.dataset.devHasOwnVariants === 'true';
-      useGridDefaultButton.hidden = !show;
+      // Figma Panel Actions: Revert + Save only.
+      useGridDefaultButton.hidden = true;
     };
 
     const readAppliedVariants = (
@@ -582,23 +591,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
     let savedSrcHeight: number | undefined;
     let draftSrcWidth: number | undefined;
     let draftSrcHeight: number | undefined;
-    let replaceOverlayOpen = false;
-
-    const openReplaceOverlay = () => {
-      replaceOverlayOpen = true;
-      replaceOverlay.dataset.open = 'true';
-      replaceOverlay.setAttribute('aria-hidden', 'false');
-      status.textContent = 'Drop an image, or choose from Finder / asset manager.';
-    };
-
-    const closeReplaceOverlay = () => {
-      if (!replaceOverlayOpen && replaceOverlay.dataset.open !== 'true') return;
-      replaceOverlayOpen = false;
-      delete replaceOverlay.dataset.open;
-      replaceOverlay.setAttribute('aria-hidden', 'true');
-      delete replaceDropzone.dataset.active;
-    };
-
     const pendingIdFor = (target: HTMLElement) => {
       const documentKey = target.dataset.devDocument || '';
       const imagePath = target.dataset.devImagePath || '[]';
@@ -1101,7 +1093,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
         ?? target.querySelector<HTMLImageElement>('img');
       if (!image) return;
 
-      closeReplaceOverlay();
       unmountPageStage();
       resizeObserver?.unobserve(editTarget);
       editTarget = target;
@@ -1830,7 +1821,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
     }) as EventListener);
 
     const teardownEditSession = () => {
-      closeReplaceOverlay();
       unmountPageStage();
       // Closing is a cancel: unsaved crop edits never survive the panel.
       revertToSaved();
@@ -2146,27 +2136,9 @@ const lockSvg = sizeIcon(lockIcon, 14);
         });
       };
       void Promise.all([ready(image), ready(previewImage)]).then(finish);
-      closeReplaceOverlay();
     };
 
-    replaceButton.addEventListener('click', () => {
-      openReplaceOverlay();
-    });
-
-    replaceCancelButton.addEventListener('click', () => {
-      closeReplaceOverlay();
-      status.textContent = viewportGateOk()
-        ? 'Editing this image — drag or two-finger swipe to pan, pinch/scroll to zoom, pull the handles to reshape.'
-        : 'Editing this image. The page updates when you change the crop.';
-    });
-
-    replaceChooseButton.addEventListener('click', () => {
-      replaceFileInput.click();
-    });
-
-    replaceFileInput.addEventListener('change', () => {
-      const file = replaceFileInput.files?.[0];
-      replaceFileInput.value = '';
+    const replaceWithFile = (file: File | null | undefined) => {
       if (!file || !file.type.startsWith('image/')) return;
       void (async () => {
         try {
@@ -2177,9 +2149,52 @@ const lockSvg = sizeIcon(lockIcon, 14);
           status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
         }
       })();
+    };
+
+    const replaceControlFrom = (event: Event) =>
+      event.target instanceof Element && Boolean(event.target.closest('button, input'));
+
+    // Click focuses the well for paste. Ghost buttons own Finder / library;
+    // double-click (and Enter/Space on the well) still open the file picker.
+    replaceDrop.addEventListener('click', (event) => {
+      if (replaceControlFrom(event)) return;
+      replaceDrop.focus();
+    });
+    replaceDrop.addEventListener('dblclick', (event) => {
+      if (replaceControlFrom(event)) return;
+      replaceFileInput.click();
+    });
+    replaceDrop.addEventListener('keydown', (event) => {
+      if (replaceControlFrom(event)) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        replaceFileInput.click();
+      }
+    });
+    replaceDrop.addEventListener('paste', (event) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      const file = [...items]
+        .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
+        .find((next) => next?.type.startsWith('image/'));
+      if (!file) return;
+      event.preventDefault();
+      replaceWithFile(file);
     });
 
-    replaceAssetsButton.addEventListener('click', () => {
+    replaceChooseButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      replaceFileInput.click();
+    });
+
+    replaceFileInput.addEventListener('change', () => {
+      const file = replaceFileInput.files?.[0];
+      replaceFileInput.value = '';
+      replaceWithFile(file);
+    });
+
+    replaceAssetsButton.addEventListener('click', (event) => {
+      event.stopPropagation();
       void (async () => {
         try {
           const result = await pickReplaceFromAssetManager();
@@ -2195,50 +2210,28 @@ const lockSvg = sizeIcon(lockIcon, 14);
       })();
     });
 
-    replaceDropzone.addEventListener('dragover', (event) => {
+    // Stop page-level image-drop from inserting a section when the well is the target.
+    replaceDrop.addEventListener('dragenter', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      replaceDrop.classList.add('is-dragover');
+    });
+    replaceDrop.addEventListener('dragover', (event) => {
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-      replaceDropzone.dataset.active = 'true';
+      replaceDrop.classList.add('is-dragover');
     });
-
-    replaceDropzone.addEventListener('dragleave', (event) => {
+    replaceDrop.addEventListener('dragleave', (event) => {
       event.stopPropagation();
-      delete replaceDropzone.dataset.active;
+      replaceDrop.classList.remove('is-dragover');
     });
-
-    replaceDropzone.addEventListener('drop', (event) => {
+    replaceDrop.addEventListener('drop', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      delete replaceDropzone.dataset.active;
-      const file = event.dataTransfer?.files?.[0];
-      if (!file || !file.type.startsWith('image/')) return;
-      void (async () => {
-        try {
-          status.textContent = 'Uploading…';
-          const src = await uploadReplaceFile(file);
-          applyReplacement(src);
-        } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
-        }
-      })();
+      replaceDrop.classList.remove('is-dragover');
+      replaceWithFile(event.dataTransfer?.files?.[0]);
     });
-
-    // Keep replace-overlay drags from reaching the page-level image drop
-    // handler (which would insert a new section / trigger a reload).
-    (['dragenter', 'dragover', 'dragleave', 'drop'] as const).forEach((type) => {
-      replaceOverlay.addEventListener(type, (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      });
-    });
-
-    document.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || !replaceOverlayOpen) return;
-      event.preventDefault();
-      event.stopPropagation();
-      closeReplaceOverlay();
-    }, true);
 
     saveButton.addEventListener('click', saveDraft);
 
@@ -2350,97 +2343,10 @@ const lockSvg = sizeIcon(lockIcon, 14);
 
 <style>
   .tapico-crop-tuner {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.7em;
-  }
-
-  .tapico-crop-tuner__viewports {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.4em;
-  }
-
-  .tapico-crop-tuner__viewports button,
-  .tapico-crop-tuner__select select {
-    border: 0;
-    background: var(--sys-color-srf-container-low);
-    padding: 0.5em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-  }
-
-  /*
-    Plain radius on viewport chips: inset active ring + Hyperellipse corner-shape
-    draws uneven side strokes (same clash as .dev-image-edit-trigger / colour swatches).
-  */
-  .tapico-crop-tuner__viewports button {
-    border-radius: var(--radius-control);
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__select select {
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-  }
-
-  .tapico-crop-tuner__viewports button:hover,
-  .tapico-crop-tuner__viewports button.is-active {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__viewports button.is-active {
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-srf) 30%, transparent);
-  }
-
-  .tapico-crop-tuner__select {
-    display: grid;
-    grid-template-columns: 5em 1fr;
-    align-items: center;
-    gap: 0.6em;
-    font-size: 0.8rem;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__select[hidden] {
-    display: none;
-  }
-
-  .tapico-crop-tuner__select select {
-    width: 100%;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__toggle {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 0.55em;
-    font-size: 0.8rem;
-    color: var(--sys-color-on-srf-variant);
-    cursor: pointer;
-    user-select: none;
-  }
-
-  .tapico-crop-tuner__toggle[hidden] {
-    display: none;
-  }
-
-  .tapico-crop-tuner__toggle input {
-    width: 1em;
-    height: 1em;
-    margin: 0;
-    accent-color: var(--sys-color-on-srf);
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__toggle-hint {
-    font-size: 0.7rem;
-    color: var(--sys-color-on-srf-variant);
-    opacity: 0.8;
   }
 
   /*
@@ -2614,20 +2520,6 @@ const lockSvg = sizeIcon(lockIcon, 14);
     cursor: nesw-resize;
   }
 
-  .tapico-crop-tuner__drag-label {
-    position: absolute;
-    right: 0.5em;
-    bottom: 0.45em;
-    padding: 0.2em 0.4em;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 84%, transparent);
-    font-size: 0.68rem;
-    color: var(--sys-color-on-srf-variant);
-    pointer-events: none;
-  }
-
   .tapico-crop-tuner__control {
     display: grid;
     grid-template-columns: 3em 1fr 3em;
@@ -2696,136 +2588,22 @@ const lockSvg = sizeIcon(lockIcon, 14);
     font-variant-numeric: tabular-nums;
   }
 
-  .tapico-crop-tuner__readout,
-  .tapico-crop-tuner__status {
-    margin: 0;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    color: var(--sys-color-on-srf-variant);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .tapico-crop-tuner__replace {
-    border: 1px solid color-mix(in srgb, var(--sys-color-on-srf) 18%, transparent);
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: transparent;
-    padding: 0.55em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__replace:hover {
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .tapico-crop-tuner__replace-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 5;
-    display: grid;
-    place-items: center;
-    padding: 0.85em;
-    background: color-mix(in srgb, var(--sys-color-srf, #ffffff) 88%, transparent);
-    backdrop-filter: blur(8px);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.2s ease, visibility 0.2s ease;
-  }
-
-  .tapico-crop-tuner__replace-overlay[data-open='true'] {
-    opacity: 1;
-    visibility: visible;
-    pointer-events: auto;
-  }
-
-  .tapico-crop-tuner__replace-drop {
-    display: grid;
-    gap: 0.55em;
-    width: min(100%, 16em);
-    padding: 1em 0.9em;
-    border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf) 28%, transparent);
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 92%, transparent);
-    text-align: center;
-  }
-
-  .tapico-crop-tuner__replace-drop[data-active='true'] {
-    border-color: color-mix(in srgb, var(--sys-color-on-srf) 55%, transparent);
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__replace-label {
-    margin: 0;
-    font-size: 0.8rem;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__replace-drop button {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__replace-drop button:hover {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__replace-drop button[data-crop-replace-cancel] {
-    background: transparent;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em;
-  }
-
-  .tapico-crop-tuner__actions button {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    corner-shape: var(--squircle-shape);
-    --corner-shape: var(--squircle-shape);
-    background: var(--sys-color-srf-container-low);
-    padding: 0.5em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    line-height: 1.1;
-    cursor: pointer;
-  }
-
-  .tapico-crop-tuner__actions button[data-crop-save] {
-    background: var(--sys-color-on-srf);
-    color: #ffffff;
-    margin-left: auto;
-  }
-
-  .tapico-crop-tuner__actions button:hover {
-    background: var(--sys-color-srf-container-high);
-  }
-
-  .tapico-crop-tuner__actions button[data-crop-save]:hover {
-    background: var(--sys-color-on-srf-variant);
-  }
-
-  .tapico-crop-tuner__actions button[hidden] {
+  .tapico-crop-tuner__readout[hidden] {
     display: none;
   }
+
+  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
+     stay in the a11y tree for "Uploading…" / "Could not replace…". */
+  .tapico-crop-tuner__status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
 </style>

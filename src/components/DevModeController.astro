@@ -16,7 +16,8 @@
     const modeOnlyControls = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-mode-only]')];
     const devPanels = () =>
-      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')];
+      [...document.querySelectorAll<HTMLElement>('[data-dev-panel-key]')]
+        .filter((panel) => !panel.hasAttribute('data-embedded'));
     const imageTargets = () =>
       [...document.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
 
@@ -25,6 +26,77 @@
 
     const hasSectionNav = () =>
       Boolean(document.querySelector('[data-section-nav-root]'));
+
+    /*
+      Alt+M launcher. Every enumerated panel opens on click — including the
+      context-bound ones (image, grid, caption, carousel, colour token, outline
+      marker, project settings). Those open as a bare shell: their
+      vcd:dev-edit-open handlers no-op without detail.trigger (audited
+      2026-08-25 — all guard with `!trigger` / `if (target)` early returns),
+      so a targetless dispatch is safe and binds nothing.
+    */
+    let launcher: HTMLElement | null = null;
+
+    const removeLauncher = () => {
+      launcher?.remove();
+      launcher = null;
+    };
+
+    const openLauncherPanel = (panel: HTMLElement) => {
+      removeLauncher();
+      if (panel.dataset.devPanelKey === 'asset-manager') {
+        window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
+          detail: { mode: 'browse', documentKey: panel.dataset.documentKey || '' },
+        }));
+        return;
+      }
+      panel.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+        detail: { panel },
+      }));
+    };
+
+    const toggleLauncher = () => {
+      if (launcher) {
+        removeLauncher();
+        return;
+      }
+      const panels = devPanels();
+      if (!panels.length) return;
+
+      const menu = document.createElement('div');
+      menu.className = 'dev-launcher';
+      menu.setAttribute('role', 'menu');
+
+      panels.forEach((panel, index) => {
+        const key = panel.dataset.devPanelKey || '';
+        const title = panel.querySelector('.dev-overlay__title')?.textContent?.trim() || key;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill';
+        item.setAttribute('role', 'menuitem');
+        item.textContent = title;
+        item.addEventListener('click', () => openLauncherPanel(panel));
+        if (index === 0) item.tabIndex = 0;
+        menu.appendChild(item);
+      });
+
+      const enabled = [...menu.querySelectorAll<HTMLButtonElement>('button')];
+      menu.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+        event.preventDefault();
+        if (!enabled.length) return;
+        const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'ArrowDown'
+          ? (current + 1) % enabled.length
+          : (current - 1 + enabled.length) % enabled.length;
+        enabled[next].focus();
+      });
+
+      document.body.appendChild(menu);
+      launcher = menu;
+      (enabled[0] ?? menu.querySelector('button'))?.focus();
+    };
 
     /*
       Not reduced-motion-gated. Entering and exiting dev mode is entirely
@@ -237,6 +309,7 @@
         const panelKey = editTrigger.dataset.devEditTrigger;
         const panel = devPanels().find((candidate) => candidate.dataset.devPanelKey === panelKey);
         if (!panel) return;
+        removeLauncher();
         panel.hidden = !panel.hidden;
         if (!panel.hidden) {
           window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
@@ -274,10 +347,55 @@
     // 'plaintext-only' where the browser supports it (card titles, captions), and
     // the attribute selector misses those — which let Esc in a card title fall
     // through to "leave Dev Mode" instead of leaving the field.
+    const frontmostOpenPanel = () => {
+      const openPanels = devPanels().filter((panel) => !panel.hidden);
+      if (!openPanels.length) return null;
+      return openPanels.reduce((front, panel) => {
+        const panelZ = Number.parseInt(getComputedStyle(panel).zIndex, 10) || 0;
+        const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
+        return panelZ >= frontZ ? panel : front;
+      });
+    };
+
     const isTypingTarget = (target: HTMLElement | null) =>
       Boolean(target && (target.isContentEditable || target.closest('input, textarea, select')));
 
+    // Capture so Log issue's Esc-cancel does not fire first. Focused Drop Area
+    // blurs back to Rest unless a newer panel is in front (e.g. Asset manager
+    // just opened from a Ghost inside the well — first Esc must close that).
     document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      const target = event.target as HTMLElement | null;
+      const drop = target?.closest?.('.dev-drop');
+      if (!(drop instanceof HTMLElement)) return;
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !drop.contains(active)) return;
+      const host = drop.closest<HTMLElement>('[data-dev-overlay]');
+      const front = frontmostOpenPanel();
+      if (front && host && front !== host) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      active.blur();
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
+        // Alt+M types 'µ' in an editable — never intercept it there.
+        if (!devMode || isTypingTarget(event.target as HTMLElement | null)) return;
+        event.preventDefault();
+        toggleLauncher();
+        return;
+      }
+
+      if (launcher) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          removeLauncher();
+        }
+        return;
+      }
+
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyD') {
         event.preventDefault();
 
@@ -315,23 +433,34 @@
       if (!devMode) return;
       if (html.classList.contains('is-dev-mode-exiting')) return;
 
-      // Layer Esc: open tuner windows dismiss first (cancel + close). Only when
-      // none are open does Esc leave the whole Dev Mode layer.
-      const openPanels = devPanels().filter((panel) => !panel.hidden);
-      if (openPanels.length) {
+      // Layer Esc: dismiss the frontmost open tuner (highest computed z-index;
+      // last in document order on a tie). This is "frontmost panel", not a
+      // general interaction-undo stack. Only when none are open does Esc leave
+      // the whole Dev Mode layer.
+      const frontmost = frontmostOpenPanel();
+      if (frontmost) {
         event.preventDefault();
-        openPanels.forEach((panel) => {
-          panel.hidden = true;
-          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
-            detail: { panel },
-          }));
-        });
+        frontmost.hidden = true;
+        window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+          detail: { panel: frontmost },
+        }));
         return;
       }
 
       event.preventDefault();
       setDevMode(false);
     });
+
+    document.addEventListener('pointerdown', (event) => {
+      if (!launcher) return;
+      const target = event.target as Node | null;
+      if (target && launcher.contains(target)) return;
+      removeLauncher();
+    }, true);
+
+    window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+      if (event.detail?.active === false) removeLauncher();
+    }) as EventListener);
 
     window.addEventListener('vcd:dev-edit-open', syncTunerOpenClass);
     window.addEventListener('vcd:dev-edit-close', syncTunerOpenClass);
@@ -368,16 +497,16 @@
   html.is-dev-mode-entering .dev-caption-add-trigger,
   html.is-dev-mode-entering .dev-grid-edit-trigger,
   html.is-dev-mode-entering .project-grid__chips,
-  html.is-dev-mode-entering .dev-gap-toolbar__add,
-  html.is-dev-mode-entering .dev-gap-toolbar__spacing,
+  html.is-dev-mode-entering .dev-gap-toolbar__pill,
+  html.is-dev-mode-entering .dev-text-actions,
   html.is-dev-mode-exiting .dev-section-drag-handle,
   html.is-dev-mode-exiting .dev-section-delete,
   html.is-dev-mode-exiting .dev-image-edit-trigger,
   html.is-dev-mode-exiting .dev-caption-add-trigger,
   html.is-dev-mode-exiting .dev-grid-edit-trigger,
   html.is-dev-mode-exiting .project-grid__chips,
-  html.is-dev-mode-exiting .dev-gap-toolbar__add,
-  html.is-dev-mode-exiting .dev-gap-toolbar__spacing {
+  html.is-dev-mode-exiting .dev-gap-toolbar__pill,
+  html.is-dev-mode-exiting .dev-text-actions {
     opacity: 0 !important;
     pointer-events: none !important;
     transition:

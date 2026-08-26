@@ -1,68 +1,75 @@
 ---
 import DevOverlay from '../DevOverlay.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
+import PanelActions from '../ui/PanelActions.astro';
+import Button from '../ui/Button.astro';
+import ViewportSelector from '../ui/ViewportSelector.astro';
+import SelectField from '../ui/SelectField.astro';
+import ToggleRow from '../ui/ToggleRow.astro';
 ---
 
 <DevOverlay
-  title="Edit carousel"
   storageKey="project-image-carousel"
   panelKey="carousel"
   defaultHidden
 >
   <div class="project-carousel-tuner" data-project-image-carousel-tuner>
-    <div class="project-carousel-tuner__segmented" aria-label="Direction">
-      <button type="button" data-carousel-orientation="horizontal">Left to right</button>
-      <button type="button" data-carousel-orientation="vertical">Up to down</button>
-    </div>
+    <ViewportSelector dataAttr="data-carousel-viewport" />
 
-    <div class="project-carousel-tuner__viewports" aria-label="Display width">
-      <button type="button" data-carousel-viewport="desktop">Desktop</button>
-      <button type="button" data-carousel-viewport="tablet">Tablet</button>
-      <button type="button" data-carousel-viewport="mobile">Mobile</button>
-    </div>
+    <SegmentedControl label="Axis">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Left to right"
+        class="is-active"
+        data-carousel-orientation="horizontal"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Up to down"
+        data-carousel-orientation="vertical"
+      />
+    </SegmentedControl>
 
-    <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden>
-      Inheriting from larger breakpoint — change a setting to create an override.
-    </p>
+    <p class="project-carousel-tuner__inherit" data-carousel-inherit hidden></p>
 
-    <label class="project-carousel-tuner__select">
-      <span>Position dots</span>
-      <select data-carousel-dots-placement>
-        <option value="outside">Beside images</option>
-        <option value="over">Over images</option>
-        <option value="hidden">Hidden</option>
-      </select>
-    </label>
+    <SelectField
+      label="Position dots"
+      data-carousel-dots-placement
+      options={[
+        { value: 'outside', label: 'Below' },
+        { value: 'over', label: 'Over images' },
+        { value: 'hidden', label: 'Hidden' },
+      ]}
+    />
 
-    <label class="project-carousel-tuner__select">
-      <span>Block height</span>
-      <select data-carousel-height-mode>
-        <option value="dynamic">Follow each image</option>
-        <option value="tallest">Pin to tallest</option>
-      </select>
-    </label>
+    <SelectField
+      label="Block height"
+      data-carousel-height-mode
+      options={[
+        { value: 'dynamic', label: 'Follow each image' },
+        { value: 'tallest', label: 'Pin to tallest' },
+      ]}
+    />
 
-    <label class="project-carousel-tuner__select">
-      <span>Max height</span>
-      <select data-carousel-max-vh>
-        <option value="">Off</option>
-        <option value="90">90% of screen</option>
-        <option value="80">80% of screen</option>
-        <option value="70">70% of screen</option>
-        <option value="60">60% of screen</option>
-        <option value="50">50% of screen</option>
-        <option value="40">40% of screen</option>
-        <option value="30">30% of screen</option>
-      </select>
-    </label>
+    <SelectField
+      label="Max height"
+      data-carousel-max-vh
+      options={[
+        { value: '', label: 'Off' },
+        { value: '90', label: '90% of screen' },
+        { value: '80', label: '80% of screen' },
+        { value: '70', label: '70% of screen' },
+        { value: '60', label: '60% of screen' },
+        { value: '50', label: '50% of screen' },
+        { value: '40', label: '40% of screen' },
+        { value: '30', label: '30% of screen' },
+      ]}
+    />
 
-    <label class="project-carousel-tuner__toggle">
-      <input type="checkbox" data-carousel-scroll-pinned />
-      <span>Advance on page scroll</span>
-    </label>
-    <p class="project-carousel-tuner__hint project-carousel-tuner__hint--indent">
-      Pins the block mid-viewport and steps through every image as the reader
-      scrolls. Saved, but not wired up yet — swipe still drives the carousel.
-    </p>
+    <ToggleRow label="Advance on page scroll" data-carousel-scroll-pinned />
+    <p class="project-carousel-tuner__hint project-carousel-tuner__hint--indent" hidden></p>
 
     <div class="project-carousel-tuner__board">
       <p class="project-carousel-tuner__board-label">Visible</p>
@@ -72,31 +79,25 @@ import DevOverlay from '../DevOverlay.astro';
         data-carousel-drop="visible"
       ></div>
 
-      <p class="project-carousel-tuner__board-label">Parking lot</p>
+      <p class="project-carousel-tuner__board-label">Parking Lot</p>
       <div
         class="project-carousel-tuner__parking"
         data-carousel-parking
         data-carousel-drop="parking"
       >
-        <span class="project-carousel-tuner__parking-hint" data-carousel-parking-hint>
-          Drag images here to omit them at this breakpoint
-        </span>
+        <span class="project-carousel-tuner__parking-hint" data-carousel-parking-hint hidden></span>
       </div>
     </div>
 
-    <p class="project-carousel-tuner__hint">
-      Parking hides an image at this width only. Use Remove from page on a thumb to drop it from the carousel while keeping the file in the asset manager.
-    </p>
+    <p class="project-carousel-tuner__hint" hidden></p>
 
-    <div class="project-carousel-tuner__actions">
-      <button type="button" data-carousel-clear-override hidden>Clear override</button>
-      <button type="button" data-carousel-revert>Revert changes</button>
-      <button type="button" data-carousel-save>Save changes</button>
-    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Clear" hidden data-carousel-clear-override />
+      <Button emphasis="ghost" label="Revert changes" data-carousel-revert />
+      <Button emphasis="filled" label="Save changes" data-carousel-save />
+    </PanelActions>
 
-    <p class="project-carousel-tuner__status" data-carousel-status aria-live="polite">
-      Pick a carousel to edit its direction, height, and images.
-    </p>
+    <p class="project-carousel-tuner__status" data-carousel-status aria-live="polite"></p>
   </div>
 </DevOverlay>
 
@@ -749,7 +750,8 @@ import DevOverlay from '../DevOverlay.astro';
       dotsSelect.value = live.dotsPlacement;
       const showInherit = selectedViewport !== 'desktop' && !live.overridden;
       inheritNote.hidden = !showInherit;
-      clearOverrideButton.hidden = selectedViewport === 'desktop' || !live.overridden;
+      // Figma Panel Actions: Revert + Save only.
+      clearOverrideButton.hidden = true;
       renderBoard();
       applyLive();
     };
@@ -897,6 +899,7 @@ import DevOverlay from '../DevOverlay.astro';
 
 <style>
   .project-carousel-tuner {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 0.7em;
@@ -904,77 +907,10 @@ import DevOverlay from '../DevOverlay.astro';
     max-width: 24em;
   }
 
-  .project-carousel-tuner__segmented,
-  .project-carousel-tuner__viewports {
-    display: grid;
-    gap: 0.4em;
-  }
-
-  .project-carousel-tuner__segmented {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .project-carousel-tuner__viewports {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .project-carousel-tuner__segmented button,
-  .project-carousel-tuner__viewports button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.45em 0.4em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .project-carousel-tuner__segmented button.is-active,
-  .project-carousel-tuner__viewports button.is-active {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-  }
-
-  .project-carousel-tuner__inherit {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
-  }
-
-  .project-carousel-tuner__select {
-    display: grid;
-    grid-template-columns: 7.5em 1fr;
-    gap: 0.5em;
-    align-items: center;
-    font-size: 0.85rem;
-  }
-
-  .project-carousel-tuner__select[hidden] {
+  .project-carousel-tuner__inherit,
+  .project-carousel-tuner__hint,
+  .project-carousel-tuner__parking-hint {
     display: none;
-  }
-
-  .project-carousel-tuner__select select {
-    width: 100%;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.45em 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-  }
-
-  .project-carousel-tuner__toggle {
-    display: flex;
-    gap: 0.55em;
-    align-items: center;
-    font-size: 0.85rem;
-    cursor: pointer;
-  }
-
-  .project-carousel-tuner__toggle input {
-    margin: 0;
   }
 
   .project-carousel-tuner__board {
@@ -1016,14 +952,6 @@ import DevOverlay from '../DevOverlay.astro';
   .project-carousel-tuner__visible.is-drop-target,
   .project-carousel-tuner__parking.is-drop-target {
     background: color-mix(in srgb, var(--sys-color-on-srf) 8%, var(--sys-color-srf-container-low));
-  }
-
-  .project-carousel-tuner__parking-hint {
-    grid-column: 1 / -1;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.3;
-    pointer-events: none;
   }
 
   .project-carousel-tuner__thumb-wrap {
@@ -1079,43 +1007,18 @@ import DevOverlay from '../DevOverlay.astro';
     color: #b00000;
   }
 
-  .project-carousel-tuner__hint,
+  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
+     stay in the a11y tree. */
   .project-carousel-tuner__status {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.72rem;
-    line-height: 1.35;
-  }
-
-  .project-carousel-tuner__hint--indent {
-    margin-top: -0.25em;
-    padding-left: 1.55em;
-  }
-
-  .project-carousel-tuner__status {
-    font-size: 0.75rem;
-  }
-
-  .project-carousel-tuner__actions {
-    display: flex;
-    gap: 0.45em;
-    flex-wrap: wrap;
-  }
-
-  .project-carousel-tuner__actions button {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
     border: 0;
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 70%, transparent);
-    padding: 0.5em 0.7em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
   }
 
-  .project-carousel-tuner__actions button[data-carousel-save] {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-    margin-left: auto;
-  }
 </style>
