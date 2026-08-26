@@ -9,6 +9,10 @@ import DevLogIssue from '../components/DevLogIssue.astro';
 import ProjectImageCropTuner from '../components/project/ProjectImageCropTuner.astro';
 import DevGalleryPages from '../components/DevGalleryPages.astro';
 
+if (import.meta.env.DEV) {
+  await import('../styles/dev-token-alarms.css');
+}
+
 interface Props {
   title: string;
   description?: string;
@@ -22,10 +26,13 @@ const {
   serif = false,
 } = Astro.props;
 const showDevTools = import.meta.env.DEV;
+// Production is light until dark mode ships (#256): pin data-theme="light" and
+// omit the OS media query from the generated production sheet. Local DEV omits
+// the attribute so the theme toggle can still set Dark.
 ---
 
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme={showDevTools ? undefined : 'light'}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

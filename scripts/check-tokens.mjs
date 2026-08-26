@@ -5,6 +5,7 @@
  *    tokens/design-tokens.json
  *  - any leftover `--color-*` reference anywhere in src/
  *  - src/styles/global.css not matching what the generator would produce
+ *  - src/styles/dev-token-alarms.css not matching the alarm generator
  *  - the token name set drifting from the Figma snapshot in
  *    tokens/figma-tokens.json (refresh that file when Figma variables change)
  *
@@ -15,8 +16,10 @@ import path from 'node:path';
 import {
   TOKENS_RELATIVE_PATH,
   CSS_RELATIVE_PATH,
+  ALARMS_CSS_RELATIVE_PATH,
   collectAllTokenNames,
   generateTokenBlock,
+  generateAlarmBlock,
   applyTokenBlock,
 } from './build-tokens.mjs';
 
@@ -24,6 +27,7 @@ const root = process.cwd();
 const tokensPath = path.join(root, TOKENS_RELATIVE_PATH);
 const figmaPath = path.join(root, 'tokens/figma-tokens.json');
 const cssPath = path.join(root, CSS_RELATIVE_PATH);
+const alarmsPath = path.join(root, ALARMS_CSS_RELATIVE_PATH);
 const srcDir = path.join(root, 'src');
 
 const SCAN_EXTS = ['.astro', '.css', '.ts', '.tsx', '.mjs', '.js', '.json'];
@@ -91,6 +95,18 @@ const { changed } = applyTokenBlock(cssSource, generatedBlock);
 if (changed) {
   ok = false;
   problems.push(`${CSS_RELATIVE_PATH} is stale — run \`bun run tokens:build\` and commit the result.`);
+}
+
+try {
+  const alarmsSource = readFileSync(alarmsPath, 'utf8');
+  const expectedAlarms = `${generateAlarmBlock(json)}\n`;
+  if (alarmsSource !== expectedAlarms) {
+    ok = false;
+    problems.push(`${ALARMS_CSS_RELATIVE_PATH} is stale — run \`bun run tokens:build\` and commit the result.`);
+  }
+} catch {
+  ok = false;
+  problems.push(`${ALARMS_CSS_RELATIVE_PATH} is missing — run \`bun run tokens:build\` and commit the result.`);
 }
 
 // Figma is the design side of the same contract. Names are derived from it by a
