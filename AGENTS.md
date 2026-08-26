@@ -221,6 +221,8 @@ The faster, in-session form of the same idea. When a chat is pinned to an expens
 
 Canonical: Atlas `standards.md` → *Agents — Manager / worker split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
 
+**QA rotation:** the live queue on top of this split. Canonical: `qa-rotation` skill (`~/.claude/skills/qa-rotation`, `~/.cursor/skills/qa-rotation`, `~/.codex/skills/qa-rotation`). Repo pointer: `docs/workflow-qa-rotation.md`. Trigger: "let's work with the QA rotation workflow" (or "rotation"). If he says it to you, you are the manager.
+
 ### Verification — Anto tests, agents don't self-verify
 
 **Default: finish the work, hand Anto a numbered test script (exact steps, exact expected results), and stop.** Do not open a browser to satisfy yourself that your own work behaves correctly. He would rather run it himself — it is faster, cheaper, and how he catches what a diff review misses.

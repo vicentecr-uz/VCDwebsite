@@ -221,7 +221,7 @@ The faster, in-session form of the same idea. When a chat is pinned to an expens
 
 Canonical: Atlas `standards.md` → *Agents — Manager / worker split*. Cursor mirror: `.cursor/rules/agent-delegation.mdc`.
 
-**QA rotation workflow** (`docs/workflow-qa-rotation.md`): the named live-QA rhythm built on this split — Anto QAs items top to bottom, a fail dispatches a worker immediately while he moves on, the plan file + tracking issue + commit hashes are the manager's memory so the loop survives context loss. Trigger: Anto says "let's work with the QA rotation workflow" (or just "rotation"). If he says it to you, you are the manager.
+**QA rotation:** the live queue on top of this split. Canonical: `qa-rotation` skill (`~/.claude/skills/qa-rotation`, `~/.cursor/skills/qa-rotation`, `~/.codex/skills/qa-rotation`). Repo pointer: `docs/workflow-qa-rotation.md`. Trigger: "let's work with the QA rotation workflow" (or "rotation"). If he says it to you, you are the manager.
 
 ### Verification — Anto tests, agents don't self-verify
 
