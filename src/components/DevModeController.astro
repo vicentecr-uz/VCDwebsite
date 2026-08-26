@@ -347,11 +347,22 @@
     // 'plaintext-only' where the browser supports it (card titles, captions), and
     // the attribute selector misses those — which let Esc in a card title fall
     // through to "leave Dev Mode" instead of leaving the field.
+    const frontmostOpenPanel = () => {
+      const openPanels = devPanels().filter((panel) => !panel.hidden);
+      if (!openPanels.length) return null;
+      return openPanels.reduce((front, panel) => {
+        const panelZ = Number.parseInt(getComputedStyle(panel).zIndex, 10) || 0;
+        const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
+        return panelZ >= frontZ ? panel : front;
+      });
+    };
+
     const isTypingTarget = (target: HTMLElement | null) =>
       Boolean(target && (target.isContentEditable || target.closest('input, textarea, select')));
 
     // Capture so Log issue's Esc-cancel does not fire first. Focused Drop Area
-    // blurs back to Rest; a second Esc still closes the panel.
+    // blurs back to Rest unless a newer panel is in front (e.g. Asset manager
+    // just opened from a Ghost inside the well — first Esc must close that).
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       const target = event.target as HTMLElement | null;
@@ -359,6 +370,9 @@
       if (!(drop instanceof HTMLElement)) return;
       const active = document.activeElement;
       if (!(active instanceof HTMLElement) || !drop.contains(active)) return;
+      const host = drop.closest<HTMLElement>('[data-dev-overlay]');
+      const front = frontmostOpenPanel();
+      if (front && host && front !== host) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       active.blur();
@@ -423,14 +437,9 @@
       // last in document order on a tie). This is "frontmost panel", not a
       // general interaction-undo stack. Only when none are open does Esc leave
       // the whole Dev Mode layer.
-      const openPanels = devPanels().filter((panel) => !panel.hidden);
-      if (openPanels.length) {
+      const frontmost = frontmostOpenPanel();
+      if (frontmost) {
         event.preventDefault();
-        const frontmost = openPanels.reduce((front, panel) => {
-          const panelZ = Number.parseInt(getComputedStyle(panel).zIndex, 10) || 0;
-          const frontZ = Number.parseInt(getComputedStyle(front).zIndex, 10) || 0;
-          return panelZ >= frontZ ? panel : front;
-        });
         frontmost.hidden = true;
         window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
           detail: { panel: frontmost },
