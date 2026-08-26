@@ -345,6 +345,9 @@
   /* Concentric with the buttons: outer radius (10, radius/control-in-container)
      = inner button radius (8) + the 2px padding between them. */
   border-radius: var(--dev-radius-control-in-container);
+  /* Selected fill today is Page. If that later became Filled, retarget this;
+     unselected hover/press mix toward it. */
+  --dev-segmented-selected-fill: var(--comp-button-page-container-selected);
 }
 
 .dev-segmented .dev-btn {
@@ -364,27 +367,33 @@
   width: 0;
 }
 
-/* Figma: unselected segment is Soft (same grey as the pill at rest; hover
-   is --comp-button-soft-container-hover so it is visible on the pill).
-   Selected is Page — the page surface poking through
-   (--comp-button-page-container-selected aliases --comp-button-page-container).
-   Scoped to .dev-segmented, not the base emphasis classes, so a segment can
-   be authored as Soft throughout and just pick up the selected look from its
-   state — Format bar and the spacing chips use their own higher-specificity
-   Soft override instead and are unaffected. */
+/* Unselected segments are Ghost (transparent, same as the pill). Selected is
+   Page — the page surface poking through. Scoped to .dev-segmented, not the
+   base emphasis classes. Format bar and spacing chips stay Soft and are
+   unaffected (they are not .dev-segmented). */
 .dev-segmented .dev-btn.is-selected,
 .dev-segmented .dev-btn.is-active,
 .dev-segmented .dev-btn[aria-pressed='true'] {
-  background: var(--comp-button-page-container-selected);
+  background: var(--dev-segmented-selected-fill);
   box-shadow: none;
 }
 
-/* Soft hover and Page hover are both the pill grey — lock selected to Page
-   so the white chip does not vanish under the pointer. */
+/* Lock selected hover to Page so the white chip does not vanish under the
+   pointer. Ghost hover is srf-container-low — the same as the pill — so it
+   is invisible there; unselected hover/press mix toward the selected fill
+   instead (lighten, not climb the container ladder). Must beat
+   .dev-btn--ghost:hover / :active. */
 .dev-segmented .dev-btn.is-selected:hover,
 .dev-segmented .dev-btn.is-active:hover,
 .dev-segmented .dev-btn[aria-pressed='true']:hover {
-  background: var(--comp-button-page-container-selected);
+  background: var(--dev-segmented-selected-fill);
+}
+
+.dev-segmented .dev-btn:hover:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+}
+.dev-segmented .dev-btn:active:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 75%, transparent);
 }
 
 /* Eye Button Base (597:4708) — the shown/hidden toggle pinned into a gallery
