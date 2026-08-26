@@ -1,41 +1,64 @@
 ---
 import minusIcon from 'lucide-static/icons/minus.svg?raw';
+import plusIcon from 'lucide-static/icons/plus.svg?raw';
 import xIcon from 'lucide-static/icons/x.svg?raw';
 import { sizeIcon } from '../lib/icons';
+import DevPanelTitle from './ui/DevPanelTitle.astro';
 
 interface Props {
-  title: string;
+  title?: string;
+  titleSuffix?: string;
   storageKey?: string;
   defaultMinimized?: boolean;
   showMinimize?: boolean;
   panelKey?: string;
   defaultHidden?: boolean;
+  layout?: 'portrait' | 'landscape';
+  embedded?: boolean;
+  [key: string]: any;
 }
 
 const {
   title,
+  titleSuffix,
   storageKey = 'default',
   defaultMinimized = false,
   showMinimize = true,
   panelKey,
   defaultHidden = false,
+  layout = 'portrait',
+  embedded = false,
+  ...rest
 } = Astro.props;
 
-/* Fit inside --dev-overlay-light-size (0.9em); stroke still currentColor. */
-const minimizeSvg = sizeIcon(minusIcon, 10);
-const hideSvg = sizeIcon(xIcon, 10);
+/* Figma glyphs are 8×8 inside the 15px light, 1px round stroke.
+   Lucide's stroke-width 2 in a 24 viewBox would paint at 2×8/24 ≈ 0.67px
+   and the round caps vanish — bump the user-unit width so 8px → 1px. */
+const trafficLightIcon = (svg: string) =>
+  sizeIcon(svg, 8).replace(/stroke-width="2"/, 'stroke-width="3"');
+const minimizeSvg = trafficLightIcon(minusIcon);
+const expandSvg = trafficLightIcon(plusIcon);
+const hideSvg = trafficLightIcon(xIcon);
 ---
 
 <aside
-  class="dev-overlay"
+  class:list={[
+    'dev-overlay',
+    `dev-overlay--${layout}`,
+    embedded && 'dev-overlay--embedded',
+    embedded && !defaultHidden && 'is-dev-overlay-open',
+  ]}
   data-dev-overlay
   data-storage-key={storageKey}
   data-default-minimized={defaultMinimized ? 'true' : 'false'}
   data-dev-panel-key={panelKey}
-  hidden={defaultHidden}
+  data-embedded={embedded ? 'true' : undefined}
+  hidden={defaultHidden ? true : undefined}
+  {...rest}
+  style={embedded ? 'position:relative;inset:auto;z-index:auto' : undefined}
 >
   <div class="dev-overlay__head" data-drag-handle>
-    <p class="dev-overlay__title">{title}</p>
+    <DevPanelTitle panelKey={panelKey} suffix={titleSuffix} title={title} />
     {
       showMinimize && (
         <div class="dev-overlay__lights" data-drag-ignore>
@@ -47,7 +70,8 @@ const hideSvg = sizeIcon(xIcon, 10);
             title="Minimize"
             aria-expanded="true"
           >
-            <span class="dev-overlay__light-icon" aria-hidden="true" set:html={minimizeSvg} />
+            <span class="dev-overlay__light-icon" data-light-glyph="minus" aria-hidden="true" set:html={minimizeSvg} />
+            <span class="dev-overlay__light-icon" data-light-glyph="plus" hidden aria-hidden="true" set:html={expandSvg} />
           </button>
           <button
             type="button"
@@ -65,10 +89,39 @@ const hideSvg = sizeIcon(xIcon, 10);
   <div class="dev-overlay__body" data-overlay-body>
     <slot />
   </div>
+  <div class="dev-overlay__resize" data-resize-handles aria-hidden="true">
+    <span data-resize="n"></span>
+    <span data-resize="s"></span>
+    <span data-resize="e"></span>
+    <span data-resize="w"></span>
+    <span data-resize="ne"></span>
+    <span data-resize="nw"></span>
+    <span data-resize="se"></span>
+    <span data-resize="sw"></span>
+  </div>
 </aside>
 
 <script>
   const MOTION_MS = 180;
+  const EMBEDDED_RESTORE_MS = 1000;
+  /* CSS rest is 40. Stay below the save bar (90). Session-only — never persisted. */
+  let overlayStackZ = 40;
+
+  const raiseOverlay = (overlay: HTMLElement) => {
+    if (overlay.hasAttribute('data-embedded')) return;
+    if (overlayStackZ + 1 >= 90) {
+      document
+        .querySelectorAll<HTMLElement>('[data-dev-overlay]:not([data-embedded]):not([hidden])')
+        .forEach((el) => {
+          el.style.zIndex = '40';
+        });
+      overlay.style.zIndex = '41';
+      overlayStackZ = 41;
+      return;
+    }
+    overlayStackZ += 1;
+    overlay.style.zIndex = String(overlayStackZ);
+  };
 
   const nativeHidden = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'hidden');
 
@@ -76,6 +129,7 @@ const hideSvg = sizeIcon(xIcon, 10);
     if (overlay.dataset.initialized === 'true') return;
     overlay.dataset.initialized = 'true';
 
+    const embedded = overlay.hasAttribute('data-embedded');
     const storageKeyRaw = overlay.dataset.storageKey?.trim() || 'default';
     const storageKey = `devOverlay:${storageKeyRaw}`;
     const positionStorageKey = `${storageKey}:position`;
@@ -90,6 +144,7 @@ const hideSvg = sizeIcon(xIcon, 10);
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
     const savePosition = (left: number, top: number) => {
+      if (embedded) return;
       try {
         window.localStorage.setItem(positionStorageKey, JSON.stringify({ left, top }));
       } catch {
@@ -111,26 +166,130 @@ const hideSvg = sizeIcon(xIcon, 10);
       }
     };
 
-    const setPosition = (left: number, top: number) => {
+    /**
+     * Viewport `left`/`top` → local `style.left`/`top` via a 0,0 probe of
+     * the real containing block (`position: fixed` is not `offsetParent`).
+     * Clears CSS `translate` (drag) only — `transform` stays the entrance rise.
+     * All writes are one synchronous turn so the 0,0 probe never paints.
+     */
+    const writeLocalFromViewport = (viewportLeft: number, viewportTop: number) => {
+      const prevTransition = overlay.style.transition;
+      overlay.style.transition = 'none';
+      void overlay.offsetWidth;
+      overlay.style.translate = 'none';
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+      overlay.style.left = '0px';
+      overlay.style.top = '0px';
+      const origin = overlay.getBoundingClientRect();
+      overlay.style.left = `${viewportLeft - origin.left}px`;
+      overlay.style.top = `${viewportTop - origin.top}px`;
+      overlay.style.transition = prevTransition;
+    };
+
+    const applyPosition = (left: number, top: number, persist: boolean) => {
       const maxLeft = Math.max(0, window.innerWidth - overlay.offsetWidth);
       const maxTop = Math.max(0, window.innerHeight - overlay.offsetHeight);
       const nextLeft = clamp(left, 0, maxLeft);
       const nextTop = clamp(top, 0, maxTop);
-      overlay.style.left = `${nextLeft}px`;
-      overlay.style.top = `${nextTop}px`;
-      overlay.style.right = 'auto';
-      overlay.style.bottom = 'auto';
-      savePosition(nextLeft, nextTop);
+      writeLocalFromViewport(nextLeft, nextTop);
+      if (persist) savePosition(nextLeft, nextTop);
+    };
+
+    const setPosition = (left: number, top: number) => {
+      applyPosition(left, top, true);
+    };
+
+    const GAP = 8;
+    const VIEW_INSET = 8;
+
+    const placeBesideTrigger = (trigger: HTMLElement) => {
+      const trig = trigger.getBoundingClientRect();
+      const w = overlay.offsetWidth;
+      const h = overlay.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      const layoutEl =
+        trigger.closest('[data-dev-project-grid], .project-page__main, main, .styles-main')
+        || document.querySelector('.project-page__main, main, [data-dev-project-grid], .styles-main')
+        || document.documentElement;
+      const layoutRect = layoutEl.getBoundingClientRect();
+      const layoutMid = (layoutRect.left + layoutRect.right) / 2;
+      const trigMid = (trig.left + trig.right) / 2;
+      const preferLeft = trigMid < layoutMid;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const roomRight = vw - VIEW_INSET - (trig.right + GAP);
+      const roomLeft = trig.left - GAP - VIEW_INSET;
+      let left: number;
+      if (preferLeft) {
+        if (roomLeft >= w) left = trig.left - GAP - w;
+        else if (roomRight >= w) left = trig.right + GAP;
+        else left = roomLeft >= roomRight ? trig.left - GAP - w : trig.right + GAP;
+      } else {
+        if (roomRight >= w) left = trig.right + GAP;
+        else if (roomLeft >= w) left = trig.left - GAP - w;
+        else left = roomRight >= roomLeft ? trig.right + GAP : trig.left - GAP - w;
+      }
+      let top = trig.top;
+      if (top + h > vh - VIEW_INSET) top = vh - VIEW_INSET - h;
+      if (top < VIEW_INSET) top = VIEW_INSET;
+      applyPosition(left, top, true);
+    };
+
+    /*
+      CSS resize writes an inline height. Hiding the body does not shrink
+      the frame unless that value is beaten. Snap-to-minimize restores the
+      size from before the resize gesture that caused the snap — not the
+      sliver under 72, and not "last height that happened to be >= 72".
+    */
+    const SNAP_TO_MINIMIZE_BELOW = 72;
+    let portraitScheduleConstrain: (() => void) | null = null;
+    let heightBeforeResizeGesture: string | null = null;
+    let expanding = false;
+
+    const syncMinimizeLight = (minimized: boolean) => {
+      if (!minimizeBtn) return;
+      minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
+      minimizeBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
+      minimizeBtn.title = minimized ? 'Expand' : 'Minimize';
+      minimizeBtn.classList.toggle('dev-overlay__light--minimize', !minimized);
+      minimizeBtn.classList.toggle('dev-overlay__light--expand', minimized);
+      const minus = minimizeBtn.querySelector<HTMLElement>('[data-light-glyph="minus"]');
+      const plus = minimizeBtn.querySelector<HTMLElement>('[data-light-glyph="plus"]');
+      if (minus) minus.hidden = minimized;
+      if (plus) plus.hidden = !minimized;
     };
 
     const setMinimized = (minimized: boolean) => {
-      overlay.classList.toggle('is-minimized', minimized);
-      body.hidden = minimized;
-      if (minimizeBtn) {
-        minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
-        minimizeBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
-        minimizeBtn.title = minimized ? 'Expand' : 'Minimize';
+      if (minimized) {
+        const current = overlay.style.height;
+        const px = Number.parseFloat(current);
+        if (current && Number.isFinite(px) && px >= SNAP_TO_MINIMIZE_BELOW) {
+          overlay.dataset.restoredHeight = current;
+        }
+        overlay.style.height = '';
+        overlay.style.maxHeight = '';
+        overlay.classList.add('is-minimized');
+        body.hidden = true;
+      } else {
+        const wasMinimized = overlay.classList.contains('is-minimized');
+        if (wasMinimized) expanding = true;
+        overlay.classList.remove('is-minimized');
+        body.hidden = false;
+        const restored = overlay.dataset.restoredHeight;
+        if (restored) {
+          overlay.style.height = restored;
+          delete overlay.dataset.restoredHeight;
+        }
+        if (wasMinimized) {
+          requestAnimationFrame(() => {
+            expanding = false;
+            portraitScheduleConstrain?.();
+          });
+        }
       }
+      syncMinimizeLight(minimized);
+      if (embedded) return;
       try {
         window.localStorage.setItem(minimizedStorageKey, minimized ? 'true' : 'false');
       } catch {
@@ -147,6 +306,7 @@ const hideSvg = sizeIcon(xIcon, 10);
     let wantVisible = !overlay.hasAttribute('hidden');
     let motionTimer = 0;
     let motionGeneration = 0;
+    let hideFinished = false;
 
     const setNativeHidden = (hidden: boolean) => {
       if (nativeHidden?.set) nativeHidden.set.call(overlay, hidden);
@@ -163,6 +323,9 @@ const hideSvg = sizeIcon(xIcon, 10);
 
     const finishShow = () => {
       setNativeHidden(false);
+      if (overlay.classList.contains('dev-overlay--portrait') && body.scrollTop !== 0) {
+        body.scrollTop = 0;
+      }
       // Start from the resting "closed" pose, then open on the next frame.
       overlay.classList.remove('is-dev-overlay-open');
       void overlay.offsetWidth;
@@ -174,14 +337,11 @@ const hideSvg = sizeIcon(xIcon, 10);
       });
     };
 
-    const finishHide = (generation: number) => {
-      if (generation !== motionGeneration || wantVisible) return;
-      overlay.classList.remove('is-dev-overlay-open');
-      setNativeHidden(true);
-      clearMotionTimer();
-    };
-
     const showOverlay = () => {
+      raiseOverlay(overlay);
+      if (embedded && overlay.classList.contains('is-minimized')) {
+        setMinimized(false);
+      }
       if (wantVisible && !overlay.hasAttribute('hidden') && overlay.classList.contains('is-dev-overlay-open')) {
         return;
       }
@@ -191,9 +351,28 @@ const hideSvg = sizeIcon(xIcon, 10);
       finishShow();
     };
 
+    const finishHide = (generation: number) => {
+      if (generation !== motionGeneration || wantVisible) return;
+      if (hideFinished) return;
+      hideFinished = true;
+      overlay.classList.remove('is-dev-overlay-open');
+      clearMotionTimer();
+      // Catalog: keep the in-flow box (no [hidden]) so the well does not
+      // collapse, then restore after 1s. Live: fade, then display:none.
+      if (embedded) {
+        motionTimer = window.setTimeout(() => {
+          if (generation !== motionGeneration || wantVisible) return;
+          showOverlay();
+        }, EMBEDDED_RESTORE_MS);
+        return;
+      }
+      setNativeHidden(true);
+    };
+
     const hideOverlayAnimated = () => {
       if (!wantVisible && overlay.hasAttribute('hidden')) return;
       wantVisible = false;
+      hideFinished = false;
       const generation = ++motionGeneration;
       clearMotionTimer();
       overlay.classList.remove('is-dev-overlay-open');
@@ -248,64 +427,423 @@ const hideSvg = sizeIcon(xIcon, 10);
       return defaultMinimized;
     };
 
-    setMinimized(readMinimized());
+    setMinimized(embedded ? false : readMinimized());
+
+    /*
+      Snap-to-minimize (all overlays): a downward drag below 72px collapses
+      to the header bar. Loop guards: setMinimized collapses the body and
+      re-fires the observer, hence the is-minimized bail; snap only on a
+      shrink; hidden panels report 0 and only re-baseline. No auto-expand
+      from a minimized bar — out of scope.
+
+      Portrait-only height constraints (same observer, after snap check):
+      1) Content cap: CSS resize will grow past the content (the body is
+         flex:1, so surplus is empty space). fit-content in max-height is
+         dropped by Gecko, so the cap is an inline max-height measured from
+         the body's unstretched hug. Same-turn style restore, no paint.
+      2) Sticky around natural: dragging back to within 24px of hug drops
+         the inline height so the panel is truly auto again. Hysteresis:
+         leaving natural (first pixels of a shrink) is allowed through,
+         otherwise the magnet would trap the panel at hug.
+    */
+    const isPortrait = overlay.classList.contains('dev-overlay--portrait');
+
+    /* Catalog used to skip this: first measure of an unlaid-out specimen
+       wrote max-height:0 and collapsed the well. Guard natural <= 0
+       instead of skipping embedded entirely. */
+    if (isPortrait) {
+      const STICKY_AROUND_NATURAL = 24;
+      let huggedNatural = !overlay.style.height;
+      let constrainRaf = 0;
+
+      const viewportCapPx = () => {
+        const em = Number.parseFloat(getComputedStyle(overlay).fontSize) || 16;
+        return window.innerHeight - 2 * em;
+      };
+
+      const setBodyScrollable = (scrollable: boolean) => {
+        overlay.classList.toggle('is-body-scrollable', scrollable);
+        if (!scrollable && body.scrollTop !== 0) body.scrollTop = 0;
+      };
+
+      const naturalHeightPx = () => {
+        const frame = overlay.offsetHeight;
+        const bodyBox = body.clientHeight;
+        const prevFlex = body.style.flex;
+        const prevMin = body.style.minHeight;
+        const prevOverflowX = body.style.overflowX;
+        const hadScrollable = overlay.classList.contains('is-body-scrollable');
+        // Measure in hugged overflow (hidden, no stable gutter). overflow:visible
+        // undersizes; overflow-x:hidden + scrollbar-gutter:stable reserves a lane
+        // that narrows content, wraps taller, clips the top label, and chin.
+        setBodyScrollable(false);
+        body.style.overflowX = 'auto';
+        body.style.flex = '0 0 auto';
+        body.style.minHeight = 'auto';
+        const bodyHug = body.offsetHeight;
+        body.style.flex = prevFlex;
+        body.style.minHeight = prevMin;
+        body.style.overflowX = prevOverflowX;
+        if (hadScrollable) setBodyScrollable(true);
+        return frame - bodyBox + bodyHug;
+      };
+
+      const constrainPortraitHeight = () => {
+        if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
+        if (overlay.classList.contains('is-minimized')) {
+          overlay.style.maxHeight = '';
+          huggedNatural = true;
+          setBodyScrollable(false);
+          return;
+        }
+        const natural = naturalHeightPx();
+        if (natural <= 0) return;
+        const cap = Math.max(0, Math.min(Math.ceil(natural), viewportCapPx()));
+        overlay.style.maxHeight = `${Math.round(cap)}px`;
+
+        const inline = overlay.style.height;
+        const px = Number.parseFloat(inline);
+        if (!inline || !Number.isFinite(px)) {
+          huggedNatural = true;
+          setBodyScrollable(false);
+          return;
+        }
+        if (px > cap) {
+          overlay.style.height = '';
+          huggedNatural = true;
+          setBodyScrollable(false);
+          return;
+        }
+        const inSticky = px >= cap - STICKY_AROUND_NATURAL;
+        if (inSticky && !huggedNatural) {
+          overlay.style.height = '';
+          huggedNatural = true;
+          setBodyScrollable(false);
+          return;
+        }
+        if (!inSticky) huggedNatural = false;
+        setBodyScrollable(!huggedNatural);
+      };
+
+      const scheduleConstrain = () => {
+        if (constrainRaf) return;
+        constrainRaf = requestAnimationFrame(() => {
+          constrainRaf = 0;
+          constrainPortraitHeight();
+        });
+      };
+
+      portraitScheduleConstrain = scheduleConstrain;
+
+      new MutationObserver(scheduleConstrain).observe(body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: ['hidden'],
+      });
+
+      scheduleConstrain();
+    }
+
+    let lastObservedHeight: number | null = null;
+    new ResizeObserver((entries) => {
+      const entry = entries[0];
+      const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      const previous = lastObservedHeight;
+      lastObservedHeight = height;
+      if (!wantVisible || !overlay.classList.contains('is-dev-overlay-open')) return;
+      if (expanding) return;
+      if (overlay.classList.contains('is-minimized')) {
+        if (portraitScheduleConstrain) overlay.style.maxHeight = '';
+        return;
+      }
+      if (previous !== null && previous !== 0 && height !== 0) {
+        if (height < SNAP_TO_MINIMIZE_BELOW && height < previous) {
+          const pre = heightBeforeResizeGesture;
+          const prePx = pre ? Number.parseFloat(pre) : NaN;
+          if (pre && Number.isFinite(prePx) && prePx >= SNAP_TO_MINIMIZE_BELOW) {
+            overlay.dataset.restoredHeight = pre;
+          }
+          setMinimized(true);
+          return;
+        }
+      }
+      portraitScheduleConstrain?.();
+    }).observe(overlay);
 
     const storedPosition = readPosition();
-    if (storedPosition) {
+    if (!embedded && storedPosition) {
       setPosition(storedPosition.left, storedPosition.top);
     }
 
     let dragPointerId: number | null = null;
     let dragStartX = 0;
     let dragStartY = 0;
-    let dragOriginLeft = 0;
-    let dragOriginTop = 0;
+    let dragRaf = 0;
+    let pendingDx = 0;
+    let pendingDy = 0;
 
-    dragHandle.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      const target = event.target as HTMLElement | null;
-      if (target?.closest('[data-drag-ignore]')) return;
-      event.preventDefault();
-
-      const bounds = overlay.getBoundingClientRect();
-      overlay.style.left = `${bounds.left}px`;
-      overlay.style.top = `${bounds.top}px`;
-      overlay.style.right = 'auto';
-      overlay.style.bottom = 'auto';
-
-      dragPointerId = event.pointerId;
-      dragStartX = event.clientX;
-      dragStartY = event.clientY;
-      dragOriginLeft = bounds.left;
-      dragOriginTop = bounds.top;
-
-      overlay.classList.add('is-dragging');
-      dragHandle.setPointerCapture(event.pointerId);
-    });
-
-    dragHandle.addEventListener('pointermove', (event) => {
-      if (dragPointerId !== event.pointerId) return;
-      const dx = event.clientX - dragStartX;
-      const dy = event.clientY - dragStartY;
-      setPosition(dragOriginLeft + dx, dragOriginTop + dy);
-    });
+    const scheduleDragTranslate = (dx: number, dy: number) => {
+      pendingDx = dx;
+      pendingDy = dy;
+      if (dragRaf) return;
+      dragRaf = requestAnimationFrame(() => {
+        dragRaf = 0;
+        overlay.style.translate = `${pendingDx}px ${pendingDy}px`;
+      });
+    };
 
     const endDrag = (event: PointerEvent) => {
       if (dragPointerId !== event.pointerId) return;
       dragPointerId = null;
+      if (dragRaf) {
+        cancelAnimationFrame(dragRaf);
+        dragRaf = 0;
+        overlay.style.translate = `${pendingDx}px ${pendingDy}px`;
+      }
+      const visual = overlay.getBoundingClientRect();
+      writeLocalFromViewport(visual.left, visual.top);
       overlay.classList.remove('is-dragging');
+      savePosition(visual.left, visual.top);
       if (dragHandle.hasPointerCapture(event.pointerId)) {
         dragHandle.releasePointerCapture(event.pointerId);
       }
     };
 
-    dragHandle.addEventListener('pointerup', endDrag);
-    dragHandle.addEventListener('pointercancel', endDrag);
+    if (!embedded) {
+      dragHandle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        if (overlay.classList.contains('is-resizing')) return;
+        const target = event.target as HTMLElement | null;
+        if (target?.closest('[data-drag-ignore]')) return;
+        event.preventDefault();
+
+        dragPointerId = event.pointerId;
+        dragStartX = event.clientX;
+        dragStartY = event.clientY;
+        pendingDx = 0;
+        pendingDy = 0;
+
+        overlay.classList.add('is-dragging');
+        dragHandle.setPointerCapture(event.pointerId);
+      });
+
+      dragHandle.addEventListener('pointermove', (event) => {
+        if (dragPointerId !== event.pointerId) return;
+        scheduleDragTranslate(event.clientX - dragStartX, event.clientY - dragStartY);
+      });
+
+      dragHandle.addEventListener('pointerup', endDrag);
+      dragHandle.addEventListener('pointercancel', endDrag);
+    }
+
+    const resizeLayer = overlay.querySelector<HTMLElement>('[data-resize-handles]');
+    if (resizeLayer) {
+      const usedPx = (value: string, fallback: number) => {
+        if (!value || value === 'none' || value === 'auto') return fallback;
+        const px = Number.parseFloat(value);
+        return Number.isFinite(px) ? px : fallback;
+      };
+
+      let resizePointerId: number | null = null;
+      let resizeHandle: HTMLElement | null = null;
+      let resizeRaf = 0;
+      let pendingResizeX = 0;
+      let pendingResizeY = 0;
+      let resizeOriginLeft = 0;
+      let resizeOriginTop = 0;
+      let resizeStartX = 0;
+      let resizeStartY = 0;
+      let resizeStartLeft = 0;
+      let resizeStartTop = 0;
+      let resizeStartWidth = 0;
+      let resizeStartHeight = 0;
+      let resizeMoveN = false;
+      let resizeMoveS = false;
+      let resizeMoveE = false;
+      let resizeMoveW = false;
+      let resizeMinWidth = 0;
+      let resizeMaxWidth = 0;
+      let resizeMinHeight = 0;
+      let resizeMaxHeight = 0;
+
+      const writeResizeRect = (left: number, top: number, width: number, height: number) => {
+        if (!embedded) {
+          overlay.style.left = `${left - resizeOriginLeft}px`;
+          overlay.style.top = `${top - resizeOriginTop}px`;
+          overlay.style.right = 'auto';
+          overlay.style.bottom = 'auto';
+        }
+        if (!isPortrait) overlay.style.width = `${width}px`;
+        overlay.style.height = `${height}px`;
+      };
+
+      const applyResizeFrame = (clientX: number, clientY: number) => {
+        const dx = clientX - resizeStartX;
+        const dy = clientY - resizeStartY;
+        const startRight = resizeStartLeft + resizeStartWidth;
+        const startBottom = resizeStartTop + resizeStartHeight;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let width = resizeStartWidth;
+        let height = resizeStartHeight;
+        if (resizeMoveE) width = resizeStartWidth + dx;
+        if (resizeMoveW) width = resizeStartWidth - dx;
+        if (resizeMoveS) height = resizeStartHeight + dy;
+        if (resizeMoveN) height = resizeStartHeight - dy;
+
+        width = clamp(width, resizeMinWidth, resizeMaxWidth);
+        height = clamp(height, resizeMinHeight, resizeMaxHeight);
+
+        let left = resizeMoveW ? startRight - width : resizeStartLeft;
+        let top = resizeMoveN ? startBottom - height : resizeStartTop;
+
+        if (!embedded) {
+          if (resizeMoveW && left < 0) {
+            left = 0;
+            width = startRight - left;
+            width = clamp(width, resizeMinWidth, resizeMaxWidth);
+            left = startRight - width;
+            if (left < 0) left = 0;
+          }
+          if (resizeMoveE && left + width > vw) {
+            width = Math.max(0, vw - left);
+          }
+          if (resizeMoveN && top < 0) {
+            top = 0;
+            height = startBottom - top;
+            height = clamp(height, resizeMinHeight, resizeMaxHeight);
+            top = startBottom - height;
+            if (top < 0) top = 0;
+          }
+          if (resizeMoveS && top + height > vh) {
+            height = Math.max(0, vh - top);
+          }
+        }
+
+        writeResizeRect(left, top, width, height);
+      };
+
+      const scheduleResize = (clientX: number, clientY: number) => {
+        pendingResizeX = clientX;
+        pendingResizeY = clientY;
+        if (resizeRaf) return;
+        resizeRaf = requestAnimationFrame(() => {
+          resizeRaf = 0;
+          applyResizeFrame(pendingResizeX, pendingResizeY);
+        });
+      };
+
+      resizeLayer.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        if (overlay.classList.contains('is-minimized')) return;
+        if (overlay.classList.contains('is-dragging')) return;
+        const handle = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-resize]');
+        if (!handle || !resizeLayer.contains(handle)) return;
+        event.preventDefault();
+
+        const dir = handle.dataset.resize ?? '';
+        resizeMoveN = dir === 'n' || dir === 'ne' || dir === 'nw';
+        resizeMoveS = dir === 's' || dir === 'se' || dir === 'sw';
+        resizeMoveE = !isPortrait && (dir === 'e' || dir === 'ne' || dir === 'se');
+        resizeMoveW = !isPortrait && (dir === 'w' || dir === 'nw' || dir === 'sw');
+
+        const visual = overlay.getBoundingClientRect();
+        heightBeforeResizeGesture = overlay.style.height || `${visual.height}px`;
+        if (!embedded) {
+          writeLocalFromViewport(visual.left, visual.top);
+          if (!isPortrait) overlay.style.width = `${visual.width}px`;
+          overlay.style.height = `${visual.height}px`;
+          resizeOriginLeft = visual.left - Number.parseFloat(overlay.style.left);
+          resizeOriginTop = visual.top - Number.parseFloat(overlay.style.top);
+        } else {
+          if (!isPortrait) overlay.style.width = `${visual.width}px`;
+          overlay.style.height = `${visual.height}px`;
+          resizeOriginLeft = 0;
+          resizeOriginTop = 0;
+        }
+
+        const cs = getComputedStyle(overlay);
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        resizeMinWidth = usedPx(cs.minWidth, 0);
+        resizeMaxWidth = embedded ? usedPx(cs.maxWidth, Number.POSITIVE_INFINITY) : Math.min(usedPx(cs.maxWidth, vw), vw);
+        resizeMinHeight = usedPx(cs.minHeight, 0);
+        // Portrait hug-cap is an inline max-height; south-drag must not pass it.
+        resizeMaxHeight = embedded
+          ? usedPx(cs.maxHeight, Number.POSITIVE_INFINITY)
+          : Math.min(usedPx(cs.maxHeight, vh), vh);
+        if (resizeMaxWidth < resizeMinWidth) resizeMaxWidth = resizeMinWidth;
+        if (resizeMaxHeight < resizeMinHeight) resizeMaxHeight = resizeMinHeight;
+
+        resizePointerId = event.pointerId;
+        resizeHandle = handle;
+        resizeStartX = event.clientX;
+        resizeStartY = event.clientY;
+        resizeStartLeft = visual.left;
+        resizeStartTop = visual.top;
+        resizeStartWidth = visual.width;
+        resizeStartHeight = visual.height;
+        pendingResizeX = event.clientX;
+        pendingResizeY = event.clientY;
+
+        overlay.classList.add('is-resizing');
+        handle.setPointerCapture(event.pointerId);
+      });
+
+      resizeLayer.addEventListener('pointermove', (event) => {
+        if (resizePointerId !== event.pointerId) return;
+        scheduleResize(event.clientX, event.clientY);
+      });
+
+      const endResize = (event: PointerEvent) => {
+        if (resizePointerId !== event.pointerId) return;
+        resizePointerId = null;
+        if (resizeRaf) {
+          cancelAnimationFrame(resizeRaf);
+          resizeRaf = 0;
+          applyResizeFrame(pendingResizeX, pendingResizeY);
+        }
+        const visual = overlay.getBoundingClientRect();
+        savePosition(visual.left, visual.top);
+        overlay.classList.remove('is-resizing');
+        if (
+          !overlay.classList.contains('is-minimized') &&
+          visual.height >= SNAP_TO_MINIMIZE_BELOW
+        ) {
+          heightBeforeResizeGesture = null;
+        }
+        if (resizeHandle?.hasPointerCapture(event.pointerId)) {
+          resizeHandle.releasePointerCapture(event.pointerId);
+        }
+        resizeHandle = null;
+      };
+
+      resizeLayer.addEventListener('pointerup', endResize);
+      resizeLayer.addEventListener('pointercancel', endResize);
+    }
 
     hideBtn?.addEventListener('click', (event) => {
       event.stopPropagation();
       hideOverlay();
     });
+
+    if (!embedded) {
+      window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ trigger?: HTMLElement; panel?: HTMLElement }>) => {
+        const { trigger, panel } = event.detail ?? {};
+        if (panel !== overlay || !(trigger instanceof HTMLElement)) return;
+        if (overlay.classList.contains('is-minimized')) setMinimized(false);
+        const place = () => {
+          const w = overlay.offsetWidth;
+          const h = overlay.offsetHeight;
+          if (w <= 0 || h <= 0) return;
+          placeBesideTrigger(trigger);
+        };
+        requestAnimationFrame(() => requestAnimationFrame(place));
+      }) as EventListener);
+    }
 
     minimizeBtn?.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -319,12 +857,18 @@ const hideSvg = sizeIcon(xIcon, 10);
       finishHide(motionGeneration);
     });
 
-    window.addEventListener('resize', () => {
-      const left = Number.parseFloat(overlay.style.left);
-      const top = Number.parseFloat(overlay.style.top);
-      if (!Number.isFinite(left) || !Number.isFinite(top)) return;
-      setPosition(left, top);
-    });
+    if (!embedded) {
+      overlay.addEventListener('pointerdown', () => {
+        raiseOverlay(overlay);
+      });
+      window.addEventListener('resize', () => {
+        const left = Number.parseFloat(overlay.style.left);
+        const top = Number.parseFloat(overlay.style.top);
+        if (!Number.isFinite(left) || !Number.isFinite(top)) return;
+        const visual = overlay.getBoundingClientRect();
+        setPosition(visual.left, visual.top);
+      });
+    }
   };
 
   document.querySelectorAll<HTMLElement>('[data-dev-overlay]').forEach(initDevOverlay);
@@ -336,34 +880,31 @@ const hideSvg = sizeIcon(xIcon, 10);
     is no antialiased seam between two stacked identical corner radii.
   */
   .dev-overlay {
+    --dev-overlay-inner-radius: max(0px, calc(var(--dev-radius-panel) - var(--dev-panel-pad)));
     --dev-overlay-motion-ms: 180ms;
     --dev-overlay-rise: 0.35em;
-    --dev-overlay-pad: 0.75em;
-    --dev-overlay-light-size: 0.9em;
-    /* Former panel fill colour (surface-soft), solid — translucent color-mix
-       with `transparent` (black@0) reads as a near-black hairline as outline. */
-    --dev-overlay-outline: var(--sys-color-srf-container-low);
+    --dev-overlay-light-size: 15px;
     position: fixed;
     right: 1em;
     bottom: 1em;
     z-index: 40;
-    width: min(22em, calc(100vw - 2em));
+    width: min(var(--dev-panel-width), calc(100vw - 2em));
     max-height: calc(100dvh - 2em);
     /* Border, not outline: an outline paints outside the border box in its own
        pass, so on a curve its antialiased inner edge met the fill's outer edge
        and the page bled through the join. A border sits on top of the fill —
        background-clip is border-box — so there is no join to bleed through. */
-    border: 2px solid var(--dev-overlay-outline);
-    border-radius: var(--radius-card-smooth);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-panel);
     background: var(--sys-color-srf);
-    padding: var(--dev-overlay-pad);
+    padding: var(--dev-panel-pad);
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
+    gap: var(--dev-panel-gap);
     overflow: hidden;
     font-family: var(--font-sans);
     color: var(--sys-color-on-srf);
-    box-shadow: 0 0.45em 1.2em rgb(0 0 0 / 0.08);
+    box-shadow: var(--dev-panel-shadow);
     opacity: 0;
     transform: translateY(var(--dev-overlay-rise));
     transition:
@@ -371,9 +912,70 @@ const hideSvg = sizeIcon(xIcon, 10);
       transform var(--dev-overlay-motion-ms) ease;
   }
 
+  /* Landscape resizes from custom edge/corner hit strips, not CSS resize
+     (which is SE-only). overflow: hidden still clips to the rounded corners. */
+  .dev-overlay--landscape {
+    width: min(var(--dev-panel-width-landscape), calc(100vw - 2em));
+    min-width: var(--dev-panel-min-width-landscape);
+    resize: none;
+  }
+
+  /* Portrait resizes in height only — width is the signed 352px contract.
+     Custom edge/corner hit strips (same layer as landscape); E/W strips
+     are hidden. Native SE resize is off so there is no UA glyph. */
+  .dev-overlay--portrait {
+    resize: none;
+  }
+
+  /* The floor keeps an open panel's resize drag from collapsing the header
+     under the body. A minimized bar is header-only (body display:none, head
+     padding-bottom 0), so the same floor would park the surplus as dead
+     space between the header and the bottom border — apply it only while
+     the panel is not minimized. */
+  .dev-overlay--portrait:not(.is-minimized) {
+    min-height: calc(2 * var(--dev-panel-pad) + 32px);
+  }
+
+  /* A minimized bar must not be resizable: the body is display:none, so a
+     drag would stretch an empty shell. Two classes outrank the single-class
+     layout rules (resize: vertical / both) on specificity, whatever the
+     source order. This also ends a snap-to-minimize drag on contact — once
+     the observer snaps the panel shut the handle is gone until the user
+     restores via the amber light, which is the intended flow. */
+  .dev-overlay.is-minimized {
+    resize: none;
+    /* Beats the inline height CSS resize stamps, including a drag that is
+       still writing height at the moment snap-to-minimize fires. Width is
+       left alone — a landscape bar should keep the user's resized width. */
+    height: auto !important;
+  }
+
+  .dev-overlay--portrait::-webkit-resizer {
+    display: none;
+  }
+
   .dev-overlay.is-dev-overlay-open {
     opacity: 1;
     transform: translateY(0);
+  }
+
+  /* Catalog / in-flow specimen: stay in the document. Open pose is
+     `.is-dev-overlay-open` only — do not pin opacity/transform here or
+     hide cannot play the exit fade. Width must not cap at 100% or a
+     597px landscape specimen collapses to the card. */
+  .dev-overlay.dev-overlay--embedded,
+  .dev-overlay[data-embedded] {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    inset: auto;
+    z-index: auto;
+  }
+
+  .dev-overlay--embedded.dev-overlay--landscape,
+  .dev-overlay[data-embedded].dev-overlay--landscape {
+    width: var(--dev-panel-width-landscape);
+    min-width: var(--dev-panel-min-width-landscape);
   }
 
   /* Closed / mid-exit: don't intercept clicks under a fading panel. */
@@ -396,85 +998,233 @@ const hideSvg = sizeIcon(xIcon, 10);
 
   .dev-overlay__head {
     display: flex;
-    align-items: center;
-    /* Reserve the corner for traffic lights (2 × size + gap). */
-    padding-right: calc(var(--dev-overlay-light-size) * 2 + 0.4em + 0.35em);
-    min-height: var(--dev-overlay-light-size);
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding-bottom: var(--dev-panel-spacing);
     cursor: grab;
     user-select: none;
     touch-action: none;
+  }
+
+  .dev-overlay.is-dragging,
+  .dev-overlay.is-resizing {
+    /* Keep the fade; drop the transform transition so baking left/top
+       cannot restart the entrance rise. `translate` is not listed on the
+       resting transition and is never animated. */
+    transition: opacity var(--dev-overlay-motion-ms) ease;
+  }
+
+  .dev-overlay.is-resizing {
+    user-select: none;
   }
 
   .dev-overlay.is-dragging .dev-overlay__head {
     cursor: grabbing;
   }
 
+  /*
+    Eight hit strips live in the 12px pad ring so overflow:hidden does not
+    clip them and they do not cover the header drag or traffic lights.
+  */
+  .dev-overlay__resize {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .dev-overlay.is-minimized .dev-overlay__resize {
+    display: none;
+  }
+
+  /* Portrait: height only — hide the east/west strips. Corners stay so
+     N/S drags remain reachable at the sides; JS ignores E/W on those. */
+  .dev-overlay--portrait .dev-overlay__resize [data-resize='e'],
+  .dev-overlay--portrait .dev-overlay__resize [data-resize='w'] {
+    display: none;
+  }
+
+  .dev-overlay__resize [data-resize] {
+    position: absolute;
+    pointer-events: auto;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .dev-overlay__resize [data-resize='n'] {
+    top: 0;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+  }
+
+  .dev-overlay__resize [data-resize='s'] {
+    bottom: 0;
+    left: 8px;
+    right: 8px;
+    height: 8px;
+    cursor: ns-resize;
+  }
+
+  .dev-overlay__resize [data-resize='e'] {
+    top: 8px;
+    right: 0;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+
+  .dev-overlay__resize [data-resize='w'] {
+    top: 8px;
+    left: 0;
+    bottom: 8px;
+    width: 8px;
+    cursor: ew-resize;
+  }
+
+  .dev-overlay__resize [data-resize='ne'],
+  .dev-overlay__resize [data-resize='nw'],
+  .dev-overlay__resize [data-resize='se'],
+  .dev-overlay__resize [data-resize='sw'] {
+    width: 8px;
+    height: 8px;
+    z-index: 1;
+  }
+
+  .dev-overlay__resize [data-resize='ne'] {
+    top: 0;
+    right: 0;
+    cursor: nesw-resize;
+  }
+
+  .dev-overlay__resize [data-resize='nw'] {
+    top: 0;
+    left: 0;
+    cursor: nwse-resize;
+  }
+
+  .dev-overlay__resize [data-resize='se'] {
+    bottom: 0;
+    right: 0;
+    cursor: nwse-resize;
+  }
+
+  .dev-overlay__resize [data-resize='sw'] {
+    bottom: 0;
+    left: 0;
+    cursor: nesw-resize;
+  }
+
+  /* Collapsed to header-only: the body is display:none so the panel's own
+     flex gap already closes, but the header's bottom padding is its own and
+     stays regardless — drop it so minimized really is just the thin bar. */
+  .dev-overlay.is-minimized .dev-overlay__head {
+    padding-bottom: 0;
+  }
+
   .dev-overlay__title {
     margin: 0;
-    font-size: 0.75rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font: var(--dev-text-panel-title);
     color: var(--sys-color-on-srf-variant);
   }
 
-  /*
-    Park lights on the top-right corner diagonal: equal inset from top and right
-    so a 45° line from the squared corner passes through the hide button’s centre.
-  */
+  /* Hover slop now comes from the light's own ::before (below), not from
+     padding on the group, because padding would push the lights off the
+     header's right edge. */
   .dev-overlay__lights {
-    position: absolute;
-    top: calc(var(--dev-overlay-pad) - 0.35em);
-    right: calc(var(--dev-overlay-pad) - 0.35em);
-    z-index: 1;
     display: flex;
     align-items: center;
-    gap: 0.4em;
-    /* Hover slop around the circles; compensated in top/right so visuals stay on the pad. */
-    padding: 0.35em;
+    gap: 8px;
+    flex: 0 0 auto;
     cursor: default;
   }
 
   .dev-overlay__light {
     position: relative;
     box-sizing: border-box;
+    display: grid;
+    place-items: center;
     width: var(--dev-overlay-light-size);
     height: var(--dev-overlay-light-size);
     flex: 0 0 auto;
     border: 0;
-    border-radius: 50%;
+    border-radius: 8px;
     padding: 0;
-    background: color-mix(in srgb, var(--sys-color-on-srf) 18%, transparent);
+    margin: 0;
+    background: var(--comp-traffic-light-rest);
     color: transparent;
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
+    font-size: 0;
+    line-height: 0;
+    /* Round stroke caps sit on the 8px box edge; clipping here squared them
+       off and made the glyph look shifted up-right. */
+    overflow: visible;
+  }
+
+  /* The two lights sit 8px apart, so each one's hit slop meets its
+     neighbour's in the gap without reaching over its visible edge. */
+  .dev-overlay__light::before {
+    content: '';
+    position: absolute;
+    inset: calc(var(--dev-hit-inset) * -1);
   }
 
   .dev-overlay__light-icon {
     position: absolute;
-    inset: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    margin: -4px 0 0 -4px;
+    display: block;
     opacity: 0;
     pointer-events: none;
     line-height: 0;
+    overflow: visible;
+  }
+
+  .dev-overlay__light-icon[hidden] {
+    display: none;
   }
 
   .dev-overlay__light-icon :global(svg) {
     display: block;
+    width: 8px;
+    height: 8px;
+    overflow: visible;
+    shape-rendering: geometricPrecision;
+    /* Optical: 1px round strokes read a hair right of the 15px disc centre. */
+    transform: translateX(-0.5px);
+  }
+
+  .dev-overlay__light-icon :global(path) {
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    /* Figma paints a 1px round stroke in the 8px frame, not Lucide's scaled 0.67. */
+    vector-effect: non-scaling-stroke;
+    stroke-width: 1px;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--hide,
   .dev-overlay__light--hide:focus-visible {
-    background: #ff5f57;
+    background: var(--comp-traffic-light-hide-hover);
     color: #4d0000;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--minimize,
   .dev-overlay__light--minimize:focus-visible {
-    background: #febc2e;
+    background: var(--comp-traffic-light-minimize-hover);
     color: #995700;
+  }
+
+  .dev-overlay__lights:hover .dev-overlay__light--expand,
+  .dev-overlay__light--expand:focus-visible {
+    background: var(--comp-traffic-light-expand-hover);
+    color: #00520a;
   }
 
   .dev-overlay__lights:hover .dev-overlay__light-icon,
@@ -485,11 +1235,35 @@ const hideSvg = sizeIcon(xIcon, 10);
   .dev-overlay__body {
     display: flex;
     flex-direction: column;
-    gap: 0.6em;
+    gap: var(--dev-panel-content-gap);
     min-height: 0;
     flex: 1 1 auto;
+    border-bottom-left-radius: var(--dev-overlay-inner-radius);
+    border-bottom-right-radius: var(--dev-overlay-inner-radius);
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Reserve the scrollbar's own lane so it tracks beside content instead of
+       drawing over it once the body actually scrolls. */
+    scrollbar-gutter: stable;
+  }
+
+  /* Portrait hug: no gutter until the user shrinks below the content cap. */
+  .dev-overlay--portrait:not(.is-body-scrollable) .dev-overlay__body {
+    overflow-y: hidden;
+    scrollbar-gutter: auto;
+  }
+
+  /* Landscape bodies don't scroll themselves — Gallery sets overflow-y: hidden;
+     Asset manager's grid owns its own scrolling. Without this, stable reserves
+     a lane the body never uses and the inner clip misses the bottom-right curve. */
+  .dev-overlay--landscape .dev-overlay__body {
+    scrollbar-gutter: auto;
+  }
+
+  /* display:flex above beats the UA [hidden] rule, so minimize was collapsing
+     nothing — the empty body is the "leftover padding" under the header. */
+  .dev-overlay__body[hidden] {
+    display: none;
   }
 </style>

@@ -4,14 +4,14 @@ import eyeIcon from 'lucide-static/icons/eye.svg?raw';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import { sizeIcon } from '../lib/icons';
 
-const eyeIconSvg = sizeIcon(eyeIcon, 12);
-const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
+const eyeIconSvg = sizeIcon(eyeIcon, 16);
+const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 ---
 
 <DevOverlay
-  title="Gallery Manager"
   storageKey="gallery-pages"
   panelKey="gallery-pages"
+  layout="landscape"
   defaultHidden
 >
   <div
@@ -20,20 +20,20 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
   >
-    <div class="dev-gallery-pages__filters" role="group" aria-label="Gallery filter">
-      <button type="button" data-gallery-filter="all" class="is-active">All</button>
-      <button type="button" data-gallery-filter="on">On this page</button>
-      <button type="button" data-gallery-filter="off">Not on page</button>
+    <div class="dev-gallery-pages__filters dev-segmented" role="group" aria-label="Gallery filter">
+      <button type="button" data-gallery-filter="all" class="dev-btn dev-btn--ghost is-active">All</button>
+      <button type="button" data-gallery-filter="on" class="dev-btn dev-btn--ghost">On this page</button>
+      <button type="button" data-gallery-filter="off" class="dev-btn dev-btn--ghost">Not on page</button>
     </div>
 
     <p class="dev-gallery-pages__status" data-gallery-status aria-live="polite">Loading…</p>
     <div class="dev-gallery-pages__grid" data-gallery-grid></div>
-    <p class="dev-gallery-pages__count" data-gallery-count></p>
   </div>
 </DevOverlay>
 
 <script>
   import { projectImage } from '../lib/images';
+  import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
   import {
     hasCropVariants,
@@ -104,7 +104,98 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
     let drag: { pointerId: number; slug: string; cancel: () => void } | null = null;
     const DRAG_THRESHOLD = 4;
+    const GRID_GAP = 8;
+    const GRID_COLUMNS = 3;
+    let layoutCapsRaf = 0;
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const readLandscapeDefaultInnerWidth = () => {
+      const styles = getComputedStyle(document.documentElement);
+      const panelWidth = Number.parseFloat(styles.getPropertyValue('--dev-panel-width-landscape')) || 597;
+      const panelPad = Number.parseFloat(styles.getPropertyValue('--dev-panel-pad')) || 12;
+      return panelWidth - 2 * panelPad;
+    };
+
+    /** Thumb width from the signed 597px landscape body, not the current resize. */
+    const computeThumbWidth = () => {
+      const innerBodyW = readLandscapeDefaultInnerWidth();
+      if (!gridEl) {
+        return Math.round((innerBodyW - (GRID_COLUMNS - 1) * GRID_GAP) / GRID_COLUMNS);
+      }
+      const gridStyle = getComputedStyle(gridEl);
+      const gridPadX = Number.parseFloat(gridStyle.paddingLeft) + Number.parseFloat(gridStyle.paddingRight);
+      const available = innerBodyW - gridPadX - (GRID_COLUMNS - 1) * GRID_GAP;
+      return Math.round(available / GRID_COLUMNS);
+    };
+
+    const viewportCapPx = () => {
+      const em = Number.parseFloat(getComputedStyle(panel).fontSize) || 16;
+      return {
+        width: window.innerWidth - 2 * em,
+        height: window.innerHeight - 2 * em,
+      };
+    };
+
+    const measureOverlayHug = (): { width: number; height: number } | null => {
+      if (panel.hidden) return null;
+      const prevWidth = panel.style.width;
+      const prevHeight = panel.style.height;
+      const prevMaxWidth = panel.style.maxWidth;
+      const prevMaxHeight = panel.style.maxHeight;
+      panel.style.width = '';
+      panel.style.height = '';
+      panel.style.maxWidth = '';
+      panel.style.maxHeight = '';
+      const width = panel.offsetWidth;
+      const height = panel.offsetHeight;
+      panel.style.width = prevWidth;
+      panel.style.height = prevHeight;
+      panel.style.maxWidth = prevMaxWidth;
+      panel.style.maxHeight = prevMaxHeight;
+      if (!width || !height) return null;
+      return { width, height };
+    };
+
+    const applyLayoutCaps = () => {
+      if (panel.hidden) return;
+      if (panel.classList.contains('is-minimized')) return;
+      root.style.setProperty('--dev-gallery-thumb-w', `${computeThumbWidth()}px`);
+      const hug = measureOverlayHug();
+      if (!hug) return;
+
+      const minLandscape = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--dev-panel-min-width-landscape'),
+      ) || 344;
+      const viewport = viewportCapPx();
+
+      if (hug.width < minLandscape) {
+        panel.style.minWidth = `${hug.width}px`;
+        panel.style.maxWidth = `${hug.width}px`;
+      } else {
+        panel.style.minWidth = '';
+        panel.style.maxWidth = `${Math.min(hug.width, viewport.width)}px`;
+      }
+      panel.style.maxHeight = `${Math.min(hug.height, viewport.height)}px`;
+
+      const capW = Number.parseFloat(panel.style.maxWidth);
+      const capH = Number.parseFloat(panel.style.maxHeight);
+      const inlineW = Number.parseFloat(panel.style.width);
+      const inlineH = Number.parseFloat(panel.style.height);
+      if (Number.isFinite(inlineW) && Number.isFinite(capW) && inlineW > capW) {
+        panel.style.width = '';
+      }
+      if (Number.isFinite(inlineH) && Number.isFinite(capH) && inlineH > capH) {
+        panel.style.height = '';
+      }
+    };
+
+    const scheduleLayoutCaps = () => {
+      if (layoutCapsRaf) return;
+      layoutCapsRaf = requestAnimationFrame(() => {
+        layoutCapsRaf = 0;
+        applyLayoutCaps();
+      });
+    };
 
     const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
     const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
@@ -674,6 +765,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
             ? 'Every project page is already on this gallery.'
             : 'No project pages found.');
         syncCount();
+        scheduleLayoutCaps();
         return;
       }
 
@@ -712,7 +804,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
         const badge = document.createElement('button');
         badge.type = 'button';
-        badge.className = 'dev-gallery-pages__badge';
+        badge.className = 'dev-gallery-pages__badge dev-eye';
         badge.innerHTML = isOn ? eyeIconHtml : eyeOffIconHtml;
         badge.setAttribute(
           'aria-label',
@@ -738,6 +830,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       }
 
       syncCount();
+      scheduleLayoutCaps();
     };
 
     const loadPages = async () => {
@@ -762,7 +855,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       const grid = currentGrid();
       if (!grid) return;
       activeGrid = grid;
-      if (overlayTitle) overlayTitle.textContent = `Gallery Manager — ${gridLabel(grid)}`;
+      if (overlayTitle) overlayTitle.textContent = resolveDevPanelTitle('gallery-pages', { suffix: gridLabel(grid) });
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       panel.hidden = false;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel } }));
@@ -831,6 +924,15 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
       if (drag) drag.cancel();
       if (!panel.hidden) closePanel();
     }) as EventListener);
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel) return;
+      scheduleLayoutCaps();
+    }) as EventListener);
+
+    new MutationObserver(() => {
+      if (!panel.hidden) scheduleLayoutCaps();
+    }).observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] });
   };
 
   initDevGalleryPages();
@@ -838,71 +940,64 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
 
 <style is:global>
   .dev-overlay[data-dev-panel-key='gallery-pages'] {
-    width: min(34em, calc(100vw - 2em));
     z-index: 50;
   }
 
+  .dev-overlay[data-dev-panel-key='gallery-pages'] .dev-overlay__body {
+    overflow-y: hidden;
+  }
+
   .dev-gallery-pages {
+    --dev-gallery-thumb-h: calc(var(--dev-gallery-thumb-w) * 3 / 4);
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
-    font-size: 0.85rem;
-    max-height: min(28em, calc(100vh - 8em));
+    gap: var(--dev-panel-content-gap);
   }
 
   .dev-gallery-pages__status,
   .dev-gallery-pages__count {
     margin: 0;
-    color: #555;
-    font-size: 0.78em;
+    font: var(--dev-text-status);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .dev-gallery-pages__filters {
-    display: flex;
     flex-wrap: wrap;
-    gap: 0.3em;
-  }
-
-  .dev-gallery-pages__filters button {
-    padding: 0.3em 0.55em;
-    border: 1px solid transparent;
-    border-radius: 0.3em;
-    background: transparent;
-    font: inherit;
-    font-size: 0.78em;
-    line-height: 1.25;
-    cursor: pointer;
-  }
-
-  .dev-gallery-pages__filters button.is-active {
-    border-color: #ccc;
-    background: #f7f7f7;
+    align-self: flex-start;
   }
 
   .dev-gallery-pages__grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.55em;
-    overflow: auto;
-    min-height: 0;
-    max-height: min(25em, calc(100vh - 14em));
+    grid-template-columns: repeat(3, var(--dev-gallery-thumb-w, 1fr));
+    grid-auto-rows: var(--dev-gallery-thumb-h);
+    align-content: start;
+    gap: 8px;
+    width: max-content;
+    max-width: 100%;
+    height: max-content;
+    flex: 0 0 auto;
     padding: 0.15em;
   }
 
   .dev-gallery-pages__card {
     position: relative;
-    width: 100%;
-    border: 1px solid #ddd;
-    border-radius: 0.35em;
+    width: var(--dev-gallery-thumb-w);
+    height: var(--dev-gallery-thumb-h);
+    min-height: var(--dev-gallery-thumb-h);
+    max-height: var(--dev-gallery-thumb-h);
+    flex-shrink: 0;
+    align-self: start;
+    border: 0;
+    border-radius: var(--dev-radius-control);
     overflow: hidden;
-    background: #efefef;
+    background: var(--sys-color-srf-container);
     transition: transform 150ms ease;
   }
 
   .dev-gallery-pages__card.is-dragging {
     z-index: 2;
     transition: none;
-    box-shadow: 0 0.5em 1.2em rgba(0, 0, 0, 0.28);
+    box-shadow: 0 8px 19px rgb(0 0 0 / 0.28);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -911,17 +1006,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     }
   }
 
-  /* 4:3 frame — padding-bottom % is width-relative (aspect-ratio fails with abspos kids). */
-  .dev-gallery-pages__card::before {
-    content: '';
-    display: block;
-    width: 100%;
-    padding-bottom: 75%;
-  }
-
   .dev-gallery-pages__card.is-selected {
-    /* Inset grey ring — thinner than the old 2px black outline. */
-    box-shadow: inset 0 0 0 1px #bbb;
+    box-shadow: inset 0 0 0 1px var(--sys-color-outline);
   }
 
   .dev-gallery-pages__thumb {
@@ -931,7 +1017,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     place-items: center;
     width: 100%;
     height: 100%;
-    padding: 0.55em;
+    padding: 8px;
     border: 0;
     background: transparent;
     cursor: default;
@@ -967,10 +1053,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     position: relative;
     z-index: 0;
     max-width: 100%;
-    color: #6d6d6d;
-    font-size: 0.72em;
+    color: var(--sys-color-on-srf-subtle);
+    font: var(--dev-text-status);
     font-weight: 700;
-    line-height: 1.25;
     letter-spacing: -0.02em;
     text-align: center;
     overflow: hidden;
@@ -980,38 +1065,13 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 12);
     cursor: inherit;
   }
 
-  .dev-gallery-pages__badge {
-    position: absolute;
-    z-index: 1;
-    top: 0.35em;
-    left: 0.35em;
-    display: grid;
-    place-items: center;
-    width: 1.45em;
-    height: 1.45em;
-    border-radius: 0.25em;
-    background: rgba(255, 255, 255, 0.92);
-    color: #333;
-    border: 0;
-    padding: 0;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .dev-gallery-pages__card.is-off .dev-gallery-pages__badge {
-    background: rgba(34, 34, 34, 0.82);
-    color: #fff;
-  }
-
+  /* Dimmed thumbnail, not a disabled control — deliberately not the 45%
+     opacity/disabled token used for disabled controls. */
   .dev-gallery-pages__card.is-off .dev-gallery-pages__thumb img {
     opacity: 0.55;
   }
 
   .dev-gallery-pages__card.is-off.is-placeholder .dev-gallery-pages__placeholder-title {
     opacity: 0.55;
-  }
-
-  .dev-gallery-pages__badge svg {
-    display: block;
   }
 </style>

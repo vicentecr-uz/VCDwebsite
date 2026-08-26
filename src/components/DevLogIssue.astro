@@ -3,87 +3,96 @@ import DevOverlay from './DevOverlay.astro';
 ---
 
 <DevOverlay
-  title="Log new issue"
   storageKey="log-issue"
   panelKey="log-issue"
   defaultHidden
 >
     <div class="dev-log-issue" data-dev-log-issue>
-      <label class="dev-log-issue__field">
-        <span>Title</span>
-        <input type="text" data-log-title autocomplete="off" spellcheck="true" />
+      <label class="dev-log-issue__field dev-field">
+        <span class="dev-field__label">Title</span>
+        <div class="dev-field__value">
+          <input type="text" class="dev-field__input" data-log-title autocomplete="off" spellcheck="true" />
+        </div>
       </label>
 
-      <label class="dev-log-issue__field">
-        <span>Description</span>
-        <textarea data-log-body rows="5" spellcheck="true"></textarea>
+      <label class="dev-log-issue__field dev-field">
+        <span class="dev-field__label">Description</span>
+        <div class="dev-field__value">
+          <textarea class="dev-field__input dev-field__input--area" data-log-body rows="5" spellcheck="true"></textarea>
+        </div>
       </label>
 
       <div
-        class="dev-log-issue__drop"
+        class="dev-log-issue__drop dev-drop"
         data-log-drop
         tabindex="0"
         role="button"
         aria-label="Attach screenshots or recordings"
       >
-        <p class="dev-log-issue__drop-label" data-log-drop-label>
-          Drop screenshots or recordings
-        </p>
-        <ul class="dev-log-issue__files" data-log-files hidden></ul>
-        <input
-          type="file"
-          data-log-file-input
-          accept="image/*,video/*"
-          multiple
-          hidden
-        />
+        <div class="dev-drop__well">
+          <p class="dev-log-issue__drop-label" data-log-drop-label hidden></p>
+          <ul class="dev-log-issue__files" data-log-files hidden></ul>
+          <input
+            type="file"
+            data-log-file-input
+            accept="image/*,video/*"
+            multiple
+            hidden
+          />
+        </div>
       </div>
 
       <div class="dev-log-issue__row">
-        <label class="dev-log-issue__field">
-          <span>Label</span>
-          <select data-log-label required>
-            <option value="">Select…</option>
-          </select>
+        <label class="dev-log-issue__field dev-field">
+          <span class="dev-field__label">Label</span>
+          <div class="dev-field__value">
+            <select class="dev-field__input dev-field__input--select" data-log-label required>
+              <option value="">Select…</option>
+            </select>
+          </div>
         </label>
-        <label class="dev-log-issue__field">
-          <span>Page</span>
-          <select data-log-page-label>
-            <option value="">Select…</option>
-          </select>
+        <label class="dev-log-issue__field dev-field">
+          <span class="dev-field__label">Page</span>
+          <div class="dev-field__value">
+            <select class="dev-field__input dev-field__input--select" data-log-page-label>
+              <option value="">Select…</option>
+            </select>
+          </div>
         </label>
       </div>
 
-      <label class="dev-log-issue__field">
-        <span>Milestone</span>
-        <select data-log-milestone required>
-          <option value="">Select…</option>
-        </select>
+      <label class="dev-log-issue__field dev-field">
+        <span class="dev-field__label">Milestone</span>
+        <div class="dev-field__value">
+          <select class="dev-field__input dev-field__input--select" data-log-milestone required>
+            <option value="">Select…</option>
+          </select>
+        </div>
       </label>
 
       <div class="dev-log-issue__pick-block">
         <div class="dev-log-issue__pick-head">
-          <button type="button" class="dev-log-issue__clear" data-log-clear hidden>
+          <button type="button" class="dev-log-issue__clear dev-btn dev-btn--ghost" data-log-clear hidden>
             Clear
           </button>
         </div>
-        <button type="button" class="dev-log-issue__pick" data-log-pick>
+        <button type="button" class="dev-log-issue__pick dev-btn dev-btn--soft" data-log-pick>
           Pick element on page
         </button>
         <p class="dev-log-issue__picked" data-log-picked hidden></p>
       </div>
 
-      <div class="dev-log-issue__actions">
-        <button type="button" data-log-cancel>Cancel</button>
-        <button type="button" class="dev-log-issue__primary" data-log-submit>Log issue</button>
+      <div class="dev-log-issue__actions dev-panel-actions">
+        <button type="button" class="dev-btn dev-btn--ghost" data-log-cancel>Cancel</button>
+        <button type="button" class="dev-log-issue__primary dev-btn dev-btn--filled" data-log-submit>Log issue</button>
       </div>
 
       <div class="dev-log-issue__veil" data-log-veil hidden>
         <div class="dev-log-issue__veil-card" data-log-veil-card>
           <p class="dev-log-issue__veil-message" data-log-veil-message></p>
           <div class="dev-log-issue__veil-actions" data-log-veil-actions hidden>
-            <button type="button" data-log-veil-no>No</button>
-            <button type="button" class="dev-log-issue__primary" data-log-veil-yes>Yes</button>
+            <button type="button" class="dev-btn dev-btn--ghost" data-log-veil-no>No</button>
+            <button type="button" class="dev-log-issue__primary dev-btn dev-btn--filled" data-log-veil-yes>Yes</button>
           </div>
         </div>
       </div>
@@ -338,7 +347,7 @@ import DevOverlay from './DevOverlay.astro';
       filesList.replaceChildren();
       if (!attachments.length) {
         filesList.hidden = true;
-        dropLabel.hidden = false;
+        dropLabel.hidden = true;
         return;
       }
       dropLabel.hidden = true;
@@ -561,11 +570,27 @@ import DevOverlay from './DevOverlay.astro';
       }
     };
 
-    drop.addEventListener('click', () => fileInput.click());
+    // Single click only focuses the well so it can receive a paste — there is
+    // no separate "File system" button in this state, so the file picker
+    // needs its own gesture. Double-click opens it; Enter/Space do too, since
+    // a keyboard user has no double-click.
+    drop.addEventListener('click', () => drop.focus());
+    drop.addEventListener('dblclick', () => fileInput.click());
     drop.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         fileInput.click();
+      }
+    });
+    drop.addEventListener('paste', (event) => {
+      const items = event.clipboardData?.items;
+      if (!items) return;
+      const files = [...items]
+        .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
+        .filter((file) => file !== null);
+      if (files.length) {
+        event.preventDefault();
+        void addFiles(files);
       }
     });
     fileInput.addEventListener('change', () => {
@@ -687,7 +712,6 @@ import DevOverlay from './DevOverlay.astro';
 
 <style>
   :global(.dev-overlay[data-dev-panel-key='log-issue']) {
-    width: min(28em, calc(100vw - 2em));
     z-index: 55; /* above gallery-pages panel (z-index: 50) when both are open */
   }
 
@@ -695,57 +719,13 @@ import DevOverlay from './DevOverlay.astro';
     position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
-    font-size: 0.85rem;
-  }
-
-  .dev-log-issue__field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.3em;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.7rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-
-  .dev-log-issue__field input,
-  .dev-log-issue__field textarea,
-  .dev-log-issue__field select {
-    width: 100%;
-    border: 0;
-    /* Plain radius — no corner-shape. Hyperellipse moves fill onto a
-       z-index:-1 ::before; inside the overlay's backdrop-filter stacking
-       context that layer drops behind the surface and the fill vanishes on
-       focus (same fight as project chips — see project.css). */
-    border-radius: var(--radius-control);
-    background-color: var(--sys-color-srf-container-high);
-    padding: 0.55em 0.65em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.85rem;
-    letter-spacing: normal;
-    text-transform: none;
-    appearance: none;
-    -webkit-appearance: none;
-  }
-
-  .dev-log-issue__field input:focus,
-  .dev-log-issue__field textarea:focus,
-  .dev-log-issue__field select:focus,
-  .dev-log-issue__field input:focus-visible,
-  .dev-log-issue__field textarea:focus-visible,
-  .dev-log-issue__field select:focus-visible {
-    background-color: var(--sys-color-srf-container-high);
-    /* Inset ring — outer outline is clipped by DevOverlay__surface overflow. */
-    outline: none;
-    box-shadow: inset 0 0 0 1.5px var(--sys-color-on-srf);
+    gap: var(--dev-panel-content-gap);
   }
 
   .dev-log-issue__pick-block {
     display: flex;
     flex-direction: column;
-    gap: 0.35em;
+    gap: 4px;
   }
 
   .dev-log-issue__pick-head {
@@ -754,34 +734,9 @@ import DevOverlay from './DevOverlay.astro';
     min-height: 0;
   }
 
-  .dev-log-issue__clear {
-    border: 0;
-    background: transparent;
-    padding: 0;
-    color: var(--sys-color-on-srf-variant);
-    font: inherit;
-    font-size: 0.7rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .dev-log-issue__clear:hover {
-    color: var(--sys-color-on-srf);
-  }
-
-  .dev-log-issue__clear[hidden] {
-    display: none;
-  }
 
   .dev-log-issue__pick {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
-    padding: 0.55em 0.75em;
     color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
     cursor: pointer;
     text-align: left;
   }
@@ -793,37 +748,18 @@ import DevOverlay from './DevOverlay.astro';
   .dev-log-issue__picked {
     margin: 0;
     color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
-    line-height: 1.35;
+    font: var(--dev-text-label);
     word-break: break-word;
   }
 
-  .dev-log-issue__field textarea {
-    resize: vertical;
-    min-height: 6.5em;
-    line-height: 1.4;
-  }
-
   .dev-log-issue__row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5em;
+    display: flex;
+    gap: 12px;
   }
 
-  .dev-log-issue__drop {
-    border: 1px dashed var(--sys-color-outline-variant);
-    border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 55%, transparent);
-    padding: 0.85em 0.75em;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.8rem;
-    text-align: center;
-    cursor: pointer;
-  }
-
-  .dev-log-issue__drop.is-dragover {
-    border-color: var(--sys-color-on-srf);
-    color: var(--sys-color-on-srf);
+  .dev-log-issue__row > * {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .dev-log-issue__drop-label {
@@ -846,44 +782,21 @@ import DevOverlay from './DevOverlay.astro';
     justify-content: space-between;
     gap: 0.5em;
     color: var(--sys-color-on-srf);
-    font-size: 0.75rem;
+    font: var(--dev-text-status);
   }
 
   .dev-log-issue__files button {
     border: 0;
     background: transparent;
     color: var(--sys-color-on-srf-variant);
-    font: inherit;
-    font-size: 0.7rem;
+    font: var(--dev-text-status);
     cursor: pointer;
   }
 
-  .dev-log-issue__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.4em;
-  }
-
-  .dev-log-issue__actions button,
-  .dev-log-issue__veil-actions button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
-    padding: 0.55em 0.85em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .dev-log-issue__primary {
-    background: var(--sys-color-on-srf) !important;
-    color: var(--sys-color-srf) !important;
-  }
-
+  /* Submitting: .dev-btn:disabled already dims and blocks pointer events —
+     this only says the wait is a request in flight, not a refusal. */
   .dev-log-issue__actions button:disabled {
-    cursor: wait;
-    opacity: 0.55;
+    opacity: var(--dev-opacity-disabled);
   }
 
   .dev-log-issue__veil {

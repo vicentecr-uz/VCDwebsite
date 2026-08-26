@@ -35,15 +35,12 @@ const statusIcons = {
 </dialog>
 
 <DevOverlay
-  title="Project settings"
   storageKey="project-settings"
   panelKey="project-settings"
   defaultHidden
 >
   <div class="dev-project-settings" data-dev-project-settings-root>
-    <p class="dev-project-settings__hint">
-      Title, year, visibility, cover, and span are edited on the card. This panel is for card layout extras.
-    </p>
+    <p class="dev-project-settings__hint" hidden></p>
 
     <div class="dev-project-settings__listing" data-ps-listing-fields>
       <label class="dev-project-settings__field">
@@ -86,6 +83,9 @@ const statusIcons = {
     isRegionDark,
     measureRegionLuma,
   } from '../scripts/coverLuminance';
+  import { resolveDevPanelTitle } from '../lib/devPanelTitles';
+
+  window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
 
   window.__vcdMeasureHoverDark = async function measureHoverDark(file, item) {
     let objectUrl = '';
@@ -588,18 +588,21 @@ const statusIcons = {
     }
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
-      overlayTitle.textContent = `Project settings — ${gridLabel}`;
+      overlayTitle.textContent = window.__vcdResolveDevPanelTitle('project-settings', { suffix: gridLabel });
     }
     if (statusLine instanceof HTMLElement) {
       statusLine.textContent = 'Card background and text colour. Title, visibility, cover, and span edit on the card.';
     }
   };
 
-  const openSettingsPanel = () => {
+  const openSettingsPanel = (trigger) => {
     if (!(settingsPanel instanceof HTMLElement)) return;
     settingsPanel.hidden = false;
     window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
-      detail: { panel: settingsPanel },
+      detail: {
+        panel: settingsPanel,
+        ...(trigger instanceof HTMLElement ? { trigger } : {}),
+      },
     }));
     window.dispatchEvent(new Event('resize'));
   };
@@ -612,7 +615,7 @@ const statusIcons = {
     }
   };
 
-  const openSettings = async (slug) => {
+  const openSettings = async (slug, trigger) => {
     const item = gridItemForSlug(slug);
     if (!(item instanceof HTMLElement)) {
       window.alert('Could not find that project on this page.');
@@ -622,7 +625,7 @@ const statusIcons = {
       const entry = await ensureLoaded(slug, item);
       panelSlug = slug;
       renderPanelFromEntry(entry);
-      openSettingsPanel();
+      openSettingsPanel(trigger);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not load project settings.');
     }
@@ -630,7 +633,10 @@ const statusIcons = {
 
   window.addEventListener('vcd:dev-project-settings-open', ((event) => {
     const slug = String(event.detail?.slug || '').trim();
-    if (slug) void openSettings(slug);
+    const trigger = event.detail?.trigger;
+    if (slug) {
+      void openSettings(slug, trigger instanceof HTMLElement ? trigger : undefined);
+    }
   }));
 
   /** @type {HTMLElement | null} */
@@ -1185,7 +1191,7 @@ const statusIcons = {
         closeSettingsPanel();
         return;
       }
-      void openSettings(slug);
+      void openSettings(slug, settingsButton);
       return;
     }
 
@@ -1527,17 +1533,28 @@ const statusIcons = {
   }
 
   .dev-project-settings {
+    position: relative;
     display: grid;
     gap: 0.65em;
     font-size: 0.82rem;
   }
 
-  .dev-project-settings__hint,
+  .dev-project-settings__hint {
+    display: none;
+  }
+
+  /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
+     stay in the a11y tree. */
   .dev-project-settings__status {
-    margin: 0;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.78rem;
-    line-height: 1.35;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .dev-project-settings__field {

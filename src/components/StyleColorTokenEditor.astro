@@ -3,43 +3,43 @@ import DevOverlay from './DevOverlay.astro';
 ---
 
 <DevOverlay
-  title="Edit colour token"
   storageKey="style-color-token"
   panelKey="style-color-token"
   defaultHidden
 >
   <div class="color-token-editor" data-color-token-editor>
-    <p class="color-token-editor__name" data-token-name>Choose a colour token</p>
-
-    <label class="color-token-editor__field">
-      <span>Hex</span>
-      <div class="color-token-editor__hex-row">
-        <input
-          type="text"
-          class="color-token-editor__input"
-          inputmode="text"
-          maxlength="7"
-          autocomplete="off"
-          spellcheck="false"
-          data-token-hex
-        />
-        <button
-          type="button"
-          class="color-token-editor__swatch"
-          aria-label="Open colour picker"
-          data-token-swatch
-        ></button>
-      </div>
-    </label>
-
-    <div class="color-token-editor__actions">
-      <button type="button" data-token-done>Done</button>
-      <button type="button" data-token-revert>Revert changes</button>
+    <div class="color-token-editor__token">
+      <span class="dev-field__label">Color token</span>
+      <p class="color-token-editor__name" data-token-name>Choose a colour token</p>
     </div>
 
-    <p class="color-token-editor__status" data-token-status aria-live="polite">
-      Changes preview live — use Save in the page bar to write.
-    </p>
+    <div class="color-token-editor__hex-row">
+      <label class="color-token-editor__field dev-field">
+        <span class="dev-field__label">Hex</span>
+        <div class="dev-field__value">
+          <input
+            type="text"
+            class="color-token-editor__input dev-field__input"
+            inputmode="text"
+            maxlength="7"
+            autocomplete="off"
+            spellcheck="false"
+            data-token-hex
+          />
+        </div>
+      </label>
+      <button
+        type="button"
+        class="color-token-editor__swatch"
+        aria-label="Open colour picker"
+        data-token-swatch
+      ></button>
+    </div>
+
+    <div class="color-token-editor__actions dev-panel-actions">
+      <button type="button" class="dev-btn dev-btn--ghost" data-token-revert>Revert changes</button>
+      <button type="button" class="dev-btn dev-btn--filled" data-token-done>Done</button>
+    </div>
 
     <color-picker
       data-token-picker
@@ -72,9 +72,8 @@ import DevOverlay from './DevOverlay.astro';
     const picker = editor.querySelector<ColorPickerElement>('[data-token-picker]');
     const doneButton = editor.querySelector<HTMLButtonElement>('[data-token-done]');
     const revertButton = editor.querySelector<HTMLButtonElement>('[data-token-revert]');
-    const status = editor.querySelector<HTMLElement>('[data-token-status]');
     const panel = editor.closest<HTMLElement>('[data-dev-overlay]');
-    if (!name || !hexInput || !swatch || !picker || !doneButton || !revertButton || !status) {
+    if (!name || !hexInput || !swatch || !picker || !doneButton || !revertButton) {
       return;
     }
 
@@ -134,7 +133,6 @@ import DevOverlay from './DevOverlay.astro';
               savedValue = baseline;
               syncHexField(baseline);
               picker.setAttribute('hex', toPickerHex(baseline));
-              status.textContent = 'Reverted to the last saved colour.';
             }
           },
         },
@@ -148,9 +146,6 @@ import DevOverlay from './DevOverlay.astro';
       swatch.style.background = value;
       if (rewriteField) syncHexField(value);
       syncPending(activeToken, value, savedValue);
-      status.textContent = value === savedValue
-        ? 'Changes preview live — use Save in the page bar to write.'
-        : 'Unsaved — use Save in the page bar to write.';
     };
 
     const openPicker = (hex: string) => {
@@ -177,9 +172,6 @@ import DevOverlay from './DevOverlay.astro';
       name.textContent = token;
       syncHexField(current);
       picker.setAttribute('hex', toPickerHex(current));
-      status.textContent = current === savedValue
-        ? 'Changes preview live — use Save in the page bar to write.'
-        : 'Unsaved — use Save in the page bar to write.';
       if (current !== savedValue) syncPending(token, current, savedValue);
     }) as EventListener);
 
@@ -190,16 +182,14 @@ import DevOverlay from './DevOverlay.astro';
       savedValue = live;
       activeTrigger.dataset.colorTokenSavedValue = live;
       activeTrigger.dataset.colorTokenValue = live;
-      status.textContent = 'Saved — publish styles from the page bar when ready.';
     });
+
+    hexInput.addEventListener('focus', () => hexInput.select());
 
     hexInput.addEventListener('input', () => {
       if (syncingField) return;
       const value = normalizeHex(hexInput.value);
-      if (!value) {
-        status.textContent = 'Enter a 3- or 6-digit hex colour.';
-        return;
-      }
+      if (!value) return;
       // Don't rewrite the input while typing — that resets the caret.
       preview(value, false);
       picker.setAttribute('hex', toPickerHex(value));
@@ -214,10 +204,7 @@ import DevOverlay from './DevOverlay.astro';
 
     swatch.addEventListener('click', () => {
       const value = normalizeHex(hexInput.value) || savedValue;
-      if (!value) {
-        status.textContent = 'Enter a valid hex colour first.';
-        return;
-      }
+      if (!value) return;
       openPicker(value);
     });
 
@@ -231,7 +218,6 @@ import DevOverlay from './DevOverlay.astro';
       if (!activeToken || !savedValue) return;
       preview(savedValue);
       picker.setAttribute('hex', toPickerHex(savedValue));
-      status.textContent = 'Reverted to the last saved colour.';
     });
 
     doneButton.addEventListener('click', () => {
@@ -244,88 +230,60 @@ import DevOverlay from './DevOverlay.astro';
 
 <style>
   .color-token-editor {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 0.65em;
+    gap: var(--dev-panel-content-gap);
+  }
+
+  .color-token-editor__token {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .color-token-editor__name {
-    font-family: ui-monospace, monospace;
-    font-size: 0.8rem;
-  }
-
-  .color-token-editor__field {
-    display: grid;
-    grid-template-columns: 4em 1fr;
-    align-items: center;
-    gap: 0.65em;
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.8rem;
+    margin: 0;
+    font: var(--dev-text-status);
+    color: var(--sys-color-on-srf);
+    word-break: break-all;
   }
 
   .color-token-editor__hex-row {
-    display: grid;
-    grid-template-columns: 1fr 2.4em;
-    gap: 0.4em;
-    align-items: center;
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
   }
 
-  .color-token-editor__field input {
-    width: 100%;
-    min-height: 2.4em;
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
-    color: var(--sys-color-on-srf);
-    font: inherit;
+  .color-token-editor__field {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .color-token-editor__input {
-    padding: 0.5em 0.65em;
     font-family: ui-monospace, monospace;
   }
 
   .color-token-editor__swatch {
-    width: 2.4em;
-    height: 2.4em;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
+    width: 33px;
+    height: 33px;
+    border: 1px solid var(--sys-color-outline);
+    border-radius: var(--dev-radius-control);
     padding: 0;
+    flex: 0 0 auto;
     cursor: pointer;
-  }
-
-  .color-token-editor__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.4em;
-  }
-
-  .color-token-editor__actions button {
-    border: 0;
-    border-radius: var(--radius-control);
-    background: var(--sys-color-srf-container-high);
-    padding: 0.55em;
-    color: var(--sys-color-on-srf);
-    font: inherit;
-    font-size: 0.75rem;
-    cursor: pointer;
-  }
-
-  .color-token-editor__actions button:first-child {
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
   }
 
   .color-token-editor__actions button:disabled {
     cursor: wait;
-    opacity: 0.55;
+    opacity: var(--dev-opacity-disabled);
   }
 
-  .color-token-editor__status {
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.75rem;
-    line-height: 1.35;
+  color-picker[data-token-picker] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
   }
 
   color-picker {

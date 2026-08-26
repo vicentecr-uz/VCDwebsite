@@ -17,48 +17,65 @@ import DevOverlay from '../DevOverlay.astro';
     </span>
   </div>
 
-  <DevOverlay title="Outline marker" storageKey="section-nav-marker" panelKey="section-nav" defaultHidden>
+  <DevOverlay storageKey="section-nav-marker" panelKey="section-nav" defaultHidden>
     <div class="section-nav-editor__popover" data-nav-popover>
       <p class="section-nav-editor__belongs" data-nav-belongs hidden></p>
 
-      <label class="section-nav-editor__row">
-        <input type="checkbox" data-nav-as-group />
-        <span>Section group</span>
-      </label>
-      <label class="section-nav-editor__field" data-nav-group-label-wrap>
-        <span>Group label</span>
-        <input type="text" data-nav-group-label maxlength="120" autocomplete="off" placeholder="Intro" />
-      </label>
+      <div class="section-nav-editor__group">
+        <label class="dev-toggle">
+          <span class="dev-toggle__box">
+            <input type="checkbox" class="dev-toggle__checkbox" data-nav-as-group />
+            <svg class="dev-toggle__check" viewBox="0 0 16 16" width="16" height="16" fill="none"
+                 stroke="currentColor" stroke-width="1.667" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M3.5 8.5l3 3 6-6" />
+            </svg>
+          </span>
+          <span class="dev-toggle__label">Section group</span>
+        </label>
+        <div class="section-nav-editor__field dev-field" data-nav-group-label-wrap>
+          <div class="dev-field__value">
+            <input type="text" class="dev-field__input" data-nav-group-label maxlength="120"
+                   autocomplete="off" placeholder="Group name" aria-label="Group name" />
+          </div>
+        </div>
+      </div>
 
-      <label class="section-nav-editor__row">
-        <input type="checkbox" data-nav-as-section />
-        <span>Section</span>
-      </label>
-      <label class="section-nav-editor__field" data-nav-section-label-wrap>
-        <span>Section label</span>
-        <input type="text" data-nav-section-label maxlength="120" autocomplete="off" placeholder="Overview" />
-      </label>
-
-      <p class="section-nav-editor__hint-inline">
-        A section covers this block and everything below it until the next section or group — you don’t mark every block.
-        Same block can start both a group and a section (e.g. Intro + Overview).
-      </p>
+      <div class="section-nav-editor__group">
+        <label class="dev-toggle">
+          <span class="dev-toggle__box">
+            <input type="checkbox" class="dev-toggle__checkbox" data-nav-as-section />
+            <svg class="dev-toggle__check" viewBox="0 0 16 16" width="16" height="16" fill="none"
+                 stroke="currentColor" stroke-width="1.667" stroke-linecap="round"
+                 stroke-linejoin="round" aria-hidden="true" focusable="false">
+              <path d="M3.5 8.5l3 3 6-6" />
+            </svg>
+          </span>
+          <span class="dev-toggle__label">Section</span>
+        </label>
+        <div class="section-nav-editor__field dev-field" data-nav-section-label-wrap>
+          <div class="dev-field__value">
+            <input type="text" class="dev-field__input" data-nav-section-label maxlength="120"
+                   autocomplete="off" placeholder="Section name" aria-label="Section name" />
+          </div>
+        </div>
+      </div>
 
       <div class="section-nav-editor__title-vis" data-nav-title-vis hidden>
         <p class="section-nav-editor__subtitle">Show in-page title</p>
-        <div class="section-nav-editor__chips" role="group" aria-label="Title visibility">
-          <button type="button" data-title-bp="desktop" aria-pressed="true">D</button>
-          <button type="button" data-title-bp="tablet" aria-pressed="true">T</button>
-          <button type="button" data-title-bp="mobile" aria-pressed="true">M</button>
+        <div class="section-nav-editor__chips dev-segmented" role="group" aria-label="Title visibility">
+          <button type="button" class="dev-btn dev-btn--ghost dev-btn--fill" data-title-bp="desktop" aria-pressed="true">Desktop</button>
+          <button type="button" class="dev-btn dev-btn--ghost dev-btn--fill" data-title-bp="tablet" aria-pressed="true">Tablet</button>
+          <button type="button" class="dev-btn dev-btn--ghost dev-btn--fill" data-title-bp="mobile" aria-pressed="true">Mobile</button>
         </div>
-        <button type="button" class="section-nav-editor__preset" data-nav-hide-sidebar>
+        <button type="button" class="section-nav-editor__preset dev-btn dev-btn--ghost dev-btn--fill" data-nav-hide-sidebar>
           Hide when sidebar shows
         </button>
       </div>
 
-      <div class="section-nav-editor__actions">
-        <button type="button" data-nav-cancel>Cancel</button>
-        <button type="button" class="section-nav-editor__save" data-nav-apply>Apply</button>
+      <div class="section-nav-editor__actions dev-panel-actions">
+        <button type="button" class="dev-btn dev-btn--ghost" data-nav-cancel>Cancel</button>
+        <button type="button" class="section-nav-editor__save dev-btn dev-btn--filled" data-nav-apply>Apply</button>
       </div>
       <p class="section-nav-editor__status" data-nav-status hidden></p>
     </div>
@@ -574,18 +591,16 @@ import DevOverlay from '../DevOverlay.astro';
       sectionLabelInput.value = sectionMarker?.label || '';
       syncMarkerFields();
 
+      // Dropped per Anto (2026-08-25): no explanatory status line — the
+      // element stays (other code still queries it) but never shows text.
+      // The range highlight it used to gate on is still worth keeping live.
       const owned = owningSectionForBlock(block);
+      belongsEl.hidden = true;
       if (owned.section && !sectionMarker) {
-        const groupBit = owned.group ? `${owned.group.label} › ` : '';
-        belongsEl.hidden = false;
-        belongsEl.textContent = `Already in range: ${groupBit}${owned.section.label} (no extra marker needed)`;
         highlightSectionRange(owned.section);
       } else if (sectionMarker) {
-        belongsEl.hidden = false;
-        belongsEl.textContent = 'This section covers blocks below until the next section or group.';
         highlightSectionRange(sectionMarker);
       } else {
-        belongsEl.hidden = true;
         clearRangeHighlights();
       }
 
@@ -891,12 +906,72 @@ import DevOverlay from '../DevOverlay.astro';
       onApply();
     });
 
+    const PANEL_RESIZE_SLOP = 16;
+    let panelGestureActive = false;
+
+    const isPointerOnPanelOrSlop = (
+      clientX: number,
+      clientY: number,
+      target: EventTarget | null,
+    ) => {
+      if (target instanceof Element && target.closest('[data-dev-panel-key="section-nav"]')) {
+        return true;
+      }
+      if (popoverPanel.hidden) return false;
+      const rect = popoverPanel.getBoundingClientRect();
+      return (
+        clientX >= rect.left - PANEL_RESIZE_SLOP &&
+        clientX <= rect.right + PANEL_RESIZE_SLOP &&
+        clientY >= rect.top - PANEL_RESIZE_SLOP &&
+        clientY <= rect.bottom + PANEL_RESIZE_SLOP
+      );
+    };
+
+    document.addEventListener(
+      'pointerdown',
+      (event) => {
+        if (!isActive()) return;
+        if (event.button !== 0) return;
+        if (
+          !popoverPanel.hidden &&
+          isPointerOnPanelOrSlop(event.clientX, event.clientY, event.target)
+        ) {
+          panelGestureActive = true;
+        }
+      },
+      true,
+    );
+
+    document.addEventListener(
+      'pointerup',
+      () => {
+        // Defer so the subsequent click (resize-up) still sees the flag.
+        window.setTimeout(() => {
+          panelGestureActive = false;
+        }, 0);
+      },
+      true,
+    );
+
+    document.addEventListener(
+      'pointercancel',
+      () => {
+        panelGestureActive = false;
+      },
+      true,
+    );
+
     document.addEventListener(
       'click',
       (event) => {
         if (!isActive()) return;
         const target = event.target as HTMLElement | null;
         if (!target) return;
+        // Native vertical resize fires click with target outside the overlay.
+        if (panelGestureActive) {
+          panelGestureActive = false;
+          return;
+        }
         // The whole DevOverlay panel, not just the inner content — its own
         // head (drag handle, traffic lights) sits outside [data-nav-popover].
         if (target.closest('[data-dev-panel-key="section-nav"]')) return;
@@ -988,9 +1063,11 @@ import DevOverlay from '../DevOverlay.astro';
   }
 
   /* The blanket `auto` above outranks the panel's own `cursor: pointer` on
-     buttons/links (higher specificity + !important) — restore it explicitly. */
+     buttons, preset links, and toggles (higher specificity + !important) — restore it explicitly. */
   html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] button:not(:disabled),
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .section-nav-editor__preset {
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .section-nav-editor__preset,
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .dev-toggle,
+  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .dev-toggle * {
     cursor: pointer !important;
   }
 
@@ -1057,24 +1134,29 @@ import DevOverlay from '../DevOverlay.astro';
 
   /* Chrome (position, background, shadow, drag handle, title) comes from DevOverlay. */
   .section-nav-editor__popover {
-    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-content-gap);
+  }
+
+  .section-nav-editor__group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
 
   .section-nav-editor__subtitle {
-    margin: 0 0 0.4em;
-    font-size: 0.78rem;
-    font-weight: 600;
+    margin: 0;
+    font: var(--dev-text-field-label);
     color: var(--sys-color-on-srf-variant);
   }
 
   .section-nav-editor__belongs {
-    margin: 0 0 0.65em;
+    margin: 0;
     padding: 0.45em 0.55em;
-    border-radius: var(--radius-control-smooth);
+    border-radius: var(--dev-radius-control);
     background: var(--sys-color-srf-container-low);
-    font-size: 0.78rem;
-    line-height: 1.35;
-    font-weight: 600;
+    font: var(--dev-text-label);
     color: var(--sys-color-on-srf);
   }
 
@@ -1082,118 +1164,37 @@ import DevOverlay from '../DevOverlay.astro';
     display: none;
   }
 
-  .section-nav-editor__row {
-    display: flex;
-    align-items: center;
-    gap: 0.45em;
-    margin-bottom: 0.45em;
-    font-weight: 600;
-  }
-
-  .section-nav-editor__hint-inline {
-    margin: 0 0 0.75em;
-    font-size: 0.75rem;
-    line-height: 1.35;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .section-nav-editor__field {
-    display: grid;
-    gap: 0.25em;
-    margin: 0 0 0.65em 1.45em;
-  }
-
   .section-nav-editor__field[hidden] {
     display: none;
   }
 
-  .section-nav-editor__field > span {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .section-nav-editor__field input {
-    width: 100%;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: var(--radius-control-smooth);
-    padding: 0.4em 0.5em;
-    font: inherit;
-    background: var(--sys-color-srf-container-low);
-  }
-
-  .section-nav-editor__field input:disabled {
-    opacity: 0.55;
+  .section-nav-editor__field .dev-field__input::placeholder {
+    color: var(--sys-color-on-srf-subtle);
   }
 
   .section-nav-editor__title-vis {
-    margin: 0.25em 0 0.75em;
-    padding-top: 0.55em;
-    border-top: 1px solid color-mix(in srgb, var(--sys-color-outline-variant) 70%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: 8px;
+    margin: 0;
   }
 
+  /* Class kept only for the margin-bottom reset — pill chrome is .dev-segmented. */
   .section-nav-editor__chips {
-    display: flex;
-    gap: 0.35em;
-    margin-bottom: 0.45em;
+    margin-bottom: 0;
+    width: 100%;
   }
 
-  .section-nav-editor__chips button {
-    width: 2.1em;
-    height: 2.1em;
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    background: var(--sys-color-srf-container-high);
-    color: var(--sys-color-on-srf-variant);
-    font: inherit;
-    font-weight: 700;
-    cursor: pointer;
-  }
+  /* No local rule: dev-btn dev-btn--ghost dev-btn--fill on the element owns
+     every declaration this used to carry. The class stays on the element only
+     because the is-section-nav-editing cursor override selects it. */
 
-  .section-nav-editor__chips button.is-on,
-  .section-nav-editor__chips button[aria-pressed='true'] {
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 82%, var(--sys-color-on-srf));
-    color: var(--sys-color-on-srf);
-  }
-
-  .section-nav-editor__preset {
-    border: 0;
-    background: transparent;
-    color: var(--sys-color-on-srf-variant);
-    font: inherit;
-    font-size: 0.78rem;
-    font-weight: 600;
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-    padding: 0;
-    cursor: pointer;
-  }
-
-  .section-nav-editor__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.4em;
-  }
-
-  .section-nav-editor__actions button {
-    border: 0;
-    border-radius: var(--radius-control-smooth);
-    padding: 0.4em 0.7em;
-    font: inherit;
-    font-weight: 600;
-    cursor: pointer;
-    background: var(--sys-color-srf-container-high);
-    color: var(--sys-color-on-srf);
-  }
-
-  .section-nav-editor__save {
-    background: var(--sys-color-on-srf) !important;
-    color: var(--sys-color-srf) !important;
-  }
+  /* display/justify-content/gap now come from .dev-panel-actions. */
 
   .section-nav-editor__status {
-    margin: 0.55em 0 0;
-    font-size: 0.78rem;
+    margin: 0;
+    font: var(--dev-text-label);
     color: var(--sys-color-on-srf-variant);
   }
 
