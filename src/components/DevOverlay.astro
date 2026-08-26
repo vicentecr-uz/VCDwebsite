@@ -197,6 +197,28 @@ const hideSvg = trafficLightIcon(xIcon);
       applyPosition(left, top, true);
     };
 
+    const GAP = 8;
+    const VIEW_INSET = 8;
+
+    const placeBesideTrigger = (trigger: HTMLElement) => {
+      const trig = trigger.getBoundingClientRect();
+      const w = overlay.offsetWidth;
+      const h = overlay.offsetHeight;
+      if (w <= 0 || h <= 0) return;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const roomRight = vw - VIEW_INSET - (trig.right + GAP);
+      const roomLeft = trig.left - GAP - VIEW_INSET;
+      let left: number;
+      if (roomRight >= w) left = trig.right + GAP;
+      else if (roomLeft >= w) left = trig.left - GAP - w;
+      else left = roomRight >= roomLeft ? trig.right + GAP : trig.left - GAP - w;
+      let top = trig.top;
+      if (top + h > vh - VIEW_INSET) top = vh - VIEW_INSET - h;
+      if (top < VIEW_INSET) top = VIEW_INSET;
+      applyPosition(left, top, true);
+    };
+
     /*
       CSS resize writes an inline height. Hiding the body does not shrink
       the frame unless that value is beaten. Snap-to-minimize restores the
@@ -790,6 +812,16 @@ const hideSvg = trafficLightIcon(xIcon);
       event.stopPropagation();
       hideOverlay();
     });
+
+    if (!embedded) {
+      window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ trigger?: HTMLElement; panel?: HTMLElement }>) => {
+        const { trigger, panel } = event.detail ?? {};
+        if (panel !== overlay || !(trigger instanceof HTMLElement)) return;
+        if (overlay.classList.contains('is-minimized')) setMinimized(false);
+        const place = () => placeBesideTrigger(trigger);
+        requestAnimationFrame(() => requestAnimationFrame(place));
+      }) as EventListener);
+    }
 
     minimizeBtn?.addEventListener('click', (event) => {
       event.stopPropagation();
