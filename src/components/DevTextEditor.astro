@@ -3901,14 +3901,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   /*
-    Adaptive edit wash: tint toward the field’s own text color so focus/dirty
+    Adaptive edit wash: tint toward the field’s own text color so dirty
     stays readable on light page copy and dark embeds (e.g. Reddit comments).
+    Focused (selected) uses the same fill as ghost-button hover — lighter,
+    untinted. Dirty keeps the current-color mix, including while focused.
     Dirty + unfocused: wash only — a persistent dashed ring reads as a
     tiny “grid” chrome icon at the top-left corner after click-away.
   */
   html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting):not(.is-dev-mode-settling)
-    [data-dev-text-document]:is(:focus, .is-dev-text-dirty)::after {
+    [data-dev-text-document]:focus::after {
     opacity: 1;
+    background: var(--comp-button-ghost-container-hover);
+  }
+
+  html.is-dev-mode:not(.is-dev-mode-entering):not(.is-dev-mode-exiting):not(.is-dev-mode-settling)
+    [data-dev-text-document].is-dev-text-dirty::after {
+    opacity: 1;
+    background: color-mix(in srgb, currentColor 10%, var(--sys-color-srf-container-low));
   }
 
   /*
