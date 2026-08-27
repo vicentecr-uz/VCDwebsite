@@ -156,23 +156,25 @@ const gridCardTemplateSeed: ProjectGridItem = {
     opacity: 0;
   }
 
-  /* Chip + keyboard — not gated on pointer/hover. Narrow *viewports* still
-     fade; #132 only skipped sticky :hover on coarse pointers (below). */
-  .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--hover,
+  /* Chip — the only way hover shows in Edit (WYSIWYG: cover stays cover
+     while travelling to the crop tuner). Keyboard + pointer hover are live-only. */
   .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
   }
 
   /*
-    Pointer hover. In dev the whole card holds it, not just the <a> — chip
-    rails sit outside the link, so leaving the <a> would snap the image back.
-    Coarse pointers (phones) omit this so a tap does not stick :hover (#132).
+    Live-site pointer / keyboard hover. Coarse pointers omit :hover so a tap
+    does not stick (#132). Edit uses the chip above, not :hover — crossing
+    the gap to the crop tuner must not swap the bitmap.
   */
   @media (hover: hover) and (pointer: fine) {
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover {
+    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
       opacity: 1;
     }
+  }
+
+  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--hover {
+    opacity: 1;
   }
 
   /* No hover image: forced preview still reveals the page ground. With a
@@ -205,16 +207,17 @@ const gridCardTemplateSeed: ProjectGridItem = {
     color: var(--subtitle-ink);
   }
 
-  /* Only cards that actually have a hover image swap ink — same gate as the
-     overlay. Forced + focus-visible always; pointer :hover with the image. */
-  .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__title,
+  /* Ink follows the same gate as the overlay: chip in Edit, pointer/keyboard live. */
   .project-grid__cover.is-dev-hover-forced .project-grid__title {
     color: var(--title-ink-hover);
   }
 
+  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__title {
+    color: var(--title-ink-hover);
+  }
+
   @media (hover: hover) and (pointer: fine) {
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title {
+    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title {
       color: var(--title-ink-hover);
     }
   }
@@ -234,18 +237,19 @@ const gridCardTemplateSeed: ProjectGridItem = {
     color: var(--subtitle-ink-on-page);
   }
 
-  .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__subtitle,
-  .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__teaser-label,
   .project-grid__cover.is-dev-hover-forced .project-grid__subtitle,
   .project-grid__cover.is-dev-hover-forced .project-grid__teaser-label {
     color: var(--subtitle-ink-hover);
   }
 
+  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__subtitle,
+  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__teaser-label {
+    color: var(--subtitle-ink-hover);
+  }
+
   @media (hover: hover) and (pointer: fine) {
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label {
+    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
+    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label {
       color: var(--subtitle-ink-hover);
     }
   }
