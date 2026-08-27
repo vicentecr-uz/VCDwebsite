@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 
 export const THUMB_SIZE = 640;
-export const PREVIEW_SIZE = 1440;
+export const PREVIEW_SIZE = 1920;
 
 const THUMB_SUFFIX = '.thumb.webp';
 const PREVIEW_SUFFIX = '.preview.webp';
