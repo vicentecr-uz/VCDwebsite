@@ -25,6 +25,9 @@ const {
 } = Astro.props;
 
 const hasIcon = Astro.slots.has('icon');
+const hasLabelSlot = Astro.slots.has('default');
+/* Icon-only: skip the default slot so flex gap doesn't reserve space for an empty label. */
+const showLabel = hasLabelSlot || Boolean(label);
 ---
 
 <button
@@ -45,5 +48,5 @@ const hasIcon = Astro.slots.has('icon');
       <slot name="icon" />
     </span>
   )}
-  <slot>{label}</slot>
+  {showLabel && <slot>{label}</slot>}
 </button>
