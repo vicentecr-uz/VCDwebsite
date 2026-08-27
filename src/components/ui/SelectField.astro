@@ -53,3 +53,14 @@ const isGroup = (item: SelectOption | SelectGroup): item is SelectGroup =>
     )}
   </select>
 </Field>
+
+<script>
+  // After a choice the field is done — leave it focused and Esc feels like
+  // "deselect this control" instead of the next layer (close panel).
+  document.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLSelectElement)) return;
+    if (!target.classList.contains('dev-field__input--select')) return;
+    target.blur();
+  });
+</script>
