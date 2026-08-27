@@ -1843,7 +1843,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           window.clearTimeout(wheelIdleTimer);
           wheelIdleTimer = 0;
         }
-        gestureUndoCaptured.value = false;
         gestureBounds = null;
         wheelSpeedEma = 0;
         if (paintRaf) {
@@ -1851,6 +1850,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           flushGesturePaint();
         }
         flushGestureChrome(true);
+        // Reset after the last paint — a pending RAF would otherwise push a
+        // second pose for the same gesture (Cmd+Z would only undo one frame).
+        gestureUndoCaptured.value = false;
       };
 
       const armWheelIdleFlush = () => {
