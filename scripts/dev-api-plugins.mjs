@@ -48,6 +48,10 @@ function listingCardForGrid(grid, listing, previous = {}) {
   if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
     base.variants = structuredClone(variants);
   }
+  const hoverVariants = listing.hoverVariants ?? previous.hoverVariants;
+  if (hoverVariants && typeof hoverVariants === 'object' && !Array.isArray(hoverVariants)) {
+    base.hoverVariants = structuredClone(hoverVariants);
+  }
   const srcWidth = Number(listing.srcWidth ?? previous.srcWidth);
   const srcHeight = Number(listing.srcHeight ?? previous.srcHeight);
   if (Number.isFinite(srcWidth) && srcWidth > 0) base.srcWidth = Math.round(srcWidth);
@@ -819,6 +823,14 @@ function coverForGalleryPage(data, grid) {
     order: Number.isFinite(order) ? order : Number.POSITIVE_INFINITY,
     variants,
   };
+  const hoverVariants = listing.hoverVariants
+    && typeof listing.hoverVariants === 'object'
+    && !Array.isArray(listing.hoverVariants)
+    ? structuredClone(listing.hoverVariants)
+    : undefined;
+  if (hoverVariants) {
+    cover.hoverVariants = hoverVariants;
+  }
   if (typeof listing.hoverDark === 'boolean') {
     cover.hoverDark = listing.hoverDark;
   }

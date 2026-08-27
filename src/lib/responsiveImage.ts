@@ -271,16 +271,32 @@ const normalizeVariant = (
  */
 export function normalizeImageVariants(
   variants: ImageVariants | undefined,
-  fallbackAspect: string,
+  fallbackAspect: string | Record<ImageViewport, string>,
   srcDims?: ImageSourceDims | null,
 ): Record<ImageViewport, ImageVariant> {
   const srcAspect = srcDims && srcDims.width > 0 && srcDims.height > 0
     ? srcDims.width / srcDims.height
     : null;
 
+  const aspectFor = (viewport: ImageViewport, inherited: ImageVariant): string => (
+    typeof fallbackAspect === 'string'
+      ? fallbackAspect
+      : (fallbackAspect[viewport] ?? inherited.aspect)
+  );
+
   const normalized = {} as Record<ImageViewport, ImageVariant>;
-  let fallback: ImageVariant = { aspect: fallbackAspect, cx: 0.5, cy: 0.5, w: 1 };
+  let fallback: ImageVariant = {
+    aspect: typeof fallbackAspect === 'string' ? fallbackAspect : fallbackAspect.desktop,
+    cx: 0.5,
+    cy: 0.5,
+    w: 1,
+  };
   for (const viewport of VIEWPORTS) {
+    fallback = {
+      ...fallback,
+      aspect: aspectFor(viewport, fallback),
+      w: coverWidthFraction(aspectFor(viewport, fallback), srcAspect),
+    };
     normalized[viewport] = normalizeVariant(variants?.[viewport], fallback, srcAspect);
     fallback = normalized[viewport];
   }
@@ -329,6 +345,20 @@ export function responsiveImageStyle(
       `--project-content-w-${viewport}:${variant.w}`,
       `--project-content-cx-${viewport}:${variant.cx}`,
       `--project-content-cy-${viewport}:${variant.cy}`,
+    ];
+  }).join(';');
+}
+
+/** Hover bitmap pan/zoom — frame aspect stays on cover `responsiveImageStyle`. */
+export function hoverCropStyle(
+  variants: Record<ImageViewport, ImageVariant>,
+): string {
+  return VIEWPORTS.flatMap((viewport) => {
+    const variant = variants[viewport];
+    return [
+      `--project-hover-content-w-${viewport}:${variant.w}`,
+      `--project-hover-content-cx-${viewport}:${variant.cx}`,
+      `--project-hover-content-cy-${viewport}:${variant.cy}`,
     ];
   }).join(';');
 }

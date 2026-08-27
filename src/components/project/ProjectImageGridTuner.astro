@@ -102,6 +102,7 @@ import Button from '../ui/Button.astro';
     <p class="project-grid-tuner__hint" hidden></p>
 
     <PanelActions>
+      <Button emphasis="ghost" label="Cancel" data-grid-cancel />
       <Button emphasis="ghost" label="Clear" hidden data-grid-clear-override />
       <Button emphasis="ghost" label="Revert changes" data-grid-revert />
       <Button emphasis="filled" label="Save changes" data-grid-save />
@@ -142,6 +143,7 @@ import Button from '../ui/Button.astro';
     const parkingHint = tuner.querySelector<HTMLElement>('[data-grid-parking-hint]');
     const inheritNote = tuner.querySelector<HTMLElement>('[data-grid-inherit]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-grid-save]');
+    const cancelButton = tuner.querySelector<HTMLButtonElement>('[data-grid-cancel]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-grid-revert]');
     const clearOverrideButton = tuner.querySelector<HTMLButtonElement>('[data-grid-clear-override]');
     const status = tuner.querySelector<HTMLElement>('[data-grid-status]');
@@ -843,9 +845,20 @@ import Button from '../ui/Button.astro';
       if (target) selectTarget(target, true);
     }) as EventListener);
 
+    const revertToSaved = () => {
+      draftColumns = { ...savedColumns };
+      draftConstrained = { ...savedConstrained };
+      draftAspect = savedAspect;
+      draftMatchHeight = savedMatchHeight;
+      draftLayouts = cloneLayouts(savedLayouts);
+      renderDraft();
+    };
+
     window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
-      const trigger = event.detail?.trigger as HTMLElement | undefined;
-      if (trigger?.dataset.devEditTrigger === 'grid') liveApply = false;
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      if (!panel || panel.dataset.devPanelKey !== 'grid') return;
+      revertToSaved();
+      liveApply = false;
     }) as EventListener);
 
     selectTarget(initialTarget, false);
@@ -901,13 +914,13 @@ import Button from '../ui/Button.astro';
 
     saveButton.addEventListener('click', saveDraft);
 
+    cancelButton?.addEventListener('click', () => {
+      revertToSaved();
+      closePanel();
+    });
+
     revertButton.addEventListener('click', () => {
-      draftColumns = { ...savedColumns };
-      draftConstrained = { ...savedConstrained };
-      draftAspect = savedAspect;
-      draftMatchHeight = savedMatchHeight;
-      draftLayouts = cloneLayouts(savedLayouts);
-      renderDraft();
+      revertToSaved();
       status.textContent = 'Reverted to the last saved grid settings.';
     });
 

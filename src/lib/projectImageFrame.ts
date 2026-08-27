@@ -1,4 +1,5 @@
 import {
+  coverWidthFraction,
   imageGridItemLayoutStyle,
   normalizeImageVariants,
   responsiveImageStyle,
@@ -10,6 +11,7 @@ import {
   type ImageVariant,
   type ImageVariants,
   type ImageViewport,
+  IMAGE_VIEWPORTS,
 } from './responsiveImage';
 import {
   resolveImageCaptionPosition,
@@ -155,22 +157,74 @@ export interface ImageDevEditContext {
   maxVh?: MaxVhPercent;
 }
 
+/** Per-viewport default frame aspects for gallery listing covers (seed only). */
+export function listingCoverDefaultAspects(
+  grid: 'home' | 'work' | 'play',
+  full: boolean,
+): Record<ImageViewport, string> {
+  const desktopTablet = grid === 'work' && full ? '16:9' : '4:3';
+  const mobile = grid === 'home' ? '4:3' : '1:1';
+  return { desktop: desktopTablet, tablet: desktopTablet, mobile };
+}
+
+function seedHoverVariants(
+  coverVariants: Record<ImageViewport, ImageVariant>,
+  hoverVariants: ImageVariants | undefined,
+  hoverSrcAspect: number | null,
+): Record<ImageViewport, ImageVariant> {
+  const seeded = {} as Record<ImageViewport, ImageVariant>;
+  let fallback: ImageVariant = {
+    aspect: coverVariants.desktop.aspect,
+    cx: 0.5,
+    cy: 0.5,
+    w: coverWidthFraction(coverVariants.desktop.aspect, hoverSrcAspect),
+  };
+  for (const viewport of IMAGE_VIEWPORTS) {
+    const linkedAspect = coverVariants[viewport].aspect;
+    fallback = {
+      aspect: linkedAspect,
+      cx: 0.5,
+      cy: 0.5,
+      w: coverWidthFraction(linkedAspect, hoverSrcAspect),
+    };
+    const existing = hoverVariants?.[viewport];
+    seeded[viewport] = {
+      aspect: linkedAspect,
+      cx: existing?.cx ?? fallback.cx,
+      cy: existing?.cy ?? fallback.cy,
+      w: existing?.w ?? fallback.w,
+    };
+    fallback = seeded[viewport];
+  }
+  return seeded;
+}
+
 /** Listing-cover crop attrs — shared by ProjectGrid SSR and Gallery Manager fill. */
 export function listingCoverDevEditAttrs(
   slug: string,
   grid: 'home' | 'work' | 'play',
-  item: { variants?: ImageVariants; srcWidth?: unknown; srcHeight?: unknown },
-  defaultAspect: string,
+  item: {
+    variants?: ImageVariants;
+    hoverVariants?: ImageVariants;
+    srcWidth?: unknown;
+    srcHeight?: unknown;
+  },
+  full: boolean,
 ): Record<string, string> {
+  const defaultAspects = listingCoverDefaultAspects(grid, full);
   const srcDims = imageSourceDims(item);
-  const seedVariants = normalizeImageVariants(item.variants, defaultAspect, srcDims);
-  return imageDevEditAttrs(true, {
+  const seedCoverVariants = normalizeImageVariants(item.variants, defaultAspects, srcDims);
+  const seededHoverVariants = seedHoverVariants(seedCoverVariants, item.hoverVariants, null);
+  const attrs = imageDevEditAttrs(true, {
     documentKey: slug,
     path: ['listings', grid],
     cropId: `listing-${grid}`,
-    variants: seedVariants,
-    gridDefaultAspect: defaultAspect,
+    variants: seedCoverVariants,
+    hasOwnVariants: hasCropVariants(item.variants),
   }) ?? {};
+  attrs['data-dev-listing-default-aspects'] = JSON.stringify(defaultAspects);
+  attrs['data-dev-hover-variants'] = JSON.stringify(seededHoverVariants);
+  return attrs;
 }
 
 export function imageDevEditAttrs(
