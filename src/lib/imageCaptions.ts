@@ -14,17 +14,16 @@ export function isBelowImageCaptionStyle(style: ImageCaptionStyleId): boolean {
   return style === 'below';
 }
 
-/** Overlay caption corner (Dev Mode tuner + project images). */
+/** Overlay caption alignment along the bottom edge (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_POSITIONS = [
-  { id: 'bottom-left', label: 'Bottom left' },
-  { id: 'top-left', label: 'Top left' },
-  { id: 'bottom-right', label: 'Bottom right' },
-  { id: 'top-right', label: 'Top right' },
+  { id: 'left', label: 'Left' },
+  { id: 'center', label: 'Center' },
+  { id: 'right', label: 'Right' },
 ] as const;
 
 export type ImageCaptionPositionId = (typeof IMAGE_CAPTION_POSITIONS)[number]['id'];
 
-export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionPositionId = 'bottom-left';
+export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionPositionId = 'left';
 
 /** How the caption appears at a breakpoint. */
 export const IMAGE_CAPTION_REVEALS = [
@@ -80,9 +79,22 @@ export function isImageCaptionPositionId(value: unknown): value is ImageCaptionP
   return IMAGE_CAPTION_POSITIONS.some((position) => position.id === value);
 }
 
-/** Resolve corner id; missing / unknown → bottom-left. */
+/** Resolve bottom-edge alignment; legacy corner ids map forward; missing / unknown → left. */
 export function resolveImageCaptionPosition(value: unknown): ImageCaptionPositionId {
-  return isImageCaptionPositionId(value) ? value : DEFAULT_IMAGE_CAPTION_POSITION;
+  switch (value) {
+    case 'left':
+    case 'bottom-left':
+    case 'top-left':
+      return 'left';
+    case 'center':
+      return 'center';
+    case 'right':
+    case 'bottom-right':
+    case 'top-right':
+      return 'right';
+    default:
+      return DEFAULT_IMAGE_CAPTION_POSITION;
+  }
 }
 
 /** On-image overlay uses base `.project-caption`; below adds a modifier class. */
