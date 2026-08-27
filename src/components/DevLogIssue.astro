@@ -30,7 +30,7 @@ import DevOverlay from './DevOverlay.astro';
         aria-label="Attach screenshots or recordings"
       >
         <div class="dev-drop__well">
-          <p class="dev-log-issue__drop-label" data-log-drop-label hidden></p>
+          <p class="dev-log-issue__drop-label" data-log-drop-label>Drop screenshots or recordings, or paste</p>
           <ul class="dev-log-issue__files" data-log-files hidden></ul>
           <input
             type="file"
@@ -102,6 +102,8 @@ import DevOverlay from './DevOverlay.astro';
 <div class="dev-log-issue-pick-outline" data-log-pick-outline hidden></div>
 
 <script>
+  import { getLastPointerPosition } from '../lib/lastPointer';
+
   type Attachment = { filename: string; data: string; mimeType: string };
 
   const initDevLogIssue = () => {
@@ -238,6 +240,10 @@ import DevOverlay from './DevOverlay.astro';
 
     const openPanel = () => {
       panel.hidden = false;
+      const { x, y } = getLastPointerPosition();
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
+        detail: { panel, clientX: x, clientY: y },
+      }));
       void loadMeta().then(() => autoFillPageLabel());
       requestAnimationFrame(() => titleInput.focus());
     };
@@ -343,11 +349,14 @@ import DevOverlay from './DevOverlay.astro';
       reader.readAsDataURL(file);
     });
 
+    const DEFAULT_DROP_HINT = dropLabel.textContent || '';
+
     const renderFiles = () => {
       filesList.replaceChildren();
       if (!attachments.length) {
         filesList.hidden = true;
-        dropLabel.hidden = true;
+        dropLabel.textContent = DEFAULT_DROP_HINT;
+        dropLabel.hidden = false;
         return;
       }
       dropLabel.hidden = true;
@@ -556,7 +565,9 @@ import DevOverlay from './DevOverlay.astro';
           link.textContent = payload.url;
           veilMessage.append(document.createElement('br'), link);
         }
-        window.setTimeout(() => closePanel(), 1600);
+        window.setTimeout(() => {
+          if (veilMode === 'done') resetForm();
+        }, 2500);
       } catch (error) {
         hideVeil();
         veilMode = 'idle';
@@ -666,6 +677,15 @@ import DevOverlay from './DevOverlay.astro';
     veilYes.addEventListener('click', () => closePanel());
     submitButton.addEventListener('click', () => void submitIssue());
 
+    // Done veil: clicking anywhere but the issue link dismisses back to the
+    // (now-reset) form instead of waiting for the auto-close timer to lapse.
+    veil.addEventListener('click', (event) => {
+      if (veilMode !== 'done') return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('a')) return;
+      resetForm();
+    });
+
     // Capture Esc so cancel-confirm / pick-mode / form-dismiss win over DevModeController.
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyI') {
@@ -698,7 +718,15 @@ import DevOverlay from './DevOverlay.astro';
         return;
       }
 
-      if (veilMode === 'logging' || veilMode === 'done') return;
+      if (veilMode === 'logging') return;
+
+      if (veilMode === 'done') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        // Nothing left to lose after a successful submit — close directly.
+        closePanel();
+        return;
+      }
 
       // Form open: Esc acts like Cancel.
       event.preventDefault();
@@ -808,9 +836,11 @@ import DevOverlay from './DevOverlay.astro';
     align-items: center;
     justify-content: center;
     border-radius: inherit;
-    /* Frosted veil over the form — soft fill so the muted fields still read underneath. */
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 88%, transparent);
-    backdrop-filter: blur(2px);
+    /* Solid fill, not a frosted blur — backdrop-filter sampled past this
+       box's own edges (into the panel's padding ring, under focus rings,
+       etc.) and read as sharply clipped there since the panel frame clips
+       overflow for its rounded corners. A flat fill has no sampling to clip. */
+    background: var(--sys-color-srf);
     padding: 1em;
     opacity: 0;
     pointer-events: none;
