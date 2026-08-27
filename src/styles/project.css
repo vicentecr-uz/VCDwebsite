@@ -2045,3 +2045,69 @@ h3.project-section-title {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Preview sharpen reveal (thumb → preview) ─────────────── */
+
+@property --preview-reveal-y {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 0%;
+}
+
+img[data-preview-reveal] {
+  pointer-events: none;
+  --preview-reveal-y: 0%;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 max(0%, calc(var(--preview-reveal-y) - 14%)),
+    transparent min(100%, calc(var(--preview-reveal-y) + 14%)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 max(0%, calc(var(--preview-reveal-y) - 14%)),
+    transparent min(100%, calc(var(--preview-reveal-y) + 14%)),
+    transparent 100%
+  );
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  transition: --preview-reveal-y 0.5s ease;
+}
+
+img[data-preview-reveal].is-revealing {
+  --preview-reveal-y: 100%;
+}
+
+:is(.project-image, .project-media, .project-crop-clip, .project-grid__stack, .project-image-grid__frame, .project-image-carousel__clip)
+  > img[data-preview-reveal] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* About photo: in-flow img — opacity-only sharpen (no clone stack). */
+img.area-photo.image-preview-reveal--fade-only {
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+
+img.area-photo.image-preview-reveal--fade-only.is-revealing {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  img[data-preview-reveal] {
+    -webkit-mask-image: none;
+    mask-image: none;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+
+  img[data-preview-reveal].is-revealing {
+    opacity: 1;
+  }
+}
