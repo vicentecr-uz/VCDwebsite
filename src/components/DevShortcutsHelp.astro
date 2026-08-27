@@ -1,6 +1,6 @@
 ---
 const shortcuts = [
-  { key: '⌥D', name: 'Dev mode' },
+  { key: '⌥E', name: 'Edit mode' },
   { key: '⌥M', name: 'Panels' },
   { key: '⌥A', name: 'Asset manager' },
   { key: '⌥P', name: 'Gallery pages' },
@@ -41,8 +41,6 @@ const shortcuts = [
     if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
 
     const VEIL_MS = 180;
-    /** @type {HTMLElement | null} */
-    let previousFocus = null;
     let closeTimer = null;
 
     const isOpen = () => root.classList.contains('is-dev-shortcuts-open');
@@ -57,11 +55,9 @@ const shortcuts = [
         clearTimeout(closeTimer);
         closeTimer = null;
       }
-      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       root.hidden = false;
       requestAnimationFrame(() => {
         root.classList.add('is-dev-shortcuts-open');
-        card.focus({ preventScroll: true });
       });
     };
 
@@ -74,8 +70,6 @@ const shortcuts = [
       closeTimer = window.setTimeout(() => {
         root.hidden = true;
         closeTimer = null;
-        previousFocus?.focus?.({ preventScroll: true });
-        previousFocus = null;
       }, VEIL_MS);
     };
 
@@ -171,7 +165,7 @@ const shortcuts = [
   .dev-shortcuts-help__item {
     display: grid;
     grid-template-columns: 5.5em 1fr;
-    column-gap: 1em;
+    column-gap: 0.4em;
     align-items: baseline;
     font-size: var(--text-body-size);
     font-weight: var(--text-body-weight);
