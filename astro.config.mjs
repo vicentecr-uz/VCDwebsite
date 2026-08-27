@@ -1496,7 +1496,9 @@ function contentSectionDevWriter() {
               ? 'fillPlaceholder'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
-                : 'insert';
+                : body.action === 'convert'
+                  ? 'convert'
+                  : 'insert';
           const index = Number(body.index);
 
           if (!relativeFile) {
@@ -1605,6 +1607,65 @@ function contentSectionDevWriter() {
               id: existing.id,
               type: existing.type,
               section: existing,
+            });
+            return;
+          }
+
+          if (action === 'convert') {
+            if (index >= data.sections.length) {
+              send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+              return;
+            }
+            const existing = data.sections[index];
+            if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+              send(400, { error: 'That section cannot be converted.' });
+              return;
+            }
+            const existingType = String(existing.type || '');
+            if (existingType !== 'bodyText' && existingType !== 'sectionTitle') {
+              send(400, { error: 'That section cannot be converted.' });
+              return;
+            }
+            if (type !== 'bodyText' && type !== 'sectionTitle') {
+              send(400, { error: 'That section cannot be converted.' });
+              return;
+            }
+
+            if (existingType === 'bodyText' && type === 'sectionTitle') {
+              const paragraphs = Array.isArray(existing.paragraphs)
+                ? existing.paragraphs.map((value) => String(value ?? ''))
+                : [''];
+              const level = Number(body.level) === 3 ? 3 : 2;
+              const next = {
+                ...existing,
+                type: 'sectionTitle',
+                title: paragraphs.join('\n'),
+                level,
+              };
+              delete next.paragraphs;
+              data.sections[index] = next;
+            } else if (existingType === 'sectionTitle' && type === 'bodyText') {
+              const title = String(existing.title ?? '');
+              const next = {
+                ...existing,
+                type: 'bodyText',
+                paragraphs: title.split('\n'),
+              };
+              delete next.title;
+              delete next.level;
+              delete next.sectionId;
+              data.sections[index] = next;
+            } else if (existingType === 'sectionTitle' && type === 'sectionTitle') {
+              existing.level = Number(body.level) === 3 ? 3 : 2;
+            }
+
+            await writeContentJson(file, data);
+            send(200, {
+              ok: true,
+              action: 'convert',
+              index,
+              type,
+              section: data.sections[index],
             });
             return;
           }
