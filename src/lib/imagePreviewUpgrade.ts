@@ -5,13 +5,9 @@ const candidates = new Set<HTMLImageElement>();
 const thumbPreloaded = new WeakSet<HTMLImageElement>();
 const previewLoaded = new WeakMap<HTMLImageElement, string>();
 
-let thumbPreloadObserver: IntersectionObserver | null = null;
-let fetchObserver: IntersectionObserver | null = null;
 let swapObserver: IntersectionObserver | null = null;
 
 const SWAP_MARGIN_PX = 200;
-const FETCH_ROOT_MARGIN = '80% 0px';
-const THUMB_PRELOAD_ROOT_MARGIN = '150% 0px';
 const REVEAL_DURATION_MS = 500;
 
 function previewMatchesCurrent(preview: string, img: HTMLImageElement): boolean {
@@ -33,8 +29,6 @@ function cleanupCandidate(img: HTMLImageElement): void {
   delete img.dataset.imagePreviewUpgrading;
   delete img.dataset.imagePreviewRevealing;
   candidates.delete(img);
-  thumbPreloadObserver?.unobserve(img);
-  fetchObserver?.unobserve(img);
   swapObserver?.unobserve(img);
 }
 
@@ -46,8 +40,6 @@ function finishUpgrade(img: HTMLImageElement, preview: string, clone?: HTMLImage
   delete img.dataset.imagePreviewRevealing;
   candidates.delete(img);
   clone?.remove();
-  thumbPreloadObserver?.unobserve(img);
-  fetchObserver?.unobserve(img);
   swapObserver?.unobserve(img);
 }
 
@@ -63,16 +55,11 @@ function isIntersectingWithMargin(img: HTMLImageElement, marginPx: number): bool
   );
 }
 
-function isInFetchZone(img: HTMLImageElement): boolean {
-  const vh = window.innerHeight || document.documentElement.clientHeight;
-  return isIntersectingWithMargin(img, vh * 0.8);
-}
-
 function preloadThumb(img: HTMLImageElement): void {
   if (thumbPreloaded.has(img)) return;
   thumbPreloaded.add(img);
   const thumb = new Image();
-  thumb.src = img.currentSrc || img.src;
+  thumb.src = img.getAttribute('src') || img.currentSrc || img.src;
 }
 
 function startPreviewFetch(img: HTMLImageElement): void {
@@ -100,6 +87,21 @@ function startPreviewFetch(img: HTMLImageElement): void {
     delete img.dataset.imagePreviewUpgrading;
   };
   hi.src = preview;
+}
+
+function pinCloneToThumb(thumb: HTMLImageElement, clone: HTMLImageElement): void {
+  const position = getComputedStyle(thumb).position;
+  if (position === 'absolute' || position === 'fixed') return;
+  const cs = getComputedStyle(thumb);
+  clone.style.position = 'absolute';
+  clone.style.left = `${thumb.offsetLeft}px`;
+  clone.style.top = `${thumb.offsetTop}px`;
+  clone.style.width = `${thumb.offsetWidth}px`;
+  clone.style.height = `${thumb.offsetHeight}px`;
+  clone.style.margin = '0';
+  clone.style.maxWidth = 'none';
+  clone.style.objectFit = cs.objectFit;
+  clone.style.objectPosition = cs.objectPosition;
 }
 
 function revealAboutFade(img: HTMLImageElement, preview: string): void {
@@ -145,6 +147,7 @@ function revealWithClone(img: HTMLImageElement, preview: string): void {
   }
 
   img.insertAdjacentElement('afterend', clone);
+  pinCloneToThumb(img, clone);
 
   let finished = false;
   const done = () => {
@@ -182,7 +185,6 @@ function performReveal(img: HTMLImageElement): void {
   if (img.dataset.imagePreviewRevealing === 'true') return;
   img.dataset.imagePreviewRevealing = 'true';
 
-  fetchObserver?.unobserve(img);
   swapObserver?.unobserve(img);
 
   if (isAboutPhoto(img)) {
@@ -203,7 +205,7 @@ function trySwap(img: HTMLImageElement): void {
   }
 
   if (previewLoaded.get(img) !== preview) {
-    if (img.dataset.imagePreviewUpgrading !== 'true' && isInFetchZone(img)) {
+    if (img.dataset.imagePreviewUpgrading !== 'true' && isIntersectingWithMargin(img, SWAP_MARGIN_PX)) {
       startPreviewFetch(img);
     }
     return;
@@ -212,41 +214,6 @@ function trySwap(img: HTMLImageElement): void {
   if (!isIntersectingWithMargin(img, SWAP_MARGIN_PX)) return;
 
   performReveal(img);
-}
-
-function ensureThumbPreloadObserver(): IntersectionObserver {
-  if (thumbPreloadObserver) return thumbPreloadObserver;
-
-  thumbPreloadObserver = new IntersectionObserver(
-    (entries) => {
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        const img = entry.target as HTMLImageElement;
-        thumbPreloadObserver!.unobserve(img);
-        preloadThumb(img);
-      }
-    },
-    { rootMargin: THUMB_PRELOAD_ROOT_MARGIN },
-  );
-
-  return thumbPreloadObserver;
-}
-
-function ensureFetchObserver(): IntersectionObserver {
-  if (fetchObserver) return fetchObserver;
-
-  fetchObserver = new IntersectionObserver(
-    (entries) => {
-      if (!gateOpen) return;
-      for (const entry of entries) {
-        if (!entry.isIntersecting) continue;
-        startPreviewFetch(entry.target as HTMLImageElement);
-      }
-    },
-    { rootMargin: FETCH_ROOT_MARGIN },
-  );
-
-  return fetchObserver;
 }
 
 function ensureSwapObserver(): IntersectionObserver {
@@ -268,12 +235,10 @@ function ensureSwapObserver(): IntersectionObserver {
 
 function registerCandidate(img: HTMLImageElement): void {
   candidates.add(img);
-  ensureThumbPreloadObserver().observe(img);
-  ensureFetchObserver().observe(img);
+  preloadThumb(img);
   ensureSwapObserver().observe(img);
 
   if (gateOpen) {
-    if (isInFetchZone(img)) startPreviewFetch(img);
     trySwap(img);
   }
 }
@@ -302,7 +267,6 @@ export function openImagePreviewUpgrade(): void {
       candidates.delete(img);
       continue;
     }
-    if (isInFetchZone(img)) startPreviewFetch(img);
     trySwap(img);
   }
 }

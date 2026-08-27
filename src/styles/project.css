@@ -2080,15 +2080,9 @@ img[data-preview-reveal].is-revealing {
   --preview-reveal-y: 100%;
 }
 
-/* Not `.project-crop-clip` — those clones must keep the crop transform, not cover-fit. */
-:is(.project-image, .project-media, .project-grid__stack, .project-image-grid__frame, .project-image-carousel__clip)
-  > img[data-preview-reveal] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
+/* Wipe clones inherit the thumb's layout (crop transform / stack inset).
+   Do not set inset, width/height 100%, or object-fit: cover on [data-preview-reveal] —
+   that pins the bitmap top-left (see ProjectGrid.astro). */
 
 /* About photo: in-flow img — opacity-only sharpen (no clone stack). */
 img.area-photo.image-preview-reveal--fade-only {
