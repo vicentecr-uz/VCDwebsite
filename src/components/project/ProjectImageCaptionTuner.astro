@@ -44,6 +44,7 @@ import {
     />
 
     <PanelActions>
+      <Button emphasis="ghost" label="Cancel" data-caption-cancel />
       <Button emphasis="ghost" label="Clear" data-caption-clear />
       <Button emphasis="ghost" label="Revert changes" data-caption-revert />
       <Button emphasis="filled" label="Save changes" data-caption-save />
@@ -100,6 +101,7 @@ import {
     const textArea = tuner.querySelector<HTMLTextAreaElement>('[data-caption-text]');
     const status = tuner.querySelector<HTMLElement>('[data-caption-status]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-caption-save]');
+    const cancelButton = tuner.querySelector<HTMLButtonElement>('[data-caption-cancel]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-caption-revert]');
     const clearButton = tuner.querySelector<HTMLButtonElement>('[data-caption-clear]');
     if (
@@ -674,7 +676,7 @@ import {
       status.textContent = 'Caption cleared — keep typing, or click away to show Add caption.';
     });
 
-    revertButton.addEventListener('click', () => {
+    const revertToSaved = () => {
       if (!editTarget) return;
       const pendingId = pendingIdFor(editTarget);
       const baseline = diskBaselines.get(pendingId) ?? {
@@ -693,8 +695,23 @@ import {
       savedReveals = structuredClone(baseline.captionReveals);
       applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals);
       renderFields();
+    };
+
+    cancelButton?.addEventListener('click', () => {
+      revertToSaved();
+      closePanel();
+    });
+
+    revertButton.addEventListener('click', () => {
+      revertToSaved();
       status.textContent = 'Reverted to last saved caption.';
     });
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      if (!panel || panel.dataset.devPanelKey !== 'caption') return;
+      revertToSaved();
+    }) as EventListener);
 
     saveButton.addEventListener('click', () => {
       if (!editTarget) return;

@@ -37,6 +37,7 @@ import DevOverlay from './DevOverlay.astro';
     </div>
 
     <div class="color-token-editor__actions dev-panel-actions">
+      <button type="button" class="dev-btn dev-btn--ghost" data-token-cancel>Cancel</button>
       <button type="button" class="dev-btn dev-btn--ghost" data-token-revert>Revert changes</button>
       <button type="button" class="dev-btn dev-btn--filled" data-token-done>Done</button>
     </div>
@@ -71,9 +72,10 @@ import DevOverlay from './DevOverlay.astro';
     const swatch = editor.querySelector<HTMLButtonElement>('[data-token-swatch]');
     const picker = editor.querySelector<ColorPickerElement>('[data-token-picker]');
     const doneButton = editor.querySelector<HTMLButtonElement>('[data-token-done]');
+    const cancelButton = editor.querySelector<HTMLButtonElement>('[data-token-cancel]');
     const revertButton = editor.querySelector<HTMLButtonElement>('[data-token-revert]');
     const panel = editor.closest<HTMLElement>('[data-dev-overlay]');
-    if (!name || !hexInput || !swatch || !picker || !doneButton || !revertButton) {
+    if (!name || !hexInput || !swatch || !picker || !doneButton || !cancelButton || !revertButton) {
       return;
     }
 
@@ -214,11 +216,45 @@ import DevOverlay from './DevOverlay.astro';
       preview(value);
     }) as EventListener);
 
-    revertButton.addEventListener('click', () => {
+    const closePanel = () => {
+      const panelKey = panel?.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panelKey || panelKey.hidden) return;
+      picker.removeAttribute('open');
+      panelKey.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+        detail: { panel: panelKey },
+      }));
+    };
+
+    const revertToSaved = () => {
       if (!activeToken || !savedValue) return;
-      preview(savedValue);
+      const live = normalizeHex(getComputedStyle(root).getPropertyValue(activeToken));
+      if (live && live !== savedValue) {
+        preview(savedValue);
+      } else {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+          detail: { id: pendingIdFor(activeToken) },
+        }));
+      }
       picker.setAttribute('hex', toPickerHex(savedValue));
+      syncHexField(savedValue);
+    };
+
+    revertButton.addEventListener('click', () => {
+      revertToSaved();
     });
+
+    cancelButton.addEventListener('click', () => {
+      revertToSaved();
+      closePanel();
+    });
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const closedPanel = event.detail?.panel as HTMLElement | undefined;
+      if (closedPanel?.dataset.devPanelKey !== 'style-color-token') return;
+      picker.removeAttribute('open');
+      revertToSaved();
+    }) as EventListener);
 
     doneButton.addEventListener('click', () => {
       if (panel) panel.hidden = true;

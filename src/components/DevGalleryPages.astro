@@ -38,9 +38,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
   import {
     hasCropVariants,
     imageSourceDims,
+    listingCoverDefaultAspects,
     listingCoverDevEditAttrs,
   } from '../lib/projectImageFrame';
   import {
+    hoverCropStyle,
     normalizeImageVariants,
     responsiveImageStyle,
     type ImageVariants,
@@ -61,6 +63,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
    *   hoverImage: string,
    *   order: number,
    *   variants: ImageVariants,
+   *   hoverVariants?: ImageVariants,
    *   hoverDark?: boolean,
    *   srcWidth?: number,
    *   srcHeight?: number,
@@ -200,10 +203,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
     const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
 
-    const coverDefaultAspect = (full: boolean, grid: string) => {
-      if (full && grid === 'work') return '16:9';
-      return '4:3';
-    };
+    const coverDefaultAspect = (full: boolean, grid: string) =>
+      listingCoverDefaultAspects(
+        grid as 'home' | 'work' | 'play',
+        full,
+      );
 
     const currentGrid = (): 'home' | 'work' | 'play' | '' => {
       const grid = document.querySelector<HTMLElement>('[data-dev-project-grid]');
@@ -469,13 +473,20 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
       const item = seed.cloneNode(true) as HTMLElement;
       const isTeaser = page.status === 'teaser';
-      const defaultAspect = coverDefaultAspect(page.full, grid);
+      const defaultAspects = coverDefaultAspect(page.full, grid);
       const srcDims = imageSourceDims(page);
       const variants = page.variants;
-      const hasCrop = hasCropVariants(variants);
-      const normalized = hasCrop
-        ? normalizeImageVariants(variants, defaultAspect, srcDims)
+      const hoverVariants = page.hoverVariants;
+      const hasCoverCrop = hasCropVariants(variants);
+      const hasHoverCrop = hasCropVariants(hoverVariants);
+      const hasCrop = hasCoverCrop || hasHoverCrop;
+      const normalizedCover = hasCoverCrop || hasCrop
+        ? normalizeImageVariants(variants, defaultAspects, srcDims)
         : undefined;
+      const normalizedHover = hasHoverCrop && hoverVariants
+        ? normalizeImageVariants(hoverVariants, defaultAspects, null)
+        : undefined;
+      const coverStyle = [normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : '', normalizedHover ? hoverCropStyle(normalizedHover) : ''].filter(Boolean).join(';') || undefined;
       const hoverDark = typeof page.hoverDark === 'boolean' ? page.hoverDark : page.dark;
 
       item.dataset.devProjectSlug = page.slug;
@@ -537,20 +548,22 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         else delete cover.dataset.devCoverEmpty;
 
         cover.classList.toggle('project-grid__cover--has-hover', Boolean(page.hoverImage));
+        cover.classList.toggle('project-grid__cover--hover-cropped', hasHoverCrop);
         cover.classList.toggle('overflow-hidden', !hasCrop);
         cover.classList.toggle('project-cropped', hasCrop);
         cover.classList.toggle('project-responsive-image', hasCrop);
-        if (normalized) {
-          cover.setAttribute('style', responsiveImageStyle(normalized, srcDims) ?? '');
+        if (coverStyle) {
+          cover.setAttribute('style', coverStyle);
         } else {
           cover.removeAttribute('style');
         }
 
         const editAttrs = listingCoverDevEditAttrs(page.slug, grid, {
           variants,
+          hoverVariants,
           srcWidth: page.srcWidth,
           srcHeight: page.srcHeight,
-        }, defaultAspect);
+        }, Boolean(page.full));
         for (const [key, value] of Object.entries(editAttrs)) {
           if (value === '') cover.removeAttribute(key);
           else cover.setAttribute(key, value);
