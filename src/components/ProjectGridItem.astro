@@ -42,9 +42,6 @@ const statusIcons = {
   teaser: sizeIcon(eyeOffIcon, 14),
 } as const;
 
-const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
-const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
-
 const isPlayPlaceholder = variant === 'play' && !item.href && !item.teaser;
 const isTeaser = Boolean(item.teaser);
 const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
@@ -73,14 +70,6 @@ const projectEditAttrs = projectEditable
 const editAttrs = projectEditAttrs;
 
 const hoverDark = item.hoverDark ?? item.dark;
-const metaStyle = [
-  `--title-ink: ${titleColor(item.dark)}`,
-  `--subtitle-ink: ${subtitleColor(item.dark)}`,
-  `--title-ink-hover: ${titleColor(hoverDark)}`,
-  `--subtitle-ink-hover: ${subtitleColor(hoverDark)}`,
-  `--title-ink-on-page: ${titleColor(false)}`,
-  `--subtitle-ink-on-page: ${subtitleColor(false)}`,
-].join('; ');
 
 const showHoverImg = item.hoverImage || projectEditable;
 ---
@@ -91,7 +80,7 @@ const showHoverImg = item.hoverImage || projectEditable;
   data-dev-status={status}
   data-dev-bg={item.bg}
   data-dev-dark={item.dark ? 'true' : 'false'}
-  data-dev-hover-dark={projectEditable && item.hoverImage ? (hoverDark ? 'true' : 'false') : undefined}
+  data-dev-hover-dark={item.hoverImage ? (hoverDark ? 'true' : 'false') : undefined}
   data-dev-hover-image={item.hoverImage || undefined}
 >
   {isStatic ? (
@@ -178,7 +167,7 @@ const showHoverImg = item.hoverImage || projectEditable;
             <span class="project-grid__drop-label">Drop cover image</span>
           </div>
         )}
-        <div class="project-grid__meta absolute bottom-0 left-0 right-0" style={metaStyle}>
+        <div class="project-grid__meta absolute bottom-0 left-0 right-0">
           <div class="flex items-baseline gap-2">
             <h2
               class="project-grid__title font-bold"
@@ -279,7 +268,7 @@ const showHoverImg = item.hoverImage || projectEditable;
             <span class="project-grid__drop-label">Drop cover image</span>
           </div>
         )}
-        <div class="project-grid__meta absolute bottom-0 left-0 right-0" style={metaStyle}>
+        <div class="project-grid__meta absolute bottom-0 left-0 right-0">
           <div class="flex items-baseline gap-2">
             <h2
               class="project-grid__title font-bold"
