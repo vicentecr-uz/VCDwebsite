@@ -104,8 +104,9 @@ const hideSvg = trafficLightIcon(xIcon);
 <script>
   const MOTION_MS = 180;
   const EMBEDDED_RESTORE_MS = 1000;
-  /* CSS rest is 40. Stay below the save bar (90). Session-only — never persisted. */
-  let overlayStackZ = 40;
+  /* CSS rest is 60 (above the header's 50). Stay below the save bar (90).
+     Session-only — never persisted. */
+  let overlayStackZ = 60;
 
   const raiseOverlay = (overlay: HTMLElement) => {
     if (overlay.hasAttribute('data-embedded')) return;
@@ -113,10 +114,10 @@ const hideSvg = trafficLightIcon(xIcon);
       document
         .querySelectorAll<HTMLElement>('[data-dev-overlay]:not([data-embedded]):not([hidden])')
         .forEach((el) => {
-          el.style.zIndex = '40';
+          el.style.zIndex = '60';
         });
-      overlay.style.zIndex = '41';
-      overlayStackZ = 41;
+      overlay.style.zIndex = '61';
+      overlayStackZ = 61;
       return;
     }
     overlayStackZ += 1;
@@ -544,6 +545,11 @@ const hideSvg = trafficLightIcon(xIcon);
       });
 
       scheduleConstrain();
+
+      // A `field-sizing: content` textarea grows on typed `value` changes,
+      // which is neither DOM text content nor an attribute, so the
+      // MutationObserver above never fires for it — catch it via `input`.
+      body.addEventListener('input', scheduleConstrain);
     }
 
     let lastObservedHeight: number | null = null;
@@ -843,6 +849,19 @@ const hideSvg = trafficLightIcon(xIcon);
         };
         requestAnimationFrame(() => requestAnimationFrame(place));
       }) as EventListener);
+
+      window.addEventListener('vcd:dev-edit-open-at', ((event: CustomEvent<{ panel?: HTMLElement; clientX?: number; clientY?: number }>) => {
+        const { panel, clientX, clientY } = event.detail ?? {};
+        if (panel !== overlay || typeof clientX !== 'number' || typeof clientY !== 'number') return;
+        if (overlay.classList.contains('is-minimized')) setMinimized(false);
+        const place = () => {
+          const w = overlay.offsetWidth;
+          const h = overlay.offsetHeight;
+          if (w <= 0 || h <= 0) return;
+          applyPosition(clientX - w / 2, clientY - h / 2, true);
+        };
+        requestAnimationFrame(() => requestAnimationFrame(place));
+      }) as EventListener);
     }
 
     minimizeBtn?.addEventListener('click', (event) => {
@@ -887,7 +906,7 @@ const hideSvg = trafficLightIcon(xIcon);
     position: fixed;
     right: 1em;
     bottom: 1em;
-    z-index: 40;
+    z-index: 60;
     width: min(var(--dev-panel-width), calc(100vw - 2em));
     max-height: calc(100dvh - 2em);
     /* Border, not outline: an outline paints outside the border box in its own
