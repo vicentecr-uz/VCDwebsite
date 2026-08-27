@@ -3,12 +3,13 @@ import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import TextArea from '../ui/TextArea.astro';
 import SelectField from '../ui/SelectField.astro';
+import Field from '../ui/Field.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
 import {
   IMAGE_CAPTION_POSITIONS,
   IMAGE_CAPTION_REVEALS,
-  IMAGE_CAPTION_STYLES,
 } from '../../lib/imageCaptions';
 ---
 
@@ -22,12 +23,14 @@ import {
 
     <TextArea label="Caption" placeholder="Type here" rows={3} data-caption-text />
 
+    <Field label="Location">
+      <SegmentedControl label="Location" data-caption-location>
+        <Button emphasis="ghost" width="fill" label="On image" data-caption-style="white" />
+        <Button emphasis="ghost" width="fill" label="Below image" data-caption-style="below" />
+      </SegmentedControl>
+    </Field>
+
     <div class="project-caption-tuner__pair">
-      <SelectField
-        label="Style"
-        data-caption-style
-        options={IMAGE_CAPTION_STYLES.map((s) => ({ value: s.id, label: s.label }))}
-      />
       <SelectField
         label="Position"
         data-caption-overlay-only
@@ -95,7 +98,9 @@ import {
     const viewportButtons = [
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-caption-viewport]'),
     ];
-    const styleSelect = tuner.querySelector<HTMLSelectElement>('[data-caption-style]');
+    const styleButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-caption-style]'),
+    ];
     const positionSelect = tuner.querySelector<HTMLSelectElement>('[data-caption-position]');
     const revealSelect = tuner.querySelector<HTMLSelectElement>('[data-caption-reveal]');
     const textArea = tuner.querySelector<HTMLTextAreaElement>('[data-caption-text]');
@@ -106,7 +111,7 @@ import {
     const clearButton = tuner.querySelector<HTMLButtonElement>('[data-caption-clear]');
     if (
       !viewportButtons.length ||
-      !styleSelect ||
+      !styleButtons.length ||
       !positionSelect ||
       !revealSelect ||
       !textArea ||
@@ -491,9 +496,32 @@ import {
       });
     };
 
+    const focusOnPageCaption = (target: HTMLElement) => {
+      const host = findCaptionHost(target);
+      if (!host) return;
+      const liveViewport = matchImageCaptionViewport();
+      const node = host.querySelector<HTMLElement>(
+        `[data-caption-bp="${liveViewport}"][contenteditable]`,
+      );
+      if (!node) return;
+      node.focus();
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    };
+
     const renderFields = () => {
       syncingUi = true;
-      styleSelect.value = draftStyle;
+      styleButtons.forEach((button) => {
+        const style = button.dataset.captionStyle ?? '';
+        const selected = style === draftStyle
+          || (style === 'white' && draftStyle === 'black');
+        button.classList.toggle('is-selected', selected);
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+      });
       positionSelect.value = draftPosition;
       revealSelect.value = draftReveals[selectedViewport];
       textArea.value = draftCaptions[selectedViewport];
@@ -568,7 +596,7 @@ import {
       notifyCarouselCaptions(target);
     };
 
-    const selectTarget = (target: HTMLElement, options?: { focusText?: boolean; seedEmpty?: boolean }) => {
+    const selectTarget = (target: HTMLElement, options?: { seedEmpty?: boolean }) => {
       const switching = editTarget !== target;
       if (switching && editTarget) {
         finalizeEmptyCaption(editTarget);
@@ -605,26 +633,27 @@ import {
       openPanel();
       enableInlineEditing(target);
 
-      if (options?.focusText) {
-        requestAnimationFrame(() => {
-          textArea.focus();
-          textArea.select();
-        });
-      }
+      requestAnimationFrame(() => {
+        focusOnPageCaption(target);
+      });
     };
 
-    styleSelect.addEventListener('change', () => {
-      if (syncingUi) return;
-      draftStyle = resolveImageCaptionStyle(styleSelect.value);
-      if (isBelowImageCaptionStyle(draftStyle)) {
-        draftReveals = { ...BELOW_IMAGE_CAPTION_REVEALS };
-      }
-      if (editTarget) {
-        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
-          retainEmptyHost: true,
-        });
-      }
-      renderFields();
+    styleButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        if (syncingUi) return;
+        const next = button.dataset.captionStyle;
+        if (!next) return;
+        draftStyle = resolveImageCaptionStyle(next);
+        if (isBelowImageCaptionStyle(draftStyle)) {
+          draftReveals = { ...BELOW_IMAGE_CAPTION_REVEALS };
+        }
+        if (editTarget) {
+          applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
+            retainEmptyHost: true,
+          });
+        }
+        renderFields();
+      });
     });
 
     positionSelect.addEventListener('change', () => {
@@ -840,7 +869,6 @@ import {
       const target = trigger.closest<HTMLElement>('[data-dev-image-target]');
       if (!target) return;
       selectTarget(target, {
-        focusText: true,
         // Add caption seeds empty; Edit caption fallback opens existing text.
         seedEmpty: trigger.dataset.captionAction !== 'edit'
           && trigger.classList.contains('dev-caption-add-trigger'),
@@ -954,6 +982,10 @@ import {
 
   /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
      stay in the a11y tree. */
+  .project-caption-tuner :global([data-caption-text]) {
+    caret-color: currentColor;
+  }
+
   .project-caption-tuner__status {
     position: absolute;
     width: 1px;
