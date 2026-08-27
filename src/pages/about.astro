@@ -10,28 +10,30 @@ const contactRows = aboutContent.contactRows;
 ---
 
 <style>
-  /* Contact links: grey, slowly darkening to black on hover (Webflow .contact-body.link) */
-  .contact-link { color: var(--sys-color-on-srf-variant); letter-spacing: -0.3px; transition: color 1s cubic-bezier(0, .206, .304, .995); }
-  .contact-link:hover { color: #000000; }
+  /* Contact links: grey, darkening to ink on hover (Webflow .contact-body.link).
+     Duration cut from the original 1s (read as laggy) to 0.3s — same bezier shape
+     so the "slow, considered" darken character survives, just not at 1s. */
+  .contact-link { color: var(--sys-color-on-srf-variant); letter-spacing: -0.3px; transition: color 0.3s cubic-bezier(0, .206, .304, .995); }
+  .contact-link:hover { color: var(--sys-color-on-srf); }
 
-  /* Section headers (Webflow .contact-header) */
+  /* Section headers (Webflow .contact-header) — About heading role */
   .section-header {
-    font-size: 2rem;
-    font-weight: 900;
-    letter-spacing: -0.5px;
-    line-height: 1;
-    color: #000000;
+    font-size: var(--text-about-heading-size);
+    font-weight: var(--text-about-heading-weight);
+    letter-spacing: var(--text-about-heading-tracking);
+    line-height: var(--text-about-heading-leading);
+    color: var(--sys-color-on-srf);
   }
 
   .about-grid {
     display: grid;
     gap: 2em;
     align-items: start;
-    /* Body text (Webflow .contact-body + element-level p tracking) */
-    font-weight: 500;
-    font-size: 1.2rem;
-    line-height: 1.25;
-    letter-spacing: -0.4px;
+    /* Body text (Webflow .contact-body + element-level p tracking) — About body role */
+    font-weight: var(--text-about-body-weight);
+    font-size: var(--text-about-body-size);
+    line-height: var(--text-about-body-leading);
+    letter-spacing: var(--text-about-body-tracking);
     /* Default: narrow (mobile-first) */
     grid-template-columns: 1fr;
     grid-template-areas:
@@ -111,7 +113,9 @@ const contactRows = aboutContent.contactRows;
   <div class="flex flex-col min-h-dvh">
     <Header />
 
-    <main class="flex-1" style="padding-top: 2em; padding-bottom: 3em">
+    <h1 class="sr-only">About — Vicente Cruz</h1>
+
+    <main id="main-content" class="flex-1" style="padding-top: 2em; padding-bottom: 3em">
       <div class="about-grid">
 
         <img

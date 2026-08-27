@@ -363,6 +363,59 @@
   --space-group: 4em;
   --space-section: 8em;
   --space-major: 12em;
+
+  /* ── Type/Site roles (Figma: Type/Site) ──────────────────
+     Named per Figma role. Values come from whatever the one (or few)
+     places consuming that role already ship — not from Figma's literal
+     numbers. Figma is the approximate source for these roles; a
+     component with its own deliberately-tuned geometry (see Header.astro's
+     wordmark/nav, whose ch-based tracking is tuned against a runtime
+     kerning-correction script) stays as the component's own value. Weight
+     is the one property Figma governs literally throughout. */
+  --text-body-weight: 400;
+  --text-body-size: 1.2rem;
+  --text-body-leading: 1.45;
+  --text-body-tracking: -0.01em;
+
+  --text-section-title-weight: 700;
+  --text-section-title-size: 1.5rem;
+  --text-section-title-leading: 1.2;
+  --text-section-title-tracking: -0.03em;
+
+  --text-grid-title-weight: 400;
+  --text-grid-title-size: 1.25rem;
+  --text-grid-title-leading: 1.2;
+  --text-grid-title-tracking: -0.03em;
+
+  --text-about-heading-weight: 900;
+  --text-about-heading-size: 2rem;
+  --text-about-heading-leading: 1;
+  --text-about-heading-tracking: -0.5px;
+
+  --text-about-body-weight: 500;
+  --text-about-body-size: 1.2rem;
+  --text-about-body-leading: 1.25;
+  --text-about-body-tracking: -0.4px;
+
+  --text-caption-weight: 600;
+  --text-caption-size: 1.2em;
+  --text-caption-leading: 1.1;
+  --text-caption-tracking: -0.05ch;
+
+  --text-nav-weight: 500;
+
+  --text-subheading-weight: 700;
+  --text-subheading-size: 1.1rem;
+  --text-subheading-leading: 1;
+  --text-subheading-tracking: -0.03em;
+
+  --text-press-quote-style: italic;
+  --text-press-quote-weight: 400;
+  --text-press-quote-size: 1.05em;
+  --text-press-quote-leading: 1.35;
+  --text-press-quote-tracking: -0.01em;
+
+  --text-wordmark-weight: 700;
 }
 
 /* Phone: edge space is at a premium, so the core unit steps down.
@@ -397,6 +450,7 @@ html {
   color: var(--sys-color-on-srf);
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
 }
 
 body {
@@ -412,9 +466,47 @@ img {
   max-width: 100%;
 }
 
+h1, h2, h3 {
+  text-wrap: balance;
+}
+
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-to-content {
+  position: absolute;
+  top: -100%;
+  left: var(--space-unit);
+  z-index: 200;
+  background-color: var(--sys-color-srf);
+  color: var(--sys-color-on-srf);
+  padding: 0.75em 1em;
+  border-radius: var(--radius-control);
+  transition: top 0.2s ease;
+}
+
+.skip-to-content:focus-visible {
+  top: var(--space-unit);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-to-content {
+    transition: none;
+  }
 }
 
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
