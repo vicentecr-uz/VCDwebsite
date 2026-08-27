@@ -229,7 +229,7 @@ const componentCatalog: ComponentEntry[] = [
     purpose: 'In-page section break heading (Research, Process, etc.).',
     classRef: '.project-section-title',
     source: 'src/components/project/ProjectSectionTitle.astro',
-    props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3), showTitle?, hideWhenSidebarVisible?',
+    props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3 — 3 renders as Heading 2), showTitle?, hideWhenSidebarVisible?',
     usedOn: ['Tapico'],
     checklist: 'Default precede-related so body after a heading sits at --space-unit; per-breakpoint show/hide when sidebar is active.',
     preview: 'section-title',
@@ -506,14 +506,15 @@ const roleTokens = [
 }));
 
 const typographyScale = [
-  { role: 'body', label: 'Body', spec: '400 · 1.2rem/1.45 · -0.01em', sample: 'Used for narrative sections. Keep width around 52-62ch so dense process writing remains easy to scan.', note: 'Long-form description text (.project-body-text)' },
-  { role: 'section-title', label: 'Section title', spec: '700 · 1.5rem/1.2 · -0.03em', sample: 'Process and outputs', note: 'Project section headings (.project-section-title)' },
+  { role: 'heading-1', label: 'Heading 1', spec: '700 · 1.5rem/1.2 · -0.03em', sample: 'Process and outputs', note: 'Project section headings, level 2 (.project-section-title)' },
+  { role: 'heading-2', label: 'Heading 2', spec: '700 · 1.1rem/1.1 · -0.02em', sample: 'Material selection', note: 'Project section headings, level 3 (h3.project-section-title)' },
+  { role: 'body', label: 'Text', spec: '400 · 1.2rem/1.45 · -0.01em', sample: 'Used for narrative sections. Keep width around 52-62ch so dense process writing remains easy to scan.', note: 'Long-form description text (.project-body-text)' },
   { role: 'grid-title', label: 'Grid title', spec: '400 · 1.25rem/1.2 · -0.03em', sample: '2024', note: 'Home/Work/Play card year/meta label (.project-grid__subtitle) — the title itself stays bold' },
   { role: 'about-heading', label: 'About heading', spec: '900 · 2rem/1 · -0.5px', sample: 'Contact', note: 'About page section headers — bound in a later pass' },
   { role: 'about-body', label: 'About body', spec: '500 · 1.2rem/1.25 · -0.4px', sample: 'Junior Industrial Designer at Kingfisher.', note: 'About page body copy — bound in a later pass' },
   { role: 'caption', label: 'Caption', spec: '600 · 1.2em/1.1 · -0.05ch', sample: 'Foam model before final chamfer direction', note: 'White image-overlay caption (.project-caption)' },
   { role: 'nav', label: 'Nav', spec: '500 (size/tracking are component-owned, see Header.astro)', sample: 'Work', note: 'Header menu links (.header-menu__link)' },
-  { role: 'subheading', label: 'Subheading', spec: '700 · 1.1rem/1 · -0.03em', sample: '© Vicente Cruz', note: 'Footer text (.footer-text)' },
+  { role: 'footer', label: 'Footer', spec: '700 · 1.1rem/1 · -0.03em', sample: '© Vicente Cruz', note: 'Footer text (.footer-text)' },
   { role: 'press-quote', label: 'Press quote', spec: 'italic 400 · 1.05em/1.35 · -0.01em', sample: '"An elegant, tactile solution."', note: 'Press quote ticker (.press-quote-ticker__quote)' },
   { role: 'wordmark', label: 'Wordmark', spec: '700 (size/tracking are component-owned, see Header.astro)', sample: 'Vicente Cruz', note: 'Header wordmark' },
 ];
@@ -1229,11 +1230,18 @@ const sectionLinks = savedOutline.length
     letter-spacing: var(--text-body-tracking);
   }
 
-  .type-preview--section-title {
-    font-weight: var(--text-section-title-weight);
-    font-size: var(--text-section-title-size);
-    line-height: var(--text-section-title-leading);
-    letter-spacing: var(--text-section-title-tracking);
+  .type-preview--heading-1 {
+    font-weight: var(--text-heading-1-weight);
+    font-size: var(--text-heading-1-size);
+    line-height: var(--text-heading-1-leading);
+    letter-spacing: var(--text-heading-1-tracking);
+  }
+
+  .type-preview--heading-2 {
+    font-weight: var(--text-heading-2-weight);
+    font-size: var(--text-heading-2-size);
+    line-height: var(--text-heading-2-leading);
+    letter-spacing: var(--text-heading-2-tracking);
   }
 
   .type-preview--grid-title {
@@ -1268,11 +1276,11 @@ const sectionLinks = savedOutline.length
     font-weight: var(--text-nav-weight);
   }
 
-  .type-preview--subheading {
-    font-weight: var(--text-subheading-weight);
-    font-size: var(--text-subheading-size);
-    line-height: var(--text-subheading-leading);
-    letter-spacing: var(--text-subheading-tracking);
+  .type-preview--footer {
+    font-weight: var(--text-footer-weight);
+    font-size: var(--text-footer-size);
+    line-height: var(--text-footer-leading);
+    letter-spacing: var(--text-footer-tracking);
   }
 
   .type-preview--press-quote {
