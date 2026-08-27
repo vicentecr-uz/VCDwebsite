@@ -10,6 +10,7 @@ import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizont
 import lockIcon from 'lucide-static/icons/lock.svg?raw';
 import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import triangleAlertIcon from 'lucide-static/icons/triangle-alert.svg?raw';
 import { sizeIcon } from '../../lib/icons';
 
 const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
@@ -17,6 +18,7 @@ const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
 const lockSvg = sizeIcon(lockIcon, 14);
 const monitorSvg = sizeIcon(monitorIcon, 16);
 const globeSvg = sizeIcon(globeIcon, 16);
+const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
 ---
 
 <DevOverlay
@@ -29,6 +31,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
     <SelectField
       label="Aspect ratio"
+      data-crop-aspect-ratio-wrap
       data-crop-aspect-ratio
       options={[
         { value: 'original', label: 'Original' },
@@ -58,7 +61,19 @@ const globeSvg = sizeIcon(globeIcon, 16);
           ],
         },
       ]}
-    />
+    >
+      <button
+        slot="labelAccessory"
+        type="button"
+        class="tapico-crop-tuner__linked-aspect-hint"
+        data-crop-linked-aspect-hint
+        hidden
+        aria-describedby="crop-linked-aspect-tooltip"
+      >
+        <span class="tapico-crop-tuner__linked-aspect-icon" aria-hidden="true" set:html={linkedAspectAlertSvg} />
+        <span id="crop-linked-aspect-tooltip" class="tapico-crop-tuner__linked-aspect-tooltip" role="tooltip"></span>
+      </button>
+    </SelectField>
 
     <ToggleRow label="Constrain width" hidden data-crop-width-constrain-wrap data-crop-width-constrain />
 
@@ -206,6 +221,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
     const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
     const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
+    const linkedAspectHint = tuner.querySelector<HTMLButtonElement>('[data-crop-linked-aspect-hint]');
+    const linkedAspectTooltip = linkedAspectHint?.querySelector<HTMLElement>('[role="tooltip"]');
     const widthConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-width-constrain-wrap]');
     const widthConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-width-constrain]');
     const heightConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-height-constrain-wrap]');
@@ -383,6 +400,17 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
     const isListingCover = (target: HTMLElement) => Boolean(target.dataset.devListingCover);
+    const listingHasHoverImage = (target: HTMLElement) => {
+      const item = target.closest('[data-dev-project-slug]');
+      if (item?.getAttribute('data-dev-hover-image')) return true;
+      return Boolean(target.querySelector('.project-grid__img--hover:not([hidden])'));
+    };
+    const listingEditSlot = (target: HTMLElement): 'cover' | 'hover' => {
+      if (!isListingCover(target)) return 'cover';
+      const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
+      if (target.classList.contains('is-dev-hover-forced') && hoverImg) return 'hover';
+      return 'cover';
+    };
     const isStandaloneMedia = (target: HTMLElement) => (
       target.classList.contains('project-media') && !isGridTarget(target)
     );
@@ -499,13 +527,38 @@ const globeSvg = sizeIcon(globeIcon, 16);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
     };
 
-    const gridDefaultAspectFor = (target: HTMLElement) => (
-      target.dataset.devGridDefaultAspect
-      || target.closest<HTMLElement>('[data-dev-grid-default-aspect]')?.dataset.devGridDefaultAspect
-      || '1:1'
-    );
+    const gridDefaultAspectFor = (target: HTMLElement) => {
+      const raw = target.dataset.devListingDefaultAspects;
+      if (raw) {
+        try {
+          const aspects = JSON.parse(raw) as Record<ImageViewport, string>;
+          return aspects[selectedViewport] ?? aspects.mobile ?? '4:3';
+        } catch {
+          // fall through
+        }
+      }
+      return (
+        target.dataset.devGridDefaultAspect
+        || target.closest<HTMLElement>('[data-dev-grid-default-aspect]')?.dataset.devGridDefaultAspect
+        || '1:1'
+      );
+    };
 
     const gridDefaultVariantsFor = (target: HTMLElement): Record<ImageViewport, CropState> => {
+      const raw = target.dataset.devListingDefaultAspects;
+      if (raw) {
+        try {
+          const aspects = JSON.parse(raw) as Record<ImageViewport, string>;
+          const result = {} as Record<ImageViewport, CropState>;
+          for (const viewport of ['desktop', 'tablet', 'mobile'] as ImageViewport[]) {
+            const aspect = aspects[viewport] ?? '4:3';
+            result[viewport] = { aspect, cx: 0.5, cy: 0.5, w: coverW(aspect) };
+          }
+          return result;
+        } catch {
+          // fall through
+        }
+      }
       const aspect = gridDefaultAspectFor(target);
       const base = { aspect, cx: 0.5, cy: 0.5, w: coverW(aspect) };
       return { desktop: { ...base }, tablet: { ...base }, mobile: { ...base } };
@@ -540,6 +593,42 @@ const globeSvg = sizeIcon(globeIcon, 16);
       }
     };
 
+    const readHoverAppliedVariants = (
+      target: HTMLElement,
+    ): Record<ImageViewport, CropState> => {
+      try {
+        const parsed = JSON.parse(target.dataset.devHoverVariants || '{}');
+        return {
+          desktop: { ...defaults, ...parsed.desktop },
+          tablet: { ...defaults, ...parsed.desktop, ...parsed.tablet },
+          mobile: {
+            ...defaults,
+            ...parsed.desktop,
+            ...parsed.tablet,
+            ...parsed.mobile,
+          },
+        };
+      } catch {
+        return {
+          desktop: { ...defaults },
+          tablet: { ...defaults },
+          mobile: { ...defaults },
+        };
+      }
+    };
+
+    const syncLinkedAspectHint = () => {
+      if (!linkedAspectHint || !linkedAspectTooltip) return;
+      const show = isListingCover(editTarget) && listingHasHoverImage(editTarget);
+      linkedAspectHint.hidden = !show;
+      if (!show) return;
+      const editingHover = activeSlot === 'hover';
+      linkedAspectTooltip.textContent = editingHover
+        ? 'Linked to the cover'
+        : 'Linked to the hover image';
+      linkedAspectHint.setAttribute('aria-label', linkedAspectTooltip.textContent);
+    };
+
     const readConstraints = (): Record<ImageViewport, boolean> => {
       const defaults = { desktop: true, tablet: true, mobile: true };
       try {
@@ -570,6 +659,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
     let savedVariants = readAppliedVariants(editTarget);
     let draftVariants = structuredClone(savedVariants);
+    let savedCoverVariants = structuredClone(savedVariants);
+    let draftCoverVariants = structuredClone(savedVariants);
+    let savedHoverVariants: Record<ImageViewport, CropState> | null = null;
+    let draftHoverVariants: Record<ImageViewport, CropState> | null = null;
+    let activeSlot: 'cover' | 'hover' = 'cover';
     let saved: CropState = { ...savedVariants[selectedViewport] };
     let draft: CropState = { ...draftVariants[selectedViewport] };
     let constrainByViewport = readConstraints();
@@ -591,10 +685,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
     let savedSrcHeight: number | undefined;
     let draftSrcWidth: number | undefined;
     let draftSrcHeight: number | undefined;
-    const pendingIdFor = (target: HTMLElement) => {
+    const pendingIdFor = (target: HTMLElement, slot: 'cover' | 'hover' = activeSlot) => {
       const documentKey = target.dataset.devDocument || '';
       const imagePath = target.dataset.devImagePath || '[]';
-      return `crop:${documentKey}:${imagePath}`;
+      return `crop:${documentKey}:${imagePath}${slot === 'hover' ? ':hover' : ''}`;
     };
 
     const canonicalSrcFromUrl = (url: string) => {
@@ -647,9 +741,9 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const applyVariantsToTarget = (
       target: HTMLElement,
       variants: Record<ImageViewport, CropState>,
-      options?: { clearOwn?: boolean },
+      options?: { clearOwn?: boolean; hoverVariants?: Record<ImageViewport, CropState> | null },
     ) => {
-      const image = target.querySelector<HTMLImageElement>('img');
+      const image = pageImageFor(target);
       VIEWPORTS.forEach((viewport) => {
         setTargetVariant(target, viewport, variants[viewport]);
       });
@@ -660,12 +754,21 @@ const globeSvg = sizeIcon(globeIcon, 16);
         target.dataset.devImageVariants = JSON.stringify(variants);
         if (isGridTarget(target)) target.dataset.devHasOwnVariants = 'true';
       }
+      if (options?.hoverVariants) {
+        target.dataset.devHoverVariants = JSON.stringify(options.hoverVariants);
+        VIEWPORTS.forEach((viewport) => {
+          setHoverTargetVariant(target, viewport, options.hoverVariants![viewport]);
+        });
+      }
     };
 
     const pageImageFor = (target: HTMLElement) => {
       // While the on-page crop stage is mounted the ghost <img> is prepended
       // first — never treat that as the content bitmap.
       if (target === editTarget && editedImage?.isConnected) return editedImage;
+      if (isListingCover(target) && activeSlot === 'hover') {
+        return target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
+      }
       return (
         target.querySelector<HTMLImageElement>('.project-grid__img--base')
         ?? [...target.querySelectorAll<HTMLImageElement>('img')]
@@ -756,6 +859,24 @@ const globeSvg = sizeIcon(globeIcon, 16);
       target.style.setProperty(`--project-content-cy-${viewport}`, String(crop.cy));
     };
 
+    const setHoverTargetVariant = (
+      target: HTMLElement,
+      viewport: ImageViewport,
+      crop: CropState,
+    ) => {
+      target.style.setProperty(`--project-hover-content-w-${viewport}`, String(crop.w));
+      target.style.setProperty(`--project-hover-content-cx-${viewport}`, String(crop.cx));
+      target.style.setProperty(`--project-hover-content-cy-${viewport}`, String(crop.cy));
+    };
+
+    const syncLinkedListingAspect = (aspect: string) => {
+      if (!isListingCover(editTarget)) return;
+      draftCoverVariants[selectedViewport].aspect = aspect;
+      if (draftHoverVariants) {
+        draftHoverVariants[selectedViewport].aspect = aspect;
+      }
+    };
+
     /** First user crop change in this session — enable live page writes + frame classes. */
     const ensureCropClip = (target: HTMLElement, image: HTMLImageElement) => {
       if (isGridTarget(target)) return;
@@ -764,6 +885,23 @@ const globeSvg = sizeIcon(globeIcon, 16);
       clip.className = 'project-crop-clip';
       image.replaceWith(clip);
       clip.append(image);
+    };
+
+    const ensureListingCropClip = (target: HTMLElement) => {
+      const stack = target.querySelector('.project-grid__stack');
+      if (!stack) return;
+      let clip = stack.querySelector('.project-crop-clip');
+      const base = stack.querySelector<HTMLImageElement>('.project-grid__img--base');
+      const hover = stack.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
+      if (!clip && base) {
+        clip = document.createElement('div');
+        clip.className = 'project-crop-clip';
+        base.replaceWith(clip);
+        clip.append(base);
+      }
+      if (clip && hover && hover.parentElement !== clip) {
+        clip.append(hover);
+      }
     };
 
     const removeCropClipIfOwned = (image: HTMLImageElement) => {
@@ -785,7 +923,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
         }
         // SSR cropped frames already wrap <img> in .project-crop-clip; live-first
         // crop must add it or overflow:visible on .project-cropped lets zoom spill.
-        ensureCropClip(editTarget, editedImage);
+        if (isListingCover(editTarget)) {
+          ensureListingCropClip(editTarget);
+        } else {
+          ensureCropClip(editTarget, editedImage);
+        }
         // An uncropped max-vh image legitimately carries the img-level class from
         // SSR; now that the target is cropped it would clamp the cover bitmap.
         editedImage.classList.remove('project-media__img--max-vh', 'project-media__img--max80');
@@ -801,9 +943,21 @@ const globeSvg = sizeIcon(globeIcon, 16);
       // Bounds are closed form now, so clamping on open can't shift a saved crop.
       constrainDraft();
       draftVariants[selectedViewport] = { ...draft };
+      if (isListingCover(editTarget)) {
+        if (activeSlot === 'cover') {
+          draftCoverVariants[selectedViewport] = { ...draft };
+        } else if (draftHoverVariants) {
+          draftHoverVariants[selectedViewport] = { ...draft };
+        }
+      }
       setCropVariables(preview, draft);
       if (liveApply) {
-        setTargetVariant(editTarget, selectedViewport, draft);
+        if (isListingCover(editTarget) && activeSlot === 'hover' && draftHoverVariants) {
+          setHoverTargetVariant(editTarget, selectedViewport, draft);
+          setTargetVariant(editTarget, selectedViewport, draftCoverVariants[selectedViewport]);
+        } else {
+          setTargetVariant(editTarget, selectedViewport, draft);
+        }
       }
     };
 
@@ -823,7 +977,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
             String(editedImage.naturalWidth / editedImage.naturalHeight),
           );
         }
-        editTarget.dataset.devImageVariants = JSON.stringify(draftVariants);
+        editTarget.dataset.devImageVariants = JSON.stringify(draftCoverVariants);
+        if (draftHoverVariants) {
+          editTarget.dataset.devHoverVariants = JSON.stringify(draftHoverVariants);
+        }
         if (options?.announce !== false) announceFrameChange(editTarget);
       }
       syncAspectRatioSelect();
@@ -863,7 +1020,18 @@ const globeSvg = sizeIcon(globeIcon, 16);
       }
 
       draftVariants[selectedViewport] = { ...draft };
-      const stagedVariants = structuredClone(draftVariants);
+      if (isListingCover(target)) {
+        if (activeSlot === 'cover') {
+          draftCoverVariants[selectedViewport] = { ...draft };
+        } else if (draftHoverVariants) {
+          draftHoverVariants[selectedViewport] = { ...draft };
+        }
+      }
+      const stagedCoverVariants = structuredClone(draftCoverVariants);
+      const stagedHoverVariants = draftHoverVariants
+        ? structuredClone(draftHoverVariants)
+        : null;
+      const stagedVariants = isListingCover(target) ? stagedCoverVariants : structuredClone(draftVariants);
       const stagedConstrained = draftConstrained;
       const stagedMaxVh = draftMaxVh;
       const standalone = isStandaloneMedia(target);
@@ -886,16 +1054,26 @@ const globeSvg = sizeIcon(globeIcon, 16);
       const hadOwnVariants = target.dataset.devHasOwnVariants === 'true';
 
       if (persistCrop) {
-        applyVariantsToTarget(target, stagedVariants);
+        applyVariantsToTarget(target, stagedVariants, {
+          hoverVariants: stagedHoverVariants,
+        });
         savedVariants = structuredClone(stagedVariants);
+        savedCoverVariants = structuredClone(stagedCoverVariants);
+        if (stagedHoverVariants) {
+          savedHoverVariants = structuredClone(stagedHoverVariants);
+          draftHoverVariants = structuredClone(stagedHoverVariants);
+        }
+        draftCoverVariants = structuredClone(stagedCoverVariants);
         saved = { ...stagedVariants[selectedViewport] };
         targetWasCropped = true;
       }
       if (srcChanged) {
-        applySrcLive(target, draftSrc, {
-          ...(draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
-          ...(draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
-        });
+        applySrcLive(target, draftSrc, activeSlot === 'hover'
+          ? undefined
+          : {
+            ...(draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
+            ...(draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
+          });
         savedSrc = draftSrc;
         savedSrcWidth = draftSrcWidth;
         savedSrcHeight = draftSrcHeight;
@@ -920,11 +1098,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
             document: documentKey,
             path: imagePath,
             ...(persistCrop ? { variants: stagedVariants } : {}),
+            ...(persistCrop && stagedHoverVariants ? { hoverVariants: stagedHoverVariants } : {}),
+            ...(isListingCover(target)
+              ? { slot: activeSlot === 'hover' ? 'hoverImage' : 'image' }
+              : {}),
             ...(srcChanged
               ? {
                 src: draftSrc,
-                ...(draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
-                ...(draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
+                ...(activeSlot !== 'hover' && draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
+                ...(activeSlot !== 'hover' && draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
               }
               : {}),
             ...(standalone
@@ -1089,8 +1271,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
-      const image = target.querySelector<HTMLImageElement>('.project-grid__img--base')
-        ?? target.querySelector<HTMLImageElement>('img');
+      activeSlot = listingEditSlot(target);
+      const image = activeSlot === 'hover'
+        ? target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])')
+        : (target.querySelector<HTMLImageElement>('.project-grid__img--base')
+          ?? target.querySelector<HTMLImageElement>('img'));
       if (!image) return;
 
       unmountPageStage();
@@ -1113,8 +1298,21 @@ const globeSvg = sizeIcon(globeIcon, 16);
         diskBaselines.set(pendingId, snapshotBaseline(editTarget));
       }
       const baseline = diskBaselines.get(pendingId)!;
-      savedVariants = readAppliedVariants(editTarget);
-      draftVariants = structuredClone(savedVariants);
+      savedCoverVariants = readAppliedVariants(editTarget);
+      draftCoverVariants = structuredClone(savedCoverVariants);
+      if (isListingCover(target) && listingHasHoverImage(target)) {
+        savedHoverVariants = readHoverAppliedVariants(editTarget);
+        draftHoverVariants = structuredClone(savedHoverVariants);
+      } else {
+        savedHoverVariants = null;
+        draftHoverVariants = null;
+      }
+      savedVariants = activeSlot === 'hover' && savedHoverVariants
+        ? savedHoverVariants
+        : savedCoverVariants;
+      draftVariants = activeSlot === 'hover' && draftHoverVariants
+        ? draftHoverVariants
+        : draftCoverVariants;
       savedConstrained = isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false);
       draftConstrained = { ...savedConstrained };
       savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
@@ -1138,6 +1336,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       renderDraft();
       syncUseGridDefaultButton();
       syncWidthConstrainUi();
+      syncLinkedAspectHint();
       if (live) {
         mountPageStage();
         status.textContent = viewportGateOk()
@@ -1808,6 +2007,12 @@ const globeSvg = sizeIcon(globeIcon, 16);
       }
     };
 
+    window.addEventListener('vcd:dev-listing-slot', ((event: CustomEvent<{ cover?: HTMLElement; slot?: 'cover' | 'hover' }>) => {
+      const cover = event.detail?.cover;
+      if (!(cover instanceof HTMLElement) || cover !== editTarget || !editingSession) return;
+      selectTarget(cover, true);
+    }) as EventListener);
+
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
       // Only the image/crop panel — caption/grid opens must not hijack this target.
       const panel = event.detail?.panel as HTMLElement | undefined;
@@ -1870,6 +2075,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       const zoom = zoomOf(draft);
       draft.aspect = aspectRatioSelect.value;
       draft.w = wForZoom(draft.aspect, zoom);
+      syncLinkedListingAspect(draft.aspect);
       if (PRESET_ASPECT_RATIOS.has(draft.aspect)) {
         aspectRatioSelect.querySelector('[data-crop-custom-ratio]')?.remove();
       }
@@ -1922,6 +2128,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       const zoom = zoomOf(draft);
       draft.aspect = ratioFromSize(width, height);
       draft.w = wForZoom(draft.aspect, zoom);
+      syncLinkedListingAspect(draft.aspect);
       renderDraft();
       status.textContent = 'Frame resized — unsaved changes.';
     };
@@ -2354,6 +2561,59 @@ const globeSvg = sizeIcon(globeIcon, 16);
     overflow-x:hidden, which clips anything that escapes the stage box — pad
     every side enough for the 0.7em chip plus its ::before hit slop.
   */
+  .tapico-crop-tuner__linked-aspect-hint {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    color: var(--sys-color-on-srf-variant);
+    cursor: help;
+  }
+
+  .tapico-crop-tuner__linked-aspect-icon {
+    display: inline-flex;
+  }
+
+  .tapico-crop-tuner__linked-aspect-tooltip {
+    position: absolute;
+    left: calc(100% + 6px);
+    top: 50%;
+    z-index: 2;
+    width: max-content;
+    max-width: 14em;
+    padding: 6px 8px;
+    border-radius: var(--dev-radius-control);
+    background: var(--sys-color-inverse-srf);
+    color: var(--sys-color-inverse-on-srf);
+    font: var(--dev-text-label);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-50%) translateX(4px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+
+  .tapico-crop-tuner__linked-aspect-hint:focus-visible .tapico-crop-tuner__linked-aspect-tooltip,
+  .tapico-crop-tuner__linked-aspect-hint:hover .tapico-crop-tuner__linked-aspect-tooltip {
+    opacity: 1;
+    transform: translateY(-50%) translateX(0);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tapico-crop-tuner__linked-aspect-tooltip {
+      transform: translateY(-50%);
+      transition: opacity 0.15s ease;
+    }
+
+    .tapico-crop-tuner__linked-aspect-hint:focus-visible .tapico-crop-tuner__linked-aspect-tooltip,
+    .tapico-crop-tuner__linked-aspect-hint:hover .tapico-crop-tuner__linked-aspect-tooltip {
+      transform: translateY(-50%);
+    }
+  }
+
   .tapico-crop-tuner__stage {
     display: flex;
     align-items: center;

@@ -644,51 +644,51 @@ const applyCropChange = (data, change) => {
   }
 
   const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
+  const hoverSlot = change.slot === 'hoverImage';
   if (typeof change.src === 'string' && !requestedSrc) {
     return { ok: false, error: 'That image file is not valid.' };
   }
   if (requestedSrc) {
-    // Gallery listing cards store the cover as `image` (not section `src`).
-    if (
+    if (hoverSlot) {
+      target.hoverImage = requestedSrc;
+    } else if (
       Object.prototype.hasOwnProperty.call(target, 'image')
       && !Object.prototype.hasOwnProperty.call(target, 'src')
     ) {
       target.image = requestedSrc;
+      const srcWidth = Number(change.srcWidth);
+      const srcHeight = Number(change.srcHeight);
+      if (Number.isFinite(srcWidth) && srcWidth > 0) {
+        target.srcWidth = Math.round(srcWidth);
+      } else {
+        delete target.srcWidth;
+      }
+      if (Number.isFinite(srcHeight) && srcHeight > 0) {
+        target.srcHeight = Math.round(srcHeight);
+      } else {
+        delete target.srcHeight;
+      }
     } else {
       target.src = requestedSrc;
-    }
-    const srcWidth = Number(change.srcWidth);
-    const srcHeight = Number(change.srcHeight);
-    if (Number.isFinite(srcWidth) && srcWidth > 0) {
-      target.srcWidth = Math.round(srcWidth);
-    } else {
-      delete target.srcWidth;
-    }
-    if (Number.isFinite(srcHeight) && srcHeight > 0) {
-      target.srcHeight = Math.round(srcHeight);
-    } else {
-      delete target.srcHeight;
+      const srcWidth = Number(change.srcWidth);
+      const srcHeight = Number(change.srcHeight);
+      if (Number.isFinite(srcWidth) && srcWidth > 0) {
+        target.srcWidth = Math.round(srcWidth);
+      } else {
+        delete target.srcWidth;
+      }
+      if (Number.isFinite(srcHeight) && srcHeight > 0) {
+        target.srcHeight = Math.round(srcHeight);
+      } else {
+        delete target.srcHeight;
+      }
     }
   }
 
-  const requestedVariants = change.variants && typeof change.variants === 'object'
-    ? change.variants
-    : null;
-  const hasWidthFlags = typeof change.constrained === 'boolean'
-    || (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained))
-    || typeof change.centered === 'boolean'
-    || Object.prototype.hasOwnProperty.call(change, 'maxVh')
-    || typeof change.max80 === 'boolean';
-
-  if (requestedVariants) {
-    /**
-     * Frame + content rect. `cx`/`cy` are the source point at the frame centre
-     * and `w` the fraction of source width the frame spans — all normalised, so
-     * the bounds are fixed rather than depending on any rendered size.
-     * @type {Record<string, { aspect: string, cx: number, cy: number, w: number }>}
-     */
+  const parseVariantBlob = (blob) => {
+    /** @type {Record<string, { aspect: string, cx: number, cy: number, w: number }>} */
     const variants = {};
-    for (const [viewport, requested] of Object.entries(requestedVariants)) {
+    for (const [viewport, requested] of Object.entries(blob)) {
       const cx = Number(requested?.cx);
       const cy = Number(requested?.cy);
       const w = Number(requested?.w);
@@ -703,8 +703,6 @@ const applyCropChange = (data, change) => {
       }
       variants[viewport] = {
         aspect,
-        // Allow a little outside 0-1: the crop lock can be released to let the
-        // image edge enter the frame deliberately.
         cx: clampRound(cx, -1, 2, 6),
         cy: clampRound(cy, -1, 2, 6),
         w: clampRound(w, 0.01, 1, 6),
@@ -713,14 +711,56 @@ const applyCropChange = (data, change) => {
     if (!Object.keys(variants).length) {
       return { ok: false, error: 'No crop data was provided.' };
     }
+    return { ok: true, variants };
+  };
 
+  const requestedHoverVariants = change.hoverVariants && typeof change.hoverVariants === 'object'
+    ? change.hoverVariants
+    : null;
+  const requestedVariants = change.variants && typeof change.variants === 'object'
+    ? change.variants
+    : null;
+  const hasWidthFlags = typeof change.constrained === 'boolean'
+    || (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained))
+    || typeof change.centered === 'boolean'
+    || Object.prototype.hasOwnProperty.call(change, 'maxVh')
+    || typeof change.max80 === 'boolean';
+
+  if (requestedHoverVariants) {
+    const parsed = parseVariantBlob(requestedHoverVariants);
+    if (!parsed.ok) return parsed;
+    target.hoverVariants ||= {};
+    for (const [viewport, next] of Object.entries(parsed.variants)) {
+      const prev = target.hoverVariants[viewport] ?? {};
+      target.hoverVariants[viewport] = { ...prev, ...next };
+    }
+    // Linked aspect: hover aspect change updates cover frame too.
     target.variants ||= {};
-    for (const [viewport, next] of Object.entries(variants)) {
-      // Replace wholesale so migrated legacy keys can't linger and win on read.
-      target.variants[viewport] = next;
+    for (const [viewport, next] of Object.entries(parsed.variants)) {
+      target.variants[viewport] ||= {};
+      target.variants[viewport].aspect = next.aspect;
     }
     delete target.crop;
-  } else if (!hasWidthFlags && !requestedSrc) {
+  }
+
+  if (requestedVariants) {
+    const parsed = parseVariantBlob(requestedVariants);
+    if (!parsed.ok) return parsed;
+
+    target.variants ||= {};
+    for (const [viewport, next] of Object.entries(parsed.variants)) {
+      target.variants[viewport] = next;
+    }
+    // Linked aspect: cover aspect change updates hover when hoverVariants exist.
+    if (target.hoverVariants && typeof target.hoverVariants === 'object') {
+      for (const [viewport, next] of Object.entries(parsed.variants)) {
+        if (target.hoverVariants[viewport]) {
+          target.hoverVariants[viewport].aspect = next.aspect;
+        }
+      }
+    }
+    delete target.crop;
+  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 
