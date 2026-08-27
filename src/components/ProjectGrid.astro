@@ -649,8 +649,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /*
-    Measured ground (bindGalleryMediaInk) — title and chips stay linked on one
-    palette per card. Hover bitmap swaps data-media-ground with the base cover.
+    Measured ground (bindGalleryMediaInk) — item carries meta fallback for
+    first paint; meta and each chip override with their own sample.
   */
   .project-grid__item[data-media-ground='light'] {
     --chip-ink: var(--chip-ink-on-light);
@@ -674,16 +674,60 @@ const gridCardTemplateSeed: ProjectGridItem = {
     --subtitle-ink-hover: var(--subtitle-ink);
   }
 
+  .project-grid__meta[data-media-ground='light'] {
+    --title-ink: var(--sys-color-on-light-media);
+    --subtitle-ink: var(--sys-color-on-light-media-subtle);
+    --title-ink-hover: var(--title-ink);
+    --subtitle-ink-hover: var(--subtitle-ink);
+  }
+
+  .project-grid__meta[data-media-ground='dark'] {
+    --title-ink: var(--sys-color-on-dark-media);
+    --subtitle-ink: var(--sys-color-on-dark-media-subtle);
+    --title-ink-hover: var(--title-ink);
+    --subtitle-ink-hover: var(--subtitle-ink);
+  }
+
+  .project-grid__chip[data-media-ground='light'] {
+    --chip-ink: var(--chip-ink-on-light);
+    --chip-fill: var(--chip-fill-on-light);
+    --chip-ring: var(--chip-ring-on-light);
+    --chip-press: var(--chip-press-on-light);
+  }
+
+  .project-grid__chip[data-media-ground='dark'] {
+    --chip-ink: var(--chip-ink-on-dark);
+    --chip-fill: var(--chip-fill-on-dark);
+    --chip-ring: var(--chip-ring-on-dark);
+    --chip-press: var(--chip-press-on-dark);
+  }
+
   /*
     Forced hover with no hover image: base fades out and the page background
-    is the ground — chips need on-light palette. Title ink uses
-    --title-ink-on-page via the rules above this block.
+    is the ground — chips and meta need on-light / on-page palette even when
+    they carry their own data-media-ground from the faded base cover.
   */
   .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover)) {
     --chip-ink: var(--chip-ink-on-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
     --chip-press: var(--chip-press-on-light);
+  }
+
+  .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover))
+    .project-grid__chip {
+    --chip-ink: var(--chip-ink-on-light);
+    --chip-fill: var(--chip-fill-on-light);
+    --chip-ring: var(--chip-ring-on-light);
+    --chip-press: var(--chip-press-on-light);
+  }
+
+  .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover))
+    .project-grid__meta {
+    --title-ink: var(--title-ink-on-page);
+    --subtitle-ink: var(--subtitle-ink-on-page);
+    --title-ink-hover: var(--title-ink-on-page);
+    --subtitle-ink-hover: var(--subtitle-ink-on-page);
   }
 
   /*
