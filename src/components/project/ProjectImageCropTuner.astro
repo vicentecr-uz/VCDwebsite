@@ -703,6 +703,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let activeSlot: 'cover' | 'hover' = 'cover';
     let saved: CropState = { ...savedVariants[selectedViewport] };
     let draft: CropState = { ...draftVariants[selectedViewport] };
+    type CropPose = Pick<CropState, 'cx' | 'cy' | 'w'>;
+    let gestureUndo: CropPose[] = [];
+    const GESTURE_UNDO_CAP = 20; // ceiling; drop oldest. Upgrade: redo stack if anyone asks.
+    const pushGestureUndoIfNeeded = (captured: { value: boolean }) => {
+      if (captured.value) return;
+      captured.value = true;
+      gestureUndo.push({ cx: draft.cx, cy: draft.cy, w: draft.w });
+      if (gestureUndo.length > GESTURE_UNDO_CAP) gestureUndo.shift();
+    };
     let constrainByViewport = readConstraints();
     const constrainToFrame = () => constrainByViewport[selectedViewport];
     /** Disk / last globally-saved baseline per pending id (survives popup close). */
@@ -1242,6 +1251,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }));
 
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
+      gestureUndo = [];
       closePanel();
     };
 
@@ -1339,9 +1349,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
       syncWidthConstrainUi();
       liveApply = false;
+      gestureUndo = [];
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
+      gestureUndo = [];
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
       activeSlot = listingEditSlot(target);
       const image = activeSlot === 'hover'
@@ -1572,8 +1584,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     /** Zoom around a client point — mutates draft only; caller paints. */
-    const zoomAtClientPoint = (clientX: number, clientY: number, factor: number, bounds: DOMRect) => {
+    const zoomAtClientPoint = (
+      clientX: number,
+      clientY: number,
+      factor: number,
+      bounds: DOMRect,
+      captured?: { value: boolean },
+    ) => {
       if (!bounds.width || !bounds.height) return;
+      if (captured) pushGestureUndoIfNeeded(captured);
       const fx = (clientX - bounds.left) / bounds.width;
       const fy = (clientY - bounds.top) / bounds.height;
       const sourceX = draft.cx + (fx - 0.5) * draft.w;
@@ -1629,6 +1648,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         clientX: number;
         clientY: number;
       } | null = null;
+      const gestureUndoCaptured = { value: false };
 
       const pointList = () => [...pointers.values()];
 
@@ -1707,6 +1727,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const newW = clamp(pinch.startW * scale, maxW / 1.5, maxW);
         const fx = (midX - bounds.left) / bounds.width;
         const fy = (midY - bounds.top) / bounds.height;
+        pushGestureUndoIfNeeded(gestureUndoCaptured);
         beginLiveEdits();
         draft.w = newW;
         draft.cx = pinch.sourceX - (fx - 0.5) * draft.w;
@@ -1722,6 +1743,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (!bounds.width || !bounds.height) return;
         const deltaX = point.x - panStartX;
         const deltaY = point.y - panStartY;
+        pushGestureUndoIfNeeded(gestureUndoCaptured);
         beginLiveEdits();
         const nextX = panOriginX - (deltaX / bounds.width) * draft.w * POINTER_PAN_GAIN;
         const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft) * POINTER_PAN_GAIN;
@@ -1744,7 +1766,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
           const gain = wheelGainForSpeed(wheelSpeedEma, WHEEL_ZOOM_GAIN_FINE, WHEEL_ZOOM_GAIN_FAST);
           const factor = Math.exp(-dy * gain);
-          zoomAtClientPoint(clientX, clientY, factor, bounds);
+          zoomAtClientPoint(clientX, clientY, factor, bounds, gestureUndoCaptured);
           pendingStatus = `Zoom ${Math.round(zoomOf(draft) * 100)}% — unsaved changes.`;
           return;
         }
@@ -1752,6 +1774,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const mag = Math.hypot(dx, dy);
         wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
         const panGain = wheelGainForSpeed(wheelSpeedEma, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
+        pushGestureUndoIfNeeded(gestureUndoCaptured);
         beginLiveEdits();
         draft.cx += (dx / bounds.width) * draft.w * panGain;
         draft.cy += (dy / bounds.height) * contentH(draft) * panGain;
@@ -1820,6 +1843,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           window.clearTimeout(wheelIdleTimer);
           wheelIdleTimer = 0;
         }
+        gestureUndoCaptured.value = false;
         gestureBounds = null;
         wheelSpeedEma = 0;
         if (paintRaf) {
@@ -2128,6 +2152,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       button.addEventListener('click', () => {
         const viewport = button.dataset.cropViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
+        gestureUndo = [];
         draftVariants[selectedViewport] = { ...draft };
         selectedViewport = viewport;
         saved = { ...savedVariants[selectedViewport] };
@@ -2515,6 +2540,24 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     saveButton.addEventListener('click', saveDraft);
+
+    document.addEventListener('keydown', (event) => {
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
+      if (!panel || panel.dataset.devPanelKey !== 'image' || panel.hidden) return;
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
+      if (event.shiftKey || event.altKey) return;
+      const t = event.target as HTMLElement | null;
+      if (t && (t.isContentEditable || t.closest('input, textarea, select'))) return;
+      if (gestureUndo.length === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const pose = gestureUndo.pop()!;
+      draft.cx = pose.cx;
+      draft.cy = pose.cy;
+      draft.w = pose.w;
+      renderDraft();
+      status.textContent = 'Undid last pan/zoom.';
+    });
 
     cancelButton?.addEventListener('click', () => {
       revertToSaved();
