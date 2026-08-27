@@ -1,5 +1,5 @@
 ---
-import { projectImage } from '../../lib/images';
+import { projectImage, projectImageTier } from '../../lib/images';
 import {
   responsiveImageStyle,
   imageGridConstrainedStyle,
@@ -181,10 +181,22 @@ const editAttrs = editable
   >
     {hasCrop ? (
       <div class="project-crop-clip">
-        <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+        <img
+          src={projectImageTier(src, 'thumb')}
+          data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
+          alt={alt}
+          class="project-image__img"
+          loading={resolvedLoading}
+        />
       </div>
     ) : (
-      <img src={projectImage(src)} alt={alt} class="project-image__img" loading={resolvedLoading} />
+      <img
+        src={projectImageTier(src, 'thumb')}
+        data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
+        alt={alt}
+        class="project-image__img"
+        loading={resolvedLoading}
+      />
     )}
     {hasCaption && (
       <span
@@ -258,7 +270,8 @@ const editAttrs = editable
             that box and stretch the pixels. The height cap belongs on the clip.
           */}
           <img
-            src={projectImage(src)}
+            src={projectImageTier(src, 'thumb')}
+            data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
             alt={alt}
             class:list={[
               'project-media__img',
@@ -272,7 +285,8 @@ const editAttrs = editable
         </div>
       ) : (
         <img
-          src={projectImage(src)}
+          src={projectImageTier(src, 'thumb')}
+          data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
           alt={alt}
           class:list={[
             'project-media__img',
