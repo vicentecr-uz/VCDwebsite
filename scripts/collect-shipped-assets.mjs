@@ -18,9 +18,15 @@
  * `media/` — a silent skip would turn a content mistake into a production
  * 404 nobody notices.
  */
-import { readdir, readFile, copyFile, mkdir, stat } from 'node:fs/promises';
+import { readdir, readFile, copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  derivativeKind,
+  findOriginal,
+  generateDerivativeBuffer,
+  isDerivativeToken,
+} from './image-derivatives.mjs';
 
 const SCAN_EXTENSIONS = new Set(['.html', '.css', '.js']);
 // Deliberately does NOT exclude ')' from the token body — filenames in this
@@ -100,8 +106,27 @@ export async function collectShippedAssets(distDir, mediaDir) {
   const missing = [];
   let copied = 0;
   for (const token of refs) {
-    const source = path.join(mediaDir, token);
     const dest = path.join(distDir, 'images', token);
+
+    if (isDerivativeToken(token)) {
+      const originalPath = await findOriginal(mediaDir, token);
+      if (!originalPath) {
+        missing.push(token);
+        continue;
+      }
+      const kind = derivativeKind(token);
+      if (!kind) {
+        missing.push(token);
+        continue;
+      }
+      const buffer = await generateDerivativeBuffer(originalPath, kind);
+      await mkdir(path.dirname(dest), { recursive: true });
+      await writeFile(dest, buffer);
+      copied += 1;
+      continue;
+    }
+
+    const source = path.join(mediaDir, token);
     try {
       await stat(source);
     } catch {

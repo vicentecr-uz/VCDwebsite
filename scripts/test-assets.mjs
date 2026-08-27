@@ -161,5 +161,77 @@ await withFixture('scans .css and .js output, not just .html', async ({ dist, me
   check('js ref copied', existsSync(path.join(dist, 'images', 'from-js.png')));
 });
 
+const isWebpBytes = (buffer) => buffer.length >= 12
+  && buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46
+  && buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50;
+
+/** @returns {Promise<Buffer>} */
+async function writeTestJpeg(media, relative) {
+  const { default: sharp } = await import('sharp');
+  const buffer = await sharp({
+    create: {
+      width: 8,
+      height: 8,
+      channels: 3,
+      background: { r: 200, g: 100, b: 50 },
+    },
+  }).jpeg().toBuffer();
+  const full = path.join(media, relative);
+  await mkdir(path.dirname(full), { recursive: true });
+  await writeFile(full, buffer);
+  return buffer;
+}
+
+// 8. Derivative refs generate webp from the original in media/.
+await withFixture('derivative refs generate webp from the original', async ({ dist, media }) => {
+  await writeHtml(
+    dist,
+    'tapico/index.html',
+    [
+      '<img src="/images/hero.preview.webp" alt="">',
+      '<img src="/images/hero.thumb.webp" alt="">',
+    ].join('\n'),
+  );
+  await writeTestJpeg(media, 'hero.jpg');
+
+  await collectShippedAssets(dist, media);
+  const previewPath = path.join(dist, 'images', 'hero.preview.webp');
+  const thumbPath = path.join(dist, 'images', 'hero.thumb.webp');
+  check('preview exists', existsSync(previewPath));
+  check('thumb exists', existsSync(thumbPath));
+
+  const previewBytes = await readFile(previewPath);
+  const thumbBytes = await readFile(thumbPath);
+  const jpegBytes = await readFile(path.join(media, 'hero.jpg'));
+  check('preview is webp', isWebpBytes(previewBytes));
+  check('thumb is webp', isWebpBytes(thumbBytes));
+  check('preview is not a jpeg copy', !previewBytes.equals(jpegBytes));
+  check('thumb is not a jpeg copy', !thumbBytes.equals(jpegBytes));
+});
+
+// 9. A derivative ref with no original fails the build.
+await withFixture('a derivative ref with no original fails the build', async ({ dist, media }) => {
+  await writeHtml(dist, 'index.html', '<img src="/images/missing.preview.webp" alt="">');
+
+  let threw = null;
+  try {
+    await collectShippedAssets(dist, media);
+  } catch (error) {
+    threw = error;
+  }
+  check('threw', threw instanceof Error);
+  check('names the missing token', Boolean(threw) && /missing\.preview\.webp/.test(String(threw?.message)), String(threw?.message));
+});
+
+// 10. SVG refs copy through unchanged — no derivative required.
+await withFixture('svg refs copy through unchanged', async ({ dist, media }) => {
+  await writeHtml(dist, 'index.html', '<img src="/images/icon.svg" alt="">');
+  await writeMedia(media, 'icon.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+
+  await collectShippedAssets(dist, media);
+  check('svg copied', existsSync(path.join(dist, 'images', 'icon.svg')));
+  check('no preview generated', !existsSync(path.join(dist, 'images', 'icon.preview.webp')));
+});
+
 console.log(failures ? `\n${failures} failing check(s)\n` : '\nAll checks passed\n');
 process.exit(failures ? 1 : 0);
