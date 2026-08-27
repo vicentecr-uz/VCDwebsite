@@ -238,7 +238,7 @@ export function imageDevEditAttrs(
     captions: context.captions,
   });
   const captionStyle = resolveImageCaptionStyle(context.captionStyle);
-  const captionPosition = resolveImageCaptionPosition(context.captionPosition);
+  const captionPosition = resolveImageCaptionPosition(context.captionPosition, captionStyle);
   const captionReveals = resolveImageCaptionReveals(context.captionReveal);
 
   const attrs: Record<string, string> = {

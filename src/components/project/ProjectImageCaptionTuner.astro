@@ -8,7 +8,7 @@ import SegmentedControl from '../ui/SegmentedControl.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
 import {
-  IMAGE_CAPTION_POSITIONS,
+  IMAGE_CAPTION_OVERLAY_POSITIONS,
   IMAGE_CAPTION_REVEALS,
 } from '../../lib/imageCaptions';
 ---
@@ -33,9 +33,8 @@ import {
 
       <SelectField
         label="Position"
-        data-caption-overlay-only
         data-caption-position
-        options={IMAGE_CAPTION_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
+        options={IMAGE_CAPTION_OVERLAY_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
       />
     </div>
 
@@ -60,8 +59,11 @@ import {
 <script>
   import {
     BELOW_IMAGE_CAPTION_REVEALS,
+    DEFAULT_IMAGE_CAPTION_BELOW_ALIGN,
     DEFAULT_IMAGE_CAPTION_POSITION,
     DEFAULT_IMAGE_CAPTION_REVEALS,
+    IMAGE_CAPTION_BELOW_ALIGNS,
+    IMAGE_CAPTION_OVERLAY_POSITIONS,
     imageCaptionStyleClass,
     imageCaptionsHaveText,
     isBelowImageCaptionStyle,
@@ -73,6 +75,8 @@ import {
     resolveImageCaptions,
     setImageCaptionAtViewport,
     setImageCaptionRevealAtViewport,
+    type ImageCaptionBelowAlignId,
+    type ImageCaptionOverlayPositionId,
     type ImageCaptionPositionId,
     type ImageCaptionReveal,
     type ImageCaptionReveals,
@@ -127,14 +131,39 @@ import {
     let selectedViewport: ImageViewport = 'desktop';
     let draftCaptions: ImageCaptions = { desktop: '', tablet: '', mobile: '' };
     let draftStyle: ImageCaptionStyleId = 'white';
-    let draftPosition: ImageCaptionPositionId = DEFAULT_IMAGE_CAPTION_POSITION;
+    let draftOverlayPosition: ImageCaptionOverlayPositionId = DEFAULT_IMAGE_CAPTION_POSITION;
+    let draftBelowAlign: ImageCaptionBelowAlignId = DEFAULT_IMAGE_CAPTION_BELOW_ALIGN;
     let draftReveals: ImageCaptionReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
     let savedCaptions: ImageCaptions = { desktop: '', tablet: '', mobile: '' };
     let savedStyle: ImageCaptionStyleId = 'white';
-    let savedPosition: ImageCaptionPositionId = DEFAULT_IMAGE_CAPTION_POSITION;
+    let savedOverlayPosition: ImageCaptionOverlayPositionId = DEFAULT_IMAGE_CAPTION_POSITION;
+    let savedBelowAlign: ImageCaptionBelowAlignId = DEFAULT_IMAGE_CAPTION_BELOW_ALIGN;
     let savedReveals: ImageCaptionReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
     const diskBaselines = new Map<string, CaptionBaseline>();
     let syncingUi = false;
+
+    const activePosition = (style: ImageCaptionStyleId): ImageCaptionPositionId =>
+      isBelowImageCaptionStyle(style) ? draftBelowAlign : draftOverlayPosition;
+
+    const resolveDraftsFromRaw = (raw: unknown) => ({
+      overlay: resolveImageCaptionPosition(raw, 'white') as ImageCaptionOverlayPositionId,
+      below: resolveImageCaptionPosition(raw, 'below') as ImageCaptionBelowAlignId,
+    });
+
+    const rebuildPositionOptions = (style: ImageCaptionStyleId) => {
+      const list = isBelowImageCaptionStyle(style)
+        ? IMAGE_CAPTION_BELOW_ALIGNS
+        : IMAGE_CAPTION_OVERLAY_POSITIONS;
+      positionSelect.replaceChildren(
+        ...list.map((entry) => {
+          const option = document.createElement('option');
+          option.value = entry.id;
+          option.textContent = entry.label;
+          return option;
+        }),
+      );
+      positionSelect.value = activePosition(style);
+    };
 
     const pendingIdFor = (target: HTMLElement) => {
       const documentKey = target.dataset.devDocument || '';
@@ -173,14 +202,14 @@ import {
           mobile: host.dataset.captionRevealMobile as ImageCaptionReveal | undefined,
         });
       }
+      const captionStyle = resolveImageCaptionStyle(
+        target.dataset.devCaptionStyle || host?.dataset.captionStyle,
+      );
+      const rawPosition = target.dataset.devCaptionPosition || host?.dataset.captionPosition;
       return {
         captions,
-        captionStyle: resolveImageCaptionStyle(
-          target.dataset.devCaptionStyle || host?.dataset.captionStyle,
-        ),
-        captionPosition: resolveImageCaptionPosition(
-          target.dataset.devCaptionPosition || host?.dataset.captionPosition,
-        ),
+        captionStyle,
+        captionPosition: resolveImageCaptionPosition(rawPosition, captionStyle),
         captionReveals,
       };
     };
@@ -310,6 +339,7 @@ import {
       const position = resolveImageCaptionPosition(
         target.dataset.devCaptionPosition
           || host?.dataset.captionPosition,
+        style,
       );
       const isBelow = isBelowImageCaptionStyle(style);
       const isCarouselSlide = target.classList.contains('project-image-carousel__slide');
@@ -521,7 +551,7 @@ import {
         button.classList.toggle('is-selected', selected);
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
       });
-      positionSelect.value = draftPosition;
+      rebuildPositionOptions(draftStyle);
       revealSelect.value = draftReveals[selectedViewport];
       textArea.value = draftCaptions[selectedViewport];
       const overlayOnly = !isBelowImageCaptionStyle(draftStyle);
@@ -529,7 +559,7 @@ import {
         el.hidden = !overlayOnly;
       });
       status.textContent = isBelowImageCaptionStyle(draftStyle)
-        ? 'Below-image captions are always visible under the media (no location or hover settings).'
+        ? 'Below-image captions are always visible under the media (no hover settings).'
         : 'Text and show-mode cascade down: desktop updates tablet and mobile; tablet updates mobile.';
       syncingUi = false;
       renderViewportButtons();
@@ -539,7 +569,7 @@ import {
       draftCaptions = setImageCaptionAtViewport(draftCaptions, viewport, text);
       if (editTarget) {
         // Keep an empty host while editing so clearing the field doesn’t eject focus.
-        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
           retainEmptyHost: true,
         });
       }
@@ -604,9 +634,13 @@ import {
       const state = readTargetState(target);
 
       if (switching) {
+        const host = findCaptionHost(target);
+        const rawPosition = target.dataset.devCaptionPosition || host?.dataset.captionPosition;
+        const drafts = resolveDraftsFromRaw(rawPosition);
         savedCaptions = structuredClone(state.captions);
         savedStyle = state.captionStyle;
-        savedPosition = state.captionPosition;
+        savedOverlayPosition = drafts.overlay;
+        savedBelowAlign = drafts.below;
         savedReveals = structuredClone(
           isBelowImageCaptionStyle(state.captionStyle)
             ? BELOW_IMAGE_CAPTION_REVEALS
@@ -614,7 +648,8 @@ import {
         );
         draftCaptions = structuredClone(state.captions);
         draftStyle = state.captionStyle;
-        draftPosition = state.captionPosition;
+        draftOverlayPosition = drafts.overlay;
+        draftBelowAlign = drafts.below;
         draftReveals = structuredClone(savedReveals);
       }
 
@@ -622,7 +657,7 @@ import {
         draftCaptions = { desktop: '', tablet: '', mobile: '' };
         draftReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
         // Create an empty host so the user can type without the shell vanishing.
-        applyCaptionsToTarget(target, draftCaptions, draftStyle, draftPosition, draftReveals, {
+        applyCaptionsToTarget(target, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
           retainEmptyHost: true,
         });
       }
@@ -649,7 +684,7 @@ import {
           draftReveals = { ...BELOW_IMAGE_CAPTION_REVEALS };
         }
         if (editTarget) {
-          applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
+          applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
             retainEmptyHost: true,
           });
         }
@@ -659,9 +694,14 @@ import {
 
     positionSelect.addEventListener('change', () => {
       if (syncingUi) return;
-      draftPosition = resolveImageCaptionPosition(positionSelect.value);
+      const resolved = resolveImageCaptionPosition(positionSelect.value, draftStyle);
+      if (isBelowImageCaptionStyle(draftStyle)) {
+        draftBelowAlign = resolved as ImageCaptionBelowAlignId;
+      } else {
+        draftOverlayPosition = resolved as ImageCaptionOverlayPositionId;
+      }
       if (editTarget) {
-        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
           retainEmptyHost: true,
         });
       }
@@ -673,7 +713,7 @@ import {
       if (!isImageCaptionReveal(next)) return;
       draftReveals = setImageCaptionRevealAtViewport(draftReveals, selectedViewport, next);
       if (editTarget) {
-        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
           retainEmptyHost: true,
         });
       }
@@ -697,7 +737,7 @@ import {
     clearButton.addEventListener('click', () => {
       draftCaptions = { desktop: '', tablet: '', mobile: '' };
       if (editTarget) {
-        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals, {
+        applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, {
           retainEmptyHost: true,
         });
       }
@@ -709,21 +749,33 @@ import {
     const revertToSaved = () => {
       if (!editTarget) return;
       const pendingId = pendingIdFor(editTarget);
-      const baseline = diskBaselines.get(pendingId) ?? {
+      const fromDisk = diskBaselines.get(pendingId);
+      const baseline = fromDisk ?? {
         captions: structuredClone(savedCaptions),
         captionStyle: savedStyle,
-        captionPosition: savedPosition,
+        captionPosition: activePosition(savedStyle),
         captionReveals: structuredClone(savedReveals),
       };
+      const drafts = fromDisk
+        ? resolveDraftsFromRaw(baseline.captionPosition)
+        : { overlay: savedOverlayPosition, below: savedBelowAlign };
       draftCaptions = structuredClone(baseline.captions);
       draftStyle = baseline.captionStyle;
-      draftPosition = baseline.captionPosition;
+      draftOverlayPosition = drafts.overlay;
+      draftBelowAlign = drafts.below;
       draftReveals = structuredClone(baseline.captionReveals);
       savedCaptions = structuredClone(baseline.captions);
       savedStyle = baseline.captionStyle;
-      savedPosition = baseline.captionPosition;
+      savedOverlayPosition = drafts.overlay;
+      savedBelowAlign = drafts.below;
       savedReveals = structuredClone(baseline.captionReveals);
-      applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, draftPosition, draftReveals);
+      applyCaptionsToTarget(
+        editTarget,
+        draftCaptions,
+        draftStyle,
+        activePosition(draftStyle),
+        draftReveals,
+      );
       renderFields();
     };
 
@@ -763,14 +815,14 @@ import {
         diskBaselines.set(pendingId, {
           captions: structuredClone(savedCaptions),
           captionStyle: savedStyle,
-          captionPosition: savedPosition,
+          captionPosition: activePosition(savedStyle),
           captionReveals: structuredClone(savedReveals),
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
       const stagedCaptions = structuredClone(draftCaptions);
       const stagedStyle = draftStyle;
-      const stagedPosition = draftPosition;
+      const stagedPosition = activePosition(draftStyle);
       const stagedReveals = structuredClone(
         isBelowImageCaptionStyle(draftStyle) ? BELOW_IMAGE_CAPTION_REVEALS : draftReveals,
       );
@@ -779,7 +831,11 @@ import {
       applyCaptionsToTarget(target, stagedCaptions, stagedStyle, stagedPosition, stagedReveals);
       savedCaptions = structuredClone(stagedCaptions);
       savedStyle = stagedStyle;
-      savedPosition = stagedPosition;
+      if (isBelowImageCaptionStyle(stagedStyle)) {
+        savedBelowAlign = stagedPosition as ImageCaptionBelowAlignId;
+      } else {
+        savedOverlayPosition = stagedPosition as ImageCaptionOverlayPositionId;
+      }
       savedReveals = structuredClone(stagedReveals);
 
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
@@ -796,6 +852,7 @@ import {
             clear: !imageCaptionsHaveText(stagedCaptions),
           },
           revert: () => {
+            const drafts = resolveDraftsFromRaw(baseline.captionPosition);
             applyCaptionsToTarget(
               target,
               baseline.captions,
@@ -806,11 +863,13 @@ import {
             if (editTarget === target) {
               savedCaptions = structuredClone(baseline.captions);
               savedStyle = baseline.captionStyle;
-              savedPosition = baseline.captionPosition;
+              savedOverlayPosition = drafts.overlay;
+              savedBelowAlign = drafts.below;
               savedReveals = structuredClone(baseline.captionReveals);
               draftCaptions = structuredClone(baseline.captions);
               draftStyle = baseline.captionStyle;
-              draftPosition = baseline.captionPosition;
+              draftOverlayPosition = drafts.overlay;
+              draftBelowAlign = drafts.below;
               draftReveals = structuredClone(baseline.captionReveals);
               renderFields();
             }
@@ -908,7 +967,7 @@ import {
       diskBaselines.set(pendingIdFor(editTarget), {
         captions: structuredClone(savedCaptions),
         captionStyle: savedStyle,
-        captionPosition: savedPosition,
+        captionPosition: activePosition(savedStyle),
         captionReveals: structuredClone(savedReveals),
       });
     }) as EventListener);
@@ -974,11 +1033,6 @@ import {
   .project-caption-tuner__pair > :global(.dev-field) {
     flex: 1 1 0;
     min-width: 0;
-  }
-
-  .project-caption-tuner__pair:has([hidden]) {
-    display: grid;
-    grid-template-columns: 1fr;
   }
 
   /* Segmented track is the control — no grey Field value box around it. */
