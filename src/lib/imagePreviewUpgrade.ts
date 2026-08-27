@@ -14,8 +14,6 @@ const FETCH_ROOT_MARGIN = '80% 0px';
 const THUMB_PRELOAD_ROOT_MARGIN = '150% 0px';
 const REVEAL_DURATION_MS = 500;
 
-const ROLE_CLASSES = ['project-grid__img--base', 'project-grid__img--hover'];
-
 function previewMatchesCurrent(preview: string, img: HTMLImageElement): boolean {
   try {
     const resolved = new URL(preview, location.href).href;
@@ -24,13 +22,6 @@ function previewMatchesCurrent(preview: string, img: HTMLImageElement): boolean 
   } catch {
     return preview === (img.currentSrc || img.src);
   }
-}
-
-function stripRoleClasses(className: string): string {
-  return className
-    .split(/\s+/)
-    .filter((c) => c && !ROLE_CLASSES.includes(c))
-    .join(' ');
 }
 
 function isAboutPhoto(img: HTMLImageElement): boolean {
@@ -140,7 +131,7 @@ function revealAboutFade(img: HTMLImageElement, preview: string): void {
 
 function revealWithClone(img: HTMLImageElement, preview: string): void {
   const clone = img.cloneNode(false) as HTMLImageElement;
-  clone.className = stripRoleClasses(img.className);
+  clone.className = img.className;
   clone.removeAttribute('data-image-preview');
   clone.removeAttribute('data-image-preview-bound');
   clone.setAttribute('data-preview-reveal', '');
