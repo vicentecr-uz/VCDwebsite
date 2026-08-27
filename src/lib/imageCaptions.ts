@@ -3,8 +3,7 @@ import { IMAGE_VIEWPORTS } from './responsiveImage';
 
 /** Caption styles (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_STYLES = [
-  { id: 'white', label: 'White' },
-  { id: 'black', label: 'Black' },
+  { id: 'white', label: 'On image' },
   { id: 'below', label: 'Below image' },
 ] as const;
 
@@ -70,9 +69,10 @@ export function isImageCaptionStyleId(value: unknown): value is ImageCaptionStyl
   return IMAGE_CAPTION_STYLES.some((style) => style.id === value);
 }
 
-/** Resolve style id; legacy `default` maps to `white`. */
+/** Resolve style id; legacy `default` / `black` map to overlay (`white`). */
 export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
-  if (value === 'default') return 'white';
+  if (value === 'below') return 'below';
+  if (value === 'default' || value === 'black') return 'white';
   return isImageCaptionStyleId(value) ? value : 'white';
 }
 
@@ -85,9 +85,9 @@ export function resolveImageCaptionPosition(value: unknown): ImageCaptionPositio
   return isImageCaptionPositionId(value) ? value : DEFAULT_IMAGE_CAPTION_POSITION;
 }
 
-/** White uses base `.project-caption`; other styles add a modifier class. */
+/** On-image overlay uses base `.project-caption`; below adds a modifier class. */
 export function imageCaptionStyleClass(style: ImageCaptionStyleId): string {
-  return style === 'white' ? '' : `project-caption--${style}`;
+  return style === 'below' ? 'project-caption--below' : '';
 }
 
 export function isImageCaptionReveal(value: unknown): value is ImageCaptionReveal {
