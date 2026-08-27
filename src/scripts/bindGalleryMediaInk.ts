@@ -7,7 +7,6 @@ import {
   cropFrameRegionToSourceRegion,
   groundForRegion,
   lumaGridFor,
-  unionFrameRegions,
   type MediaGround,
   type NormalizedRegion,
 } from './adaptiveMediaInk';
@@ -24,24 +23,21 @@ function elementRegionInCover(el: HTMLElement, coverRect: DOMRect): NormalizedRe
   };
 }
 
-function sampleRegionForItem(item: HTMLElement, cover: HTMLElement): NormalizedRegion | null {
+function groundForBox(
+  el: HTMLElement,
+  cover: HTMLElement,
+  decoded: CanvasImageSource,
+  frame: { width: number; height: number },
+  source: { width: number; height: number },
+  crop: { w: number; cx: number; cy: number } | null,
+): MediaGround | null {
   const coverRect = cover.getBoundingClientRect();
-  if (!coverRect.width || !coverRect.height) return null;
-
-  const regions: NormalizedRegion[] = [];
-  const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
-  if (meta) {
-    const metaRegion = elementRegionInCover(meta, coverRect);
-    if (metaRegion) regions.push(metaRegion);
-  }
-
-  item.querySelectorAll<HTMLElement>('.project-grid__chips').forEach((chipRail) => {
-    const chipRegion = elementRegionInCover(chipRail, coverRect);
-    if (chipRegion) regions.push(chipRegion);
-  });
-
-  if (!regions.length) return null;
-  return unionFrameRegions(regions);
+  const region = elementRegionInCover(el, coverRect);
+  if (!region) return null;
+  const sourceRegion = crop
+    ? cropFrameRegionToSourceRegion(region, frame, source, crop)
+    : coverBoxRegionToSourceRegion(region, frame, source);
+  return groundForRegion(decoded, sourceRegion);
 }
 
 function isPlaceholderSrc(src: string | undefined, cover: HTMLElement): boolean {
@@ -86,6 +82,21 @@ function isLiveHoverBitmap(item: HTMLElement, hoverImg: HTMLImageElement | null)
   return card.matches(':hover, :focus-visible');
 }
 
+function inkTargets(item: HTMLElement, cover: HTMLElement): HTMLElement[] {
+  const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
+  const chips = [...item.querySelectorAll<HTMLElement>('.project-grid__chip')];
+  return [meta, ...chips].filter((el): el is HTMLElement => el instanceof HTMLElement);
+}
+
+function applyFallbackGround(
+  item: HTMLElement,
+  cover: HTMLElement,
+  ground: MediaGround,
+): void {
+  applyMediaGround(item, ground);
+  inkTargets(item, cover).forEach((el) => applyMediaGround(el, ground));
+}
+
 function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void } {
   let generation = 0;
 
@@ -103,21 +114,19 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       const imgEl = hover && hoverImg ? hoverImg : baseImg;
       const src = imgEl?.currentSrc || imgEl?.src;
 
+      const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
+      const chips = [...item.querySelectorAll<HTMLElement>('.project-grid__chip')];
+      const fallback = fallbackFromDataAttrs(item, hover);
+
       if (!src || isPlaceholderSrc(src, cover)) {
-        if (gen === generation) applyMediaGround(item, fallbackFromDataAttrs(item, hover));
+        if (gen === generation) applyFallbackGround(item, cover, fallback);
         return;
       }
 
       const decoded = await lumaGridFor(src);
       if (gen !== generation) return;
       if (!decoded) {
-        applyMediaGround(item, fallbackFromDataAttrs(item, hover));
-        return;
-      }
-
-      const region = sampleRegionForItem(item, cover);
-      if (!region) {
-        applyMediaGround(item, fallbackFromDataAttrs(item, hover));
+        applyFallbackGround(item, cover, fallback);
         return;
       }
 
@@ -129,21 +138,27 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
 
       const cropHost = cropHostFor(cover);
       const crop = cropHost ? readCropVars(cropHost, hover) : null;
-      const sourceRegion = crop
-        ? cropFrameRegionToSourceRegion(region, frame, source, crop)
-        : coverBoxRegionToSourceRegion(region, frame, source);
+
+      const metaGround = meta
+        ? (groundForBox(meta, cover, decoded, frame, source, crop) ?? fallback)
+        : fallback;
 
       if (gen === generation) {
-        applyMediaGround(item, groundForRegion(decoded, sourceRegion));
+        applyMediaGround(item, metaGround);
+        if (meta) applyMediaGround(meta, metaGround);
+        for (const chip of chips) {
+          applyMediaGround(chip, groundForBox(chip, cover, decoded, frame, source, crop) ?? metaGround);
+        }
       }
     } catch {
       if (gen === generation) {
         const cover = item.querySelector<HTMLElement>('.project-grid__cover');
-        const hoverImg = cover?.querySelector<HTMLImageElement>('.project-grid__img--hover');
+        if (!cover) return;
+        const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
         const hoverForced =
-          Boolean(cover?.classList.contains('is-dev-hover-forced') && hoverImg?.src);
+          Boolean(cover.classList.contains('is-dev-hover-forced') && hoverImg?.src);
         const hover = hoverForced || isLiveHoverBitmap(item, hoverImg ?? null);
-        applyMediaGround(item, fallbackFromDataAttrs(item, hover));
+        applyFallbackGround(item, cover, fallbackFromDataAttrs(item, hover));
       }
     }
   };
@@ -199,7 +214,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
   };
 }
 
-/** Sample cover pixels under title+chip union; set `data-media-ground` on each item. */
+/** Sample cover pixels under title and each chip; set `data-media-ground` per target. */
 export function bindGalleryMediaInk(): () => void {
   const bindings = new Map<HTMLElement, { cleanup: () => void; refresh: () => void }>();
 
