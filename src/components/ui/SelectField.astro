@@ -238,13 +238,24 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
 
     listbox.style.left = `${triggerRect.left}px`;
     listbox.style.width = `${triggerRect.width}px`;
+    listbox.style.right = 'auto';
+    listbox.style.bottom = 'auto';
+    listbox.style.height = 'auto';
 
     const items = getOptionItems(listbox);
     const anchor = items.find((li) => li.classList.contains('is-active'))
       ?? items.find((li) => li.dataset.value === select.value)
       ?? null;
 
-    let top = anchor ? triggerRect.top - anchor.offsetTop : triggerRect.bottom + 4;
+    let top: number;
+    if (anchor) {
+      listbox.style.top = `${triggerRect.top}px`;
+      const delta = trigger.getBoundingClientRect().top - anchor.getBoundingClientRect().top;
+      top = triggerRect.top + delta;
+    } else {
+      top = triggerRect.bottom + 4;
+    }
+
     const listboxHeight = listbox.offsetHeight;
     if (top < margin) top = margin;
     if (top + listboxHeight > window.innerHeight - margin) {
@@ -322,18 +333,34 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     }
   });
 
-  // Pointerdown outside an open listbox closes it without committing. The
-  // popup renders in the top layer (position: fixed) but stays a DOM
-  // descendant of .dev-field, so `contains` still finds a click on it.
+  // Pointerdown outside the trigger and options closes without committing.
+  // popover="manual" has no native light-dismiss; clicks on listbox padding
+  // or leftover UA inset chrome are not options, so they close too.
   document.addEventListener('pointerdown', (event) => {
     const target = event.target;
-    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox:popover-open').forEach((listbox) => {
-      const wrapper = listbox.closest('.dev-field');
-      if (wrapper && !(target instanceof Node && wrapper.contains(target))) {
-        const parts = getParts(listbox);
-        if (parts) closeListbox(parts, { returnFocus: false });
-      }
+    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox').forEach((listbox) => {
+      if (!listbox.matches(':popover-open')) return;
+      const parts = getParts(listbox);
+      if (!parts) return;
+      const onTrigger = target instanceof Node && parts.trigger.contains(target);
+      const onOption = target instanceof Element && target.closest('.dev-select__option');
+      if (!onTrigger && !onOption) closeListbox(parts, { returnFocus: false });
     });
+  }, true);
+
+  // Belt for click-away: if the trigger blurs and focus is not moving into
+  // the trigger or the listbox, close so leftover open state cannot steal
+  // arrow keys (which would otherwise scroll the page).
+  document.addEventListener('focusout', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !target.matches('.dev-select__trigger')) return;
+    const parts = getParts(target);
+    if (!parts || !parts.listbox.matches(':popover-open')) return;
+    const related = event.relatedTarget;
+    if (related instanceof Node && (parts.trigger.contains(related) || parts.listbox.contains(related))) {
+      return;
+    }
+    closeListbox(parts, { returnFocus: false });
   });
 
   // Reposition every open popup on scroll (capture, so a scroll inside any
