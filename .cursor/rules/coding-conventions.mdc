@@ -50,3 +50,13 @@ Apply it per property, not per component:
 **This applies to JS timing too, and that is where it usually hides.** A `prefersReducedMotion()` check that returns a `0` duration, skips the enter/exit class dance, or calls the "finish" path immediately makes the UI snap no matter how correct the CSS is. Three separate bugs in `#205` were exactly this shape — `chromeFadeMs()` returning `0` in `DevModeController.astro`, and `DevOverlay.astro` setting `hidden` in the same frame so the panel vanished rather than faded. Grep for `prefers-reduced-motion` in **script** blocks as well as styles.
 
 Genuine movement still gets suppressed — the section-lift `scale(1.02)`, the drop-indicator height animation, and the crop-stage transforms all keep their overrides.
+
+## Figma — build from components, not ad-hoc nodes
+
+When an agent creates or adjusts anything in a Figma file, compose it from the design system's existing components — elements → atom variants → atoms → particle components — rather than creating a plain node and applying the right properties to it by hand. A text sample in a mockup is an **instance of the text-style particle component**, not a `createText()` node with a style applied afterward.
+
+If a needed component doesn't exist yet, create it properly first, or ask Anto if the right structure is unclear. Don't reach for a raw node because it's faster right now — that shortcut is exactly what this rule blocks.
+
+Building from components forces proper thinking and identifies the components that need to exist in Figma before a mockup can be completed. It slows development down temporarily — more time to create the right component, work out the right structure, or ask for clarity before assembling — but over time it produces a system that lets us one-shot things with much greater accuracy. A raw node that merely *looks* right hides the gap; building from instances surfaces the missing component immediately, which is the point.
+
+Canonical: Atlas `standards.md` → *Design System — Figma: build from components, not ad-hoc nodes*. Also `CLAUDE.md` → **Implementation notes** and `AGENTS.md` → **Implementation notes**.
