@@ -1,0 +1,17 @@
+<script>
+  import { bindGalleryMediaInk } from '../scripts/bindGalleryMediaInk';
+
+  let teardown: (() => void) | undefined;
+
+  function mount() {
+    teardown?.();
+    teardown = bindGalleryMediaInk();
+  }
+
+  mount();
+  document.addEventListener('astro:page-load', mount);
+  document.addEventListener('astro:before-swap', () => {
+    teardown?.();
+    teardown = undefined;
+  });
+</script>
