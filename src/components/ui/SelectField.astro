@@ -237,9 +237,10 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     const valueBox = trigger.closest('.dev-field__value') ?? trigger;
     const valueRect = valueBox.getBoundingClientRect();
     const margin = 8;
+    const pad = 4;
 
-    listbox.style.left = `${valueRect.left}px`;
-    listbox.style.width = `${valueRect.width}px`;
+    listbox.style.left = `${valueRect.left - pad}px`;
+    listbox.style.width = `${valueRect.width + pad * 2}px`;
     listbox.style.right = 'auto';
     listbox.style.bottom = 'auto';
     listbox.style.height = 'auto';
@@ -269,6 +270,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
   const openListbox = (parts: Parts) => {
     const { trigger, listbox, select } = parts;
     if (trigger.disabled) return;
+    listbox.classList.remove('is-keyboard');
     syncFromSelect(parts);
     listbox.showPopover();
     trigger.setAttribute('aria-expanded', 'true');
@@ -281,6 +283,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
   const closeListbox = (parts: Parts, { returnFocus = true } = {}) => {
     const { trigger, listbox } = parts;
     if (!listbox.matches(':popover-open')) return;
+    listbox.classList.remove('is-keyboard');
     listbox.hidePopover();
     trigger.setAttribute('aria-expanded', 'false');
     setActiveOption(parts, null);
@@ -343,7 +346,25 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     if (!option) return;
     const parts = getParts(option);
     if (!parts || !parts.listbox.matches(':popover-open')) return;
+    if (parts.listbox.classList.contains('is-keyboard')) return;
     setActiveOption(parts, option);
+  });
+
+  // Once arrows (or type-ahead) own the highlight, ignore hover until the
+  // pointer actually moves again — native menu behaviour.
+  document.addEventListener('pointermove', (event) => {
+    if (event.movementX === 0 && event.movementY === 0) return;
+    const target = event.target;
+    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox').forEach((listbox) => {
+      if (!listbox.matches(':popover-open')) return;
+      if (!listbox.classList.contains('is-keyboard')) return;
+      listbox.classList.remove('is-keyboard');
+      if (!(target instanceof Element)) return;
+      const option = target.closest<HTMLLIElement>('.dev-select__option');
+      if (!option || !listbox.contains(option)) return;
+      const parts = getParts(option);
+      if (parts) setActiveOption(parts, option);
+    });
   });
 
   // Pointerdown outside the trigger and options closes without committing.
@@ -411,21 +432,25 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     switch (event.key) {
       case 'ArrowDown': {
         event.preventDefault();
+        parts.listbox.classList.add('is-keyboard');
         setActiveOption(parts, items[Math.min(items.length - 1, activeIndex + 1)] ?? null);
         break;
       }
       case 'ArrowUp': {
         event.preventDefault();
+        parts.listbox.classList.add('is-keyboard');
         setActiveOption(parts, items[Math.max(0, activeIndex - 1)] ?? null);
         break;
       }
       case 'Home': {
         event.preventDefault();
+        parts.listbox.classList.add('is-keyboard');
         setActiveOption(parts, items[0] ?? null);
         break;
       }
       case 'End': {
         event.preventDefault();
+        parts.listbox.classList.add('is-keyboard');
         setActiveOption(parts, items[items.length - 1] ?? null);
         break;
       }
@@ -461,6 +486,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
               .toLowerCase()
               .startsWith(typeaheadBuffer),
           );
+          parts.listbox.classList.add('is-keyboard');
           if (match) setActiveOption(parts, match);
           typeaheadTimer = window.setTimeout(() => {
             typeaheadBuffer = '';
