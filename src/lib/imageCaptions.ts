@@ -9,7 +9,7 @@ export const IMAGE_CAPTION_STYLES = [
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
 
-/** Below-image captions are in-flow body text; overlays use corner + reveal. */
+/** Below-image captions are in-flow body text; overlays use position + reveal. */
 export function isBelowImageCaptionStyle(style: ImageCaptionStyleId): boolean {
   return style === 'below';
 }
