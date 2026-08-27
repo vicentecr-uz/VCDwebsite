@@ -331,34 +331,38 @@
   white-space: nowrap;
 }
 
-/* Popup: same signed treatment as .dev-gap-toolbar__menu / .dev-launcher —
-   a bare column with no surface of its own, each option carrying its own
-   fill/border/shadow via the existing dev-btn / dev-btn--page atom. */
-.dev-select__listbox {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 1;
+/* Reset UA popover defaults — scoped to this component. */
+.dev-select__listbox[popover] {
+  position: fixed; /* JS sets top/left/width */
+  inset: unset; /* UA popover sets inset:0, which would stretch the box */
+  z-index: 200; /* above save bar 90, format bar 95, Alt+M panel 100 */
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-width: 10em;
+  gap: 0;
   margin: 0;
-  padding: 0;
+  border: 0;
+  padding: 4px;
   list-style: none;
-}
-
-/* Focus lands here (tabindex=-1, moved via JS) so open-state keys have
-   somewhere to go, but the visual focus indicator is the active option's
-   .is-active fill, not a ring around the whole popup. */
-.dev-select__listbox:focus {
-  outline: none;
-}
-
-.dev-select__listbox .dev-btn {
-  border: 1px solid var(--sys-color-srf-container-low);
+  background: var(--color-bg);
+  overflow: visible;
+  border-radius: var(--dev-radius-control-in-container);
   box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
+}
+
+.dev-select__option {
+  min-height: var(--dev-control-height);
+  border: 0;
+  box-shadow: none;
+}
+
+/* Keyboard-active option reads as hovered. */
+.dev-select__option.is-active {
+  background: var(--comp-button-ghost-container-hover);
+}
+
+/* Currently selected option matches the trigger's field fill. */
+.dev-select__option[aria-selected='true'] {
+  background: var(--comp-field-container);
 }
 
 .dev-select__option-icon {
@@ -729,8 +733,7 @@
 .dev-panel[hidden],
 .dev-panel__header[hidden],
 .dev-panel__lights[hidden],
-.dev-panel__body[hidden],
-.dev-select__listbox[hidden] {
+.dev-panel__body[hidden] {
   display: none;
 }
 

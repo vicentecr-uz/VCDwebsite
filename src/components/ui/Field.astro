@@ -5,15 +5,21 @@ interface Props {
   label: string;
   /** id for the label span, so a composed control can point aria-labelledby at it. */
   labelId?: string;
+  /** When set, the label text renders as a real <label for> so clicking it focuses the control. */
+  labelFor?: string;
   [key: string]: any;
 }
 
-const { label, labelId, class: className, ...rest } = Astro.props;
+const { label, labelId, labelFor, class: className, ...rest } = Astro.props;
 ---
 
 <div class:list={['dev-field', className]} {...rest}>
   <div class="dev-field__label-row">
-    <span class="dev-field__label" id={labelId}>{label}</span>
+    {labelFor ? (
+      <label class="dev-field__label" id={labelId} for={labelFor}>{label}</label>
+    ) : (
+      <span class="dev-field__label" id={labelId}>{label}</span>
+    )}
     <slot name="labelAccessory" />
   </div>
   <div class="dev-field__value">
