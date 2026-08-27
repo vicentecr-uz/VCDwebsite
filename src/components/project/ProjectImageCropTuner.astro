@@ -346,6 +346,25 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     const zoomOf = (state: CropState) => coverW(state.aspect) / (state.w || 1);
     const wForZoom = (aspect: string, zoom: number) => coverW(aspect) / Math.max(zoom, 0.0001);
 
+    const hoverImgSrcAspect = (target: HTMLElement) => {
+      const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
+      const w = hoverImg?.naturalWidth;
+      const h = hoverImg?.naturalHeight;
+      return w && h ? w / h : null;
+    };
+
+    const hoverCoverW = (aspect: string, hoverAspect: number) => (
+      Math.min(1, frameAspectOf(aspect) / hoverAspect)
+    );
+
+    const hoverZoomOf = (state: CropState, hoverAspect: number) => (
+      hoverCoverW(state.aspect, hoverAspect) / (state.w || 1)
+    );
+
+    const hoverWForZoom = (aspect: string, zoom: number, hoverAspect: number) => (
+      hoverCoverW(aspect, hoverAspect) / Math.max(zoom, 0.0001)
+    );
+
     const currentFrameSize = () => {
       const width = preview.clientWidth || 1;
       return { width, height: width / frameAspectOf(draft.aspect) };
@@ -756,6 +775,7 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       }
       if (options?.hoverVariants) {
         target.dataset.devHoverVariants = JSON.stringify(options.hoverVariants);
+        target.classList.add('project-grid__cover--hover-cropped');
         VIEWPORTS.forEach((viewport) => {
           setHoverTargetVariant(target, viewport, options.hoverVariants![viewport]);
         });
@@ -874,6 +894,14 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       draftCoverVariants[selectedViewport].aspect = aspect;
       if (draftHoverVariants) {
         draftHoverVariants[selectedViewport].aspect = aspect;
+        if (activeSlot === 'cover') {
+          const hoverAspect = hoverImgSrcAspect(editTarget);
+          if (hoverAspect) {
+            const hoverState = draftHoverVariants[selectedViewport];
+            const zoom = hoverZoomOf(hoverState, hoverAspect);
+            draftHoverVariants[selectedViewport].w = hoverWForZoom(aspect, zoom, hoverAspect);
+          }
+        }
       }
     };
 
@@ -952,9 +980,14 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       }
       setCropVariables(preview, draft);
       if (liveApply) {
-        if (isListingCover(editTarget) && activeSlot === 'hover' && draftHoverVariants) {
-          setHoverTargetVariant(editTarget, selectedViewport, draft);
+        if (isListingCover(editTarget)) {
           setTargetVariant(editTarget, selectedViewport, draftCoverVariants[selectedViewport]);
+          if (activeSlot === 'hover' && draftHoverVariants) {
+            setHoverTargetVariant(editTarget, selectedViewport, draft);
+            editTarget.classList.add('project-grid__cover--hover-cropped');
+          } else {
+            editTarget.classList.remove('project-grid__cover--hover-cropped');
+          }
         } else {
           setTargetVariant(editTarget, selectedViewport, draft);
         }
@@ -1271,6 +1304,7 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
+      const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
       activeSlot = listingEditSlot(target);
       const image = activeSlot === 'hover'
         ? target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])')
@@ -1286,7 +1320,7 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
 
       editingSession = live;
       // Preview-only until the user actually changes the crop.
-      liveApply = false;
+      liveApply = preserveLiveApply;
       targetWasCropped = target.classList.contains('project-cropped') || isGridTarget(target);
       targetHadOwnVariants = target.dataset.devHasOwnVariants === 'true';
       targetVariantsAttr = target.dataset.devImageVariants ?? null;
