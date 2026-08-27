@@ -639,17 +639,16 @@
 }
 
 /*
-  Crop handles sit half outside the frame. `.project-media` (and friends) use
-  overflow:hidden to clip the bitmap — that also eats the stage chrome, so the
-  on-page handles look "missing" until the first live edit adds .project-cropped.
-  Force visible spill-over for the whole edit session on the host and its
-  immediate block wrapper. Specificity beats `.project-media` / `.project-cropped`.
+  Crop handles sit half outside the frame (~0.35em). Clip the ghost bitmap to
+  the host so it cannot paint behind sibling images; clip-margin keeps handles.
+  Specificity beats `.project-media` / `.project-cropped` overflow:hidden.
 */
 .is-dev-mode .dev-crop-stage-host.project-media,
 .is-dev-mode .dev-crop-stage-host.project-image,
 .is-dev-mode .dev-crop-stage-host.project-image-grid__item,
 .is-dev-mode .project-block:has(> .dev-crop-stage-host) {
-  overflow: visible;
+  overflow: clip;
+  overflow-clip-margin: 0.5em;
 }
 
 /* Backstop: every rule above is dev-gated, so an orphaned surface outside dev
