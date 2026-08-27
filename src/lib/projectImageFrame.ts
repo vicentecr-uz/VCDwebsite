@@ -214,7 +214,7 @@ export function listingCoverDevEditAttrs(
   const defaultAspects = listingCoverDefaultAspects(grid, full);
   const srcDims = imageSourceDims(item);
   const seedCoverVariants = normalizeImageVariants(item.variants, defaultAspects, srcDims);
-  const seedHoverVariants = seedHoverVariants(seedCoverVariants, item.hoverVariants, null);
+  const seededHoverVariants = seedHoverVariants(seedCoverVariants, item.hoverVariants, null);
   const attrs = imageDevEditAttrs(true, {
     documentKey: slug,
     path: ['listings', grid],
@@ -223,7 +223,7 @@ export function listingCoverDevEditAttrs(
     hasOwnVariants: hasCropVariants(item.variants),
   }) ?? {};
   attrs['data-dev-listing-default-aspects'] = JSON.stringify(defaultAspects);
-  attrs['data-dev-hover-variants'] = JSON.stringify(seedHoverVariants);
+  attrs['data-dev-hover-variants'] = JSON.stringify(seededHoverVariants);
   return attrs;
 }
 
