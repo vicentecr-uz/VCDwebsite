@@ -3,15 +3,17 @@ import '../../styles/dev-chrome.css';
 
 interface Props {
   label: string;
+  /** id for the label span, so a composed control can point aria-labelledby at it. */
+  labelId?: string;
   [key: string]: any;
 }
 
-const { label, class: className, ...rest } = Astro.props;
+const { label, labelId, class: className, ...rest } = Astro.props;
 ---
 
 <div class:list={['dev-field', className]} {...rest}>
   <div class="dev-field__label-row">
-    <span class="dev-field__label">{label}</span>
+    <span class="dev-field__label" id={labelId}>{label}</span>
     <slot name="labelAccessory" />
   </div>
   <div class="dev-field__value">
