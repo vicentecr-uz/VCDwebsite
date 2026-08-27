@@ -113,9 +113,10 @@
   };
 
   /**
-   * Soft fill: centre pinned to the image edge matching caption position;
-   * caption extent (+ offsets) sets the fill size.
-   * Offsets: +x toward image interior horizontally, +y toward interior vertically.
+   * Soft fill: centre pinned to the image corner matching caption position;
+   * the opposite caption corner (+ offsets) sets the fill extent.
+   * Offsets: +x toward image interior horizontally, +y toward interior vertically
+   * (same CSS vars for every corner).
    */
   const layoutShadow = (caption: HTMLElement, settings: CaptionShadowSettings) => {
     const host = ensureShadow(caption);
@@ -130,7 +131,7 @@
     const parentRect = parent.getBoundingClientRect();
     const captionBox = caption.getBoundingClientRect();
     const textRect = getCaptionTextRect(caption);
-    const position = caption.dataset.captionPosition || 'left';
+    const position = caption.dataset.captionPosition || 'bottom-left';
 
     host.style.left = `${parentRect.left - captionBox.left}px`;
     host.style.top = `${parentRect.top - captionBox.top}px`;
@@ -142,6 +143,7 @@
     const textLeft = textRect.left - parentRect.left;
     const textRight = textRect.right - parentRect.left;
     const textTop = textRect.top - parentRect.top;
+    const textBottom = textRect.bottom - parentRect.top;
     const r = settings.radius;
 
     let centerX = 0;
@@ -149,34 +151,29 @@
     let trackX = textRight + settings.x;
     let trackY = textTop - settings.y;
     let borderRadius = `0 ${r}px 0 0`;
-    let fillW: number;
-    let fillH: number;
 
-    if (position === 'right') {
+    if (position === 'bottom-right') {
       centerX = w;
       centerY = h;
       trackX = textLeft - settings.x;
       trackY = textTop - settings.y;
       borderRadius = `${r}px 0 0 0`;
-      fillW = Math.max(1, 2 * Math.abs(trackX - centerX));
-      fillH = Math.max(1, 2 * Math.abs(centerY - trackY));
-    } else if (position === 'center') {
-      centerX = w / 2;
-      centerY = h;
-      trackY = textTop - settings.y;
-      const trackLeft = textLeft - settings.x;
-      const trackRight = textRight + settings.x;
-      const halfW = Math.max(
-        Math.abs(trackLeft - centerX),
-        Math.abs(trackRight - centerX),
-      );
-      borderRadius = `${r}px ${r}px 0 0`;
-      fillW = Math.max(1, 2 * halfW);
-      fillH = Math.max(1, 2 * Math.abs(centerY - trackY));
-    } else {
-      fillW = Math.max(1, 2 * Math.abs(trackX - centerX));
-      fillH = Math.max(1, 2 * Math.abs(centerY - trackY));
+    } else if (position === 'top-left') {
+      centerX = 0;
+      centerY = 0;
+      trackX = textRight + settings.x;
+      trackY = textBottom + settings.y;
+      borderRadius = `0 0 ${r}px 0`;
+    } else if (position === 'top-right') {
+      centerX = w;
+      centerY = 0;
+      trackX = textLeft - settings.x;
+      trackY = textBottom + settings.y;
+      borderRadius = `0 0 0 ${r}px`;
     }
+
+    const fillW = Math.max(1, 2 * Math.abs(trackX - centerX));
+    const fillH = Math.max(1, 2 * Math.abs(centerY - trackY));
 
     fill.style.width = `${fillW}px`;
     fill.style.height = `${fillH}px`;

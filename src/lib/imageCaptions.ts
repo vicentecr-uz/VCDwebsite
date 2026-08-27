@@ -9,21 +9,30 @@ export const IMAGE_CAPTION_STYLES = [
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
 
-/** Below-image captions are in-flow body text; overlays use position + reveal. */
+/** Below-image captions are in-flow body text; overlays use corner + reveal. */
 export function isBelowImageCaptionStyle(style: ImageCaptionStyleId): boolean {
   return style === 'below';
 }
 
-/** Overlay caption alignment along the bottom edge (Dev Mode tuner + project images). */
-export const IMAGE_CAPTION_POSITIONS = [
+export const IMAGE_CAPTION_OVERLAY_POSITIONS = [
+  { id: 'bottom-left', label: 'Bottom left' },
+  { id: 'top-left', label: 'Top left' },
+  { id: 'bottom-right', label: 'Bottom right' },
+  { id: 'top-right', label: 'Top right' },
+] as const;
+
+export const IMAGE_CAPTION_BELOW_ALIGNS = [
   { id: 'left', label: 'Left' },
   { id: 'center', label: 'Center' },
   { id: 'right', label: 'Right' },
 ] as const;
 
-export type ImageCaptionPositionId = (typeof IMAGE_CAPTION_POSITIONS)[number]['id'];
+export type ImageCaptionOverlayPositionId = (typeof IMAGE_CAPTION_OVERLAY_POSITIONS)[number]['id'];
+export type ImageCaptionBelowAlignId = (typeof IMAGE_CAPTION_BELOW_ALIGNS)[number]['id'];
+export type ImageCaptionPositionId = ImageCaptionOverlayPositionId | ImageCaptionBelowAlignId;
 
-export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionPositionId = 'left';
+export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionOverlayPositionId = 'bottom-left';
+export const DEFAULT_IMAGE_CAPTION_BELOW_ALIGN: ImageCaptionBelowAlignId = 'left';
 
 /** How the caption appears at a breakpoint. */
 export const IMAGE_CAPTION_REVEALS = [
@@ -76,22 +85,46 @@ export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
 }
 
 export function isImageCaptionPositionId(value: unknown): value is ImageCaptionPositionId {
-  return IMAGE_CAPTION_POSITIONS.some((position) => position.id === value);
+  return (
+    IMAGE_CAPTION_OVERLAY_POSITIONS.some((position) => position.id === value)
+    || IMAGE_CAPTION_BELOW_ALIGNS.some((align) => align.id === value)
+  );
 }
 
-/** Resolve bottom-edge alignment; legacy corner ids map forward; missing / unknown → left. */
-export function resolveImageCaptionPosition(value: unknown): ImageCaptionPositionId {
+/** Resolve position vocabulary for overlay corners or below align, depending on style. */
+export function resolveImageCaptionPosition(
+  value: unknown,
+  style?: ImageCaptionStyleId,
+): ImageCaptionPositionId {
+  const resolvedStyle = style ?? 'white';
+  if (resolvedStyle === 'below') {
+    switch (value) {
+      case 'left':
+      case 'center':
+      case 'right':
+        return value;
+      case 'bottom-left':
+      case 'top-left':
+        return 'left';
+      case 'bottom-right':
+      case 'top-right':
+        return 'right';
+      default:
+        return DEFAULT_IMAGE_CAPTION_BELOW_ALIGN;
+    }
+  }
   switch (value) {
-    case 'left':
     case 'bottom-left':
     case 'top-left':
-      return 'left';
-    case 'center':
-      return 'center';
-    case 'right':
     case 'bottom-right':
     case 'top-right':
-      return 'right';
+      return value;
+    case 'left':
+      return 'bottom-left';
+    case 'right':
+      return 'bottom-right';
+    case 'center':
+      return 'bottom-left';
     default:
       return DEFAULT_IMAGE_CAPTION_POSITION;
   }

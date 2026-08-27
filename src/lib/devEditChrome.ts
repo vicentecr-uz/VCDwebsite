@@ -19,8 +19,7 @@ export function isDevEditCorner(value: unknown): value is DevEditCorner {
 function captionPositionToChromeCorner(
   captionPosition: ImageCaptionPositionId,
 ): DevEditCorner | null {
-  if (captionPosition === 'left') return 'bottom-left';
-  if (captionPosition === 'right') return 'bottom-right';
+  if (isDevEditCorner(captionPosition)) return captionPosition;
   return null;
 }
 
