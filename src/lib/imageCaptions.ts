@@ -4,7 +4,7 @@ import { IMAGE_VIEWPORTS } from './responsiveImage';
 /** Caption styles (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_STYLES = [
   { id: 'white', label: 'On image' },
-  { id: 'below', label: 'Below image' },
+  { id: 'below', label: 'Below' },
 ] as const;
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];

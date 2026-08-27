@@ -23,19 +23,21 @@ import {
 
     <TextArea label="Caption" placeholder="Type here" rows={3} data-caption-text />
 
-    <Field label="Location">
-      <SegmentedControl label="Location" data-caption-location>
-        <Button emphasis="ghost" width="fill" label="On image" data-caption-style="white" />
-        <Button emphasis="ghost" width="fill" label="Below image" data-caption-style="below" />
-      </SegmentedControl>
-    </Field>
+    <div class="project-caption-tuner__pair">
+      <Field label="Location">
+        <SegmentedControl label="Location" data-caption-location>
+          <Button emphasis="ghost" width="fill" label="On image" data-caption-style="white" />
+          <Button emphasis="ghost" width="fill" label="Below" data-caption-style="below" />
+        </SegmentedControl>
+      </Field>
 
-    <SelectField
-      label="Position"
-      data-caption-overlay-only
-      data-caption-position
-      options={IMAGE_CAPTION_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
-    />
+      <SelectField
+        label="Position"
+        data-caption-overlay-only
+        data-caption-position
+        options={IMAGE_CAPTION_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
+      />
+    </div>
 
     <SelectField
       label="Show caption"
@@ -630,9 +632,11 @@ import {
       openPanel();
       enableInlineEditing(target);
 
-      requestAnimationFrame(() => {
-        focusOnPageCaption(target);
-      });
+      if (options?.seedEmpty) {
+        requestAnimationFrame(() => {
+          focusOnPageCaption(target);
+        });
+      }
     };
 
     styleButtons.forEach((button) => {
@@ -959,6 +963,36 @@ import {
     display: flex;
     flex-direction: column;
     gap: 0.7em;
+  }
+
+  .project-caption-tuner__pair {
+    display: flex;
+    gap: 0.7em;
+    align-items: start;
+  }
+
+  .project-caption-tuner__pair > :global(.dev-field) {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .project-caption-tuner__pair:has([hidden]) {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  /* Segmented track is the control — no grey Field value box around it. */
+  .project-caption-tuner :global(.dev-field:has(.dev-segmented) .dev-field__value) {
+    background: transparent;
+    padding: 0;
+  }
+
+  .project-caption-tuner :global(.dev-field:has(.dev-segmented):hover .dev-field__value) {
+    background: transparent;
+  }
+
+  .project-caption-tuner :global(.dev-field:has(.dev-segmented) .dev-field__value:focus-within) {
+    box-shadow: none;
   }
 
   /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
