@@ -92,6 +92,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     <p class="project-carousel-tuner__hint" hidden></p>
 
     <PanelActions>
+      <Button emphasis="ghost" label="Cancel" data-carousel-cancel />
       <Button emphasis="ghost" label="Clear" hidden data-carousel-clear-override />
       <Button emphasis="ghost" label="Revert changes" data-carousel-revert />
       <Button emphasis="filled" label="Save changes" data-carousel-save />
@@ -149,6 +150,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     const parkingHint = tuner.querySelector<HTMLElement>('[data-carousel-parking-hint]');
     const clearOverrideButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-clear-override]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-save]');
+    const cancelButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-cancel]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-revert]');
     const status = tuner.querySelector<HTMLElement>('[data-carousel-status]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-carousel-target]');
@@ -789,15 +791,28 @@ import ToggleRow from '../ui/ToggleRow.astro';
       if (target) selectTarget(target, true);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
-      const trigger = event.detail?.trigger as HTMLElement | undefined;
-      if (trigger?.dataset.devEditTrigger !== 'carousel') return;
+    const revertToSaved = () => {
+      if (!editTarget) return;
+      draft = cloneDraft(saved);
+      const wasLive = liveApply;
+      liveApply = true;
+      renderDraft();
+      liveApply = wasLive;
+    };
+
+    const restoreOnClose = () => {
+      if (!editTarget) return;
+      revertToSaved();
       liveApply = false;
-      // Keep staged JSON on the block, but drop preview so the live window bp wins.
-      writeSettingsJson(editTarget, draft);
       clearTunerPreview(editTarget);
       applyCarouselViewportSettings(editTarget, matchCarouselViewport());
       window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', { detail: { block: editTarget } }));
+    };
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent) => {
+      const panel = event.detail?.panel as HTMLElement | undefined;
+      if (!panel || panel.dataset.devPanelKey !== 'carousel') return;
+      restoreOnClose();
     }) as EventListener);
 
     selectTarget(initialTarget, false);
@@ -876,9 +891,13 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
     saveButton.addEventListener('click', saveDraft);
 
+    cancelButton?.addEventListener('click', () => {
+      restoreOnClose();
+      closePanel();
+    });
+
     revertButton.addEventListener('click', () => {
-      draft = cloneDraft(saved);
-      renderDraft();
+      revertToSaved();
       stageDraft('Reverted to the last saved carousel settings.');
     });
 

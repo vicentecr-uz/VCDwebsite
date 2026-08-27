@@ -172,6 +172,7 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     </div>
 
     <PanelActions>
+      <Button emphasis="ghost" label="Cancel" data-crop-cancel />
       <Button emphasis="ghost" label="Reset" hidden data-crop-reset />
       <Button emphasis="ghost" label="Revert changes" data-crop-revert />
       <Button emphasis="ghost" label="Use grid default" hidden data-crop-use-grid-default />
@@ -240,6 +241,7 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     const constraintState = tuner.querySelector<HTMLElement>('[data-crop-constraint-state]');
     const constraintIcon = tuner.querySelector<HTMLElement>('[data-crop-constraint-icon]');
     const saveButton = tuner.querySelector<HTMLButtonElement>('[data-crop-save]');
+    const cancelButton = tuner.querySelector<HTMLButtonElement>('[data-crop-cancel]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
@@ -600,7 +602,7 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     };
 
     const syncUseGridDefaultButton = () => {
-      // Figma Panel Actions: Revert + Save only.
+      // Figma Panel Actions: Cancel + Revert + Save (Reset / Use grid default stay hidden).
       useGridDefaultButton.hidden = true;
     };
 
@@ -1281,8 +1283,16 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       const target = editTarget;
       if (!target) return;
 
-      draftVariants = structuredClone(savedVariants);
-      saved = { ...savedVariants[selectedViewport] };
+      draftCoverVariants = structuredClone(savedCoverVariants);
+      if (savedHoverVariants) {
+        draftHoverVariants = structuredClone(savedHoverVariants);
+      }
+      draftVariants = isListingCover(target) && activeSlot === 'hover' && draftHoverVariants
+        ? structuredClone(draftHoverVariants)
+        : isListingCover(target)
+          ? structuredClone(draftCoverVariants)
+          : structuredClone(savedVariants);
+      saved = { ...draftVariants[selectedViewport] };
       draft = { ...saved };
       draftConstrained = { ...savedConstrained };
       draftMaxVh = savedMaxVh;
@@ -1303,10 +1313,16 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
         if (targetWasCropped || savedSinceSelect) {
           // Restore every breakpoint, not just the one on screen — the session
           // may have edited others via the viewport chips.
+          const variantsForTarget = isListingCover(target)
+            ? savedCoverVariants
+            : savedVariants;
           applyVariantsToTarget(
             target,
-            savedVariants,
-            isGridTarget(target) && !targetHadOwnVariants ? { clearOwn: true } : undefined,
+            variantsForTarget,
+            {
+              ...(isGridTarget(target) && !targetHadOwnVariants ? { clearOwn: true } : {}),
+              ...(savedHoverVariants ? { hoverVariants: savedHoverVariants } : {}),
+            },
           );
         } else if (liveApply || savedSinceSelect) {
           stripLiveCropFrame();
@@ -2499,6 +2515,12 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     });
 
     saveButton.addEventListener('click', saveDraft);
+
+    cancelButton?.addEventListener('click', () => {
+      revertToSaved();
+      renderDraft();
+      closePanel();
+    });
 
     revertButton.addEventListener('click', () => {
       revertToSaved();
