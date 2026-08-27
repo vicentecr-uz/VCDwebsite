@@ -2,10 +2,10 @@
 import DevOverlay from './DevOverlay.astro';
 
 interface Props {
-  documentKey: string;
+  documentKey?: string;
 }
 
-const { documentKey } = Astro.props;
+const { documentKey = '' } = Astro.props;
 ---
 
 <DevOverlay
@@ -56,6 +56,7 @@ const { documentKey } = Astro.props;
 <script>
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import { sizeIcon } from '../lib/icons';
+  import { getLastPointerPosition } from '../lib/lastPointer';
 
   const UNASSIGNED = '__unassigned__';
 
@@ -68,7 +69,13 @@ const { documentKey } = Astro.props;
    * }} Asset */
 
   const overlay = document.querySelector('[data-dev-asset-manager]');
-  const documentKey = overlay instanceof HTMLElement ? (overlay.dataset.documentKey || '') : '';
+  const propDocumentKey = overlay instanceof HTMLElement ? (overlay.dataset.documentKey || '') : '';
+  const NON_PROJECT_SEGMENTS = new Set(['', 'work', 'play', 'about', 'styles']);
+  const currentPageSlugFromPath = () => {
+    const segment = location.pathname.replace(/^\/+|\/+$/g, '').split('/')[0] || '';
+    return NON_PROJECT_SEGMENTS.has(segment) ? '' : segment;
+  };
+  const currentPageSlug = () => propDocumentKey || currentPageSlugFromPath();
   const projectsEl = document.querySelector('[data-asset-projects]');
   const gridEl = document.querySelector('[data-asset-grid]');
   const statusEl = document.querySelector('[data-asset-status]');
@@ -82,7 +89,7 @@ const { documentKey } = Astro.props;
   let assets = [];
   /** @type {Array<{ slug: string, title: string }>} */
   let projects = [];
-  let selectedProject = documentKey || '';
+  let selectedProject = currentPageSlug() || '';
   /** @type {'all' | 'onPage' | 'library'} */
   let filter = 'all';
   /** @type {Set<string>} */
@@ -198,14 +205,15 @@ const { documentKey } = Astro.props;
   const renderProjects = () => {
     if (!(projectsEl instanceof HTMLElement)) return;
     projectsEl.replaceChildren();
+    const pageSlug = currentPageSlug();
     for (const project of projects) {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'dev-asset-manager__project';
       button.dataset.assetProject = project.slug;
       button.classList.toggle('is-active', project.slug === selectedProject);
-      button.classList.toggle('is-current-page', project.slug === documentKey);
-      if (project.slug === documentKey) {
+      button.classList.toggle('is-current-page', project.slug === pageSlug);
+      if (project.slug === pageSlug) {
         button.title = `${project.title} (this page)`;
       }
 
@@ -312,8 +320,9 @@ const { documentKey } = Astro.props;
     assets = Array.isArray(payload.assets) ? payload.assets : [];
 
     if (!selectedProject || !projects.some((project) => project.slug === selectedProject)) {
-      selectedProject = documentKey && projects.some((project) => project.slug === documentKey)
-        ? documentKey
+      const slug = currentPageSlug();
+      selectedProject = slug && projects.some((project) => project.slug === slug)
+        ? slug
         : (projects.find((project) => project.slug !== UNASSIGNED)?.slug || projects[0]?.slug || '');
     }
 
@@ -436,7 +445,6 @@ const { documentKey } = Astro.props;
 
   window.addEventListener('vcd:dev-asset-manager-open', ((event) => {
     const detail = event.detail ?? {};
-    if (detail.documentKey && detail.documentKey !== documentKey) return;
 
     if (rejectPick) {
       rejectPick(new Error('cancelled'));
@@ -451,7 +459,7 @@ const { documentKey } = Astro.props;
     rejectPick = typeof detail.reject === 'function' ? detail.reject : null;
     pickOpener = pickMode ? findPickOpener(detail) : null;
     selected.clear();
-    selectedProject = detail.project || documentKey || selectedProject;
+    selectedProject = detail.project || detail.documentKey || selectedProject;
     filter = 'all';
     filterButtons.forEach((entry) => {
       entry.classList.toggle('is-active', entry.getAttribute('data-asset-filter') === 'all');
@@ -460,14 +468,40 @@ const { documentKey } = Astro.props;
 
     if (overlay instanceof HTMLElement) {
       overlay.hidden = false;
-      overlay.tabIndex = -1;
-      overlay.focus({ preventScroll: true });
       setAssetManagerOpen(true);
     }
     void loadAssets().catch((error) => {
       setStatus(error instanceof Error ? error.message : 'Could not load assets.');
     });
   }));
+
+  const isTypingTarget = (target) => {
+    const el = target instanceof HTMLElement ? target : null;
+    return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
+  };
+
+  document.addEventListener('keydown', (event) => {
+    if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyA')) return;
+    if (isTypingTarget(event.target)) return;
+
+    if (overlay instanceof HTMLElement && !overlay.hidden) {
+      event.preventDefault();
+      return;
+    }
+
+    event.preventDefault();
+    window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+    const slug = currentPageSlug();
+    window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
+      detail: { mode: 'browse', documentKey: slug, project: slug },
+    }));
+    if (overlay instanceof HTMLElement) {
+      const { x, y } = getLastPointerPosition();
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
+        detail: { panel: overlay, clientX: x, clientY: y },
+      }));
+    }
+  });
 </script>
 
 <style is:global>
