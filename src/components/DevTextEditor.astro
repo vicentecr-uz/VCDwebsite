@@ -758,6 +758,21 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         return;
       }
 
+      // Open add-menu owns the page: other gaps must not light (their host
+      // would share z-index 65 and paint over the overflowing option column).
+      const openMenuState = spacingStates.find(({ control }) =>
+        control.classList.contains('is-menu-open'),
+      );
+      if (openMenuState) {
+        spacingStates.forEach(({ control }) => {
+          if (control === openMenuState.control) return;
+          clearGapProximity(control);
+        });
+        openMenuState.control.classList.add('is-near-add');
+        syncPageTopGapStacking();
+        return;
+      }
+
       const overHeader = isPointerOverHeaderChrome(clientX, clientY);
 
       let nearestAdd: EditableSpacingState | null = null;
@@ -3703,6 +3718,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     z-index: 55;
   }
 
+  /* Open add-menu hangs into the next block — sit above neighbouring 65 lifts. */
+  .dev-gap-toolbar.is-menu-open {
+    z-index: 80;
+  }
+
   [data-dev-spacing-document].project-stack--related > .dev-gap-toolbar {
     top: calc(var(--space-related) / -2);
   }
@@ -3831,6 +3851,10 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     transform: translateX(-50%);
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
+  }
+
+  .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__menu {
+    z-index: 2;
   }
 
   .dev-gap-toolbar__menu[hidden] {
