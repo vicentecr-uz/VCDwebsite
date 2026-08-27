@@ -4,13 +4,20 @@ import boldIcon from 'lucide-static/icons/bold.svg?raw';
 import italicIcon from 'lucide-static/icons/italic.svg?raw';
 import underlineIcon from 'lucide-static/icons/underline.svg?raw';
 import linkIcon from 'lucide-static/icons/link.svg?raw';
+import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
+import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
+import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
 import { sizeIcon } from '../lib/icons';
+import SelectField from './ui/SelectField.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
 const formatItalicSvg = sizeIcon(italicIcon, 16);
 const formatUnderlineSvg = sizeIcon(underlineIcon, 16);
 const formatLinkSvg = sizeIcon(linkIcon, 16);
+const formatPilcrowSvg = sizeIcon(pilcrowIcon, 16);
+const formatHeading1Svg = sizeIcon(heading1Icon, 16);
+const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 ---
 
 <div class="dev-text-actions" data-dev-text-actions hidden>
@@ -28,18 +35,33 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
 <div class="dev-text-format" data-dev-text-format hidden>
   <div class="dev-text-format__surface">
     <div class="dev-text-format__buttons">
-      <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
-        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatBoldSvg} />
-      </button>
-      <button type="button" data-dev-format="italic" title="Italic (⌘I)" aria-label="Italic" aria-pressed="false">
-        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatItalicSvg} />
-      </button>
-      <button type="button" data-dev-format="underline" title="Underline (⌘U)" aria-label="Underline" aria-pressed="false">
-        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatUnderlineSvg} />
-      </button>
-      <button type="button" data-dev-format="link" title="Link (⌘K)" aria-label="Link" aria-pressed="false">
-        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatLinkSvg} />
-      </button>
+      <SelectField
+        class="dev-text-format__block-style"
+        hideLabel
+        label="Block style"
+        data-dev-block-style
+        value="bodyText"
+        options={[
+          { value: 'bodyText', label: 'Text', icon: formatPilcrowSvg },
+          { value: 'sectionTitle:2', label: 'Heading 1', icon: formatHeading1Svg },
+          { value: 'sectionTitle:3', label: 'Heading 2', icon: formatHeading2Svg },
+        ]}
+      />
+      <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
+      <div class="dev-text-format__inline" data-dev-format-inline>
+        <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
+          <span class="dev-text-format__icon" aria-hidden="true" set:html={formatBoldSvg} />
+        </button>
+        <button type="button" data-dev-format="italic" title="Italic (⌘I)" aria-label="Italic" aria-pressed="false">
+          <span class="dev-text-format__icon" aria-hidden="true" set:html={formatItalicSvg} />
+        </button>
+        <button type="button" data-dev-format="underline" title="Underline (⌘U)" aria-label="Underline" aria-pressed="false">
+          <span class="dev-text-format__icon" aria-hidden="true" set:html={formatUnderlineSvg} />
+        </button>
+        <button type="button" data-dev-format="link" title="Link (⌘K)" aria-label="Link" aria-pressed="false">
+          <span class="dev-text-format__icon" aria-hidden="true" set:html={formatLinkSvg} />
+        </button>
+      </div>
     </div>
     <form class="dev-text-format__link" data-dev-text-link-panel aria-hidden="true">
       <button type="button" data-dev-text-unlink>Unlink</button>
@@ -228,6 +250,8 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
+    const blockStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-block-style]');
+    const formatInline = formatBar?.querySelector<HTMLElement>('[data-dev-format-inline]');
     const formatButtons = formatBar
       ? [...formatBar.querySelectorAll<HTMLButtonElement>('[data-dev-format]')]
       : [];
@@ -238,7 +262,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
-    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !formatInline) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -285,10 +309,27 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       section: Record<string, unknown>;
     };
 
+    type PendingBlockConvert = {
+      documentKey: string;
+      index: number;
+      from: 'bodyText' | 'sectionTitle';
+      to: 'bodyText' | 'sectionTitle';
+      level?: 2 | 3;
+      root: HTMLElement;
+      previousRoot: HTMLElement;
+      previousTextElement: HTMLElement;
+      previousPath: Array<string | number>;
+      previousKind: EditableTextState['kind'];
+      previousSpacingState: EditableSpacingState | null;
+      textState: EditableTextState;
+      replacedRoot: boolean;
+    };
+
     const pendingMedia = new Map<string, PendingMediaChange>();
     const pendingSectionDeletes: PendingSectionDelete[] = [];
     const pendingSectionInserts: PendingSectionInsert[] = [];
     const persistedMediaInserts: PersistedMediaInsert[] = [];
+    const pendingBlockConverts: PendingBlockConvert[] = [];
     let devServerReloading = false;
 
     if (import.meta.hot) {
@@ -591,6 +632,38 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       });
       spacingStates.forEach((state) => {
         bumpSectionPath(state.path, fromIndex, delta);
+      });
+      pendingBlockConverts.forEach((entry) => {
+        // Connected roots already moved with the document query above.
+        if (entry.previousRoot !== entry.root && !entry.previousRoot.isConnected) {
+          bumpPathAttrsOnElement(entry.previousRoot, fromIndex, delta);
+        }
+        bumpSectionPath(entry.previousPath, fromIndex, delta);
+        if (delta > 0) {
+          if (entry.index >= fromIndex) entry.index += delta;
+        } else if (entry.index > fromIndex) {
+          entry.index += delta;
+        }
+      });
+    };
+
+    const bumpPathAttrsOnElement = (element: HTMLElement, fromIndex: number, delta: number) => {
+      const selector = DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(',');
+      const nodes = [element, ...element.querySelectorAll<HTMLElement>(selector)];
+      nodes.forEach((el) => {
+        DEV_PATH_ATTRS.forEach((attr) => {
+          const raw = el.getAttribute(attr);
+          if (!raw) return;
+          try {
+            const path = JSON.parse(raw);
+            if (!Array.isArray(path)) return;
+            if (bumpSectionPath(path, fromIndex, delta)) {
+              el.setAttribute(attr, JSON.stringify(path));
+            }
+          } catch {
+            // Ignore malformed paths.
+          }
+        });
       });
     };
 
@@ -980,6 +1053,60 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       syncPageTopSpacingControls();
     };
 
+    const revertPendingBlockConverts = () => {
+      if (!pendingBlockConverts.length) return;
+      const pending = [...pendingBlockConverts].reverse();
+      pendingBlockConverts.length = 0;
+      pending.forEach((entry) => {
+        const insert = pendingSectionInserts.find((item) => item.root === entry.root);
+        if (entry.replacedRoot && entry.root.isConnected) {
+          entry.root.replaceWith(entry.previousRoot);
+        } else if (!entry.replacedRoot && entry.textState.element.isConnected) {
+          entry.textState.element.replaceWith(entry.previousTextElement);
+        }
+
+        const delIdx = deletableSections.indexOf(entry.root);
+        if (entry.replacedRoot && delIdx >= 0) {
+          deletableSections[delIdx] = entry.previousRoot;
+        }
+
+        if (entry.replacedRoot) {
+          const spacingIdx = spacingStates.findIndex((state) => state.element === entry.root);
+          if (spacingIdx >= 0) spacingStates.splice(spacingIdx, 1);
+          if (entry.previousSpacingState) {
+            spacingStates.push(entry.previousSpacingState);
+            if (insert) insert.spacingState = entry.previousSpacingState;
+          } else if (!entry.previousRoot.querySelector(':scope > [data-dev-spacing-control]')) {
+            const spacing = mountSpacingControl(entry.previousRoot);
+            if (spacing) {
+              spacingStates.push(spacing);
+              wireSectionAddMenu(spacing);
+            }
+            if (insert) insert.spacingState = spacing ?? null;
+          }
+          mountDeleteButton(entry.previousRoot);
+        }
+
+        if (insert) {
+          insert.root = entry.previousRoot;
+          insert.type = entry.from === 'bodyText' ? 'bodyText' : 'sectionTitle';
+          insert.textStates = [entry.textState];
+        }
+
+        entry.textState.element = entry.previousTextElement;
+        entry.textState.path = entry.previousPath;
+        entry.textState.kind = entry.previousKind;
+        if (document.documentElement.classList.contains('is-dev-mode')) {
+          entry.previousTextElement.setAttribute(
+            'contenteditable',
+            entry.previousKind === 'paragraphs' ? 'true' : 'plaintext-only',
+          );
+          entry.previousTextElement.setAttribute('spellcheck', 'true');
+        }
+      });
+      syncPageTopSpacingControls();
+    };
+
     const revertPendingSectionInserts = () => {
       if (!pendingSectionInserts.length) return;
       const pending = [...pendingSectionInserts].sort((a, b) => b.index - a.index);
@@ -1057,6 +1184,9 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       }
       if (pendingSectionDeletes.some((entry) => entry.documentKey === documentKey)) {
         await persistPendingSectionDeletes();
+      }
+      if (pendingBlockConverts.some((entry) => entry.documentKey === documentKey)) {
+        await persistPendingBlockConverts();
       }
       await persistPlaceholderFills(documentKey);
 
@@ -1165,6 +1295,37 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       pendingSectionDeletes.length = 0;
     };
 
+    const persistPendingBlockConverts = async () => {
+      if (!pendingBlockConverts.length) return;
+      const pending = [...pendingBlockConverts].sort((a, b) => a.index - b.index);
+      for (const entry of pending) {
+        let index = entry.index;
+        try {
+          const path = JSON.parse(entry.root.dataset.devSpacingPath || '[]');
+          if (Array.isArray(path) && typeof path.at(-2) === 'number') {
+            index = path.at(-2) as number;
+          }
+        } catch {
+          // Fall back to the snapshotted index.
+        }
+        const body: Record<string, unknown> = {
+          action: 'convert',
+          document: entry.documentKey,
+          index,
+          type: entry.to,
+        };
+        if (entry.to === 'sectionTitle') body.level = entry.level ?? 2;
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not convert the section.');
+      }
+      pendingBlockConverts.length = 0;
+    };
+
     const syncSavedSectionTitleLabels = (states: EditableTextState[]) => {
       states.forEach((state) => {
         if (state.kind !== 'text') return;
@@ -1200,6 +1361,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       + pendingMedia.size
       + pendingSectionDeletes.length
       + pendingSectionInserts.length
+      + pendingBlockConverts.length
       + persistedMediaInserts.length;
 
     /*
@@ -1248,6 +1410,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       || pendingMedia.size
       || pendingSectionDeletes.length
       || pendingSectionInserts.length
+      || pendingBlockConverts.length
       || persistedMediaInserts.length,
     );
 
@@ -1271,6 +1434,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       // Include persistedMediaInserts: already on disk, but still reversible until Save.
       const dirtyCount = dirtyText.length + dirtySpacing.length + pendingMedia.size
         + pendingSectionDeletes.length + pendingSectionInserts.length
+        + pendingBlockConverts.length
         + persistedMediaInserts.length;
 
       textStates.forEach((state) => {
@@ -1391,6 +1555,41 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         textKind: 'paragraphs' as const,
         textPath: [...sectionPath, 'paragraphs'],
       };
+    };
+
+    const buildConvertedSection = (
+      type: 'bodyText' | 'sectionTitle',
+      documentKey: string,
+      index: number,
+      spacing: SpacingValue,
+      text: string,
+      level: 2 | 3 = 2,
+    ) => {
+      if (type === 'sectionTitle') {
+        const built = buildInsertedSection('sectionTitle', documentKey, index, spacing);
+        const nextTag = level === 3 ? 'h3' : 'h2';
+        let title = built.textElement;
+        if (title.tagName !== nextTag.toUpperCase()) {
+          const heading = document.createElement(nextTag);
+          [...title.attributes].forEach((attr) => heading.setAttribute(attr.name, attr.value));
+          heading.className = title.className;
+          title.replaceWith(heading);
+          title = heading;
+        }
+        title.textContent = text;
+        return { ...built, textElement: title };
+      }
+
+      const built = buildInsertedSection('bodyText', documentKey, index, spacing);
+      const lines = text.split('\n');
+      const paragraphs = (lines.length ? lines : ['']).map((line) => {
+        const paragraph = document.createElement('p');
+        if (line) paragraph.textContent = line;
+        else paragraph.append(document.createElement('br'));
+        return paragraph;
+      });
+      built.textElement.replaceChildren(...paragraphs);
+      return built;
     };
 
     /**
@@ -1710,6 +1909,9 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       const insertBefore = element.nextSibling;
       const pendingInsertIdx = pendingSectionInserts.findIndex((entry) => entry.root === element);
       const persistedInsertIdx = persistedMediaInserts.findIndex((entry) => entry.root === element);
+      for (let i = pendingBlockConverts.length - 1; i >= 0; i -= 1) {
+        if (pendingBlockConverts[i].root === element) pendingBlockConverts.splice(i, 1);
+      }
       const { texts, spacing } = detachSectionStates(element);
 
       const deletableIdx = deletableSections.indexOf(element);
@@ -2112,6 +2314,230 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       );
     };
 
+    const findBlockState = (node: Node | null): {
+      state: EditableTextState;
+      section: HTMLElement;
+    } | null => {
+      if (!node) return null;
+      const state = textStates.find((entry) => entry.element.contains(node));
+      if (!state) return null;
+      const section = state.element.closest<HTMLElement>('[data-dev-section-deletable]');
+      if (!section) return null;
+      const deletable = section.dataset.devSectionDeletable;
+      if (state.kind === 'paragraphs' && deletable === 'bodyText') {
+        return { state, section };
+      }
+      if (
+        state.kind === 'text'
+        && deletable === 'sectionTitle'
+        && (
+          state.element.matches('.project-section-title, [data-dev-section-title]')
+          || state.element.dataset.devTextKind === 'text'
+        )
+      ) {
+        return { state, section };
+      }
+      return null;
+    };
+
+    const blockStyleValue = (state: EditableTextState): string => {
+      if (state.kind === 'paragraphs') return 'bodyText';
+      return state.element.tagName === 'H3' ? 'sectionTitle:3' : 'sectionTitle:2';
+    };
+
+    const parseBlockStyle = (value: string): { type: 'bodyText' | 'sectionTitle'; level?: 2 | 3 } => {
+      if (value === 'sectionTitle:3') return { type: 'sectionTitle', level: 3 };
+      if (value === 'sectionTitle:2' || value === 'sectionTitle') return { type: 'sectionTitle', level: 2 };
+      return { type: 'bodyText' };
+    };
+
+    const readPlainBlockText = (state: EditableTextState): string => {
+      if (state.kind !== 'paragraphs') {
+        return cleanText(state.element.textContent ?? '');
+      }
+      const paragraphs = [...state.element.querySelectorAll<HTMLElement>(':scope > p')];
+      if (!paragraphs.length) return cleanText(state.element.textContent ?? '');
+      return paragraphs.map((paragraph) => cleanText(paragraph.textContent ?? '')).join('\n');
+    };
+
+    const sectionIndexFromBlock = (section: HTMLElement): number | null => {
+      try {
+        const path = JSON.parse(section.dataset.devSpacingPath || '[]');
+        const index = path.at(-2);
+        return typeof index === 'number' ? index : null;
+      } catch {
+        return null;
+      }
+    };
+
+    let syncingBlockStyle = false;
+
+    const syncBlockStyleSelect = (state: EditableTextState) => {
+      const next = blockStyleValue(state);
+      if (blockStyleSelect.value === next) return;
+      syncingBlockStyle = true;
+      blockStyleSelect.value = next;
+      blockStyleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      syncingBlockStyle = false;
+    };
+
+    const syncFormatInlineVisibility = (state: EditableTextState) => {
+      formatInline.hidden = state.kind !== 'paragraphs';
+    };
+
+    const enableConvertedText = (element: HTMLElement, kind: EditableTextState['kind']) => {
+      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
+      element.setAttribute('spellcheck', 'true');
+    };
+
+    const retargetSpacingState = (oldRoot: HTMLElement, newRoot: HTMLElement) => {
+      const previous = spacingStates.find((entry) => entry.element === oldRoot) ?? null;
+      const prevIdx = previous ? spacingStates.indexOf(previous) : -1;
+      if (prevIdx >= 0) spacingStates.splice(prevIdx, 1);
+      const next = mountSpacingControl(newRoot);
+      if (next) {
+        if (previous) {
+          next.savedValue = previous.savedValue;
+          next.currentValue = previous.currentValue;
+          applySpacingClass(newRoot, previous.currentValue);
+          syncSpacingControl(next);
+        }
+        spacingStates.push(next);
+        wireSectionAddMenu(next);
+      }
+      return next;
+    };
+
+    const convertCurrentBlock = (value: string) => {
+      const selection = window.getSelection();
+      const node = savedFormatRange?.commonAncestorContainer
+        ?? (selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null);
+      const block = findBlockState(node);
+      if (!block) return;
+      const current = blockStyleValue(block.state);
+      if (current === value) return;
+
+      const parsed = parseBlockStyle(value);
+      const from: 'bodyText' | 'sectionTitle' = block.state.kind === 'paragraphs' ? 'bodyText' : 'sectionTitle';
+      const index = sectionIndexFromBlock(block.section);
+      if (index == null) return;
+
+      const previousTextElement = block.state.element;
+      const previousPath = [...block.state.path];
+      const previousKind = block.state.kind;
+      const previousRoot = block.section;
+      const text = readPlainBlockText(block.state);
+      const spacing = (block.section.dataset.devSpacingValue || 'section') as SpacingValue;
+      const precedeRelated = block.section.classList.contains('project-stack--precede-related');
+
+      if (from === 'sectionTitle' && parsed.type === 'sectionTitle') {
+        const nextTag = parsed.level === 3 ? 'h3' : 'h2';
+        const heading = document.createElement(nextTag);
+        [...previousTextElement.attributes].forEach((attr) => heading.setAttribute(attr.name, attr.value));
+        heading.className = previousTextElement.className;
+        heading.textContent = previousTextElement.textContent;
+        previousTextElement.replaceWith(heading);
+        block.state.element = heading;
+        enableConvertedText(heading, 'text');
+        bindTextState(block.state);
+        pendingBlockConverts.push({
+          documentKey: block.state.document,
+          index,
+          from,
+          to: 'sectionTitle',
+          level: parsed.level,
+          root: previousRoot,
+          previousRoot,
+          previousTextElement,
+          previousPath,
+          previousKind,
+          previousSpacingState: null,
+          textState: block.state,
+          replacedRoot: false,
+        });
+        stickyStatus = '';
+        updateActions();
+        requestAnimationFrame(() => {
+          heading.focus();
+          const range = document.createRange();
+          range.selectNodeContents(heading);
+          range.collapse(true);
+          const live = window.getSelection();
+          live?.removeAllRanges();
+          live?.addRange(range);
+          scheduleFormatBarUpdate();
+        });
+        return;
+      }
+
+      const built = buildConvertedSection(
+        parsed.type,
+        block.state.document,
+        index,
+        spacing,
+        text,
+        parsed.level ?? 2,
+      );
+      if (precedeRelated) built.root.classList.add('project-stack--precede-related');
+
+      previousRoot.replaceWith(built.root);
+
+      const delIdx = deletableSections.indexOf(previousRoot);
+      if (delIdx >= 0) deletableSections[delIdx] = built.root;
+      else deletableSections.push(built.root);
+
+      const previousSpacingState = spacingStates.find((entry) => entry.element === previousRoot) ?? null;
+      const spacingState = retargetSpacingState(previousRoot, built.root);
+      mountDeleteButton(built.root);
+
+      const insert = pendingSectionInserts.find((entry) => entry.root === previousRoot);
+      if (insert) {
+        insert.root = built.root;
+        insert.textStates = [block.state];
+        insert.spacingState = spacingState ?? null;
+      }
+
+      block.state.element = built.textElement;
+      block.state.path = built.textPath;
+      block.state.kind = built.textKind;
+      enableConvertedText(built.textElement, built.textKind);
+      bindTextState(block.state);
+
+      pendingBlockConverts.push({
+        documentKey: block.state.document,
+        index,
+        from,
+        to: parsed.type,
+        level: parsed.level,
+        root: built.root,
+        previousRoot,
+        previousTextElement,
+        previousPath,
+        previousKind,
+        previousSpacingState,
+        textState: block.state,
+        replacedRoot: true,
+      });
+
+      stickyStatus = '';
+      updateActions();
+      requestAnimationFrame(() => {
+        built.textElement.focus();
+        if (built.textKind === 'paragraphs') {
+          ensureParagraphSelection(built.textElement);
+        } else {
+          const range = document.createRange();
+          range.selectNodeContents(built.textElement);
+          range.collapse(true);
+          const live = window.getSelection();
+          live?.removeAllRanges();
+          live?.addRange(range);
+        }
+        scheduleFormatBarUpdate();
+      });
+    };
+
     const closestAnchor = (node: Node | null): HTMLAnchorElement | null => {
       const el = node instanceof Element ? node : node?.parentElement;
       return el?.closest('a') ?? null;
@@ -2267,10 +2693,25 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     };
 
     const positionFormatBar = (range: Range) => {
-      const rect = range.getBoundingClientRect();
+      let rect = range.getBoundingClientRect();
+      if (!rect.width && !rect.height) {
+        const client = range.getClientRects()[0];
+        if (client) rect = client;
+      }
       if (!rect.width && !rect.height && !linkPanelOpen) {
-        hideFormatBar();
-        return;
+        const node = range.startContainer;
+        const el = node instanceof Element ? node : node.parentElement;
+        if (!el) {
+          hideFormatBar();
+          return;
+        }
+        const fallback = el.getBoundingClientRect();
+        rect = new DOMRect(
+          rect.left || fallback.left,
+          rect.top || fallback.top,
+          0,
+          Math.max(fallback.height, 16),
+        );
       }
 
       formatBar.hidden = false;
@@ -2329,6 +2770,15 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         return;
       }
 
+      const active = document.activeElement;
+      if (
+        (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
+        && !formatBar.contains(active)
+      ) {
+        hideFormatBar();
+        return;
+      }
+
       // Keep the bar while the link panel is focused / open.
       if (linkPanelOpen && savedFormatRange) {
         positionFormatBar(savedFormatRange);
@@ -2336,28 +2786,35 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         return;
       }
 
-      const selection = window.getSelection();
-      if (!selection?.rangeCount || selection.isCollapsed) {
-        if (!formatBar.hidden && savedFormatRange) {
-          positionFormatBar(savedFormatRange);
-          syncFormatButtons();
-          return;
+      // Don't steal focus from the format UI itself.
+      if (active instanceof Node && formatBar.contains(active) && !formatBar.hidden && savedFormatRange) {
+        const block = findBlockState(savedFormatRange.commonAncestorContainer);
+        if (block) {
+          syncBlockStyleSelect(block.state);
+          syncFormatInlineVisibility(block.state);
         }
+        positionFormatBar(savedFormatRange);
+        syncFormatButtons();
+        return;
+      }
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) {
         hideFormatBar();
         return;
       }
 
       const range = selection.getRangeAt(0);
-      if (!findParagraphState(range.commonAncestorContainer)) {
+      const block = findBlockState(range.commonAncestorContainer);
+      if (!block) {
         hideFormatBar();
         return;
       }
 
-      // Don't steal focus from the format UI itself.
-      if (formatBar.contains(document.activeElement)) return;
-
       savedFormatRange = range.cloneRange();
-      setLinkPanelOpen(false);
+      if (!linkPanelOpen) setLinkPanelOpen(false);
+      syncBlockStyleSelect(block.state);
+      syncFormatInlineVisibility(block.state);
       positionFormatBar(savedFormatRange);
       syncFormatButtons();
     };
@@ -2462,7 +2919,15 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      if (target instanceof Element && target.closest('.dev-text-format__block-style, .dev-select__listbox')) {
+        return;
+      }
       event.preventDefault();
+    });
+
+    blockStyleSelect.addEventListener('change', () => {
+      if (syncingBlockStyle) return;
+      convertCurrentBlock(blockStyleSelect.value);
     });
 
     formatButtons.forEach((button) => {
@@ -2709,6 +3174,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         // does Revert mean the on-disk unpublished content (#196).
         if (hadDirty) {
           stickyStatus = '';
+          revertPendingBlockConverts();
           revertPendingSectionInserts();
           revertPendingSectionDeletes();
           revertDirtyEdits();
@@ -2794,7 +3260,8 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
       const pendingChanges = [...pendingMedia.values()];
-      const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length;
+      const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length
+        + pendingBlockConverts.length;
       const mediaInsertPending = persistedMediaInserts.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const galleryMembershipChanges = pendingChanges.filter((change) => change.kind === 'gallery-membership');
@@ -2827,6 +3294,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       const documents = new Set<string>();
       dirtyText.forEach((state) => documents.add(state.document));
       dirtySpacing.forEach((state) => documents.add(state.document));
+      pendingBlockConverts.forEach((entry) => documents.add(entry.documentKey));
       pendingChanges.forEach((change) => {
         const payload = change.payload as {
           document?: unknown;
@@ -2879,6 +3347,7 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         // "editable text field no longer exists" after deleting a section).
         const insertedSections = await persistPendingSectionInserts();
         await persistPendingSectionDeletes();
+        await persistPendingBlockConverts();
         if (placeholderFills.length) {
           await persistPlaceholderFills();
         }
@@ -3599,7 +4068,35 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     gap: 4px;
   }
 
-  .dev-text-format__buttons button {
+  .dev-text-format__inline {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .dev-text-format__buttons:has(.dev-text-format__inline[hidden]) > .dev-hairline {
+    display: none;
+  }
+
+  .dev-text-format .dev-text-format__block-style {
+    width: auto;
+  }
+
+  .dev-text-format__block-style .dev-field__value {
+    width: auto;
+    min-height: var(--dev-control-height);
+  }
+
+  .dev-text-format__block-style .dev-field__input--select {
+    margin: 0;
+    padding: 8px;
+    padding-right: 28px;
+    width: auto;
+    min-height: var(--dev-control-height);
+    min-width: 9.5em;
+  }
+
+  .dev-text-format__buttons button[data-dev-format] {
     padding: 8px;
     gap: 8px;
     border-radius: var(--dev-radius-control);
@@ -3613,21 +4110,21 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     cursor: pointer;
   }
 
-  .dev-text-format__buttons button:hover {
+  .dev-text-format__buttons button[data-dev-format]:hover {
     background: var(--comp-button-ghost-container-hover);
   }
 
-  .dev-text-format__buttons button:active {
+  .dev-text-format__buttons button[data-dev-format]:active {
     background: var(--comp-button-ghost-container-pressed);
   }
 
-  .dev-text-format__buttons button:focus-visible {
+  .dev-text-format__buttons button[data-dev-format]:focus-visible {
     outline: none;
   }
 
   /* Ghost/Selected binds button/ghost/container at ~16% paint opacity, which
      has no exported token — Soft is the explicit fallback (Anto, 2026-08-25). */
-  .dev-text-format__buttons button.is-active {
+  .dev-text-format__buttons button[data-dev-format].is-active {
     background: var(--comp-button-soft-container-hover);
     color: var(--comp-button-label);
   }
