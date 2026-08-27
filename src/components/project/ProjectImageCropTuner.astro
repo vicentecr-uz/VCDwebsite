@@ -1360,8 +1360,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
                 savedSrcHeight = baseline.srcHeight;
                 draftSrcWidth = baseline.srcWidth;
                 draftSrcHeight = baseline.srcHeight;
-                previewImage.src = editedImage.currentSrc || editedImage.src;
-                if (pageStage) pageStage.ghostImg.src = previewImage.src;
+                const url = projectImage(baseline.src);
+                previewImage.src = url;
+                if (pageStage) pageStage.ghostImg.src = url;
               }
               savedConstrained = { ...baseline.constrained };
               draftConstrained = { ...baseline.constrained };
@@ -1440,8 +1441,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
             ...(savedSrcHeight ? { srcHeight: savedSrcHeight } : {}),
           });
-          previewImage.src = editedImage.currentSrc || editedImage.src;
-          if (pageStage) pageStage.ghostImg.src = previewImage.src;
+          const url = projectImage(savedSrc);
+          previewImage.src = url;
+          if (pageStage) pageStage.ghostImg.src = url;
         }
         if (targetWasCropped || savedSinceSelect) {
           // Restore every breakpoint, not just the one on screen — the session
@@ -2507,6 +2509,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           documentKey,
           project: documentKey,
           mode: 'pick',
+          max: 1,
           resolve,
           reject,
         },
