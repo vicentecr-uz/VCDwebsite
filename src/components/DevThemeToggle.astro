@@ -1,78 +1,94 @@
-<div class="dev-theme-toggle" data-dev-theme-toggle role="group" aria-label="Theme">
-  <button type="button" data-theme-mode="system" aria-label="Follow system theme" title="Follow system theme" aria-pressed="false">
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-      <rect width="13.333" height="9.333" x="1.333" y="2" rx="1.333" />
-      <line x1="5.333" x2="10.667" y1="14" y2="14" />
-      <line x1="8" x2="8" y1="11.333" y2="14" />
-    </svg>
-  </button>
-  <button type="button" data-theme-mode="light" aria-label="Light theme" title="Light theme" aria-pressed="false">
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-      <circle cx="8" cy="8" r="2.667" />
-      <path d="M8 1.333v1.333" />
-      <path d="M8 13.333v1.333" />
-      <path d="m3.287 3.287 0.94 0.94" />
-      <path d="m11.773 11.773 0.94 0.94" />
-      <path d="M1.333 8h1.333" />
-      <path d="M13.333 8h1.333" />
-      <path d="m4.227 11.773 -0.94 0.94" />
-      <path d="m12.713 3.287 -0.94 0.94" />
-    </svg>
-  </button>
-  <button type="button" data-theme-mode="dark" aria-label="Dark theme" title="Dark theme" aria-pressed="false">
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
-      <path d="M13.99 8.324a6 6 0 1 1-6.315-6.315c.27-.015.411.307.268.535a4 4 0 0 0 5.512 5.512c.229-.143.55-.003.535.267" />
-    </svg>
-  </button>
+---
+import SegmentedControl from './ui/SegmentedControl.astro';
+import Button from './ui/Button.astro';
+
+/**
+ * Figma master: Theme Selector (520:2249) — Segmented Control, 3 icon-only
+ * segments, selected = Page on the track.
+ * https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=520-2249
+ */
+---
+
+<div class="dev-theme-toggle" data-dev-theme-toggle>
+  <SegmentedControl label="Theme">
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label=""
+      data-theme-mode="system"
+      aria-label="Follow system theme"
+      title="Follow system theme"
+      aria-pressed="false"
+    >
+      <span slot="icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+          <rect width="13.333" height="9.333" x="1.333" y="2" rx="1.333" />
+          <line x1="5.333" x2="10.667" y1="14" y2="14" />
+          <line x1="8" x2="8" y1="11.333" y2="14" />
+        </svg>
+      </span>
+    </Button>
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label=""
+      data-theme-mode="light"
+      aria-label="Light theme"
+      title="Light theme"
+      aria-pressed="false"
+    >
+      <span slot="icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+          <circle cx="8" cy="8" r="2.667" />
+          <path d="M8 1.333v1.333" />
+          <path d="M8 13.333v1.333" />
+          <path d="m3.287 3.287 0.94 0.94" />
+          <path d="m11.773 11.773 0.94 0.94" />
+          <path d="M1.333 8h1.333" />
+          <path d="M13.333 8h1.333" />
+          <path d="m4.227 11.773 -0.94 0.94" />
+          <path d="m12.713 3.287 -0.94 0.94" />
+        </svg>
+      </span>
+    </Button>
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label=""
+      data-theme-mode="dark"
+      aria-label="Dark theme"
+      title="Dark theme"
+      aria-pressed="false"
+    >
+      <span slot="icon" aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.167" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+          <path d="M13.99 8.324a6 6 0 1 1-6.315-6.315c.27-.015.411.307.268.535a4 4 0 0 0 5.512 5.512c.229-.143.55-.003.535.267" />
+        </svg>
+      </span>
+    </Button>
+  </SegmentedControl>
 </div>
 
 <style>
+  /* Footer: only show while Edit mode is on (master is Edit chrome). */
   .dev-theme-toggle {
     display: none;
-    align-items: center;
-    gap: 0.25em;
-    padding: 0.25em;
-    border: 1px solid var(--sys-color-outline);
-    /* Concentric with the buttons: outer radius = inner radius + the gap
-       between the two edges (padding + border width). */
-    border-radius: calc(var(--radius-control) + 0.25em + 1px);
-    background: var(--sys-color-srf-container-low);
+    /* Segmented track is width:100% by default — hug content in the footer. */
+    width: max-content;
   }
 
   :global(html.is-dev-mode) .dev-theme-toggle {
-    display: inline-flex;
+    display: block;
   }
 
-  .dev-theme-toggle button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75em;
-    height: 1.75em;
-    padding: 0;
-    border: none;
-    border-radius: var(--radius-control);
-    background: transparent;
-    color: var(--sys-color-on-srf-variant);
-    cursor: pointer;
-    transition: background-color 0.2s ease, color 0.2s ease;
+  .dev-theme-toggle :global(.dev-segmented) {
+    width: auto;
   }
 
-  .dev-theme-toggle button[aria-pressed='true'] {
-    background: var(--sys-color-srf);
-    color: var(--sys-color-on-srf);
+  /* Figma Theme Selector segments are fixed 72px (icon-only). */
+  .dev-theme-toggle :global(.dev-btn) {
+    min-width: 72px;
   }
-
-  .dev-theme-toggle button:focus-visible {
-    outline: 2px solid var(--sys-color-outline);
-    outline-offset: 2px;
-  }
-
-  /*
-    Selection state here is a plain background/color fade, not a moving
-    indicator — nothing travels, so prefers-reduced-motion needs no override:
-    suppressing movement only applies to a rule that has movement to remove.
-  */
 </style>
 
 <script>
@@ -120,12 +136,13 @@
   };
 
   let currentMode: ThemeMode = readStoredMode();
+  applyMode(currentMode);
   updatePressedState(currentMode);
 
   const setMode = (mode: ThemeMode) => {
     currentMode = mode;
-    applyMode(mode);
     persistMode(mode);
+    applyMode(mode);
     updatePressedState(mode);
     window.dispatchEvent(new CustomEvent('vcd:theme-change', { detail: { mode } }));
   };
