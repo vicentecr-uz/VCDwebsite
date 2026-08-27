@@ -664,9 +664,15 @@ const gridCardTemplateSeed: ProjectGridItem = {
     hover, so the hover image is the ground they are on almost every time you
     see them. Same gate as the title ink and the hover overlay.
 
-    Interim until #172 measures per control position rather than per image.
+    Live site: chips appear with the hover bitmap, so :hover is the right
+    gate. Edit: chips appear on pointer hover but the cover does *not* swap
+    (WYSIWYG) — only `.is-dev-hover-forced` shows the hover image. Gating
+    :hover with html:not(.is-dev-mode) matches the title-ink rules above.
+    Tapico Work is the tell: listings.work.hoverDark is true, listings.home
+    has no hoverDark; Edit hover on /work was painting on-dark chips on the
+    still-light cover.
   */
-  .project-grid__item[data-dev-hover-dark='true']:hover:has(.project-grid__cover--has-hover),
+  html:not(.is-dev-mode) .project-grid__item[data-dev-hover-dark='true']:hover:has(.project-grid__cover--has-hover),
   .project-grid__item[data-dev-hover-dark='true']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
     --chip-ink: var(--chip-ink-on-dark);
     --chip-fill: var(--chip-fill-on-dark);
@@ -674,7 +680,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     --chip-press: var(--chip-press-on-dark);
   }
 
-  .project-grid__item[data-dev-hover-dark='false']:hover:has(.project-grid__cover--has-hover),
+  html:not(.is-dev-mode) .project-grid__item[data-dev-hover-dark='false']:hover:has(.project-grid__cover--has-hover),
   .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__cover--has-hover.is-dev-hover-forced),
   /* No hover image at all — forced preview shows the page background. */
   .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover)) {
