@@ -11,13 +11,16 @@ import { projectImage } from '../lib/images';
 import { isPlaceholderCoverSrc } from '../lib/placeholderCover.mjs';
 import { sizeIcon } from '../lib/icons';
 import {
+  hoverCropStyle,
   normalizeImageVariants,
   responsiveImageStyle,
 } from '../lib/responsiveImage';
 import {
   hasCropVariants,
   imageSourceDims,
+  listingCoverDefaultAspects,
   listingCoverDevEditAttrs,
+  joinMediaStyles,
 } from '../lib/projectImageFrame';
 import type { ProjectGridItem } from './ProjectGrid.astro';
 
@@ -42,26 +45,30 @@ const statusIcons = {
 const titleColor = (dark: boolean) => (dark ? '#f7f7f7' : '#6d6d6d');
 const subtitleColor = (dark: boolean) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
 
-const coverDefaultAspect = (gridItem: ProjectGridItem) => {
-  if (gridItem.full && variant === 'work') return '16:9';
-  return '4:3';
-};
-
 const isPlayPlaceholder = variant === 'play' && !item.href && !item.teaser;
 const isTeaser = Boolean(item.teaser);
 const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
 const status = (item.status ?? 'published') as ProjectStatus;
 const statusIconSvg = statusIcons[status as keyof typeof statusIcons] ?? statusIcons.published;
-const defaultAspect = coverDefaultAspect(item);
+const defaultAspects = listingCoverDefaultAspects(variant, Boolean(item.full));
 const srcDims = imageSourceDims(item);
-const hasCrop = hasCropVariants(item.variants);
-const normalized = hasCrop
-  ? normalizeImageVariants(item.variants, defaultAspect, srcDims)
+const hasCoverCrop = hasCropVariants(item.variants);
+const hasHoverCrop = hasCropVariants(item.hoverVariants);
+const hasCrop = hasCoverCrop || hasHoverCrop;
+const normalizedCover = hasCoverCrop || hasCrop
+  ? normalizeImageVariants(item.variants, defaultAspects, srcDims)
   : undefined;
+const normalizedHover = hasHoverCrop && item.hoverVariants
+  ? normalizeImageVariants(item.hoverVariants, defaultAspects, null)
+  : undefined;
+const coverStyle = joinMediaStyles(
+  normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : undefined,
+  normalizedHover ? hoverCropStyle(normalizedHover) : undefined,
+);
 const projectEditable = isDev && Boolean(item.slug);
 const isPlaceholderCover = projectEditable && isPlaceholderCoverSrc(item.image);
 const projectEditAttrs = projectEditable
-  ? listingCoverDevEditAttrs(item.slug!, variant, item, defaultAspect)
+  ? listingCoverDevEditAttrs(item.slug!, variant, item, Boolean(item.full))
   : undefined;
 const editAttrs = projectEditAttrs;
 
@@ -74,6 +81,8 @@ const metaStyle = [
   `--title-ink-on-page: ${titleColor(false)}`,
   `--subtitle-ink-on-page: ${subtitleColor(false)}`,
 ].join('; ');
+
+const showHoverImg = item.hoverImage || projectEditable;
 ---
 
 <li
@@ -106,7 +115,7 @@ const metaStyle = [
           hasCrop && 'project-cropped project-responsive-image',
           (projectEditable) && 'dev-image-edit-target',
         ]}
-        style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
+        style={coverStyle}
         data-dev-cover-drop={projectEditable ? item.slug : undefined}
         data-dev-listing-cover={projectEditable ? variant : undefined}
         data-dev-cover-empty={isPlaceholderCover ? 'true' : undefined}
@@ -121,24 +130,36 @@ const metaStyle = [
                 class="project-grid__img project-grid__img--base"
                 loading="lazy"
               />
+              {showHoverImg && (
+                <img
+                  src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
+                  alt=""
+                  class="project-grid__img project-grid__img--hover"
+                  loading="lazy"
+                  hidden={!item.hoverImage}
+                  aria-hidden="true"
+                />
+              )}
             </div>
           ) : (
-            <img
-              src={projectImage(item.image)}
-              alt={item.title}
-              class="project-grid__img project-grid__img--base w-full h-full object-cover"
-              loading="lazy"
-            />
-          )}
-          {(item.hoverImage || projectEditable) && (
-            <img
-              src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
-              alt=""
-              class="project-grid__img project-grid__img--hover w-full h-full object-cover"
-              loading="lazy"
-              hidden={!item.hoverImage}
-              aria-hidden="true"
-            />
+            <>
+              <img
+                src={projectImage(item.image)}
+                alt={item.title}
+                class="project-grid__img project-grid__img--base w-full h-full object-cover"
+                loading="lazy"
+              />
+              {showHoverImg && (
+                <img
+                  src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
+                  alt=""
+                  class="project-grid__img project-grid__img--hover w-full h-full object-cover"
+                  loading="lazy"
+                  hidden={!item.hoverImage}
+                  aria-hidden="true"
+                />
+              )}
+            </>
           )}
         </div>
         {isDev && item.slug && (
@@ -194,7 +215,7 @@ const metaStyle = [
           hasCrop && 'project-cropped project-responsive-image',
           (projectEditable) && 'dev-image-edit-target',
         ]}
-        style={normalized ? responsiveImageStyle(normalized, srcDims) : undefined}
+        style={coverStyle}
         data-dev-cover-drop={projectEditable ? item.slug : undefined}
         data-dev-listing-cover={projectEditable ? variant : undefined}
         data-dev-cover-empty={isPlaceholderCover ? 'true' : undefined}
@@ -209,24 +230,36 @@ const metaStyle = [
                 class="project-grid__img project-grid__img--base"
                 loading="lazy"
               />
+              {showHoverImg && (
+                <img
+                  src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
+                  alt=""
+                  class="project-grid__img project-grid__img--hover"
+                  loading="lazy"
+                  hidden={!item.hoverImage}
+                  aria-hidden="true"
+                />
+              )}
             </div>
           ) : (
-            <img
-              src={projectImage(item.image)}
-              alt={item.title}
-              class="project-grid__img project-grid__img--base w-full h-full object-cover"
-              loading="lazy"
-            />
-          )}
-          {(item.hoverImage || projectEditable) && (
-            <img
-              src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
-              alt=""
-              class="project-grid__img project-grid__img--hover w-full h-full object-cover"
-              loading="lazy"
-              hidden={!item.hoverImage}
-              aria-hidden="true"
-            />
+            <>
+              <img
+                src={projectImage(item.image)}
+                alt={item.title}
+                class="project-grid__img project-grid__img--base w-full h-full object-cover"
+                loading="lazy"
+              />
+              {showHoverImg && (
+                <img
+                  src={item.hoverImage ? projectImage(item.hoverImage) : undefined}
+                  alt=""
+                  class="project-grid__img project-grid__img--hover w-full h-full object-cover"
+                  loading="lazy"
+                  hidden={!item.hoverImage}
+                  aria-hidden="true"
+                />
+              )}
+            </>
           )}
         </div>
         {isDev && item.slug && (

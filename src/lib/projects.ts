@@ -21,6 +21,8 @@ export type ProjectListingCard = {
   href?: string;
   /** Per-viewport cover crop (same shape as project image variants). */
   variants?: ImageVariants;
+  /** Per-viewport hover composition — aspect linked to cover; pan/zoom independent. */
+  hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
 };
@@ -58,6 +60,7 @@ export type ProjectGridListing = {
   teaserLabel?: string;
   order?: number;
   variants?: ImageVariants;
+  hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
 };
@@ -169,6 +172,7 @@ function listingCardForGrid(
     teaserLabel: project.teaser?.label ?? 'Coming soon',
     order: listing.order,
     variants: listing.variants,
+    hoverVariants: listing.hoverVariants,
     srcWidth: listing.srcWidth,
     srcHeight: listing.srcHeight,
   };

@@ -24,6 +24,7 @@ export type ProjectGridItem = {
   teaser?: boolean;
   teaserLabel?: string;
   variants?: ImageVariants;
+  hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
 };
@@ -126,24 +127,32 @@ const gridCardTemplateSeed: ProjectGridItem = {
     object-fit: cover;
   }
 
-  /* Base <-> hover swap. Distinct from the drop-replace crossfade further
+  /* Hover fades in over the cover — cover stays opaque so the page ground
+     never flashes through. Distinct from the drop-replace crossfade further
      down (0.55s) — that one is a destructive edit and wants weight; this is
      a browsing gesture and reads sluggish at the same speed. */
-  .project-grid__cover--has-hover .project-grid__img {
+  .project-grid__cover--has-hover .project-grid__img--hover {
     transition: opacity 0.2s ease;
   }
 
   /*
     The chip swap must fade too, and it has to be declared outside
     .is-dev-hover-forced: a transition only on the forced state animates the
-    way in and snaps back on the way out. Same 0.2s as the hover swap above —
+    way in and snaps back on the way out. Same 0.2s as the hover fade above —
     it is the same visual event, just driven by a chip instead of a pointer.
   */
-  html.is-dev-mode .project-grid__cover .project-grid__img {
+  html.is-dev-mode .project-grid__cover .project-grid__img--hover {
+    transition: opacity 0.2s ease;
+  }
+
+  /* Empty-slot forced preview still fades the cover out (no hover image to
+     overlay) — keep that transition so it doesn't snap. */
+  html.is-dev-mode .project-grid__cover:not(.project-grid__cover--has-hover) .project-grid__img--base {
     transition: opacity 0.2s ease;
   }
 
   .project-grid__img--hover {
+    z-index: 1;
     opacity: 0;
   }
 
@@ -161,10 +170,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
     opacity: 1;
   }
 
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
-  .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--base,
-  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base,
-  .project-grid__cover.is-dev-hover-forced .project-grid__img--base {
+  /* No hover image: forced preview still reveals the page ground. With a
+     hover image the cover stays put underneath the overlay above. */
+  .project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover) .project-grid__img--base {
     opacity: 0;
   }
 
@@ -174,8 +182,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
     font-size: 1.25rem;
     letter-spacing: -0.03em;
     line-height: 1.2;
-    /* Same 0.2s as the base <-> hover image crossfade above — a title that
-       snaps while the image fades is worse than not swapping at all. */
+    /* Same 0.2s as the hover overlay fade above — a title that snaps while
+       the image fades is worse than not swapping at all. */
     transition: color 0.2s ease;
   }
 
@@ -193,7 +201,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /* Only cards that actually have a hover image swap ink — reuses the same
-     gate as the image crossfade so a card with no hover image never changes
+     gate as the hover overlay so a card with no hover image never changes
      colour. `.is-dev-hover-forced` mirrors it for the dev preview toggle. */
   .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
   .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__title,
@@ -406,35 +414,31 @@ const gridCardTemplateSeed: ProjectGridItem = {
       transition: none !important;
     }
 
-    .project-grid__cover--has-hover .project-grid__img,
-    html.is-dev-mode .project-grid__cover .project-grid__img {
+    .project-grid__cover--has-hover .project-grid__img--hover,
+    html.is-dev-mode .project-grid__cover .project-grid__img--hover,
+    html.is-dev-mode .project-grid__cover:not(.project-grid__cover--has-hover) .project-grid__img--base {
       transition: none;
     }
 
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover {
+    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__img--hover,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__img--hover {
       opacity: 0;
-    }
-
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--base,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--base {
-      opacity: 1;
     }
 
     /* Touch: no hover image swap on a real `:hover` (above), so the ink swap
        must not fire on it either — a title changing colour for an image that
-       never appears. `.is-dev-hover-forced` (the dev preview chip) is left
-       alone here, same as the image opacity rules above: it is meant to work
-       at any viewport width so authoring isn't width-gated. */
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title {
+       never appears. Exclude `.is-dev-hover-forced`: the preview chip must
+       win over sticky :hover on the card (tap leaves :hover true on touch
+       UAs, and the rule above is more specific than the base forced rule). */
+    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__title,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__title {
       color: var(--title-ink);
     }
 
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
-    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label {
+    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__subtitle,
+    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__teaser-label,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__subtitle,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__teaser-label {
       color: var(--subtitle-ink);
     }
   }
@@ -480,9 +484,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
       grid-template-columns: 1fr;
     }
 
-    .project-grid__cover:not(.project-cropped),
-    .project-grid--home .project-grid__item--full .project-grid__cover:not(.project-cropped),
-    .project-grid--work .project-grid__item--full .project-grid__cover:not(.project-cropped) {
+    .project-grid--home .project-grid__cover:not(.project-cropped),
+    .project-grid--home .project-grid__item--full .project-grid__cover:not(.project-cropped) {
       aspect-ratio: 4 / 3;
     }
   }
@@ -645,7 +648,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     not on the base cover — so they take its measured value (#182's hoverDark)
     instead of `dark`. This matters more than it looks: chips only reveal on
     hover, so the hover image is the ground they are on almost every time you
-    see them. Same gate as the title ink and the image crossfade.
+    see them. Same gate as the title ink and the hover overlay.
 
     Interim until #172 measures per control position rather than per image.
   */
@@ -965,6 +968,14 @@ const gridCardTemplateSeed: ProjectGridItem = {
     transform: translate(
       calc(var(--project-content-cx, 0.5) * -100%),
       calc(var(--project-content-cy, 0.5) * -100%)
+    );
+  }
+
+  .project-grid__cover.project-cropped > .project-grid__stack > .project-crop-clip > img.project-grid__img--hover {
+    width: calc(100% / var(--project-hover-content-w, 1));
+    transform: translate(
+      calc(var(--project-hover-content-cx, 0.5) * -100%),
+      calc(var(--project-hover-content-cy, 0.5) * -100%)
     );
   }
 
