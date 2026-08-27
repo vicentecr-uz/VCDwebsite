@@ -351,7 +351,11 @@
   overflow: visible;
   border-radius: var(--dev-radius-control-in-container);
   box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
-  transition: none;
+  opacity: 0;
+  transition:
+    opacity var(--motion-press-duration) ease,
+    overlay var(--motion-press-duration) ease allow-discrete,
+    display var(--motion-press-duration) ease allow-discrete;
 }
 
 .dev-select__listbox[popover]:not(:popover-open) {
@@ -360,6 +364,13 @@
 
 .dev-select__listbox[popover]:popover-open {
   display: flex;
+  opacity: 1;
+}
+
+@starting-style {
+  .dev-select__listbox[popover]:popover-open {
+    opacity: 0;
+  }
 }
 
 .dev-select__option {
@@ -373,6 +384,14 @@
 
 /* Keyboard/pointer current row matches the trigger's field fill. */
 .dev-select__option.is-active {
+  background: var(--comp-field-container);
+}
+
+/* Native menu: once arrows are used, ignore hover paint until the pointer moves. */
+.dev-select__listbox.is-keyboard .dev-select__option:hover {
+  background: var(--comp-button-ghost-container); /* transparent rest */
+}
+.dev-select__listbox.is-keyboard .dev-select__option.is-active {
   background: var(--comp-field-container);
 }
 
