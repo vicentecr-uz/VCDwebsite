@@ -30,7 +30,7 @@ import DevOverlay from './DevOverlay.astro';
         aria-label="Attach screenshots or recordings"
       >
         <div class="dev-drop__well">
-          <p class="dev-log-issue__drop-label" data-log-drop-label hidden></p>
+          <p class="dev-log-issue__drop-label" data-log-drop-label>Drop screenshots or recordings, or paste</p>
           <ul class="dev-log-issue__files" data-log-files hidden></ul>
           <input
             type="file"
@@ -102,6 +102,8 @@ import DevOverlay from './DevOverlay.astro';
 <div class="dev-log-issue-pick-outline" data-log-pick-outline hidden></div>
 
 <script>
+  import { getLastPointerPosition } from '../lib/lastPointer';
+
   type Attachment = { filename: string; data: string; mimeType: string };
 
   const initDevLogIssue = () => {
@@ -238,6 +240,10 @@ import DevOverlay from './DevOverlay.astro';
 
     const openPanel = () => {
       panel.hidden = false;
+      const { x, y } = getLastPointerPosition();
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
+        detail: { panel, clientX: x, clientY: y },
+      }));
       void loadMeta().then(() => autoFillPageLabel());
       requestAnimationFrame(() => titleInput.focus());
     };
@@ -343,11 +349,14 @@ import DevOverlay from './DevOverlay.astro';
       reader.readAsDataURL(file);
     });
 
+    const DEFAULT_DROP_HINT = dropLabel.textContent || '';
+
     const renderFiles = () => {
       filesList.replaceChildren();
       if (!attachments.length) {
         filesList.hidden = true;
-        dropLabel.hidden = true;
+        dropLabel.textContent = DEFAULT_DROP_HINT;
+        dropLabel.hidden = false;
         return;
       }
       dropLabel.hidden = true;
@@ -556,7 +565,6 @@ import DevOverlay from './DevOverlay.astro';
           link.textContent = payload.url;
           veilMessage.append(document.createElement('br'), link);
         }
-        window.setTimeout(() => closePanel(), 1600);
       } catch (error) {
         hideVeil();
         veilMode = 'idle';
@@ -698,7 +706,15 @@ import DevOverlay from './DevOverlay.astro';
         return;
       }
 
-      if (veilMode === 'logging' || veilMode === 'done') return;
+      if (veilMode === 'logging') return;
+
+      if (veilMode === 'done') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        // Nothing left to lose after a successful submit — close directly.
+        closePanel();
+        return;
+      }
 
       // Form open: Esc acts like Cancel.
       event.preventDefault();
@@ -809,7 +825,7 @@ import DevOverlay from './DevOverlay.astro';
     justify-content: center;
     border-radius: inherit;
     /* Frosted veil over the form — soft fill so the muted fields still read underneath. */
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 88%, transparent);
+    background: color-mix(in srgb, var(--sys-color-srf) 88%, transparent);
     backdrop-filter: blur(2px);
     padding: 1em;
     opacity: 0;
