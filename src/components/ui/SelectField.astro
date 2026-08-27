@@ -251,7 +251,14 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
       ?? null;
 
     let top: number;
-    if (anchor) {
+    const triggerLabel = trigger.querySelector('.dev-select__trigger-label');
+    const optionLabel = anchor?.querySelector('.dev-select__option-label');
+    if (anchor && triggerLabel && optionLabel) {
+      listbox.style.top = `${valueRect.top}px`;
+      const delta =
+        triggerLabel.getBoundingClientRect().top - optionLabel.getBoundingClientRect().top;
+      top = parseFloat(listbox.style.top) + delta;
+    } else if (anchor) {
       listbox.style.top = `${valueRect.top}px`;
       const delta = valueRect.top - anchor.getBoundingClientRect().top;
       top = valueRect.top + delta;
@@ -264,7 +271,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     if (top + listboxHeight > window.innerHeight - margin) {
       top = Math.max(margin, window.innerHeight - margin - listboxHeight);
     }
-    listbox.style.top = `${top}px`;
+    listbox.style.top = `${Math.round(top)}px`;
   };
 
   const openListbox = (parts: Parts) => {
