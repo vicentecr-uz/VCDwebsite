@@ -274,9 +274,29 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     listbox.style.top = `${Math.round(top)}px`;
   };
 
+  const closeTimeouts = new WeakMap<HTMLUListElement, number>();
+  const closeListeners = new WeakMap<HTMLUListElement, (event: TransitionEvent) => void>();
+
+  const cancelPendingClose = (listbox: HTMLUListElement) => {
+    const pending = closeTimeouts.get(listbox);
+    if (pending != null) {
+      window.clearTimeout(pending);
+      closeTimeouts.delete(listbox);
+    }
+    const listener = closeListeners.get(listbox);
+    if (listener) {
+      listbox.removeEventListener('transitionend', listener);
+      closeListeners.delete(listbox);
+    }
+  };
+
   const openListbox = (parts: Parts) => {
     const { trigger, listbox, select } = parts;
     if (trigger.disabled) return;
+    if (listbox.classList.contains('is-closing')) {
+      listbox.classList.remove('is-closing');
+      cancelPendingClose(listbox);
+    }
     listbox.classList.remove('is-keyboard');
     syncFromSelect(parts);
     listbox.showPopover();
@@ -290,12 +310,34 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
   const closeListbox = (parts: Parts, { returnFocus = true } = {}) => {
     const { trigger, listbox } = parts;
     if (!listbox.matches(':popover-open')) return;
+    if (listbox.classList.contains('is-closing')) return;
+
+    listbox.classList.add('is-closing');
     listbox.classList.remove('is-keyboard');
-    listbox.hidePopover();
     trigger.setAttribute('aria-expanded', 'false');
     setActiveOption(parts, null);
     typeaheadBuffer = '';
-    if (returnFocus) trigger.focus();
+
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cancelPendingClose(listbox);
+      if (!listbox.classList.contains('is-closing')) return;
+      if (listbox.matches(':popover-open')) listbox.hidePopover();
+      listbox.classList.remove('is-closing');
+      if (returnFocus) trigger.focus();
+    };
+
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.propertyName !== 'opacity') return;
+      finish();
+    };
+
+    listbox.addEventListener('transitionend', onTransitionEnd);
+    closeListeners.set(listbox, onTransitionEnd);
+    const timeoutId = window.setTimeout(finish, 200);
+    closeTimeouts.set(listbox, timeoutId);
   };
 
   const commitOption = (parts: Parts, li: HTMLLIElement) => {
@@ -377,8 +419,17 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
   // Pointerdown outside the trigger and options closes without committing.
   // popover="manual" has no native light-dismiss; clicks on listbox padding
   // or leftover UA inset chrome are not options, so they close too.
+  // Option pointerdown must preventDefault so the trigger keeps focus —
+  // otherwise blur closes the popup before click can commit.
   document.addEventListener('pointerdown', (event) => {
     const target = event.target;
+    if (target instanceof Element) {
+      const option = target.closest('.dev-select__option');
+      const optionListbox = option?.closest<HTMLUListElement>('.dev-select__listbox');
+      if (option && optionListbox?.matches(':popover-open')) {
+        event.preventDefault();
+      }
+    }
     document.querySelectorAll<HTMLUListElement>('.dev-select__listbox').forEach((listbox) => {
       if (!listbox.matches(':popover-open')) return;
       const parts = getParts(listbox);
@@ -398,6 +449,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     const parts = getParts(target);
     if (!parts || !parts.listbox.matches(':popover-open')) return;
     const related = event.relatedTarget;
+    if (related instanceof Element && related.closest('.dev-select__option')) return;
     if (related instanceof Node && (parts.trigger.contains(related) || parts.listbox.contains(related))) {
       return;
     }
