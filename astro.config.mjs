@@ -1631,6 +1631,10 @@ function contentSectionDevWriter() {
               return;
             }
 
+            const existingLevel = existingType === 'sectionTitle'
+              ? (Number(existing.level) === 3 ? 3 : 2)
+              : null;
+
             if (existingType === 'bodyText' && type === 'sectionTitle') {
               const paragraphs = Array.isArray(existing.paragraphs)
                 ? existing.paragraphs.map((value) => String(value ?? ''))
@@ -1643,8 +1647,17 @@ function contentSectionDevWriter() {
                 level,
               };
               delete next.paragraphs;
+              if (level === 2 && !next.sectionId) {
+                next.sectionId = `title-${Date.now().toString(36)}`;
+              }
               data.sections[index] = next;
+              if (level === 2) {
+                syncOutlineForSectionMutation(data, { action: 'insert', section: next, index });
+              }
             } else if (existingType === 'sectionTitle' && type === 'bodyText') {
+              if (existingLevel === 2) {
+                syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
+              }
               const title = String(existing.title ?? '');
               const next = {
                 ...existing,
@@ -1653,10 +1666,18 @@ function contentSectionDevWriter() {
               };
               delete next.title;
               delete next.level;
-              delete next.sectionId;
               data.sections[index] = next;
             } else if (existingType === 'sectionTitle' && type === 'sectionTitle') {
-              existing.level = Number(body.level) === 3 ? 3 : 2;
+              const nextLevel = Number(body.level) === 3 ? 3 : 2;
+              if (existingLevel === 2 && nextLevel === 3) {
+                syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
+              } else if (existingLevel === 3 && nextLevel === 2) {
+                if (!existing.sectionId) {
+                  existing.sectionId = `title-${Date.now().toString(36)}`;
+                }
+                syncOutlineForSectionMutation(data, { action: 'insert', section: existing, index });
+              }
+              existing.level = nextLevel;
             }
 
             await writeContentJson(file, data);

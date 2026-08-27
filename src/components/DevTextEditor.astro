@@ -321,6 +321,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       previousPath: Array<string | number>;
       previousKind: EditableTextState['kind'];
       previousSpacingState: EditableSpacingState | null;
+      previousRootId?: string;
+      outlineAction?: 'insert' | 'delete';
+      outlineSectionId?: string;
+      outlineTitle?: string;
       textState: EditableTextState;
       replacedRoot: boolean;
     };
@@ -1091,6 +1095,44 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           insert.root = entry.previousRoot;
           insert.type = entry.from === 'bodyText' ? 'bodyText' : 'sectionTitle';
           insert.textStates = [entry.textState];
+        }
+
+        if (!entry.replacedRoot) {
+          if (entry.previousRootId) {
+            entry.previousRoot.id = entry.previousRootId;
+            entry.previousRoot.classList.add('section-block');
+          } else if (entry.outlineAction === 'insert') {
+            entry.previousRoot.removeAttribute('id');
+            entry.previousRoot.classList.remove('section-block');
+          }
+        }
+
+        if (entry.outlineAction === 'insert') {
+          window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+            detail: {
+              document: entry.documentKey,
+              action: 'delete',
+              index: entry.index,
+              sectionId: entry.outlineSectionId,
+              type: 'sectionTitle',
+            },
+          }));
+        } else if (entry.outlineAction === 'delete' && entry.outlineSectionId) {
+          window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+            detail: {
+              document: entry.documentKey,
+              action: 'insert',
+              index: entry.index,
+              type: 'sectionTitle',
+              sectionId: entry.outlineSectionId,
+              section: {
+                type: 'sectionTitle',
+                id: entry.outlineSectionId,
+                sectionId: entry.outlineSectionId,
+                title: entry.outlineTitle || 'Section title',
+              },
+            },
+          }));
         }
 
         entry.textState.element = entry.previousTextElement;
@@ -2462,6 +2504,50 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         block.state.element = heading;
         enableConvertedText(heading, 'text');
         bindTextState(block.state);
+
+        const previousRootId = previousRoot.id;
+        const fromWasH1 = current === 'sectionTitle:2';
+        const toIsH1 = parsed.level === 2;
+        let outlineAction: 'insert' | 'delete' | undefined;
+        let outlineSectionId: string | undefined;
+        if (toIsH1) {
+          const sectionId = previousRoot.id || `title-${Date.now().toString(36)}`;
+          previousRoot.id = sectionId;
+          previousRoot.classList.add('section-block');
+          previousRoot.dataset.devSectionTitle = 'true';
+          outlineAction = 'insert';
+          outlineSectionId = sectionId;
+          window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+            detail: {
+              document: block.state.document,
+              action: 'insert',
+              index,
+              type: 'sectionTitle',
+              sectionId,
+              section: {
+                type: 'sectionTitle',
+                id: sectionId,
+                sectionId,
+                title: text,
+              },
+            },
+          }));
+        } else if (fromWasH1) {
+          outlineSectionId = previousRoot.id || undefined;
+          outlineAction = 'delete';
+          if (outlineSectionId) {
+            window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+              detail: {
+                document: block.state.document,
+                action: 'delete',
+                index,
+                sectionId: outlineSectionId,
+                type: 'sectionTitle',
+              },
+            }));
+          }
+        }
+
         pendingBlockConverts.push({
           documentKey: block.state.document,
           index,
@@ -2474,6 +2560,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           previousPath,
           previousKind,
           previousSpacingState: null,
+          previousRootId,
+          outlineAction,
+          outlineSectionId,
+          outlineTitle: text,
           textState: block.state,
           replacedRoot: false,
         });
@@ -2502,6 +2592,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       );
       if (precedeRelated) built.root.classList.add('project-stack--precede-related');
 
+      const previousRootId = previousRoot.id;
+      const fromWasH1 = current === 'sectionTitle:2';
+      const toIsH1 = parsed.type === 'sectionTitle' && parsed.level === 2;
+
       previousRoot.replaceWith(built.root);
 
       const delIdx = deletableSections.indexOf(previousRoot);
@@ -2525,6 +2619,60 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       enableConvertedText(built.textElement, built.textKind);
       bindTextState(block.state);
 
+      if (parsed.type === 'sectionTitle') {
+        built.root.dataset.devSectionTitle = 'true';
+      }
+
+      let outlineAction: 'insert' | 'delete' | undefined;
+      let outlineSectionId: string | undefined;
+      if (toIsH1) {
+        const sectionId = previousRootId || `title-${Date.now().toString(36)}`;
+        built.root.id = sectionId;
+        built.root.classList.add('section-block');
+        built.root.dataset.devSectionTitle = 'true';
+        outlineAction = 'insert';
+        outlineSectionId = sectionId;
+        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+          detail: {
+            document: block.state.document,
+            action: 'insert',
+            index,
+            type: 'sectionTitle',
+            sectionId,
+            section: {
+              type: 'sectionTitle',
+              id: sectionId,
+              sectionId,
+              title: text,
+            },
+          },
+        }));
+      } else if (fromWasH1) {
+        const mintedThisSession = pendingBlockConverts.some(
+          (entry) => entry.root === previousRoot && entry.outlineAction === 'insert' && !entry.previousRootId,
+        );
+        outlineSectionId = previousRootId || undefined;
+        outlineAction = 'delete';
+        if (outlineSectionId) {
+          window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
+            detail: {
+              document: block.state.document,
+              action: 'delete',
+              index,
+              sectionId: outlineSectionId,
+              type: 'sectionTitle',
+            },
+          }));
+          if (!mintedThisSession) {
+            built.root.id = outlineSectionId;
+            built.root.classList.add('section-block');
+          }
+        }
+      } else if (previousRootId) {
+        built.root.id = previousRootId;
+        built.root.classList.add('section-block');
+      }
+
       pendingBlockConverts.push({
         documentKey: block.state.document,
         index,
@@ -2537,6 +2685,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         previousPath,
         previousKind,
         previousSpacingState,
+        previousRootId,
+        outlineAction,
+        outlineSectionId,
+        outlineTitle: text,
         textState: block.state,
         replacedRoot: true,
       });
