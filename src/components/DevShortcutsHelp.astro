@@ -1,0 +1,185 @@
+---
+const shortcuts = [
+  { key: '⌥E', name: 'Edit mode' },
+  { key: '⌥M', name: 'Panels' },
+  { key: '⌥A', name: 'Asset manager' },
+  { key: '⌥P', name: 'Gallery pages' },
+  { key: '⌥I', name: 'Log issue' },
+  { key: '⌥T', name: 'Theme' },
+  { key: '⌥L', name: 'Lapse' },
+  { key: '⌥H', name: 'Shortcuts' },
+];
+---
+
+<div class="dev-shortcuts-help" data-dev-shortcuts-help hidden>
+  <div class="dev-shortcuts-help__veil" data-dev-shortcuts-veil>
+    <div
+      class="dev-shortcuts-help__card"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Keyboard shortcuts"
+      tabindex="-1"
+      data-dev-shortcuts-card
+    >
+      <ul class="dev-shortcuts-help__list">
+        {shortcuts.map(({ key, name }) => (
+          <li class="dev-shortcuts-help__item">
+            <span class="dev-shortcuts-help__shortcut">{key}</span>
+            <span class="dev-shortcuts-help__name">{name}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+  const initDevShortcutsHelp = () => {
+    const root = document.querySelector('[data-dev-shortcuts-help]');
+    const veil = document.querySelector('[data-dev-shortcuts-veil]');
+    const card = document.querySelector('[data-dev-shortcuts-card]');
+    if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
+
+    const VEIL_MS = 180;
+    let closeTimer = null;
+
+    const isOpen = () => root.classList.contains('is-dev-shortcuts-open');
+
+    const isTypingTarget = (target) => {
+      const el = target instanceof HTMLElement ? target : null;
+      return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
+    };
+
+    const open = () => {
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+      root.hidden = false;
+      requestAnimationFrame(() => {
+        root.classList.add('is-dev-shortcuts-open');
+      });
+    };
+
+    const close = () => {
+      // Also close when hidden was cleared but the open class has not landed
+      // yet (Option+H between open()'s unhide and the rAF) — otherwise close
+      // no-ops and the later rAF leaves the overlay stuck open.
+      if (root.hidden && !isOpen()) return;
+      root.classList.remove('is-dev-shortcuts-open');
+      closeTimer = window.setTimeout(() => {
+        root.hidden = true;
+        closeTimer = null;
+      }, VEIL_MS);
+    };
+
+    const toggle = () => {
+      if (!root.hidden || isOpen()) close();
+      else open();
+    };
+
+    veil.addEventListener('click', (event) => {
+      if (event.target !== veil) return;
+      close();
+    });
+
+    card.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyH') {
+        if (isTypingTarget(event.target)) return;
+        event.preventDefault();
+        toggle();
+        return;
+      }
+
+      if (event.key !== 'Escape') return;
+      if (!isOpen()) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      close();
+    }, true);
+  };
+
+  initDevShortcutsHelp();
+</script>
+
+<style>
+  .dev-shortcuts-help {
+    --dev-shortcuts-veil-ms: 180ms;
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    pointer-events: none;
+  }
+
+  .dev-shortcuts-help__veil {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5em;
+    background: color-mix(in oklab, var(--sys-color-srf) 68%, transparent);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transition: opacity var(--dev-shortcuts-veil-ms) ease;
+    pointer-events: none;
+  }
+
+  .dev-shortcuts-help.is-dev-shortcuts-open {
+    pointer-events: auto;
+  }
+
+  .dev-shortcuts-help.is-dev-shortcuts-open .dev-shortcuts-help__veil {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .dev-shortcuts-help__card {
+    background: var(--sys-color-srf);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-control-in-container);
+    box-shadow: var(--dev-panel-shadow);
+    padding: 1.35em 1.5em;
+    outline: none;
+  }
+
+  .dev-shortcuts-help__card:focus-visible {
+    outline: 2px solid var(--sys-color-on-srf-variant);
+    outline-offset: 2px;
+  }
+
+  .dev-shortcuts-help__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1lh;
+    text-align: left;
+  }
+
+  .dev-shortcuts-help__item {
+    display: grid;
+    grid-template-columns: 5.5em 1fr;
+    column-gap: 0.4em;
+    align-items: baseline;
+    font-size: var(--text-body-size);
+    font-weight: var(--text-body-weight);
+    line-height: var(--text-body-leading);
+    letter-spacing: var(--text-body-tracking);
+    color: var(--sys-color-on-srf);
+  }
+
+  .dev-shortcuts-help__shortcut {
+    font-weight: 700;
+  }
+
+  .dev-shortcuts-help__name {
+    font-weight: var(--text-body-weight);
+  }
+</style>
