@@ -335,6 +335,9 @@
 .dev-select__listbox[popover] {
   position: fixed; /* JS sets top/left/width */
   inset: unset; /* UA popover sets inset:0, which would stretch the box */
+  right: auto;
+  bottom: auto;
+  height: fit-content;
   z-index: 200; /* above save bar 90, format bar 95, Alt+M panel 100 */
   display: flex;
   flex-direction: column;
@@ -343,7 +346,7 @@
   border: 0;
   padding: 4px;
   list-style: none;
-  background: var(--color-bg);
+  background: var(--sys-color-srf);
   overflow: visible;
   border-radius: var(--dev-radius-control-in-container);
   box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
@@ -353,6 +356,9 @@
   min-height: var(--dev-control-height);
   border: 0;
   box-shadow: none;
+  --dev-btn-hit-inset: 0;
+  transform: none;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 /* Keyboard-active option reads as hovered. */
@@ -363,6 +369,15 @@
 /* Currently selected option matches the trigger's field fill. */
 .dev-select__option[aria-selected='true'] {
   background: var(--comp-field-container);
+}
+
+.dev-select__option:active:not(:disabled) {
+  transform: none;
+  background: var(--comp-button-ghost-container-pressed);
+}
+
+.dev-select__option[aria-selected='true']:active:not(:disabled) {
+  background: var(--comp-button-soft-container-pressed);
 }
 
 .dev-select__option-icon {
