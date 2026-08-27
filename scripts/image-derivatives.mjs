@@ -66,9 +66,10 @@ export async function findOriginal(mediaDir, token) {
 export async function generateDerivativeBuffer(originalPath, kind) {
   const size = kind === 'thumb' ? THUMB_SIZE : PREVIEW_SIZE;
   const { default: sharp } = await import('sharp');
+  // `inside` = long edge, matching Immich `size` (width-only would oversize portraits).
   return sharp(originalPath)
     .rotate()
-    .resize({ width: size, withoutEnlargement: true })
+    .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 75 })
     .toBuffer();
 }
