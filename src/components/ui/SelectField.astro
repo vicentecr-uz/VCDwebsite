@@ -42,10 +42,8 @@ for (const [key, propValue] of Object.entries(rest)) {
 const isGroup = (item: SelectOption | SelectGroup): item is SelectGroup =>
   Array.isArray((item as SelectGroup).options);
 
-// The trigger needs a stable id for aria-controls / aria-activedescendant and
-// so a consumer (DevLogIssue) can point a real <label for> at it — Field's
-// own label row is a <span>, not a <label>, so that association has to be
-// made from outside.
+// The trigger needs a stable id for aria-controls / aria-activedescendant
+// and so Field can point a real <label for> at it via labelFor.
 const triggerId = typeof providedId === 'string' && providedId
   ? providedId
   : `dev-select-${Math.random().toString(36).slice(2, 9)}`;
@@ -68,7 +66,7 @@ for (const item of options) {
 const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOptions[0] ?? null;
 ---
 
-<Field label={label} labelId={`${triggerId}-label`} class={[className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
+<Field label={label} labelId={`${triggerId}-label`} labelFor={triggerId} class={[className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
   <slot name="labelAccessory" slot="labelAccessory" />
   <select
     value={value}
@@ -107,15 +105,14 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     class="dev-select__listbox"
     role="listbox"
     id={listboxId}
-    tabindex="-1"
-    hidden
+    popover="manual"
     data-dev-select-listbox
   >
     {flatOptions.map((opt, index) => (
       <li
         role="option"
         id={`${triggerId}-option-${index}`}
-        class="dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-select__option"
+        class="dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-select__option"
         aria-selected={opt.value === value ? 'true' : 'false'}
         data-value={opt.value}
       >
@@ -146,14 +143,17 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
   const getOptionItems = (listbox: HTMLUListElement) =>
     [...listbox.querySelectorAll<HTMLLIElement>('li[role="option"]')];
 
-  const setActiveOption = (listbox: HTMLUListElement, li: HTMLLIElement | null) => {
+  // DOM focus never leaves the trigger (select-only combobox model), so the
+  // active-descendant pointer lives on the trigger, not the listbox.
+  const setActiveOption = (parts: Parts, li: HTMLLIElement | null) => {
+    const { trigger, listbox } = parts;
     getOptionItems(listbox).forEach((item) => item.classList.remove('is-active'));
     if (!li) {
-      listbox.removeAttribute('aria-activedescendant');
+      trigger.removeAttribute('aria-activedescendant');
       return;
     }
     li.classList.add('is-active');
-    listbox.setAttribute('aria-activedescendant', li.id);
+    trigger.setAttribute('aria-activedescendant', li.id);
     li.scrollIntoView({ block: 'nearest' });
   };
 
@@ -203,7 +203,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
         const li = document.createElement('li');
         li.setAttribute('role', 'option');
         li.id = `${trigger.id}-option-${index}`;
-        li.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-select__option';
+        li.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-select__option';
         li.dataset.value = optionEl.value;
         li.setAttribute('aria-selected', optionEl.selected ? 'true' : 'false');
         const labelSpan = document.createElement('span');
@@ -225,24 +225,52 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     observer.observe(parts.select, { childList: true, subtree: true });
   };
 
+  /**
+   * Aligns the popup so its currently-active option sits exactly on top of
+   * the trigger (macOS-style popup-menu behaviour) — falls back to opening
+   * just below the trigger when nothing is active. Clamps to an 8px
+   * viewport margin, letting alignment degrade rather than overflow.
+   */
+  const positionListbox = (parts: Parts) => {
+    const { trigger, listbox, select } = parts;
+    const triggerRect = trigger.getBoundingClientRect();
+    const margin = 8;
+
+    listbox.style.left = `${triggerRect.left}px`;
+    listbox.style.width = `${triggerRect.width}px`;
+
+    const items = getOptionItems(listbox);
+    const anchor = items.find((li) => li.classList.contains('is-active'))
+      ?? items.find((li) => li.dataset.value === select.value)
+      ?? null;
+
+    let top = anchor ? triggerRect.top - anchor.offsetTop : triggerRect.bottom + 4;
+    const listboxHeight = listbox.offsetHeight;
+    if (top < margin) top = margin;
+    if (top + listboxHeight > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - margin - listboxHeight);
+    }
+    listbox.style.top = `${top}px`;
+  };
+
   const openListbox = (parts: Parts) => {
     const { trigger, listbox, select } = parts;
     if (trigger.disabled) return;
     syncFromSelect(parts);
-    listbox.hidden = false;
+    listbox.showPopover();
     trigger.setAttribute('aria-expanded', 'true');
     const items = getOptionItems(listbox);
     const active = items.find((li) => li.dataset.value === select.value) ?? items[0] ?? null;
-    setActiveOption(listbox, active);
-    listbox.focus();
+    setActiveOption(parts, active);
+    positionListbox(parts);
   };
 
   const closeListbox = (parts: Parts, { returnFocus = true } = {}) => {
     const { trigger, listbox } = parts;
-    if (listbox.hidden) return;
-    listbox.hidden = true;
+    if (!listbox.matches(':popover-open')) return;
+    listbox.hidePopover();
     trigger.setAttribute('aria-expanded', 'false');
-    setActiveOption(listbox, null);
+    setActiveOption(parts, null);
     typeaheadBuffer = '';
     if (returnFocus) trigger.focus();
   };
@@ -280,7 +308,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
       if (!parts || parts.trigger.disabled) return;
       ensureInstance(parts);
       syncFromSelect(parts);
-      if (parts.listbox.hidden) openListbox(parts);
+      if (!parts.listbox.matches(':popover-open')) openListbox(parts);
       else closeListbox(parts, { returnFocus: false });
       return;
     }
@@ -294,10 +322,12 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     }
   });
 
-  // Pointerdown outside an open listbox closes it without committing.
+  // Pointerdown outside an open listbox closes it without committing. The
+  // popup renders in the top layer (position: fixed) but stays a DOM
+  // descendant of .dev-field, so `contains` still finds a click on it.
   document.addEventListener('pointerdown', (event) => {
     const target = event.target;
-    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox:not([hidden])').forEach((listbox) => {
+    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox:popover-open').forEach((listbox) => {
       const wrapper = listbox.closest('.dev-field');
       if (wrapper && !(target instanceof Node && wrapper.contains(target))) {
         const parts = getParts(listbox);
@@ -306,52 +336,57 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     });
   });
 
-  // Closed-state trigger keys: open the popup.
+  // Reposition every open popup on scroll (capture, so a scroll inside any
+  // ancestor container is caught too) and on viewport resize.
+  const repositionOpenListboxes = () => {
+    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox:popover-open').forEach((listbox) => {
+      const parts = getParts(listbox);
+      if (parts) positionListbox(parts);
+    });
+  };
+  window.addEventListener('scroll', repositionOpenListboxes, true);
+  window.addEventListener('resize', repositionOpenListboxes);
+
+  // Trigger keys. Focus never leaves the trigger, so both closed (open the
+  // popup) and open (move / commit / type-ahead) share this one listener.
   document.addEventListener('keydown', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
     const trigger = target.closest<HTMLButtonElement>('.dev-select__trigger');
     if (!trigger || trigger.disabled) return;
     const parts = getParts(trigger);
-    if (!parts || !parts.listbox.hidden) return;
-
-    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      openListbox(parts);
-    }
-  });
-
-  // Open-state listbox keys.
-  document.addEventListener('keydown', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const listbox = target.closest<HTMLUListElement>('.dev-select__listbox');
-    if (!listbox || listbox.hidden) return;
-    const parts = getParts(listbox);
     if (!parts) return;
 
-    const items = getOptionItems(listbox);
+    if (!parts.listbox.matches(':popover-open')) {
+      if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        openListbox(parts);
+      }
+      return;
+    }
+
+    const items = getOptionItems(parts.listbox);
     const activeIndex = items.findIndex((item) => item.classList.contains('is-active'));
 
     switch (event.key) {
       case 'ArrowDown': {
         event.preventDefault();
-        setActiveOption(listbox, items[Math.min(items.length - 1, activeIndex + 1)] ?? null);
+        setActiveOption(parts, items[Math.min(items.length - 1, activeIndex + 1)] ?? null);
         break;
       }
       case 'ArrowUp': {
         event.preventDefault();
-        setActiveOption(listbox, items[Math.max(0, activeIndex - 1)] ?? null);
+        setActiveOption(parts, items[Math.max(0, activeIndex - 1)] ?? null);
         break;
       }
       case 'Home': {
         event.preventDefault();
-        setActiveOption(listbox, items[0] ?? null);
+        setActiveOption(parts, items[0] ?? null);
         break;
       }
       case 'End': {
         event.preventDefault();
-        setActiveOption(listbox, items[items.length - 1] ?? null);
+        setActiveOption(parts, items[items.length - 1] ?? null);
         break;
       }
       case 'Enter':
@@ -386,7 +421,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
               .toLowerCase()
               .startsWith(typeaheadBuffer),
           );
-          if (match) setActiveOption(listbox, match);
+          if (match) setActiveOption(parts, match);
           typeaheadTimer = window.setTimeout(() => {
             typeaheadBuffer = '';
           }, 500);
