@@ -227,17 +227,19 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
 
   /**
    * Aligns the popup so its currently-active option sits exactly on top of
-   * the trigger (macOS-style popup-menu behaviour) — falls back to opening
-   * just below the trigger when nothing is active. Clamps to an 8px
-   * viewport margin, letting alignment degrade rather than overflow.
+   * the visible grey field (`.dev-field__value`), not the trigger hitbox
+   * (macOS-style popup-menu behaviour) — falls back to opening just below
+   * the field when nothing is active. Clamps to an 8px viewport margin,
+   * letting alignment degrade rather than overflow.
    */
   const positionListbox = (parts: Parts) => {
     const { trigger, listbox, select } = parts;
-    const triggerRect = trigger.getBoundingClientRect();
+    const valueBox = trigger.closest('.dev-field__value') ?? trigger;
+    const valueRect = valueBox.getBoundingClientRect();
     const margin = 8;
 
-    listbox.style.left = `${triggerRect.left}px`;
-    listbox.style.width = `${triggerRect.width}px`;
+    listbox.style.left = `${valueRect.left}px`;
+    listbox.style.width = `${valueRect.width}px`;
     listbox.style.right = 'auto';
     listbox.style.bottom = 'auto';
     listbox.style.height = 'auto';
@@ -249,11 +251,11 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
 
     let top: number;
     if (anchor) {
-      listbox.style.top = `${triggerRect.top}px`;
-      const delta = trigger.getBoundingClientRect().top - anchor.getBoundingClientRect().top;
-      top = triggerRect.top + delta;
+      listbox.style.top = `${valueRect.top}px`;
+      const delta = valueRect.top - anchor.getBoundingClientRect().top;
+      top = valueRect.top + delta;
     } else {
-      top = triggerRect.bottom + 4;
+      top = valueRect.bottom + 4;
     }
 
     const listboxHeight = listbox.offsetHeight;
@@ -331,6 +333,17 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
       commitOption(parts, option);
       closeListbox(parts);
     }
+  });
+
+  // Hover moves the same single highlight as arrows; commit stays click/Enter.
+  document.addEventListener('pointerover', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const option = target.closest<HTMLLIElement>('.dev-select__option');
+    if (!option) return;
+    const parts = getParts(option);
+    if (!parts || !parts.listbox.matches(':popover-open')) return;
+    setActiveOption(parts, option);
   });
 
   // Pointerdown outside the trigger and options closes without committing.
