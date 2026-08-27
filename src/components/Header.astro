@@ -4,6 +4,7 @@ interface Props {
   /** @deprecated Use nav menu on all pages; kept for non–nav-menu fallback only. */
   linkHref?: string;
   navMenu?: boolean;
+  wordmarkAsH1?: boolean;
 }
 
 import headerSettings from '../content/settings/header.json';
@@ -12,7 +13,9 @@ const {
   title = headerSettings.siteTitle,
   linkHref = '/',
   navMenu = true,
+  wordmarkAsH1 = false,
 } = Astro.props;
+const WordmarkTag = wordmarkAsH1 ? 'h1' : 'span';
 const homeWordmark = headerSettings.siteTitle.replace(' ', '\u00a0');
 const wordmark = title.replace(' ', '\u00a0');
 const showWordmarkSwap = title !== headerSettings.siteTitle;
@@ -51,11 +54,11 @@ const menuLinks = headerSettings.menuLinks;
               >
                 {showWordmarkSwap ? (
                   <span class="header-trigger__wordmark-stack">
-                    <span class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                    <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
                       {pageChars.map((char) => (
                         <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
                       ))}
-                    </span>
+                    </WordmarkTag>
                     <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
                       {homeChars.map((char) => (
                         <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
@@ -63,11 +66,11 @@ const menuLinks = headerSettings.menuLinks;
                     </span>
                   </span>
                 ) : (
-                  <span class="header-trigger__wordmark">{wordmark}</span>
+                  <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
                 )}
               </a>
             ) : (
-              <span class="header-trigger__wordmark">{wordmark}</span>
+              <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
             )}
           </div>
           <ul class="header-menu" role="list">
@@ -148,7 +151,7 @@ const menuLinks = headerSettings.menuLinks;
       <a
         href={linkHref}
         class="header-link header-link--wordmark hover:opacity-60 transition-opacity duration-200"
-        style="font-family: var(--font-sans); font-size: var(--header-wordmark-size); line-height: 1; font-weight: 700; letter-spacing: -0.05ch;"
+        style="font-family: var(--font-sans); font-size: var(--header-wordmark-size); line-height: 1; font-weight: var(--text-wordmark-weight); letter-spacing: -0.05ch;"
       >
         {title}
       </a>
@@ -948,7 +951,7 @@ const menuLinks = headerSettings.menuLinks;
     font-family: var(--font-sans);
     font-size: var(--header-wordmark-size);
     line-height: 1;
-    font-weight: 700;
+    font-weight: var(--text-wordmark-weight);
     letter-spacing: -0.05ch;
     /* The hidden sizer is what sets the header row height. Trim it to
        cap-to-baseline so the row is the text's optical height rather than its
@@ -1294,7 +1297,7 @@ const menuLinks = headerSettings.menuLinks;
     font-family: var(--font-sans);
     font-size: var(--header-wordmark-size);
     line-height: 1;
-    font-weight: 700;
+    font-weight: var(--text-wordmark-weight);
     letter-spacing: -0.05ch;
     /* Top only: pulls the caps onto the row's top edge. The box below keeps
        its descender space, so --menu-gap still measures from where it was
@@ -1306,7 +1309,7 @@ const menuLinks = headerSettings.menuLinks;
     font-family: var(--font-sans);
     font-size: var(--header-menu-link-size, 1.2em);
     line-height: 1;
-    font-weight: 500;
+    font-weight: var(--text-nav-weight);
     letter-spacing: -0.05ch;
     display: block;
     color: var(--sys-color-link-soft);

@@ -506,37 +506,16 @@ const roleTokens = [
 }));
 
 const typographyScale = [
-  {
-    token: 'Display / h1',
-    value: 'clamp(1.95rem, 2.5vw, 2.85rem)',
-    sample: 'Industrial design, made tactile.',
-    note: 'Page-level title and hero intro',
-  },
-  {
-    token: 'Section heading / h2',
-    value: 'clamp(1.35rem, 1.8vw, 2rem)',
-    sample: 'Process and outputs',
-    note: 'Top-level section breaks',
-  },
-  {
-    token: 'Subheading / h3',
-    value: '1.1rem',
-    sample: 'Materials and ergonomics',
-    note: 'Nested sections and card titles',
-  },
-  {
-    token: 'Body copy',
-    value: '1rem / 1.55',
-    sample:
-      'Used for narrative sections. Keep width around 52-62ch so dense process writing remains easy to scan.',
-    note: 'Long-form description text',
-  },
-  {
-    token: 'Caption',
-    value: '1.2em / 1.1 · weight 600 · tracking -0.05ch',
-    sample: 'Foam model before final chamfer direction',
-    note: 'White image-overlay style (Styles → Caption). Dev Mode caption tuner also offers Black (overlay) and Below image (body-sized text under the media, always visible; match-height grids leave matching empty space under sibling cells).',
-  },
+  { role: 'body', label: 'Body', spec: '400 · 1.2rem/1.45 · -0.01em', sample: 'Used for narrative sections. Keep width around 52-62ch so dense process writing remains easy to scan.', note: 'Long-form description text (.project-body-text)' },
+  { role: 'section-title', label: 'Section title', spec: '700 · 1.5rem/1.2 · -0.03em', sample: 'Process and outputs', note: 'Project section headings (.project-section-title)' },
+  { role: 'grid-title', label: 'Grid title', spec: '400 · 1.25rem/1.2 · -0.03em', sample: '2024', note: 'Home/Work/Play card year/meta label (.project-grid__subtitle) — the title itself stays bold' },
+  { role: 'about-heading', label: 'About heading', spec: '900 · 2rem/1 · -0.5px', sample: 'Contact', note: 'About page section headers — bound in a later pass' },
+  { role: 'about-body', label: 'About body', spec: '500 · 1.2rem/1.25 · -0.4px', sample: 'Junior Industrial Designer at Kingfisher.', note: 'About page body copy — bound in a later pass' },
+  { role: 'caption', label: 'Caption', spec: '600 · 1.2em/1.1 · -0.05ch', sample: 'Foam model before final chamfer direction', note: 'White image-overlay caption (.project-caption)' },
+  { role: 'nav', label: 'Nav', spec: '500 (size/tracking are component-owned, see Header.astro)', sample: 'Work', note: 'Header menu links (.header-menu__link)' },
+  { role: 'subheading', label: 'Subheading', spec: '700 · 1.1rem/1 · -0.03em', sample: '© Vicente Cruz', note: 'Footer text (.footer-text)' },
+  { role: 'press-quote', label: 'Press quote', spec: 'italic 400 · 1.05em/1.35 · -0.01em', sample: '"An elegant, tactile solution."', note: 'Press quote ticker (.press-quote-ticker__quote)' },
+  { role: 'wordmark', label: 'Wordmark', spec: '700 (size/tracking are component-owned, see Header.astro)', sample: 'Vicente Cruz', note: 'Header wordmark' },
 ];
 
 const spacingScale = [
@@ -646,7 +625,7 @@ const sectionLinks = savedOutline.length
         desktopOnly
       />
 
-      <main class="styles-main" data-section-nav-main>
+      <main id="main-content" class="styles-main" data-section-nav-main>
         <section id="styles-intro" class="styles-intro section-block">
           <p class="intro-copy">
             This page is the single source of truth for site components, tokens, and signed-off patterns.
@@ -708,22 +687,12 @@ const sectionLinks = savedOutline.length
               <article class="type-card">
                 <div class="type-card__meta">
                   <div>
-                    <p class="meta-label">{item.token}</p>
-                    <p class="meta-values">{item.value}</p>
+                    <p class="meta-label">{item.label}</p>
+                    <p class="meta-values">{item.spec}</p>
                   </div>
                   <p class="token-note">{item.note}</p>
                 </div>
-
-                {item.token === 'Display / h1' && <h1 class="preview-h1">{item.sample}</h1>}
-                {item.token === 'Section heading / h2' && <h2 class="preview-h2">{item.sample}</h2>}
-                {item.token === 'Subheading / h3' && <h3 class="preview-h3">{item.sample}</h3>}
-                {item.token === 'Body copy' && <p class="preview-body">{item.sample}</p>}
-                {item.token === 'Caption' && (
-                  <div class="caption-preview">
-                    <img src={`/images/${previewDetail}`} alt="Caption style preview" />
-                    <span class="project-caption">{item.sample}</span>
-                  </div>
-                )}
+                <p class:list={['type-preview', `type-preview--${item.role}`]}>{item.sample}</p>
               </article>
             ))}
           </div>
@@ -1249,25 +1218,73 @@ const sectionLinks = savedOutline.length
     padding-bottom: 0.8em;
   }
 
-  .preview-h1 {
-    font-size: clamp(1.95rem, 2.5vw, 2.85rem);
-    letter-spacing: -0.03em;
-    line-height: 1.1;
+  .type-preview {
+    margin: 0;
   }
 
-  .preview-h2 {
-    font-size: clamp(1.35rem, 1.8vw, 2rem);
-    letter-spacing: -0.03em;
+  .type-preview--body {
+    font-weight: var(--text-body-weight);
+    font-size: var(--text-body-size);
+    line-height: var(--text-body-leading);
+    letter-spacing: var(--text-body-tracking);
   }
 
-  .preview-h3 {
-    font-size: 1.1rem;
-    letter-spacing: -0.02em;
+  .type-preview--section-title {
+    font-weight: var(--text-section-title-weight);
+    font-size: var(--text-section-title-size);
+    line-height: var(--text-section-title-leading);
+    letter-spacing: var(--text-section-title-tracking);
   }
 
-  .preview-body {
-    max-width: 62ch;
-    line-height: 1.55;
+  .type-preview--grid-title {
+    font-weight: var(--text-grid-title-weight);
+    font-size: var(--text-grid-title-size);
+    line-height: var(--text-grid-title-leading);
+    letter-spacing: var(--text-grid-title-tracking);
+  }
+
+  .type-preview--about-heading {
+    font-weight: var(--text-about-heading-weight);
+    font-size: var(--text-about-heading-size);
+    line-height: var(--text-about-heading-leading);
+    letter-spacing: var(--text-about-heading-tracking);
+  }
+
+  .type-preview--about-body {
+    font-weight: var(--text-about-body-weight);
+    font-size: var(--text-about-body-size);
+    line-height: var(--text-about-body-leading);
+    letter-spacing: var(--text-about-body-tracking);
+  }
+
+  .type-preview--caption {
+    font-weight: var(--text-caption-weight);
+    font-size: var(--text-caption-size);
+    line-height: var(--text-caption-leading);
+    letter-spacing: var(--text-caption-tracking);
+  }
+
+  .type-preview--nav {
+    font-weight: var(--text-nav-weight);
+  }
+
+  .type-preview--subheading {
+    font-weight: var(--text-subheading-weight);
+    font-size: var(--text-subheading-size);
+    line-height: var(--text-subheading-leading);
+    letter-spacing: var(--text-subheading-tracking);
+  }
+
+  .type-preview--press-quote {
+    font-style: var(--text-press-quote-style);
+    font-weight: var(--text-press-quote-weight);
+    font-size: var(--text-press-quote-size);
+    line-height: var(--text-press-quote-leading);
+    letter-spacing: var(--text-press-quote-tracking);
+  }
+
+  .type-preview--wordmark {
+    font-weight: var(--text-wordmark-weight);
   }
 
   .caption-preview {
