@@ -78,6 +78,14 @@ function readCropVars(host: HTMLElement, hover: boolean): { w: number; cx: numbe
   return { w, cx, cy };
 }
 
+function isLiveHoverBitmap(item: HTMLElement, hoverImg: HTMLImageElement | null): boolean {
+  if (document.documentElement.classList.contains('is-dev-mode')) return false;
+  if (!hoverImg?.src) return false;
+  const card = item.querySelector('.project-grid__card');
+  if (!(card instanceof HTMLElement)) return false;
+  return card.matches(':hover, :focus-visible');
+}
+
 function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void } {
   let generation = 0;
 
@@ -91,24 +99,25 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
       const hoverForced =
         cover.classList.contains('is-dev-hover-forced') && Boolean(hoverImg?.src);
-      const imgEl = hoverForced && hoverImg ? hoverImg : baseImg;
+      const hover = hoverForced || isLiveHoverBitmap(item, hoverImg);
+      const imgEl = hover && hoverImg ? hoverImg : baseImg;
       const src = imgEl?.currentSrc || imgEl?.src;
 
       if (!src || isPlaceholderSrc(src, cover)) {
-        if (gen === generation) applyMediaGround(item, fallbackFromDataAttrs(item, hoverForced));
+        if (gen === generation) applyMediaGround(item, fallbackFromDataAttrs(item, hover));
         return;
       }
 
       const decoded = await lumaGridFor(src);
       if (gen !== generation) return;
       if (!decoded) {
-        applyMediaGround(item, fallbackFromDataAttrs(item, hoverForced));
+        applyMediaGround(item, fallbackFromDataAttrs(item, hover));
         return;
       }
 
       const region = sampleRegionForItem(item, cover);
       if (!region) {
-        applyMediaGround(item, fallbackFromDataAttrs(item, hoverForced));
+        applyMediaGround(item, fallbackFromDataAttrs(item, hover));
         return;
       }
 
@@ -119,7 +128,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       const source = { width: naturalWidth, height: naturalHeight };
 
       const cropHost = cropHostFor(cover);
-      const crop = cropHost ? readCropVars(cropHost, hoverForced) : null;
+      const crop = cropHost ? readCropVars(cropHost, hover) : null;
       const sourceRegion = crop
         ? cropFrameRegionToSourceRegion(region, frame, source, crop)
         : coverBoxRegionToSourceRegion(region, frame, source);
@@ -130,10 +139,11 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
     } catch {
       if (gen === generation) {
         const cover = item.querySelector<HTMLElement>('.project-grid__cover');
+        const hoverImg = cover?.querySelector<HTMLImageElement>('.project-grid__img--hover');
         const hoverForced =
-          cover?.classList.contains('is-dev-hover-forced') &&
-          Boolean(cover.querySelector<HTMLImageElement>('.project-grid__img--hover')?.src);
-        applyMediaGround(item, fallbackFromDataAttrs(item, Boolean(hoverForced)));
+          Boolean(cover?.classList.contains('is-dev-hover-forced') && hoverImg?.src);
+        const hover = hoverForced || isLiveHoverBitmap(item, hoverImg ?? null);
+        applyMediaGround(item, fallbackFromDataAttrs(item, hover));
       }
     }
   };
@@ -158,6 +168,17 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
     mutationObserver.observe(hoverImg, { attributes: true, attributeFilter: ['src', 'hidden'] });
   }
 
+  const card = item.querySelector('.project-grid__card');
+  const onCardHoverChange = () => {
+    void refreshItem();
+  };
+  if (card instanceof HTMLElement) {
+    card.addEventListener('pointerenter', onCardHoverChange);
+    card.addEventListener('pointerleave', onCardHoverChange);
+    card.addEventListener('focusin', onCardHoverChange);
+    card.addEventListener('focusout', onCardHoverChange);
+  }
+
   void refreshItem();
 
   return {
@@ -165,6 +186,12 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       generation += 1;
       resizeObserver.disconnect();
       mutationObserver.disconnect();
+      if (card instanceof HTMLElement) {
+        card.removeEventListener('pointerenter', onCardHoverChange);
+        card.removeEventListener('pointerleave', onCardHoverChange);
+        card.removeEventListener('focusin', onCardHoverChange);
+        card.removeEventListener('focusout', onCardHoverChange);
+      }
     },
     refresh: () => {
       void refreshItem();
@@ -174,14 +201,35 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
 
 /** Sample cover pixels under title+chip union; set `data-media-ground` on each item. */
 export function bindGalleryMediaInk(): () => void {
-  const items = Array.from(document.querySelectorAll<HTMLElement>('.project-grid__item'));
-  if (!items.length) return () => {};
+  const bindings = new Map<HTMLElement, { cleanup: () => void; refresh: () => void }>();
 
-  const bindings = items.map((item) => bindItem(item));
+  const bindMissing = () => {
+    document.querySelectorAll<HTMLElement>('.project-grid__item').forEach((item) => {
+      if (bindings.has(item)) return;
+      bindings.set(item, bindItem(item));
+    });
+  };
+
+  const unbindStale = () => {
+    for (const [item, binding] of bindings) {
+      if (item.isConnected) continue;
+      binding.cleanup();
+      bindings.delete(item);
+    }
+  };
+
+  bindMissing();
 
   const onRefresh = () => {
+    unbindStale();
+    bindMissing();
     bindings.forEach(({ refresh }) => refresh());
   };
+
+  const gridObserver = new MutationObserver(onRefresh);
+  document.querySelectorAll('.project-grid').forEach((grid) => {
+    gridObserver.observe(grid, { childList: true });
+  });
 
   window.addEventListener('vcd:dev-pending-upsert', onRefresh);
   window.addEventListener('vcd:dev-frame-changed', onRefresh);
@@ -189,6 +237,8 @@ export function bindGalleryMediaInk(): () => void {
   return () => {
     window.removeEventListener('vcd:dev-pending-upsert', onRefresh);
     window.removeEventListener('vcd:dev-frame-changed', onRefresh);
+    gridObserver.disconnect();
     bindings.forEach(({ cleanup }) => cleanup());
+    bindings.clear();
   };
 }
