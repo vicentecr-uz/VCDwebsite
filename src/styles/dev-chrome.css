@@ -285,6 +285,152 @@
   mask: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>') center / 14px 14px no-repeat;
 }
 
+/* SelectField's real model — kept in the DOM (focusable-by-form,
+   submittable, still the element consumers read/write .value on) but
+   never shown. The trigger button below is the view. */
+.dev-select__native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Trigger reuses dev-field__input + dev-field__input--select (hit-slop,
+   disabled dimming, cursor, and the chevron above all come for free since
+   this is a direct child of .dev-field__value) — only the icon/label row
+   layout is new. */
+.dev-select__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  text-align: left;
+}
+
+.dev-select__trigger-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.dev-select__trigger-icon:empty {
+  display: none;
+}
+
+.dev-select__trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Reset UA popover defaults — scoped to this component.
+   Never set display:flex on the base [popover] rule: it overrides the UA
+   closed-popover display:none, so hidePopover() leaves the listbox painted. */
+.dev-select__listbox[popover] {
+  position: fixed; /* JS sets top/left/width */
+  inset: unset; /* UA popover sets inset:0, which would stretch the box */
+  right: auto;
+  bottom: auto;
+  height: fit-content;
+  z-index: 200; /* above save bar 90, format bar 95, Alt+M panel 100 */
+  display: none;
+  overlay: none;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  border: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--sys-color-srf);
+  overflow: visible;
+  border-radius: var(--dev-radius-control-in-container);
+  box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
+  opacity: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    opacity var(--motion-press-duration) ease,
+    overlay var(--motion-press-duration) ease allow-discrete,
+    display var(--motion-press-duration) ease allow-discrete;
+}
+
+.dev-select__listbox[popover]:popover-open {
+  display: flex;
+  overlay: auto;
+  opacity: 1;
+}
+
+.dev-select__listbox[popover]:popover-open.is-closing {
+  opacity: 0;
+}
+
+@starting-style {
+  .dev-select__listbox[popover]:popover-open {
+    opacity: 0;
+  }
+}
+
+.dev-select__option {
+  min-height: var(--dev-control-height);
+  border: 0;
+  box-shadow: none;
+  --dev-btn-hit-inset: 0;
+  transform: none;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Keyboard/pointer current row matches the trigger's field fill. */
+.dev-select__option.is-active {
+  background: var(--comp-field-container);
+}
+
+/* Native menu: once arrows are used, ignore hover paint until the pointer moves. */
+.dev-select__listbox.is-keyboard .dev-select__option:hover {
+  background: var(--comp-button-ghost-container); /* transparent rest */
+}
+.dev-select__listbox.is-keyboard .dev-select__option.is-active {
+  background: var(--comp-field-container);
+}
+
+.dev-select__option:active:not(:disabled) {
+  transform: none;
+  background: var(--comp-button-ghost-container-pressed);
+}
+
+.dev-select__option[aria-selected='true']:active:not(:disabled) {
+  background: var(--comp-button-soft-container-pressed);
+}
+
+.dev-select__option-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+}
+
+.dev-select__option-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* hideLabel: the trigger's aria-label carries the name instead. */
+.dev-field--no-label .dev-field__label-row {
+  display: none;
+}
+
 .dev-toggle {
   display: flex;
   align-items: center;
