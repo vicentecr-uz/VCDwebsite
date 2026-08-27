@@ -703,14 +703,137 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let activeSlot: 'cover' | 'hover' = 'cover';
     let saved: CropState = { ...savedVariants[selectedViewport] };
     let draft: CropState = { ...draftVariants[selectedViewport] };
-    type CropPose = Pick<CropState, 'cx' | 'cy' | 'w'>;
-    let gestureUndo: CropPose[] = [];
-    const GESTURE_UNDO_CAP = 20; // ceiling; drop oldest. Upgrade: redo stack if anyone asks.
-    const pushGestureUndoIfNeeded = (captured: { value: boolean }) => {
+    interface CropUndoEntry {
+      cover: CropState;
+      hover: CropState | null;
+      lock: boolean;
+      widthConstrain: ImageGridConstrainPercent;
+      /** Set only when this step changed src (replace). */
+      src?: string;
+      srcWidth?: number;
+      srcHeight?: number;
+      /** Set only when this step changed max-vh. Use a wrapper so `undefined` (Off) is distinct from "not this step". */
+      maxVh?: { value: number | undefined };
+      allCover?: Record<ImageViewport, CropState>;
+      allHover?: Record<ImageViewport, CropState> | null;
+      allDraft?: Record<ImageViewport, CropState>;
+    }
+
+    const emptyStacks = (): Record<ImageViewport, CropUndoEntry[]> => ({
+      desktop: [],
+      tablet: [],
+      mobile: [],
+    });
+    let undoByViewport = emptyStacks();
+    let redoByViewport = emptyStacks();
+    const GESTURE_UNDO_CAP = 20; // ceiling per viewport; drop oldest. Redo lives beside undo.
+
+    const snapshotViewport = (): CropUndoEntry => {
+      const vp = selectedViewport;
+      // Flush live draft into maps first so cover/hover match what is on screen.
+      draftVariants[vp] = { ...draft };
+      if (isListingCover(editTarget)) {
+        if (activeSlot === 'cover') draftCoverVariants[vp] = { ...draft };
+        else if (draftHoverVariants) draftHoverVariants[vp] = { ...draft };
+      }
+      const cover = structuredClone(
+        isListingCover(editTarget) ? draftCoverVariants[vp] : draftVariants[vp],
+      );
+      const hover = draftHoverVariants ? structuredClone(draftHoverVariants[vp]) : null;
+      return {
+        cover,
+        hover,
+        lock: constrainByViewport[vp],
+        widthConstrain: draftConstrained[vp],
+      };
+    };
+
+    const pushUndo = (extra?: Pick<CropUndoEntry, 'src' | 'srcWidth' | 'srcHeight' | 'maxVh' | 'allCover' | 'allHover' | 'allDraft'>) => {
+      const vp = selectedViewport;
+      const entry: CropUndoEntry = { ...snapshotViewport(), ...extra };
+      undoByViewport[vp].push(entry);
+      if (undoByViewport[vp].length > GESTURE_UNDO_CAP) undoByViewport[vp].shift();
+      redoByViewport[vp] = [];
+    };
+
+    const pushUndoIfNeeded = (captured: { value: boolean }, extra?: Pick<CropUndoEntry, 'src' | 'srcWidth' | 'srcHeight' | 'maxVh' | 'allCover' | 'allHover' | 'allDraft'>) => {
       if (captured.value) return;
       captured.value = true;
-      gestureUndo.push({ cx: draft.cx, cy: draft.cy, w: draft.w });
-      if (gestureUndo.length > GESTURE_UNDO_CAP) gestureUndo.shift();
+      pushUndo(extra);
+    };
+
+    const applyUndoEntry = (entry: CropUndoEntry) => {
+      const vp = selectedViewport;
+      if (entry.allCover) {
+        draftCoverVariants = structuredClone(entry.allCover);
+        if (entry.allHover) draftHoverVariants = structuredClone(entry.allHover);
+        draftVariants = entry.allDraft
+          ? structuredClone(entry.allDraft)
+          : isListingCover(editTarget) && activeSlot === 'hover' && draftHoverVariants
+            ? draftHoverVariants
+            : draftCoverVariants;
+      } else {
+        const cover = structuredClone(entry.cover);
+        if (isListingCover(editTarget)) {
+          draftCoverVariants[vp] = cover;
+          if (draftHoverVariants && entry.hover) draftHoverVariants[vp] = structuredClone(entry.hover);
+          draftVariants = activeSlot === 'hover' && draftHoverVariants
+            ? draftHoverVariants
+            : draftCoverVariants;
+        } else {
+          draftVariants[vp] = cover;
+        }
+      }
+      draft = { ...draftVariants[vp] };
+      constrainByViewport = { ...constrainByViewport, [vp]: entry.lock };
+      writeConstraints(constrainByViewport);
+      draftConstrained = { ...draftConstrained, [vp]: entry.widthConstrain };
+      if (entry.src !== undefined) {
+        draftSrc = entry.src;
+        draftSrcWidth = entry.srcWidth;
+        draftSrcHeight = entry.srcHeight;
+        applySrcLive(editTarget, entry.src, {
+          ...(entry.srcWidth ? { srcWidth: entry.srcWidth } : {}),
+          ...(entry.srcHeight ? { srcHeight: entry.srcHeight } : {}),
+        });
+        const url = projectImage(entry.src);
+        previewImage.src = url;
+        if (pageStage) pageStage.ghostImg.src = url;
+      }
+      if (entry.maxVh) {
+        draftMaxVh = entry.maxVh.value;
+        maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
+      }
+      if (isStandaloneMedia(editTarget) && (entry.maxVh || entry.widthConstrain !== undefined)) {
+        applyFrameFlagsLive(editTarget, {
+          constrained: draftConstrained,
+          maxVh: draftMaxVh,
+        });
+      }
+      renderConstraint();
+      syncWidthConstrainUi();
+      renderDraft();
+    };
+
+    const snapshotForRedo = (entry: CropUndoEntry): CropUndoEntry => {
+      const now = snapshotViewport();
+      if (entry.src !== undefined) {
+        now.src = draftSrc;
+        now.srcWidth = draftSrcWidth;
+        now.srcHeight = draftSrcHeight;
+      }
+      if (entry.maxVh) now.maxVh = { value: draftMaxVh };
+      if (entry.allCover) {
+        now.allCover = structuredClone(draftCoverVariants);
+        now.allHover = draftHoverVariants ? structuredClone(draftHoverVariants) : null;
+        now.allDraft = structuredClone(draftVariants);
+      }
+      return now;
+    };
+
+    const clearAllStacks = () => {
+      undoByViewport = emptyStacks();
+      redoByViewport = emptyStacks();
     };
     let constrainByViewport = readConstraints();
     const constrainToFrame = () => constrainByViewport[selectedViewport];
@@ -1251,7 +1374,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }));
 
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
-      gestureUndo = [];
+      clearAllStacks();
       closePanel();
     };
 
@@ -1349,11 +1472,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
       syncWidthConstrainUi();
       liveApply = false;
-      gestureUndo = [];
+      clearAllStacks();
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
-      gestureUndo = [];
+      clearAllStacks();
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
       activeSlot = listingEditSlot(target);
       const image = activeSlot === 'hover'
@@ -1592,7 +1715,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       captured?: { value: boolean },
     ) => {
       if (!bounds.width || !bounds.height) return;
-      if (captured) pushGestureUndoIfNeeded(captured);
+      if (captured) pushUndoIfNeeded(captured);
       const fx = (clientX - bounds.left) / bounds.width;
       const fy = (clientY - bounds.top) / bounds.height;
       const sourceX = draft.cx + (fx - 0.5) * draft.w;
@@ -1727,7 +1850,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const newW = clamp(pinch.startW * scale, maxW / 1.5, maxW);
         const fx = (midX - bounds.left) / bounds.width;
         const fy = (midY - bounds.top) / bounds.height;
-        pushGestureUndoIfNeeded(gestureUndoCaptured);
+        pushUndoIfNeeded(gestureUndoCaptured);
         beginLiveEdits();
         draft.w = newW;
         draft.cx = pinch.sourceX - (fx - 0.5) * draft.w;
@@ -1743,7 +1866,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (!bounds.width || !bounds.height) return;
         const deltaX = point.x - panStartX;
         const deltaY = point.y - panStartY;
-        pushGestureUndoIfNeeded(gestureUndoCaptured);
+        pushUndoIfNeeded(gestureUndoCaptured);
         beginLiveEdits();
         const nextX = panOriginX - (deltaX / bounds.width) * draft.w * POINTER_PAN_GAIN;
         const nextY = panOriginY - (deltaY / bounds.height) * contentH(draft) * POINTER_PAN_GAIN;
@@ -1774,7 +1897,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const mag = Math.hypot(dx, dy);
         wheelSpeedEma += (mag - wheelSpeedEma) * WHEEL_SPEED_EMA;
         const panGain = wheelGainForSpeed(wheelSpeedEma, WHEEL_PAN_GAIN_FINE, WHEEL_PAN_GAIN_FAST);
-        pushGestureUndoIfNeeded(gestureUndoCaptured);
+        pushUndoIfNeeded(gestureUndoCaptured);
         beginLiveEdits();
         draft.cx += (dx / bounds.width) * draft.w * panGain;
         draft.cy += (dy / bounds.height) * contentH(draft) * panGain;
@@ -2033,6 +2156,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           if (resizePointerId !== event.pointerId) return;
           resizePointerId = null;
           resizeDir = null;
+          resizeUndoCaptured.value = false;
           stage.classList.remove('is-resizing');
           if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
         };
@@ -2154,7 +2278,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       button.addEventListener('click', () => {
         const viewport = button.dataset.cropViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
-        gestureUndo = [];
         draftVariants[selectedViewport] = { ...draft };
         selectedViewport = viewport;
         saved = { ...savedVariants[selectedViewport] };
@@ -2171,6 +2294,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     aspectRatioSelect.addEventListener('change', () => {
+      pushUndo();
       beginLiveEdits();
       // Hold the zoom level across the reshape; `w` follows the new cover bound.
       const zoom = zoomOf(draft);
@@ -2197,9 +2321,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let resizeDir: ResizeDir | null = null;
     let resizeStartWidth = 0;
     let resizeStartHeight = 0;
+    const resizeUndoCaptured = { value: false };
 
     const applyResizeFromPointer = (clientX: number, clientY: number) => {
       if (!resizeDir) return;
+      pushUndoIfNeeded(resizeUndoCaptured);
       const width = resizeStartWidth || preview.clientWidth || 1;
       let height = resizeStartHeight;
       const deltaX = clientX - startX;
@@ -2261,6 +2387,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (resizePointerId !== event.pointerId) return;
         resizePointerId = null;
         resizeDir = null;
+        resizeUndoCaptured.value = false;
         preview.classList.remove('is-resizing');
         if (handle.hasPointerCapture(event.pointerId)) {
           handle.releasePointerCapture(event.pointerId);
@@ -2274,6 +2401,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     wireCropGestures(preview, { ignoreSelector: '[data-crop-resize]' });
 
     centerXButton.addEventListener('click', () => {
+      pushUndo();
       beginLiveEdits();
       draft.cx = 0.5;
       renderDraft();
@@ -2281,6 +2409,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     centerYButton.addEventListener('click', () => {
+      pushUndo();
       beginLiveEdits();
       draft.cy = 0.5;
       renderDraft();
@@ -2288,6 +2417,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     constraintButton.addEventListener('click', () => {
+      pushUndo();
       beginLiveEdits();
       const next = !constrainToFrame();
       constrainByViewport = {
@@ -2307,6 +2437,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         widthConstrainInput.checked = false;
         return;
       }
+      pushUndo();
       draftConstrained = {
         ...draftConstrained,
         [selectedViewport]: widthConstrainInput.checked ? 80 : 100,
@@ -2326,6 +2457,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         maxVhSelect.value = '';
         return;
       }
+      pushUndo({ maxVh: { value: draftMaxVh } });
       draftMaxVh = normalizeMaxVh(maxVhSelect.value);
       applyFrameFlagsLive(editTarget, {
         constrained: draftConstrained,
@@ -2383,6 +2515,18 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     const applyReplacement = (src: string, dims?: { srcWidth?: number; srcHeight?: number }) => {
       if (!src) return;
+      pushUndo({
+        src: draftSrc,
+        srcWidth: draftSrcWidth,
+        srcHeight: draftSrcHeight,
+        allCover: structuredClone(draftCoverVariants),
+        allHover: draftHoverVariants ? structuredClone(draftHoverVariants) : null,
+        allDraft: structuredClone(draftVariants),
+      });
+      VIEWPORTS.filter((v) => v !== selectedViewport).forEach((v) => {
+        undoByViewport[v] = [];
+        redoByViewport[v] = [];
+      });
       draftSrc = src;
       draftSrcWidth = dims?.srcWidth;
       draftSrcHeight = dims?.srcHeight;
@@ -2546,19 +2690,35 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     document.addEventListener('keydown', (event) => {
       const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
       if (!panel || panel.dataset.devPanelKey !== 'image' || panel.hidden) return;
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
-      if (event.shiftKey || event.altKey) return;
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      const isRedo = (key === 'z' && event.shiftKey) || (key === 'y' && !event.shiftKey);
+      const isUndo = key === 'z' && !event.shiftKey;
+      if (!isUndo && !isRedo) return;
       const t = event.target as HTMLElement | null;
-      if (t && (t.isContentEditable || t.closest('input, textarea, select'))) return;
-      if (gestureUndo.length === 0) return;
+      if (t && (t.isContentEditable || t.closest('input, textarea'))) return;
+      const vp = selectedViewport;
+      if (isUndo) {
+        const stack = undoByViewport[vp];
+        if (stack.length === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const popped = stack.pop()!;
+        redoByViewport[vp].push(snapshotForRedo(popped));
+        if (redoByViewport[vp].length > GESTURE_UNDO_CAP) redoByViewport[vp].shift();
+        applyUndoEntry(popped);
+        status.textContent = 'Undid last edit.';
+        return;
+      }
+      const stack = redoByViewport[vp];
+      if (stack.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
-      const pose = gestureUndo.pop()!;
-      draft.cx = pose.cx;
-      draft.cy = pose.cy;
-      draft.w = pose.w;
-      renderDraft();
-      status.textContent = 'Undid last pan/zoom.';
+      const popped = stack.pop()!;
+      undoByViewport[vp].push(snapshotForRedo(popped));
+      if (undoByViewport[vp].length > GESTURE_UNDO_CAP) undoByViewport[vp].shift();
+      applyUndoEntry(popped);
+      status.textContent = 'Redid last edit.';
     });
 
     cancelButton?.addEventListener('click', () => {
