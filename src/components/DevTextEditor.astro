@@ -2319,7 +2319,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       section: HTMLElement;
     } | null => {
       if (!node) return null;
-      const state = textStates.find((entry) => entry.element.contains(node));
+      const el = node instanceof Element ? node : node.parentElement;
+      if (!el) return null;
+      const host = el.closest<HTMLElement>('[data-dev-text-document][data-dev-text-path]');
+      if (!host) return null;
+      const state = textStates.find((entry) => entry.element === host);
       if (!state) return null;
       const section = state.element.closest<HTMLElement>('[data-dev-section-deletable]');
       if (!section) return null;
@@ -2327,12 +2331,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (state.kind === 'paragraphs' && deletable === 'bodyText') {
         return { state, section };
       }
+      const isHeadingTag = state.element.matches('h2.project-section-title, h3.project-section-title');
       if (
-        state.kind === 'text'
-        && deletable === 'sectionTitle'
+        deletable === 'sectionTitle'
         && (
-          state.element.matches('.project-section-title, [data-dev-section-title]')
-          || state.element.dataset.devTextKind === 'text'
+          isHeadingTag
+          || (
+            state.kind === 'text'
+            && (
+              state.element.matches('.project-section-title, [data-dev-section-title]')
+              || state.element.dataset.devTextKind === 'text'
+            )
+          )
         )
       ) {
         return { state, section };
@@ -2341,6 +2351,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const blockStyleValue = (state: EditableTextState): string => {
+      if (state.element.matches('h3.project-section-title')) return 'sectionTitle:3';
+      if (state.element.matches('h2.project-section-title')) return 'sectionTitle:2';
       if (state.kind === 'paragraphs') return 'bodyText';
       return state.element.tagName === 'H3' ? 'sectionTitle:3' : 'sectionTitle:2';
     };
@@ -2374,11 +2386,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const syncBlockStyleSelect = (state: EditableTextState) => {
       const next = blockStyleValue(state);
-      if (blockStyleSelect.value === next) return;
       syncingBlockStyle = true;
-      blockStyleSelect.value = next;
+      if (blockStyleSelect.value !== next) {
+        blockStyleSelect.value = next;
+      }
       blockStyleSelect.dispatchEvent(new Event('change', { bubbles: true }));
       syncingBlockStyle = false;
+      const labelEl = formatBar.querySelector('[data-dev-select-label]');
+      const iconEl = formatBar.querySelector('[data-dev-select-icon]');
+      const selected = blockStyleSelect.selectedOptions[0];
+      if (labelEl) labelEl.textContent = selected?.textContent ?? '';
+      const optionIcon = formatBar.querySelector(
+        `.dev-select__option[data-value="${CSS.escape(blockStyleSelect.value)}"] .dev-select__option-icon`,
+      );
+      if (iconEl) iconEl.innerHTML = optionIcon ? optionIcon.innerHTML : '';
     };
 
     const syncFormatInlineVisibility = (state: EditableTextState) => {
@@ -2798,6 +2819,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return;
       }
 
+      const focusBlock = active instanceof Node ? findBlockState(active) : null;
+      if (!(active instanceof Node && formatBar.contains(active)) && !focusBlock) {
+        hideFormatBar();
+        return;
+      }
+
       const selection = window.getSelection();
       if (!selection?.rangeCount) {
         hideFormatBar();
@@ -2805,7 +2832,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       const range = selection.getRangeAt(0);
-      const block = findBlockState(range.commonAncestorContainer);
+      const selectionBlock = findBlockState(range.commonAncestorContainer);
+      const block = focusBlock ?? selectionBlock;
       if (!block) {
         hideFormatBar();
         return;
@@ -2992,7 +3020,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       (event) => {
         if (formatBar.hidden) return;
         const target = event.target;
-        if (!(target instanceof Node) || formatBar.contains(target)) return;
+        if (!(target instanceof Node)) return;
+        const targetEl = target instanceof Element ? target : target.parentElement;
+        if (formatBar.contains(target) || targetEl?.closest('.dev-select__listbox')) return;
+        if (findBlockState(target)) return;
+        const active = document.activeElement;
+        if (
+          active instanceof HTMLElement
+          && (findBlockState(active) || (active.isContentEditable && findBlockState(active)))
+        ) {
+          active.blur();
+        }
         hideFormatBar();
       },
       true,
