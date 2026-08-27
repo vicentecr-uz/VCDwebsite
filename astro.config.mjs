@@ -1496,7 +1496,9 @@ function contentSectionDevWriter() {
               ? 'fillPlaceholder'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
-                : 'insert';
+                : body.action === 'convert'
+                  ? 'convert'
+                  : 'insert';
           const index = Number(body.index);
 
           if (!relativeFile) {
@@ -1605,6 +1607,86 @@ function contentSectionDevWriter() {
               id: existing.id,
               type: existing.type,
               section: existing,
+            });
+            return;
+          }
+
+          if (action === 'convert') {
+            if (index >= data.sections.length) {
+              send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+              return;
+            }
+            const existing = data.sections[index];
+            if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
+              send(400, { error: 'That section cannot be converted.' });
+              return;
+            }
+            const existingType = String(existing.type || '');
+            if (existingType !== 'bodyText' && existingType !== 'sectionTitle') {
+              send(400, { error: 'That section cannot be converted.' });
+              return;
+            }
+            if (type !== 'bodyText' && type !== 'sectionTitle') {
+              send(400, { error: 'That section cannot be converted.' });
+              return;
+            }
+
+            const existingLevel = existingType === 'sectionTitle'
+              ? (Number(existing.level) === 3 ? 3 : 2)
+              : null;
+
+            if (existingType === 'bodyText' && type === 'sectionTitle') {
+              const paragraphs = Array.isArray(existing.paragraphs)
+                ? existing.paragraphs.map((value) => String(value ?? ''))
+                : [''];
+              const level = Number(body.level) === 3 ? 3 : 2;
+              const next = {
+                ...existing,
+                type: 'sectionTitle',
+                title: paragraphs.join('\n'),
+                level,
+              };
+              delete next.paragraphs;
+              if (level === 2 && !next.sectionId) {
+                next.sectionId = `title-${Date.now().toString(36)}`;
+              }
+              data.sections[index] = next;
+              if (level === 2) {
+                syncOutlineForSectionMutation(data, { action: 'insert', section: next, index });
+              }
+            } else if (existingType === 'sectionTitle' && type === 'bodyText') {
+              if (existingLevel === 2) {
+                syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
+              }
+              const title = String(existing.title ?? '');
+              const next = {
+                ...existing,
+                type: 'bodyText',
+                paragraphs: title.split('\n'),
+              };
+              delete next.title;
+              delete next.level;
+              data.sections[index] = next;
+            } else if (existingType === 'sectionTitle' && type === 'sectionTitle') {
+              const nextLevel = Number(body.level) === 3 ? 3 : 2;
+              if (existingLevel === 2 && nextLevel === 3) {
+                syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
+              } else if (existingLevel === 3 && nextLevel === 2) {
+                if (!existing.sectionId) {
+                  existing.sectionId = `title-${Date.now().toString(36)}`;
+                }
+                syncOutlineForSectionMutation(data, { action: 'insert', section: existing, index });
+              }
+              existing.level = nextLevel;
+            }
+
+            await writeContentJson(file, data);
+            send(200, {
+              ok: true,
+              action: 'convert',
+              index,
+              type,
+              section: data.sections[index],
             });
             return;
           }
