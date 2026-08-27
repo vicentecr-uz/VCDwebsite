@@ -223,6 +223,57 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     instanceObservers.add(parts.wrapper);
     const observer = new MutationObserver(() => rebuildListboxFromSelect(parts));
     observer.observe(parts.select, { childList: true, subtree: true });
+
+    const { select } = parts;
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    if (descriptor?.get && descriptor?.set) {
+      Object.defineProperty(select, 'value', {
+        configurable: true,
+        enumerable: descriptor.enumerable,
+        get() { return descriptor.get.call(this); },
+        set(next) {
+          descriptor.set.call(this, next);
+          syncFromSelect(parts);
+        },
+      });
+    }
+    const indexDescriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'selectedIndex');
+    if (indexDescriptor?.get && indexDescriptor?.set) {
+      Object.defineProperty(select, 'selectedIndex', {
+        configurable: true,
+        enumerable: indexDescriptor.enumerable,
+        get() { return indexDescriptor.get.call(this); },
+        set(next) {
+          indexDescriptor.set.call(this, next);
+          syncFromSelect(parts);
+        },
+      });
+    }
+  };
+
+  /** Top of the painted glyph, not the span box. */
+  const glyphTop = (el: Element) => {
+    const node = el.firstChild;
+    if (node instanceof Text && node.length >= 1) {
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.height > 0) return rect.top;
+    }
+    return el.getBoundingClientRect().top;
+  };
+
+  const glyphLeft = (el: Element) => {
+    const node = el.firstChild;
+    if (node instanceof Text && node.length >= 1) {
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.setEnd(node, 1);
+      const rect = range.getBoundingClientRect();
+      if (rect.height > 0) return rect.left;
+    }
+    return el.getBoundingClientRect().left;
   };
 
   /**
@@ -250,28 +301,34 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
       ?? items.find((li) => li.dataset.value === select.value)
       ?? null;
 
-    let top: number;
     const triggerLabel = trigger.querySelector('.dev-select__trigger-label');
     const optionLabel = anchor?.querySelector('.dev-select__option-label');
     if (anchor && triggerLabel && optionLabel) {
       listbox.style.top = `${valueRect.top}px`;
-      const delta =
-        triggerLabel.getBoundingClientRect().top - optionLabel.getBoundingClientRect().top;
-      top = parseFloat(listbox.style.top) + delta;
+      let delta = glyphTop(triggerLabel) - glyphTop(optionLabel);
+      listbox.style.top = `${valueRect.top + delta}px`;
+      delta = glyphTop(triggerLabel) - glyphTop(optionLabel);
+      listbox.style.top = `${parseFloat(listbox.style.top) + delta}px`;
+
+      let leftDelta = glyphLeft(triggerLabel) - glyphLeft(optionLabel);
+      listbox.style.left = `${parseFloat(listbox.style.left) + leftDelta}px`;
+      leftDelta = glyphLeft(triggerLabel) - glyphLeft(optionLabel);
+      listbox.style.left = `${parseFloat(listbox.style.left) + leftDelta}px`;
     } else if (anchor) {
       listbox.style.top = `${valueRect.top}px`;
       const delta = valueRect.top - anchor.getBoundingClientRect().top;
-      top = valueRect.top + delta;
+      listbox.style.top = `${valueRect.top + delta}px`;
     } else {
-      top = valueRect.bottom + 4;
+      listbox.style.top = `${valueRect.bottom + 4}px`;
     }
 
+    let top = parseFloat(listbox.style.top);
     const listboxHeight = listbox.offsetHeight;
     if (top < margin) top = margin;
     if (top + listboxHeight > window.innerHeight - margin) {
       top = Math.max(margin, window.innerHeight - margin - listboxHeight);
     }
-    listbox.style.top = `${Math.round(top)}px`;
+    listbox.style.top = `${top}px`;
   };
 
   const closeTimeouts = new WeakMap<HTMLUListElement, number>();
