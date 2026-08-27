@@ -1,5 +1,7 @@
 /** Size cropped project images to cover their frame (shared by SSR and dev inserts). */
 
+import { bindImagePreviewUpgrade } from './imagePreviewUpgrade';
+
 let refreshQueued = false;
 let refreshing = false;
 
@@ -200,6 +202,7 @@ function observeCropFrames(root: ParentNode): void {
 }
 
 export function bindProjectCropCovers(root: ParentNode = document): void {
+  bindImagePreviewUpgrade(root);
   refreshProjectCropCovers(root);
   root.querySelectorAll<HTMLImageElement>(
     '.project-cropped > img, .project-cropped > .project-crop-clip > img, .project-image-grid__image',

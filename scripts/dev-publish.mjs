@@ -49,6 +49,8 @@ const RENDERING_PATHS = [
   'scripts/dev-api-plugins.mjs',
   // Decides which media/ files ship to dist/images/ — rendering-adjacent.
   'scripts/collect-shipped-assets.mjs',
+  'scripts/image-derivatives.mjs',
+  'src/lib/images.ts',
 ];
 
 /**
