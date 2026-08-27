@@ -1,8 +1,9 @@
 ---
 import '../../styles/dev-chrome.css';
 import Field from './Field.astro';
+import { sizeIcon } from '../../lib/icons';
 
-type SelectOption = { value: string; label: string };
+type SelectOption = { value: string; label: string; icon?: string };
 type SelectGroup = { label: string; options: SelectOption[] };
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
   value?: string;
   disabled?: boolean;
   hidden?: boolean;
+  hideLabel?: boolean;
   [key: string]: any;
 }
 
@@ -20,7 +22,9 @@ const {
   value,
   disabled = false,
   hidden,
+  hideLabel = false,
   class: className,
+  id: providedId,
   ...rest
 } = Astro.props;
 
@@ -37,11 +41,43 @@ for (const [key, propValue] of Object.entries(rest)) {
 
 const isGroup = (item: SelectOption | SelectGroup): item is SelectGroup =>
   Array.isArray((item as SelectGroup).options);
+
+// The trigger needs a stable id for aria-controls / aria-activedescendant and
+// so a consumer (DevLogIssue) can point a real <label for> at it — Field's
+// own label row is a <span>, not a <label>, so that association has to be
+// made from outside.
+const triggerId = typeof providedId === 'string' && providedId
+  ? providedId
+  : `dev-select-${Math.random().toString(36).slice(2, 9)}`;
+const listboxId = `${triggerId}-listbox`;
+
+type FlatOption = { value: string; label: string; iconSvg: string | null };
+
+const flatOptions: FlatOption[] = [];
+for (const item of options) {
+  const source = isGroup(item) ? item.options : [item];
+  for (const opt of source) {
+    flatOptions.push({
+      value: opt.value,
+      label: opt.label,
+      iconSvg: opt.icon ? sizeIcon(opt.icon, 16) : null,
+    });
+  }
+}
+
+const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOptions[0] ?? null;
 ---
 
-<Field label={label} class={className} hidden={hidden} {...fieldRest}>
+<Field label={label} class={[className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
   <slot name="labelAccessory" slot="labelAccessory" />
-  <select value={value} disabled={disabled} class="dev-field__input dev-field__input--select" {...selectRest}>
+  <select
+    value={value}
+    disabled={disabled}
+    class="dev-select__native"
+    tabindex="-1"
+    aria-hidden="true"
+    {...selectRest}
+  >
     {options.map((item) =>
       isGroup(item) ? (
         <optgroup label={item.label}>
@@ -52,15 +88,345 @@ const isGroup = (item: SelectOption | SelectGroup): item is SelectGroup =>
       ),
     )}
   </select>
+  <button
+    type="button"
+    id={triggerId}
+    class="dev-field__input dev-field__input--select dev-select__trigger"
+    disabled={disabled}
+    aria-haspopup="listbox"
+    aria-expanded="false"
+    aria-controls={listboxId}
+    aria-label={hideLabel ? label : undefined}
+    data-dev-select-trigger
+  >
+    <span class="dev-select__trigger-icon" data-dev-select-icon aria-hidden="true" set:html={selectedOption?.iconSvg ?? ''} />
+    <span class="dev-select__trigger-label" data-dev-select-label>{selectedOption?.label ?? ''}</span>
+  </button>
+  <ul
+    class="dev-select__listbox"
+    role="listbox"
+    id={listboxId}
+    tabindex="-1"
+    hidden
+    data-dev-select-listbox
+  >
+    {flatOptions.map((opt, index) => (
+      <li
+        role="option"
+        id={`${triggerId}-option-${index}`}
+        class="dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-select__option"
+        aria-selected={opt.value === value ? 'true' : 'false'}
+        data-value={opt.value}
+      >
+        {opt.iconSvg && <span class="dev-select__option-icon" aria-hidden="true" set:html={opt.iconSvg} />}
+        <span class="dev-select__option-label">{opt.label}</span>
+      </li>
+    ))}
+  </ul>
 </Field>
 
 <script>
-  // After a choice the field is done — leave it focused and Esc feels like
-  // "deselect this control" instead of the next layer (close panel).
+  type Parts = {
+    wrapper: HTMLElement;
+    select: HTMLSelectElement;
+    trigger: HTMLButtonElement;
+    listbox: HTMLUListElement;
+  };
+
+  const getParts = (node: Element): Parts | null => {
+    const wrapper = node.closest<HTMLElement>('.dev-field');
+    const select = wrapper?.querySelector<HTMLSelectElement>('select.dev-select__native');
+    const trigger = wrapper?.querySelector<HTMLButtonElement>('button.dev-select__trigger');
+    const listbox = wrapper?.querySelector<HTMLUListElement>('ul.dev-select__listbox');
+    if (!wrapper || !select || !trigger || !listbox) return null;
+    return { wrapper, select, trigger, listbox };
+  };
+
+  const getOptionItems = (listbox: HTMLUListElement) =>
+    [...listbox.querySelectorAll<HTMLLIElement>('li[role="option"]')];
+
+  const setActiveOption = (listbox: HTMLUListElement, li: HTMLLIElement | null) => {
+    getOptionItems(listbox).forEach((item) => item.classList.remove('is-active'));
+    if (!li) {
+      listbox.removeAttribute('aria-activedescendant');
+      return;
+    }
+    li.classList.add('is-active');
+    listbox.setAttribute('aria-activedescendant', li.id);
+    li.scrollIntoView({ block: 'nearest' });
+  };
+
+  /**
+   * Refreshes the trigger's visible label/icon and each option's
+   * aria-selected from the native select's *current* value — the source of
+   * truth stays the hidden select, this only repaints the view.
+   */
+  const syncFromSelect = ({ select, trigger, listbox }: Parts) => {
+    const items = getOptionItems(listbox);
+    let matched: HTMLLIElement | null = null;
+    items.forEach((li) => {
+      const isSelected = li.dataset.value === select.value;
+      li.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+      if (isSelected) matched = li;
+    });
+
+    const labelEl = trigger.querySelector<HTMLElement>('[data-dev-select-label]');
+    const iconEl = trigger.querySelector<HTMLElement>('[data-dev-select-icon]');
+    const fallbackLabel = select.options[select.selectedIndex]?.textContent || '';
+    if (labelEl) {
+      const matchedLabel = matched
+        ? (matched as HTMLLIElement).querySelector('.dev-select__option-label')?.textContent
+        : null;
+      labelEl.textContent = matchedLabel || fallbackLabel;
+    }
+    if (iconEl) {
+      const iconSource = matched
+        ? (matched as HTMLLIElement).querySelector('.dev-select__option-icon')
+        : null;
+      iconEl.innerHTML = iconSource ? iconSource.innerHTML : '';
+    }
+  };
+
+  /**
+   * Rebuilds the popup's <li>s from the select's live <option>s. Consumers
+   * like DevLogIssue populate options asynchronously after fetch via
+   * replaceChildren — the popup has to follow along. Icons only exist on the
+   * options passed to the Astro props at render time, so rebuilt options
+   * never carry one.
+   */
+  const rebuildListboxFromSelect = (parts: Parts) => {
+    const { select, trigger, listbox } = parts;
+    const optionEls = [...select.querySelectorAll('option')];
+    listbox.replaceChildren(
+      ...optionEls.map((optionEl, index) => {
+        const li = document.createElement('li');
+        li.setAttribute('role', 'option');
+        li.id = `${trigger.id}-option-${index}`;
+        li.className = 'dev-btn dev-btn--page dev-btn--align-start dev-btn--fill dev-select__option';
+        li.dataset.value = optionEl.value;
+        li.setAttribute('aria-selected', optionEl.selected ? 'true' : 'false');
+        const labelSpan = document.createElement('span');
+        labelSpan.className = 'dev-select__option-label';
+        labelSpan.textContent = optionEl.textContent || '';
+        li.append(labelSpan);
+        return li;
+      }),
+    );
+    syncFromSelect(parts);
+  };
+
+  const instanceObservers = new WeakSet<HTMLElement>();
+
+  const ensureInstance = (parts: Parts) => {
+    if (instanceObservers.has(parts.wrapper)) return;
+    instanceObservers.add(parts.wrapper);
+    const observer = new MutationObserver(() => rebuildListboxFromSelect(parts));
+    observer.observe(parts.select, { childList: true, subtree: true });
+  };
+
+  const openListbox = (parts: Parts) => {
+    const { trigger, listbox, select } = parts;
+    if (trigger.disabled) return;
+    syncFromSelect(parts);
+    listbox.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    const items = getOptionItems(listbox);
+    const active = items.find((li) => li.dataset.value === select.value) ?? items[0] ?? null;
+    setActiveOption(listbox, active);
+    listbox.focus();
+  };
+
+  const closeListbox = (parts: Parts, { returnFocus = true } = {}) => {
+    const { trigger, listbox } = parts;
+    if (listbox.hidden) return;
+    listbox.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    setActiveOption(listbox, null);
+    typeaheadBuffer = '';
+    if (returnFocus) trigger.focus();
+  };
+
+  const commitOption = (parts: Parts, li: HTMLLIElement) => {
+    const { select } = parts;
+    const nextValue = li.dataset.value ?? '';
+    if (select.value !== nextValue) {
+      select.value = nextValue;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    syncFromSelect(parts);
+  };
+
+  let typeaheadBuffer = '';
+  let typeaheadTimer = 0;
+
+  const initAllInstances = () => {
+    document.querySelectorAll<HTMLSelectElement>('select.dev-select__native').forEach((select) => {
+      const parts = getParts(select);
+      if (parts) ensureInstance(parts);
+    });
+  };
+  initAllInstances();
+
+  // Click: toggle the trigger, commit an option choice, or (via a plain
+  // click landing outside any select) nothing — outside-close is pointerdown.
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const trigger = target.closest<HTMLButtonElement>('.dev-select__trigger');
+    if (trigger) {
+      const parts = getParts(trigger);
+      if (!parts || parts.trigger.disabled) return;
+      ensureInstance(parts);
+      syncFromSelect(parts);
+      if (parts.listbox.hidden) openListbox(parts);
+      else closeListbox(parts, { returnFocus: false });
+      return;
+    }
+
+    const option = target.closest<HTMLLIElement>('.dev-select__listbox li[role="option"]');
+    if (option) {
+      const parts = getParts(option);
+      if (!parts) return;
+      commitOption(parts, option);
+      closeListbox(parts);
+    }
+  });
+
+  // Pointerdown outside an open listbox closes it without committing.
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target;
+    document.querySelectorAll<HTMLUListElement>('.dev-select__listbox:not([hidden])').forEach((listbox) => {
+      const wrapper = listbox.closest('.dev-field');
+      if (wrapper && !(target instanceof Node && wrapper.contains(target))) {
+        const parts = getParts(listbox);
+        if (parts) closeListbox(parts, { returnFocus: false });
+      }
+    });
+  });
+
+  // Closed-state trigger keys: open the popup.
+  document.addEventListener('keydown', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const trigger = target.closest<HTMLButtonElement>('.dev-select__trigger');
+    if (!trigger || trigger.disabled) return;
+    const parts = getParts(trigger);
+    if (!parts || !parts.listbox.hidden) return;
+
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      openListbox(parts);
+    }
+  });
+
+  // Open-state listbox keys.
+  document.addEventListener('keydown', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const listbox = target.closest<HTMLUListElement>('.dev-select__listbox');
+    if (!listbox || listbox.hidden) return;
+    const parts = getParts(listbox);
+    if (!parts) return;
+
+    const items = getOptionItems(listbox);
+    const activeIndex = items.findIndex((item) => item.classList.contains('is-active'));
+
+    switch (event.key) {
+      case 'ArrowDown': {
+        event.preventDefault();
+        setActiveOption(listbox, items[Math.min(items.length - 1, activeIndex + 1)] ?? null);
+        break;
+      }
+      case 'ArrowUp': {
+        event.preventDefault();
+        setActiveOption(listbox, items[Math.max(0, activeIndex - 1)] ?? null);
+        break;
+      }
+      case 'Home': {
+        event.preventDefault();
+        setActiveOption(listbox, items[0] ?? null);
+        break;
+      }
+      case 'End': {
+        event.preventDefault();
+        setActiveOption(listbox, items[items.length - 1] ?? null);
+        break;
+      }
+      case 'Enter':
+      case ' ': {
+        event.preventDefault();
+        const active = items[activeIndex];
+        if (active) commitOption(parts, active);
+        closeListbox(parts);
+        break;
+      }
+      case 'Escape': {
+        event.preventDefault();
+        closeListbox(parts);
+        break;
+      }
+      case 'Tab': {
+        // Commit whatever's highlighted, close, and let Tab move on natively
+        // — the next focusable element in the document is the right target,
+        // not something we should compute ourselves.
+        const active = items[activeIndex];
+        if (active) commitOption(parts, active);
+        closeListbox(parts, { returnFocus: false });
+        break;
+      }
+      default: {
+        if (event.key.length === 1 && /\S/.test(event.key)) {
+          window.clearTimeout(typeaheadTimer);
+          typeaheadBuffer += event.key.toLowerCase();
+          const match = items.find((item) =>
+            (item.querySelector('.dev-select__option-label')?.textContent || '')
+              .trim()
+              .toLowerCase()
+              .startsWith(typeaheadBuffer),
+          );
+          if (match) setActiveOption(listbox, match);
+          typeaheadTimer = window.setTimeout(() => {
+            typeaheadBuffer = '';
+          }, 500);
+        }
+      }
+    }
+  });
+
+  // A hidden, tabindex=-1 select can still be focus()ed programmatically by
+  // consumer code (DevLogIssue does this on validation failure) — redirect
+  // that focus onto the trigger so the user actually sees something happen.
+  // This also runs syncFromSelect for any consumer that set .value directly
+  // without dispatching change (DevLogIssue does this too).
+  document.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+
+    const select = target.closest<HTMLSelectElement>('select.dev-select__native');
+    if (select) {
+      const parts = getParts(select);
+      if (parts && document.activeElement !== parts.trigger) parts.trigger.focus();
+      return;
+    }
+
+    const trigger = target.closest<HTMLButtonElement>('.dev-select__trigger');
+    if (trigger) {
+      const parts = getParts(trigger);
+      if (parts) {
+        ensureInstance(parts);
+        syncFromSelect(parts);
+      }
+    }
+  });
+
+  // Any change on the hidden select — ours or a consumer's own dispatch —
+  // keeps the trigger's view in sync.
   document.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLSelectElement)) return;
-    if (!target.classList.contains('dev-field__input--select')) return;
-    target.blur();
+    if (!target.classList.contains('dev-select__native')) return;
+    const parts = getParts(target);
+    if (parts) syncFromSelect(parts);
   });
 </script>
