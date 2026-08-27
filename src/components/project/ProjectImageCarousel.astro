@@ -1,5 +1,5 @@
 ---
-import { projectImage } from '../../lib/images';
+import { projectImage, projectImageTier } from '../../lib/images';
 import {
   imageGridConstrainedStyle,
   resolveImageGridConstrained,
@@ -279,10 +279,11 @@ const blockStyle = [
             <div class="project-image-carousel__surface">
               <div class="project-image-grid__frame" data-carousel-frame>
                 <img
-                  src={projectImage(item.src)}
+                  src={projectImageTier(item.src, 'thumb')}
+                  data-image-preview={isPlaceholder ? undefined : projectImageTier(item.src, 'preview')}
                   alt={item.alt ?? ''}
                   class="project-image-grid__image"
-                  loading={displayIndex === 0 ? 'eager' : 'lazy'}
+                  loading="eager"
                 />
                 {!entry.isBelowCaption && entry.hasCaption && (
                   <span

@@ -99,15 +99,20 @@ const showDevTools = import.meta.env.DEV;
     <script>
       import gsap from 'gsap';
       import { bindSafeVh } from '../lib/safeVh';
+      import { bindImagePreviewUpgrade, openImagePreviewUpgrade } from '../lib/imagePreviewUpgrade';
 
       // Stable 1vh unit for max-height caps (Edge/iOS svh is buggy mid-scroll).
       bindSafeVh();
 
+      const overlay = document.getElementById('transition-overlay');
+      bindImagePreviewUpgrade();
+      if (!overlay) {
+        openImagePreviewUpgrade();
+      }
+
       // Squircle shaping disabled (issue #161). To re-enable, restore:
       // import { registerHyperellipse } from '../vendor/hyperellipse/index.js';
       // and call registerHyperellipse() here.
-
-      const overlay = document.getElementById('transition-overlay');
       const REVEAL_EASE = 'cubic-bezier(0.55, 0.055, 0.675, 0.19)';
       const MIN_HOLD_MS = 500;
       const MAX_WAIT_MS = 4000;
@@ -166,6 +171,9 @@ const showDevTools = import.meta.env.DEV;
           opacity: 0,
           duration: 0.5,
           ease: REVEAL_EASE,
+          onStart: () => {
+            openImagePreviewUpgrade();
+          },
           onComplete: () => {
             revealing = false;
           },

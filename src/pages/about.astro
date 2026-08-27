@@ -2,7 +2,7 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { projectImage } from '../lib/images';
+import { projectImageTier } from '../lib/images';
 import aboutContent from '../content/about.json';
 
 const experience = aboutContent.experience;
@@ -23,6 +23,7 @@ const contactRows = aboutContent.contactRows;
     letter-spacing: var(--text-about-heading-tracking);
     line-height: var(--text-about-heading-leading);
     color: var(--sys-color-on-srf);
+    text-wrap: balance;
   }
 
   .about-grid {
@@ -43,15 +44,8 @@ const contactRows = aboutContent.contactRows;
       "experience";
   }
 
-  /* Mobile type step-down (Webflow ≤479px) */
-  @media (max-width: 30em) {
-    .about-grid { font-size: 1.1rem; }
-    .section-header { font-size: 1.7rem; }
-  }
-
-  /* ── noscript / pre-JS fallback via media queries ── */
   @media (min-width: 40em) {
-    .about-grid:not([data-layout]) {
+    .about-grid {
       grid-template-columns: 17em 1fr;
       grid-template-areas:
         "photo       contact"
@@ -60,40 +54,16 @@ const contactRows = aboutContent.contactRows;
     }
   }
   @media (min-width: 50em) {
-    .about-grid:not([data-layout]) {
+    .about-grid {
       grid-template-areas:
         "photo   contact"
         ".       about"
         ".       experience";
     }
-    .about-grid:not([data-layout]) .area-photo {
+    .about-grid .area-photo {
       aspect-ratio: 3/4;
       object-position: 50% 50%;
     }
-  }
-
-  /* ── JS-managed layout states ── */
-  .about-grid[data-layout="narrow"] {
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "photo"
-      "contact"
-      "about"
-      "experience";
-  }
-  .about-grid[data-layout="medium"] {
-    grid-template-columns: 17em 1fr;
-    grid-template-areas:
-      "photo       contact"
-      "about       about"
-      "experience  experience";
-  }
-  .about-grid[data-layout="wide"] {
-    grid-template-columns: 17em 1fr;
-    grid-template-areas:
-      "photo   contact"
-      ".       about"
-      ".       experience";
   }
 
   .area-photo {
@@ -106,7 +76,8 @@ const contactRows = aboutContent.contactRows;
   }
   .area-contact    { grid-area: contact; }
   .area-about      { grid-area: about; }
-  .area-experience { grid-area: experience; }
+  .area-about p    { text-wrap: balance; }
+  .area-experience { grid-area: experience; text-wrap: balance; }
 </style>
 
 <Layout title="About — Vicente Cruz">
@@ -120,7 +91,8 @@ const contactRows = aboutContent.contactRows;
 
         <img
           class="area-photo"
-          src={projectImage(aboutContent.photo.src)}
+          src={projectImageTier(aboutContent.photo.src, 'thumb')}
+          data-image-preview={projectImageTier(aboutContent.photo.src, 'preview')}
           alt={aboutContent.photo.alt}
         />
 
@@ -156,113 +128,3 @@ const contactRows = aboutContent.contactRows;
     <Footer />
   </div>
 </Layout>
-
-<script>
-  import gsap from 'gsap';
-  import { Flip } from 'gsap/Flip';
-  gsap.registerPlugin(Flip);
-
-  const grid = document.querySelector('.about-grid') as HTMLElement;
-  const photo = document.querySelector('.area-photo') as HTMLImageElement;
-  const allTargets = gsap.utils.toArray<HTMLElement>('.about-grid > *');
-  const movers = allTargets.filter(el => el !== photo);
-
-  /* ── breakpoint helpers ── */
-  function emWidth(): number {
-    return window.innerWidth / parseFloat(getComputedStyle(document.documentElement).fontSize);
-  }
-  function getLayout(): 'wide' | 'medium' | 'narrow' {
-    const w = emWidth();
-    if (w >= 50) return 'wide';
-    if (w >= 40) return 'medium';
-    return 'narrow';
-  }
-
-  /* ── photo aspect helpers ── */
-  function photoProps(layout: string) {
-    const sq = layout !== 'wide';
-    return {
-      aspectRatio: sq ? '1 / 1' : '3 / 4',
-      objectPosition: sq ? '50% 35%' : '50% 50%',
-    };
-  }
-
-  function applyPhoto(layout: string) {
-    const p = photoProps(layout);
-    photo.style.aspectRatio = p.aspectRatio;
-    photo.style.objectPosition = p.objectPosition;
-  }
-
-  /* ── initialise (overlay still covers the page) ── */
-  let current = getLayout();
-  grid.dataset.layout = current;
-  applyPhoto(current);
-
-  /* ── transition between layouts ── */
-  function transition(next: 'wide' | 'medium' | 'narrow') {
-    const prev = current;
-    const aspectChanges = (prev === 'wide') !== (next === 'wide');
-
-    /* 1 ── snapshot mover positions */
-    const moverState = Flip.getState(movers);
-
-    /* 2 ── snapshot photo geometry */
-    const oldPhotoRect = photo.getBoundingClientRect();
-    const oldObjPos = photo.style.objectPosition;
-
-    /* 3 ── apply final layout + photo style */
-    current = next;
-    grid.dataset.layout = next;
-    applyPhoto(next);
-
-    /* 4 ── read new photo geometry */
-    const newPhotoRect = photo.getBoundingClientRect();
-
-    /* 5 ── animate movers with Flip */
-    Flip.from(moverState, {
-      duration: 0.6,
-      ease: 'power2.inOut',
-    });
-
-    /* 6 ── animate photo (height wipe + position) */
-    if (aspectChanges || oldPhotoRect.width !== newPhotoRect.width) {
-      const dx = oldPhotoRect.left - newPhotoRect.left;
-      const dy = oldPhotoRect.top - newPhotoRect.top;
-
-      /*  Lock to old pixel dims, remove aspect-ratio so height is
-          driven purely by the GSAP tween (wipe effect).           */
-      photo.style.aspectRatio = 'auto';
-      photo.style.width  = oldPhotoRect.width + 'px';
-      photo.style.height = oldPhotoRect.height + 'px';
-      photo.style.objectPosition = oldObjPos;
-
-      const newP = photoProps(next);
-      gsap.to(photo, {
-        x: 0,
-        y: 0,
-        width:  newPhotoRect.width,
-        height: newPhotoRect.height,
-        objectPosition: newP.objectPosition,
-        duration: 0.6,
-        ease: 'power2.inOut',
-        onStart() {
-          gsap.set(photo, { x: dx, y: dy });
-        },
-        onComplete() {
-          gsap.set(photo, { clearProps: 'x,y,width,height' });
-          photo.style.aspectRatio = newP.aspectRatio;
-        },
-      });
-    }
-  }
-
-  /* ── debounced resize listener ── */
-  let timeout: ReturnType<typeof setTimeout>;
-  window.addEventListener('resize', () => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      const next = getLayout();
-      if (next !== current) transition(next);
-    }, 80);
-  });
-</script>

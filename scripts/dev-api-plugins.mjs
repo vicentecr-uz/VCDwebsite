@@ -1,10 +1,16 @@
 // @ts-check
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
 import { PLACEHOLDER_COVER, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
+import {
+  derivativeKind,
+  findOriginal,
+  generateDerivativeBuffer,
+  isDerivativeToken,
+} from './image-derivatives.mjs';
 
 export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
 
@@ -425,8 +431,38 @@ export function mediaDevServer() {
           res.end('Bad request');
           return;
         }
-        const filePath = path.join(process.cwd(), 'media', relative);
+        const mediaDir = path.join(process.cwd(), 'media');
+        const filePath = path.join(mediaDir, relative);
         try {
+          if (isDerivativeToken(relative)) {
+            let derivativeOnDisk = false;
+            try {
+              await stat(filePath);
+              derivativeOnDisk = true;
+            } catch {
+              // generate on the fly below
+            }
+
+            if (!derivativeOnDisk) {
+              const originalPath = await findOriginal(mediaDir, relative);
+              if (!originalPath) {
+                next();
+                return;
+              }
+              const kind = derivativeKind(relative);
+              if (!kind) {
+                next();
+                return;
+              }
+              const file = await generateDerivativeBuffer(originalPath, kind);
+              res.statusCode = 200;
+              res.setHeader('content-type', 'image/webp');
+              res.setHeader('cache-control', 'public, max-age=31536000, immutable');
+              res.end(file);
+              return;
+            }
+          }
+
           const ext = path.extname(filePath).toLowerCase();
           const widthParam = url.searchParams.get('w');
           const skipResize = !widthParam || ext === '.svg' || ext === '.gif';
