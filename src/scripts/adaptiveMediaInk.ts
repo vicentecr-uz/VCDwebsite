@@ -10,6 +10,53 @@ import {
   type NormalizedRegion,
 } from './coverLuminance';
 
+export function elementRegionInCover(el: HTMLElement, coverRect: DOMRect): NormalizedRegion | null {
+  const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height || !coverRect.width || !coverRect.height) return null;
+  return {
+    x: (rect.left - coverRect.left) / coverRect.width,
+    y: (rect.top - coverRect.top) / coverRect.height,
+    w: rect.width / coverRect.width,
+    h: rect.height / coverRect.height,
+  };
+}
+
+export function groundForBox(
+  el: HTMLElement,
+  cover: HTMLElement,
+  decoded: CanvasImageSource,
+  frame: { width: number; height: number },
+  source: { width: number; height: number },
+  crop: { w: number; cx: number; cy: number } | null,
+): MediaGround | null {
+  const coverRect = cover.getBoundingClientRect();
+  const region = elementRegionInCover(el, coverRect);
+  if (!region) return null;
+  const sourceRegion = crop
+    ? cropFrameRegionToSourceRegion(region, frame, source, crop)
+    : coverBoxRegionToSourceRegion(region, frame, source);
+  return groundForRegion(decoded, sourceRegion);
+}
+
+export function cropHostFor(cover: HTMLElement): HTMLElement | null {
+  if (cover.classList.contains('project-cropped') || cover.classList.contains('project-responsive-image')) {
+    return cover;
+  }
+  return cover.closest<HTMLElement>('.project-cropped, .project-responsive-image');
+}
+
+export function readCropVars(host: HTMLElement, hover: boolean): { w: number; cx: number; cy: number } | null {
+  const style = getComputedStyle(host);
+  const wRaw = style.getPropertyValue(hover ? '--project-hover-content-w' : '--project-content-w').trim();
+  const cxRaw = style.getPropertyValue(hover ? '--project-hover-content-cx' : '--project-content-cx').trim();
+  const cyRaw = style.getPropertyValue(hover ? '--project-hover-content-cy' : '--project-content-cy').trim();
+  const w = parseFloat(wRaw);
+  const cx = parseFloat(cxRaw);
+  const cy = parseFloat(cyRaw);
+  if (!Number.isFinite(w) || !Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+  return { w, cx, cy };
+}
+
 export type MediaGround = 'light' | 'dark';
 export type { NormalizedRegion };
 
