@@ -1752,6 +1752,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     let splitBlockAtCaret = (_state: EditableTextState) => {};
+    let tryMergeBlockAtCaret = (
+      _state: EditableTextState,
+      _direction: 'forward' | 'backward',
+    ) => false;
 
     const bindTextState = (state: EditableTextState) => {
       const { element } = state;
@@ -1767,6 +1771,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
       }
       element.addEventListener('keydown', (event) => {
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+          if (event.metaKey || event.ctrlKey || event.altKey) return;
+          if (tryMergeBlockAtCaret(state, event.key === 'Delete' ? 'forward' : 'backward')) {
+            event.preventDefault();
+          }
+          return;
+        }
+
         if (event.key !== 'Enter') return;
 
         if (event.altKey || event.shiftKey) {
@@ -2164,6 +2176,291 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       syncPageTopSpacingControls();
       updateActions();
+    };
+
+    const blockParagraphs = (element: HTMLElement) =>
+      [...element.querySelectorAll<HTMLParagraphElement>(':scope > p')];
+
+    const paragraphContainingCaret = (
+      element: HTMLElement,
+      range: Range,
+    ): HTMLParagraphElement | null => {
+      const startElement = range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+      const existing = startElement?.closest('p');
+      if (existing instanceof HTMLParagraphElement && existing.parentElement === element) {
+        return existing;
+      }
+      if (range.startContainer === element) {
+        const atOffset = element.childNodes[range.startOffset];
+        if (atOffset instanceof HTMLParagraphElement) return atOffset;
+        const before = element.childNodes[range.startOffset - 1];
+        if (before instanceof HTMLParagraphElement) return before;
+      }
+      return null;
+    };
+
+    const caretTextOffset = (element: HTMLElement, range: Range) => {
+      const pre = range.cloneRange();
+      pre.selectNodeContents(element);
+      pre.setEnd(range.startContainer, range.startOffset);
+      return pre.toString().length;
+    };
+
+    const isAtBlockStart = (state: EditableTextState, range: Range) => {
+      if (state.kind === 'text') return caretTextOffset(state.element, range) === 0;
+      if (state.kind !== 'paragraphs') return false;
+      const paragraphs = blockParagraphs(state.element);
+      if (!paragraphs.length) return false;
+      const first = paragraphs[0];
+      if (range.startContainer === state.element && range.startOffset === 0) return true;
+      if (paragraphContainingCaret(state.element, range) !== first) return false;
+      const before = document.createRange();
+      before.setStart(first, 0);
+      try {
+        before.setEnd(range.startContainer, range.startOffset);
+      } catch {
+        return false;
+      }
+      return !fragmentHasContent(before.cloneContents());
+    };
+
+    const isAtBlockEnd = (state: EditableTextState, range: Range) => {
+      if (state.kind === 'text') {
+        return caretTextOffset(state.element, range) === (state.element.textContent ?? '').length;
+      }
+      if (state.kind !== 'paragraphs') return false;
+      const paragraphs = blockParagraphs(state.element);
+      if (!paragraphs.length) return false;
+      const last = paragraphs[paragraphs.length - 1];
+      if (
+        range.startContainer === state.element
+        && range.startOffset === state.element.childNodes.length
+      ) {
+        return true;
+      }
+      if (paragraphContainingCaret(state.element, range) !== last) return false;
+      const after = document.createRange();
+      try {
+        after.setStart(range.startContainer, range.startOffset);
+      } catch {
+        return false;
+      }
+      after.setEnd(last, last.childNodes.length);
+      return !fragmentHasContent(after.cloneContents());
+    };
+
+    const findMergeableNeighbour = (
+      root: HTMLElement,
+      direction: 'forward' | 'backward',
+    ) => {
+      const sibling = direction === 'forward'
+        ? root.nextElementSibling
+        : root.previousElementSibling;
+      if (!(sibling instanceof HTMLElement)) return null;
+      const type = sibling.dataset.devSectionDeletable;
+      if (type !== 'bodyText' && type !== 'sectionTitle') return null;
+      if (sibling.dataset.devSpacingDocument !== root.dataset.devSpacingDocument) return null;
+      return sibling;
+    };
+
+    const textStateForRoot = (root: HTMLElement) =>
+      textStates.find((candidate) => root.contains(candidate.element));
+
+    const placeCaretInHeading = (element: HTMLElement, offset: number) => {
+      element.focus();
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = document.createRange();
+      const textNode = element.firstChild;
+      if (textNode && textNode.nodeType === Node.TEXT_NODE) {
+        const length = textNode.textContent?.length ?? 0;
+        range.setStart(textNode, Math.max(0, Math.min(offset, length)));
+        range.collapse(true);
+      } else {
+        range.selectNodeContents(element);
+        range.collapse(offset <= 0);
+      }
+      selection.removeAllRanges();
+      selection.addRange(range);
+    };
+
+    const placeCaretAtEndOfBlock = (state: EditableTextState) => {
+      state.element.focus();
+      if (state.kind === 'paragraphs') {
+        const last = blockParagraphs(state.element).at(-1);
+        if (last) placeCaretInParagraph(last, false);
+        return;
+      }
+      placeCaretInHeading(state.element, (state.element.textContent ?? '').length);
+    };
+
+    const placeCaretAtJoin = (node: Node | null, fallback: HTMLElement) => {
+      const selection = window.getSelection();
+      if (!selection) return;
+      const range = document.createRange();
+      if (node) {
+        if (node.nodeType === Node.TEXT_NODE || node instanceof Element) {
+          range.setStart(node, 0);
+        } else {
+          range.setStartBefore(node);
+        }
+      } else {
+        range.setStart(fallback, 0);
+      }
+      range.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    };
+
+    const takeAbsorbedParagraphs = (element: HTMLElement) => {
+      const paragraphs = blockParagraphs(element);
+      while (paragraphs.length > 1 && !fragmentHasContent(paragraphs[0])) {
+        paragraphs.shift();
+      }
+      return paragraphs;
+    };
+
+    const inlineJoinParagraph = (
+      target: HTMLParagraphElement,
+      source: HTMLParagraphElement,
+    ): Node | null => {
+      if (!fragmentHasContent(target)) {
+        const incoming = [...source.childNodes];
+        if (!incoming.length) {
+          target.replaceChildren(document.createElement('br'));
+          return null;
+        }
+        target.replaceChildren(...incoming);
+        return target.firstChild;
+      }
+      const firstIncoming = source.firstChild;
+      target.append(...[...source.childNodes]);
+      return firstIncoming;
+    };
+
+    const lastOrCreateParagraph = (element: HTMLElement) => {
+      const last = blockParagraphs(element).at(-1);
+      if (last) return last;
+      const created = document.createElement('p');
+      created.append(document.createElement('br'));
+      element.append(created);
+      return created;
+    };
+
+    const mergeParagraphsInto = (
+      survivor: EditableTextState,
+      absorbed: EditableTextState,
+    ) => {
+      const incoming = takeAbsorbedParagraphs(absorbed.element);
+      if (!incoming.some((paragraph) => fragmentHasContent(paragraph))) {
+        placeCaretAtEndOfBlock(survivor);
+        return;
+      }
+      const last = lastOrCreateParagraph(survivor.element);
+      const [first, ...rest] = incoming;
+      const joinNode = inlineJoinParagraph(last, first);
+      survivor.element.append(...rest);
+      survivor.element.focus();
+      placeCaretAtJoin(joinNode, last);
+    };
+
+    const mergeParagraphsIntoHeading = (
+      survivor: EditableTextState,
+      absorbed: EditableTextState,
+    ) => {
+      const incoming = takeAbsorbedParagraphs(absorbed.element);
+      if (!incoming.some((paragraph) => fragmentHasContent(paragraph))) {
+        placeCaretAtEndOfBlock(survivor);
+        return;
+      }
+      const joinOffset = (survivor.element.textContent ?? '').length;
+      const parts = incoming.map((paragraph) => paragraph.textContent ?? '');
+      const addition = `${parts[0]}${parts.slice(1).map((text) => `\n${text}`).join('')}`;
+      survivor.element.textContent = `${survivor.element.textContent ?? ''}${addition}`;
+      placeCaretInHeading(survivor.element, joinOffset);
+    };
+
+    const mergeHeadingIntoParagraphs = (
+      survivor: EditableTextState,
+      absorbed: EditableTextState,
+    ) => {
+      const headingText = absorbed.element.textContent ?? '';
+      if (!headingText) {
+        placeCaretAtEndOfBlock(survivor);
+        return;
+      }
+      const last = lastOrCreateParagraph(survivor.element);
+      survivor.element.focus();
+      if (!fragmentHasContent(last)) {
+        const node = document.createTextNode(headingText);
+        last.replaceChildren(node);
+        placeCaretAtJoin(node, last);
+        return;
+      }
+      const node = document.createTextNode(headingText);
+      last.append(node);
+      placeCaretAtJoin(node, last);
+    };
+
+    const mergeHeadingIntoHeading = (
+      survivor: EditableTextState,
+      absorbed: EditableTextState,
+    ) => {
+      const extra = absorbed.element.textContent ?? '';
+      if (!extra) {
+        placeCaretAtEndOfBlock(survivor);
+        return;
+      }
+      const joinOffset = (survivor.element.textContent ?? '').length;
+      survivor.element.textContent = `${survivor.element.textContent ?? ''}${extra}`;
+      placeCaretInHeading(survivor.element, joinOffset);
+    };
+
+    tryMergeBlockAtCaret = (state: EditableTextState, direction: 'forward' | 'backward') => {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return false;
+      const range = selection.getRangeAt(0);
+      if (!range.collapsed) return false;
+      if (!state.element.contains(range.startContainer) && range.startContainer !== state.element) {
+        return false;
+      }
+
+      const root = state.element.closest<HTMLElement>(
+        '[data-dev-section-deletable][data-dev-spacing-document]',
+      );
+      if (!root) return false;
+      const type = root.dataset.devSectionDeletable;
+      if (type !== 'bodyText' && type !== 'sectionTitle') return false;
+
+      if (direction === 'backward' && !isAtBlockStart(state, range)) return false;
+      if (direction === 'forward' && !isAtBlockEnd(state, range)) return false;
+
+      const neighbour = findMergeableNeighbour(root, direction);
+      if (!neighbour) return false;
+      const neighbourState = textStateForRoot(neighbour);
+      if (!neighbourState) return false;
+
+      const survivor = direction === 'forward' ? state : neighbourState;
+      const absorbed = direction === 'forward' ? neighbourState : state;
+      const absorbedRoot = direction === 'forward' ? neighbour : root;
+
+      const survivorParagraphs = survivor.kind === 'paragraphs';
+      const absorbedParagraphs = absorbed.kind === 'paragraphs';
+      if (survivorParagraphs && absorbedParagraphs) {
+        mergeParagraphsInto(survivor, absorbed);
+      } else if (!survivorParagraphs && absorbedParagraphs) {
+        mergeParagraphsIntoHeading(survivor, absorbed);
+      } else if (survivorParagraphs && !absorbedParagraphs) {
+        mergeHeadingIntoParagraphs(survivor, absorbed);
+      } else {
+        mergeHeadingIntoHeading(survivor, absorbed);
+      }
+
+      void deleteSectionAt(absorbedRoot);
+      updateActions();
+      return true;
     };
 
     deletableSections.forEach((element) => {
