@@ -638,6 +638,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     --subtitle-ink-on-page: var(--sys-color-on-srf-subtle);
   }
 
+  /* Authored fallback before adaptiveMediaInk runs — overridden by data-media-ground. */
   .project-grid__item[data-dev-dark='true'] {
     --chip-ink: var(--chip-ink-on-dark);
     --chip-fill: var(--chip-fill-on-dark);
@@ -647,42 +648,37 @@ const gridCardTemplateSeed: ProjectGridItem = {
     --subtitle-ink: var(--sys-color-on-dark-media-subtle);
   }
 
-  .project-grid__item[data-dev-hover-dark='true'] {
-    --title-ink-hover: var(--sys-color-on-dark-media);
-    --subtitle-ink-hover: var(--sys-color-on-dark-media-subtle);
-  }
-
-  .project-grid__item[data-dev-hover-dark='false'] {
-    --title-ink-hover: var(--sys-color-on-light-media);
-    --subtitle-ink-hover: var(--sys-color-on-light-media-subtle);
-  }
-
   /*
-    While the hover image is the one showing, the chips are sitting on *it*,
-    not on the base cover — so they take its measured value (#182's hoverDark)
-    instead of `dark`. This matters more than it looks: chips only reveal on
-    hover, so the hover image is the ground they are on almost every time you
-    see them. Same gate as the title ink and the hover overlay.
-
-    Live site: chips appear with the hover bitmap, so :hover is the right
-    gate. Edit: chips appear on pointer hover but the cover does *not* swap
-    (WYSIWYG) — only `.is-dev-hover-forced` shows the hover image. Gating
-    :hover with html:not(.is-dev-mode) matches the title-ink rules above.
-    Tapico Work is the tell: listings.work.hoverDark is true, listings.home
-    has no hoverDark; Edit hover on /work was painting on-dark chips on the
-    still-light cover.
+    Measured ground (bindGalleryMediaInk) — title and chips stay linked on one
+    palette per card. Hover bitmap swaps data-media-ground with the base cover.
   */
-  html:not(.is-dev-mode) .project-grid__item[data-dev-hover-dark='true']:hover:has(.project-grid__cover--has-hover),
-  .project-grid__item[data-dev-hover-dark='true']:has(.project-grid__cover--has-hover.is-dev-hover-forced) {
+  .project-grid__item[data-media-ground='light'] {
+    --chip-ink: var(--chip-ink-on-light);
+    --chip-fill: var(--chip-fill-on-light);
+    --chip-ring: var(--chip-ring-on-light);
+    --chip-press: var(--chip-press-on-light);
+    --title-ink: var(--sys-color-on-light-media);
+    --subtitle-ink: var(--sys-color-on-light-media-subtle);
+    --title-ink-hover: var(--title-ink);
+    --subtitle-ink-hover: var(--subtitle-ink);
+  }
+
+  .project-grid__item[data-media-ground='dark'] {
     --chip-ink: var(--chip-ink-on-dark);
     --chip-fill: var(--chip-fill-on-dark);
     --chip-ring: var(--chip-ring-on-dark);
     --chip-press: var(--chip-press-on-dark);
+    --title-ink: var(--sys-color-on-dark-media);
+    --subtitle-ink: var(--sys-color-on-dark-media-subtle);
+    --title-ink-hover: var(--title-ink);
+    --subtitle-ink-hover: var(--subtitle-ink);
   }
 
-  html:not(.is-dev-mode) .project-grid__item[data-dev-hover-dark='false']:hover:has(.project-grid__cover--has-hover),
-  .project-grid__item[data-dev-hover-dark='false']:has(.project-grid__cover--has-hover.is-dev-hover-forced),
-  /* No hover image at all — forced preview shows the page background. */
+  /*
+    Forced hover with no hover image: base fades out and the page background
+    is the ground — chips need on-light palette. Title ink uses
+    --title-ink-on-page via the rules above this block.
+  */
   .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover)) {
     --chip-ink: var(--chip-ink-on-light);
     --chip-fill: var(--chip-fill-on-light);
