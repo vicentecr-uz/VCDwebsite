@@ -483,6 +483,7 @@ const { documentKey = '' } = Astro.props;
   document.addEventListener('keydown', (event) => {
     if (!(event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyA')) return;
     if (isTypingTarget(event.target)) return;
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
 
     if (overlay instanceof HTMLElement && !overlay.hidden) {
       event.preventDefault();
