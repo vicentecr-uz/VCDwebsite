@@ -617,6 +617,10 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
       );
     };
 
+    // Esc hides gap chrome; pointermove must not re-reveal until the cursor
+    // leaves every gap hitbox and activation radius.
+    let suppressGapProximity = false;
+
     const clearGapProximity = (control: HTMLElement) => {
       control.classList.remove('is-near-add', 'is-near-spacing');
     };
@@ -758,6 +762,39 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         return;
       }
 
+      if (suppressGapProximity) {
+        const stillNear = spacingStates.some((state) => {
+          if (state.control.hidden) return false;
+          if (isPointerOverToolbarHitbox(state, clientX, clientY)) return true;
+          return (
+            distanceToToolbarTarget(state.addButton, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX
+            || distanceToToolbarTarget(state.spacingGroup, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX
+          );
+        });
+        if (stillNear) {
+          closeSectionMenus();
+          spacingStates.forEach(({ control }) => clearGapProximity(control));
+          syncPageTopGapStacking();
+          return;
+        }
+        suppressGapProximity = false;
+      }
+
+      // Open add-menu owns the page: other gaps must not light (their host
+      // would share z-index 65 and paint over the overflowing option column).
+      const openMenuState = spacingStates.find(({ control }) =>
+        control.classList.contains('is-menu-open'),
+      );
+      if (openMenuState) {
+        spacingStates.forEach(({ control }) => {
+          if (control === openMenuState.control) return;
+          clearGapProximity(control);
+        });
+        openMenuState.control.classList.add('is-near-add');
+        syncPageTopGapStacking();
+        return;
+      }
+
       const overHeader = isPointerOverHeaderChrome(clientX, clientY);
 
       let nearestAdd: EditableSpacingState | null = null;
@@ -882,11 +919,6 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
         },
         true,
       );
-      document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape') return;
-        if (!spacingStates.some(isSectionMenuOpen)) return;
-        closeSectionMenus();
-      });
     }
 
     const dirtyTextStates = () =>
@@ -2544,6 +2576,21 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
           return;
         }
 
+        if (
+          spacingStates.some(({ control }) =>
+            control.classList.contains('is-menu-open')
+            || control.classList.contains('is-near-add')
+            || control.classList.contains('is-near-spacing'),
+          )
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          closeSectionMenus();
+          clearGapProximityAll();
+          suppressGapProximity = true;
+          return;
+        }
+
         if (!isDevTextCaretActive()) return;
         if (!deselectDevTextCaret()) return;
         event.preventDefault();
@@ -3703,6 +3750,11 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     z-index: 55;
   }
 
+  /* Open add-menu hangs into the next block — sit above neighbouring 65 lifts. */
+  .dev-gap-toolbar.is-menu-open {
+    z-index: 80;
+  }
+
   [data-dev-spacing-document].project-stack--related > .dev-gap-toolbar {
     top: calc(var(--space-related) / -2);
   }
@@ -3831,6 +3883,10 @@ const formatLinkSvg = sizeIcon(linkIcon, 16);
     transform: translateX(-50%);
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
+  }
+
+  .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__menu {
+    z-index: 2;
   }
 
   .dev-gap-toolbar__menu[hidden] {
