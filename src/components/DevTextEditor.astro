@@ -1697,6 +1697,62 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return created;
     };
 
+    const fragmentHasContent = (node: ParentNode) =>
+      Boolean(
+        serializeInlineHtml(node as HTMLElement) ||
+        node.textContent?.replaceAll('\u00a0', ' ').trim(),
+      );
+
+    const extractTrailingFromParagraph = (
+      paragraph: HTMLParagraphElement,
+      liveRange: Range,
+    ) => {
+      const afterRange = document.createRange();
+      afterRange.setStart(liveRange.startContainer, liveRange.startOffset);
+      afterRange.setEnd(paragraph, paragraph.childNodes.length);
+      const trailing = afterRange.extractContents();
+
+      const nextParagraph = document.createElement('p');
+      const empty = !fragmentHasContent(trailing);
+      if (empty) nextParagraph.append(document.createElement('br'));
+      else nextParagraph.append(trailing);
+
+      if (!fragmentHasContent(paragraph)) {
+        paragraph.replaceChildren(document.createElement('br'));
+      }
+
+      return { nextParagraph, empty };
+    };
+
+    const splitParagraphInsideBlock = (state: EditableTextState) => {
+      const { element } = state;
+      const paragraph = ensureParagraphSelection(element);
+      if (!paragraph) return;
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+      // Re-read after ensureParagraphSelection may have moved the caret.
+      const range = selection.getRangeAt(0);
+      if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
+        placeCaretInParagraph(paragraph, false);
+      }
+      const liveRange = selection.getRangeAt(0);
+
+      if (!liveRange.collapsed) liveRange.deleteContents();
+
+      const { nextParagraph } = extractTrailingFromParagraph(paragraph, liveRange);
+      paragraph.after(nextParagraph);
+
+      const nextRange = document.createRange();
+      nextRange.setStart(nextParagraph, 0);
+      nextRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+      updateActions();
+    };
+
+    let splitBlockAtCaret = (_state: EditableTextState) => {};
+
     const bindTextState = (state: EditableTextState) => {
       const { element } = state;
       // Typing is the signal that the last Save/Publish message has been read.
@@ -1711,47 +1767,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
       }
       element.addEventListener('keydown', (event) => {
-        if (event.key !== 'Enter' || state.kind !== 'paragraphs') return;
-        event.preventDefault();
+        if (event.key !== 'Enter') return;
 
-        const paragraph = ensureParagraphSelection(element);
-        if (!paragraph) return;
-
-        const selection = window.getSelection();
-        if (!selection?.rangeCount) return;
-        // Re-read after ensureParagraphSelection may have moved the caret.
-        const range = selection.getRangeAt(0);
-        if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
-          placeCaretInParagraph(paragraph, false);
-        }
-        const liveRange = selection.getRangeAt(0);
-
-        if (!liveRange.collapsed) liveRange.deleteContents();
-
-        const afterRange = document.createRange();
-        afterRange.setStart(liveRange.startContainer, liveRange.startOffset);
-        afterRange.setEnd(paragraph, paragraph.childNodes.length);
-        const trailing = afterRange.extractContents();
-
-        const nextParagraph = document.createElement('p');
-        if (serializeInlineHtml(trailing) || trailing.textContent?.replaceAll('\u00a0', ' ').trim()) {
-          nextParagraph.append(trailing);
-        } else {
-          nextParagraph.append(document.createElement('br'));
+        if (event.altKey || event.shiftKey) {
+          if (state.kind !== 'paragraphs') return;
+          event.preventDefault();
+          splitParagraphInsideBlock(state);
+          return;
         }
 
-        if (!serializeInlineHtml(paragraph) && !paragraph.textContent?.replaceAll('\u00a0', ' ').trim()) {
-          paragraph.replaceChildren(document.createElement('br'));
+        if (event.metaKey || event.ctrlKey) {
+          event.preventDefault();
+          splitBlockAtCaret(state);
+          return;
         }
 
-        paragraph.after(nextParagraph);
-
-        const nextRange = document.createRange();
-        nextRange.setStart(nextParagraph, 0);
-        nextRange.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(nextRange);
-        updateActions();
+        if (state.kind === 'paragraphs') {
+          event.preventDefault();
+          splitParagraphInsideBlock(state);
+        }
       });
     };
 
@@ -1798,22 +1832,45 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       revertButton.disabled = false;
     };
 
-    const insertSectionAt = (state: EditableSpacingState, type: InsertableSectionType) => {
-      const sectionIndex = state.path.at(-2);
-      if (typeof sectionIndex !== 'number') {
+    const insertSectionAt = (
+      anchor: EditableSpacingState | HTMLElement,
+      type: InsertableSectionType,
+      options?: { placement?: 'before' | 'after'; spacing?: SpacingValue },
+    ) => {
+      const host = anchor instanceof HTMLElement ? anchor : anchor.element;
+      const documentKey = anchor instanceof HTMLElement
+        ? (anchor.dataset.devSpacingDocument || '')
+        : anchor.document;
+      let path: Array<string | number>;
+      if (anchor instanceof HTMLElement) {
+        try {
+          path = JSON.parse(anchor.dataset.devSpacingPath || '[]');
+        } catch {
+          path = [];
+        }
+      } else {
+        path = anchor.path;
+      }
+
+      const sectionIndex = path.at(-2);
+      if (typeof sectionIndex !== 'number' || !documentKey) {
         status.textContent = 'Could not find where to insert.';
         actions.hidden = false;
         return;
       }
 
-      const newSpacing: SpacingValue = sectionIndex === 0 ? 'none' : 'section';
+      const placement = options?.placement ?? 'before';
+      const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
+      const newSpacing: SpacingValue =
+        options?.spacing ?? (sectionIndex === 0 ? 'none' : 'section');
       const sectionId = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
-      reindexDevPaths(sectionIndex, 1);
+      reindexDevPaths(insertIndex, 1);
 
-      const built = buildInsertedSection(type, state.document, sectionIndex, newSpacing);
-      state.element.before(built.root);
+      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing);
+      if (placement === 'after') host.after(built.root);
+      else host.before(built.root);
 
       const spacingState = mountSpacingControl(built.root);
       if (spacingState) {
@@ -1823,7 +1880,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const textState: EditableTextState = {
         element: built.textElement,
-        document: state.document,
+        document: documentKey,
         path: built.textPath,
         kind: built.textKind,
         savedValue: built.textKind === 'paragraphs' ? [''] : 'Section title',
@@ -1848,8 +1905,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       pendingSectionInserts.push({
-        documentKey: state.document,
-        index: sectionIndex,
+        documentKey,
+        index: insertIndex,
         type,
         spacing: newSpacing,
         sectionId,
@@ -1860,9 +1917,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
         detail: {
-          document: state.document,
+          document: documentKey,
           action: 'insert',
-          index: sectionIndex,
+          index: insertIndex,
           type,
           sectionId,
           section: {
@@ -1879,7 +1936,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       requestAnimationFrame(() => {
         built.textElement.focus();
         if (built.textKind === 'paragraphs') {
-          ensureParagraphSelection(built.textElement);
+          const first = built.textElement.querySelector<HTMLParagraphElement>(':scope > p');
+          if (first) placeCaretInParagraph(first, true);
+          else ensureParagraphSelection(built.textElement);
         } else if (built.textKind === 'text') {
           const selection = window.getSelection();
           const range = document.createRange();
@@ -1888,6 +1947,91 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           selection?.addRange(range);
         }
       });
+      return built;
+    };
+
+    splitBlockAtCaret = (state: EditableTextState) => {
+      const root = state.element.closest<HTMLElement>(
+        '[data-dev-section-deletable][data-dev-spacing-document]',
+      );
+      if (!root) return;
+
+      let spacingPath: Array<string | number> = [];
+      try {
+        spacingPath = JSON.parse(root.dataset.devSpacingPath || '[]');
+      } catch {
+        spacingPath = [];
+      }
+      const sectionIndex = spacingPath.at(-2);
+      if (typeof sectionIndex !== 'number') return;
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+
+      let payloadParagraphs: HTMLParagraphElement[] = [];
+      let headingRemainder = '';
+
+      if (state.kind === 'paragraphs') {
+        const paragraph = ensureParagraphSelection(state.element);
+        if (!paragraph) return;
+
+        if (!selection.rangeCount) return;
+        const range = selection.getRangeAt(0);
+        if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
+          placeCaretInParagraph(paragraph, false);
+        }
+        const liveRange = selection.getRangeAt(0);
+        if (!liveRange.collapsed) liveRange.deleteContents();
+
+        const { nextParagraph, empty } = extractTrailingFromParagraph(
+          paragraph,
+          liveRange,
+        );
+        const following: HTMLParagraphElement[] = [];
+        let sibling = paragraph.nextElementSibling;
+        while (sibling) {
+          const next = sibling.nextElementSibling;
+          if (sibling instanceof HTMLParagraphElement) {
+            sibling.remove();
+            following.push(sibling);
+          }
+          sibling = next;
+        }
+        payloadParagraphs = empty ? following : [nextParagraph, ...following];
+      } else if (state.kind === 'text') {
+        const liveRange = selection.getRangeAt(0);
+        if (!state.element.contains(liveRange.startContainer)
+          && liveRange.startContainer !== state.element) {
+          return;
+        }
+        if (!liveRange.collapsed) liveRange.deleteContents();
+        const caretRange = selection.getRangeAt(0);
+        const pre = caretRange.cloneRange();
+        pre.selectNodeContents(state.element);
+        pre.setEnd(caretRange.startContainer, caretRange.startOffset);
+        const offset = pre.toString().length;
+        const text = state.element.textContent ?? '';
+        headingRemainder = text.slice(offset);
+        state.element.textContent = text.slice(0, offset);
+      } else {
+        return;
+      }
+
+      const built = insertSectionAt(root, 'bodyText', {
+        placement: 'after',
+        spacing: 'related',
+      });
+      if (!built) return;
+
+      if (payloadParagraphs.length) {
+        built.textElement.replaceChildren(...payloadParagraphs);
+      } else if (headingRemainder) {
+        const paragraph = document.createElement('p');
+        fillParagraph(paragraph, headingRemainder);
+        built.textElement.replaceChildren(paragraph);
+      }
+
+      updateActions();
     };
 
     const wireSectionAddMenu = (state: EditableSpacingState) => {
