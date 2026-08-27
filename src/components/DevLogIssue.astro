@@ -674,6 +674,15 @@ import DevOverlay from './DevOverlay.astro';
     veilYes.addEventListener('click', () => closePanel());
     submitButton.addEventListener('click', () => void submitIssue());
 
+    // Done veil: clicking anywhere but the issue link dismisses back to the
+    // (now-reset) form instead of waiting for the auto-close timer to lapse.
+    veil.addEventListener('click', (event) => {
+      if (veilMode !== 'done') return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('a')) return;
+      resetForm();
+    });
+
     // Capture Esc so cancel-confirm / pick-mode / form-dismiss win over DevModeController.
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyI') {
