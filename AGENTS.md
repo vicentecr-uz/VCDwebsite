@@ -239,10 +239,9 @@ Canonical: Atlas `standards.md` → *Agents — Manager / worker split*. Cursor 
 Canonical: Atlas `standards.md` → *Agents — Anto tests the work*.
 
 ### About page
-Three-state responsive layout with GSAP Flip animations on breakpoint transitions:
+Three-state responsive layout (CSS only — no Flip / no resize tween):
 - **Wide (≥50em):** photo 3/4 (17em col) left, Contact+About+Experience stacked in right col
 - **Medium (40–50em):** photo 1:1 (17em) + Contact top row; About+Experience span full width below
 - **Narrow (<40em):** single column, photo 1:1 full-width → Contact → About → Experience
 - Photo `object-position: 50% 35%` in square crop for headroom; `50% 50%` in portrait
-- GSAP Flip animates element repositioning; photo height wipe + object-position animated separately
-- Bio `max-width: 38em`; noscript CSS media query fallback for all states
+- Bio `max-width: 38em`
