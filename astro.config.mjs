@@ -1042,10 +1042,11 @@ const applyCaptionChange = (data, change) => {
   const CAPTION_POSITIONS = new Set(['bottom-left', 'top-left', 'bottom-right', 'top-right']);
   const CAPTION_REVEALS = new Set(['hover', 'always']);
   const rawStyle = String(change.captionStyle || 'white');
-  const captionStyle = rawStyle === 'default' ? 'white' : rawStyle;
+  let captionStyle = rawStyle;
   if (!CAPTION_STYLES.has(captionStyle)) {
     return { ok: false, error: 'Use a supported caption style.' };
   }
+  if (captionStyle === 'black' || captionStyle === 'default') captionStyle = 'white';
   const captionPosition = String(change.captionPosition || 'bottom-left');
   if (!CAPTION_POSITIONS.has(captionPosition)) {
     return { ok: false, error: 'Use a supported caption location.' };
