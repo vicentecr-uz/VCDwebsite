@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import path from 'node:path';
 
 export const THUMB_SIZE = 640;
-export const PREVIEW_SIZE = 1920;
+export const PREVIEW_SIZE = 2560;
 
 const THUMB_SUFFIX = '.thumb.webp';
 const PREVIEW_SUFFIX = '.preview.webp';
@@ -70,6 +70,6 @@ export async function generateDerivativeBuffer(originalPath, kind) {
   return sharp(originalPath)
     .rotate()
     .resize({ width: size, height: size, fit: 'inside', withoutEnlargement: true })
-    .webp({ quality: 75 })
+    .webp({ quality: 85 })
     .toBuffer();
 }
