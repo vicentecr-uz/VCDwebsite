@@ -827,16 +827,26 @@ import DevOverlay from './DevOverlay.astro';
   .dev-log-issue__veil {
     --dev-log-veil-ms: 180ms;
     position: absolute;
-    inset: 0;
+    /* .dev-log-issue fills .dev-overlay__body, which is inset from the outer
+       .dev-overlay frame by --dev-panel-pad on left/right/bottom (top is a
+       gap below the header — left alone so the veil doesn't reach the
+       traffic lights). Extend into that padding ring so the blur has the
+       full frame to render against, instead of stopping short of
+       .dev-overlay's own edge and reading as sharply clipped there. */
+    inset: 0 calc(var(--dev-panel-pad) * -1) calc(var(--dev-panel-pad) * -1) calc(var(--dev-panel-pad) * -1);
     z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: inherit;
+    /* Bottom corners now reach .dev-overlay's own edge, so they need its full
+       radius (--dev-overlay-inner-radius is for boxes still inset by the
+       padding ring). Top corners stay square — they sit below the header
+       gap, not on a curve. */
+    border-radius: 0 0 var(--dev-radius-panel) var(--dev-radius-panel);
     /* Frosted veil over the form — soft fill so the muted fields still read underneath. */
     background: color-mix(in srgb, var(--sys-color-srf) 88%, transparent);
     backdrop-filter: blur(2px);
-    padding: 1em;
+    padding: calc(1em + var(--dev-panel-pad)) 1em 1em;
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dev-log-veil-ms) ease;
