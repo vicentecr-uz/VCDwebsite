@@ -156,18 +156,23 @@ const gridCardTemplateSeed: ProjectGridItem = {
     opacity: 0;
   }
 
-  /*
-    In dev mode the whole card holds the hover, not just the <a>. The chip
-    rails are children of the <li>, *outside* the card link, so travelling
-    from the cover to a chip drops :hover and snaps the image back — a lot of
-    motion for a pointer that never left the card. The live site keeps the
-    plain :hover semantics below.
-  */
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
+  /* Chip + keyboard — not gated on pointer/hover. Narrow *viewports* still
+     fade; #132 only skipped sticky :hover on coarse pointers (below). */
   .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--hover,
-  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover,
   .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
+  }
+
+  /*
+    Pointer hover. In dev the whole card holds it, not just the <a> — chip
+    rails sit outside the link, so leaving the <a> would snap the image back.
+    Coarse pointers (phones) omit this so a tap does not stick :hover (#132).
+  */
+  @media (hover: hover) and (pointer: fine) {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__img--hover {
+      opacity: 1;
+    }
   }
 
   /* No hover image: forced preview still reveals the page ground. With a
@@ -200,14 +205,18 @@ const gridCardTemplateSeed: ProjectGridItem = {
     color: var(--subtitle-ink);
   }
 
-  /* Only cards that actually have a hover image swap ink — reuses the same
-     gate as the hover overlay so a card with no hover image never changes
-     colour. `.is-dev-hover-forced` mirrors it for the dev preview toggle. */
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
+  /* Only cards that actually have a hover image swap ink — same gate as the
+     overlay. Forced + focus-visible always; pointer :hover with the image. */
   .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__title,
-  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title,
   .project-grid__cover.is-dev-hover-forced .project-grid__title {
     color: var(--title-ink-hover);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__title,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__title {
+      color: var(--title-ink-hover);
+    }
   }
 
   /*
@@ -225,15 +234,20 @@ const gridCardTemplateSeed: ProjectGridItem = {
     color: var(--subtitle-ink-on-page);
   }
 
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
-  .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
   .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__subtitle,
   .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__teaser-label,
-  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle,
-  html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label,
   .project-grid__cover.is-dev-hover-forced .project-grid__subtitle,
   .project-grid__cover.is-dev-hover-forced .project-grid__teaser-label {
     color: var(--subtitle-ink-hover);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__subtitle,
+    .project-grid__card:hover .project-grid__cover--has-hover .project-grid__teaser-label,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__subtitle,
+    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover .project-grid__teaser-label {
+      color: var(--subtitle-ink-hover);
+    }
   }
 
   .project-grid__meta {
@@ -408,38 +422,12 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   @media (max-width: 768px) {
-    /* Touch: titles always on; no hover image swap yet (#132). */
+    /* Titles always on below tablet. Hover image swap is pointer-gated
+       (`hover` + `pointer: fine`), not width-gated — a narrow desktop
+       window still fades; phones do not sticky-hover after tap (#132). */
     .project-grid__meta {
       opacity: 1 !important;
       transition: none !important;
-    }
-
-    .project-grid__cover--has-hover .project-grid__img--hover,
-    html.is-dev-mode .project-grid__cover .project-grid__img--hover,
-    html.is-dev-mode .project-grid__cover:not(.project-grid__cover--has-hover) .project-grid__img--base {
-      transition: none;
-    }
-
-    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__img--hover,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__img--hover {
-      opacity: 0;
-    }
-
-    /* Touch: no hover image swap on a real `:hover` (above), so the ink swap
-       must not fire on it either — a title changing colour for an image that
-       never appears. Exclude `.is-dev-hover-forced`: the preview chip must
-       win over sticky :hover on the card (tap leaves :hover true on touch
-       UAs, and the rule above is more specific than the base forced rule). */
-    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__title,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__title {
-      color: var(--title-ink);
-    }
-
-    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__subtitle,
-    .project-grid__card:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__teaser-label,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__subtitle,
-    html.is-dev-mode .project-grid__item:hover .project-grid__cover--has-hover:not(.is-dev-hover-forced) .project-grid__teaser-label {
-      color: var(--subtitle-ink);
     }
   }
 
