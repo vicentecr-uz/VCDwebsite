@@ -30,14 +30,12 @@ import {
       </SegmentedControl>
     </Field>
 
-    <div class="project-caption-tuner__pair">
-      <SelectField
-        label="Position"
-        data-caption-overlay-only
-        data-caption-position
-        options={IMAGE_CAPTION_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
-      />
-    </div>
+    <SelectField
+      label="Position"
+      data-caption-overlay-only
+      data-caption-position
+      options={IMAGE_CAPTION_POSITIONS.map((p) => ({ value: p.id, label: p.label }))}
+    />
 
     <SelectField
       label="Show caption"
@@ -517,8 +515,7 @@ import {
       syncingUi = true;
       styleButtons.forEach((button) => {
         const style = button.dataset.captionStyle ?? '';
-        const selected = style === draftStyle
-          || (style === 'white' && draftStyle === 'black');
+        const selected = style === draftStyle;
         button.classList.toggle('is-selected', selected);
         button.setAttribute('aria-pressed', selected ? 'true' : 'false');
       });
@@ -962,22 +959,6 @@ import {
     display: flex;
     flex-direction: column;
     gap: 0.7em;
-  }
-
-  .project-caption-tuner__pair {
-    display: flex;
-    gap: 0.7em;
-    align-items: start;
-  }
-
-  .project-caption-tuner__pair > :global(.dev-field) {
-    flex: 1 1 0;
-    min-width: 0;
-  }
-
-  .project-caption-tuner__pair:has([hidden]) {
-    display: grid;
-    grid-template-columns: 1fr;
   }
 
   /* vis-hidden, not `hidden`: JS still queries this node, and aria-live must
