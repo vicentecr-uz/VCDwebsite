@@ -2009,13 +2009,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           }
           sibling = next;
         }
-        if (empty) {
-          payloadParagraphs = following;
-        } else {
-          const blank = document.createElement('p');
-          blank.append(document.createElement('br'));
-          payloadParagraphs = [blank, nextParagraph, ...following];
-        }
+        payloadParagraphs = empty ? following : [nextParagraph, ...following];
       } else if (state.kind === 'text') {
         const liveRange = selection.getRangeAt(0);
         if (!state.element.contains(liveRange.startContainer)
