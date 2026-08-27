@@ -347,10 +347,26 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
     const wForZoom = (aspect: string, zoom: number) => coverW(aspect) / Math.max(zoom, 0.0001);
 
     const hoverImgSrcAspect = (target: HTMLElement) => {
-      const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
-      const w = hoverImg?.naturalWidth;
-      const h = hoverImg?.naturalHeight;
-      return w && h ? w / h : null;
+      const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover');
+      if (!hoverImg) return null;
+      const w = hoverImg.naturalWidth;
+      const h = hoverImg.naturalHeight;
+      if (w > 0 && h > 0) return w / h;
+      hoverImg.loading = 'eager';
+      return null;
+    };
+
+    const bindHoverSrcAspect = (target: HTMLElement) => {
+      const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover');
+      if (!hoverImg) return;
+      if (hoverImg.naturalWidth > 0 && hoverImg.naturalHeight > 0) return;
+      hoverImg.loading = 'eager';
+      hoverImg.addEventListener('load', () => {
+        if (editTarget !== target || !draftHoverVariants) return;
+        syncLinkedListingAspect(draftCoverVariants[selectedViewport].aspect);
+        paintDraftCrop();
+        flushDraftChrome();
+      }, { once: true });
     };
 
     const hoverCoverW = (aspect: string, hoverAspect: number) => (
@@ -894,13 +910,17 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       draftCoverVariants[selectedViewport].aspect = aspect;
       if (draftHoverVariants) {
         draftHoverVariants[selectedViewport].aspect = aspect;
-        if (activeSlot === 'cover') {
-          const hoverAspect = hoverImgSrcAspect(editTarget);
-          if (hoverAspect) {
-            const hoverState = draftHoverVariants[selectedViewport];
-            const zoom = hoverZoomOf(hoverState, hoverAspect);
-            draftHoverVariants[selectedViewport].w = hoverWForZoom(aspect, zoom, hoverAspect);
-          }
+        const hoverAspect = hoverImgSrcAspect(editTarget);
+        if (hoverAspect) {
+          const hoverState = draftHoverVariants[selectedViewport];
+          const zoom = hoverZoomOf(hoverState, hoverAspect);
+          draftHoverVariants[selectedViewport].w = hoverWForZoom(aspect, zoom, hoverAspect);
+        } else {
+          bindHoverSrcAspect(editTarget);
+        }
+        if (liveApply) {
+          setHoverTargetVariant(editTarget, selectedViewport, draftHoverVariants[selectedViewport]);
+          editTarget.classList.add('project-grid__cover--hover-cropped');
         }
       }
     };
@@ -982,11 +1002,9 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       if (liveApply) {
         if (isListingCover(editTarget)) {
           setTargetVariant(editTarget, selectedViewport, draftCoverVariants[selectedViewport]);
-          if (activeSlot === 'hover' && draftHoverVariants) {
-            setHoverTargetVariant(editTarget, selectedViewport, draft);
+          if (draftHoverVariants) {
+            setHoverTargetVariant(editTarget, selectedViewport, draftHoverVariants[selectedViewport]);
             editTarget.classList.add('project-grid__cover--hover-cropped');
-          } else {
-            editTarget.classList.remove('project-grid__cover--hover-cropped');
           }
         } else {
           setTargetVariant(editTarget, selectedViewport, draft);
@@ -1337,6 +1355,8 @@ const linkedAspectAlertSvg = sizeIcon(triangleAlertIcon, 14);
       if (isListingCover(target) && listingHasHoverImage(target)) {
         savedHoverVariants = readHoverAppliedVariants(editTarget);
         draftHoverVariants = structuredClone(savedHoverVariants);
+        bindHoverSrcAspect(target);
+        syncLinkedListingAspect(draftCoverVariants[selectedViewport].aspect);
       } else {
         savedHoverVariants = null;
         draftHoverVariants = null;
