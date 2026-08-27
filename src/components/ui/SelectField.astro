@@ -68,7 +68,7 @@ for (const item of options) {
 const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOptions[0] ?? null;
 ---
 
-<Field label={label} class={[className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
+<Field label={label} labelId={`${triggerId}-label`} class={[className, hideLabel ? 'dev-field--no-label' : null]} hidden={hidden} {...fieldRest}>
   <slot name="labelAccessory" slot="labelAccessory" />
   <select
     value={value}
@@ -97,6 +97,7 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     aria-expanded="false"
     aria-controls={listboxId}
     aria-label={hideLabel ? label : undefined}
+    aria-labelledby={hideLabel ? undefined : `${triggerId}-label ${triggerId}`}
     data-dev-select-trigger
   >
     <span class="dev-select__trigger-icon" data-dev-select-icon aria-hidden="true" set:html={selectedOption?.iconSvg ?? ''} />
