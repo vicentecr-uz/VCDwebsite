@@ -4,41 +4,12 @@
 
 import {
   applyMediaGround,
-  cropFrameRegionToSourceRegion,
-  groundForRegion,
+  cropHostFor,
+  groundForBox,
   lumaGridFor,
+  readCropVars,
   type MediaGround,
-  type NormalizedRegion,
 } from './adaptiveMediaInk';
-import { coverBoxRegionToSourceRegion } from './coverLuminance';
-
-function elementRegionInCover(el: HTMLElement, coverRect: DOMRect): NormalizedRegion | null {
-  const rect = el.getBoundingClientRect();
-  if (!rect.width || !rect.height || !coverRect.width || !coverRect.height) return null;
-  return {
-    x: (rect.left - coverRect.left) / coverRect.width,
-    y: (rect.top - coverRect.top) / coverRect.height,
-    w: rect.width / coverRect.width,
-    h: rect.height / coverRect.height,
-  };
-}
-
-function groundForBox(
-  el: HTMLElement,
-  cover: HTMLElement,
-  decoded: CanvasImageSource,
-  frame: { width: number; height: number },
-  source: { width: number; height: number },
-  crop: { w: number; cx: number; cy: number } | null,
-): MediaGround | null {
-  const coverRect = cover.getBoundingClientRect();
-  const region = elementRegionInCover(el, coverRect);
-  if (!region) return null;
-  const sourceRegion = crop
-    ? cropFrameRegionToSourceRegion(region, frame, source, crop)
-    : coverBoxRegionToSourceRegion(region, frame, source);
-  return groundForRegion(decoded, sourceRegion);
-}
 
 function isPlaceholderSrc(src: string | undefined, cover: HTMLElement): boolean {
   if (!src) return true;
@@ -53,25 +24,6 @@ function fallbackFromDataAttrs(item: HTMLElement, hover: boolean): MediaGround {
     if (hoverDark === 'false') return 'light';
   }
   return item.dataset.devDark === 'true' ? 'dark' : 'light';
-}
-
-function cropHostFor(cover: HTMLElement): HTMLElement | null {
-  if (cover.classList.contains('project-cropped') || cover.classList.contains('project-responsive-image')) {
-    return cover;
-  }
-  return cover.closest<HTMLElement>('.project-cropped, .project-responsive-image');
-}
-
-function readCropVars(host: HTMLElement, hover: boolean): { w: number; cx: number; cy: number } | null {
-  const style = getComputedStyle(host);
-  const wRaw = style.getPropertyValue(hover ? '--project-hover-content-w' : '--project-content-w').trim();
-  const cxRaw = style.getPropertyValue(hover ? '--project-hover-content-cx' : '--project-content-cx').trim();
-  const cyRaw = style.getPropertyValue(hover ? '--project-hover-content-cy' : '--project-content-cy').trim();
-  const w = parseFloat(wRaw);
-  const cx = parseFloat(cxRaw);
-  const cy = parseFloat(cyRaw);
-  if (!Number.isFinite(w) || !Number.isFinite(cx) || !Number.isFinite(cy)) return null;
-  return { w, cx, cy };
 }
 
 function isLiveHoverBitmap(item: HTMLElement, hoverImg: HTMLImageElement | null): boolean {
