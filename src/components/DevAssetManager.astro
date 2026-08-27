@@ -103,6 +103,8 @@ const { documentKey = '' } = Astro.props;
   let pickOpener = null;
   /** @type {'image' | 'imageGrid' | 'imageCarousel'} */
   let pickType = 'image';
+  /** @type {number | null} */
+  let pickMax = null;
 
   const setStatus = (message) => {
     if (statusEl instanceof HTMLElement) statusEl.textContent = message;
@@ -118,7 +120,7 @@ const { documentKey = '' } = Astro.props;
       countEl.textContent = count
         ? `${count} selected`
         : pickMode
-          ? 'Select one or more images'
+          ? (pickMax === 1 ? 'Select one image' : 'Select one or more images')
           : '';
     }
   };
@@ -292,6 +294,9 @@ const { documentKey = '' } = Astro.props;
           }
         } else if (selected.has(asset.id)) {
           selected.delete(asset.id);
+        } else if (pickMax === 1) {
+          selected.clear();
+          selected.add(asset.id);
         } else {
           selected.add(asset.id);
         }
@@ -357,6 +362,7 @@ const { documentKey = '' } = Astro.props;
     pickOpener = null;
     resolvePick = null;
     rejectPick = null;
+    pickMax = null;
   };
 
   const findPickOpener = (detail) => {
@@ -452,6 +458,11 @@ const { documentKey = '' } = Astro.props;
     }
 
     pickMode = detail.mode !== 'browse';
+    if (typeof detail.max === 'number' && detail.max >= 1) {
+      pickMax = detail.max;
+    } else {
+      pickMax = null;
+    }
     if (detail.type === 'image' || detail.type === 'imageGrid' || detail.type === 'imageCarousel') {
       pickType = detail.type;
     }
