@@ -21,7 +21,7 @@ import {
   <div class="project-caption-tuner" data-project-image-caption-tuner>
     <ViewportSelector dataAttr="data-caption-viewport" />
 
-    <TextArea label="Caption" placeholder="Type here" rows={3} data-caption-text />
+    <TextArea label="Caption" placeholder="Type here" rows={2} data-caption-text />
 
     <div class="project-caption-tuner__pair">
       <Field label="Location">
@@ -679,7 +679,18 @@ import {
         if (syncingUi) return;
         const next = button.dataset.captionStyle;
         if (!next) return;
-        draftStyle = resolveImageCaptionStyle(next);
+        const nextStyle = resolveImageCaptionStyle(next);
+        const leavingOverlay = !isBelowImageCaptionStyle(draftStyle)
+          && isBelowImageCaptionStyle(nextStyle);
+        draftStyle = nextStyle;
+        if (leavingOverlay) {
+          // Overlay corners seed Below align (top-right → right). Going back
+          // to On image does not overwrite the overlay corner.
+          draftBelowAlign = resolveImageCaptionPosition(
+            draftOverlayPosition,
+            'below',
+          ) as ImageCaptionBelowAlignId;
+        }
         if (isBelowImageCaptionStyle(draftStyle)) {
           draftReveals = { ...BELOW_IMAGE_CAPTION_REVEALS };
         }
