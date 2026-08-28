@@ -63,16 +63,32 @@ async function decodeImage(img: HTMLImageElement, expectedSrc?: string): Promise
   }
 }
 
+function freezeInFlowBox(img: HTMLImageElement): void {
+  const cs = getComputedStyle(img);
+  if (cs.position === 'absolute' || cs.position === 'fixed') return;
+  const width = img.offsetWidth;
+  const height = img.offsetHeight;
+  if (!width || !height) return;
+  // WebKit zeros intrinsic size on `src` change. The wipe clone is position:absolute
+  // so it cannot hold document flow — without this, in-flow thumbs collapse and
+  // the page jumps until the preview decodes (random: cache vs decode timing).
+  img.style.aspectRatio = `${width} / ${height}`;
+  if (!img.getAttribute('width') || !img.getAttribute('height')) {
+    img.setAttribute('width', String(Math.round(width)));
+    img.setAttribute('height', String(Math.round(height)));
+  }
+}
+
 async function finishUpgrade(
   img: HTMLImageElement,
   preview: string,
   clone?: HTMLImageElement,
 ): Promise<void> {
+  freezeInFlowBox(img);
   img.src = preview;
   img.removeAttribute('data-image-preview');
   img.dataset.imageUpgraded = 'true';
   delete img.dataset.imagePreviewUpgrading;
-  delete img.dataset.imagePreviewRevealing;
   candidates.delete(img);
   swapObserver?.unobserve(img);
 
@@ -88,6 +104,7 @@ async function finishUpgrade(
     await afterNextPaint();
     clone.remove();
   }
+  delete img.dataset.imagePreviewRevealing;
 }
 
 function isIntersectingWithMargin(img: HTMLImageElement, marginPx: number): boolean {
@@ -172,6 +189,7 @@ function revealAboutFade(img: HTMLImageElement, preview: string): void {
   window.setTimeout(done, REVEAL_DURATION_MS + 100);
 
   img.classList.add('image-preview-reveal--fade-only');
+  freezeInFlowBox(img);
   img.src = preview;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
