@@ -665,6 +665,16 @@ const visibilityOptions = [
 
     syncStatusChip(item, status);
     enableCardEditing(item);
+    // Match disarmCardLinks for this card only — do not enableAllCardEditing
+    // (that would re-strip every gallery href). Cover click in Edit must not
+    // navigate; restoreCardLinks puts href back on exit.
+    if (card instanceof HTMLAnchorElement) {
+      const href = card.getAttribute('href');
+      if (href) {
+        card.dataset.devHref = href;
+        card.removeAttribute('href');
+      }
+    }
     item.scrollIntoView({ block: 'center', inline: 'nearest' });
   };
 
