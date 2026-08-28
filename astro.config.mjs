@@ -2197,6 +2197,38 @@ function contentNavDevWriter() {
 }
 
 // https://astro.build/config
+/**
+ * Lapse (the dev-only animation inspector) resolves from a private registry that
+ * needs a token in a machine-local ~/.npmrc. CI has no token, so the package is
+ * declared `optional` and is simply absent there.
+ *
+ * Astro still walks every `<script>` it finds — the `{showDevTools && ...}` guard
+ * in Layout.astro gates *rendering*, not bundling — so Rollup tries to resolve
+ * `@aiforui/lapse/*` during a production build and hard-fails when it is missing.
+ * Stubbing it at build time fixes that, and drops the ~800KB Lapse+React orphan
+ * chunk that was being emitted into every deploy and referenced by nothing.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function stubLapseInBuild() {
+  const PREFIX = '\0vcd-lapse-stub:';
+  const stubbed = new Set(['@aiforui/lapse/install', '@aiforui/lapse/panel']);
+  return {
+    name: 'vcd-stub-lapse',
+    apply: 'build',
+    resolveId(id) {
+      return stubbed.has(id) ? PREFIX + id : null;
+    },
+    load(id) {
+      if (!id.startsWith(PREFIX)) return null;
+      // Same shape lapseDev.ts imports, so the module still type-checks and the
+      // (never-rendered) production script is inert rather than throwing.
+      return 'export const getSharedEngine = () => ({ registerGSAP() {} });\n'
+        + 'export const mountLapse = () => {};\n';
+    },
+  };
+}
+
 export default defineConfig({
   devToolbar: { enabled: false },
   integrations: [mediaCollectorIntegration()],
@@ -2213,6 +2245,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
+      stubLapseInBuild(),
       contentHmrGate(),
       mediaDevServer(),
       uploadDevWriter(),
