@@ -3,9 +3,8 @@ import { IMAGE_VIEWPORTS } from './responsiveImage';
 
 /** Caption styles (Dev Mode tuner + project images). */
 export const IMAGE_CAPTION_STYLES = [
-  { id: 'white', label: 'White' },
-  { id: 'black', label: 'Black' },
-  { id: 'below', label: 'Below image' },
+  { id: 'white', label: 'On image' },
+  { id: 'below', label: 'Below' },
 ] as const;
 
 export type ImageCaptionStyleId = (typeof IMAGE_CAPTION_STYLES)[number]['id'];
@@ -15,17 +14,25 @@ export function isBelowImageCaptionStyle(style: ImageCaptionStyleId): boolean {
   return style === 'below';
 }
 
-/** Overlay caption corner (Dev Mode tuner + project images). */
-export const IMAGE_CAPTION_POSITIONS = [
+export const IMAGE_CAPTION_OVERLAY_POSITIONS = [
   { id: 'bottom-left', label: 'Bottom left' },
   { id: 'top-left', label: 'Top left' },
   { id: 'bottom-right', label: 'Bottom right' },
   { id: 'top-right', label: 'Top right' },
 ] as const;
 
-export type ImageCaptionPositionId = (typeof IMAGE_CAPTION_POSITIONS)[number]['id'];
+export const IMAGE_CAPTION_BELOW_ALIGNS = [
+  { id: 'left', label: 'Left' },
+  { id: 'center', label: 'Center' },
+  { id: 'right', label: 'Right' },
+] as const;
 
-export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionPositionId = 'bottom-left';
+export type ImageCaptionOverlayPositionId = (typeof IMAGE_CAPTION_OVERLAY_POSITIONS)[number]['id'];
+export type ImageCaptionBelowAlignId = (typeof IMAGE_CAPTION_BELOW_ALIGNS)[number]['id'];
+export type ImageCaptionPositionId = ImageCaptionOverlayPositionId | ImageCaptionBelowAlignId;
+
+export const DEFAULT_IMAGE_CAPTION_POSITION: ImageCaptionOverlayPositionId = 'bottom-left';
+export const DEFAULT_IMAGE_CAPTION_BELOW_ALIGN: ImageCaptionBelowAlignId = 'left';
 
 /** How the caption appears at a breakpoint. */
 export const IMAGE_CAPTION_REVEALS = [
@@ -70,24 +77,62 @@ export function isImageCaptionStyleId(value: unknown): value is ImageCaptionStyl
   return IMAGE_CAPTION_STYLES.some((style) => style.id === value);
 }
 
-/** Resolve style id; legacy `default` maps to `white`. */
+/** Resolve style id; legacy `default` / `black` map to overlay (`white`). */
 export function resolveImageCaptionStyle(value: unknown): ImageCaptionStyleId {
-  if (value === 'default') return 'white';
+  if (value === 'below') return 'below';
+  if (value === 'default' || value === 'black') return 'white';
   return isImageCaptionStyleId(value) ? value : 'white';
 }
 
 export function isImageCaptionPositionId(value: unknown): value is ImageCaptionPositionId {
-  return IMAGE_CAPTION_POSITIONS.some((position) => position.id === value);
+  return (
+    IMAGE_CAPTION_OVERLAY_POSITIONS.some((position) => position.id === value)
+    || IMAGE_CAPTION_BELOW_ALIGNS.some((align) => align.id === value)
+  );
 }
 
-/** Resolve corner id; missing / unknown → bottom-left. */
-export function resolveImageCaptionPosition(value: unknown): ImageCaptionPositionId {
-  return isImageCaptionPositionId(value) ? value : DEFAULT_IMAGE_CAPTION_POSITION;
+/** Resolve position vocabulary for overlay corners or below align, depending on style. */
+export function resolveImageCaptionPosition(
+  value: unknown,
+  style?: ImageCaptionStyleId,
+): ImageCaptionPositionId {
+  const resolvedStyle = style ?? 'white';
+  if (resolvedStyle === 'below') {
+    switch (value) {
+      case 'left':
+      case 'center':
+      case 'right':
+        return value;
+      case 'bottom-left':
+      case 'top-left':
+        return 'left';
+      case 'bottom-right':
+      case 'top-right':
+        return 'right';
+      default:
+        return DEFAULT_IMAGE_CAPTION_BELOW_ALIGN;
+    }
+  }
+  switch (value) {
+    case 'bottom-left':
+    case 'top-left':
+    case 'bottom-right':
+    case 'top-right':
+      return value;
+    case 'left':
+      return 'bottom-left';
+    case 'right':
+      return 'bottom-right';
+    case 'center':
+      return 'bottom-left';
+    default:
+      return DEFAULT_IMAGE_CAPTION_POSITION;
+  }
 }
 
-/** White uses base `.project-caption`; other styles add a modifier class. */
+/** On-image overlay uses base `.project-caption`; below adds a modifier class. */
 export function imageCaptionStyleClass(style: ImageCaptionStyleId): string {
-  return style === 'white' ? '' : `project-caption--${style}`;
+  return style === 'below' ? 'project-caption--below' : '';
 }
 
 export function isImageCaptionReveal(value: unknown): value is ImageCaptionReveal {

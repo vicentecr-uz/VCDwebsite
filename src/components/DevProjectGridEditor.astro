@@ -153,9 +153,6 @@ const statusIcons = {
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
   const caches = new Map();
 
-  const titleColor = (dark) => (dark ? '#f7f7f7' : '#6d6d6d');
-  const subtitleColor = (dark) => (dark ? 'rgba(247,247,247,0.5)' : 'rgba(109,109,109,0.5)');
-
   const slugify = (value) => value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -419,8 +416,14 @@ const statusIcons = {
     item.dataset.devStatus = snapshot.status;
     item.dataset.devBg = listing.bg;
     item.dataset.devDark = listing.dark ? 'true' : 'false';
-    if (listing.hoverImage) item.dataset.devHoverImage = listing.hoverImage;
-    else delete item.dataset.devHoverImage;
+    const hoverDark = typeof listing.hoverDark === 'boolean' ? listing.hoverDark : listing.dark;
+    if (listing.hoverImage) {
+      item.dataset.devHoverImage = listing.hoverImage;
+      item.dataset.devHoverDark = hoverDark ? 'true' : 'false';
+    } else {
+      delete item.dataset.devHoverImage;
+      delete item.dataset.devHoverDark;
+    }
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
@@ -455,18 +458,6 @@ const statusIcons = {
     if (subtitleNode instanceof HTMLElement && document.activeElement !== subtitleNode) {
       const next = String(listing.subtitle ?? snapshot.subtitle ?? '');
       if (subtitleNode.textContent !== next) subtitleNode.textContent = next;
-    }
-    const meta = item.querySelector('.project-grid__meta');
-    if (meta instanceof HTMLElement) {
-      // Custom properties, not inline `color` — the hover swap is a `:hover`
-      // rule in ProjectGrid.astro's CSS, which inline `style="color"` can't
-      // respond to. `hoverDark` falls back to the base `dark` value, same as
-      // the server-rendered markup.
-      const hoverDark = typeof listing.hoverDark === 'boolean' ? listing.hoverDark : listing.dark;
-      meta.style.setProperty('--title-ink', titleColor(listing.dark));
-      meta.style.setProperty('--subtitle-ink', subtitleColor(listing.dark));
-      meta.style.setProperty('--title-ink-hover', titleColor(hoverDark));
-      meta.style.setProperty('--subtitle-ink-hover', subtitleColor(hoverDark));
     }
     if (teaserLabelNode instanceof HTMLElement && document.activeElement !== teaserLabelNode) {
       const next = snapshot.teaserLabel || 'Coming soon';

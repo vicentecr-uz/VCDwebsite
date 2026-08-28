@@ -1212,7 +1212,7 @@ h3.project-section-title {
   isolation: isolate;
 }
 
-.project-caption[data-caption-position='top-left'] {
+.project-caption:not(.project-caption--below)[data-caption-position='top-left'] {
   top: 0;
   left: 0;
   bottom: auto;
@@ -1221,7 +1221,7 @@ h3.project-section-title {
   text-align: left;
 }
 
-.project-caption[data-caption-position='top-right'] {
+.project-caption:not(.project-caption--below)[data-caption-position='top-right'] {
   top: 0;
   right: 0;
   bottom: auto;
@@ -1230,7 +1230,7 @@ h3.project-section-title {
   text-align: right;
 }
 
-.project-caption[data-caption-position='bottom-right'] {
+.project-caption:not(.project-caption--below)[data-caption-position='bottom-right'] {
   bottom: 0;
   right: 0;
   top: auto;
@@ -1277,6 +1277,20 @@ h3.project-section-title {
   display: none;
 }
 
+.project-caption:not(.project-caption--below)[data-media-ground='light'] {
+  color: var(--sys-color-on-light-media);
+  text-shadow: none;
+}
+
+.project-caption:not(.project-caption--below)[data-media-ground='dark'] {
+  color: var(--sys-color-on-dark-media);
+  text-shadow: 0 1px 20px rgba(0, 0, 0, 0.31);
+}
+
+.project-caption:not(.project-caption--below)[data-media-ground='light'] .project-caption-shadow {
+  display: none;
+}
+
 /*
   Below image: in-flow body text under the media. Always visible; no overlay
   corner / hover reveal. Uses --sys-color-on-srf for dark-mode readiness.
@@ -1304,6 +1318,14 @@ h3.project-section-title {
   pointer-events: none;
   isolation: auto;
   overflow-wrap: break-word;
+}
+
+.project-caption--below[data-caption-position='center'] {
+  text-align: center;
+}
+
+.project-caption--below[data-caption-position='right'] {
+  text-align: right;
 }
 
 .project-caption--below .project-caption-shadow {
@@ -1439,9 +1461,14 @@ h3.project-section-title {
   cursor: text;
 }
 
-.is-dev-mode .project-image-grid__caption[data-caption-editing='true'] {
-  outline: 1px solid color-mix(in srgb, #ffffff 55%, transparent);
-  outline-offset: 0.15em;
+.is-dev-mode .project-caption [data-caption-bp][contenteditable] {
+  caret-color: currentColor;
+  outline: none;
+}
+
+.is-dev-mode .project-caption [data-caption-bp][contenteditable]:focus,
+.is-dev-mode .project-caption [data-caption-bp][contenteditable]:focus-visible {
+  outline: none;
 }
 
 /* ── Detail shots in grids ───────────────────────────────────── */

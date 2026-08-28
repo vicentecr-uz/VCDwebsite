@@ -40,9 +40,13 @@ const PUBLISH_BRANCH = 'main';
 const RENDERING_PATHS = [
   'src/components/project/',
   'src/components/ProjectGrid.astro',
+  'src/components/GalleryMediaInk.astro',
   'src/lib/project',
   'src/pages/[slug].astro',
   'src/styles/project.css',
+  'src/scripts/adaptiveMediaInk.ts',
+  'src/scripts/bindGalleryMediaInk.ts',
+  'src/scripts/bindCaptionMediaInk.ts',
   // The dev writers live here: they decide the shape of what gets written to
   // content JSON, so a change to them can produce JSON main cannot read.
   'astro.config.mjs',
