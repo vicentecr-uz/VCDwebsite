@@ -535,6 +535,139 @@ const visibilityOptions = [
     });
   };
 
+  const rewriteTemplateSlug = (root, slug) => {
+    const nodes = [root, ...root.querySelectorAll('*')];
+    nodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      for (const attr of [...node.attributes]) {
+        if (attr.value.includes('__template__')) {
+          node.setAttribute(attr.name, attr.value.replace(/__template__/g, slug));
+        }
+      }
+    });
+  };
+
+  const insertCreatedProjectCard = ({ slug, title, status, grid }) => {
+    const gridEl = document.querySelector(`[data-dev-project-grid="${grid}"]`);
+    const template = gridEl?.querySelector('[data-dev-grid-card-template]');
+    const seed = template?.content?.firstElementChild;
+    if (!(gridEl instanceof HTMLElement) || !(seed instanceof HTMLElement)) {
+      console.warn('[DevProjectGridEditor] Missing grid or card template — cannot insert created project.');
+      return;
+    }
+
+    const existing = gridEl.querySelector(`[data-dev-project-slug="${slug}"]`);
+    if (existing instanceof HTMLElement) {
+      existing.scrollIntoView({ block: 'center', inline: 'nearest' });
+      return;
+    }
+
+    const item = seed.cloneNode(true);
+    if (!(item instanceof HTMLElement)) return;
+
+    item.dataset.devProjectSlug = slug;
+    item.dataset.devStatus = status;
+
+    const statusBtn = item.querySelector('[data-dev-project-status]');
+    if (statusBtn instanceof HTMLElement) statusBtn.dataset.devProjectStatus = slug;
+
+    const hoverBtn = item.querySelector('[data-dev-project-hover]');
+    if (hoverBtn instanceof HTMLElement) {
+      hoverBtn.dataset.devProjectHover = slug;
+      hoverBtn.dataset.devHoverChipFor = title;
+    }
+
+    const spanBtn = item.querySelector('[data-dev-project-span]');
+    if (spanBtn instanceof HTMLElement) {
+      spanBtn.dataset.devProjectSpan = slug;
+      spanBtn.setAttribute('aria-label', `Span columns for ${title}`);
+    }
+
+    const settingsBtn = item.querySelector('[data-dev-project-settings]');
+    if (settingsBtn instanceof HTMLElement) {
+      settingsBtn.dataset.devProjectSettings = slug;
+      settingsBtn.setAttribute('aria-label', `Card settings for ${title}`);
+    }
+
+    item.querySelectorAll('[data-dev-edit-trigger="image"]').forEach((cropBtn) => {
+      if (cropBtn instanceof HTMLElement) {
+        cropBtn.setAttribute('aria-label', `Crop cover for ${title}`);
+        cropBtn.title = 'Crop cover';
+      }
+    });
+
+    let card = item.querySelector('.project-grid__card');
+    if (status === 'image') {
+      if (card instanceof HTMLAnchorElement) {
+        const div = document.createElement('div');
+        div.className = card.className;
+        div.setAttribute('aria-disabled', 'true');
+        while (card.firstChild) div.appendChild(card.firstChild);
+        card.replaceWith(div);
+        card = div;
+      }
+      item.querySelector('.project-grid__chips--end-bottom')?.remove();
+    } else if (card instanceof HTMLAnchorElement) {
+      card.href = `/${slug}`;
+      if (status === 'teaser') {
+        card.classList.add('project-grid__card--teaser');
+        card.dataset.devTeaserSlug = slug;
+        card.dataset.devTeaserHref = `/${slug}`;
+      } else {
+        card.classList.remove('project-grid__card--teaser');
+        delete card.dataset.devTeaserSlug;
+        delete card.dataset.devTeaserHref;
+      }
+    }
+
+    const cover = item.querySelector('.project-grid__cover');
+    if (cover instanceof HTMLElement) {
+      cover.dataset.devCoverDrop = slug;
+      cover.dataset.devListingCover = grid;
+      cover.dataset.devCoverEmpty = 'true';
+    }
+
+    rewriteTemplateSlug(item, slug);
+
+    const titleEl = item.querySelector('[data-dev-project-title]');
+    if (titleEl) titleEl.textContent = title;
+
+    const subtitleEl = item.querySelector('[data-dev-project-subtitle]');
+    if (subtitleEl instanceof HTMLElement) {
+      subtitleEl.textContent = grid === 'play'
+        ? ''
+        : `'${new Date().getFullYear().toString().slice(-2)}`;
+    }
+
+    if (status === 'teaser') {
+      let teaserLabel = item.querySelector('[data-dev-project-teaser-label]');
+      if (!teaserLabel) {
+        const row = item.querySelector('.flex.items-baseline');
+        if (row) {
+          teaserLabel = document.createElement('span');
+          teaserLabel.className = 'project-grid__teaser-label font-bold';
+          teaserLabel.dataset.devProjectTeaserLabel = '';
+          teaserLabel.dataset.placeholder = 'Teaser label';
+          teaserLabel.textContent = 'Coming soon';
+          row.append(teaserLabel);
+        }
+      }
+    } else {
+      item.querySelector('[data-dev-project-teaser-label]')?.remove();
+    }
+
+    const baseImg = item.querySelector('.project-grid__img--base');
+    if (baseImg instanceof HTMLImageElement) baseImg.alt = title;
+
+    const newPageItem = gridEl.querySelector('.project-grid__item--new');
+    if (newPageItem) gridEl.insertBefore(item, newPageItem);
+    else gridEl.appendChild(item);
+
+    syncStatusChip(item, status);
+    enableCardEditing(item);
+    item.scrollIntoView({ block: 'center', inline: 'nearest' });
+  };
+
   window.__vcdSyncStatusChip = syncStatusChip;
   window.__vcdEnableCardEditing = enableCardEditing;
 
@@ -1498,6 +1631,17 @@ const visibilityOptions = [
       if (baseImg instanceof HTMLImageElement) baseImg.src = src;
     }
   }) as EventListener);
+
+  window.addEventListener('vcd:dev-project-created', (event) => {
+    const { slug, title, status, grid } = event.detail || {};
+    if (!slug || !grid) return;
+    insertCreatedProjectCard({
+      slug,
+      title: title || slug,
+      status: status || 'draft',
+      grid,
+    });
+  });
 
   window.addEventListener('vcd:dev-mode-change', (event) => {
     if (event.detail?.active) {
