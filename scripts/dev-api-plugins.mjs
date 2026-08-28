@@ -19,7 +19,7 @@ async function writeProjectJson(file, data) {
   await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
 }
 
-const VALID_STATUSES = new Set(['published', 'draft', 'teaser']);
+const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'image']);
 const LISTING_GRIDS = ['home', 'work', 'play'];
 
 function validateStatus(status, fallback = 'draft') {
@@ -359,7 +359,15 @@ export async function buildImageCarouselSectionFromSrcs(srcs) {
   };
 }
 
-export function emptyModernProject(slug, title, grid) {
+function slugifyTitle(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48);
+}
+
+export function emptyModernProject(slug, title, grid, status = 'draft') {
   const year = `'${new Date().getFullYear().toString().slice(-2)}`;
   const listing = grid === 'play'
     ? {
@@ -382,7 +390,7 @@ export function emptyModernProject(slug, title, grid) {
     slug,
     title,
     description: '',
-    status: 'draft',
+    status: validateStatus(status, 'draft'),
     stack: 'modern',
     listings: {
       [grid]: listing,
@@ -595,10 +603,12 @@ export function projectCreateDevWriter() {
           const chunks = [];
           for await (const chunk of req) chunks.push(chunk);
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-          const slug = String(body.slug || '').trim();
           const title = String(body.title || '').trim();
           const grid = ['home', 'work', 'play'].includes(body.grid) ? body.grid : 'work';
-          if (!/^[a-z0-9-]+$/.test(slug) || !title) {
+          const status = validateStatus(body.status, 'draft');
+          let slug = String(body.slug || '').trim();
+          if (status === 'image' && !slug) slug = slugifyTitle(title);
+          if (!title || !/^[a-z0-9-]+$/.test(slug)) {
             send(400, { error: 'Enter a valid title and slug.' });
             return;
           }
@@ -618,9 +628,9 @@ export function projectCreateDevWriter() {
           } catch {
             // available
           }
-          const project = emptyModernProject(slug, title, grid);
+          const project = emptyModernProject(slug, title, grid, status);
           await writeProjectJson(file, project);
-          send(200, { ok: true, slug });
+          send(200, { ok: true, slug, status, grid });
         } catch {
           send(400, { error: 'Could not create the project.' });
         }

@@ -7,12 +7,21 @@ interface Props {
   value?: string;
   placeholder?: string;
   disabled?: boolean;
+  hideLabel?: boolean;
   [key: string]: any;
 }
 
-const { label, value, placeholder, disabled = false, class: className, ...rest } = Astro.props;
+const { label, value, placeholder, disabled = false, hideLabel = false, class: className, ...rest } = Astro.props;
 ---
 
-<Field label={label} class={className}>
-  <input type="text" value={value} placeholder={placeholder} disabled={disabled} class="dev-field__input" {...rest} />
+<Field label={label} class={[className, hideLabel ? 'dev-field--no-label' : null]}>
+  <input
+    type="text"
+    value={value}
+    placeholder={placeholder}
+    disabled={disabled}
+    class="dev-field__input"
+    aria-label={hideLabel ? label : undefined}
+    {...rest}
+  />
 </Field>

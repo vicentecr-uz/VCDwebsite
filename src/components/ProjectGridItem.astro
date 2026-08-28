@@ -5,6 +5,7 @@ import ellipsisVerticalIcon from 'lucide-static/icons/ellipsis-vertical.svg?raw'
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import imageIcon from 'lucide-static/icons/image.svg?raw';
 import imagesIcon from 'lucide-static/icons/images.svg?raw';
 import type { ProjectStatus } from '../lib/projects';
 import { projectImage, projectImageTier } from '../lib/images';
@@ -40,12 +41,14 @@ const statusIcons = {
   published: sizeIcon(globeIcon, 14),
   draft: sizeIcon(filePenIcon, 14),
   teaser: sizeIcon(eyeOffIcon, 14),
+  image: sizeIcon(imageIcon, 14),
 } as const;
 
 const isPlayPlaceholder = variant === 'play' && !item.href && !item.teaser;
-const isTeaser = Boolean(item.teaser);
-const isStatic = isPlayPlaceholder || (isTeaser && !isDev);
 const status = (item.status ?? 'published') as ProjectStatus;
+const isTeaser = Boolean(item.teaser);
+const isImage = status === 'image';
+const isStatic = isPlayPlaceholder || isImage || (isTeaser && !isDev);
 const statusIconSvg = statusIcons[status as keyof typeof statusIcons] ?? statusIcons.published;
 const defaultAspects = listingCoverDefaultAspects(variant, Boolean(item.full));
 const srcDims = imageSourceDims(item);
@@ -323,6 +326,9 @@ const showHoverImg = item.hoverImage || projectEditable;
           <button type="button" role="option" data-dev-status-option="published" aria-selected={status === 'published'}>
             Public
           </button>
+          <button type="button" role="option" data-dev-status-option="image" aria-selected={status === 'image'}>
+            Image
+          </button>
           <button type="button" role="option" data-dev-status-option="teaser" aria-selected={status === 'teaser'}>
             Teaser
           </button>
@@ -367,7 +373,7 @@ const showHoverImg = item.hoverImage || projectEditable;
       </button>
     </div>
   )}
-  {projectEditable && (
+  {projectEditable && !isImage && (
     <div class="project-grid__chips project-grid__chips--end-bottom" data-dev-mode-only>
       <button
         type="button"

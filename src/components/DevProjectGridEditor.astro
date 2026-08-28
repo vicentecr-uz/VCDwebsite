@@ -7,6 +7,7 @@ import SelectField from './ui/SelectField.astro';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import imageIcon from 'lucide-static/icons/image.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
 import { PLACEHOLDER_COVER } from '../lib/placeholderCover.mjs';
@@ -16,6 +17,7 @@ const statusIcons = {
   published: sizeIcon(globeIcon, 14),
   draft: sizeIcon(filePenIcon, 14),
   teaser: sizeIcon(eyeOffIcon, 14),
+  image: sizeIcon(imageIcon, 14),
 };
 const visibilityOptions = [
   { value: 'published', label: 'Public', icon: globeIcon },
@@ -23,24 +25,6 @@ const visibilityOptions = [
   { value: 'draft', label: 'Draft', icon: filePenIcon },
 ];
 ---
-
-<dialog class="dev-project-dialog" data-dev-project-create-dialog>
-  <form method="dialog" class="dev-project-dialog__panel" data-dev-project-create-form>
-    <h2>New project page</h2>
-    <label>
-      Title
-      <input type="text" name="title" required placeholder="Project title" />
-    </label>
-    <label>
-      Slug
-      <input type="text" name="slug" required placeholder="project-slug" pattern="[a-z0-9-]+" />
-    </label>
-    <div class="dev-project-dialog__actions">
-      <button type="button" value="cancel">Cancel</button>
-      <button type="submit" value="create">Create</button>
-    </div>
-  </form>
-</dialog>
 
 <DevOverlay
   storageKey="project-settings"
@@ -171,8 +155,6 @@ const visibilityOptions = [
 </script>
 
 <script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER }}>
-  const createDialog = document.querySelector('[data-dev-project-create-dialog]');
-  const createForm = document.querySelector('[data-dev-project-create-form]');
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
@@ -189,12 +171,6 @@ const visibilityOptions = [
   let panelSlug = '';
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
   const caches = new Map();
-
-  const slugify = (value) => value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
 
   const normalizeHex = (raw) => {
     const value = String(raw || '').trim().startsWith('#') ? String(raw).trim() : `#${String(raw || '').trim()}`;
@@ -1279,7 +1255,9 @@ const visibilityOptions = [
       event.stopPropagation();
       const gridRoot = newButton.closest('[data-dev-project-grid]');
       createActiveGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
-      openCreateDialog();
+      window.dispatchEvent(new CustomEvent('vcd:dev-new-project-open', {
+        detail: { grid: createActiveGrid },
+      }));
       return;
     }
 
@@ -1452,50 +1430,6 @@ const visibilityOptions = [
     panelSlug = '';
   });
 
-  const openCreateDialog = () => {
-    if (!(createDialog instanceof HTMLDialogElement) || !(createForm instanceof HTMLFormElement)) return;
-    createForm.reset();
-    createDialog.showModal();
-    const titleInput = createForm.querySelector('input[name="title"]');
-    const slugInput = createForm.querySelector('input[name="slug"]');
-    if (titleInput instanceof HTMLInputElement) {
-      titleInput.focus();
-      titleInput.addEventListener('input', () => {
-        if (slugInput instanceof HTMLInputElement && !slugInput.dataset.touched) {
-          slugInput.value = slugify(titleInput.value);
-        }
-      }, { once: true });
-    }
-    if (slugInput instanceof HTMLInputElement) {
-      slugInput.addEventListener('input', () => {
-        slugInput.dataset.touched = 'true';
-      }, { once: true });
-    }
-  };
-
-  createForm?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!(createForm instanceof HTMLFormElement)) return;
-    const formData = new FormData(createForm);
-    const title = String(formData.get('title') || '').trim();
-    const slug = String(formData.get('slug') || '').trim();
-    const response = await fetch('/api/project-create', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, slug, grid: createActiveGrid }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      window.alert(payload.error || 'Could not create the project.');
-      return;
-    }
-    navigateAway(`/${slug}`);
-  });
-
-  createForm?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
-    if (createDialog instanceof HTMLDialogElement) createDialog.close();
-  });
-
   deleteButton?.addEventListener('click', async () => {
     if (!panelSlug) return;
     if (!window.confirm(`Delete "${panelSlug}" and its draft media? This cannot be undone.`)) return;
@@ -1550,69 +1484,6 @@ const visibilityOptions = [
 </script>
 
 <style is:global>
-  .dev-project-dialog {
-    border: 0;
-    padding: 0;
-    margin: auto;
-    background: transparent;
-  }
-
-  .dev-project-dialog:not([open]) {
-    display: none !important;
-  }
-
-  .dev-project-dialog::backdrop {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(8px);
-  }
-
-  .dev-project-dialog__panel {
-    display: grid;
-    gap: 0.85em;
-    width: min(28em, calc(100vw - 2em));
-    padding: 1.25em;
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
-    background: #fff;
-    color: #111;
-  }
-
-  .dev-project-dialog__panel h2 {
-    margin: 0;
-    font-size: 1.1rem;
-  }
-
-  .dev-project-dialog__panel label {
-    display: grid;
-    gap: 0.35em;
-    font-size: 0.92rem;
-  }
-
-  .dev-project-dialog__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em;
-    justify-content: flex-end;
-  }
-
-  .dev-project-dialog__actions button {
-    padding: 0.35em 0.65em;
-    border: 1px solid #ccc;
-    border-radius: 0.35em;
-    background: #f7f7f7;
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-
-  .dev-project-dialog__panel input[type='text'] {
-    width: 100%;
-    padding: 0.55em 0.65em;
-    border: 1px solid #ccc;
-    border-radius: 0.35em;
-    font: inherit;
-  }
-
   .dev-project-settings {
     position: relative;
     display: grid;
