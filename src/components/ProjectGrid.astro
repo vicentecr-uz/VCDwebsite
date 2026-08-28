@@ -271,6 +271,19 @@ const gridCardTemplateSeed: ProjectGridItem = {
     opacity: 1;
   }
 
+  /*
+    Empty cover (black-token placeholder): listing `bg` is the card. Hide the
+    token in View too — Edit already washes it; View was a nameless black tile
+    after Back from a new Public page (T8.3). Title stays up so the slot reads.
+  */
+  .project-grid__cover[data-dev-cover-empty='true'] .project-grid__img--base {
+    opacity: 0;
+  }
+
+  .project-grid__cover[data-dev-cover-empty='true'] .project-grid__meta {
+    opacity: 1;
+  }
+
   .project-grid__card--placeholder,
   .project-grid__card--teaser {
     cursor: not-allowed;
@@ -777,9 +790,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /*
     #176 — placeholder cover reads as an empty slot, not a broken image.
-    data-dev-cover-empty is only emitted for editable items (isDev), but the
-    guard is kept anyway so a draft project can never show a drop affordance
-    to a visitor. Same :not() yield as the hover-empty rule above.
+    Drop veils stay Edit-only. The token hide + title-at-rest live on
+    [data-dev-cover-empty] without is-dev-mode so View/Back still show a card.
+    Same :not() yield as the hover-empty rule above.
     Also yield while hover is forced — that mode is about the hover slot, so
     "Drop cover image" must not stay stacked under "Drop hover image".
   */
