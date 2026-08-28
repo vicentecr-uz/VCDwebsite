@@ -109,11 +109,13 @@ import Button from './ui/Button.astro';
       panel.hidden = true;
     };
 
-    const openPanel = (grid: string) => {
+    const openPanel = (grid: string, clientX?: number, clientY?: number) => {
       activeGrid = grid;
       resetForm();
       panel.hidden = false;
-      const { x, y } = getLastPointerPosition();
+      const fallback = getLastPointerPosition();
+      const x = typeof clientX === 'number' ? clientX : fallback.x;
+      const y = typeof clientY === 'number' ? clientY : fallback.y;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
         detail: { panel, clientX: x, clientY: y },
       }));
@@ -179,9 +181,14 @@ import Button from './ui/Button.astro';
       }
     });
 
-    window.addEventListener('vcd:dev-new-project-open', ((event: CustomEvent<{ grid?: string }>) => {
+    window.addEventListener('vcd:dev-new-project-open', ((event: CustomEvent<{
+      grid?: string;
+      clientX?: number;
+      clientY?: number;
+    }>) => {
       const grid = event.detail?.grid ?? 'work';
-      openPanel(grid);
+      const { clientX, clientY } = event.detail ?? {};
+      openPanel(grid, clientX, clientY);
     }) as EventListener);
 
     window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {

@@ -11,10 +11,12 @@ let bound = false;
 function bind(): void {
   if (bound || typeof document === 'undefined') return;
   bound = true;
-  document.addEventListener('pointermove', (event) => {
+  const record = (event: PointerEvent) => {
     lastX = event.clientX;
     lastY = event.clientY;
-  });
+  };
+  document.addEventListener('pointermove', record);
+  document.addEventListener('pointerdown', record);
 }
 
 bind();
