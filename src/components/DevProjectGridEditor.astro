@@ -1,6 +1,7 @@
 ---
 /** Singleton dev dialogs + handlers for Home / Work / Play project grids. */
 import DevOverlay from './DevOverlay.astro';
+import SelectField from './ui/SelectField.astro';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
@@ -14,6 +15,11 @@ const statusIcons = {
   draft: sizeIcon(filePenIcon, 14),
   teaser: sizeIcon(eyeOffIcon, 14),
 };
+const visibilityOptions = [
+  { value: 'published', label: 'Public', icon: globeIcon },
+  { value: 'teaser', label: 'Teaser', icon: eyeOffIcon },
+  { value: 'draft', label: 'Draft', icon: filePenIcon },
+];
 ---
 
 <dialog class="dev-project-dialog" data-dev-project-create-dialog>
@@ -42,22 +48,49 @@ const statusIcons = {
   <div class="dev-project-settings" data-dev-project-settings-root>
     <p class="dev-project-settings__hint" hidden></p>
 
+    <SelectField
+      class="dev-project-settings__field"
+      label="Visibility"
+      id="ps-status-trigger"
+      data-ps-status
+      options={visibilityOptions}
+      value="published"
+    />
+
     <div class="dev-project-settings__listing" data-ps-listing-fields>
-      <label class="dev-project-settings__field">
-        <span>Card background</span>
-        <input type="text" data-ps-bg />
-      </label>
-
-      <label class="dev-project-settings__inline">
-        <input type="checkbox" data-ps-dark />
-        <span>Light text on card</span>
-      </label>
-
-      <label class="dev-project-settings__inline">
-        <input type="checkbox" data-ps-hover-dark />
-        <span>Light text on hover</span>
-      </label>
+      <div class="dev-project-settings__hex-row">
+        <label class="dev-project-settings__field dev-field">
+          <span class="dev-field__label">Card background</span>
+          <div class="dev-field__value">
+            <input
+              type="text"
+              class="dev-project-settings__hex-input dev-field__input"
+              inputmode="text"
+              maxlength="7"
+              autocomplete="off"
+              spellcheck="false"
+              data-ps-bg
+            />
+          </div>
+        </label>
+        <button
+          type="button"
+          class="dev-project-settings__swatch"
+          aria-label="Open colour picker"
+          data-ps-bg-swatch
+        ></button>
+      </div>
     </div>
+
+    <color-picker
+      data-ps-bg-picker
+      label-title="Colour"
+      label-hue="Hue"
+      label-saturation="Saturation"
+      label-lightness="Lightness"
+      label-opacity="Opacity"
+      label-ok="Done"
+    ></color-picker>
 
     <div class="dev-project-settings__danger-actions">
       <button type="button" data-ps-delete>Delete project</button>
@@ -84,6 +117,7 @@ const statusIcons = {
     measureRegionLuma,
   } from '../scripts/coverLuminance';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
+  import 'color-dialog-box';
 
   window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
 
@@ -141,8 +175,9 @@ const statusIcons = {
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
   const bgInput = settingsRoot?.querySelector('[data-ps-bg]');
-  const darkInput = settingsRoot?.querySelector('[data-ps-dark]');
-  const hoverDarkInput = settingsRoot?.querySelector('[data-ps-hover-dark]');
+  const bgSwatch = settingsRoot?.querySelector('[data-ps-bg-swatch]');
+  const bgPicker = settingsRoot?.querySelector('[data-ps-bg-picker]');
+  const statusSelect = settingsRoot?.querySelector('select[data-ps-status]');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
@@ -158,6 +193,39 @@ const statusIcons = {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 48);
+
+  const normalizeHex = (raw) => {
+    const value = String(raw || '').trim().startsWith('#') ? String(raw).trim() : `#${String(raw || '').trim()}`;
+    const short = /^#([0-9a-f]{3})$/i.exec(value);
+    if (short) {
+      return `#${[...short[1]].map((digit) => digit.repeat(2)).join('')}`.toLowerCase();
+    }
+    const long = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value);
+    return long ? `#${long[1].toLowerCase()}` : null;
+  };
+
+  const toPickerHex = (hex) => `${hex}ff`;
+
+  const syncBgField = (value) => {
+    if (!(bgInput instanceof HTMLInputElement)) return;
+    bgInput.value = value;
+    if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
+  };
+
+  const previewCardBg = (value) => {
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    entry.draft.listing.bg = value;
+    syncPendingFor(panelSlug);
+  };
+
+  const openBgPicker = (hex) => {
+    if (!(bgPicker instanceof HTMLElement)) return;
+    bgPicker.setAttribute('hex', toPickerHex(hex));
+    if (bgPicker.getAttribute('open') === 'true') bgPicker.removeAttribute('open');
+    bgPicker.setAttribute('open', 'true');
+  };
 
   const pendingId = (slug, grid) => `project-settings:${slug}:${grid}`;
 
@@ -427,6 +495,7 @@ const statusIcons = {
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
+      cover.style.backgroundColor = listing.bg || '#efefef';
       cover.classList.toggle('project-grid__cover--has-hover', Boolean(listing.hoverImage));
       // #176 — the empty state is server-rendered, so it has to be re-derived
       // here or the "Drop cover image" label and its wash sit on top of the
@@ -572,17 +641,16 @@ const statusIcons = {
   };
 
   const renderPanelFromEntry = (entry) => {
-    if (bgInput instanceof HTMLInputElement) bgInput.value = entry.draft.listing.bg;
-    if (darkInput instanceof HTMLInputElement) darkInput.checked = entry.draft.listing.dark;
-    if (hoverDarkInput instanceof HTMLInputElement) {
-      hoverDarkInput.checked = entry.draft.listing.hoverDark ?? entry.draft.listing.dark;
+    if (statusSelect instanceof HTMLSelectElement) {
+      statusSelect.value = entry.draft.status;
     }
+    syncBgField(entry.draft.listing.bg || '#efefef');
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
       overlayTitle.textContent = window.__vcdResolveDevPanelTitle('project-settings', { suffix: gridLabel });
     }
     if (statusLine instanceof HTMLElement) {
-      statusLine.textContent = 'Card background and text colour. Title, visibility, cover, and span edit on the card.';
+      statusLine.textContent = 'Card background and visibility. Title, cover, and span edit on the card.';
     }
   };
 
@@ -1089,6 +1157,10 @@ const statusIcons = {
       entry.draft.status = status;
       closeAllStatusMenus();
       syncPendingFor(slug);
+      if (panelSlug === slug) {
+        const openEntry = caches.get(slug);
+        if (openEntry) renderPanelFromEntry(openEntry);
+      }
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not update visibility.');
     }
@@ -1329,34 +1401,53 @@ const statusIcons = {
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-ps-bg]')) return;
     if (!panelSlug) return;
-    const entry = caches.get(panelSlug);
-    if (!entry) return;
-    entry.draft.listing.bg = bgInput instanceof HTMLInputElement ? bgInput.value.trim() : '#efefef';
-    syncPendingFor(panelSlug);
+    const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '');
+    if (!value) return;
+    if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
+    previewCardBg(value);
   });
+
+  settingsRoot?.addEventListener('blur', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-ps-bg]')) return;
+    const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '');
+    if (!value) return;
+    syncBgField(value);
+    if (bgPicker instanceof HTMLElement) bgPicker.setAttribute('hex', toPickerHex(value));
+  }, true);
 
   settingsRoot?.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.matches('[data-ps-dark]')) {
+    if (target.matches('select[data-ps-status]')) {
       if (!panelSlug) return;
       const entry = caches.get(panelSlug);
       if (!entry) return;
-      entry.draft.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
-      syncPendingFor(panelSlug);
-      return;
-    }
-    if (target.matches('[data-ps-hover-dark]')) {
-      // Manual override wins from here on — the measurement was a starting
-      // point, not an authority.
-      if (!panelSlug) return;
-      const entry = caches.get(panelSlug);
-      if (!entry) return;
-      entry.draft.listing.hoverDark = hoverDarkInput instanceof HTMLInputElement
-        ? hoverDarkInput.checked
-        : entry.draft.listing.dark;
+      entry.draft.status = statusSelect instanceof HTMLSelectElement
+        ? statusSelect.value
+        : entry.draft.status;
       syncPendingFor(panelSlug);
     }
+  });
+
+  bgSwatch?.addEventListener('click', () => {
+    const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '')
+      || '#efefef';
+    openBgPicker(value);
+  });
+
+  bgPicker?.addEventListener('update-color', (event) => {
+    const value = normalizeHex(event.detail?.hex || '');
+    if (!value) return;
+    syncBgField(value);
+    previewCardBg(value);
+  });
+
+  window.addEventListener('vcd:dev-edit-close', (event) => {
+    const panel = event.detail?.panel;
+    if (panel?.dataset?.devPanelKey !== 'project-settings') return;
+    if (bgPicker instanceof HTMLElement) bgPicker.removeAttribute('open');
+    panelSlug = '';
   });
 
   const openCreateDialog = () => {
@@ -1417,12 +1508,6 @@ const statusIcons = {
       return;
     }
     navigateAway('/work');
-  });
-
-  window.addEventListener('vcd:dev-edit-close', (event) => {
-    const panel = event.detail?.panel;
-    if (panel?.dataset?.devPanelKey !== 'project-settings') return;
-    panelSlug = '';
   });
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
@@ -1529,7 +1614,7 @@ const statusIcons = {
   .dev-project-settings {
     position: relative;
     display: grid;
-    gap: 0.65em;
+    gap: var(--dev-panel-content-gap);
     font-size: 0.82rem;
   }
 
@@ -1551,20 +1636,29 @@ const statusIcons = {
     border: 0;
   }
 
-  .dev-project-settings__field {
-    display: grid;
-    gap: 0.3em;
-  }
-
-  .dev-project-settings__field span {
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.78rem;
-  }
-
-  .dev-project-settings__inline {
+  .dev-project-settings__hex-row {
     display: flex;
-    align-items: center;
-    gap: 0.45em;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .dev-project-settings__field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .dev-project-settings__hex-input {
+    font-family: ui-monospace, monospace;
+  }
+
+  .dev-project-settings__swatch {
+    width: 33px;
+    height: 33px;
+    border: 1px solid var(--sys-color-outline);
+    border-radius: var(--dev-radius-control);
+    padding: 0;
+    flex: 0 0 auto;
+    cursor: pointer;
   }
 
   .dev-project-settings__listing {
@@ -1593,13 +1687,20 @@ const statusIcons = {
     background: #fff0f0;
   }
 
-  .dev-project-settings input[type='text'],
-  .dev-project-settings select {
-    width: 100%;
-    padding: 0.45em 0.55em;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: 0.35em;
-    font: inherit;
-    background: color-mix(in srgb, var(--sys-color-srf) 92%, transparent);
+  color-picker[data-ps-bg-picker] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
+  }
+
+  color-picker {
+    --font: var(--font-sans);
+    --bg-primary: var(--sys-color-srf);
+    --bg-secondary: var(--sys-color-srf-container-low);
+    --bg-header: var(--sys-color-srf-container-high);
+    --border-color-primary: var(--sys-color-outline-variant);
+    --border-color-secondary: var(--sys-color-on-srf);
+    --txt-color-primary: var(--sys-color-on-srf);
   }
 </style>

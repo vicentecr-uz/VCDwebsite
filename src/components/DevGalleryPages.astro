@@ -483,7 +483,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       const normalizedHover = hasHoverCrop && hoverVariants
         ? normalizeImageVariants(hoverVariants, defaultAspects, null)
         : undefined;
-      const coverStyle = [normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : '', normalizedHover ? hoverCropStyle(normalizedHover) : ''].filter(Boolean).join(';') || undefined;
+      const coverStyle = [
+        normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : '',
+        normalizedHover ? hoverCropStyle(normalizedHover) : '',
+        page.bg ? `background-color:${page.bg}` : '',
+      ].filter(Boolean).join(';') || undefined;
       const hoverDark = typeof page.hoverDark === 'boolean' ? page.hoverDark : page.dark;
 
       item.dataset.devProjectSlug = page.slug;
