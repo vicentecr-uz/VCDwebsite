@@ -27,6 +27,14 @@ function validateStatus(status, fallback = 'draft') {
   return VALID_STATUSES.has(value) ? value : fallback;
 }
 
+/** Bust Astro's getStaticPaths RouteCache so a newly written slug is routable in `astro dev`. Static output ignores `prerender = false`; this is the real DEV hook. */
+function invalidateAstroRouteCache(server) {
+  for (const name of ['ssr', 'astro']) {
+    const env = server.environments?.[name];
+    if (env?.hot?.send) env.hot.send('astro:content-changed', {});
+  }
+}
+
 function listingCardForGrid(grid, listing, previous = {}) {
   // Normalize here rather than trust the client: the settings panel sends a
   // ready-to-use URL (for live preview), but storage wants the bare token.
@@ -630,6 +638,7 @@ export function projectCreateDevWriter() {
           }
           const project = emptyModernProject(slug, title, grid, status);
           await writeProjectJson(file, project);
+          invalidateAstroRouteCache(server);
           send(200, { ok: true, slug, status, grid });
         } catch {
           send(400, { error: 'Could not create the project.' });
@@ -733,6 +742,7 @@ export function projectSettingsDevWriter() {
             coverImage: normalizeAssetSrc(String(body.teaser?.coverImage || '')),
           };
           await writeProjectJson(file, data);
+          invalidateAstroRouteCache(server);
           send(200, { ok: true });
         } catch {
           send(400, { error: 'Could not save project settings.' });
@@ -1137,6 +1147,7 @@ export function projectDeleteDevWriter() {
           const { file } = await assertModernProject(slug);
           await rm(file, { force: true });
           // Draft media is site-wide; unreferenced files surface as Unassigned in the asset manager.
+          invalidateAstroRouteCache(server);
           send(200, { ok: true });
         } catch (error) {
           send(400, { error: error instanceof Error ? error.message : 'Could not delete the project.' });
@@ -1192,6 +1203,7 @@ export function projectRenameDevWriter() {
           data.slug = newSlug;
           await writeProjectJson(newFile, data);
           await rm(file, { force: true });
+          invalidateAstroRouteCache(server);
           send(200, { ok: true, slug: newSlug });
         } catch (error) {
           send(400, { error: error instanceof Error ? error.message : 'Could not rename the project.' });
