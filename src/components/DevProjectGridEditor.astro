@@ -1,6 +1,8 @@
 ---
 /** Singleton dev dialogs + handlers for Home / Work / Play project grids. */
 import DevOverlay from './DevOverlay.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
 import SelectField from './ui/SelectField.astro';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
@@ -92,9 +94,9 @@ const visibilityOptions = [
       label-ok="Done"
     ></color-picker>
 
-    <div class="dev-project-settings__danger-actions">
-      <button type="button" data-ps-delete>Delete project</button>
-    </div>
+    <PanelActions>
+      <Button type="button" emphasis="danger" label="Delete project" data-ps-delete />
+    </PanelActions>
 
     <p class="dev-project-settings__status" data-ps-status-line aria-live="polite"></p>
   </div>
@@ -1664,27 +1666,6 @@ const visibilityOptions = [
   .dev-project-settings__listing {
     display: grid;
     gap: 0.55em;
-  }
-
-  .dev-project-settings__danger-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5em;
-  }
-
-  .dev-project-settings__danger-actions button {
-    padding: 0.35em 0.65em;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: 0.35em;
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 90%, transparent);
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-
-  .dev-project-settings__danger-actions button[data-ps-delete] {
-    border-color: #d88;
-    background: #fff0f0;
   }
 
   color-picker[data-ps-bg-picker] {
