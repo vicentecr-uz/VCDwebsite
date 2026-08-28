@@ -173,7 +173,14 @@ import Button from './ui/Button.astro';
           return;
         }
         closePanel();
-        window.location.reload();
+        window.dispatchEvent(new CustomEvent('vcd:dev-project-created', {
+          detail: {
+            slug: payload.slug,
+            title,
+            status: selectedStatus,
+            grid: activeGrid,
+          },
+        }));
       } catch {
         window.alert('Could not create the project.');
       } finally {
