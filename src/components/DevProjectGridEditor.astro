@@ -10,7 +10,7 @@ import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import imageIcon from 'lucide-static/icons/image.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
-import { PLACEHOLDER_COVER } from '../lib/placeholderCover.mjs';
+import { PLACEHOLDER_COVER, EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
 
 const teaserPassword = getTeaserPassword();
 const statusIcons = {
@@ -154,7 +154,7 @@ const visibilityOptions = [
   };
 </script>
 
-<script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER }}>
+<script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER, emptyCoverFill: EMPTY_COVER_FILL }}>
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
@@ -481,8 +481,14 @@ const visibilityOptions = [
       if (isPlaceholderCover(displayImage)) cover.dataset.devCoverEmpty = 'true';
       else delete cover.dataset.devCoverEmpty;
     }
-    if (baseImg instanceof HTMLImageElement && displayImage) {
-      baseImg.src = displayImage;
+    if (baseImg instanceof HTMLImageElement) {
+      if (displayImage && !isPlaceholderCover(displayImage)) {
+        baseImg.hidden = false;
+        baseImg.src = displayImage;
+      } else {
+        baseImg.removeAttribute('src');
+        baseImg.hidden = true;
+      }
     }
     if (hoverImg instanceof HTMLImageElement) {
       if (liveHover || listing.hoverImage) {
@@ -620,11 +626,15 @@ const visibilityOptions = [
       }
     }
 
+    item.dataset.devBg = emptyCoverFill;
+    item.dataset.devDark = 'true';
+
     const cover = item.querySelector('.project-grid__cover');
     if (cover instanceof HTMLElement) {
       cover.dataset.devCoverDrop = slug;
       cover.dataset.devListingCover = grid;
       cover.dataset.devCoverEmpty = 'true';
+      cover.style.backgroundColor = emptyCoverFill;
     }
 
     rewriteTemplateSlug(item, slug);
@@ -657,7 +667,12 @@ const visibilityOptions = [
     }
 
     const baseImg = item.querySelector('.project-grid__img--base');
-    if (baseImg instanceof HTMLImageElement) baseImg.alt = title;
+    if (baseImg instanceof HTMLImageElement) {
+      baseImg.removeAttribute('src');
+      baseImg.removeAttribute('data-image-preview');
+      baseImg.alt = title;
+      baseImg.hidden = true;
+    }
 
     const newPageItem = gridEl.querySelector('.project-grid__item--new');
     if (newPageItem) gridEl.insertBefore(item, newPageItem);
@@ -1068,6 +1083,7 @@ const visibilityOptions = [
     await waitImageReady(overlay);
 
     liveCoverBlobs.delete(slug);
+    baseImg.hidden = false;
     baseImg.src = draftUrl;
     await waitImageReady(baseImg);
 
@@ -1204,7 +1220,9 @@ const visibilityOptions = [
       if (targetImg instanceof HTMLImageElement) {
         // Hover img starts hidden when the slot is empty — unhide before
         // assigning src, or the crossfade lands on a display:none element.
-        if (slot === 'hoverImage') targetImg.hidden = false;
+        // Empty covers also hide the base img (fill-only); dropping a photo
+        // has to unhide it too.
+        targetImg.hidden = false;
         targetImg.src = blobUrl;
         await waitImageReady(targetImg);
       }
@@ -1638,7 +1656,10 @@ const visibilityOptions = [
     } else if (cover instanceof HTMLElement) {
       delete cover.dataset.devCoverEmpty;
       const baseImg = item.querySelector('.project-grid__img--base');
-      if (baseImg instanceof HTMLImageElement) baseImg.src = src;
+      if (baseImg instanceof HTMLImageElement) {
+        baseImg.hidden = false;
+        baseImg.src = src;
+      }
     }
   });
 

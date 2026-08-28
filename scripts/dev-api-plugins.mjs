@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
-import { PLACEHOLDER_COVER, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
+import { PLACEHOLDER_COVER, EMPTY_COVER_FILL, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
 import {
   derivativeKind,
   findOriginal,
@@ -381,17 +381,17 @@ export function emptyModernProject(slug, title, grid, status = 'draft') {
     ? {
         order: 999,
         meta: '',
-        image: 'black-token.svg',
-        bg: '#efefef',
-        dark: false,
+        image: '',
+        bg: EMPTY_COVER_FILL,
+        dark: true,
         full: false,
       }
     : {
         order: 999,
         year,
-        image: 'black-token.svg',
-        bg: '#efefef',
-        dark: false,
+        image: '',
+        bg: EMPTY_COVER_FILL,
+        dark: true,
         full: false,
       };
   return {
