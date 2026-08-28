@@ -1468,6 +1468,33 @@ const visibilityOptions = [
     })();
   });
 
+  window.addEventListener('vcd:dev-listing-src', ((event) => {
+    const { slug, slot, src } = event.detail ?? {};
+    if (!slug || !src || (slot !== 'image' && slot !== 'hoverImage')) return;
+    const item = gridItemForSlug(slug);
+    const entry = caches.get(slug);
+    if (entry) {
+      if (slot === 'hoverImage') entry.draft.listing.hoverImage = src;
+      else entry.draft.listing.image = src;
+      applyListingPreview(entry.item, entry.draft, entry.grid);
+      return;
+    }
+    if (!(item instanceof HTMLElement)) return;
+    const cover = item.querySelector('.project-grid__cover');
+    const hoverImg = item.querySelector('.project-grid__img--hover');
+    if (slot === 'hoverImage') {
+      if (hoverImg instanceof HTMLImageElement) {
+        hoverImg.src = src;
+        hoverImg.hidden = false;
+      }
+      if (cover instanceof HTMLElement) cover.classList.add('project-grid__cover--has-hover');
+    } else if (cover instanceof HTMLElement) {
+      delete cover.dataset.devCoverEmpty;
+      const baseImg = item.querySelector('.project-grid__img--base');
+      if (baseImg instanceof HTMLImageElement) baseImg.src = src;
+    }
+  }) as EventListener);
+
   window.addEventListener('vcd:dev-mode-change', (event) => {
     if (event.detail?.active) {
       enableAllCardEditing();
