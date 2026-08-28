@@ -4,6 +4,7 @@ import ProjectSections from '../components/project/ProjectSections.astro';
 import DevImageDrop from '../components/DevImageDrop.astro';
 import TeaserGate from '../components/TeaserGate.astro';
 import { resolveProjectOutline, resolveProjectSectionLinks } from '../lib/projectOutline';
+import { projectImageTier } from '../lib/images';
 import {
   getModernProjectSlugsForBuild,
   loadProjectBySlug,
@@ -24,6 +25,13 @@ if (!project || project.stack !== 'modern' || !shouldIncludeProjectInBuild(proje
 const sections = project.sections;
 const outline = resolveProjectOutline(project);
 const sectionLinks = resolveProjectSectionLinks(project);
+
+// Share card = the project's own gallery cover, at the `preview` tier so
+// scrapers get a ~150KB webp rather than the multi-MB original.
+const listingCover = Object.values(project.listings ?? {})
+  .map((listing) => listing?.image)
+  .find((image): image is string => Boolean(image));
+const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undefined;
 ---
 
 <ProjectLayout
@@ -33,6 +41,7 @@ const sectionLinks = resolveProjectSectionLinks(project);
   sectionLinks={sectionLinks}
   sectionNavLabel={`${project.title} sections`}
   sectionNavDocument={slug}
+  ogImage={ogImage}
 >
   <TeaserGate slug={slug} status={project.status}>
     <div data-dev-project-drop-zone>

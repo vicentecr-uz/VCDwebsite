@@ -32,6 +32,8 @@ interface Props {
   sectionNavLabel?: string;
   /** Project JSON document key for DEV section-nav editing. */
   sectionNavDocument?: string;
+  /** Share-card image, root-relative. Falls back to the site default. */
+  ogImage?: string;
 }
 
 const {
@@ -41,6 +43,7 @@ const {
   sectionLinks: sectionLinksProp,
   sectionNavLabel = 'Project sections',
   sectionNavDocument,
+  ogImage,
 } = Astro.props;
 
 const outline = resolveProjectOutline({
@@ -56,7 +59,7 @@ const hasSidebar = Array.isArray(sectionLinks) && sectionLinks.length > 0;
 const navDocument = sectionNavDocument ?? '';
 ---
 
-<Layout title={`${title} — Vicente Cruz`} description={description}>
+<Layout title={`${title} — Vicente Cruz`} description={description} ogImage={ogImage}>
   <div
     class="project-page flex flex-col min-h-dvh"
     data-section-nav-root={hasSidebar ? '' : undefined}
