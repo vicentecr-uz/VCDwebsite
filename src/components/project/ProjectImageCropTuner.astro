@@ -445,8 +445,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
     const listingEditSlot = (target: HTMLElement): 'cover' | 'hover' => {
       if (!isListingCover(target)) return 'cover';
-      const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
-      if (target.classList.contains('is-dev-hover-forced') && hoverImg) return 'hover';
+      // Follow the hover chip, including an empty (still [hidden]) hover slot.
+      if (target.classList.contains('is-dev-hover-forced')) return 'hover';
       return 'cover';
     };
     const isStandaloneMedia = (target: HTMLElement) => (
@@ -1503,7 +1503,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
       activeSlot = listingEditSlot(target);
       const image = activeSlot === 'hover'
-        ? target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])')
+        ? target.querySelector<HTMLImageElement>('.project-grid__img--hover')
         : (target.querySelector<HTMLImageElement>('.project-grid__img--base')
           ?? target.querySelector<HTMLImageElement>('img'));
       if (!image) return;
