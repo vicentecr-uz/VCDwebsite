@@ -76,10 +76,10 @@ async function finishUpgrade(
   candidates.delete(img);
   swapObserver?.unobserve(img);
 
-  // Safari (and sometimes Chrome under memory pressure) blanks the bitmap the
-  // moment `src` changes, even when the preview is already in cache from the
-  // preload Image(). Hold the wipe clone until this element has decoded and
-  // painted, or the thumb disappears for a frame after the reveal finishes.
+  // WebKit (Edge iOS / Safari) blanks the bitmap the moment `src` changes,
+  // even when the preview is already in cache from the preload Image().
+  // Hold the wipe clone until this element has decoded and painted, or the
+  // thumb disappears for a frame after the reveal finishes.
   if (clone) {
     await Promise.race([
       decodeImage(img, preview),
