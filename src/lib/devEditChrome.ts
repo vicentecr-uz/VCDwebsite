@@ -1,17 +1,26 @@
-import {
-  isImageCaptionPositionId,
-  type ImageCaptionPositionId,
-} from './imageCaptions';
+import type { ImageCaptionPositionId } from './imageCaptions';
 
 /**
- * Shared corner tokens for Dev Mode chrome buttons and caption placement.
+ * Corner tokens for Dev Mode chrome buttons (Edit grid, etc.).
  * Keep `data-dev-corner` on a trigger in sync with its CSS inset corner —
  * collision logic keys off the token, not hard-coded top-left checks.
  */
-export type DevEditCorner = ImageCaptionPositionId;
+export type DevEditCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
 
 export function isDevEditCorner(value: unknown): value is DevEditCorner {
-  return isImageCaptionPositionId(value);
+  return (
+    value === 'top-left' ||
+    value === 'top-right' ||
+    value === 'bottom-left' ||
+    value === 'bottom-right'
+  );
+}
+
+function captionPositionToChromeCorner(
+  captionPosition: ImageCaptionPositionId,
+): DevEditCorner | null {
+  if (isDevEditCorner(captionPosition)) return captionPosition;
+  return null;
 }
 
 /**
@@ -22,6 +31,9 @@ export function captionCornerConflictsWithChrome(
   imageTarget: HTMLElement,
   captionPosition: ImageCaptionPositionId,
 ): boolean {
+  const chromeCorner = captionPositionToChromeCorner(captionPosition);
+  if (!chromeCorner) return false;
+
   // Prefer the visible crop/image frame — carousel slides are full track width.
   const frame = imageTarget.querySelector<HTMLElement>(
     '.project-image-grid__frame, .project-crop-clip',
@@ -33,7 +45,7 @@ export function captionCornerConflictsWithChrome(
     '[data-dev-edit-trigger][data-dev-corner]',
   )) {
     if (chrome.dataset.devEditTrigger === 'caption') continue;
-    if (chrome.dataset.devCorner !== captionPosition) continue;
+    if (chrome.dataset.devCorner !== chromeCorner) continue;
 
     const rect = chrome.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) continue;

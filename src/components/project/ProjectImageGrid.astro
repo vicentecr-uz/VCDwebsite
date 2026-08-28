@@ -47,7 +47,7 @@ interface Item {
   /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
   captions?: Partial<ImageCaptions> | string;
   captionStyle?: ImageCaptionStyleId;
-  /** Overlay corner. Defaults to bottom-left. */
+  /** Overlay bottom-edge alignment. Defaults to left. */
   captionPosition?: ImageCaptionPositionId;
   /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
@@ -159,7 +159,7 @@ const editorItems = items.map((item, index) => ({
     const layoutStyle = gridItemLayoutStyle(itemId, resolvedLayouts);
     const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
     const captionStyle = resolveImageCaptionStyle(item.captionStyle);
-    const captionPosition = resolveImageCaptionPosition(item.captionPosition);
+    const captionPosition = resolveImageCaptionPosition(item.captionPosition, captionStyle);
     const isBelowCaption = isBelowImageCaptionStyle(captionStyle);
     const captionReveals = isBelowCaption
       ? BELOW_IMAGE_CAPTION_REVEALS

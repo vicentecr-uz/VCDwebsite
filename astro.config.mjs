@@ -1039,17 +1039,61 @@ const applyCaptionChange = (data, change) => {
   }
 
   const CAPTION_STYLES = new Set(['white', 'black', 'below', 'default']);
-  const CAPTION_POSITIONS = new Set(['bottom-left', 'top-left', 'bottom-right', 'top-right']);
+  const CAPTION_POSITIONS = new Set([
+    'left',
+    'center',
+    'right',
+    'bottom-left',
+    'top-left',
+    'bottom-right',
+    'top-right',
+  ]);
+  const normalizeCaptionPosition = (value, style) => {
+    if (style === 'below') {
+      switch (value) {
+        case 'left':
+        case 'center':
+        case 'right':
+          return value;
+        case 'bottom-left':
+        case 'top-left':
+          return 'left';
+        case 'bottom-right':
+        case 'top-right':
+          return 'right';
+        default:
+          return 'left';
+      }
+    }
+    switch (value) {
+      case 'bottom-left':
+      case 'top-left':
+      case 'bottom-right':
+      case 'top-right':
+        return value;
+      case 'left':
+        return 'bottom-left';
+      case 'right':
+        return 'bottom-right';
+      case 'center':
+        return 'bottom-left';
+      default:
+        return 'bottom-left';
+    }
+  };
   const CAPTION_REVEALS = new Set(['hover', 'always']);
   const rawStyle = String(change.captionStyle || 'white');
-  const captionStyle = rawStyle === 'default' ? 'white' : rawStyle;
+  let captionStyle = rawStyle;
   if (!CAPTION_STYLES.has(captionStyle)) {
     return { ok: false, error: 'Use a supported caption style.' };
   }
-  const captionPosition = String(change.captionPosition || 'bottom-left');
-  if (!CAPTION_POSITIONS.has(captionPosition)) {
-    return { ok: false, error: 'Use a supported caption location.' };
+  if (captionStyle === 'black' || captionStyle === 'default') captionStyle = 'white';
+  const defaultRawPosition = captionStyle === 'below' ? 'left' : 'bottom-left';
+  const rawCaptionPosition = String(change.captionPosition || defaultRawPosition);
+  if (!CAPTION_POSITIONS.has(rawCaptionPosition)) {
+    return { ok: false, error: 'Use a supported caption position.' };
   }
+  const captionPosition = normalizeCaptionPosition(rawCaptionPosition, captionStyle);
 
   const requested = change.captions && typeof change.captions === 'object'
     ? change.captions
@@ -1104,7 +1148,8 @@ const applyCaptionChange = (data, change) => {
   } else {
     target.captionStyle = captionStyle;
   }
-  if (captionPosition === 'bottom-left') {
+  const defaultPosition = captionStyle === 'below' ? 'left' : 'bottom-left';
+  if (captionPosition === defaultPosition) {
     delete target.captionPosition;
   } else {
     target.captionPosition = captionPosition;

@@ -1,0 +1,23 @@
+<script>
+  import { bindCaptionMediaInk } from '../scripts/bindCaptionMediaInk';
+  import { bindGalleryMediaInk } from '../scripts/bindGalleryMediaInk';
+
+  let teardownGallery: (() => void) | undefined;
+  let teardownCaptions: (() => void) | undefined;
+
+  function mount() {
+    teardownGallery?.();
+    teardownCaptions?.();
+    teardownGallery = bindGalleryMediaInk();
+    teardownCaptions = bindCaptionMediaInk();
+  }
+
+  mount();
+  document.addEventListener('astro:page-load', mount);
+  document.addEventListener('astro:before-swap', () => {
+    teardownGallery?.();
+    teardownCaptions?.();
+    teardownGallery = undefined;
+    teardownCaptions = undefined;
+  });
+</script>
