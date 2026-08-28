@@ -938,7 +938,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       // first — never treat that as the content bitmap.
       if (target === editTarget && editedImage?.isConnected) return editedImage;
       if (isListingCover(target) && activeSlot === 'hover') {
-        return target.querySelector<HTMLImageElement>('.project-grid__img--hover:not([hidden])');
+        return target.querySelector<HTMLImageElement>('.project-grid__img--hover');
       }
       return (
         target.querySelector<HTMLImageElement>('.project-grid__img--base')
@@ -966,6 +966,26 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           '--project-image-original-ratio-num',
           String(dims.srcWidth / dims.srcHeight),
         );
+      }
+      if (isListingCover(target)) {
+        const resolvedSrc = projectImage(src);
+        if (activeSlot === 'hover') {
+          image.hidden = false;
+          target.classList.add('project-grid__cover--has-hover');
+        } else {
+          delete target.dataset.devCoverEmpty;
+        }
+        const item = target.closest('[data-dev-project-slug]');
+        const slug = item?.getAttribute('data-dev-project-slug');
+        if (slug) {
+          window.dispatchEvent(new CustomEvent('vcd:dev-listing-src', {
+            detail: {
+              slug,
+              slot: activeSlot === 'hover' ? 'hoverImage' : 'image',
+              src: resolvedSrc,
+            },
+          }));
+        }
       }
       return image;
     };
