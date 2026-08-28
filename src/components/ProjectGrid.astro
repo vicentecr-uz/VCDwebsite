@@ -1,7 +1,7 @@
 ---
 import type { ProjectStatus } from '../lib/projects';
 import type { ImageVariants } from '../lib/responsiveImage';
-import { PLACEHOLDER_COVER } from '../lib/placeholderCover.mjs';
+import { EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
 import ProjectGridItem from './ProjectGridItem.astro';
 import '../styles/project.css';
@@ -41,9 +41,9 @@ const isDev = import.meta.env.DEV;
 /** Dev-only seed for Gallery Manager `buildGridCard` template clone. */
 const gridCardTemplateSeed: ProjectGridItem = {
   title: '',
-  image: PLACEHOLDER_COVER,
-  bg: '#efefef',
-  dark: false,
+  image: '',
+  bg: EMPTY_COVER_FILL,
+  dark: true,
   slug: '__template__',
   status: 'draft',
   subtitle: '',
@@ -268,19 +268,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__card:hover .project-grid__meta,
   .project-grid__card:focus-visible .project-grid__meta {
-    opacity: 1;
-  }
-
-  /*
-    Empty cover (black-token placeholder): listing `bg` is the card. Hide the
-    token in View too — Edit already washes it; View was a nameless black tile
-    after Back from a new Public page (T8.3). Title stays up so the slot reads.
-  */
-  .project-grid__cover[data-dev-cover-empty='true'] .project-grid__img--base {
-    opacity: 0;
-  }
-
-  .project-grid__cover[data-dev-cover-empty='true'] .project-grid__meta {
     opacity: 1;
   }
 
@@ -790,8 +777,8 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /*
     #176 — placeholder cover reads as an empty slot, not a broken image.
-    Drop veils stay Edit-only. The token hide + title-at-rest live on
-    [data-dev-cover-empty] without is-dev-mode so View/Back still show a card.
+    data-dev-cover-empty is emitted for empty/token covers; the drop veil
+    stays Edit-only so View is a black fill with title on hover.
     Same :not() yield as the hover-empty rule above.
     Also yield while hover is forced — that mode is about the hover slot, so
     "Drop cover image" must not stay stacked under "Drop hover image".

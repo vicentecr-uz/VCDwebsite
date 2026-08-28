@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ImageVariants } from './responsiveImage';
+import { EMPTY_COVER_FILL } from './placeholderCover.mjs';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'image';
 export type ProjectStack = 'modern' | 'legacy';
@@ -218,17 +219,17 @@ export function emptyModernProjectDocument(
         ? {
             order: 999,
             meta: '',
-            image: 'black-token.svg',
-            bg: '#efefef',
-            dark: false,
+            image: '',
+            bg: EMPTY_COVER_FILL,
+            dark: true,
             full: false,
           }
         : {
             order: 999,
             year: new Date().getFullYear().toString().slice(-2).padStart(2, "'"),
-            image: 'black-token.svg',
-            bg: '#efefef',
-            dark: false,
+            image: '',
+            bg: EMPTY_COVER_FILL,
+            dark: true,
             full: false,
           },
     },
