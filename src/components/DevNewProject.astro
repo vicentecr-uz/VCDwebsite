@@ -45,6 +45,8 @@ import Button from './ui/Button.astro';
 </DevOverlay>
 
 <script>
+  import { getLastPointerPosition } from '../lib/lastPointer';
+
   const initDevNewProject = () => {
     const root = document.querySelector<HTMLElement>('[data-dev-new-project]');
     const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
@@ -104,14 +106,17 @@ import Button from './ui/Button.astro';
     };
 
     const closePanel = () => {
-      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+      panel.hidden = true;
     };
 
     const openPanel = (grid: string) => {
       activeGrid = grid;
       resetForm();
       panel.hidden = false;
-      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel } }));
+      const { x, y } = getLastPointerPosition();
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
+        detail: { panel, clientX: x, clientY: y },
+      }));
       requestAnimationFrame(() => titleInput?.focus());
     };
 
