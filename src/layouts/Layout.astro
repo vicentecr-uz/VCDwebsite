@@ -22,18 +22,36 @@ if (import.meta.env.DEV) {
   await import('../styles/dev-token-alarms.css');
 }
 
+/**
+ * Site-wide share card. Points at a build-generated `preview` derivative (2560px
+ * long edge) rather than the 4MB original — social scrapers refuse large files.
+ * Placeholder until a purpose-built 1200x630 card exists (#39).
+ */
+const DEFAULT_OG_IMAGE = '/images/IMG_5523-2.preview.webp';
+
 interface Props {
   title: string;
   description?: string;
   /** Load EB Garamond (serif). Only pages that use --font-serif need this. */
   serif?: boolean;
+  /**
+   * Share-card image, root-relative (e.g. `/images/foo.preview.webp`).
+   * Project pages pass their own cover; everything else gets the site default.
+   */
+  ogImage?: string;
 }
 
 const {
   title,
   description = 'Portfolio of Vicente Cruz — London-based industrial designer.',
   serif = false,
+  ogImage = DEFAULT_OG_IMAGE,
 } = Astro.props;
+
+// Astro.site comes from `site` in astro.config.mjs. Absolute URLs are required:
+// og:image and canonical are both ignored by scrapers when relative.
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const ogImageUrl = new URL(ogImage, Astro.site);
 const showDevTools = import.meta.env.DEV;
 // Production is light until dark mode ships (#256): pin data-theme="light" and
 // omit the OS media query from the generated production sheet. Local DEV omits
@@ -65,7 +83,21 @@ const showDevTools = import.meta.env.DEV;
       <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap" />
     )}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="canonical" href={canonical.href} />
     <title>{title}</title>
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Vicente Cruz" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical.href} />
+    <meta property="og:image" content={ogImageUrl.href} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl.href} />
   </head>
   <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
