@@ -28,10 +28,16 @@ function fallbackFromDataAttrs(item: HTMLElement, hover: boolean): MediaGround {
 
 function isLiveHoverBitmap(item: HTMLElement, hoverImg: HTMLImageElement | null): boolean {
   if (document.documentElement.classList.contains('is-dev-mode')) return false;
-  if (!hoverImg?.src) return false;
+  if (!hoverImg?.src || hoverImg.hidden) return false;
   const card = item.querySelector('.project-grid__card');
   if (!(card instanceof HTMLElement)) return false;
-  return card.matches(':hover, :focus-visible');
+  // Same gates as ProjectGrid.astro hover overlay (#132): CSS only fades the
+  // hover bitmap in under (hover:hover)+(pointer:fine), or :focus-visible.
+  // iOS sticky :hover must not sample hoverDark / the hover image while the
+  // cover is still what's painted.
+  if (card.matches(':focus-visible')) return true;
+  if (!card.matches(':hover')) return false;
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 }
 
 function inkTargets(item: HTMLElement, cover: HTMLElement): HTMLElement[] {
