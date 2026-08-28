@@ -32,15 +32,62 @@ function cleanupCandidate(img: HTMLImageElement): void {
   swapObserver?.unobserve(img);
 }
 
-function finishUpgrade(img: HTMLImageElement, preview: string, clone?: HTMLImageElement): void {
+function afterNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+async function decodeImage(img: HTMLImageElement, expectedSrc?: string): Promise<void> {
+  const ready = () =>
+    img.complete &&
+    img.naturalWidth > 0 &&
+    (!expectedSrc || previewMatchesCurrent(expectedSrc, img));
+
+  if (!ready()) {
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+      if (ready()) done();
+    });
+  }
+  if (typeof img.decode === 'function' && img.naturalWidth > 0) {
+    try {
+      await img.decode();
+    } catch {
+      /* broken / unsupported */
+    }
+  }
+}
+
+async function finishUpgrade(
+  img: HTMLImageElement,
+  preview: string,
+  clone?: HTMLImageElement,
+): Promise<void> {
   img.src = preview;
   img.removeAttribute('data-image-preview');
   img.dataset.imageUpgraded = 'true';
   delete img.dataset.imagePreviewUpgrading;
   delete img.dataset.imagePreviewRevealing;
   candidates.delete(img);
-  clone?.remove();
   swapObserver?.unobserve(img);
+
+  // Safari (and sometimes Chrome under memory pressure) blanks the bitmap the
+  // moment `src` changes, even when the preview is already in cache from the
+  // preload Image(). Hold the wipe clone until this element has decoded and
+  // painted, or the thumb disappears for a frame after the reveal finishes.
+  if (clone) {
+    await Promise.race([
+      decodeImage(img, preview),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 2000)),
+    ]);
+    await afterNextPaint();
+    clone.remove();
+  }
 }
 
 function isIntersectingWithMargin(img: HTMLImageElement, marginPx: number): boolean {
@@ -79,9 +126,11 @@ function startPreviewFetch(img: HTMLImageElement): void {
 
   const hi = new Image();
   hi.onload = () => {
-    previewLoaded.set(img, preview);
-    delete img.dataset.imagePreviewUpgrading;
-    trySwap(img);
+    void decodeImage(hi).then(() => {
+      previewLoaded.set(img, preview);
+      delete img.dataset.imagePreviewUpgrading;
+      trySwap(img);
+    });
   };
   hi.onerror = () => {
     delete img.dataset.imagePreviewUpgrading;
@@ -111,7 +160,7 @@ function revealAboutFade(img: HTMLImageElement, preview: string): void {
     finished = true;
     img.removeEventListener('transitionend', onEnd);
     img.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
-    finishUpgrade(img, preview);
+    void finishUpgrade(img, preview);
   };
 
   const onEnd = (event: TransitionEvent) => {
@@ -154,7 +203,7 @@ function revealWithClone(img: HTMLImageElement, preview: string): void {
     if (finished) return;
     finished = true;
     clone.removeEventListener('transitionend', onEnd);
-    finishUpgrade(img, preview, clone);
+    void finishUpgrade(img, preview, clone);
   };
 
   const onEnd = (event: TransitionEvent) => {
