@@ -130,6 +130,11 @@ export function layoutMatchHeightGrids(root: ParentNode = document): void {
 }
 
 function applyOriginalRatio(frame: HTMLElement, image: HTMLImageElement): void {
+  if (image.dataset.imagePreviewRevealing === 'true') return;
+  if (image.hasAttribute('data-preview-reveal')) return;
+  // Thumb (640) and preview (2560) round fit:inside differently. Rewriting the
+  // frame ratio on the preview load is a page-height jump on aspect:original.
+  if (frame.dataset.originalRatioLocked === 'true') return;
   if (!image.naturalWidth || !image.naturalHeight) return;
   frame.style.setProperty(
     '--project-image-original-ratio',
@@ -139,6 +144,7 @@ function applyOriginalRatio(frame: HTMLElement, image: HTMLImageElement): void {
     '--project-image-original-ratio-num',
     String(image.naturalWidth / image.naturalHeight),
   );
+  frame.dataset.originalRatioLocked = 'true';
 }
 
 /**
@@ -209,7 +215,11 @@ export function bindProjectCropCovers(root: ParentNode = document): void {
   ).forEach((image) => {
     if (image.dataset.cropCoverBound === 'true') return;
     image.dataset.cropCoverBound = 'true';
-    image.addEventListener('load', () => refreshProjectCropCovers(root));
+    image.addEventListener('load', () => {
+      if (image.dataset.imagePreviewRevealing === 'true') return;
+      if (image.hasAttribute('data-preview-reveal')) return;
+      refreshProjectCropCovers(root);
+    });
   });
   observeCropFrames(root);
   if (!resizeBound && root === document) {

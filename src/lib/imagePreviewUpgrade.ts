@@ -32,15 +32,79 @@ function cleanupCandidate(img: HTMLImageElement): void {
   swapObserver?.unobserve(img);
 }
 
-function finishUpgrade(img: HTMLImageElement, preview: string, clone?: HTMLImageElement): void {
+function afterNextPaint(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
+async function decodeImage(img: HTMLImageElement, expectedSrc?: string): Promise<void> {
+  const ready = () =>
+    img.complete &&
+    img.naturalWidth > 0 &&
+    (!expectedSrc || previewMatchesCurrent(expectedSrc, img));
+
+  if (!ready()) {
+    await new Promise<void>((resolve) => {
+      const done = () => resolve();
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+      if (ready()) done();
+    });
+  }
+  if (typeof img.decode === 'function' && img.naturalWidth > 0) {
+    try {
+      await img.decode();
+    } catch {
+      /* broken / unsupported */
+    }
+  }
+}
+
+function freezeInFlowBox(img: HTMLImageElement): void {
+  const cs = getComputedStyle(img);
+  if (cs.position === 'absolute' || cs.position === 'fixed') return;
+  const width = img.offsetWidth;
+  const height = img.offsetHeight;
+  if (!width || !height) return;
+  // WebKit zeros intrinsic size on `src` change. The wipe clone is position:absolute
+  // so it cannot hold document flow — without this, in-flow thumbs collapse and
+  // the page jumps until the preview decodes (random: cache vs decode timing).
+  img.style.aspectRatio = `${width} / ${height}`;
+  if (!img.getAttribute('width') || !img.getAttribute('height')) {
+    img.setAttribute('width', String(Math.round(width)));
+    img.setAttribute('height', String(Math.round(height)));
+  }
+}
+
+async function finishUpgrade(
+  img: HTMLImageElement,
+  preview: string,
+  clone?: HTMLImageElement,
+): Promise<void> {
+  freezeInFlowBox(img);
   img.src = preview;
   img.removeAttribute('data-image-preview');
   img.dataset.imageUpgraded = 'true';
   delete img.dataset.imagePreviewUpgrading;
-  delete img.dataset.imagePreviewRevealing;
   candidates.delete(img);
-  clone?.remove();
   swapObserver?.unobserve(img);
+
+  // WebKit (Edge iOS / Safari) blanks the bitmap the moment `src` changes,
+  // even when the preview is already in cache from the preload Image().
+  // Hold the wipe clone until this element has decoded and painted, or the
+  // thumb disappears for a frame after the reveal finishes.
+  if (clone) {
+    await Promise.race([
+      decodeImage(img, preview),
+      new Promise<void>((resolve) => window.setTimeout(resolve, 2000)),
+    ]);
+    await afterNextPaint();
+    clone.remove();
+  }
+  delete img.dataset.imagePreviewRevealing;
 }
 
 function isIntersectingWithMargin(img: HTMLImageElement, marginPx: number): boolean {
@@ -79,9 +143,11 @@ function startPreviewFetch(img: HTMLImageElement): void {
 
   const hi = new Image();
   hi.onload = () => {
-    previewLoaded.set(img, preview);
-    delete img.dataset.imagePreviewUpgrading;
-    trySwap(img);
+    void decodeImage(hi).then(() => {
+      previewLoaded.set(img, preview);
+      delete img.dataset.imagePreviewUpgrading;
+      trySwap(img);
+    });
   };
   hi.onerror = () => {
     delete img.dataset.imagePreviewUpgrading;
@@ -111,7 +177,7 @@ function revealAboutFade(img: HTMLImageElement, preview: string): void {
     finished = true;
     img.removeEventListener('transitionend', onEnd);
     img.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
-    finishUpgrade(img, preview);
+    void finishUpgrade(img, preview);
   };
 
   const onEnd = (event: TransitionEvent) => {
@@ -123,6 +189,7 @@ function revealAboutFade(img: HTMLImageElement, preview: string): void {
   window.setTimeout(done, REVEAL_DURATION_MS + 100);
 
   img.classList.add('image-preview-reveal--fade-only');
+  freezeInFlowBox(img);
   img.src = preview;
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -154,7 +221,7 @@ function revealWithClone(img: HTMLImageElement, preview: string): void {
     if (finished) return;
     finished = true;
     clone.removeEventListener('transitionend', onEnd);
-    finishUpgrade(img, preview, clone);
+    void finishUpgrade(img, preview, clone);
   };
 
   const onEnd = (event: TransitionEvent) => {
