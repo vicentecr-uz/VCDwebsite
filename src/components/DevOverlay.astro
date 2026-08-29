@@ -31,11 +31,10 @@ const {
   ...rest
 } = Astro.props;
 
-/* Figma glyphs are 8×8 inside the 15px light, 1px round stroke.
-   Lucide's stroke-width 2 in a 24 viewBox would paint at 2×8/24 ≈ 0.67px
-   and the round caps vanish — bump the user-unit width so 8px → 1px. */
-const trafficLightIcon = (svg: string) =>
-  sizeIcon(svg, 8).replace(/stroke-width="2"/, 'stroke-width="3"');
+/* Traffic-light glyphs: 10×10 in the 15px disc, 1.5px round stroke (CSS).
+   Lucide at 24 viewBox — size to 10; path stroke is overridden via
+   vector-effect: non-scaling-stroke in the overlay styles. */
+const trafficLightIcon = (svg: string) => sizeIcon(svg, 10);
 const minimizeSvg = trafficLightIcon(minusIcon);
 const expandSvg = trafficLightIcon(plusIcon);
 const hideSvg = trafficLightIcon(xIcon);
@@ -71,7 +70,7 @@ const hideSvg = trafficLightIcon(xIcon);
             aria-expanded="true"
           >
             <span class="dev-overlay__light-icon" data-light-glyph="minus" aria-hidden="true" set:html={minimizeSvg} />
-            <span class="dev-overlay__light-icon" data-light-glyph="plus" hidden aria-hidden="true" set:html={expandSvg} />
+            <span class="dev-overlay__light-icon" data-light-glyph="plus" aria-hidden="true" set:html={expandSvg} />
           </button>
           <button
             type="button"
@@ -253,12 +252,9 @@ const hideSvg = trafficLightIcon(xIcon);
       minimizeBtn.setAttribute('aria-expanded', minimized ? 'false' : 'true');
       minimizeBtn.setAttribute('aria-label', minimized ? 'Expand' : 'Minimize');
       minimizeBtn.title = minimized ? 'Expand' : 'Minimize';
+      // Icon swap is CSS-driven from these classes (opacity + blur + scale).
       minimizeBtn.classList.toggle('dev-overlay__light--minimize', !minimized);
       minimizeBtn.classList.toggle('dev-overlay__light--expand', minimized);
-      const minus = minimizeBtn.querySelector<HTMLElement>('[data-light-glyph="minus"]');
-      const plus = minimizeBtn.querySelector<HTMLElement>('[data-light-glyph="plus"]');
-      if (minus) minus.hidden = minimized;
-      if (plus) plus.hidden = !minimized;
     };
 
     const setMinimized = (minimized: boolean) => {
@@ -903,6 +899,13 @@ const hideSvg = trafficLightIcon(xIcon);
     --dev-overlay-motion-ms: 180ms;
     --dev-overlay-rise: 0.35em;
     --dev-overlay-light-size: 15px;
+    --dev-overlay-light-glyph-size: 10px;
+    --dev-overlay-light-stroke: 1.5px;
+    /* Traffic-light minimize ↔ expand glyph swap (transitions.dev icon-swap). */
+    --icon-swap-dur: 250ms;
+    --icon-swap-blur: 2px;
+    --icon-swap-start-scale: 0.25;
+    --icon-swap-ease: ease-in-out;
     position: fixed;
     right: 1em;
     bottom: 1em;
@@ -1179,8 +1182,7 @@ const hideSvg = trafficLightIcon(xIcon);
     -webkit-appearance: none;
     font-size: 0;
     line-height: 0;
-    /* Round stroke caps sit on the 8px box edge; clipping here squared them
-       off and made the glyph look shifted up-right. */
+    /* Round stroke caps extend past the glyph box — clip would square them. */
     overflow: visible;
   }
 
@@ -1193,62 +1195,100 @@ const hideSvg = trafficLightIcon(xIcon);
   }
 
   .dev-overlay__light-icon {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 8px;
-    height: 8px;
-    margin: -4px 0 0 -4px;
-    display: block;
+    grid-area: 1 / 1;
+    display: grid;
+    place-items: center;
+    width: var(--dev-overlay-light-glyph-size);
+    height: var(--dev-overlay-light-glyph-size);
     opacity: 0;
+    filter: blur(0);
+    transform: scale(1);
+    transform-origin: center;
+    transition:
+      opacity var(--icon-swap-dur) var(--icon-swap-ease),
+      filter var(--icon-swap-dur) var(--icon-swap-ease),
+      transform var(--icon-swap-dur) var(--icon-swap-ease);
     pointer-events: none;
     line-height: 0;
     overflow: visible;
   }
 
-  .dev-overlay__light-icon[hidden] {
-    display: none;
+  /* Inactive glyph sits blurred + scaled down so the minimize↔expand swap
+     crossfades instead of popping via [hidden]. */
+  .dev-overlay__light--minimize [data-light-glyph="plus"],
+  .dev-overlay__light--expand [data-light-glyph="minus"] {
+    opacity: 0;
+    filter: blur(var(--icon-swap-blur));
+    transform: scale(var(--icon-swap-start-scale));
   }
 
   .dev-overlay__light-icon :global(svg) {
     display: block;
-    width: 8px;
-    height: 8px;
+    width: var(--dev-overlay-light-glyph-size);
+    height: var(--dev-overlay-light-glyph-size);
     overflow: visible;
     shape-rendering: geometricPrecision;
-    /* Optical: 1px round strokes read a hair right of the 15px disc centre. */
-    transform: translateX(-0.5px);
   }
 
   .dev-overlay__light-icon :global(path) {
+    stroke: currentColor;
     stroke-linecap: round;
     stroke-linejoin: round;
-    /* Figma paints a 1px round stroke in the 8px frame, not Lucide's scaled 0.67. */
     vector-effect: non-scaling-stroke;
-    stroke-width: 1px;
+    stroke-width: var(--dev-overlay-light-stroke);
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--hide,
   .dev-overlay__light--hide:focus-visible {
     background: var(--comp-traffic-light-hide-hover);
-    color: #4d0000;
+    color: var(--comp-traffic-light-hide-icon);
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--minimize,
   .dev-overlay__light--minimize:focus-visible {
     background: var(--comp-traffic-light-minimize-hover);
-    color: #995700;
+    color: var(--comp-traffic-light-minimize-icon);
   }
 
   .dev-overlay__lights:hover .dev-overlay__light--expand,
   .dev-overlay__light--expand:focus-visible {
     background: var(--comp-traffic-light-expand-hover);
-    color: #00520a;
+    color: var(--comp-traffic-light-expand-icon);
   }
 
-  .dev-overlay__lights:hover .dev-overlay__light-icon,
-  .dev-overlay__light:focus-visible .dev-overlay__light-icon {
+  /* Hover/focus reveals only the active glyph (and Hide's single icon). */
+  .dev-overlay__lights:hover .dev-overlay__light--hide .dev-overlay__light-icon,
+  .dev-overlay__light--hide:focus-visible .dev-overlay__light-icon,
+  .dev-overlay__lights:hover .dev-overlay__light--minimize [data-light-glyph="minus"],
+  .dev-overlay__lights:hover .dev-overlay__light--expand [data-light-glyph="plus"],
+  .dev-overlay__light--minimize:focus-visible [data-light-glyph="minus"],
+  .dev-overlay__light--expand:focus-visible [data-light-glyph="plus"] {
     opacity: 1;
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  /* Keep the inactive glyph out under hover — same specificity as the reveal. */
+  .dev-overlay__lights:hover .dev-overlay__light--minimize [data-light-glyph="plus"],
+  .dev-overlay__lights:hover .dev-overlay__light--expand [data-light-glyph="minus"],
+  .dev-overlay__light--minimize:focus-visible [data-light-glyph="plus"],
+  .dev-overlay__light--expand:focus-visible [data-light-glyph="minus"] {
+    opacity: 0;
+    filter: blur(var(--icon-swap-blur));
+    transform: scale(var(--icon-swap-start-scale));
+  }
+
+  /* Reduced motion: keep the opacity crossfade; drop blur + scale travel. */
+  @media (prefers-reduced-motion: reduce) {
+    .dev-overlay__light--minimize [data-light-glyph="plus"],
+    .dev-overlay__light--expand [data-light-glyph="minus"],
+    .dev-overlay__lights:hover .dev-overlay__light--minimize [data-light-glyph="plus"],
+    .dev-overlay__lights:hover .dev-overlay__light--expand [data-light-glyph="minus"],
+    .dev-overlay__light--minimize:focus-visible [data-light-glyph="plus"],
+    .dev-overlay__light--expand:focus-visible [data-light-glyph="minus"] {
+      filter: blur(0);
+      transform: scale(1);
+    }
   }
 
   .dev-overlay__body {
