@@ -209,9 +209,13 @@ const menuLinks = headerSettings.menuLinks;
         header.classList.remove('is-scrolled-hidden');
       }
 
+      document.documentElement.classList.toggle('is-page-top', y <= 8);
+
       lastY = y;
       ticking = false;
     };
+
+    document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
       'scroll',
@@ -857,8 +861,8 @@ const menuLinks = headerSettings.menuLinks;
     );
     position: sticky;
     top: 0;
-    /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
-       Below format bar (90+) and section drag lift (70). */
+    /* Above mid-page sections (25). Fill is transparent at page top and
+       fades in on scroll or menu open. Below format bar (90+). */
     z-index: 50;
     padding: var(--space-unit) 0;
     transition: opacity 0.35s ease;
@@ -871,10 +875,30 @@ const menuLinks = headerSettings.menuLinks;
 
   .site-header__bg {
     position: absolute;
-    inset: 0;
+    inset-block: 0;
+    /* Full viewport, not the content column — inherit --page-gutter from
+       #site-wrapper (percentage already resolved there, so no 100vw scrollbar). */
+    left: calc(-1 * var(--page-gutter, 0px));
+    right: calc(-1 * var(--page-gutter, 0px));
     background-color: var(--sys-color-srf);
     z-index: 0;
     pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html.is-page-top .site-header__bg {
+    opacity: 0;
+  }
+
+  html.is-page-top
+    .site-header--nav-menu:has(
+      .header-trigger:hover,
+      .header-trigger:focus-within,
+      .header-trigger.is-menu-open
+    )
+    .site-header__bg {
+    opacity: 1;
   }
 
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so

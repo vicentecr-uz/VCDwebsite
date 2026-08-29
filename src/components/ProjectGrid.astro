@@ -1,7 +1,7 @@
 ---
 import type { ProjectStatus } from '../lib/projects';
 import type { ImageVariants } from '../lib/responsiveImage';
-import { PLACEHOLDER_COVER } from '../lib/placeholderCover.mjs';
+import { EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
 import ProjectGridItem from './ProjectGridItem.astro';
 import '../styles/project.css';
@@ -41,9 +41,9 @@ const isDev = import.meta.env.DEV;
 /** Dev-only seed for Gallery Manager `buildGridCard` template clone. */
 const gridCardTemplateSeed: ProjectGridItem = {
   title: '',
-  image: PLACEHOLDER_COVER,
-  bg: '#efefef',
-  dark: false,
+  image: '',
+  bg: EMPTY_COVER_FILL,
+  dark: true,
   slug: '__template__',
   status: 'draft',
   subtitle: '',
@@ -108,6 +108,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__cover {
     aspect-ratio: 4 / 3;
     transform: translateZ(0);
+    /* Cropped covers omit Tailwind overflow-hidden (clip lives on
+       .project-crop-clip). Safari still paints a 1px idle hover-bitmap
+       sliver at the frame edge unless this layer clips too. Crop-stage
+       host already overrides to visible. */
+    overflow: hidden;
   }
 
   .project-grid__cover.project-cropped {
@@ -139,7 +144,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
      down (0.55s) — that one is a destructive edit and wants weight; this is
      a browsing gesture and reads sluggish at the same speed. */
   .project-grid__cover--has-hover .project-grid__img--hover {
-    transition: opacity 0.2s ease;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   /*
@@ -149,7 +156,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
     it is the same visual event, just driven by a chip instead of a pointer.
   */
   html.is-dev-mode .project-grid__cover .project-grid__img--hover {
-    transition: opacity 0.2s ease;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   /* Empty-slot forced preview still fades the cover out (no hover image to
@@ -161,12 +170,20 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__img--hover {
     z-index: 1;
     opacity: 0;
+    /* opacity:0 still composites; visibility:hidden stops a 1px Safari leak
+       at the cover's bottom edge while the overlay is meant to be off. */
+    visibility: hidden;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   /* Chip — the only way hover shows in Edit (WYSIWYG: cover stays cover
      while travelling to the crop tuner). Keyboard + pointer hover are live-only. */
   .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0s;
   }
 
   /*
@@ -177,11 +194,15 @@ const gridCardTemplateSeed: ProjectGridItem = {
   @media (hover: hover) and (pointer: fine) {
     html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
       opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s ease, visibility 0s;
     }
   }
 
   html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--hover {
     opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0s;
   }
 
   /* No hover image: forced preview still reveals the page ground. With a
@@ -816,9 +837,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /*
     #176 — placeholder cover reads as an empty slot, not a broken image.
-    data-dev-cover-empty is only emitted for editable items (isDev), but the
-    guard is kept anyway so a draft project can never show a drop affordance
-    to a visitor. Same :not() yield as the hover-empty rule above.
+    data-dev-cover-empty is emitted for empty/token covers; the drop veil
+    stays Edit-only so View is a black fill with title on hover.
+    Same :not() yield as the hover-empty rule above.
     Also yield while hover is forced — that mode is about the hover slot, so
     "Drop cover image" must not stay stacked under "Drop hover image".
   */
@@ -902,9 +923,10 @@ const gridCardTemplateSeed: ProjectGridItem = {
     transition: outline-color var(--dev-suppress-duration) ease;
   }
 
-  /* c. Crop tuner open — the crop chip stays; other chips and the dash fade. */
+  /* c. Crop tuner open — crop + hover stay (hover picks the slot the tuner
+        is editing). Status / span / settings fade. */
   html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host)
-    .project-grid__chip:not([data-dev-edit-trigger='image']) {
+    .project-grid__chip:not([data-dev-edit-trigger='image']):not([data-dev-project-hover]) {
     opacity: 0;
     pointer-events: none;
     transition: opacity var(--dev-suppress-duration) ease;

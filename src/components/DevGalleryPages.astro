@@ -470,6 +470,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
       const item = seed.cloneNode(true) as HTMLElement;
       const isTeaser = page.status === 'teaser';
+      const isImage = page.status === 'image';
+      const isUnlinked = isTeaser || isImage;
       const defaultAspects = coverDefaultAspect(page.full, grid);
       const srcDims = imageSourceDims(page);
       const variants = page.variants;
@@ -483,7 +485,11 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       const normalizedHover = hasHoverCrop && hoverVariants
         ? normalizeImageVariants(hoverVariants, defaultAspects, null)
         : undefined;
-      const coverStyle = [normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : '', normalizedHover ? hoverCropStyle(normalizedHover) : ''].filter(Boolean).join(';') || undefined;
+      const coverStyle = [
+        normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : '',
+        normalizedHover ? hoverCropStyle(normalizedHover) : '',
+        page.bg ? `background-color:${page.bg}` : '',
+      ].filter(Boolean).join(';') || undefined;
       const hoverDark = typeof page.hoverDark === 'boolean' ? page.hoverDark : page.dark;
 
       item.dataset.devProjectSlug = page.slug;
@@ -516,18 +522,23 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         settingsBtn.dataset.devProjectSettings = page.slug;
         settingsBtn.setAttribute('aria-label', `Card settings for ${page.title}`);
       }
+      if (isImage) {
+        settingsBtn?.closest('.project-grid__chips--end-bottom')?.remove();
+      }
       item.querySelectorAll<HTMLElement>('[data-dev-edit-trigger="image"]').forEach((cropBtn) => {
         cropBtn.setAttribute('aria-label', `Crop cover for ${page.title}`);
         cropBtn.title = 'Crop cover';
       });
 
       let card = item.querySelector<HTMLElement>('.project-grid__card');
-      if (isTeaser && card instanceof HTMLAnchorElement) {
+      if (isUnlinked && card instanceof HTMLAnchorElement) {
         const div = document.createElement('div');
-        div.className = `${card.className} project-grid__card--teaser`.trim();
+        div.className = `${card.className}${isTeaser ? ' project-grid__card--teaser' : ''}`.trim();
         div.setAttribute('aria-disabled', 'true');
-        div.dataset.devTeaserSlug = page.slug;
-        div.dataset.devTeaserHref = `/${page.slug}`;
+        if (isTeaser) {
+          div.dataset.devTeaserSlug = page.slug;
+          div.dataset.devTeaserHref = `/${page.slug}`;
+        }
         while (card.firstChild) div.appendChild(card.firstChild);
         card.replaceWith(div);
         card = div;

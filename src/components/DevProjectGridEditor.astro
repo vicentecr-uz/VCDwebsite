@@ -1,38 +1,30 @@
 ---
 /** Singleton dev dialogs + handlers for Home / Work / Play project grids. */
 import DevOverlay from './DevOverlay.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
+import SelectField from './ui/SelectField.astro';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import imageIcon from 'lucide-static/icons/image.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
-import { PLACEHOLDER_COVER } from '../lib/placeholderCover.mjs';
+import { PLACEHOLDER_COVER, EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
 
 const teaserPassword = getTeaserPassword();
 const statusIcons = {
   published: sizeIcon(globeIcon, 14),
   draft: sizeIcon(filePenIcon, 14),
   teaser: sizeIcon(eyeOffIcon, 14),
+  image: sizeIcon(imageIcon, 14),
 };
+const visibilityOptions = [
+  { value: 'published', label: 'Public', icon: globeIcon },
+  { value: 'teaser', label: 'Teaser', icon: eyeOffIcon },
+  { value: 'draft', label: 'Draft', icon: filePenIcon },
+];
 ---
-
-<dialog class="dev-project-dialog" data-dev-project-create-dialog>
-  <form method="dialog" class="dev-project-dialog__panel" data-dev-project-create-form>
-    <h2>New project page</h2>
-    <label>
-      Title
-      <input type="text" name="title" required placeholder="Project title" />
-    </label>
-    <label>
-      Slug
-      <input type="text" name="slug" required placeholder="project-slug" pattern="[a-z0-9-]+" />
-    </label>
-    <div class="dev-project-dialog__actions">
-      <button type="button" value="cancel">Cancel</button>
-      <button type="submit" value="create">Create</button>
-    </div>
-  </form>
-</dialog>
 
 <DevOverlay
   storageKey="project-settings"
@@ -42,26 +34,53 @@ const statusIcons = {
   <div class="dev-project-settings" data-dev-project-settings-root>
     <p class="dev-project-settings__hint" hidden></p>
 
+    <SelectField
+      class="dev-project-settings__field"
+      label="Visibility"
+      id="ps-status-trigger"
+      data-ps-status
+      options={visibilityOptions}
+      value="published"
+    />
+
     <div class="dev-project-settings__listing" data-ps-listing-fields>
-      <label class="dev-project-settings__field">
-        <span>Card background</span>
-        <input type="text" data-ps-bg />
-      </label>
-
-      <label class="dev-project-settings__inline">
-        <input type="checkbox" data-ps-dark />
-        <span>Light text on card</span>
-      </label>
-
-      <label class="dev-project-settings__inline">
-        <input type="checkbox" data-ps-hover-dark />
-        <span>Light text on hover</span>
-      </label>
+      <div class="dev-project-settings__hex-row">
+        <label class="dev-project-settings__field dev-field">
+          <span class="dev-field__label">Card background</span>
+          <div class="dev-field__value">
+            <input
+              type="text"
+              class="dev-project-settings__hex-input dev-field__input"
+              inputmode="text"
+              maxlength="7"
+              autocomplete="off"
+              spellcheck="false"
+              data-ps-bg
+            />
+          </div>
+        </label>
+        <button
+          type="button"
+          class="dev-project-settings__swatch"
+          aria-label="Open colour picker"
+          data-ps-bg-swatch
+        ></button>
+      </div>
     </div>
 
-    <div class="dev-project-settings__danger-actions">
-      <button type="button" data-ps-delete>Delete project</button>
-    </div>
+    <color-picker
+      data-ps-bg-picker
+      label-title="Colour"
+      label-hue="Hue"
+      label-saturation="Saturation"
+      label-lightness="Lightness"
+      label-opacity="Opacity"
+      label-ok="Done"
+    ></color-picker>
+
+    <PanelActions>
+      <Button type="button" emphasis="danger" label="Delete project" data-ps-delete />
+    </PanelActions>
 
     <p class="dev-project-settings__status" data-ps-status-line aria-live="polite"></p>
   </div>
@@ -84,6 +103,7 @@ const statusIcons = {
     measureRegionLuma,
   } from '../scripts/coverLuminance';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
+  import 'color-dialog-box';
 
   window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
 
@@ -134,15 +154,14 @@ const statusIcons = {
   };
 </script>
 
-<script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER }}>
-  const createDialog = document.querySelector('[data-dev-project-create-dialog]');
-  const createForm = document.querySelector('[data-dev-project-create-form]');
+<script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER, emptyCoverFill: EMPTY_COVER_FILL }}>
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
   const bgInput = settingsRoot?.querySelector('[data-ps-bg]');
-  const darkInput = settingsRoot?.querySelector('[data-ps-dark]');
-  const hoverDarkInput = settingsRoot?.querySelector('[data-ps-hover-dark]');
+  const bgSwatch = settingsRoot?.querySelector('[data-ps-bg-swatch]');
+  const bgPicker = settingsRoot?.querySelector('[data-ps-bg-picker]');
+  const statusSelect = settingsRoot?.querySelector('select[data-ps-status]');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
@@ -153,11 +172,38 @@ const statusIcons = {
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
   const caches = new Map();
 
-  const slugify = (value) => value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
+  const normalizeHex = (raw) => {
+    const value = String(raw || '').trim().startsWith('#') ? String(raw).trim() : `#${String(raw || '').trim()}`;
+    const short = /^#([0-9a-f]{3})$/i.exec(value);
+    if (short) {
+      return `#${[...short[1]].map((digit) => digit.repeat(2)).join('')}`.toLowerCase();
+    }
+    const long = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(value);
+    return long ? `#${long[1].toLowerCase()}` : null;
+  };
+
+  const toPickerHex = (hex) => `${hex}ff`;
+
+  const syncBgField = (value) => {
+    if (!(bgInput instanceof HTMLInputElement)) return;
+    bgInput.value = value;
+    if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
+  };
+
+  const previewCardBg = (value) => {
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    entry.draft.listing.bg = value;
+    syncPendingFor(panelSlug);
+  };
+
+  const openBgPicker = (hex) => {
+    if (!(bgPicker instanceof HTMLElement)) return;
+    bgPicker.setAttribute('hex', toPickerHex(hex));
+    if (bgPicker.getAttribute('open') === 'true') bgPicker.removeAttribute('open');
+    bgPicker.setAttribute('open', 'true');
+  };
 
   const pendingId = (slug, grid) => `project-settings:${slug}:${grid}`;
 
@@ -427,6 +473,7 @@ const statusIcons = {
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
+      cover.style.backgroundColor = listing.bg || '#efefef';
       cover.classList.toggle('project-grid__cover--has-hover', Boolean(listing.hoverImage));
       // #176 — the empty state is server-rendered, so it has to be re-derived
       // here or the "Drop cover image" label and its wash sit on top of the
@@ -434,8 +481,14 @@ const statusIcons = {
       if (isPlaceholderCover(displayImage)) cover.dataset.devCoverEmpty = 'true';
       else delete cover.dataset.devCoverEmpty;
     }
-    if (baseImg instanceof HTMLImageElement && displayImage) {
-      baseImg.src = displayImage;
+    if (baseImg instanceof HTMLImageElement) {
+      if (displayImage && !isPlaceholderCover(displayImage)) {
+        baseImg.hidden = false;
+        baseImg.src = displayImage;
+      } else {
+        baseImg.removeAttribute('src');
+        baseImg.hidden = true;
+      }
     }
     if (hoverImg instanceof HTMLImageElement) {
       if (liveHover || listing.hoverImage) {
@@ -486,6 +539,158 @@ const statusIcons = {
         option.dataset.devStatusOption === status ? 'true' : 'false',
       );
     });
+  };
+
+  const rewriteTemplateSlug = (root, slug) => {
+    const nodes = [root, ...root.querySelectorAll('*')];
+    nodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      for (const attr of [...node.attributes]) {
+        if (attr.value.includes('__template__')) {
+          node.setAttribute(attr.name, attr.value.replace(/__template__/g, slug));
+        }
+      }
+    });
+  };
+
+  const insertCreatedProjectCard = ({ slug, title, status, grid }) => {
+    const gridEl = document.querySelector(`[data-dev-project-grid="${grid}"]`);
+    const template = gridEl?.querySelector('[data-dev-grid-card-template]');
+    const seed = template?.content?.firstElementChild;
+    if (!(gridEl instanceof HTMLElement) || !(seed instanceof HTMLElement)) {
+      console.warn('[DevProjectGridEditor] Missing grid or card template — cannot insert created project.');
+      return;
+    }
+
+    const existing = gridEl.querySelector(`[data-dev-project-slug="${slug}"]`);
+    if (existing instanceof HTMLElement) {
+      existing.scrollIntoView({ block: 'center', inline: 'nearest' });
+      return;
+    }
+
+    const item = seed.cloneNode(true);
+    if (!(item instanceof HTMLElement)) return;
+
+    item.dataset.devProjectSlug = slug;
+    item.dataset.devStatus = status;
+
+    const statusBtn = item.querySelector('[data-dev-project-status]');
+    if (statusBtn instanceof HTMLElement) statusBtn.dataset.devProjectStatus = slug;
+
+    const hoverBtn = item.querySelector('[data-dev-project-hover]');
+    if (hoverBtn instanceof HTMLElement) {
+      hoverBtn.dataset.devProjectHover = slug;
+      hoverBtn.dataset.devHoverChipFor = title;
+    }
+
+    const spanBtn = item.querySelector('[data-dev-project-span]');
+    if (spanBtn instanceof HTMLElement) {
+      spanBtn.dataset.devProjectSpan = slug;
+      spanBtn.setAttribute('aria-label', `Span columns for ${title}`);
+    }
+
+    const settingsBtn = item.querySelector('[data-dev-project-settings]');
+    if (settingsBtn instanceof HTMLElement) {
+      settingsBtn.dataset.devProjectSettings = slug;
+      settingsBtn.setAttribute('aria-label', `Card settings for ${title}`);
+    }
+
+    item.querySelectorAll('[data-dev-edit-trigger="image"]').forEach((cropBtn) => {
+      if (cropBtn instanceof HTMLElement) {
+        cropBtn.setAttribute('aria-label', `Crop cover for ${title}`);
+        cropBtn.title = 'Crop cover';
+      }
+    });
+
+    let card = item.querySelector('.project-grid__card');
+    if (status === 'image') {
+      if (card instanceof HTMLAnchorElement) {
+        const div = document.createElement('div');
+        div.className = card.className;
+        div.setAttribute('aria-disabled', 'true');
+        while (card.firstChild) div.appendChild(card.firstChild);
+        card.replaceWith(div);
+        card = div;
+      }
+      item.querySelector('.project-grid__chips--end-bottom')?.remove();
+    } else if (card instanceof HTMLAnchorElement) {
+      card.href = `/${slug}`;
+      if (status === 'teaser') {
+        card.classList.add('project-grid__card--teaser');
+        card.dataset.devTeaserSlug = slug;
+        card.dataset.devTeaserHref = `/${slug}`;
+      } else {
+        card.classList.remove('project-grid__card--teaser');
+        delete card.dataset.devTeaserSlug;
+        delete card.dataset.devTeaserHref;
+      }
+    }
+
+    item.dataset.devBg = emptyCoverFill;
+    item.dataset.devDark = 'true';
+
+    const cover = item.querySelector('.project-grid__cover');
+    if (cover instanceof HTMLElement) {
+      cover.dataset.devCoverDrop = slug;
+      cover.dataset.devListingCover = grid;
+      cover.dataset.devCoverEmpty = 'true';
+      cover.style.backgroundColor = emptyCoverFill;
+    }
+
+    rewriteTemplateSlug(item, slug);
+
+    const titleEl = item.querySelector('[data-dev-project-title]');
+    if (titleEl) titleEl.textContent = title;
+
+    const subtitleEl = item.querySelector('[data-dev-project-subtitle]');
+    if (subtitleEl instanceof HTMLElement) {
+      subtitleEl.textContent = grid === 'play'
+        ? ''
+        : `'${new Date().getFullYear().toString().slice(-2)}`;
+    }
+
+    if (status === 'teaser') {
+      let teaserLabel = item.querySelector('[data-dev-project-teaser-label]');
+      if (!teaserLabel) {
+        const row = item.querySelector('.flex.items-baseline');
+        if (row) {
+          teaserLabel = document.createElement('span');
+          teaserLabel.className = 'project-grid__teaser-label font-bold';
+          teaserLabel.dataset.devProjectTeaserLabel = '';
+          teaserLabel.dataset.placeholder = 'Teaser label';
+          teaserLabel.textContent = 'Coming soon';
+          row.append(teaserLabel);
+        }
+      }
+    } else {
+      item.querySelector('[data-dev-project-teaser-label]')?.remove();
+    }
+
+    const baseImg = item.querySelector('.project-grid__img--base');
+    if (baseImg instanceof HTMLImageElement) {
+      baseImg.removeAttribute('src');
+      baseImg.removeAttribute('data-image-preview');
+      baseImg.alt = title;
+      baseImg.hidden = true;
+    }
+
+    const newPageItem = gridEl.querySelector('.project-grid__item--new');
+    if (newPageItem) gridEl.insertBefore(item, newPageItem);
+    else gridEl.appendChild(item);
+
+    syncStatusChip(item, status);
+    enableCardEditing(item);
+    // Match disarmCardLinks for this card only — do not enableAllCardEditing
+    // (that would re-strip every gallery href). Cover click in Edit must not
+    // navigate; restoreCardLinks puts href back on exit.
+    if (card instanceof HTMLAnchorElement) {
+      const href = card.getAttribute('href');
+      if (href) {
+        card.dataset.devHref = href;
+        card.removeAttribute('href');
+      }
+    }
+    item.scrollIntoView({ block: 'center', inline: 'nearest' });
   };
 
   window.__vcdSyncStatusChip = syncStatusChip;
@@ -572,17 +777,16 @@ const statusIcons = {
   };
 
   const renderPanelFromEntry = (entry) => {
-    if (bgInput instanceof HTMLInputElement) bgInput.value = entry.draft.listing.bg;
-    if (darkInput instanceof HTMLInputElement) darkInput.checked = entry.draft.listing.dark;
-    if (hoverDarkInput instanceof HTMLInputElement) {
-      hoverDarkInput.checked = entry.draft.listing.hoverDark ?? entry.draft.listing.dark;
+    if (statusSelect instanceof HTMLSelectElement) {
+      statusSelect.value = entry.draft.status;
     }
+    syncBgField(entry.draft.listing.bg || '#efefef');
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
       overlayTitle.textContent = window.__vcdResolveDevPanelTitle('project-settings', { suffix: gridLabel });
     }
     if (statusLine instanceof HTMLElement) {
-      statusLine.textContent = 'Card background and text colour. Title, visibility, cover, and span edit on the card.';
+      statusLine.textContent = 'Card background and visibility. Title, cover, and span edit on the card.';
     }
   };
 
@@ -879,6 +1083,7 @@ const statusIcons = {
     await waitImageReady(overlay);
 
     liveCoverBlobs.delete(slug);
+    baseImg.hidden = false;
     baseImg.src = draftUrl;
     await waitImageReady(baseImg);
 
@@ -1015,7 +1220,9 @@ const statusIcons = {
       if (targetImg instanceof HTMLImageElement) {
         // Hover img starts hidden when the slot is empty — unhide before
         // assigning src, or the crossfade lands on a display:none element.
-        if (slot === 'hoverImage') targetImg.hidden = false;
+        // Empty covers also hide the base img (fill-only); dropping a photo
+        // has to unhide it too.
+        targetImg.hidden = false;
         targetImg.src = blobUrl;
         await waitImageReady(targetImg);
       }
@@ -1089,6 +1296,10 @@ const statusIcons = {
       entry.draft.status = status;
       closeAllStatusMenus();
       syncPendingFor(slug);
+      if (panelSlug === slug) {
+        const openEntry = caches.get(slug);
+        if (openEntry) renderPanelFromEntry(openEntry);
+      }
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not update visibility.');
     }
@@ -1205,7 +1416,13 @@ const statusIcons = {
       event.stopPropagation();
       const gridRoot = newButton.closest('[data-dev-project-grid]');
       createActiveGrid = gridRoot?.getAttribute('data-dev-project-grid') ?? 'work';
-      openCreateDialog();
+      window.dispatchEvent(new CustomEvent('vcd:dev-new-project-open', {
+        detail: {
+          grid: createActiveGrid,
+          clientX: event.clientX,
+          clientY: event.clientY,
+        },
+      }));
       return;
     }
 
@@ -1329,78 +1546,53 @@ const statusIcons = {
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-ps-bg]')) return;
     if (!panelSlug) return;
-    const entry = caches.get(panelSlug);
-    if (!entry) return;
-    entry.draft.listing.bg = bgInput instanceof HTMLInputElement ? bgInput.value.trim() : '#efefef';
-    syncPendingFor(panelSlug);
+    const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '');
+    if (!value) return;
+    if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
+    previewCardBg(value);
   });
+
+  settingsRoot?.addEventListener('blur', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-ps-bg]')) return;
+    const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '');
+    if (!value) return;
+    syncBgField(value);
+    if (bgPicker instanceof HTMLElement) bgPicker.setAttribute('hex', toPickerHex(value));
+  }, true);
 
   settingsRoot?.addEventListener('change', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
-    if (target.matches('[data-ps-dark]')) {
+    if (target.matches('select[data-ps-status]')) {
       if (!panelSlug) return;
       const entry = caches.get(panelSlug);
       if (!entry) return;
-      entry.draft.listing.dark = darkInput instanceof HTMLInputElement && darkInput.checked;
-      syncPendingFor(panelSlug);
-      return;
-    }
-    if (target.matches('[data-ps-hover-dark]')) {
-      // Manual override wins from here on — the measurement was a starting
-      // point, not an authority.
-      if (!panelSlug) return;
-      const entry = caches.get(panelSlug);
-      if (!entry) return;
-      entry.draft.listing.hoverDark = hoverDarkInput instanceof HTMLInputElement
-        ? hoverDarkInput.checked
-        : entry.draft.listing.dark;
+      entry.draft.status = statusSelect instanceof HTMLSelectElement
+        ? statusSelect.value
+        : entry.draft.status;
       syncPendingFor(panelSlug);
     }
   });
 
-  const openCreateDialog = () => {
-    if (!(createDialog instanceof HTMLDialogElement) || !(createForm instanceof HTMLFormElement)) return;
-    createForm.reset();
-    createDialog.showModal();
-    const titleInput = createForm.querySelector('input[name="title"]');
-    const slugInput = createForm.querySelector('input[name="slug"]');
-    if (titleInput instanceof HTMLInputElement) {
-      titleInput.focus();
-      titleInput.addEventListener('input', () => {
-        if (slugInput instanceof HTMLInputElement && !slugInput.dataset.touched) {
-          slugInput.value = slugify(titleInput.value);
-        }
-      }, { once: true });
-    }
-    if (slugInput instanceof HTMLInputElement) {
-      slugInput.addEventListener('input', () => {
-        slugInput.dataset.touched = 'true';
-      }, { once: true });
-    }
-  };
-
-  createForm?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!(createForm instanceof HTMLFormElement)) return;
-    const formData = new FormData(createForm);
-    const title = String(formData.get('title') || '').trim();
-    const slug = String(formData.get('slug') || '').trim();
-    const response = await fetch('/api/project-create', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title, slug, grid: createActiveGrid }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      window.alert(payload.error || 'Could not create the project.');
-      return;
-    }
-    navigateAway(`/${slug}`);
+  bgSwatch?.addEventListener('click', () => {
+    const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '')
+      || '#efefef';
+    openBgPicker(value);
   });
 
-  createForm?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
-    if (createDialog instanceof HTMLDialogElement) createDialog.close();
+  bgPicker?.addEventListener('update-color', (event) => {
+    const value = normalizeHex(event.detail?.hex || '');
+    if (!value) return;
+    syncBgField(value);
+    previewCardBg(value);
+  });
+
+  window.addEventListener('vcd:dev-edit-close', (event) => {
+    const panel = event.detail?.panel;
+    if (panel?.dataset?.devPanelKey !== 'project-settings') return;
+    if (bgPicker instanceof HTMLElement) bgPicker.removeAttribute('open');
+    panelSlug = '';
   });
 
   deleteButton?.addEventListener('click', async () => {
@@ -1416,13 +1608,9 @@ const statusIcons = {
       window.alert(payload.error || 'Could not delete the project.');
       return;
     }
-    navigateAway('/work');
-  });
-
-  window.addEventListener('vcd:dev-edit-close', (event) => {
-    const panel = event.detail?.panel;
-    if (panel?.dataset?.devPanelKey !== 'project-settings') return;
-    panelSlug = '';
+    const grid = caches.get(panelSlug)?.grid
+      ?? document.querySelector('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid');
+    navigateAway(grid === 'home' ? '/' : grid === 'play' ? '/play' : '/work');
   });
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
@@ -1447,6 +1635,47 @@ const statusIcons = {
     })();
   });
 
+  window.addEventListener('vcd:dev-listing-src', (event) => {
+    const { slug, slot, src } = event.detail ?? {};
+    if (!slug || !src || (slot !== 'image' && slot !== 'hoverImage')) return;
+    const item = gridItemForSlug(slug);
+    const entry = caches.get(slug);
+    if (entry) {
+      if (slot === 'hoverImage') entry.draft.listing.hoverImage = src;
+      else entry.draft.listing.image = src;
+      applyListingPreview(entry.item, entry.draft, entry.grid);
+      return;
+    }
+    if (!(item instanceof HTMLElement)) return;
+    const cover = item.querySelector('.project-grid__cover');
+    const hoverImg = item.querySelector('.project-grid__img--hover');
+    if (slot === 'hoverImage') {
+      if (hoverImg instanceof HTMLImageElement) {
+        hoverImg.src = src;
+        hoverImg.hidden = false;
+      }
+      if (cover instanceof HTMLElement) cover.classList.add('project-grid__cover--has-hover');
+    } else if (cover instanceof HTMLElement) {
+      delete cover.dataset.devCoverEmpty;
+      const baseImg = item.querySelector('.project-grid__img--base');
+      if (baseImg instanceof HTMLImageElement) {
+        baseImg.hidden = false;
+        baseImg.src = src;
+      }
+    }
+  });
+
+  window.addEventListener('vcd:dev-project-created', (event) => {
+    const { slug, title, status, grid } = event.detail || {};
+    if (!slug || !grid) return;
+    insertCreatedProjectCard({
+      slug,
+      title: title || slug,
+      status: status || 'draft',
+      grid,
+    });
+  });
+
   window.addEventListener('vcd:dev-mode-change', (event) => {
     if (event.detail?.active) {
       enableAllCardEditing();
@@ -1463,73 +1692,10 @@ const statusIcons = {
 </script>
 
 <style is:global>
-  .dev-project-dialog {
-    border: 0;
-    padding: 0;
-    margin: auto;
-    background: transparent;
-  }
-
-  .dev-project-dialog:not([open]) {
-    display: none !important;
-  }
-
-  .dev-project-dialog::backdrop {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(8px);
-  }
-
-  .dev-project-dialog__panel {
-    display: grid;
-    gap: 0.85em;
-    width: min(28em, calc(100vw - 2em));
-    padding: 1.25em;
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
-    background: #fff;
-    color: #111;
-  }
-
-  .dev-project-dialog__panel h2 {
-    margin: 0;
-    font-size: 1.1rem;
-  }
-
-  .dev-project-dialog__panel label {
-    display: grid;
-    gap: 0.35em;
-    font-size: 0.92rem;
-  }
-
-  .dev-project-dialog__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4em;
-    justify-content: flex-end;
-  }
-
-  .dev-project-dialog__actions button {
-    padding: 0.35em 0.65em;
-    border: 1px solid #ccc;
-    border-radius: 0.35em;
-    background: #f7f7f7;
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-
-  .dev-project-dialog__panel input[type='text'] {
-    width: 100%;
-    padding: 0.55em 0.65em;
-    border: 1px solid #ccc;
-    border-radius: 0.35em;
-    font: inherit;
-  }
-
   .dev-project-settings {
     position: relative;
     display: grid;
-    gap: 0.65em;
+    gap: var(--dev-panel-content-gap);
     font-size: 0.82rem;
   }
 
@@ -1551,20 +1717,29 @@ const statusIcons = {
     border: 0;
   }
 
-  .dev-project-settings__field {
-    display: grid;
-    gap: 0.3em;
-  }
-
-  .dev-project-settings__field span {
-    color: var(--sys-color-on-srf-variant);
-    font-size: 0.78rem;
-  }
-
-  .dev-project-settings__inline {
+  .dev-project-settings__hex-row {
     display: flex;
-    align-items: center;
-    gap: 0.45em;
+    align-items: flex-end;
+    gap: 8px;
+  }
+
+  .dev-project-settings__field {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .dev-project-settings__hex-input {
+    font-family: ui-monospace, monospace;
+  }
+
+  .dev-project-settings__swatch {
+    width: 33px;
+    height: 33px;
+    border: 1px solid var(--sys-color-outline);
+    border-radius: var(--dev-radius-control);
+    padding: 0;
+    flex: 0 0 auto;
+    cursor: pointer;
   }
 
   .dev-project-settings__listing {
@@ -1572,34 +1747,20 @@ const statusIcons = {
     gap: 0.55em;
   }
 
-  .dev-project-settings__danger-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5em;
+  color-picker[data-ps-bg-picker] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
   }
 
-  .dev-project-settings__danger-actions button {
-    padding: 0.35em 0.65em;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: 0.35em;
-    background: color-mix(in srgb, var(--sys-color-srf-container-low) 90%, transparent);
-    font: inherit;
-    font-size: 0.78rem;
-    cursor: pointer;
-  }
-
-  .dev-project-settings__danger-actions button[data-ps-delete] {
-    border-color: #d88;
-    background: #fff0f0;
-  }
-
-  .dev-project-settings input[type='text'],
-  .dev-project-settings select {
-    width: 100%;
-    padding: 0.45em 0.55em;
-    border: 1px solid var(--sys-color-outline-variant);
-    border-radius: 0.35em;
-    font: inherit;
-    background: color-mix(in srgb, var(--sys-color-srf) 92%, transparent);
+  color-picker {
+    --font: var(--font-sans);
+    --bg-primary: var(--sys-color-srf);
+    --bg-secondary: var(--sys-color-srf-container-low);
+    --bg-header: var(--sys-color-srf-container-high);
+    --border-color-primary: var(--sys-color-outline-variant);
+    --border-color-secondary: var(--sys-color-on-srf);
+    --txt-color-primary: var(--sys-color-on-srf);
   }
 </style>
