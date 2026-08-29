@@ -20,12 +20,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     data-eye-icon={eyeIconSvg}
     data-eye-off-icon={eyeOffIconSvg}
   >
-    <label class="dev-field">
-      <span class="dev-field__label">Ink threshold</span>
-      <input data-ink-threshold type="range" min="0" max="1" step="0.01" value="0.5" />
-      <output data-ink-threshold-output>0.50</output>
-    </label>
-
     <div class="dev-gallery-pages__filters dev-segmented" role="group" aria-label="Gallery filter">
       <button type="button" data-gallery-filter="all" class="dev-btn dev-btn--ghost is-active">All</button>
       <button type="button" data-gallery-filter="on" class="dev-btn dev-btn--ghost">On this page</button>
@@ -53,7 +47,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     responsiveImageStyle,
     type ImageVariants,
   } from '../lib/responsiveImage';
-  import { getLumaThreshold, setLumaThreshold } from '../scripts/coverLuminance';
 
   /** @typedef {{
    *   slug: string,
@@ -84,36 +77,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     if (!root || !panel) return;
     if (root.dataset.initialized === 'true') return;
     root.dataset.initialized = 'true';
-
-    const inkThresholdInput = root.querySelector<HTMLInputElement>('[data-ink-threshold]');
-    const inkThresholdOutput = root.querySelector<HTMLOutputElement>('[data-ink-threshold-output]');
-    const INK_THRESHOLD_KEY = 'vcd-ink-threshold';
-
-    const syncInkThresholdUi = (value: number) => {
-      if (inkThresholdInput) inkThresholdInput.value = String(value);
-      if (inkThresholdOutput) inkThresholdOutput.textContent = value.toFixed(2);
-    };
-
-    if (inkThresholdInput && inkThresholdOutput) {
-      const stored = localStorage.getItem(INK_THRESHOLD_KEY);
-      const parsed = stored !== null ? Number.parseFloat(stored) : Number.NaN;
-      if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 1) {
-        setLumaThreshold(parsed);
-        syncInkThresholdUi(parsed);
-        window.dispatchEvent(new CustomEvent('vcd:dev-frame-changed'));
-      } else {
-        syncInkThresholdUi(getLumaThreshold());
-      }
-
-      inkThresholdInput.addEventListener('input', () => {
-        const value = Number.parseFloat(inkThresholdInput.value);
-        if (!Number.isFinite(value)) return;
-        setLumaThreshold(value);
-        syncInkThresholdUi(getLumaThreshold());
-        localStorage.setItem(INK_THRESHOLD_KEY, String(getLumaThreshold()));
-        window.dispatchEvent(new CustomEvent('vcd:dev-frame-changed'));
-      });
-    }
 
     const gridEl = root.querySelector<HTMLElement>('[data-gallery-grid]');
     const statusEl = root.querySelector<HTMLElement>('[data-gallery-status]');
