@@ -233,27 +233,12 @@ export function emptyModernProjectDocument(
             full: false,
           },
     },
-    outline: [
-      {
-        kind: 'section',
-        id: 'overview',
-        label: 'Overview',
-        anchor: 'overview',
-      },
-    ],
+    outline: [],
     sections: [
       {
-        type: 'sectionTitle',
-        id: 'overview-title',
-        title,
-        spacing: 'section',
-        sectionId: 'overview',
-      },
-      {
         type: 'bodyText',
-        id: 'overview-body',
-        spacing: 'section',
-        sectionId: 'overview',
+        id: 'body-1',
+        spacing: 'none',
         paragraphs: [''],
       },
     ],
