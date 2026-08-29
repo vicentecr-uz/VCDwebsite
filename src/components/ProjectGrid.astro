@@ -179,8 +179,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /* Chip — the only way hover shows in Edit (WYSIWYG: cover stays cover
-     while travelling to the crop tuner). Keyboard + pointer hover are live-only. */
-  .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
+     while travelling to the crop tuner). Keyboard + pointer hover are live-only.
+     Specificity must beat `html.is-dev-mode .project-grid__cover .project-grid__img--hover`
+     above: that rule's delayed visibility (for fade-out) otherwise wins on the
+     way in, so opacity animates while still hidden and the bitmap pops at 1. */
+  html.is-dev-mode .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.2s ease, visibility 0s;
