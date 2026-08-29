@@ -1608,7 +1608,9 @@ const visibilityOptions = [
       window.alert(payload.error || 'Could not delete the project.');
       return;
     }
-    navigateAway('/work');
+    const grid = caches.get(panelSlug)?.grid
+      ?? document.querySelector('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid');
+    navigateAway(grid === 'home' ? '/' : grid === 'play' ? '/play' : '/work');
   });
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
