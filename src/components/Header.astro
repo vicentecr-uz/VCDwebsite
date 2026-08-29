@@ -209,9 +209,15 @@ const menuLinks = headerSettings.menuLinks;
         header.classList.remove('is-scrolled-hidden');
       }
 
+      // First-block edit chrome lifts above the header fill only at the top
+      // of the page. After a scroll, the header must cover that chrome again.
+      document.documentElement.classList.toggle('is-page-top', y <= 8);
+
       lastY = y;
       ticking = false;
     };
+
+    document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
       'scroll',
@@ -857,7 +863,8 @@ const menuLinks = headerSettings.menuLinks;
     );
     position: sticky;
     top: 0;
-    /* Above mid-page gap toolbars (40); page-top chips lift drop zone to 55 while active.
+    /* Above mid-page gap toolbars (40); page-top chips / first-block chrome
+       lift the drop zone to 55 while at the top of the page.
        Below format bar (90+) and section drag lift (70). */
     z-index: 50;
     padding: var(--space-unit) 0;
@@ -871,7 +878,11 @@ const menuLinks = headerSettings.menuLinks;
 
   .site-header__bg {
     position: absolute;
-    inset: 0;
+    inset-block: 0;
+    /* Full viewport, not the content column — inherit --page-gutter from
+       #site-wrapper (percentage already resolved there, so no 100vw scrollbar). */
+    left: calc(-1 * var(--page-gutter, 0px));
+    right: calc(-1 * var(--page-gutter, 0px));
     background-color: var(--sys-color-srf);
     z-index: 0;
     pointer-events: none;
