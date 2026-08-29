@@ -10,7 +10,6 @@ export const DEV_PANEL_TITLES = {
   'new-project': 'New project',
   'section-nav': 'Outline marker',
   'style-color-token': 'Edit colour token',
-  'body-tracking': 'Tracking',
 } as const;
 
 export type DevPanelKey = keyof typeof DEV_PANEL_TITLES;
