@@ -7,6 +7,7 @@ export const DEV_PANEL_TITLES = {
   'gallery-pages': 'Gallery manager',
   'asset-manager': 'Asset manager',
   'log-issue': 'Log new issue',
+  'new-project': 'New project',
   'section-nav': 'Outline marker',
   'style-color-token': 'Edit colour token',
 } as const;

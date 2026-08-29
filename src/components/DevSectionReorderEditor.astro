@@ -724,22 +724,26 @@
 
   .is-dev-mode [data-dev-project-drop-zone] {
     position: relative;
-    isolation: isolate;
-    /* Above sticky sidebar (2) and section-editor sidebar (20) so gutter
-       drag handles stay visible/clickable before a lift starts. */
-    z-index: 25;
     border-radius: 0.15em;
   }
 
-  /* Lifted block is position:fixed inside this isolated context — raise
-     further above the site header (50) while dragging. */
+  /* Above sticky sidebar (2 / 20); under the header (50). The first block
+     is not lifted — the header fill is transparent at page top instead. */
+  .is-dev-mode [data-dev-project-drop-zone] > [data-dev-spacing-document] {
+    position: relative;
+    z-index: 25;
+  }
+
+  /* Lifted block is position:fixed — isolate and raise above the header. */
   html.is-section-reorder-dragging [data-dev-project-drop-zone] {
+    isolation: isolate;
     z-index: 70;
   }
 
   /* Page-top gap chips sit in the sticky header band — lift the drop zone so
      they paint/receive hits above the nav (same trap as drag lift above). */
   html.is-page-top-gap-above-header.is-dev-mode [data-dev-project-drop-zone] {
+    isolation: isolate;
     z-index: 55;
   }
 

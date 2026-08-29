@@ -2,13 +2,10 @@
   const initDevModeController = () => {
     const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
     const CHROME_FADE_MS = 280;
-    const CHROME_CUE_HOLD_MS = 320;
 
     const html = document.documentElement;
     let devMode = false;
     let enterEndTimer: ReturnType<typeof setTimeout> | null = null;
-    let cueEndTimer: ReturnType<typeof setTimeout> | null = null;
-    let settlingEndTimer: ReturnType<typeof setTimeout> | null = null;
     let exitTimer: ReturnType<typeof setTimeout> | null = null;
 
     const editTriggers = () =>
@@ -100,29 +97,23 @@
 
     /*
       Not reduced-motion-gated. Entering and exiting dev mode is entirely
-      opacity — the chrome fades, and the layout cue is an ::after ring fading
-      in; nothing travels or resizes. Returning 0 here made enterDevMode skip
-      the transition classes outright and exitDevMode snap, which removed the
-      one kind of motion that is safe to keep. Suppress movement, not fades.
+      opacity — the chrome fades; nothing travels or resizes. Returning 0
+      here made enterDevMode skip the transition classes outright and
+      exitDevMode snap, which removed the one kind of motion that is safe
+      to keep. Suppress movement, not fades.
     */
     const chromeFadeMs = () => CHROME_FADE_MS;
 
     const clearChromeTransitionClasses = () => {
       html.classList.remove(
         'is-dev-mode-entering',
-        'is-dev-mode-settling',
         'is-dev-mode-exiting',
-        'is-dev-mode-cue',
       );
     };
 
     const clearChromeTimers = () => {
       if (enterEndTimer) clearTimeout(enterEndTimer);
       enterEndTimer = null;
-      if (cueEndTimer) clearTimeout(cueEndTimer);
-      cueEndTimer = null;
-      if (settlingEndTimer) clearTimeout(settlingEndTimer);
-      settlingEndTimer = null;
       if (exitTimer) clearTimeout(exitTimer);
       exitTimer = null;
     };
@@ -191,7 +182,7 @@
     const scheduleEnterAnimations = () => {
       const fadeMs = chromeFadeMs();
       if (!fadeMs) {
-        html.classList.remove('is-dev-mode-entering', 'is-dev-mode-settling', 'is-dev-mode-cue');
+        html.classList.remove('is-dev-mode-entering');
         return;
       }
 
@@ -199,16 +190,6 @@
         html.classList.remove('is-dev-mode-entering');
         enterEndTimer = null;
       }, fadeMs);
-
-      cueEndTimer = setTimeout(() => {
-        html.classList.remove('is-dev-mode-cue');
-        cueEndTimer = null;
-        // Let the ::after ring fade out before mounting real text/drop-zone outlines.
-        settlingEndTimer = setTimeout(() => {
-          html.classList.remove('is-dev-mode-settling');
-          settlingEndTimer = null;
-        }, fadeMs);
-      }, fadeMs + CHROME_CUE_HOLD_MS);
     };
 
     const enterDevMode = () => {
@@ -217,21 +198,11 @@
 
       devMode = true;
       html.classList.add('is-dev-mode');
-      if (fadeMs > 0) {
-        // Settling holds outline/text chrome steady until the layout cue finishes.
-        html.classList.add('is-dev-mode-entering', 'is-dev-mode-settling');
-      }
+      if (fadeMs > 0) html.classList.add('is-dev-mode-entering');
       syncDevModeControls(true);
       emitDevModeChange(true);
 
       if (fadeMs === 0) return;
-
-      // Two frames: paint dev-mode shell, then fade the layout cue in via ::after opacity.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          html.classList.add('is-dev-mode-cue');
-        });
-      });
       scheduleEnterAnimations();
     };
 
@@ -245,7 +216,7 @@
       }
 
       html.classList.add('is-dev-mode-exiting');
-      html.classList.remove('is-dev-mode-cue', 'is-dev-mode-entering', 'is-dev-mode-settling');
+      html.classList.remove('is-dev-mode-entering');
 
       exitTimer = setTimeout(() => {
         devMode = false;
@@ -419,6 +390,17 @@
         return;
       }
 
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyN') {
+        const gridEl = document.querySelector('[data-dev-project-grid]');
+        if (!gridEl) return;
+        if (isTypingTarget(event.target as HTMLElement | null)) return;
+        event.preventDefault();
+        window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+        const grid = gridEl.getAttribute('data-dev-project-grid') ?? 'work';
+        window.dispatchEvent(new CustomEvent('vcd:dev-new-project-open', { detail: { grid } }));
+        return;
+      }
+
       if (event.key !== 'Escape') return;
       // Page body-text caret: DevTextEditor handles Esc (deselect like click-away)
       // in capture. Other typing targets (tuner fields, etc.) must not fall through
@@ -472,26 +454,6 @@
 </script>
 
 <style is:global>
-  /*
-    Layout enter/exit cue: ::after ring on the drop zone only.
-  */
-  html.is-dev-mode:is(.is-dev-mode-cue, .is-dev-mode-settling, .is-dev-mode-exiting)
-    [data-dev-project-drop-zone]:not(.is-section-order-dirty)::after {
-    content: '';
-    position: absolute;
-    inset: -0.75em;
-    border: 2px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
-    border-radius: 0.15em;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.28s ease;
-    z-index: 0;
-  }
-
-  html.is-dev-mode.is-dev-mode-cue [data-dev-project-drop-zone]:not(.is-section-order-dirty)::after {
-    opacity: 1;
-  }
-
   html.is-dev-mode-entering .dev-section-drag-handle,
   html.is-dev-mode-entering .dev-section-delete,
   html.is-dev-mode-entering .dev-image-edit-trigger,

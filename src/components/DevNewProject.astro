@@ -1,0 +1,216 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import TextField from './ui/TextField.astro';
+import SegmentedControl from './ui/SegmentedControl.astro';
+import PanelActions from './ui/PanelActions.astro';
+import Button from './ui/Button.astro';
+---
+
+<DevOverlay
+  storageKey="new-project"
+  panelKey="new-project"
+  defaultHidden
+>
+  <div class="dev-new-project" data-dev-new-project>
+    <TextField
+      class="dev-new-project__field"
+      label="Project name"
+      hideLabel
+      placeholder="Project name"
+      data-np-title
+      autocomplete="off"
+      spellcheck="false"
+    />
+
+    <SegmentedControl label="Visibility" class="dev-new-project__visibility">
+      <Button emphasis="ghost" width="fill" label="Public" data-np-status="published" />
+      <Button emphasis="ghost" width="fill" label="Image" data-np-status="image" />
+      <Button emphasis="ghost" width="fill" label="Teaser" data-np-status="teaser" />
+      <Button emphasis="ghost" width="fill" label="Draft" class="is-active" data-np-status="draft" />
+    </SegmentedControl>
+
+    <TextField
+      class="dev-new-project__field dev-new-project__slug"
+      label="Slug"
+      data-np-slug
+      autocomplete="off"
+      spellcheck="false"
+    />
+
+    <PanelActions>
+      <Button type="button" emphasis="ghost" label="Cancel" data-np-cancel />
+      <Button type="button" emphasis="filled" label="Create" data-np-create disabled />
+    </PanelActions>
+  </div>
+</DevOverlay>
+
+<script>
+  import { getLastPointerPosition } from '../lib/lastPointer';
+
+  const initDevNewProject = () => {
+    const root = document.querySelector<HTMLElement>('[data-dev-new-project]');
+    const panel = root?.closest<HTMLElement>('[data-dev-overlay]');
+    if (!root || !panel || root.dataset.initialized === 'true') return;
+    root.dataset.initialized = 'true';
+
+    const titleInput = root.querySelector<HTMLInputElement>('[data-np-title]');
+    const slugInput = root.querySelector<HTMLInputElement>('[data-np-slug]');
+    const slugWrap = root.querySelector<HTMLElement>('.dev-new-project__slug');
+    const createBtn = root.querySelector<HTMLButtonElement>('[data-np-create]');
+    const cancelBtn = root.querySelector<HTMLButtonElement>('[data-np-cancel]');
+    const statusButtons = [...root.querySelectorAll<HTMLElement>('[data-np-status]')];
+
+    let activeGrid = 'work';
+    let selectedStatus = 'draft';
+    let slugTouched = false;
+
+    const slugify = (value: string) => value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 48);
+
+    const syncStatusButtons = () => {
+      statusButtons.forEach((button) => {
+        button.classList.toggle('is-active', button.dataset.npStatus === selectedStatus);
+      });
+      if (slugWrap instanceof HTMLElement) {
+        slugWrap.hidden = selectedStatus === 'image';
+      }
+    };
+
+    const canCreate = () => {
+      const title = titleInput?.value.trim() ?? '';
+      if (!title) return false;
+      if (selectedStatus === 'image') return true;
+      const slug = slugInput?.value.trim() ?? '';
+      return /^[a-z0-9-]+$/.test(slug);
+    };
+
+    const syncCreateEnabled = () => {
+      if (createBtn instanceof HTMLButtonElement) {
+        createBtn.disabled = !canCreate();
+      }
+    };
+
+    const resetForm = () => {
+      if (titleInput) titleInput.value = '';
+      if (slugInput) {
+        slugInput.value = '';
+        delete slugInput.dataset.touched;
+      }
+      slugTouched = false;
+      selectedStatus = 'draft';
+      syncStatusButtons();
+      syncCreateEnabled();
+    };
+
+    const closePanel = () => {
+      panel.hidden = true;
+    };
+
+    const openPanel = (grid: string, clientX?: number, clientY?: number) => {
+      activeGrid = grid;
+      resetForm();
+      panel.hidden = false;
+      const fallback = getLastPointerPosition();
+      const x = typeof clientX === 'number' ? clientX : fallback.x;
+      const y = typeof clientY === 'number' ? clientY : fallback.y;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
+        detail: { panel, clientX: x, clientY: y },
+      }));
+      requestAnimationFrame(() => titleInput?.focus());
+    };
+
+    titleInput?.addEventListener('input', () => {
+      if (slugInput && !slugTouched) {
+        slugInput.value = slugify(titleInput.value);
+      }
+      syncCreateEnabled();
+    });
+
+    slugInput?.addEventListener('input', () => {
+      slugTouched = true;
+      slugInput.dataset.touched = 'true';
+      syncCreateEnabled();
+    });
+
+    statusButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const value = button.dataset.npStatus;
+        if (!value) return;
+        selectedStatus = value;
+        syncStatusButtons();
+        syncCreateEnabled();
+      });
+    });
+
+    cancelBtn?.addEventListener('click', () => {
+      closePanel();
+    });
+
+    createBtn?.addEventListener('click', async () => {
+      if (!canCreate()) return;
+      const title = titleInput?.value.trim() ?? '';
+      const slug = selectedStatus === 'image'
+        ? slugify(title)
+        : (slugInput?.value.trim() ?? '');
+      createBtn.disabled = true;
+      try {
+        const response = await fetch('/api/project-create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title,
+            slug,
+            grid: activeGrid,
+            status: selectedStatus,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          window.alert(payload.error || 'Could not create the project.');
+          return;
+        }
+        closePanel();
+        window.dispatchEvent(new CustomEvent('vcd:dev-project-created', {
+          detail: {
+            slug: payload.slug,
+            title,
+            status: selectedStatus,
+            grid: activeGrid,
+          },
+        }));
+      } catch {
+        window.alert('Could not create the project.');
+      } finally {
+        syncCreateEnabled();
+      }
+    });
+
+    window.addEventListener('vcd:dev-new-project-open', ((event: CustomEvent<{
+      grid?: string;
+      clientX?: number;
+      clientY?: number;
+    }>) => {
+      const grid = event.detail?.grid ?? 'work';
+      const { clientX, clientY } = event.detail ?? {};
+      openPanel(grid, clientX, clientY);
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel) return;
+      resetForm();
+    }) as EventListener);
+  };
+
+  initDevNewProject();
+  document.addEventListener('astro:page-load', initDevNewProject);
+</script>
+
+<style>
+  .dev-new-project {
+    display: grid;
+    gap: var(--space-unit, 1rem);
+  }
+</style>

@@ -1,8 +1,9 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ImageVariants } from './responsiveImage';
+import { EMPTY_COVER_FILL } from './placeholderCover.mjs';
 
-export type ProjectStatus = 'published' | 'draft' | 'teaser';
+export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'image';
 export type ProjectStack = 'modern' | 'legacy';
 
 export type ProjectListingCard = {
@@ -125,11 +126,14 @@ export function shouldIncludeProjectInBuild(
   options: { dev?: boolean } = {},
 ): boolean {
   const dev = options.dev ?? import.meta.env.DEV;
-  // Dev: every modern project is routable so authors can open teasers/drafts.
+  const status = project.status ?? 'published';
+  // Image is gallery-only — no `/slug` route even in dev (#287).
+  if (status === 'image') return false;
+  // Dev: every other modern project is routable so authors can open teasers/drafts.
   // Production: only Public (`published`). Teaser cards still appear on galleries
   // (unclickable); their `/slug` must not exist — same non-discovery as draft (#192).
   if (dev) return true;
-  return (project.status ?? 'published') === 'published';
+  return status === 'published';
 }
 
 export function getModernProjectSlugsForBuild(options: { dev?: boolean } = {}): string[] {
@@ -150,6 +154,7 @@ function listingCardForGrid(
   if (!dev && status === 'draft') return undefined;
 
   const isTeaser = status === 'teaser';
+  const isImage = status === 'image';
   const image = isTeaser
     ? (project.teaser?.coverImage ?? listing.image)
     : listing.image;
@@ -166,7 +171,7 @@ function listingCardForGrid(
     bg: listing.bg,
     dark: listing.dark,
     full: listing.full,
-    href: isTeaser && !dev ? undefined : defaultHref,
+    href: isImage ? undefined : (isTeaser && !dev ? undefined : defaultHref),
     status,
     teaser: isTeaser,
     teaserLabel: project.teaser?.label ?? 'Coming soon',
@@ -214,41 +219,26 @@ export function emptyModernProjectDocument(
         ? {
             order: 999,
             meta: '',
-            image: 'black-token.svg',
-            bg: '#efefef',
-            dark: false,
+            image: '',
+            bg: EMPTY_COVER_FILL,
+            dark: true,
             full: false,
           }
         : {
             order: 999,
             year: new Date().getFullYear().toString().slice(-2).padStart(2, "'"),
-            image: 'black-token.svg',
-            bg: '#efefef',
-            dark: false,
+            image: '',
+            bg: EMPTY_COVER_FILL,
+            dark: true,
             full: false,
           },
     },
-    outline: [
-      {
-        kind: 'section',
-        id: 'overview',
-        label: 'Overview',
-        anchor: 'overview',
-      },
-    ],
+    outline: [],
     sections: [
       {
-        type: 'sectionTitle',
-        id: 'overview-title',
-        title,
-        spacing: 'section',
-        sectionId: 'overview',
-      },
-      {
         type: 'bodyText',
-        id: 'overview-body',
-        spacing: 'section',
-        sectionId: 'overview',
+        id: 'body-1',
+        spacing: 'none',
         paragraphs: [''],
       },
     ],

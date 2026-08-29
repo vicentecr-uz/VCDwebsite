@@ -157,7 +157,7 @@ Use **only** components and patterns listed on `/styles` (Component library). Wh
 - `status`: `published` (UI: **Public**) | `draft` | `teaser` — Public alone is built/served at `/slug` in production. Teaser shows an unclickable gallery card but **no** public route (same non-discovery as draft). Draft is edit-only (hidden on public galleries). Dev still routes all three for authoring.
 - Draft images: `draft:{slug}/file.jpg` in JSON → `src/content/drafts/media/` (dev); auto-promoted to `public/images/` when project settings are saved as `published` or `teaser`
 - Dev mode: drag-and-drop images (`DevImageDrop`), text/spacing editors, crop/grid tuners
-- **New slug 404s in an already-running session:** Astro caches `getStaticPaths()` — a newly added `{slug}.json` (or checking out a branch that adds one) will hit `/404` until you restart (`bun run dev:session:stop` then `bun run dev:session`). Do not dig into routing until you've restarted.
+- **New project slugs in dev:** `[slug].astro` uses `prerender = import.meta.env.PROD`, so `astro dev` on-demand-renders any Public/Teaser/Draft slug you create in the same session — no restart needed. **Image** status still has no `/slug` route. Checking out a branch that adds a slug may still need a session restart if the page module itself is stale.
 
 **Legacy (do not copy):** `src/components/project/legacy/` holds Webflow-migration components (`LegacyProjectGrid`, `LegacyProjectProse`, etc.) used only by old routes. `LegacyProjectGrid` is case-study media clusters — not the same as site `ProjectGrid` listings.
 
