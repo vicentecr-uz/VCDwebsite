@@ -1,55 +1,69 @@
 ---
 /**
  * Throwaway T11 A/B: body letter-spacing −0.05em / −0.01em / 0.
- * Delete once Anto picks. DEV-only — mounted from Layout.
+ * Not a DevOverlay — those are Edit-gated (exit Edit hides every
+ * [data-dev-panel-key]). Delete once Anto picks. DEV-only via Layout.
  */
-import DevOverlay from './DevOverlay.astro';
 import SegmentedControl from './ui/SegmentedControl.astro';
 import Button from './ui/Button.astro';
 ---
 
-<DevOverlay storageKey="body-tracking" panelKey="body-tracking">
-  <div class="dev-body-tracking" data-dev-body-tracking>
-    <SegmentedControl label="Tracking">
-      <Button
-        emphasis="ghost"
-        width="fill"
-        label="−0.05em"
-        data-body-tracking="-0.05em"
-        aria-pressed="false"
-      />
-      <Button
-        emphasis="ghost"
-        width="fill"
-        label="−0.01em"
-        data-body-tracking="-0.01em"
-        aria-pressed="false"
-      />
-      <Button
-        emphasis="ghost"
-        width="fill"
-        label="0"
-        data-body-tracking="0"
-        aria-pressed="true"
-      />
-    </SegmentedControl>
-  </div>
-</DevOverlay>
+<div class="dev-body-tracking" data-dev-body-tracking>
+  <p class="dev-body-tracking__title">Tracking</p>
+  <SegmentedControl label="Tracking">
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label="−0.05em"
+      data-body-tracking="-0.05em"
+      aria-pressed="false"
+    />
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label="−0.01em"
+      data-body-tracking="-0.01em"
+      aria-pressed="false"
+    />
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label="0"
+      data-body-tracking="0"
+      aria-pressed="true"
+    />
+  </SegmentedControl>
+</div>
 
 <style>
   .dev-body-tracking {
+    position: fixed;
+    top: 1em;
+    right: 1em;
+    z-index: 80;
     display: flex;
     flex-direction: column;
-    gap: var(--dev-panel-gap);
+    gap: var(--dev-panel-label-gap, 4px);
+    width: min(28em, calc(100vw - 2em));
+    padding: var(--dev-panel-pad, 12px);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--dev-radius-panel, 12px);
+    background: var(--sys-color-srf);
+    box-shadow: var(--dev-panel-shadow);
+    font-family: var(--font-sans);
+    color: var(--sys-color-on-srf);
+  }
+
+  .dev-body-tracking__title {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.2;
   }
 
   .dev-body-tracking :global(.dev-segmented) {
     width: 100%;
-  }
-
-  /* Three value labels need a bit more room than the 352px portrait default. */
-  :global([data-dev-panel-key='body-tracking']) {
-    width: min(28em, calc(100vw - 2em));
   }
 </style>
 
