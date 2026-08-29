@@ -22,6 +22,10 @@ import {
 } from '../lib/projectImageFrame';
 import { bindProjectCropCovers } from '../lib/projectCropCover';
 import {
+  appendPlaceholderLabel,
+  bindAllPlaceholderLabels,
+} from '../lib/placeholderLabel';
+import {
   bindProjectImageCarousels,
   carouselDotAppearance,
   carouselDotGeometry,
@@ -132,9 +136,23 @@ const buildInlineImageFigure = (
     const clip = document.createElement('div');
     clip.className = 'project-crop-clip';
     clip.append(img);
+    if (placeholder) {
+      appendPlaceholderLabel(clip, {
+        alt: String(section.alt ?? ''),
+        documentKey,
+        path: sectionPath,
+      });
+    }
     figure.append(clip);
   } else {
     figure.append(img);
+    if (placeholder) {
+      appendPlaceholderLabel(figure, {
+        alt: String(section.alt ?? ''),
+        documentKey,
+        path: sectionPath,
+      });
+    }
   }
   appendEditTriggers(figure);
   return figure;
@@ -263,6 +281,13 @@ export function mountImageGridSection(
     const frame = document.createElement('div');
     frame.className = 'project-image-grid__frame';
     frame.append(img);
+    if (placeholder) {
+      appendPlaceholderLabel(frame, {
+        alt: String(item.alt ?? ''),
+        documentKey,
+        path: [...sectionPath, 'items', itemIndex],
+      });
+    }
 
     const belowSlot = document.createElement('div');
     belowSlot.className = 'project-image-grid__below-slot';
@@ -446,6 +471,13 @@ function mountImageCarouselSection(
     img.className = 'project-image-grid__image';
     img.loading = displayIndex === 0 ? 'eager' : 'lazy';
     frame.append(img);
+    if (placeholder) {
+      appendPlaceholderLabel(frame, {
+        alt: String(item.alt ?? ''),
+        documentKey,
+        path: [...sectionPath, 'items', itemIndex],
+      });
+    }
     surface.append(frame);
 
     const captionAdd = document.createElement('button');
@@ -552,4 +584,5 @@ export function syncDevModeOnSection(root: HTMLElement, devMode: boolean) {
 export function initMountedSectionCovers(root: HTMLElement) {
   bindProjectCropCovers(root);
   bindProjectImageCarousels(root);
+  bindAllPlaceholderLabels(root);
 }

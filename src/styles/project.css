@@ -174,22 +174,65 @@
   );
 }
 
+.project-image.project-media--placeholder.project-cropped,
 .project-media--placeholder.project-cropped,
 .project-image-grid__item.project-media--placeholder .project-image-grid__frame {
-  outline: 1px dashed color-mix(in srgb, #b8b4ab 85%, transparent);
-  outline-offset: -1px;
-  background: #f3f1ec;
+  background: var(--ref-palette-grey-950);
 }
 
-/* Inner dashed inset tracks the crop frame aspect ratio (not the bitmap). */
+/* Inner dashed inset — equal on all sides (not % of each axis). */
+.project-image.project-media--placeholder.project-cropped::after,
 .project-media--placeholder.project-cropped::after,
 .project-image-grid__item.project-media--placeholder .project-image-grid__frame::after {
   content: '';
   position: absolute;
-  inset: 3%;
-  border: 2px dashed #b8b4ab;
+  inset: 0.75em;
+  border: 2px dashed var(--ref-palette-grey-600);
   pointer-events: none;
   z-index: 1;
+}
+
+.project-media--placeholder .project-crop-clip > img,
+.project-media--placeholder > img,
+.project-media--placeholder .project-image__img,
+.project-image-grid__item.project-media--placeholder .project-image-grid__image {
+  opacity: 0;
+}
+
+.project-media__placeholder-label {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.project-media__placeholder-label-text {
+  display: block;
+  max-width: 40%;
+  max-height: 60%;
+  overflow: hidden;
+  color: var(--ref-palette-grey-500);
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  word-wrap: break-word;
+}
+
+.is-dev-mode .project-media__placeholder-label-text[contenteditable] {
+  pointer-events: auto;
+  cursor: text;
+  padding-inline: 0.25em;
+  outline: var(--dev-edit-dash);
+  outline-offset: 4px;
+}
+
+.is-dev-mode .project-media__placeholder-label-text[contenteditable]:focus,
+.is-dev-mode .project-media__placeholder-label-text[contenteditable]:focus-visible {
+  outline: var(--dev-edit-dash);
+  outline-offset: 4px;
 }
 
 /*

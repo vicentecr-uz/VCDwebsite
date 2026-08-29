@@ -38,6 +38,7 @@ import {
   resolveMaxVh,
   type MaxVhPercent,
 } from '../../lib/projectImageFrame';
+import { placeholderLabelText } from '../../lib/placeholderLabel';
 
 interface Props {
   src: string;
@@ -146,6 +147,8 @@ const captionReveals = isBelowImageCaptionStyle(captionStyle)
   : resolveImageCaptionReveals(captionReveal);
 const hasCaption = imageCaptionsHaveText(captions);
 const captionClass = imageCaptionStyleClass(captionStyle);
+const placeholderLabel = placeholderLabelText(alt);
+const placeholderLabelPath = editable && path ? [...path, 'alt'] : undefined;
 
 const editAttrs = editable
   ? imageDevEditAttrs(true, {
@@ -170,6 +173,7 @@ const editAttrs = editable
       'project-image',
       layout !== 'default' && `project-image--${layout}`,
       hasCrop && 'project-cropped project-responsive-image',
+      isPlaceholder && 'project-media--placeholder',
       editable && 'dev-image-edit-target',
       sectionId && 'section-block',
       stackClass,
@@ -188,6 +192,16 @@ const editAttrs = editable
           class="project-image__img"
           loading={resolvedLoading}
         />
+        {isPlaceholder && (
+          <span class="project-media__placeholder-label" aria-hidden="true">
+            <span
+              class="project-media__placeholder-label-text"
+              data-dev-text-document={editable ? documentKey : undefined}
+              data-dev-text-path={placeholderLabelPath ? JSON.stringify(placeholderLabelPath) : undefined}
+              data-dev-text-kind={editable ? 'text' : undefined}
+            >{placeholderLabel}</span>
+          </span>
+        )}
       </div>
     ) : (
       <img
@@ -197,6 +211,16 @@ const editAttrs = editable
         class="project-image__img"
         loading={resolvedLoading}
       />
+    )}
+    {isPlaceholder && !hasCrop && (
+      <span class="project-media__placeholder-label" aria-hidden="true">
+        <span
+          class="project-media__placeholder-label-text"
+          data-dev-text-document={editable ? documentKey : undefined}
+          data-dev-text-path={placeholderLabelPath ? JSON.stringify(placeholderLabelPath) : undefined}
+          data-dev-text-kind={editable ? 'text' : undefined}
+        >{placeholderLabel}</span>
+      </span>
     )}
     {hasCaption && (
       <span
@@ -282,6 +306,16 @@ const editAttrs = editable
             ]}
             loading={resolvedLoading}
           />
+          {isPlaceholder && (
+            <span class="project-media__placeholder-label" aria-hidden="true">
+              <span
+                class="project-media__placeholder-label-text"
+                data-dev-text-document={editable ? documentKey : undefined}
+                data-dev-text-path={placeholderLabelPath ? JSON.stringify(placeholderLabelPath) : undefined}
+                data-dev-text-kind={editable ? 'text' : undefined}
+              >{placeholderLabel}</span>
+            </span>
+          )}
         </div>
       ) : (
         <img
@@ -298,6 +332,16 @@ const editAttrs = editable
           ]}
           loading={resolvedLoading}
         />
+      )}
+      {isPlaceholder && !hasCrop && (
+        <span class="project-media__placeholder-label" aria-hidden="true">
+          <span
+            class="project-media__placeholder-label-text"
+            data-dev-text-document={editable ? documentKey : undefined}
+            data-dev-text-path={placeholderLabelPath ? JSON.stringify(placeholderLabelPath) : undefined}
+            data-dev-text-kind={editable ? 'text' : undefined}
+          >{placeholderLabel}</span>
+        </span>
       )}
       {hasCaption && (
         <span
@@ -343,6 +387,12 @@ const editAttrs = editable
 
 <script>
   import { bindProjectCropCovers } from '../../lib/projectCropCover';
+  import { bindAllPlaceholderLabels } from '../../lib/placeholderLabel';
 
   bindProjectCropCovers();
+  bindAllPlaceholderLabels();
+
+  window.addEventListener('vcd:dev-section-inserted', () => {
+    bindAllPlaceholderLabels();
+  });
 </script>
