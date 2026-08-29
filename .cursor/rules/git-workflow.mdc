@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Git workflow & localhost preview
 
-**One local checkout = one branch in the browser.** `localhost:4321` serves whatever branch is checked out in this repo folder. The user controls preview via Cursor’s **Checkout branch** on a chat — not by agents switching to *unrelated* branches silently.
+**One local checkout = one branch in the browser.** `localhost:4321` serves whatever branch is checked out in this repo folder. Agents put Anto on **this chat’s** feature branch when he needs to preview or QA it — not by telling him to switch.
 
 ## New feature work → new branch off `main`
 
@@ -17,6 +17,8 @@ alwaysApply: true
 4. Say which branch you’re on when it matters.
 
 This *is* permission to create/switch to **that feature branch for this chat’s work**. Do **not** wait for Anto to say “make a branch” for ordinary new features — branch first, then edit.
+
+**Put him on the right checkout — do not assign checkout homework.** Before a QA test script (and after tearing down a worker worktree), `git switch` the main checkout onto the branch under test, `SetActiveBranch`, and restart the dev session when the ref moved. Prefer zero Terminal for him; if a paste is unavoidable, give the exact command plus one line on what it does.
 
 ## Do not steal the preview for unrelated work
 
