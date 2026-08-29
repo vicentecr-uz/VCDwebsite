@@ -50,6 +50,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
   // the ink runs one event behind (#325). Chrome applies it before dispatch.
   let pointerHover = false;
   let focusVisible = false;
+  let metaPinnedToHover = false;
 
   const liveHoverBitmap = (hoverImg: HTMLImageElement | null): boolean => {
     if (document.documentElement.classList.contains('is-dev-mode')) return false;
@@ -74,43 +75,87 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       const hoverForced =
         cover.classList.contains('is-dev-hover-forced') && Boolean(hoverImg?.src);
       const hover = hoverForced || liveHoverBitmap(hoverImg);
-      const imgEl = hover && hoverImg ? hoverImg : baseImg;
-      const src = imgEl?.currentSrc || imgEl?.src;
 
       const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
       const chips = [...item.querySelectorAll<HTMLElement>('.project-grid__chip')];
-      const fallback = fallbackFromDataAttrs(item, hover);
 
-      if (!src || isPlaceholderSrc(src, cover)) {
-        if (gen === generation) applyFallbackGround(item, cover, fallback);
+      if (
+        !document.documentElement.classList.contains('is-dev-mode') &&
+        !hover &&
+        meta
+      ) {
+        const hoverSrc = hoverImg?.currentSrc || hoverImg?.src;
+        metaPinnedToHover =
+          parseFloat(getComputedStyle(meta).opacity) === 0 &&
+          Boolean(hoverSrc) &&
+          !isPlaceholderSrc(hoverSrc, cover);
+      }
+
+      const metaUsesHoverBitmap = metaPinnedToHover || hover;
+
+      const chipImgEl = hover && hoverImg ? hoverImg : baseImg;
+      const chipSrc = chipImgEl?.currentSrc || chipImgEl?.src;
+      const chipFallback = fallbackFromDataAttrs(item, hover);
+
+      const metaImgEl = metaUsesHoverBitmap && hoverImg ? hoverImg : baseImg;
+      const metaSrc = metaImgEl?.currentSrc || metaImgEl?.src;
+      const metaFallback = fallbackFromDataAttrs(item, metaUsesHoverBitmap);
+
+      const chipPlaceholder = !chipSrc || isPlaceholderSrc(chipSrc, cover);
+      const metaPlaceholder = !metaSrc || isPlaceholderSrc(metaSrc, cover);
+
+      if (chipPlaceholder && metaPlaceholder) {
+        if (gen === generation) {
+          applyMediaGround(item, metaFallback);
+          if (meta) applyMediaGround(meta, metaFallback);
+          for (const chip of chips) {
+            applyMediaGround(chip, chipFallback);
+          }
+        }
         return;
       }
 
-      const decoded = await lumaGridFor(src);
+      const [chipDecoded, metaDecoded] = await Promise.all([
+        chipPlaceholder ? null : lumaGridFor(chipSrc),
+        metaPlaceholder ? null : lumaGridFor(metaSrc),
+      ]);
       if (gen !== generation) return;
-      if (!decoded) {
-        applyFallbackGround(item, cover, fallback);
-        return;
-      }
 
       const coverRect = cover.getBoundingClientRect();
-      const naturalWidth = Number((decoded as HTMLImageElement).naturalWidth) || 0;
-      const naturalHeight = Number((decoded as HTMLImageElement).naturalHeight) || 0;
-      const frame = { width: coverRect.width, height: coverRect.height };
-      const source = { width: naturalWidth, height: naturalHeight };
-
       const cropHost = cropHostFor(cover);
-      const crop = cropHost ? readCropVars(cropHost, hover) : null;
+      const chipCrop = cropHost ? readCropVars(cropHost, hover) : null;
+      const metaCrop = cropHost ? readCropVars(cropHost, metaUsesHoverBitmap) : null;
 
-      const metaGround = meta
-        ? (groundForBox(meta, cover, decoded, frame, source, crop) ?? fallback)
-        : fallback;
+      let metaGround = metaFallback;
+      if (!metaPlaceholder && metaDecoded) {
+        const naturalWidth = Number((metaDecoded as HTMLImageElement).naturalWidth) || 0;
+        const naturalHeight = Number((metaDecoded as HTMLImageElement).naturalHeight) || 0;
+        const frame = { width: coverRect.width, height: coverRect.height };
+        const source = { width: naturalWidth, height: naturalHeight };
+        metaGround = meta
+          ? (groundForBox(meta, cover, metaDecoded, frame, source, metaCrop) ?? metaFallback)
+          : metaFallback;
+      }
 
       if (gen === generation) {
         applyMediaGround(item, metaGround);
         if (meta) applyMediaGround(meta, metaGround);
-        for (const chip of chips) {
-          applyMediaGround(chip, groundForBox(chip, cover, decoded, frame, source, crop) ?? metaGround);
+
+        if (chipPlaceholder || !chipDecoded) {
+          for (const chip of chips) {
+            applyMediaGround(chip, chipFallback);
+          }
+        } else {
+          const naturalWidth = Number((chipDecoded as HTMLImageElement).naturalWidth) || 0;
+          const naturalHeight = Number((chipDecoded as HTMLImageElement).naturalHeight) || 0;
+          const frame = { width: coverRect.width, height: coverRect.height };
+          const source = { width: naturalWidth, height: naturalHeight };
+          for (const chip of chips) {
+            applyMediaGround(
+              chip,
+              groundForBox(chip, cover, chipDecoded, frame, source, chipCrop) ?? metaGround,
+            );
+          }
         }
       }
     } catch {
@@ -121,7 +166,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
         const hoverForced =
           Boolean(cover.classList.contains('is-dev-hover-forced') && hoverImg?.src);
         const hover = hoverForced || liveHoverBitmap(hoverImg ?? null);
-        applyFallbackGround(item, cover, fallbackFromDataAttrs(item, hover));
+        applyFallbackGround(item, cover, fallbackFromDataAttrs(item, metaPinnedToHover || hover));
       }
     }
   };
