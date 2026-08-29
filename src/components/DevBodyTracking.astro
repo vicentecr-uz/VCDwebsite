@@ -1,6 +1,6 @@
 ---
 /**
- * Throwaway T11 A/B: body letter-spacing 0 (All) vs −0.01em (previous Now).
+ * Throwaway T11 A/B: body letter-spacing −0.05em / −0.01em / 0.
  * Delete once Anto picks. DEV-only — mounted from Layout.
  */
 import DevOverlay from './DevOverlay.astro';
@@ -11,6 +11,13 @@ import Button from './ui/Button.astro';
 <DevOverlay storageKey="body-tracking" panelKey="body-tracking">
   <div class="dev-body-tracking" data-dev-body-tracking>
     <SegmentedControl label="Tracking">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="−0.05em"
+        data-body-tracking="-0.05em"
+        aria-pressed="false"
+      />
       <Button
         emphasis="ghost"
         width="fill"
@@ -39,16 +46,21 @@ import Button from './ui/Button.astro';
   .dev-body-tracking :global(.dev-segmented) {
     width: 100%;
   }
+
+  /* Three value labels need a bit more room than the 352px portrait default. */
+  :global([data-dev-panel-key='body-tracking']) {
+    width: min(28em, calc(100vw - 2em));
+  }
 </style>
 
 <script>
   const STORAGE_KEY = 'vcd:body-tracking';
   const DEFAULT: Tracking = '0';
 
-  type Tracking = '0' | '-0.01em';
+  type Tracking = '0' | '-0.01em' | '-0.05em';
 
   const isTracking = (value: unknown): value is Tracking =>
-    value === '0' || value === '-0.01em';
+    value === '0' || value === '-0.01em' || value === '-0.05em';
 
   const readStored = (): Tracking => {
     try {
