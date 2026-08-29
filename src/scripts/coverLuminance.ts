@@ -13,7 +13,7 @@ export type NormalizedRegion = { x: number; y: number; w: number; h: number };
  * matches what `dark: true` already means for `titleColor` everywhere else
  * (dark backdrop -> light text). Named so a future tuning pass has one place
  * to change it. */
-export const HOVER_LUMA_THRESHOLD = 0.61;
+export const HOVER_LUMA_THRESHOLD = 0.7;
 
 /** Long edge of the offscreen sample canvas, in px. Luminance only needs a
  * coarse read — this keeps the decode + pixel walk cheap. */
