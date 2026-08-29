@@ -553,7 +553,7 @@ const visibilityOptions = [
     });
   };
 
-  const insertCreatedProjectCard = ({ slug, title, status, grid, scroll = true, bg, dark }) => {
+  const insertCreatedProjectCard = ({ slug, title, status, grid }) => {
     const gridEl = document.querySelector(`[data-dev-project-grid="${grid}"]`);
     const template = gridEl?.querySelector('[data-dev-grid-card-template]');
     const seed = template?.content?.firstElementChild;
@@ -564,7 +564,7 @@ const visibilityOptions = [
 
     const existing = gridEl.querySelector(`[data-dev-project-slug="${slug}"]`);
     if (existing instanceof HTMLElement) {
-      if (scroll) existing.scrollIntoView({ block: 'center', inline: 'nearest' });
+      existing.scrollIntoView({ block: 'center', inline: 'nearest' });
       return;
     }
 
@@ -626,16 +626,15 @@ const visibilityOptions = [
       }
     }
 
-    const fill = bg || emptyCoverFill;
-    item.dataset.devBg = fill;
-    item.dataset.devDark = (dark !== undefined ? Boolean(dark) : true) ? 'true' : 'false';
+    item.dataset.devBg = emptyCoverFill;
+    item.dataset.devDark = 'true';
 
     const cover = item.querySelector('.project-grid__cover');
     if (cover instanceof HTMLElement) {
       cover.dataset.devCoverDrop = slug;
       cover.dataset.devListingCover = grid;
       cover.dataset.devCoverEmpty = 'true';
-      cover.style.backgroundColor = fill;
+      cover.style.backgroundColor = emptyCoverFill;
     }
 
     rewriteTemplateSlug(item, slug);
@@ -680,49 +679,18 @@ const visibilityOptions = [
     else gridEl.appendChild(item);
 
     syncStatusChip(item, status);
-    // Reconcile-on-Back runs in View — do not strip href or the card is dead.
-    if (document.documentElement.classList.contains('is-dev-mode')) {
-      enableCardEditing(item);
-      // Match disarmCardLinks for this card only — do not enableAllCardEditing
-      // (that would re-strip every gallery href). Cover click in Edit must not
-      // navigate; restoreCardLinks puts href back on exit.
-      if (card instanceof HTMLAnchorElement) {
-        const href = card.getAttribute('href');
-        if (href) {
-          card.dataset.devHref = href;
-          card.removeAttribute('href');
-        }
+    enableCardEditing(item);
+    // Match disarmCardLinks for this card only — do not enableAllCardEditing
+    // (that would re-strip every gallery href). Cover click in Edit must not
+    // navigate; restoreCardLinks puts href back on exit.
+    if (card instanceof HTMLAnchorElement) {
+      const href = card.getAttribute('href');
+      if (href) {
+        card.dataset.devHref = href;
+        card.removeAttribute('href');
       }
     }
-    if (scroll) item.scrollIntoView({ block: 'center', inline: 'nearest' });
-  };
-
-  /** Zen/Firefox Back restores the pre-Create Home document. Disk already
-   *  has the project (a reload shows it). Re-read membership and insert
-   *  any slug the frozen DOM is missing — no full-reload. */
-  const reconcileListingFromDisk = async () => {
-    const gridEl = document.querySelector('[data-dev-project-grid]');
-    const grid = gridEl?.getAttribute('data-dev-project-grid');
-    if (!(gridEl instanceof HTMLElement) || !['home', 'work', 'play'].includes(grid)) return;
-    try {
-      const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(grid)}`);
-      const payload = await response.json();
-      if (!response.ok || !Array.isArray(payload.pages)) return;
-      for (const page of payload.pages) {
-        if (!page?.onGallery || !page.slug || page.slug === '__template__') continue;
-        insertCreatedProjectCard({
-          slug: page.slug,
-          title: page.title || page.slug,
-          status: page.status || 'published',
-          grid,
-          scroll: false,
-          bg: page.bg,
-          dark: page.dark,
-        });
-      }
-    } catch {
-      // DEV-only; a failed reconcile must not break the gallery.
-    }
+    item.scrollIntoView({ block: 'center', inline: 'nearest' });
   };
 
   window.__vcdSyncStatusChip = syncStatusChip;
@@ -1719,10 +1687,6 @@ const visibilityOptions = [
   if (document.documentElement.classList.contains('is-dev-mode')) {
     enableAllCardEditing();
   }
-
-  window.addEventListener('pageshow', () => {
-    void reconcileListingFromDisk();
-  });
 </script>
 
 <style is:global>
