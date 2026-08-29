@@ -209,9 +209,13 @@ const menuLinks = headerSettings.menuLinks;
         header.classList.remove('is-scrolled-hidden');
       }
 
+      document.documentElement.classList.toggle('is-page-top', y <= 8);
+
       lastY = y;
       ticking = false;
     };
+
+    document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
       'scroll',
@@ -857,9 +861,8 @@ const menuLinks = headerSettings.menuLinks;
     );
     position: sticky;
     top: 0;
-    /* Above mid-page sections (25). First-block edit chrome sits at 55;
-       this header rises to 60 while a nav menu is open so the fill and
-       veil fade in above that chrome. Below format bar (90+). */
+    /* Above mid-page sections (25). Fill is transparent at page top and
+       fades in on scroll or menu open. Below format bar (90+). */
     z-index: 50;
     padding: var(--space-unit) 0;
     transition: opacity 0.35s ease;
@@ -880,6 +883,22 @@ const menuLinks = headerSettings.menuLinks;
     background-color: var(--sys-color-srf);
     z-index: 0;
     pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  html.is-page-top .site-header__bg {
+    opacity: 0;
+  }
+
+  html.is-page-top
+    .site-header--nav-menu:has(
+      .header-trigger:hover,
+      .header-trigger:focus-within,
+      .header-trigger.is-menu-open
+    )
+    .site-header__bg {
+    opacity: 1;
   }
 
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so
@@ -904,36 +923,6 @@ const menuLinks = headerSettings.menuLinks;
 
   .site-header--nav-menu {
     z-index: 50;
-  }
-
-  /* First-block chrome is 55 in Edit. Raise the whole header (fill + veil +
-     panel) so the existing menu fades run in front, not behind that chrome. */
-  html.is-dev-mode
-    .site-header--nav-menu:has(
-      .header-trigger:hover,
-      .header-trigger:focus-within,
-      .header-trigger.is-menu-open
-    ) {
-    z-index: 60;
-  }
-
-  html.is-dev-mode
-    .site-header--nav-menu:has(
-      .header-trigger:hover,
-      .header-trigger:focus-within,
-      .header-trigger.is-menu-open
-    )
-    .site-header__bg {
-    animation: header-bg-forward 0.48s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  @keyframes header-bg-forward {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
   }
 
   .header-menu-backdrop {
