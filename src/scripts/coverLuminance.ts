@@ -9,10 +9,12 @@
 
 export type NormalizedRegion = { x: number; y: number; w: number; h: number };
 
-/** Below this mean relative luminance a region reads as a dark backdrop —
- * matches what `dark: true` already means for `titleColor` everywhere else
- * (dark backdrop -> light text). Named so a future tuning pass has one place
- * to change it. */
+/**
+ * Gallery adaptive ink — when cover titles / meta / chips flip light↔dark.
+ * Agents: change **only this constant** (not CSS, not ProjectGrid). Higher =
+ * stay on dark ink longer over mid-tones; lower = flip to light ink sooner.
+ * Wired via `isRegionDark` → `adaptiveMediaInk` → `bindGalleryMediaInk`.
+ */
 export const HOVER_LUMA_THRESHOLD = 0.7;
 
 /** Long edge of the offscreen sample canvas, in px. Luminance only needs a
