@@ -108,6 +108,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__cover {
     aspect-ratio: 4 / 3;
     transform: translateZ(0);
+    /* Cropped covers omit Tailwind overflow-hidden (clip lives on
+       .project-crop-clip). Safari still paints a 1px idle hover-bitmap
+       sliver at the frame edge unless this layer clips too. Crop-stage
+       host already overrides to visible. */
+    overflow: hidden;
   }
 
   .project-grid__cover.project-cropped {
@@ -132,7 +137,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
      down (0.55s) — that one is a destructive edit and wants weight; this is
      a browsing gesture and reads sluggish at the same speed. */
   .project-grid__cover--has-hover .project-grid__img--hover {
-    transition: opacity 0.2s ease;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   /*
@@ -142,7 +149,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
     it is the same visual event, just driven by a chip instead of a pointer.
   */
   html.is-dev-mode .project-grid__cover .project-grid__img--hover {
-    transition: opacity 0.2s ease;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   /* Empty-slot forced preview still fades the cover out (no hover image to
@@ -154,12 +163,20 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__img--hover {
     z-index: 1;
     opacity: 0;
+    /* opacity:0 still composites; visibility:hidden stops a 1px Safari leak
+       at the cover's bottom edge while the overlay is meant to be off. */
+    visibility: hidden;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
   }
 
   /* Chip — the only way hover shows in Edit (WYSIWYG: cover stays cover
      while travelling to the crop tuner). Keyboard + pointer hover are live-only. */
   .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
     opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0s;
   }
 
   /*
@@ -170,11 +187,15 @@ const gridCardTemplateSeed: ProjectGridItem = {
   @media (hover: hover) and (pointer: fine) {
     html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
       opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s ease, visibility 0s;
     }
   }
 
   html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--hover {
     opacity: 1;
+    visibility: visible;
+    transition: opacity 0.2s ease, visibility 0s;
   }
 
   /* No hover image: forced preview still reveals the page ground. With a
