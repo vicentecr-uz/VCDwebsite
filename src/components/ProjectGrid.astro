@@ -124,10 +124,13 @@ const gridCardTemplateSeed: ProjectGridItem = {
     /* 1px bleed past the frame: WebKit (iOS) rasterizes the bitmap layer a
        hair short of fractional-sized frames, exposing the cover's bg as a
        seam under the image (T4). overflow:hidden on the cover clips the extra.
-       Cropped covers override all four offsets via higher-specificity rules. */
+       Cropped covers override all four offsets via higher-specificity rules.
+       max-width:none defeats Tailwind preflight's img{max-width:100%}, which
+       would clamp the horizontal bleed and re-open the seam on the right. */
     inset: -1px;
     width: calc(100% + 2px);
     height: calc(100% + 2px);
+    max-width: none;
     object-fit: cover;
   }
 
