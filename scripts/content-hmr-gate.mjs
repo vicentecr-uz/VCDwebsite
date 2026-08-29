@@ -62,14 +62,14 @@ export function contentHmrGate() {
       // Zen/Firefox Back restores the in-memory Home from before Create.
       // no-store keeps that document out of bfcache so Back is a real GET
       // (disk already has the new listing — a manual reload already proved it).
-      return () => {
-        server.middlewares.use((req, res, next) => {
-          if (String(req.headers.accept || '').includes('text/html')) {
-            res.setHeader('Cache-Control', 'no-store');
-          }
-          next();
-        });
-      };
+      // Must be a pre-middleware: Vite ends the HTML response itself, so a
+      // post hook never sees the request.
+      server.middlewares.use((req, res, next) => {
+        if (String(req.headers.accept || '').includes('text/html')) {
+          res.setHeader('Cache-Control', 'no-store');
+        }
+        next();
+      });
     },
     /**
      * @param {{ file: string }} ctx
