@@ -1,0 +1,90 @@
+---
+/**
+ * Throwaway T11 A/B: body letter-spacing 0 (All) vs −0.01em (previous Now).
+ * Delete once Anto picks. DEV-only — mounted from Layout.
+ */
+import DevOverlay from './DevOverlay.astro';
+import SegmentedControl from './ui/SegmentedControl.astro';
+import Button from './ui/Button.astro';
+---
+
+<DevOverlay storageKey="body-tracking" panelKey="body-tracking">
+  <div class="dev-body-tracking" data-dev-body-tracking>
+    <SegmentedControl label="Tracking">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="−0.01em"
+        data-body-tracking="-0.01em"
+        aria-pressed="false"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="0"
+        data-body-tracking="0"
+        aria-pressed="true"
+      />
+    </SegmentedControl>
+  </div>
+</DevOverlay>
+
+<style>
+  .dev-body-tracking {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-gap);
+  }
+
+  .dev-body-tracking :global(.dev-segmented) {
+    width: 100%;
+  }
+</style>
+
+<script>
+  const STORAGE_KEY = 'vcd:body-tracking';
+  const DEFAULT: Tracking = '0';
+
+  type Tracking = '0' | '-0.01em';
+
+  const isTracking = (value: unknown): value is Tracking =>
+    value === '0' || value === '-0.01em';
+
+  const readStored = (): Tracking => {
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      return isTracking(raw) ? raw : DEFAULT;
+    } catch {
+      return DEFAULT;
+    }
+  };
+
+  const apply = (value: Tracking) => {
+    document.documentElement.style.setProperty('--text-body-tracking', value);
+    try {
+      sessionStorage.setItem(STORAGE_KEY, value);
+    } catch {
+      /* ignore quota / private mode */
+    }
+    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-body-tracking]')) {
+      btn.setAttribute('aria-pressed', String(btn.dataset.bodyTracking === value));
+    }
+  };
+
+  const bind = (root: ParentNode) => {
+    const host = root.querySelector<HTMLElement>('[data-dev-body-tracking]');
+    if (!host || host.dataset.bound === 'true') return;
+    host.dataset.bound = 'true';
+    host.addEventListener('click', (event) => {
+      const btn = (event.target as Element | null)?.closest?.('[data-body-tracking]');
+      if (!(btn instanceof HTMLElement)) return;
+      const value = btn.dataset.bodyTracking;
+      if (!isTracking(value)) return;
+      apply(value);
+    });
+    apply(readStored());
+  };
+
+  bind(document);
+  document.addEventListener('astro:page-load', () => bind(document));
+</script>
