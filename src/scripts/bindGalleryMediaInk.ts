@@ -26,20 +26,6 @@ function fallbackFromDataAttrs(item: HTMLElement, hover: boolean): MediaGround {
   return item.dataset.devDark === 'true' ? 'dark' : 'light';
 }
 
-function isLiveHoverBitmap(item: HTMLElement, hoverImg: HTMLImageElement | null): boolean {
-  if (document.documentElement.classList.contains('is-dev-mode')) return false;
-  if (!hoverImg?.src || hoverImg.hidden) return false;
-  const card = item.querySelector('.project-grid__card');
-  if (!(card instanceof HTMLElement)) return false;
-  // Same gates as ProjectGrid.astro hover overlay (#132): CSS only fades the
-  // hover bitmap in under (hover:hover)+(pointer:fine), or :focus-visible.
-  // iOS sticky :hover must not sample hoverDark / the hover image while the
-  // cover is still what's painted.
-  if (card.matches(':focus-visible')) return true;
-  if (!card.matches(':hover')) return false;
-  return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-}
-
 function inkTargets(item: HTMLElement, cover: HTMLElement): HTMLElement[] {
   const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
   const chips = [...item.querySelectorAll<HTMLElement>('.project-grid__chip')];
@@ -58,6 +44,25 @@ function applyFallbackGround(
 function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void } {
   let generation = 0;
 
+  // Hover state comes from the events, not card.matches(':hover') inside the
+  // handlers: Firefox applies/removes :hover *after* dispatching pointerenter/
+  // pointerleave, so reading it mid-handler samples the pre-event bitmap and
+  // the ink runs one event behind (#325). Chrome applies it before dispatch.
+  let pointerHover = false;
+  let focusVisible = false;
+
+  const liveHoverBitmap = (hoverImg: HTMLImageElement | null): boolean => {
+    if (document.documentElement.classList.contains('is-dev-mode')) return false;
+    if (!hoverImg?.src || hoverImg.hidden) return false;
+    // Same gates as ProjectGrid.astro hover overlay (#132): CSS only fades the
+    // hover bitmap in under (hover:hover)+(pointer:fine), or :focus-visible.
+    // iOS sticky :hover must not sample hoverDark / the hover image while the
+    // cover is still what's painted.
+    if (focusVisible) return true;
+    if (!pointerHover) return false;
+    return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  };
+
   const refreshItem = async () => {
     const gen = ++generation;
     try {
@@ -68,7 +73,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
       const hoverForced =
         cover.classList.contains('is-dev-hover-forced') && Boolean(hoverImg?.src);
-      const hover = hoverForced || isLiveHoverBitmap(item, hoverImg);
+      const hover = hoverForced || liveHoverBitmap(hoverImg);
       const imgEl = hover && hoverImg ? hoverImg : baseImg;
       const src = imgEl?.currentSrc || imgEl?.src;
 
@@ -115,7 +120,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
         const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
         const hoverForced =
           Boolean(cover.classList.contains('is-dev-hover-forced') && hoverImg?.src);
-        const hover = hoverForced || isLiveHoverBitmap(item, hoverImg ?? null);
+        const hover = hoverForced || liveHoverBitmap(hoverImg ?? null);
         applyFallbackGround(item, cover, fallbackFromDataAttrs(item, hover));
       }
     }
@@ -142,14 +147,32 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
   }
 
   const card = item.querySelector('.project-grid__card');
-  const onCardHoverChange = () => {
+  const onPointerEnter = () => {
+    pointerHover = true;
+    void refreshItem();
+  };
+  const onPointerLeave = () => {
+    pointerHover = false;
+    void refreshItem();
+  };
+  const onFocusIn = () => {
+    // :focus-visible may not have applied yet at focusin — read it next frame.
+    requestAnimationFrame(() => {
+      focusVisible = card instanceof HTMLElement && card.matches(':focus-visible');
+      void refreshItem();
+    });
+  };
+  const onFocusOut = () => {
+    focusVisible = false;
     void refreshItem();
   };
   if (card instanceof HTMLElement) {
-    card.addEventListener('pointerenter', onCardHoverChange);
-    card.addEventListener('pointerleave', onCardHoverChange);
-    card.addEventListener('focusin', onCardHoverChange);
-    card.addEventListener('focusout', onCardHoverChange);
+    // Initial read is safe here — the dispatch race only exists mid-event.
+    pointerHover = card.matches(':hover');
+    card.addEventListener('pointerenter', onPointerEnter);
+    card.addEventListener('pointerleave', onPointerLeave);
+    card.addEventListener('focusin', onFocusIn);
+    card.addEventListener('focusout', onFocusOut);
   }
 
   void refreshItem();
@@ -160,10 +183,10 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       resizeObserver.disconnect();
       mutationObserver.disconnect();
       if (card instanceof HTMLElement) {
-        card.removeEventListener('pointerenter', onCardHoverChange);
-        card.removeEventListener('pointerleave', onCardHoverChange);
-        card.removeEventListener('focusin', onCardHoverChange);
-        card.removeEventListener('focusout', onCardHoverChange);
+        card.removeEventListener('pointerenter', onPointerEnter);
+        card.removeEventListener('pointerleave', onPointerLeave);
+        card.removeEventListener('focusin', onFocusIn);
+        card.removeEventListener('focusout', onFocusOut);
       }
     },
     refresh: () => {
