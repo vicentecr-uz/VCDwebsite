@@ -32,6 +32,7 @@ import {
   resolveGridItemCrop,
   resolveMaxVh,
 } from '../../lib/projectImageFrame';
+import { placeholderLabelText } from '../../lib/placeholderLabel';
 import {
   carouselDotAppearance,
   carouselDotGeometry,
@@ -234,6 +235,7 @@ const blockStyle = [
         const parked = !visibleIds.includes(id);
         const displayIndex = visibleIds.indexOf(id);
         const isPlaceholder = isPlaceholderSrc(item.src);
+        const itemLabelPath = showDevEditing ? [...basePath!, 'items', itemIndex, 'alt'] : undefined;
         const editAttrs = showDevEditing
           ? imageDevEditAttrs(true, {
               documentKey: documentKey!,
@@ -285,6 +287,16 @@ const blockStyle = [
                   class="project-image-grid__image"
                   loading="eager"
                 />
+                {isPlaceholder && (
+                  <span class="project-media__placeholder-label" aria-hidden="true">
+                    <span
+                      class="project-media__placeholder-label-text"
+                      data-dev-text-document={showDevEditing ? documentKey : undefined}
+                      data-dev-text-path={itemLabelPath ? JSON.stringify(itemLabelPath) : undefined}
+                      data-dev-text-kind={showDevEditing ? 'text' : undefined}
+                    >{placeholderLabelText(item.alt ?? '')}</span>
+                  </span>
+                )}
                 {!entry.isBelowCaption && entry.hasCaption && (
                   <span
                     class:list={[
@@ -419,7 +431,13 @@ const blockStyle = [
 <script>
   import { bindProjectCropCovers } from '../../lib/projectCropCover';
   import { bindProjectImageCarousels } from '../../lib/projectImageCarousel';
+  import { bindAllPlaceholderLabels } from '../../lib/placeholderLabel';
 
   bindProjectCropCovers();
   bindProjectImageCarousels();
+  bindAllPlaceholderLabels();
+
+  window.addEventListener('vcd:dev-section-inserted', () => {
+    bindAllPlaceholderLabels();
+  });
 </script>

@@ -98,6 +98,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       <div class="tapico-crop-tuner__preview" data-crop-preview>
         <div class="tapico-crop-tuner__preview-clip">
           <img alt="" data-crop-image draggable="false" />
+          <span class="project-media__placeholder-label" aria-hidden="true">
+            <span class="project-media__placeholder-label-text"></span>
+          </span>
           <span class="tapico-crop-tuner__handle" aria-hidden="true"></span>
         </div>
         <span class="tapico-crop-tuner__resize tapico-crop-tuner__resize--n" data-crop-resize="n" aria-hidden="true"></span>
@@ -193,6 +196,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { projectImage } from '../../lib/images';
+  import { isPlaceholderSrc } from '../../lib/projectImageFrame';
+  import { bindFitPlaceholderLabel } from '../../lib/placeholderLabel';
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
@@ -221,6 +226,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
     const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
+    const previewPlaceholderLabel = preview?.querySelector<HTMLElement>('.project-media__placeholder-label-text');
     const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
     const linkedAspectHint = tuner.querySelector<HTMLButtonElement>('[data-crop-linked-aspect-hint]');
     const linkedAspectTooltip = linkedAspectHint?.querySelector<HTMLElement>('[role="tooltip"]');
@@ -293,7 +299,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         .map((option) => option.value),
     );
     const RATIO_MIN = 9 / 16; // tallest portrait (~9:16 width/height)
-    const RATIO_MAX = 16 / 9; // widest landscape
+    // Widest landscape — high enough that a full-width (~60em) frame can shrink to 12em tall.
+    const RATIO_MAX = 5; // 5:1
+    const MIN_FRAME_HEIGHT_EM = 12;
     const viewportForWidth = (): ImageViewport => {
       if (window.innerWidth <= 767) return 'mobile';
       if (window.innerWidth <= 991) return 'tablet';
@@ -1498,6 +1506,53 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       clearAllStacks();
     };
 
+    let previewLabelObserver: MutationObserver | null = null;
+    let previewLabelInputCleanup: (() => void) | null = null;
+    let previewLabelFitCleanup: (() => void) | null = null;
+
+    const isPlaceholderTarget = (target: HTMLElement | null): boolean => {
+      if (!target) return false;
+      if (target.classList.contains('project-media--placeholder')) return true;
+      const img = target.querySelector('img');
+      if (img && isPlaceholderSrc(img.src)) return true;
+      return false;
+    };
+
+    const syncPreviewPlaceholder = () => {
+      if (!preview) return;
+      const isPh = isPlaceholderTarget(editTarget);
+      preview.classList.toggle('tapico-crop-tuner__preview--placeholder', isPh);
+      previewLabelInputCleanup?.();
+      previewLabelInputCleanup = null;
+      previewLabelObserver?.disconnect();
+      previewLabelObserver = null;
+      previewLabelFitCleanup?.();
+      previewLabelFitCleanup = null;
+
+      if (!isPh || !previewPlaceholderLabel) return;
+
+      const pageLabel = editTarget.querySelector<HTMLElement>('.project-media__placeholder-label-text');
+      const syncLabelText = () => {
+        if (!previewPlaceholderLabel) return;
+        previewPlaceholderLabel.textContent = pageLabel?.textContent?.trim() || 'Placeholder';
+        previewLabelFitCleanup?.();
+        previewLabelFitCleanup = bindFitPlaceholderLabel(previewPlaceholderLabel);
+      };
+      syncLabelText();
+
+      if (pageLabel) {
+        const onInput = () => syncLabelText();
+        pageLabel.addEventListener('input', onInput);
+        pageLabel.addEventListener('keyup', onInput);
+        previewLabelInputCleanup = () => {
+          pageLabel.removeEventListener('input', onInput);
+          pageLabel.removeEventListener('keyup', onInput);
+        };
+        previewLabelObserver = new MutationObserver(syncLabelText);
+        previewLabelObserver.observe(pageLabel, { characterData: true, subtree: true, childList: true });
+      }
+    };
+
     const selectTarget = (target: HTMLElement, live: boolean) => {
       clearAllStacks();
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
@@ -1558,6 +1613,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftSrcWidth = savedSrcWidth;
       draftSrcHeight = savedSrcHeight;
       previewImage.src = editedImage.currentSrc || editedImage.src;
+      syncPreviewPlaceholder();
 
       if (editedImage.complete) {
         refreshCover();
@@ -2371,7 +2427,20 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         height = resizeStartHeight * (resizeStartWidth / Math.max(1, impliedWidth));
       }
 
-      const minHeight = width / RATIO_MAX;
+      const rootFs = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      // 12em floor is an on-page length. Scale it when resizing the smaller panel
+      // preview so both surfaces share the same shortest aspect (5:1 at full width).
+      const pageWidth = Math.max(
+        1,
+        pageFrameFor(editTarget).getBoundingClientRect().width
+          || editTarget.getBoundingClientRect().width
+          || width,
+      );
+      const minHeightOnPage = rootFs * MIN_FRAME_HEIGHT_EM;
+      const minHeight = Math.max(
+        width / RATIO_MAX,
+        minHeightOnPage * (width / pageWidth),
+      );
       const maxHeight = width / RATIO_MIN;
       height = clamp(height, minHeight, maxHeight);
       beginLiveEdits();
@@ -2952,6 +3021,31 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     inset: 0;
     overflow: hidden;
     background: var(--sys-color-srf-container-low);
+  }
+
+  .tapico-crop-tuner__preview:not(.tapico-crop-tuner__preview--placeholder) .project-media__placeholder-label {
+    display: none;
+  }
+
+  .tapico-crop-tuner__preview--placeholder .tapico-crop-tuner__preview-clip {
+    background: var(--ref-palette-grey-950);
+  }
+
+  .tapico-crop-tuner__preview--placeholder .tapico-crop-tuner__preview-clip::after {
+    content: '';
+    position: absolute;
+    inset: 0.75em;
+    border: 2px dashed var(--ref-palette-grey-600);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .tapico-crop-tuner__preview--placeholder img {
+    opacity: 0;
+  }
+
+  .tapico-crop-tuner__preview--placeholder .project-media__placeholder-label {
+    z-index: 2;
   }
 
   .tapico-crop-tuner__preview.is-dragging {

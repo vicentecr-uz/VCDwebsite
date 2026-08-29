@@ -37,6 +37,7 @@ import {
   resolveGridItemCrop,
   resolveGridItemLayout,
 } from '../../lib/projectImageFrame';
+import { placeholderLabelText } from '../../lib/placeholderLabel';
 
 interface Item {
   id?: string;
@@ -167,6 +168,7 @@ const editorItems = items.map((item, index) => ({
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
     const isPlaceholder = isPlaceholderSrc(item.src);
+    const itemLabelPath = showDevEditing ? [...basePath!, 'items', index, 'alt'] : undefined;
     const editAttrs = showDevEditing
       ? imageDevEditAttrs(true, {
           documentKey: documentKey!,
@@ -220,6 +222,16 @@ const editorItems = items.map((item, index) => ({
             class="project-image-grid__image"
             loading="eager"
           />
+          {isPlaceholder && (
+            <span class="project-media__placeholder-label" aria-hidden="true">
+              <span
+                class="project-media__placeholder-label-text"
+                data-dev-text-document={showDevEditing ? documentKey : undefined}
+                data-dev-text-path={itemLabelPath ? JSON.stringify(itemLabelPath) : undefined}
+                data-dev-text-kind={showDevEditing ? 'text' : undefined}
+              >{placeholderLabelText(item.alt ?? '')}</span>
+            </span>
+          )}
           {!isBelowCaption && captionNode}
         </div>
         <div class="project-image-grid__below-slot">
@@ -255,6 +267,12 @@ const editorItems = items.map((item, index) => ({
 
 <script>
   import { bindProjectCropCovers } from '../../lib/projectCropCover';
+  import { bindAllPlaceholderLabels } from '../../lib/placeholderLabel';
 
   bindProjectCropCovers();
+  bindAllPlaceholderLabels();
+
+  window.addEventListener('vcd:dev-section-inserted', () => {
+    bindAllPlaceholderLabels();
+  });
 </script>
