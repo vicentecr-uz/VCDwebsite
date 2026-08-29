@@ -275,6 +275,15 @@ export function bindGalleryMediaInk(): () => void {
     gridObserver.observe(grid, { childList: true });
   });
 
+  // Dev-mode toggles live on <html> (is-dev-mode, is-dev-crop-open, …) and
+  // change which bitmap/ground applies without touching any cover — refresh
+  // all cards or the ink stays stale until the next pointer event.
+  const htmlObserver = new MutationObserver(onRefresh);
+  htmlObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class'],
+  });
+
   window.addEventListener('vcd:dev-pending-upsert', onRefresh);
   window.addEventListener('vcd:dev-frame-changed', onRefresh);
 
@@ -282,6 +291,7 @@ export function bindGalleryMediaInk(): () => void {
     window.removeEventListener('vcd:dev-pending-upsert', onRefresh);
     window.removeEventListener('vcd:dev-frame-changed', onRefresh);
     gridObserver.disconnect();
+    htmlObserver.disconnect();
     bindings.forEach(({ cleanup }) => cleanup());
     bindings.clear();
   };
