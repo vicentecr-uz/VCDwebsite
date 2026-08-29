@@ -121,9 +121,13 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__stack .project-grid__img {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    /* 1px bleed past the frame: WebKit (iOS) rasterizes the bitmap layer a
+       hair short of fractional-sized frames, exposing the cover's bg as a
+       seam under the image (T4). overflow:hidden on the cover clips the extra.
+       Cropped covers override all four offsets via higher-specificity rules. */
+    inset: -1px;
+    width: calc(100% + 2px);
+    height: calc(100% + 2px);
     object-fit: cover;
   }
 
