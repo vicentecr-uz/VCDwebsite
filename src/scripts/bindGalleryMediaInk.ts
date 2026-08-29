@@ -1,5 +1,6 @@
 /**
  * Binds runtime media-ground sampling to gallery cards (Home / Work / Play).
+ * Retune light/dark flip: `HOVER_LUMA_THRESHOLD` in `coverLuminance.ts`.
  */
 
 import {

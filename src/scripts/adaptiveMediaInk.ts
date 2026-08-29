@@ -1,6 +1,7 @@
 /**
  * Decode-source-agnostic media-ground sampling for gallery cards (#172 v1).
  * Reuses coverLuminance.ts — do not duplicate the luma loop.
+ * Retune light/dark flip: `HOVER_LUMA_THRESHOLD` in `coverLuminance.ts`.
  */
 
 import {
