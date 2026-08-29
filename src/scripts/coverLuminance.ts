@@ -13,19 +13,7 @@ export type NormalizedRegion = { x: number; y: number; w: number; h: number };
  * matches what `dark: true` already means for `titleColor` everywhere else
  * (dark backdrop -> light text). Named so a future tuning pass has one place
  * to change it. */
-export const HOVER_LUMA_THRESHOLD = 0.5;
-
-// Dev slider overrides this at runtime; the constant stays the shipped default.
-let liveLumaThreshold = HOVER_LUMA_THRESHOLD;
-
-export function getLumaThreshold(): number {
-  return liveLumaThreshold;
-}
-
-export function setLumaThreshold(value: number): void {
-  if (!Number.isFinite(value)) return;
-  liveLumaThreshold = Math.min(1, Math.max(0, value));
-}
+export const HOVER_LUMA_THRESHOLD = 0.61;
 
 /** Long edge of the offscreen sample canvas, in px. Luminance only needs a
  * coarse read — this keeps the decode + pixel walk cheap. */
@@ -110,6 +98,6 @@ export function coverBoxRegionToSourceRegion(
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) };
 }
 
-export function isRegionDark(luma: number, threshold = liveLumaThreshold): boolean {
+export function isRegionDark(luma: number, threshold = HOVER_LUMA_THRESHOLD): boolean {
   return luma < threshold;
 }
