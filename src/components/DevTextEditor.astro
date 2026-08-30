@@ -353,7 +353,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         const inner = [...node.childNodes].map(walk).join('');
         const tag = node.tagName;
-        if (tag === 'BR') return '';
+        if (tag === 'BR') return '<br>';
         if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
         if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
         if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
@@ -1884,6 +1884,33 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return { nextParagraph, empty };
     };
 
+    const insertSoftBreakInsideParagraph = (state: EditableTextState) => {
+      const paragraph = ensureParagraphSelection(state.element);
+      if (!paragraph) return;
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
+        placeCaretInParagraph(paragraph, false);
+      }
+      const liveRange = selection.getRangeAt(0);
+      if (!liveRange.collapsed) liveRange.deleteContents();
+
+      const br = document.createElement('br');
+      liveRange.insertNode(br);
+      // A trailing br is collapsed by the engine; a second one holds the caret
+      // on the new visual line, same as a wrap.
+      if (!br.nextSibling) br.after(document.createElement('br'));
+
+      const nextRange = document.createRange();
+      nextRange.setStartAfter(br);
+      nextRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+      updateActions();
+    };
+
     const splitParagraphInsideBlock = (state: EditableTextState) => {
       const { element } = state;
       const paragraph = ensureParagraphSelection(element);
@@ -1950,7 +1977,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         if (event.key !== 'Enter') return;
 
-        if (event.altKey || event.shiftKey) {
+        if (event.shiftKey && !event.altKey) {
+          if (state.kind !== 'paragraphs') return;
+          event.preventDefault();
+          insertSoftBreakInsideParagraph(state);
+          return;
+        }
+
+        if (event.altKey) {
           if (state.kind !== 'paragraphs') return;
           event.preventDefault();
           splitParagraphInsideBlock(state);
