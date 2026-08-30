@@ -1431,7 +1431,8 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'imageCarousel',
   'placeholder',
 ]);
-const DELETABLE_SECTION_TYPES = new Set(INSERTABLE_SECTION_TYPES);
+// Insert stays allowlisted (construction needs a known shape). Delete is
+// default-on: any section at a valid index can go — no type registration.
 
 const outlineAnchorId = (entry) => {
   if (!entry || typeof entry !== 'object') return '';
@@ -1597,10 +1598,6 @@ function contentSectionDevWriter() {
               existing && typeof existing === 'object' && !Array.isArray(existing)
                 ? String(existing.type || '')
                 : '';
-            if (!DELETABLE_SECTION_TYPES.has(existingType)) {
-              send(400, { error: 'That section type cannot be deleted here.' });
-              return;
-            }
             syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
             data.sections.splice(index, 1);
             await writeContentJson(file, data);
