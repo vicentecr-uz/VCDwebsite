@@ -442,13 +442,54 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       );
     };
 
+    /**
+     * Freeze only while the pointer is on the pill/menu (not mere vicinity).
+     * Vicinity-revealed toolbars stay `position:absolute` in the gap middle so
+     * they scroll with the page; fixed freeze is for deliberate interaction.
+     */
+    const pinGapToolbarTop = (control: HTMLElement) => {
+      if (control.classList.contains('is-gap-relocating')) return;
+      if (control.dataset.gapPinnedTop == null) {
+        const rect = control.getBoundingClientRect();
+        control.dataset.gapPinnedTop = String(rect.top);
+        control.dataset.gapPinnedLeft = String(rect.left);
+        control.dataset.gapPinnedWidth = String(rect.width);
+      }
+      control.style.position = 'fixed';
+      control.style.top = `${control.dataset.gapPinnedTop}px`;
+      control.style.left = `${control.dataset.gapPinnedLeft}px`;
+      control.style.right = 'auto';
+      control.style.width = `${control.dataset.gapPinnedWidth}px`;
+      control.style.transform = 'none';
+      control.dataset.gapTopPinned = 'true';
+    };
+
+    const unpinGapToolbarTop = (control: HTMLElement) => {
+      control.style.removeProperty('position');
+      control.style.removeProperty('top');
+      control.style.removeProperty('left');
+      control.style.removeProperty('right');
+      control.style.removeProperty('width');
+      control.style.removeProperty('transform');
+      delete control.dataset.gapTopPinned;
+      delete control.dataset.gapPinnedTop;
+      delete control.dataset.gapPinnedLeft;
+      delete control.dataset.gapPinnedWidth;
+    };
+
     const bindSpacingOptionClicks = (state: EditableSpacingState) => {
       state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
         button.addEventListener('click', (event) => {
           event.preventDefault();
           event.stopPropagation();
+          // Don't leave focus on the chip — that kept the freeze + scroll-lock
+          // until a click elsewhere, instead of releasing on pointer leave.
+          button.blur();
           const next = button.dataset.devSpacingOption as SpacingValue;
           if (!next || next === state.currentValue) return;
+          // Pin before the margin changes — after applySpacingClass the
+          // absolute midpoint has already moved.
+          pinGapToolbarTop(state.control);
           state.currentValue = next;
           applySpacingClass(state.element, next);
           syncSpacingControl(state);
@@ -698,13 +739,125 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     // leaves every gap hitbox and activation radius.
     let suppressGapProximity = false;
 
-    const clearGapProximity = (control: HTMLElement) => {
+    const syncGapToolbarTopPin = (control: HTMLElement, pinned: boolean) => {
+      if (control.classList.contains('is-gap-relocating')) return;
+      if (pinned) {
+        pinGapToolbarTop(control);
+        return;
+      }
+      // Any leave from a freeze crossfades to the gap midpoint — including when
+      // the value was restored to clean (dirty→clean). Dirty alone used to gate
+      // this and skipped that case.
+      if (control.dataset.gapTopPinned === 'true') {
+        relocatePinnedGapToolbar(control);
+        return;
+      }
+      unpinGapToolbarTop(control);
+    };
+
+    /** Leave a freeze: crossfade from the frozen spot to the absolute gap midpoint. */
+    const relocatePinnedGapToolbar = (control: HTMLElement) => {
+      if (control.classList.contains('is-gap-relocating')) return;
+      const pill = control.querySelector<HTMLElement>('.dev-gap-toolbar__pill');
+      const wasPinned = control.dataset.gapTopPinned === 'true';
       control.classList.remove('is-near-add', 'is-near-spacing');
+
+      if (!wasPinned || !pill) {
+        unpinGapToolbarTop(control);
+        return;
+      }
+
+      document.querySelectorAll('.dev-gap-toolbar__pill-ghost').forEach((node) => node.remove());
+
+      const rect = pill.getBoundingClientRect();
+      const ghost = pill.cloneNode(true) as HTMLElement;
+      ghost.className = 'dev-gap-toolbar__pill dev-gap-toolbar__pill-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.cssText = [
+        'position:fixed',
+        `top:${rect.top}px`,
+        `left:${rect.left}px`,
+        `width:${rect.width}px`,
+        'margin:0',
+        'z-index:90',
+        'opacity:1',
+        'pointer-events:none',
+        'transition:opacity 0.15s ease',
+      ].join(';');
+      document.body.append(ghost);
+
+      // Lock before unpin so pointermove cannot re-pin at the old viewport Y.
+      control.classList.add('is-gap-relocating');
+      unpinGapToolbarTop(control);
+      void control.offsetHeight;
+
+      // No layout shift (hovered without changing the gap) — skip the pulse.
+      if (Math.abs(pill.getBoundingClientRect().top - rect.top) < 2) {
+        ghost.remove();
+        control.classList.remove('is-gap-relocating');
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          ghost.style.opacity = '0';
+          control.classList.add('is-gap-relocating-in');
+          const finish = () => {
+            ghost.remove();
+            control.classList.remove('is-gap-relocating', 'is-gap-relocating-in');
+            unpinGapToolbarTop(control);
+          };
+          ghost.addEventListener('transitionend', finish, { once: true });
+          window.setTimeout(finish, 220);
+        });
+      });
+    };
+
+    const clearGapProximity = (control: HTMLElement) => {
+      if (control.classList.contains('is-menu-open')) {
+        control.classList.remove('is-near-add', 'is-near-spacing');
+        return;
+      }
+      control.classList.remove('is-near-add', 'is-near-spacing');
+      syncGapToolbarTopPin(control, false);
+    };
+
+    /** Scroll lock follows the pointer, not the freeze flag — leave the pill and scroll resumes even mid-crossfade. */
+    const preventScrollWhileGapToolbarHeld = (event: Event) => {
+      let x = 0;
+      let y = 0;
+      if (event instanceof WheelEvent) {
+        x = event.clientX;
+        y = event.clientY;
+      } else if (event instanceof TouchEvent) {
+        const touch = event.touches[0];
+        if (!touch) return;
+        x = touch.clientX;
+        y = touch.clientY;
+      } else {
+        return;
+      }
+      const held = spacingStates.some((state) => {
+        if (state.control.hidden) return false;
+        if (state.control.classList.contains('is-menu-open')) return true;
+        return isPointerOverToolbarHitbox(state, x, y);
+      });
+      if (held) event.preventDefault();
     };
 
     const clearGapProximityAll = () => {
       spacingStates.forEach(({ control }) => clearGapProximity(control));
       document.documentElement.classList.remove('is-page-top-gap-above-header');
+    };
+
+    /** After Add-block menu picks a type, drop gap chrome until the cursor leaves. */
+    const dismissGapToolbarAfterAddChoice = () => {
+      closeSectionMenus();
+      clearGapProximityAll();
+      suppressGapProximity = true;
+      document.querySelectorAll<HTMLElement>('.is-dev-section-controls-visible').forEach((el) => {
+        el.classList.remove('is-dev-section-controls-visible');
+      });
     };
 
     const syncSpacingCaretSuppression = () => {
@@ -723,15 +876,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!devEnabled) document.documentElement.classList.remove('is-page-top-gap-above-header');
     };
 
-    const distanceToToolbarTarget = (
-      target: HTMLElement,
+    /** Distance to the closest point on a rect (0 if inside) — symmetric halo. */
+    const distanceToRect = (rect: DOMRect, clientX: number, clientY: number) => {
+      const dx = clientX < rect.left ? rect.left - clientX : clientX > rect.right ? clientX - rect.right : 0;
+      const dy = clientY < rect.top ? rect.top - clientY : clientY > rect.bottom ? clientY - rect.bottom : 0;
+      return Math.hypot(dx, dy);
+    };
+
+    /**
+     * Unified pill vicinity. Measuring Add and spacing centres separately biased
+     * the halo left (small Add target) and starved the right edge.
+     */
+    const distanceToToolbarPill = (
+      state: EditableSpacingState,
       clientX: number,
       clientY: number,
     ) => {
-      const rect = target.getBoundingClientRect();
-      const dx = clientX - (rect.left + rect.width / 2);
-      const dy = clientY - (rect.top + rect.height / 2);
-      return Math.hypot(dx, dy);
+      const pill = state.control.querySelector<HTMLElement>('.dev-gap-toolbar__pill');
+      if (!pill) return Number.POSITIVE_INFINITY;
+      return distanceToRect(pill.getBoundingClientRect(), clientX, clientY);
     };
 
     const isSectionMenuOpen = (state: EditableSpacingState) => !state.menu.hidden;
@@ -742,7 +905,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       state.menu.contains(document.activeElement);
 
     const isSpacingControlPinned = (state: EditableSpacingState) =>
-      state.element.classList.contains('is-dev-spacing-dirty') ||
       state.spacingGroup.contains(document.activeElement);
 
     const isPointerOverToolbarHitbox = (
@@ -843,10 +1005,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const stillNear = spacingStates.some((state) => {
           if (state.control.hidden) return false;
           if (isPointerOverToolbarHitbox(state, clientX, clientY)) return true;
-          return (
-            distanceToToolbarTarget(state.addButton, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX
-            || distanceToToolbarTarget(state.spacingGroup, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX
-          );
+          return distanceToToolbarPill(state, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX;
         });
         if (stillNear) {
           closeSectionMenus();
@@ -868,36 +1027,26 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           clearGapProximity(control);
         });
         openMenuState.control.classList.add('is-near-add');
+        pinGapToolbarTop(openMenuState.control);
         syncPageTopGapStacking();
         return;
       }
 
       const overHeader = isPointerOverHeaderChrome(clientX, clientY);
 
-      let nearestAdd: EditableSpacingState | null = null;
-      let nearestAddDistance = Infinity;
-      let nearestSpacing: EditableSpacingState | null = null;
-      let nearestSpacingDistance = Infinity;
+      let nearest: EditableSpacingState | null = null;
+      let nearestDistance = Infinity;
 
       spacingStates.forEach((state) => {
         if (state.control.hidden) return;
         // Mid-page chips stay suppressed under the sticky header; page-top may lift above it.
         if (overHeader && !isPageTopGapControl(state.control)) return;
+        if (isAddControlPinned(state) || isSpacingControlPinned(state)) return;
 
-        if (!isAddControlPinned(state)) {
-          const distance = distanceToToolbarTarget(state.addButton, clientX, clientY);
-          if (distance <= SPACING_ACTIVATION_RADIUS_PX && distance < nearestAddDistance) {
-            nearestAdd = state;
-            nearestAddDistance = distance;
-          }
-        }
-
-        if (!isSpacingControlPinned(state)) {
-          const distance = distanceToToolbarTarget(state.spacingGroup, clientX, clientY);
-          if (distance <= SPACING_ACTIVATION_RADIUS_PX && distance < nearestSpacingDistance) {
-            nearestSpacing = state;
-            nearestSpacingDistance = distance;
-          }
+        const distance = distanceToToolbarPill(state, clientX, clientY);
+        if (distance <= SPACING_ACTIVATION_RADIUS_PX && distance < nearestDistance) {
+          nearest = state;
+          nearestDistance = distance;
         }
       });
 
@@ -913,17 +1062,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           control.classList.contains('is-near-spacing') ||
           control.classList.contains('is-menu-open') ||
           state.element.classList.contains('is-dev-spacing-dirty');
-        // Vicinity reveals the pill; once it's up, the pill (and open menu)
-        // is the hitbox that keeps it up — 12em sits outside both radii.
+        // Vicinity reveals the pill; freeze only while the pointer is on it.
         const overHitbox = alreadyVisible && isPointerOverToolbarHitbox(state, clientX, clientY);
-        control.classList.toggle(
-          'is-near-add',
-          isAddControlPinned(state) || overHitbox || (allowNear && state === nearestAdd),
-        );
-        control.classList.toggle(
-          'is-near-spacing',
-          isSpacingControlPinned(state) || overHitbox || (allowNear && state === nearestSpacing),
-        );
+        const near = isAddControlPinned(state)
+          || isSpacingControlPinned(state)
+          || overHitbox
+          || (allowNear && state === nearest);
+        control.classList.toggle('is-near-add', near);
+        control.classList.toggle('is-near-spacing', near);
+        // Focus must not keep the freeze — chip clicks blur; pin follows the pointer only.
+        const keepPinned =
+          isPointerOverToolbarHitbox(state, clientX, clientY)
+          || control.classList.contains('is-menu-open');
+        syncGapToolbarTopPin(control, keepPinned);
       });
       syncPageTopGapStacking();
     };
@@ -955,6 +1106,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         },
         { passive: true },
       );
+      // While the pointer is on the pill/menu the page must not scroll — otherwise
+      // the freeze and the gap diverge. Vicinity-only reveal still allows scroll.
+      document.addEventListener('wheel', preventScrollWhileGapToolbarHeld, { passive: false });
+      document.addEventListener('touchmove', preventScrollWhileGapToolbarHeld, { passive: false });
       // Header mouseenter can beat the next pointermove — sync first so page-top
       // chips lift above the nav before openMenu hit-tests.
       document.addEventListener('dev:sync-gap-proximity', ((event: CustomEvent<{ clientX: number; clientY: number }>) => {
@@ -967,12 +1122,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         document.documentElement.classList.remove('is-page-top-gap-above-header');
       });
       document.documentElement.addEventListener('pointerleave', () => {
-        spacingStates.forEach(({ control, element }) => {
-          if (element.classList.contains('is-dev-spacing-dirty')) {
-            control.classList.remove('is-near-add');
-            syncPageTopGapStacking();
-            return;
-          }
+        spacingStates.forEach(({ control }) => {
           if (control.classList.contains('is-menu-open')) {
             control.classList.remove('is-near-spacing');
             syncPageTopGapStacking();
@@ -2056,6 +2206,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         state.menu.hidden = false;
         state.addButton.setAttribute('aria-expanded', 'true');
         state.control.classList.add('is-near-add', 'is-menu-open');
+        pinGapToolbarTop(state.control);
         syncPageTopGapStacking();
       });
 
@@ -2067,17 +2218,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (type === 'image' || type === 'imageCarousel') {
             const sectionIndex = state.path.at(-2);
             if (typeof sectionIndex !== 'number') return;
-            closeSectionMenus();
+            dismissGapToolbarAfterAddChoice();
             window.dispatchEvent(new CustomEvent('vcd:dev-image-picker-open', {
               detail: {
                 documentKey: state.document,
                 index: sectionIndex,
-                ...(type === 'imageCarousel' ? { preferredType: 'imageCarousel' } : {}),
+                preferredType: type === 'imageCarousel' ? 'imageCarousel' : 'image',
               },
             }));
             return;
           }
           if (type !== 'bodyText' && type !== 'sectionTitle') return;
+          dismissGapToolbarAfterAddChoice();
           insertSectionAt(state, type);
         });
       });
@@ -4205,6 +4357,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       })();
     });
 
+    // ⌥S Save / ⌥⇧S Save & Publish — work while editing (unlike other Alt chords).
+    document.addEventListener('keydown', (event) => {
+      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (!(event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyS')) return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        if (publishButton.hidden || publishButton.disabled || actionsBusy) return;
+        publishButton.click();
+        return;
+      }
+      if (saveButton.disabled || actionsBusy) return;
+      saveButton.click();
+    });
+
     const refreshStyleEngineState = async () => {
       try {
         // Prefer /api/commit-engine — mounted since the first #109 server start.
@@ -4953,6 +5119,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     pointer-events: auto;
   }
 
+  /* Leave a freeze: hold the real pill at the new midpoint until the ghost fades.
+     Applies to dirty and clean restores (must beat the default opacity:0). */
+  .is-dev-mode .dev-gap-toolbar.is-gap-relocating > .dev-gap-toolbar__pill {
+    opacity: 0;
+    pointer-events: none;
+    transition: none;
+  }
+
+  .is-dev-mode .dev-gap-toolbar.is-gap-relocating.is-gap-relocating-in > .dev-gap-toolbar__pill {
+    opacity: 1;
+    pointer-events: auto;
+    transition: opacity 0.15s ease;
+  }
+
+  /* Ghost is a body-fixed clone — only needs layout chrome from the pill class. */
+  .dev-gap-toolbar__pill-ghost {
+    pointer-events: none;
+  }
+
   /* Keep gap controls out of the way while editing text. */
   .is-dev-mode.is-dev-text-caret .dev-gap-toolbar__pill {
     opacity: 0;
@@ -4963,6 +5148,31 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   html.is-dev-tuner-open .dev-gap-toolbar__pill {
     opacity: 0 !important;
     pointer-events: none !important;
+  }
+
+  /* Text hover dash + section chips paint at z 60–65 and show through panels
+     that sit at the DevOverlay base (60). Kill the chrome while any tuner is up. */
+  html.is-dev-tuner-open [data-dev-text-document]::before,
+  html.is-dev-tuner-open [data-dev-text-document]::after {
+    opacity: 0 !important;
+  }
+
+  html.is-dev-tuner-open [data-dev-section-deletable] > .dev-section-delete,
+  html.is-dev-tuner-open [data-dev-section-deletable]::after,
+  html.is-dev-tuner-open [data-dev-section-reorderable] > .dev-section-drag-handle,
+  html.is-dev-tuner-open [data-dev-section-reorderable] > .dev-section-drag-bridge {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  html.is-dev-tuner-open [data-dev-section-reorderable]:is(:hover, .is-dev-section-controls-visible) {
+    z-index: auto;
+  }
+
+  html.is-dev-tuner-open [data-dev-spacing-document]:has(> .dev-gap-toolbar.is-near-add),
+  html.is-dev-tuner-open [data-dev-spacing-document]:has(> .dev-gap-toolbar.is-near-spacing),
+  html.is-dev-tuner-open [data-dev-spacing-document].is-dev-spacing-dirty {
+    z-index: auto;
   }
 
   /* Unified pill (630:5633, Spacing Toolbar Base) — Add + the spacing chips

@@ -1,49 +1,83 @@
 ---
+import DevOverlay from './DevOverlay.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
+import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
+import globeIcon from 'lucide-static/icons/globe.svg?raw';
+import { sizeIcon } from '../lib/icons';
+
 interface Props {
   documentKey: string;
 }
 
 const { documentKey } = Astro.props;
+const monitorSvg = sizeIcon(monitorIcon, 16);
+const globeSvg = sizeIcon(globeIcon, 16);
 ---
 
 <div class="dev-image-drop" data-dev-image-drop hidden>
   <p data-dev-image-drop-label>Drop images to add</p>
 </div>
 
-<dialog class="dev-image-drop-dialog" data-dev-image-picker data-document-key={documentKey}>
-  <form method="dialog" class="dev-image-drop-dialog__panel">
-    <h2>Add image</h2>
-    <div class="dev-image-drop-dialog__drop" data-dev-image-dropzone>
-      <p class="dev-image-drop-dialog__drop-label">Drop images here</p>
-      <button type="button" data-dev-image-choose>Choose from Finder</button>
-      <button type="button" data-dev-image-choose-assets>Choose from asset manager</button>
-      <input type="file" accept="image/*" multiple hidden data-dev-image-file-input />
+<DevOverlay
+  storageKey="add-image"
+  panelKey="add-image"
+  data-dev-image-picker
+  data-document-key={documentKey}
+  defaultHidden
+>
+  <div class="dev-add-image" data-dev-add-image>
+    <div class="dev-drop" data-dev-image-dropzone tabindex="0">
+      <div class="dev-drop__well">
+        <p class="dev-drop__label">Drop/paste here</p>
+        <button type="button" class="dev-btn dev-btn--ghost" data-dev-image-choose>
+          <span class="dev-btn__icon" aria-hidden="true" set:html={monitorSvg} />
+          File system
+        </button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-dev-image-choose-assets>
+          <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
+          Asset manager
+        </button>
+        <input type="file" accept="image/*" multiple hidden data-dev-image-file-input />
+      </div>
     </div>
-    <p class="dev-image-drop-dialog__count" data-dev-image-picker-count hidden></p>
-    <div class="dev-image-drop-dialog__actions">
-      <button type="button" data-dev-image-pick="image" disabled>Single image</button>
-      <button type="button" data-dev-image-pick="imageGrid" disabled>Image grid</button>
-      <button type="button" data-dev-image-pick="imageCarousel" disabled>Carousel</button>
-      <button type="button" data-dev-image-placeholder>Add placeholder</button>
-      <button type="button" value="cancel">Cancel</button>
+
+    <p class="dev-add-image__count" data-dev-image-picker-count hidden></p>
+
+    <!-- Shown only when type was not chosen upstream (e.g. page drop of one file). -->
+    <div class="dev-add-image__types" data-dev-image-type-actions hidden>
+      <Button type="button" emphasis="soft" label="Single image" data-dev-image-pick="image" disabled />
+      <Button type="button" emphasis="soft" label="Image grid" data-dev-image-pick="imageGrid" disabled />
+      <Button type="button" emphasis="soft" label="Carousel" data-dev-image-pick="imageCarousel" disabled />
     </div>
-  </form>
-</dialog>
+
+    <PanelActions>
+      <Button type="button" emphasis="ghost" label="Add placeholder" data-dev-image-placeholder />
+      <Button type="button" emphasis="ghost" label="Cancel" data-dev-image-cancel />
+    </PanelActions>
+  </div>
+</DevOverlay>
 
 <script>
   import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
+  import { getLastPointerPosition } from '../lib/lastPointer';
 
   const dropZone = document.querySelector('[data-dev-project-drop-zone]');
-  const overlay = document.querySelector('[data-dev-image-drop]');
-  const picker = document.querySelector('[data-dev-image-picker]');
-  const documentKey = picker instanceof HTMLElement ? (picker.dataset.documentKey || '') : '';
+  const pageDropVeil = document.querySelector('[data-dev-image-drop]');
+  const panel = document.querySelector('[data-dev-image-picker]');
+  const documentKey = panel instanceof HTMLElement ? (panel.dataset.documentKey || '') : '';
   const pickerCount = document.querySelector('[data-dev-image-picker-count]');
   const dropzone = document.querySelector('[data-dev-image-dropzone]');
+  const typeActions = document.querySelector('[data-dev-image-type-actions]');
   const fileInput = document.querySelector('[data-dev-image-file-input]');
   const chooseButton = document.querySelector('[data-dev-image-choose]');
   const chooseAssetsButton = document.querySelector('[data-dev-image-choose-assets]');
-  const pickButtons = picker?.querySelectorAll('[data-dev-image-pick]') ?? [];
+  const pickButtons = panel?.querySelectorAll('[data-dev-image-pick]') ?? [];
   const placeholderButton = document.querySelector('[data-dev-image-placeholder]');
+  const cancelButton = document.querySelector('[data-dev-image-cancel]');
+  const titleEl = panel instanceof HTMLElement
+    ? panel.querySelector('.dev-overlay__title')
+    : null;
 
   let pendingFiles = [];
   /** @type {string[]} */
@@ -54,9 +88,11 @@ const { documentKey } = Astro.props;
   let dragDepth = 0;
   /** @type {HTMLElement | null} */
   let activePlaceholder = null;
+  /** Skip reset when we hide this panel to open Asset manager mid-pick. */
+  let suppressCloseReset = false;
 
-  const dropLabel = overlay instanceof HTMLElement
-    ? overlay.querySelector('[data-dev-image-drop-label]')
+  const dropLabel = pageDropVeil instanceof HTMLElement
+    ? pageDropVeil.querySelector('[data-dev-image-drop-label]')
     : null;
 
   const clearPlaceholderTarget = () => {
@@ -68,7 +104,7 @@ const { documentKey } = Astro.props;
 
   const clearDragState = () => {
     document.documentElement.removeAttribute('data-dev-image-drag');
-    if (overlay instanceof HTMLElement) delete overlay.dataset.active;
+    if (pageDropVeil instanceof HTMLElement) delete pageDropVeil.dataset.active;
     clearPlaceholderTarget();
   };
 
@@ -129,10 +165,11 @@ const { documentKey } = Astro.props;
 
   const syncVisibility = () => {
     const devMode = document.documentElement.classList.contains('is-dev-mode');
-    if (overlay instanceof HTMLElement) overlay.hidden = !devMode;
+    if (pageDropVeil instanceof HTMLElement) pageDropVeil.hidden = !devMode;
     if (!devMode) {
       dragDepth = 0;
       clearDragState();
+      if (panel instanceof HTMLElement) panel.hidden = true;
     }
   };
 
@@ -157,12 +194,35 @@ const { documentKey } = Astro.props;
     return typeof sectionIndex === 'number' ? sectionIndex + 1 : blocks.length;
   };
 
+  const hasPreferredType = () => (
+    preferredType === 'image'
+    || preferredType === 'imageGrid'
+    || preferredType === 'imageCarousel'
+  );
+
+  const syncTitle = () => {
+    if (!(titleEl instanceof HTMLElement)) return;
+    titleEl.textContent = preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
+  };
+
   const syncPickerState = () => {
     const fileCount = pendingFiles.length;
     const srcCount = pendingSrcs.length;
     const count = fileCount || srcCount;
+    const typedUpstream = hasPreferredType();
+
+    syncTitle();
+
+    if (typeActions instanceof HTMLElement) {
+      typeActions.hidden = typedUpstream;
+    }
+    if (placeholderButton instanceof HTMLButtonElement) {
+      placeholderButton.hidden = preferredType === 'imageCarousel';
+      placeholderButton.disabled = count > 0;
+    }
+
     if (pickerCount instanceof HTMLElement) {
-      pickerCount.hidden = count === 0;
+      pickerCount.hidden = count === 0 || typedUpstream;
       pickerCount.textContent = srcCount
         ? `${srcCount} asset${srcCount === 1 ? '' : 's'} selected`
         : `${fileCount} file${fileCount === 1 ? '' : 's'} selected`;
@@ -175,8 +235,44 @@ const { documentKey } = Astro.props;
       }
       button.disabled = fileCount === 0;
     });
-    if (placeholderButton instanceof HTMLButtonElement) {
-      placeholderButton.disabled = count > 0;
+  };
+
+  const resetPickerState = () => {
+    pendingFiles = [];
+    pendingSrcs = [];
+    preferredType = null;
+    syncPickerState();
+  };
+
+  const hidePanel = () => {
+    if (panel instanceof HTMLElement) panel.hidden = true;
+  };
+
+  const showPanel = (clientY) => {
+    if (!(panel instanceof HTMLElement)) return;
+    syncPickerState();
+    panel.hidden = false;
+    // edit-open sets is-dev-tuner-open + clears gap chrome; open-at places the panel.
+    window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+      detail: { panel },
+    }));
+    const pointer = getLastPointerPosition();
+    const x = pointer.x;
+    const y = typeof clientY === 'number' ? clientY : pointer.y;
+    window.dispatchEvent(new CustomEvent('vcd:dev-edit-open-at', {
+      detail: { panel, clientX: x, clientY: y },
+    }));
+  };
+
+  const closePicker = () => {
+    // Hide type row before preferredType clears — otherwise it flashes mid-fade.
+    if (typeActions instanceof HTMLElement) typeActions.hidden = true;
+    resetPickerState();
+    if (panel instanceof HTMLElement) {
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
+        detail: { panel },
+      }));
     }
   };
 
@@ -256,11 +352,7 @@ const { documentKey } = Astro.props;
       index += 1;
     }
 
-    pendingFiles = [];
-    pendingSrcs = [];
-    preferredType = null;
-    syncPickerState();
-    if (picker instanceof HTMLDialogElement) picker.close();
+    closePicker();
   };
 
   const pickFromAssetManager = () => new Promise((resolve, reject) => {
@@ -269,6 +361,9 @@ const { documentKey } = Astro.props;
         documentKey,
         project: documentKey,
         mode: 'pick',
+        opener: panel instanceof HTMLElement ? panel : undefined,
+        // Carry Add-block menu choice (Image / Carousel) into the pick session.
+        ...(hasPreferredType() ? { type: preferredType } : {}),
         resolve,
         reject,
       },
@@ -359,9 +454,13 @@ const { documentKey } = Astro.props;
     if (typeof clientY === 'number') {
       pendingInsertIndex = insertIndexForY(clientY);
     }
-    if (!(picker instanceof HTMLDialogElement)) return;
-    syncPickerState();
-    picker.showModal();
+    showPanel(clientY);
+  };
+
+  const insertWithPreferredType = async (filenames = [], srcs = []) => {
+    if (!hasPreferredType()) return false;
+    await insertSection(preferredType, filenames, srcs);
+    return true;
   };
 
   const setPendingFiles = (files) => {
@@ -390,6 +489,7 @@ const { documentKey } = Astro.props;
 
     pendingInsertIndex = insertIndexForY(clientY);
     if (images.length === 1) {
+      preferredType = null;
       pendingFiles = images;
       openPicker(clientY);
       return;
@@ -414,7 +514,7 @@ const { documentKey } = Astro.props;
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     dragDepth += 1;
     document.documentElement.dataset.devImageDrag = 'true';
-    if (overlay instanceof HTMLElement) overlay.dataset.active = 'true';
+    if (pageDropVeil instanceof HTMLElement) pageDropVeil.dataset.active = 'true';
     prevent(event);
   };
 
@@ -423,9 +523,9 @@ const { documentKey } = Astro.props;
     prevent(event);
     const placeholder = standalonePlaceholderAtPoint(event.clientX, event.clientY);
     setPlaceholderTarget(placeholder);
-    if (overlay instanceof HTMLElement) {
-      if (placeholder) delete overlay.dataset.active;
-      else overlay.dataset.active = 'true';
+    if (pageDropVeil instanceof HTMLElement) {
+      if (placeholder) delete pageDropVeil.dataset.active;
+      else pageDropVeil.dataset.active = 'true';
     }
   };
 
@@ -475,6 +575,10 @@ const { documentKey } = Astro.props;
     })();
   });
 
+  cancelButton?.addEventListener('click', () => {
+    closePicker();
+  });
+
   chooseButton?.addEventListener('click', () => {
     if (fileInput instanceof HTMLInputElement) fileInput.click();
   });
@@ -482,28 +586,31 @@ const { documentKey } = Astro.props;
   chooseAssetsButton?.addEventListener('click', () => {
     void (async () => {
       try {
-        if (picker instanceof HTMLDialogElement && picker.open) picker.close();
+        suppressCloseReset = true;
+        hidePanel();
         const result = await pickFromAssetManager();
         const srcs = Array.isArray(result?.srcs) ? result.srcs.filter(Boolean) : [];
-        const type = result?.type === 'imageGrid'
-          ? 'imageGrid'
-          : result?.type === 'imageCarousel'
-            ? 'imageCarousel'
-            : 'image';
-        if (!srcs.length) return;
+        if (!srcs.length) {
+          showPanel();
+          return;
+        }
+        if (hasPreferredType()) {
+          await insertSection(preferredType, [], srcs);
+          return;
+        }
+        // Type not chosen yet — stage assets and show Single / Grid / Carousel.
         pendingFiles = [];
         pendingSrcs = srcs;
-        await insertSection(type, [], srcs);
+        showPanel();
       } catch (error) {
         if (error instanceof Error && error.message === 'cancelled') {
-          if (picker instanceof HTMLDialogElement) {
-            syncPickerState();
-            picker.showModal();
-          }
+          showPanel();
           return;
         }
         window.alert(error instanceof Error ? error.message : 'Could not add images.');
-        if (picker instanceof HTMLDialogElement) picker.showModal();
+        showPanel();
+      } finally {
+        suppressCloseReset = false;
       }
     })();
   });
@@ -512,16 +619,11 @@ const { documentKey } = Astro.props;
     if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) return;
     setPendingFiles(fileInput.files);
     fileInput.value = '';
-    if (
-      preferredType
-      && (preferredType === 'image' || preferredType === 'imageGrid' || preferredType === 'imageCarousel')
-      && pendingFiles.length
-    ) {
-      const type = preferredType;
+    if (hasPreferredType() && pendingFiles.length) {
       void (async () => {
         try {
           const filenames = await uploadFiles(pendingFiles);
-          await insertSection(type, filenames);
+          await insertWithPreferredType(filenames);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -532,28 +634,23 @@ const { documentKey } = Astro.props;
   dropzone?.addEventListener('dragover', (event) => {
     event.preventDefault();
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-    if (dropzone instanceof HTMLElement) dropzone.dataset.active = 'true';
+    if (dropzone instanceof HTMLElement) dropzone.classList.add('is-dragover');
   });
 
   dropzone?.addEventListener('dragleave', () => {
-    if (dropzone instanceof HTMLElement) delete dropzone.dataset.active;
+    if (dropzone instanceof HTMLElement) dropzone.classList.remove('is-dragover');
   });
 
   dropzone?.addEventListener('drop', (event) => {
     event.preventDefault();
-    if (dropzone instanceof HTMLElement) delete dropzone.dataset.active;
+    if (dropzone instanceof HTMLElement) dropzone.classList.remove('is-dragover');
     if (!event.dataTransfer?.files?.length) return;
     setPendingFiles(event.dataTransfer.files);
-    if (
-      preferredType
-      && (preferredType === 'image' || preferredType === 'imageGrid' || preferredType === 'imageCarousel')
-      && pendingFiles.length
-    ) {
-      const type = preferredType;
+    if (hasPreferredType() && pendingFiles.length) {
       void (async () => {
         try {
           const filenames = await uploadFiles(pendingFiles);
-          await insertSection(type, filenames);
+          await insertWithPreferredType(filenames);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -561,13 +658,12 @@ const { documentKey } = Astro.props;
     }
   });
 
-  picker?.querySelector('button[value="cancel"]')?.addEventListener('click', () => {
-    if (picker instanceof HTMLDialogElement) picker.close();
-    pendingFiles = [];
-    pendingSrcs = [];
-    preferredType = null;
-    syncPickerState();
-  });
+  window.addEventListener('vcd:dev-edit-close', ((event) => {
+    const detail = event.detail ?? {};
+    if (detail.panel !== panel) return;
+    if (suppressCloseReset) return;
+    resetPickerState();
+  }));
 
   const root = dropZone ?? document.body;
   root.addEventListener('dragenter', onDragEnter);
@@ -582,10 +678,13 @@ const { documentKey } = Astro.props;
     if (detail.documentKey !== documentKey || typeof detail.index !== 'number') return;
     pendingInsertIndex = detail.index;
     preferredType = typeof detail.preferredType === 'string' ? detail.preferredType : null;
+    pendingFiles = [];
+    pendingSrcs = [];
     openPicker();
   }));
 
   syncVisibility();
+  syncPickerState();
 </script>
 
 <style is:global>
@@ -626,76 +725,34 @@ const { documentKey } = Astro.props;
     border-color: var(--ref-palette-grey-400);
   }
 
-  .dev-image-drop-dialog {
-    border: 0;
-    padding: 0;
-    margin: auto;
-    background: transparent;
+  .dev-overlay[data-dev-panel-key='add-image'] {
+    width: min(22em, calc(100vw - 2em));
   }
 
-  .dev-image-drop-dialog:not([open]) {
-    display: none !important;
-  }
-
-  .dev-image-drop-dialog::backdrop {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(8px);
-  }
-
-  .dev-image-drop-dialog__panel {
+  .dev-add-image {
     display: grid;
-    gap: 0.85em;
-    width: min(28em, calc(100vw - 2em));
-    padding: 1.25em;
-    border: 1px solid #ddd;
-    border-radius: 0.5em;
-    background: #fff;
+    gap: var(--dev-panel-content-gap, 0.75em);
   }
 
-  .dev-image-drop-dialog__drop {
-    display: grid;
-    gap: 0.65em;
-    padding: 1.25em;
-    border: 1px dashed #ccc;
-    border-radius: 0.45em;
-    background: #fafafa;
-    text-align: center;
-  }
-
-  .dev-image-drop-dialog__drop[data-active='true'] {
-    border-color: #888;
-    background: #f3f3f3;
-  }
-
-  .dev-image-drop-dialog__drop-label {
+  .dev-add-image__count {
     margin: 0;
-    color: #555;
-    font-size: 0.95em;
+    color: var(--sys-color-on-srf-variant);
+    font: var(--dev-text-status);
   }
 
-  .dev-image-drop-dialog__count {
-    margin: 0;
-    color: #444;
-    font-size: 0.9em;
-  }
-
-  .dev-image-drop-dialog__actions {
+  .dev-add-image__types {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5em;
   }
 
-  .dev-image-drop-dialog__actions button {
-    padding: 0.55em 0.85em;
-    border: 1px solid #ccc;
-    border-radius: 0.35em;
-    background: #f7f7f7;
-    font: inherit;
-    cursor: pointer;
+  .dev-add-image__types[hidden] {
+    display: none !important;
   }
 
-  .dev-image-drop-dialog__actions button:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
+  /* Exit fade removes is-dev-overlay-open before preferredType resets — keep
+     the type row gone so Cancel doesn't flash Single / Grid / Carousel. */
+  .dev-overlay[data-dev-panel-key='add-image']:not(.is-dev-overlay-open) .dev-add-image__types {
+    display: none !important;
   }
 </style>
