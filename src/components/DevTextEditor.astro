@@ -4015,10 +4015,26 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
 
         for (const change of projectSettingsChanges) {
+          const settingsPayload = { ...(change.payload as Record<string, unknown>) };
+          const currentSlug = String(settingsPayload.slug || '').trim();
+          const nextSlug = String(settingsPayload.newSlug || '').trim();
+          if (nextSlug && nextSlug !== currentSlug) {
+            const renameResponse = await fetch('/api/project-rename', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ slug: currentSlug, newSlug: nextSlug }),
+            });
+            const renamePayload = await readApiJson(renameResponse);
+            if (!renameResponse.ok) {
+              throw new Error(String(renamePayload.error || 'Could not rename the project.'));
+            }
+            settingsPayload.slug = nextSlug;
+            delete settingsPayload.newSlug;
+          }
           const response = await fetch('/api/project-settings', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(change.payload),
+            body: JSON.stringify(settingsPayload),
           });
           const payload = await readApiJson(response);
           if (!response.ok) {
