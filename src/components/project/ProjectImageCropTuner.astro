@@ -1080,15 +1080,20 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const hoverSrcAspect = hoverImgSrcAspect(editTarget);
         if (hoverSrcAspect) {
           const zoom = hoverZoomOf({ ...hoverState, aspect: zoomAspect }, hoverSrcAspect);
-          hoverState.w = hoverWForZoom(aspect, zoom, hoverSrcAspect);
+          // Linked hover fills the frame (zoom ≥ 1). Undercover seeds (`w: 1`
+          // before src aspect was known) report zoom < 1 — floor so reshape
+          // cannot write w > 1 and fail Save validation.
+          hoverState.w = hoverWForZoom(aspect, Math.max(1, zoom), hoverSrcAspect);
         } else {
           bindHoverSrcAspect(editTarget, zoomAspect);
         }
         hoverState.aspect = aspect;
-        if (liveApply) {
-          setHoverTargetVariant(editTarget, selectedViewport, hoverState);
-          editTarget.classList.add('project-grid__cover--hover-cropped');
-        }
+        // Fill correction is display truth, not a draft crop edit — apply even
+        // while liveApply is still false (otherwise the page letterboxes until
+        // the first pan and then snaps).
+        setHoverTargetVariant(editTarget, selectedViewport, hoverState);
+        editTarget.classList.add('project-grid__cover--hover-cropped');
+        editTarget.dataset.devHoverVariants = JSON.stringify(draftHoverVariants);
       }
     };
 
