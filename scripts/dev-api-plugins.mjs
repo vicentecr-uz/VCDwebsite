@@ -128,7 +128,6 @@ export const PLACEHOLDER_IMAGE_VARIANTS = {
 };
 
 const STATIC_EDITABLE_DOCUMENTS = new Map([
-  ['[retired-project]', 'src/content/projects/[retired-project].json'],
   ['the-rams', 'src/content/projects/the-rams.json'],
   ['parentpal', 'src/content/projects/parentpal.json'],
   ['conic-collection', 'src/content/projects/conic-collection.json'],

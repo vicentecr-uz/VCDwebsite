@@ -1,7 +1,7 @@
 # Legacy case-study components
 
 Webflow-migration components kept only while old case-study routes are rebuilt
-(The Rams, Conic Collection, ParentPal, [retired-project]).
+(Conic Collection, ParentPal).
 
 **Do not use on new work.** Signed-off components live in `src/components/project/`
 and are listed on `/styles`.
