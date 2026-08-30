@@ -335,14 +335,17 @@ export function stripAssetRefsFromDocument(data, targetSrc) {
 }
 
 /**
- * Remove one media item from a grid/carousel section by item id (file stays on disk).
+ * Remove media from a section by capability, not by type allowlist.
+ * New media shapes inherit this without registering.
+ * - Multi-item blocks (`items[]`): drop the matching item (refuse if last).
+ * - Single-src blocks (`src`): drop the whole section from `sections[]`.
+ *
  * @param {Record<string, unknown>} data
  * @param {Array<string | number>} fieldPath
  * @param {string} itemId
  */
 export function removeMediaItemFromDocument(data, fieldPath, itemId) {
   const id = String(itemId || '');
-  if (!id) throw new Error('An item id is required.');
   if (!Array.isArray(fieldPath) || !fieldPath.length) {
     throw new Error('That media block path is invalid.');
   }
@@ -359,51 +362,68 @@ export function removeMediaItemFromDocument(data, fieldPath, itemId) {
   }
 
   const node = /** @type {Record<string, unknown>} */ (cursor);
-  const type = String(node.type || '');
-  if (type !== 'imageGrid' && type !== 'imageCarousel') {
-    throw new Error('Only image grids and carousels support remove-from-page.');
-  }
-  if (!Array.isArray(node.items)) {
-    throw new Error('That media block has no items.');
-  }
 
-  const index = node.items.findIndex((item) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-    return String(/** @type {Record<string, unknown>} */ (item).id || '') === id;
-  });
-  if (index < 0) throw new Error('That image is no longer in this block.');
-  if (node.items.length <= 1) {
-    throw new Error('Keep at least one image, or delete the whole section.');
-  }
-
-  node.items.splice(index, 1);
-
-  if (Array.isArray(node.visible)) {
-    node.visible = node.visible.filter((entry) => String(entry) !== id);
-    if (!node.visible.length) delete node.visible;
-  }
-  if (node.layouts && typeof node.layouts === 'object' && !Array.isArray(node.layouts)) {
-    for (const layout of Object.values(/** @type {Record<string, unknown>} */ (node.layouts))) {
-      if (!layout || typeof layout !== 'object' || Array.isArray(layout)) continue;
-      const visible = /** @type {Record<string, unknown>} */ (layout).visible;
-      if (!Array.isArray(visible)) continue;
-      /** @type {Record<string, unknown>} */ (layout).visible = visible.filter(
-        (entry) => String(entry) !== id,
-      );
+  // Multi-item media (grid, carousel, future): remove one item by id.
+  if (Array.isArray(node.items)) {
+    if (!id) throw new Error('An item id is required.');
+    const index = node.items.findIndex((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+      return String(/** @type {Record<string, unknown>} */ (item).id || '') === id;
+    });
+    if (index < 0) throw new Error('That image is no longer in this block.');
+    if (node.items.length <= 1) {
+      throw new Error('Keep at least one image, or delete the whole section.');
     }
-  }
-  if (node.breakpoints && typeof node.breakpoints === 'object' && !Array.isArray(node.breakpoints)) {
-    for (const bp of Object.values(/** @type {Record<string, unknown>} */ (node.breakpoints))) {
-      if (!bp || typeof bp !== 'object' || Array.isArray(bp)) continue;
-      const visible = /** @type {Record<string, unknown>} */ (bp).visible;
-      if (!Array.isArray(visible)) continue;
-      /** @type {Record<string, unknown>} */ (bp).visible = visible.filter(
-        (entry) => String(entry) !== id,
-      );
+
+    node.items.splice(index, 1);
+
+    if (Array.isArray(node.visible)) {
+      node.visible = node.visible.filter((entry) => String(entry) !== id);
+      if (!node.visible.length) delete node.visible;
     }
+    if (node.layouts && typeof node.layouts === 'object' && !Array.isArray(node.layouts)) {
+      for (const layout of Object.values(/** @type {Record<string, unknown>} */ (node.layouts))) {
+        if (!layout || typeof layout !== 'object' || Array.isArray(layout)) continue;
+        const visible = /** @type {Record<string, unknown>} */ (layout).visible;
+        if (!Array.isArray(visible)) continue;
+        /** @type {Record<string, unknown>} */ (layout).visible = visible.filter(
+          (entry) => String(entry) !== id,
+        );
+      }
+    }
+    if (node.breakpoints && typeof node.breakpoints === 'object' && !Array.isArray(node.breakpoints)) {
+      for (const bp of Object.values(/** @type {Record<string, unknown>} */ (node.breakpoints))) {
+        if (!bp || typeof bp !== 'object' || Array.isArray(bp)) continue;
+        const visible = /** @type {Record<string, unknown>} */ (bp).visible;
+        if (!Array.isArray(visible)) continue;
+        /** @type {Record<string, unknown>} */ (bp).visible = visible.filter(
+          (entry) => String(entry) !== id,
+        );
+      }
+    }
+
+    return node;
   }
 
-  return node;
+  // Single-src media (image, future video, …): remove the whole section.
+  if (
+    fieldPath[0] === 'sections'
+    && typeof fieldPath[1] === 'number'
+    && typeof node.src === 'string'
+  ) {
+    const sectionIndex = fieldPath[1];
+    const sections = data.sections;
+    if (!Array.isArray(sections) || sectionIndex < 0 || sectionIndex >= sections.length) {
+      throw new Error('That media block path no longer exists.');
+    }
+    if (sections[sectionIndex] !== node) {
+      throw new Error('That media block path no longer exists.');
+    }
+    const [removed] = sections.splice(sectionIndex, 1);
+    return removed;
+  }
+
+  throw new Error('That block does not hold removable media.');
 }
 
 /**

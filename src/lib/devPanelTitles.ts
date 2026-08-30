@@ -3,6 +3,7 @@ export const DEV_PANEL_TITLES = {
   caption: 'Caption',
   grid: 'Grid',
   carousel: 'Carousel',
+  'add-image': 'Add image',
   'project-settings': 'Project settings',
   'gallery-pages': 'Gallery manager',
   'asset-manager': 'Asset manager',
