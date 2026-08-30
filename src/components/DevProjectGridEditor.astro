@@ -86,7 +86,8 @@ const visibilityOptions = [
               aria-label="Slug"
             />
           </div>
-          <span class="dev-project-settings__slug-fade" data-ps-slug-fade aria-hidden="true"></span>
+          <span class="dev-project-settings__slug-fade dev-project-settings__slug-fade--left" aria-hidden="true"></span>
+          <span class="dev-project-settings__slug-fade dev-project-settings__slug-fade--right" aria-hidden="true"></span>
         </div>
       </label>
       <p class="dev-project-settings__slug-error" data-ps-slug-error aria-live="polite"></p>
@@ -221,7 +222,10 @@ const visibilityOptions = [
 
   const syncSlugFade = () => {
     if (!(slugValueBox instanceof HTMLElement) || !(slugScroll instanceof HTMLElement)) return;
-    slugValueBox.classList.toggle('is-scrolled', slugScroll.scrollLeft > 0);
+    const max = Math.max(0, slugScroll.scrollWidth - slugScroll.clientWidth);
+    const left = slugScroll.scrollLeft;
+    slugValueBox.classList.toggle('is-fade-left', left > 0.5);
+    slugValueBox.classList.toggle('is-fade-right', max > 0.5 && left < max - 0.5);
   };
 
   /** Keep the caret in view inside the shared scroll track (not the input). */
@@ -2146,24 +2150,37 @@ const visibilityOptions = [
     color: var(--sys-color-on-srf);
   }
 
-  /* Fade starts at the scroll limit (field content edge), not the box edge. */
+  /* Scroll-limit fades (8px inset). Shifted 0.5px outward so a subpixel
+     misalign between clip and gradient can’t flash a hard-edge sliver. */
   .dev-project-settings__slug-fade {
     position: absolute;
-    inset: 0 auto 0 8px;
+    top: 0;
+    bottom: 0;
     width: 14px;
     pointer-events: none;
     opacity: 0;
     transition: opacity 150ms ease-out;
     background: var(--comp-field-container);
+  }
+
+  .dev-project-settings__slug-fade--left {
+    left: 7.5px;
     -webkit-mask-image: linear-gradient(to right, #fff 20%, transparent);
     mask-image: linear-gradient(to right, #fff 20%, transparent);
+  }
+
+  .dev-project-settings__slug-fade--right {
+    right: 7.5px;
+    -webkit-mask-image: linear-gradient(to left, #fff 20%, transparent);
+    mask-image: linear-gradient(to left, #fff 20%, transparent);
   }
 
   .dev-field:hover .dev-project-settings__slug-fade {
     background: var(--comp-button-soft-container-hover);
   }
 
-  .dev-project-settings__slug-value.is-scrolled .dev-project-settings__slug-fade {
+  .dev-project-settings__slug-value.is-fade-left .dev-project-settings__slug-fade--left,
+  .dev-project-settings__slug-value.is-fade-right .dev-project-settings__slug-fade--right {
     opacity: 1;
   }
 
