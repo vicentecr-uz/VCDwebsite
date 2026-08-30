@@ -3,7 +3,9 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
-import homePage from '../content/pages/home.json';
+import { loadPageDocument } from '../lib/projects';
+
+const homePage = loadPageDocument('home');
 ---
 
 <Layout title="Vicente Cruz — Industrial Designer">
@@ -11,6 +13,7 @@ import homePage from '../content/pages/home.json';
     <Header navMenu wordmarkAsH1 />
 
     <main id="main-content" class="listing-main" style="flex: 1;">
+      <p class="home-role">Product Design Engineer</p>
       <div data-dev-project-drop-zone>
         <ProjectSections documentKey="home" sections={homePage.sections} />
       </div>
@@ -23,5 +26,13 @@ import homePage from '../content/pages/home.json';
 <style>
   .listing-main {
     padding: 0;
+  }
+
+  .home-role {
+    margin: 0;
+    padding-inline: var(--space-unit);
+    font-size: var(--header-menu-link-size, 1.2em);
+    font-weight: var(--text-nav-weight);
+    color: var(--sys-color-on-srf-variant);
   }
 </style>
