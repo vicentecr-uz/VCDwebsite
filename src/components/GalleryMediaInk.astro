@@ -1,14 +1,18 @@
 <script>
   import { bindCaptionMediaInk } from '../scripts/bindCaptionMediaInk';
+  import { bindGalleryHoverFill } from '../scripts/clampGalleryHoverFill';
   import { bindGalleryMediaInk } from '../scripts/bindGalleryMediaInk';
 
   let teardownGallery: (() => void) | undefined;
+  let teardownHoverFill: (() => void) | undefined;
   let teardownCaptions: (() => void) | undefined;
 
   function mount() {
     teardownGallery?.();
+    teardownHoverFill?.();
     teardownCaptions?.();
     teardownGallery = bindGalleryMediaInk();
+    teardownHoverFill = bindGalleryHoverFill();
     teardownCaptions = bindCaptionMediaInk();
   }
 
@@ -16,8 +20,10 @@
   document.addEventListener('astro:page-load', mount);
   document.addEventListener('astro:before-swap', () => {
     teardownGallery?.();
+    teardownHoverFill?.();
     teardownCaptions?.();
     teardownGallery = undefined;
+    teardownHoverFill = undefined;
     teardownCaptions = undefined;
   });
 </script>

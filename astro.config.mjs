@@ -693,11 +693,14 @@ const applyCropChange = (data, change) => {
       const cy = Number(requested?.cy);
       const w = Number(requested?.w);
       const aspect = String(requested?.aspect || '');
+      // Accept w slightly above 1 (float / linked-hover reshape) and clamp —
+      // rejecting broke Save after cover-handle resize while hover was still
+      // on an undercover seed (`w: 1` with zoom < 1 → write-back w > 1).
       if (
         !IMAGE_VIEWPORTS.has(viewport) ||
         !isAllowedAspectRatio(aspect) ||
         ![cx, cy, w].every(Number.isFinite) ||
-        w <= 0 || w > 1
+        w <= 0
       ) {
         return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
       }
