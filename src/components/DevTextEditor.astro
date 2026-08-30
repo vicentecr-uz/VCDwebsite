@@ -1930,6 +1930,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           requestAnimationFrame(() => ensureParagraphSelection(element));
         });
       }
+      if (state.kind === 'paragraphs') {
+        // Native Enter still fires insertParagraph after our keydown split on
+        // some engines (Safari), so one Return became two <p>s.
+        element.addEventListener('beforeinput', (event) => {
+          if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+            event.preventDefault();
+          }
+        });
+      }
       element.addEventListener('keydown', (event) => {
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
