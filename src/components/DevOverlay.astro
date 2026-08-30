@@ -895,7 +895,7 @@ const hideSvg = trafficLightIcon(xIcon);
     is no antialiased seam between two stacked identical corner radii.
   */
   .dev-overlay {
-    --dev-overlay-inner-radius: max(0px, calc(var(--dev-radius-panel) - var(--dev-panel-pad)));
+    --dev-overlay-inner-radius: var(--dev-radius-control);
     --dev-overlay-motion-ms: 180ms;
     --dev-overlay-rise: 0.35em;
     --dev-overlay-light-size: 15px;
@@ -1307,9 +1307,12 @@ const hideSvg = trafficLightIcon(xIcon);
     scrollbar-gutter: stable;
   }
 
-  /* Portrait hug: no gutter until the user shrinks below the content cap. */
+  /* Portrait hug: hide the scrollbar gutter until the body actually scrolls,
+     but keep overflow:hidden so the inner corner radius always clips — visible
+     overflow was the regression where the bottom curve only appeared after
+     shrinking past the content cap (is-body-scrollable). */
   .dev-overlay--portrait:not(.is-body-scrollable) .dev-overlay__body {
-    overflow: visible;
+    overflow: hidden;
     scrollbar-gutter: auto;
   }
 

@@ -8,6 +8,7 @@ import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
 import imageIcon from 'lucide-static/icons/image.svg?raw';
+import squareArrowRightEnterIcon from 'lucide-static/icons/square-arrow-right-enter.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
@@ -19,6 +20,8 @@ const statusIcons = {
   teaser: sizeIcon(eyeOffIcon, 14),
   image: sizeIcon(imageIcon, 14),
 };
+/** Open page — Lucide `square-arrow-right-enter` (same as ProjectGridItem). */
+const openPageIconSvg = sizeIcon(squareArrowRightEnterIcon, 14);
 const visibilityOptions = [
   { value: 'published', label: 'Public', icon: globeIcon },
   { value: 'teaser', label: 'Teaser', icon: eyeOffIcon },
@@ -34,20 +37,20 @@ const visibilityOptions = [
   <div class="dev-project-settings" data-dev-project-settings-root>
     <p class="dev-project-settings__hint" hidden></p>
 
-    <SelectField
-      class="dev-project-settings__field"
-      label="Visibility"
-      id="ps-status-trigger"
-      data-ps-status
-      options={visibilityOptions}
-      value="published"
-    />
+    <div class="dev-project-settings__top-row">
+      <SelectField
+        class="dev-project-settings__field dev-project-settings__field--visibility"
+        label="Visibility"
+        id="ps-status-trigger"
+        data-ps-status
+        options={visibilityOptions}
+        value="published"
+      />
 
-    <div class="dev-project-settings__listing" data-ps-listing-fields>
-      <div class="dev-project-settings__hex-row">
+      <div class="dev-project-settings__listing" data-ps-listing-fields>
         <label class="dev-project-settings__field dev-field">
           <span class="dev-field__label">Card background</span>
-          <div class="dev-field__value">
+          <div class="dev-field__value dev-project-settings__hex-value">
             <input
               type="text"
               class="dev-project-settings__hex-input dev-field__input"
@@ -57,15 +60,36 @@ const visibilityOptions = [
               spellcheck="false"
               data-ps-bg
             />
+            <button
+              type="button"
+              class="dev-project-settings__swatch"
+              aria-label="Open colour picker"
+              data-ps-bg-swatch
+            ></button>
           </div>
         </label>
-        <button
-          type="button"
-          class="dev-project-settings__swatch"
-          aria-label="Open colour picker"
-          data-ps-bg-swatch
-        ></button>
       </div>
+    </div>
+
+    <div class="dev-project-settings__slug-wrap" data-ps-slug-wrap>
+      <label class="dev-project-settings__field dev-field">
+        <span class="dev-field__label">Slug</span>
+        <div class="dev-field__value dev-project-settings__slug-value">
+          <div class="dev-project-settings__slug-scroll" data-ps-slug-scroll>
+            <span class="dev-project-settings__slug-prefix" aria-hidden="true">vcruzdesigns.com/</span>
+            <input
+              type="text"
+              class="dev-field__input"
+              autocomplete="off"
+              spellcheck="false"
+              data-ps-slug
+              aria-label="Slug"
+            />
+          </div>
+          <span class="dev-project-settings__slug-fade" data-ps-slug-fade aria-hidden="true"></span>
+        </div>
+      </label>
+      <p class="dev-project-settings__slug-error" data-ps-slug-error aria-live="polite"></p>
     </div>
 
     <color-picker
@@ -78,8 +102,10 @@ const visibilityOptions = [
       label-ok="Done"
     ></color-picker>
 
-    <PanelActions>
+    <PanelActions class="dev-project-settings__actions">
       <Button type="button" emphasis="danger" label="Delete project" data-ps-delete />
+      <Button type="button" emphasis="ghost" label="Revert changes" data-ps-revert disabled />
+      <Button type="button" emphasis="filled" label="Save changes" data-ps-save disabled />
     </PanelActions>
 
     <p class="dev-project-settings__status" data-ps-status-line aria-live="polite"></p>
@@ -154,7 +180,7 @@ const visibilityOptions = [
   };
 </script>
 
-<script define:vars={{ teaserPassword, statusIcons, placeholderCover: PLACEHOLDER_COVER, emptyCoverFill: EMPTY_COVER_FILL }}>
+<script define:vars={{ teaserPassword, statusIcons, openPageIconSvg, placeholderCover: PLACEHOLDER_COVER, emptyCoverFill: EMPTY_COVER_FILL }}>
   const settingsPanel = document.querySelector('[data-dev-panel-key="project-settings"]');
   const settingsRoot = document.querySelector('[data-dev-project-settings-root]');
 
@@ -162,9 +188,116 @@ const visibilityOptions = [
   const bgSwatch = settingsRoot?.querySelector('[data-ps-bg-swatch]');
   const bgPicker = settingsRoot?.querySelector('[data-ps-bg-picker]');
   const statusSelect = settingsRoot?.querySelector('select[data-ps-status]');
+  const slugInput = settingsRoot?.querySelector('[data-ps-slug]');
+  const slugWrap = settingsRoot?.querySelector('[data-ps-slug-wrap]');
+  const slugError = settingsRoot?.querySelector('[data-ps-slug-error]');
+  const slugScroll = settingsRoot?.querySelector('[data-ps-slug-scroll]');
+  const slugPrefix = settingsRoot?.querySelector('.dev-project-settings__slug-prefix');
+  const slugValueBox = settingsRoot?.querySelector('.dev-project-settings__slug-value');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
+  const revertButton = settingsRoot?.querySelector('[data-ps-revert]');
+  const saveButton = settingsRoot?.querySelector('[data-ps-save]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
+
+  /** Grow the slug input to its content so prefix+slug scroll as one row. */
+  const syncSlugInputWidth = () => {
+    if (!(slugInput instanceof HTMLInputElement)) return;
+    const style = getComputedStyle(slugInput);
+    const mirror = document.createElement('span');
+    mirror.style.cssText = [
+      'position:absolute',
+      'visibility:hidden',
+      'white-space:pre',
+      `font:${style.font}`,
+      `letter-spacing:${style.letterSpacing}`,
+    ].join(';');
+    // Trailing pad so the caret isn't flush against the clip edge.
+    mirror.textContent = `${slugInput.value || ''}\u200b`;
+    document.body.appendChild(mirror);
+    slugInput.style.width = `${Math.max(mirror.offsetWidth, 16)}px`;
+    mirror.remove();
+  };
+
+  const syncSlugFade = () => {
+    if (!(slugValueBox instanceof HTMLElement) || !(slugScroll instanceof HTMLElement)) return;
+    slugValueBox.classList.toggle('is-scrolled', slugScroll.scrollLeft > 0);
+  };
+
+  /** Keep the caret in view inside the shared scroll track (not the input). */
+  const syncSlugScrollToCaret = () => {
+    if (
+      !(slugInput instanceof HTMLInputElement)
+      || !(slugScroll instanceof HTMLElement)
+      || !(slugPrefix instanceof HTMLElement)
+    ) return;
+    const style = getComputedStyle(slugInput);
+    const mirror = document.createElement('span');
+    mirror.style.cssText = [
+      'position:absolute',
+      'visibility:hidden',
+      'white-space:pre',
+      `font:${style.font}`,
+      `letter-spacing:${style.letterSpacing}`,
+    ].join(';');
+    mirror.textContent = slugInput.value.slice(0, slugInput.selectionEnd ?? slugInput.value.length);
+    document.body.appendChild(mirror);
+    const caretX = slugPrefix.offsetWidth + mirror.offsetWidth;
+    mirror.remove();
+    const pad = 8;
+    const viewL = slugScroll.scrollLeft;
+    const viewR = viewL + slugScroll.clientWidth;
+    if (caretX > viewR - pad) slugScroll.scrollLeft = caretX - slugScroll.clientWidth + pad;
+    else if (caretX < viewL + pad) slugScroll.scrollLeft = Math.max(0, caretX - pad);
+    syncSlugFade();
+  };
+
+  const syncSlugLayout = () => {
+    syncSlugInputWidth();
+    syncSlugScrollToCaret();
+  };
+
+  const clearSlugError = () => {
+    if (!(slugWrap instanceof HTMLElement)) return;
+    slugWrap.classList.remove('is-error');
+    const fieldValue = slugWrap.querySelector('.dev-field__value');
+    if (fieldValue instanceof HTMLElement) {
+      fieldValue.classList.remove('is-error', 'is-shaking');
+    }
+    if (slugError instanceof HTMLElement) slugError.textContent = '';
+  };
+
+  /** Spring-decay shake — restart by toggling is-shaking.
+   * Duration/distances are hardcoded: calc(var(--ms) * n) is invalid as
+   * animation-duration in WebKit, so the shake never ran. */
+  const shakeSlugError = (message) => {
+    if (!(slugWrap instanceof HTMLElement)) return;
+    const fieldValue = slugWrap.querySelector('.dev-project-settings__slug-value')
+      || slugWrap.querySelector('.dev-field__value');
+    slugWrap.classList.add('is-error');
+    if (slugError instanceof HTMLElement) slugError.textContent = message;
+    if (!(fieldValue instanceof HTMLElement)) return;
+    fieldValue.classList.add('is-error');
+    fieldValue.classList.remove('is-shaking');
+    void fieldValue.offsetWidth;
+    fieldValue.classList.add('is-shaking');
+    const clearShake = () => fieldValue.classList.remove('is-shaking');
+    fieldValue.addEventListener('animationend', clearShake, { once: true });
+  };
+
+  const disarmDelete = () => {
+    if (!(deleteButton instanceof HTMLButtonElement)) return;
+    deleteButton.removeAttribute('data-ps-delete-armed');
+    deleteButton.classList.remove('is-selected');
+    deleteButton.setAttribute('aria-disabled', 'true');
+  };
+
+  const armDelete = () => {
+    if (!(deleteButton instanceof HTMLButtonElement)) return;
+    deleteButton.setAttribute('data-ps-delete-armed', '');
+    deleteButton.classList.add('is-selected');
+    deleteButton.removeAttribute('aria-disabled');
+  };
 
   let createActiveGrid = 'work';
   /** @type {string} */
@@ -190,12 +323,20 @@ const visibilityOptions = [
     if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
   };
 
+  const syncPanelActionButtons = () => {
+    const entry = panelSlug ? caches.get(panelSlug) : null;
+    const dirty = Boolean(entry && !snapshotsMatch(entry.saved, entry.draft));
+    if (revertButton instanceof HTMLButtonElement) revertButton.disabled = !dirty;
+    if (saveButton instanceof HTMLButtonElement) saveButton.disabled = !dirty;
+  };
+
   const previewCardBg = (value) => {
     if (!panelSlug) return;
     const entry = caches.get(panelSlug);
     if (!entry) return;
     entry.draft.listing.bg = value;
-    syncPendingFor(panelSlug);
+    applyListingPreview(entry.item, entry.draft, entry.grid);
+    syncPanelActionButtons();
   };
 
   const openBgPicker = (hex) => {
@@ -248,6 +389,7 @@ const visibilityOptions = [
     teaserLabel: '',
     description: '',
     status: 'draft',
+    slug: '',
     listing: emptyListing(),
     teaser: { label: '', coverImage: '' },
   });
@@ -408,8 +550,10 @@ const visibilityOptions = [
   const buildSavePayload = (slug, grid, draft) => {
     const listings = {};
     listings[grid] = buildListingPayload(grid, draft.listing, draft.status);
+    const nextSlug = String(draft.slug || slug).trim();
     return {
       slug,
+      ...(nextSlug && nextSlug !== slug ? { newSlug: nextSlug } : {}),
       title: draft.title,
       description: draft.description,
       status: draft.status,
@@ -520,6 +664,7 @@ const visibilityOptions = [
       card.classList.toggle('project-grid__card--teaser', isTeaser);
     }
     syncStatusChip(item, snapshot.status);
+    syncOpenPageChip(item, snapshot.status);
     enableCardEditing(item);
   };
 
@@ -539,6 +684,34 @@ const visibilityOptions = [
         option.dataset.devStatusOption === status ? 'true' : 'false',
       );
     });
+  };
+
+  const syncOpenPageChip = (item, status) => {
+    const slug = item.getAttribute('data-dev-project-slug');
+    const rail = item.querySelector('.project-grid__chips--start');
+    if (!(rail instanceof HTMLElement) || !slug) return;
+    let chip = item.querySelector('[data-dev-project-open]');
+    const show = status === 'draft' || status === 'teaser';
+    if (!show) {
+      chip?.remove();
+      return;
+    }
+    if (!(chip instanceof HTMLAnchorElement)) {
+      chip = document.createElement('a');
+      chip.className = 'project-grid__chip';
+      chip.setAttribute('data-dev-project-open', slug);
+      const icon = document.createElement('span');
+      icon.className = 'project-grid__chip-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = openPageIconSvg;
+      chip.append(icon);
+      rail.append(chip);
+    }
+    chip.setAttribute('href', `/${slug}`);
+    chip.setAttribute('data-dev-project-open', slug);
+    const title = item.querySelector('[data-dev-project-title]')?.textContent?.trim() || slug;
+    chip.setAttribute('aria-label', `Open ${title}`);
+    chip.title = 'Open page';
   };
 
   const rewriteTemplateSlug = (root, slug) => {
@@ -679,6 +852,7 @@ const visibilityOptions = [
     else gridEl.appendChild(item);
 
     syncStatusChip(item, status);
+    syncOpenPageChip(item, status);
     enableCardEditing(item);
     // Match disarmCardLinks for this card only — do not enableAllCardEditing
     // (that would re-strip every gallery href). Cover click in Edit must not
@@ -713,6 +887,7 @@ const visibilityOptions = [
     const id = pendingId(slug, entry.grid);
     if (snapshotsMatch(entry.saved, entry.draft)) {
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id } }));
+      if (panelSlug === slug) syncPanelActionButtons();
       return;
     }
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
@@ -725,10 +900,14 @@ const visibilityOptions = [
           revokeLiveHover(slug);
           entry.draft = structuredClone(entry.saved);
           applyListingPreview(entry.item, entry.draft, entry.grid);
-          if (panelSlug === slug) renderPanelFromEntry(entry);
+          if (panelSlug === slug) {
+            renderPanelFromEntry(entry);
+            syncPanelActionButtons();
+          }
         },
       },
     }));
+    if (panelSlug === slug) syncPanelActionButtons();
   };
 
   const ensureLoaded = async (slug, item) => {
@@ -752,6 +931,7 @@ const visibilityOptions = [
       teaserLabel: inline.teaserLabel || payload.teaser?.label || '',
       description: payload.description ?? '',
       status: payload.status ?? item.dataset.devStatus ?? 'draft',
+      slug,
       listing: {
         image: listing.image ?? item.querySelector('.project-grid__img--base')?.getAttribute('src') ?? '',
         hoverImage: listing.hoverImage ?? item.dataset.devHoverImage ?? '',
@@ -780,6 +960,10 @@ const visibilityOptions = [
     if (statusSelect instanceof HTMLSelectElement) {
       statusSelect.value = entry.draft.status;
     }
+    if (slugInput instanceof HTMLInputElement) {
+      slugInput.value = entry.draft.slug || panelSlug || '';
+      syncSlugLayout();
+    }
     syncBgField(entry.draft.listing.bg || '#efefef');
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
     if (overlayTitle instanceof HTMLElement) {
@@ -788,6 +972,9 @@ const visibilityOptions = [
     if (statusLine instanceof HTMLElement) {
       statusLine.textContent = 'Card background and visibility. Title, cover, and span edit on the card.';
     }
+    clearSlugError();
+    disarmDelete();
+    syncPanelActionButtons();
   };
 
   const openSettingsPanel = (trigger) => {
@@ -1311,6 +1498,14 @@ const visibilityOptions = [
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const openPage = target.closest('a[data-dev-project-open]');
+    if (openPage instanceof HTMLAnchorElement) {
+      event.preventDefault();
+      event.stopPropagation();
+      const href = openPage.getAttribute('href');
+      if (href) navigateAway(href);
+      return;
+    }
     if (target.closest('.project-grid__chips, [data-dev-status-menu]')) {
       event.preventDefault();
       return;
@@ -1571,9 +1766,31 @@ const visibilityOptions = [
       entry.draft.status = statusSelect instanceof HTMLSelectElement
         ? statusSelect.value
         : entry.draft.status;
-      syncPendingFor(panelSlug);
+      applyListingPreview(entry.item, entry.draft, entry.grid);
+      syncPanelActionButtons();
     }
   });
+
+  settingsRoot?.addEventListener('input', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-ps-slug]')) return;
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    entry.draft.slug = target instanceof HTMLInputElement ? target.value.trim() : entry.draft.slug;
+    clearSlugError();
+    syncSlugLayout();
+    syncPanelActionButtons();
+  });
+
+  slugInput?.addEventListener('keydown', () => {
+    requestAnimationFrame(syncSlugScrollToCaret);
+  });
+  slugInput?.addEventListener('keyup', syncSlugScrollToCaret);
+  slugInput?.addEventListener('click', syncSlugScrollToCaret);
+  slugInput?.addEventListener('select', syncSlugScrollToCaret);
+  slugInput?.addEventListener('focus', syncSlugLayout);
+  slugScroll?.addEventListener('scroll', syncSlugFade, { passive: true });
 
   bgSwatch?.addEventListener('click', () => {
     const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '')
@@ -1595,7 +1812,93 @@ const visibilityOptions = [
     panelSlug = '';
   });
 
-  deleteButton?.addEventListener('click', async () => {
+  const rekeyProjectSlug = (item, oldSlug, newSlug) => {
+    if (!(item instanceof HTMLElement) || !oldSlug || !newSlug || oldSlug === newSlug) return;
+    const nodes = [item, ...item.querySelectorAll('*')];
+    nodes.forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      for (const attr of [...node.attributes]) {
+        if (!attr.name.startsWith('data-dev-') && attr.name !== 'href') continue;
+        if (attr.value === oldSlug) {
+          node.setAttribute(attr.name, newSlug);
+        } else if (attr.value === `/${oldSlug}`) {
+          node.setAttribute(attr.name, `/${newSlug}`);
+        }
+      }
+    });
+    item.setAttribute('data-dev-project-slug', newSlug);
+    const open = item.querySelector('[data-dev-project-open]');
+    if (open instanceof HTMLAnchorElement) {
+      open.setAttribute('href', `/${newSlug}`);
+      open.setAttribute('data-dev-project-open', newSlug);
+    }
+  };
+
+  revertButton?.addEventListener('click', () => {
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    revokeLiveCover(panelSlug);
+    revokeLiveHover(panelSlug);
+    entry.draft = structuredClone(entry.saved);
+    applyListingPreview(entry.item, entry.draft, entry.grid);
+    renderPanelFromEntry(entry);
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+      detail: { id: pendingId(panelSlug, entry.grid) },
+    }));
+    syncPanelActionButtons();
+  });
+
+  saveButton?.addEventListener('click', () => {
+    if (!panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry) return;
+    const nextSlug = String(entry.draft.slug || '').trim();
+    if (!/^[a-z0-9-]+$/.test(nextSlug)) {
+      shakeSlugError('Lowercase letters, numbers, hyphens.');
+      return;
+    }
+    clearSlugError();
+    syncPendingFor(panelSlug);
+  });
+
+  deleteButton?.addEventListener('animationend', (event) => {
+    if (!(deleteButton instanceof HTMLButtonElement)) return;
+    if (event.animationName !== 'ps-delete-arm') return;
+    if (deleteButton.matches(':hover') || deleteButton === document.activeElement) {
+      armDelete();
+    }
+  });
+
+  deleteButton?.addEventListener('mouseenter', () => {
+    if (!(deleteButton instanceof HTMLButtonElement)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      armDelete();
+    }
+  });
+
+  deleteButton?.addEventListener('mouseleave', () => {
+    disarmDelete();
+  });
+
+  deleteButton?.addEventListener('blur', () => {
+    disarmDelete();
+  });
+
+  deleteButton?.addEventListener('focus', () => {
+    if (!(deleteButton instanceof HTMLButtonElement)) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      armDelete();
+    }
+  });
+
+  deleteButton?.addEventListener('click', async (event) => {
+    if (!(deleteButton instanceof HTMLButtonElement)) return;
+    if (!deleteButton.hasAttribute('data-ps-delete-armed')) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (!panelSlug) return;
     if (!window.confirm(`Delete "${panelSlug}" and its draft media? This cannot be undone.`)) return;
     const response = await fetch('/api/project-delete', {
@@ -1613,6 +1916,8 @@ const visibilityOptions = [
     navigateAway(grid === 'home' ? '/' : grid === 'play' ? '/play' : '/work');
   });
 
+  disarmDelete();
+
   window.addEventListener('vcd:dev-pending-reverted', () => {
     liveCoverBlobs.forEach((url) => URL.revokeObjectURL(url));
     liveCoverBlobs.clear();
@@ -1623,15 +1928,34 @@ const visibilityOptions = [
       applyListingPreview(entry.item, entry.draft, entry.grid);
       if (panelSlug === slug) renderPanelFromEntry(entry);
     });
+    syncPanelActionButtons();
   });
 
   window.addEventListener('vcd:dev-pending-committed', () => {
     void (async () => {
-      for (const [slug, entry] of caches) {
+      for (const [slug, entry] of [...caches.entries()]) {
         await promoteLiveCoverOnSave(slug, entry);
         await promoteLiveHoverOnSave(slug, entry);
         entry.saved = structuredClone(entry.draft);
+        const nextSlug = String(entry.draft.slug || slug).trim();
+        if (nextSlug && nextSlug !== slug) {
+          rekeyProjectSlug(entry.item, slug, nextSlug);
+          caches.delete(slug);
+          caches.set(nextSlug, entry);
+          if (panelSlug === slug) panelSlug = nextSlug;
+          const coverUrl = liveCoverBlobs.get(slug);
+          if (coverUrl) {
+            liveCoverBlobs.delete(slug);
+            liveCoverBlobs.set(nextSlug, coverUrl);
+          }
+          const hoverUrl = liveHoverBlobs.get(slug);
+          if (hoverUrl) {
+            liveHoverBlobs.delete(slug);
+            liveHoverBlobs.set(nextSlug, hoverUrl);
+          }
+        }
       }
+      syncPanelActionButtons();
     })();
   });
 
@@ -1717,14 +2041,36 @@ const visibilityOptions = [
     border: 0;
   }
 
-  .dev-project-settings__hex-row {
+  .dev-project-settings__top-row {
     display: flex;
     align-items: flex-end;
     gap: 8px;
+    width: 100%;
+  }
+
+  .dev-project-settings__top-row > .dev-project-settings__field--visibility,
+  .dev-project-settings__top-row > .dev-project-settings__listing {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .dev-project-settings__field {
     flex: 1 1 0;
+    min-width: 0;
+  }
+
+  /* 4px inset swatch — matches .dev-select__listbox option padding. */
+  .dev-project-settings__hex-value {
+    gap: 6px;
+    padding: 4px;
+  }
+
+  .dev-project-settings__hex-value .dev-field__input {
+    margin: 0;
+    /* 4px box pad + 4px = 8px text inset, matching other fields. */
+    padding: 4px;
+    width: auto;
+    flex: 1 1 auto;
     min-width: 0;
   }
 
@@ -1733,18 +2079,214 @@ const visibilityOptions = [
   }
 
   .dev-project-settings__swatch {
-    width: 33px;
-    height: 33px;
-    border: 1px solid var(--sys-color-outline);
-    border-radius: var(--dev-radius-control);
-    padding: 0;
+    box-sizing: border-box;
     flex: 0 0 auto;
+    align-self: stretch;
+    aspect-ratio: 1;
+    width: auto;
+    height: auto;
+    border: 1px solid var(--sys-color-outline);
+    border-radius: max(0px, calc(var(--dev-radius-control) - 4px));
+    padding: 0;
     cursor: pointer;
   }
 
   .dev-project-settings__listing {
     display: grid;
     gap: 0.55em;
+    width: 100%;
+  }
+
+  .dev-project-settings__slug-wrap {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+  }
+
+  .dev-project-settings__slug-value {
+    /* Clip the scroll track; fade sits on top of the left edge. */
+    position: relative;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  .dev-project-settings__slug-scroll {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .dev-project-settings__slug-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dev-project-settings__slug-prefix {
+    flex: 0 0 auto;
+    color: var(--sys-color-on-srf-variant);
+    font: var(--dev-text-label);
+    user-select: none;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* Content-sized — width set in JS — so the track scrolls, not the input. */
+  .dev-project-settings__slug-value .dev-field__input {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 2ch;
+    margin: 0;
+    padding: 0;
+    color: var(--sys-color-on-srf);
+  }
+
+  /* First fade impl: solid fill + opacity mask on the left when scrolled. */
+  .dev-project-settings__slug-fade {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+    background: var(--comp-field-container);
+    -webkit-mask-image: linear-gradient(to right, #fff 20%, transparent);
+    mask-image: linear-gradient(to right, #fff 20%, transparent);
+  }
+
+  .dev-field:hover .dev-project-settings__slug-fade {
+    background: var(--comp-button-soft-container-hover);
+  }
+
+  .dev-project-settings__slug-value.is-scrolled .dev-project-settings__slug-fade {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-project-settings__slug-fade {
+      transition: none;
+    }
+  }
+
+  .dev-project-settings__slug-error {
+    margin: 0;
+    min-height: 0;
+    font: var(--dev-text-label);
+    color: var(--comp-button-danger-label);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 280ms ease-out,
+      visibility 0s linear 280ms;
+  }
+
+  .dev-project-settings__slug-wrap.is-error .dev-project-settings__slug-error {
+    opacity: 1;
+    visibility: visible;
+    transition:
+      opacity 280ms ease-out,
+      visibility 0s linear 0s;
+  }
+
+  /* Transitions.dev error-state-shake — literal ms/px (var calc breaks animation-duration). */
+  .dev-project-settings__slug-wrap .dev-project-settings__slug-value {
+    box-shadow: inset 0 0 0 1px transparent;
+    transition: box-shadow 150ms ease-out;
+  }
+
+  .dev-project-settings__slug-wrap .dev-project-settings__slug-value.is-error {
+    box-shadow: inset 0 0 0 1px var(--comp-button-danger-label);
+    transition: box-shadow 280ms ease-out;
+  }
+
+  /* Spring-decay shake — amplitude falls each peak so it settles instead of
+     buzzing at full strength (transitions.dev's equal-leg ease felt stiff). */
+  .dev-project-settings__slug-wrap .dev-project-settings__slug-value.is-shaking {
+    animation: t-input-shake 480ms cubic-bezier(0.22, 0.68, 0.36, 1) both;
+  }
+
+  @keyframes t-input-shake {
+    0% {
+      transform: translateX(0);
+    }
+    12% {
+      transform: translateX(-8px);
+    }
+    24% {
+      transform: translateX(6px);
+    }
+    36% {
+      transform: translateX(-5px);
+    }
+    50% {
+      transform: translateX(3px);
+    }
+    64% {
+      transform: translateX(-2px);
+    }
+    78% {
+      transform: translateX(1px);
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-project-settings__slug-wrap .dev-project-settings__slug-value.is-shaking {
+      animation: none !important;
+      transform: none !important;
+    }
+  }
+
+  .dev-project-settings__actions {
+    justify-content: flex-end;
+  }
+
+  .dev-project-settings__actions [data-ps-delete] {
+    margin-right: auto;
+    background-image: linear-gradient(
+      to right,
+      var(--comp-button-danger-container-selected),
+      var(--comp-button-danger-container-selected)
+    );
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
+  }
+
+  .dev-project-settings__actions [data-ps-delete]:hover:not([data-ps-delete-armed]),
+  .dev-project-settings__actions [data-ps-delete]:focus-visible:not([data-ps-delete-armed]) {
+    background-color: var(--comp-button-danger-container);
+    animation: ps-delete-arm 1.5s ease-out forwards;
+  }
+
+  .dev-project-settings__actions [data-ps-delete][data-ps-delete-armed] {
+    background-color: var(--comp-button-danger-container-selected);
+    background-size: 100% 100%;
+    animation: none;
+  }
+
+  @keyframes ps-delete-arm {
+    from {
+      background-size: 0% 100%;
+    }
+    to {
+      background-size: 100% 100%;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-project-settings__actions [data-ps-delete]:hover:not([data-ps-delete-armed]),
+    .dev-project-settings__actions [data-ps-delete]:focus-visible:not([data-ps-delete-armed]) {
+      animation: none;
+      background-size: 100% 100%;
+      background-color: var(--comp-button-danger-container-selected);
+    }
   }
 
   color-picker[data-ps-bg-picker] {
