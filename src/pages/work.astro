@@ -2,10 +2,8 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import ProjectGrid from '../components/ProjectGrid.astro';
-import { getProjectGridListings } from '../lib/projects';
-
-const projects = getProjectGridListings('work');
+import ProjectSections from '../components/project/ProjectSections.astro';
+import workPage from '../content/pages/work.json';
 ---
 
 <Layout title="Work — Vicente Cruz">
@@ -15,28 +13,9 @@ const projects = getProjectGridListings('work');
     <h1 class="sr-only">Work — Vicente Cruz</h1>
 
     <main id="main-content" class="listing-main" style="flex: 1;">
-      <ProjectGrid
-        variant="work"
-        items={projects.map((project) => ({
-          title: project.title,
-          subtitle: project.subtitle,
-          image: project.image,
-          hoverImage: project.hoverImage,
-          hoverDark: project.hoverDark,
-          bg: project.bg,
-          dark: project.dark,
-          full: project.full,
-          href: project.href,
-          teaser: project.teaser,
-          teaserLabel: project.teaserLabel,
-          status: project.status,
-          slug: project.slug,
-          variants: project.variants,
-          hoverVariants: project.hoverVariants,
-          srcWidth: project.srcWidth,
-          srcHeight: project.srcHeight,
-        }))}
-      />
+      <div data-dev-project-drop-zone>
+        <ProjectSections documentKey="work" sections={workPage.sections} />
+      </div>
     </main>
 
     <Footer />
