@@ -2,10 +2,8 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import ProjectGrid from '../components/ProjectGrid.astro';
-import { getProjectGridListings } from '../lib/projects';
-
-const projects = getProjectGridListings('home');
+import ProjectSections from '../components/project/ProjectSections.astro';
+import homePage from '../content/pages/home.json';
 ---
 
 <Layout title="Vicente Cruz — Industrial Designer">
@@ -13,28 +11,9 @@ const projects = getProjectGridListings('home');
     <Header navMenu wordmarkAsH1 />
 
     <main id="main-content" class="listing-main" style="flex: 1;">
-      <ProjectGrid
-        variant="home"
-        items={projects.map((project) => ({
-          title: project.title,
-          subtitle: project.subtitle,
-          image: project.image,
-          hoverImage: project.hoverImage,
-          hoverDark: project.hoverDark,
-          bg: project.bg,
-          dark: project.dark,
-          full: project.full,
-          href: project.href,
-          teaser: project.teaser,
-          teaserLabel: project.teaserLabel,
-          status: project.status,
-          slug: project.slug,
-          variants: project.variants,
-          hoverVariants: project.hoverVariants,
-          srcWidth: project.srcWidth,
-          srcHeight: project.srcHeight,
-        }))}
-      />
+      <div data-dev-project-drop-zone>
+        <ProjectSections documentKey="home" sections={homePage.sections} />
+      </div>
     </main>
 
     <Footer />

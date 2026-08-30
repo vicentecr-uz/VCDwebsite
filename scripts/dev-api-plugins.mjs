@@ -146,6 +146,16 @@ export function resolveEditableDocument(documentKey) {
   } catch {
     // projects dir may not exist yet during first scaffold
   }
+  const pagesDir = path.join(process.cwd(), 'src/content/pages');
+  try {
+    for (const file of readdirSync(pagesDir)) {
+      if (!file.endsWith('.json')) continue;
+      const key = file.replace(/\.json$/, '');
+      map.set(key, `src/content/pages/${file}`);
+    }
+  } catch {
+    // pages dir may not exist yet during first scaffold
+  }
   return map.get(documentKey);
 }
 
