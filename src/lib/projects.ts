@@ -252,8 +252,6 @@ export function getEditableProjectDocuments(): Map<string, string> {
       map.set(project.slug, `src/content/projects/${project.slug}.json`);
     }
   }
-  map.set('[retired-project]', 'src/content/projects/[retired-project].json');
-  map.set('[retired-project]', 'src/content/projects/[retired-project].json');
   map.set('parentpal', 'src/content/projects/parentpal.json');
   map.set('conic-collection', 'src/content/projects/conic-collection.json');
   map.set('styles', 'src/content/pages/styles.json');
