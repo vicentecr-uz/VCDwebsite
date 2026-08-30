@@ -2,6 +2,8 @@
 
 Captured 2026-08-06 from product discussion. **Not a build plan** — guidance for later milestones (v3+). Do not start online edit or open-sourcing from this file alone.
 
+**Edit pride / novelty inventory** (seed for the meta CMS design page): [`cms-design-highlights.md`](cms-design-highlights.md) — gap toolbar freeze, LQIP, on-page crop, etc. Append when something ships for a reason that isn’t “CMS baseline.”
+
 ## Modes
 
 Mentally there are two states:
