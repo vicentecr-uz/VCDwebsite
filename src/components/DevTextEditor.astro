@@ -822,7 +822,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncGapToolbarTopPin(control, false);
     };
 
-    /** Scroll lock follows the pointer, not the freeze flag — leave the pill and scroll resumes even mid-crossfade. */
+    /**
+     * Scroll lock only while the pill is actually up (near / dirty / menu) and
+     * the pointer is on it. Invisible pills still have a layout box in the gap
+     * middle — matching that alone blocked page scroll down the centre column.
+     */
     const preventScrollWhileGapToolbarHeld = (event: Event) => {
       let x = 0;
       let y = 0;
@@ -840,6 +844,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const held = spacingStates.some((state) => {
         if (state.control.hidden) return false;
         if (state.control.classList.contains('is-menu-open')) return true;
+        const pillUp =
+          state.control.classList.contains('is-near-add')
+          || state.control.classList.contains('is-near-spacing')
+          || state.element.classList.contains('is-dev-spacing-dirty');
+        if (!pillUp) return false;
         return isPointerOverToolbarHitbox(state, x, y);
       });
       if (held) event.preventDefault();
@@ -1070,9 +1079,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           || (allowNear && state === nearest);
         control.classList.toggle('is-near-add', near);
         control.classList.toggle('is-near-spacing', near);
-        // Focus must not keep the freeze — chip clicks blur; pin follows the pointer only.
+        // Focus must not keep the freeze — chip clicks blur; pin follows the
+        // pointer only when the pill is already up (same rule as scroll lock).
         const keepPinned =
-          isPointerOverToolbarHitbox(state, clientX, clientY)
+          overHitbox
           || control.classList.contains('is-menu-open');
         syncGapToolbarTopPin(control, keepPinned);
       });
