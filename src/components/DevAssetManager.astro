@@ -463,9 +463,14 @@ const { documentKey = '' } = Astro.props;
     } else {
       pickMax = null;
     }
-    if (detail.type === 'image' || detail.type === 'imageGrid' || detail.type === 'imageCarousel') {
-      pickType = detail.type;
-    }
+    // Always reset — a prior carousel pick must not stick when type is omitted.
+    pickType = (
+      detail.type === 'image'
+      || detail.type === 'imageGrid'
+      || detail.type === 'imageCarousel'
+    )
+      ? detail.type
+      : 'image';
     resolvePick = typeof detail.resolve === 'function' ? detail.resolve : null;
     rejectPick = typeof detail.reject === 'function' ? detail.reject : null;
     pickOpener = pickMode ? findPickOpener(detail) : null;
