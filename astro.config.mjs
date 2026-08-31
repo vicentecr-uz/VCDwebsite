@@ -1766,6 +1766,7 @@ function contentSectionDevWriter() {
               spacing: insertSpacing,
               tightBottom: false,
               ...(level === 3 ? { level: 3 } : {}),
+              ...(body.intro === true || body.intro === 'true' ? { intro: true } : {}),
             };
           } else if (type === 'bodyText') {
             const id = `body-${Date.now().toString(36)}`;
