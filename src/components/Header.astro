@@ -272,8 +272,13 @@ const menuLinks = headerSettings.menuLinks;
         }
       } else if (mode === 'riding') {
         // Absolute at the current visual spot: rides away with the page.
+        // Absolute positions against the slot (position: relative), which is
+        // ALREADY at the correct x-offset in the content column — so left must
+        // be 0, not the viewport-relative geoLeft (that would double-count the
+        // gutter and shove it right). Width still comes from the flow measure.
         header.style.top = `${window.scrollY}px`;
-        applyGeo();
+        header.style.left = '0';
+        header.style.width = `${geoWidth}px`;
       } else {
         header.style.top = '';
         clearGeo();
