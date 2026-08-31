@@ -926,16 +926,21 @@ const menuLinks = headerSettings.menuLinks;
        fades in on scroll or menu open. Below format bar (90+). */
     z-index: 50;
     padding: var(--space-unit) 0;
-    transition: opacity 0.35s ease;
   }
 
   /* Sticky only while actively pinned (scroll-up reveal after fully
      scrolling past the header, or menu open). Otherwise relative — within
      the header's own height it's plain in-flow content (native scroll,
      no JS-driven change), and once fully scrolled past it stays relative
-     while hidden, so it never hovers pinned-but-invisible. */
+     while hidden, so it never hovers pinned-but-invisible.
+     The opacity transition lives here too, not on the base rule: entering
+     is-pinned should fade in, but leaving it (position already snapping
+     to relative, off-screen at that depth) must be instant, or the
+     opacity lags the snap and reads as a disconnected "disappearing"
+     animation instead of receding with the scroll like native content. */
   .site-header.is-pinned {
     position: sticky;
+    transition: opacity 0.35s ease;
   }
 
   .site-header.is-scrolled-hidden {
@@ -1564,7 +1569,8 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .site-header {
+    .site-header,
+    .site-header.is-pinned {
       transition: none;
     }
 
