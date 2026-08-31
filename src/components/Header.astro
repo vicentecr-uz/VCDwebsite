@@ -268,10 +268,12 @@ const menuLinks = headerSettings.menuLinks;
 
       if (docked) {
         if (y - anchorY > UNDOCK_PX) {
-          // Hand back to native flow. If the header is fully on screen at this
-          // moment (docked at top), its in-flow slot is above the viewport, so
-          // removing the transform lets it scroll away naturally from the top.
+          // Hand back to native flow: the header's in-flow slot is above the
+          // viewport at this point, so removing the transform lets it scroll
+          // away naturally from the top edge.
           setDocked(false, false);
+          trend = 'down';
+          anchorY = y;
         }
       } else if (trend === 'up' && anchorY - y > REVEAL_PX) {
         const rect = header.getBoundingClientRect();
@@ -941,8 +943,7 @@ const menuLinks = headerSettings.menuLinks;
     --header-wordmark-size: calc(
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
-    position: sticky;
-    top: 0;
+    position: relative;
     /* Above mid-page sections (25). Fill is transparent at page top and
        fades in on scroll or menu open. Below format bar (90+). */
     z-index: 50;
