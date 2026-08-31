@@ -180,8 +180,31 @@ const menuLinks = headerSettings.menuLinks;
 
   const header = document.querySelector('.site-header');
   if (header) {
+    const HIDE_PX = 15; // with-page -> hidden: cumulative down-scroll since anchor
+    const REVEAL_PX = 4; // any -> pinned: cumulative up-scroll since anchor
+    const UNPIN_PX = 4; // pinned -> hidden/with-page: cumulative down-scroll since anchor
+    const NEAR_TOP_PX = 8;
+
+    type HeaderState = 'with-page' | 'hidden' | 'pinned';
+
     let lastY = window.scrollY;
+    let trend: 'up' | 'down' | null = null;
+    let anchorY = window.scrollY;
+    let state: HeaderState = window.scrollY <= NEAR_TOP_PX ? 'with-page' : 'pinned';
     let ticking = false;
+
+    const applyState = () => {
+      header.classList.toggle('is-pinned', state === 'pinned');
+      header.classList.toggle('is-scrolled-hidden', state === 'hidden');
+    };
+    applyState();
+
+    const commit = (next: HeaderState, y: number) => {
+      if (next === state) return;
+      state = next;
+      anchorY = y;
+      applyState();
+    };
 
     const isMenuOpen = () =>
       header.matches(
@@ -195,18 +218,41 @@ const menuLinks = headerSettings.menuLinks;
       const y = window.scrollY;
 
       if (isSectionReorderDragging()) {
-        header.classList.add('is-scrolled-hidden');
+        commit('hidden', y);
+        trend = null;
         lastY = y;
         ticking = false;
         return;
       }
 
-      if (isMenuOpen() || y <= 8) {
-        header.classList.remove('is-scrolled-hidden');
-      } else if (y > lastY + 4) {
-        header.classList.add('is-scrolled-hidden');
-      } else if (y < lastY - 4) {
-        header.classList.remove('is-scrolled-hidden');
+      if (isMenuOpen()) {
+        commit('pinned', y);
+        trend = null;
+        lastY = y;
+        ticking = false;
+        return;
+      }
+
+      // Reset the anchor on a genuine direction reversal so cumulative
+      // distance is measured from the turning point, not the previous
+      // frame — a frame-to-frame delta never crosses threshold on a slow
+      // scroll (~1-2px/frame), leaving the header stuck in place.
+      if (y > lastY && trend !== 'down') {
+        trend = 'down';
+        anchorY = lastY;
+      } else if (y < lastY && trend !== 'up') {
+        trend = 'up';
+        anchorY = lastY;
+      }
+
+      if (state === 'pinned') {
+        if (y - anchorY > UNPIN_PX) {
+          commit(y <= NEAR_TOP_PX ? 'with-page' : 'hidden', y);
+        }
+      } else if (anchorY - y > REVEAL_PX) {
+        commit('pinned', y);
+      } else if (state === 'with-page' && y - anchorY > HIDE_PX) {
+        commit('hidden', y);
       }
 
       document.documentElement.classList.toggle('is-page-top', y <= 8);
@@ -859,7 +905,7 @@ const menuLinks = headerSettings.menuLinks;
     --header-wordmark-size: calc(
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
-    position: sticky;
+    position: relative;
     top: 0;
     /* Above mid-page sections (25). Fill is transparent at page top and
        fades in on scroll or menu open. Below format bar (90+). */
@@ -868,8 +914,14 @@ const menuLinks = headerSettings.menuLinks;
     transition: opacity 0.35s ease;
   }
 
+  /* Sticky only while actively pinned (scrolled-up reveal, top of page,
+     menu open). Otherwise relative, so the header scrolls away with the
+     page instead of hovering pinned-but-invisible. */
+  .site-header.is-pinned {
+    position: sticky;
+  }
+
   .site-header.is-scrolled-hidden {
-    position: relative;
     opacity: 0;
     pointer-events: none;
   }
