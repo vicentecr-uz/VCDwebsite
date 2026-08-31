@@ -305,11 +305,16 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (isMenuOpen()) {
-        // A real downward scroll closes the menu (like a mouse-leave) and lets
-        // the header ride away with the page. Only scroll up / hold keeps it.
+        // A real downward scroll closes the menu (with its normal close
+        // animation, not the instant force-close) and lets the header ride
+        // away. Suppress re-open until the pointer leaves, so a stationary
+        // hover can't loop it back open mid-scroll.
         if (y > lastY + 1) {
-          forceCloseMenus();
-          // fall through to normal handling below
+          menuScrollSuppressed = true;
+          document.querySelectorAll<HTMLElement>('.header-trigger.is-menu-open').forEach((t) => {
+            t.dispatchEvent(new CustomEvent('header:request-close'));
+          });
+          // fall through to normal handling (header rides away) below
         } else {
           // Menu needs the header present. If it's riding partway (only
           // partially visible), slide it down to docked — but do this ONCE,
@@ -415,6 +420,11 @@ const menuLinks = headerSettings.menuLinks;
       }
     });
   }
+
+  // After a downward scroll closes the menu, don't let a stationary hover
+  // re-open it (the pointer is still over the trigger, so mouseenter would
+  // fire again and loop). Re-arms only when the pointer genuinely leaves.
+  let menuScrollSuppressed = false;
 
   const setMenuBackdropVisible = (visible: boolean) => {
     // The backdrop lives OUTSIDE the header (a sibling), so its z-index sits
@@ -576,10 +586,17 @@ const menuLinks = headerSettings.menuLinks;
 
     trigger.addEventListener('mouseenter', (event) => {
       if (isTapMode()) return;
+      if (menuScrollSuppressed) return;
       openMenu(event);
     });
     trigger.addEventListener('mouseleave', () => {
       if (isTapMode()) return;
+      menuScrollSuppressed = false;
+      closeMenu();
+    });
+    // Scroll-driven close: run the normal animated close, not the instant
+    // force-close, so the menu fades/staggers out like a mouse-leave.
+    trigger.addEventListener('header:request-close', () => {
       closeMenu();
     });
     trigger.addEventListener('focusin', () => {
