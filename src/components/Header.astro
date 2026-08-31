@@ -248,7 +248,7 @@ const menuLinks = headerSettings.menuLinks;
       header.style.removeProperty('width');
     };
 
-    const setMode = (next: 'flow' | 'docked' | 'riding', fade = false) => {
+    const setMode = (next: 'flow' | 'docked' | 'riding', fade = false, slide = false) => {
       if (mode === next) return;
       mode = next;
       header.classList.toggle('is-docked', mode === 'docked');
@@ -260,7 +260,11 @@ const menuLinks = headerSettings.menuLinks;
         // Fixed at the viewport top, box pinned to its flow x/width.
         header.style.top = '';
         applyGeo();
-        if (fade) {
+        if (slide) {
+          // Menu opened while riding partway: ease down to the docked position
+          // so the menu never opens on a half-visible header.
+          header.style.transition = 'top 0.3s cubic-bezier(0.22, 1, 0.36, 1)';
+        } else if (fade) {
           // Reveal from fully off-screen: fade in at full height. Docking
           // while partly visible is instant — it just stops scrolling away.
           header.style.transition = 'none';
@@ -301,8 +305,12 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (isMenuOpen()) {
-        // Menu needs the header present at any depth.
-        if (y > headerHeight) setMode('docked');
+        // Menu needs the header present at any depth. If it's riding partway
+        // (only partially visible), slide it down to docked first so the menu
+        // never opens on a half-shown header.
+        if (y > headerHeight || mode === 'riding') {
+          setMode('docked', false, mode === 'riding');
+        }
         header.classList.remove('is-scrolled-hidden');
         trend = null;
         lastY = y;
@@ -322,9 +330,15 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (mode === 'docked') {
-        // No threshold: the instant you scroll down from docked, it rides —
-        // any dead-zone reads as the header catching on a few pixels late.
-        if (y > anchorY) {
+        // Reached the very top with upward momentum: hand back to flow so the
+        // header springs with the page's rubber-band instead of staying pinned.
+        if (y <= 0) {
+          setMode('flow');
+          trend = null;
+          anchorY = y;
+        } else if (y > anchorY) {
+          // No threshold: the instant you scroll down from docked, it rides —
+          // any dead-zone reads as the header catching on a few pixels late.
           // Release at the current spot: absolute at scrollY, so it scrolls
           // away with the page from the top edge. No fade on the way out.
           setMode('riding');
