@@ -300,6 +300,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       root: HTMLElement;
       textStates: EditableTextState[];
       spacingState: EditableSpacingState | null;
+      level?: 2 | 3;
+      intro?: boolean;
     };
 
     type PersistedMediaInsert = {
@@ -327,6 +329,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       outlineTitle?: string;
       textState: EditableTextState;
       replacedRoot: boolean;
+      skipPersist?: boolean;
     };
 
     const pendingMedia = new Map<string, PendingMediaChange>();
@@ -353,7 +356,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         const inner = [...node.childNodes].map(walk).join('');
         const tag = node.tagName;
-        if (tag === 'BR') return '';
+        if (tag === 'BR') return '<br>';
         if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
         if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
         if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
@@ -542,6 +545,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         const pageTop = isPageTopSpacingBlock(element);
         const initial = raw;
+        const docKey = element.dataset.devSpacingDocument || '';
+        const isGalleryDoc = docKey === 'home' || docKey === 'work' || docKey === 'play';
+        const introMenuItem = isGalleryDoc
+          ? '<button type="button" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro</button>'
+          : '';
 
         const control = document.createElement('div');
         control.className = 'dev-gap-toolbar';
@@ -570,6 +578,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           </div>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
+            ${introMenuItem}
             <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
             <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
             <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
@@ -1199,7 +1208,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       } else if (pending.insertBefore?.parentNode) {
         pending.insertBefore.parentNode.insertBefore(pending.root, pending.insertBefore);
       } else {
-        document.querySelector('.project-page__main')?.append(pending.root);
+        document.querySelector('[data-dev-project-drop-zone]')?.append(pending.root);
       }
 
       textStates.push(...pending.textStates);
@@ -1449,15 +1458,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const remapped: Array<{ clientId: string; serverId: string; documentKey: string }> = [];
       for (const entry of pending) {
         const clientId = entry.sectionId;
+        const body: Record<string, unknown> = {
+          document: entry.documentKey,
+          index: entry.index,
+          type: entry.type,
+          spacing: entry.spacing,
+        };
+        if (entry.type === 'sectionTitle' && entry.level === 3) body.level = 3;
+        if (entry.intro) body.intro = true;
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            document: entry.documentKey,
-            index: entry.index,
-            type: entry.type,
-            spacing: entry.spacing,
-          }),
+          body: JSON.stringify(body),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
@@ -1499,7 +1511,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const persistPendingBlockConverts = async () => {
       if (!pendingBlockConverts.length) return;
-      const pending = [...pendingBlockConverts].sort((a, b) => a.index - b.index);
+      const pending = [...pendingBlockConverts]
+        .filter((entry) => !entry.skipPersist)
+        .sort((a, b) => a.index - b.index);
+      if (!pending.length) {
+        pendingBlockConverts.length = 0;
+        return;
+      }
       for (const entry of pending) {
         let index = entry.index;
         try {
@@ -1708,16 +1726,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       documentKey: string,
       index: number,
       spacing: SpacingValue,
+      intro?: boolean,
     ) => {
       const sectionPath = ['sections', index] as Array<string | number>;
       // Inserted titles omit precede-related so the following block keeps its gap.
       const spacingClass = projectStackClassName(spacing, false);
+      const introClass = intro ? ' project-block--intro' : '';
 
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
-          ? `project-block ${spacingClass}`
-          : 'project-block';
+          ? `project-block ${spacingClass}${introClass}`
+          : `project-block${introClass}`;
+        if (intro) wrapper.dataset.devIntro = 'true';
         wrapper.dataset.devSpacingDocument = documentKey;
         wrapper.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
         wrapper.dataset.devSpacingValue = spacing;
@@ -1735,8 +1756,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const section = document.createElement('section');
       section.className = spacingClass
-        ? `project-block ${spacingClass}`
-        : 'project-block';
+        ? `project-block ${spacingClass}${introClass}`
+        : `project-block${introClass}`;
+      if (intro) section.dataset.devIntro = 'true';
       section.dataset.devSpacingDocument = documentKey;
       section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
       section.dataset.devSpacingValue = spacing;
@@ -1779,6 +1801,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           title = heading;
         }
         title.textContent = text;
+        if (!text) title.append(document.createElement('br'));
         return { ...built, textElement: title };
       }
 
@@ -1884,6 +1907,33 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return { nextParagraph, empty };
     };
 
+    const insertSoftBreakInsideParagraph = (state: EditableTextState) => {
+      const paragraph = ensureParagraphSelection(state.element);
+      if (!paragraph) return;
+
+      const selection = window.getSelection();
+      if (!selection?.rangeCount) return;
+      const range = selection.getRangeAt(0);
+      if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
+        placeCaretInParagraph(paragraph, false);
+      }
+      const liveRange = selection.getRangeAt(0);
+      if (!liveRange.collapsed) liveRange.deleteContents();
+
+      const br = document.createElement('br');
+      liveRange.insertNode(br);
+      // A trailing br is collapsed by the engine; a second one holds the caret
+      // on the new visual line, same as a wrap.
+      if (!br.nextSibling) br.after(document.createElement('br'));
+
+      const nextRange = document.createRange();
+      nextRange.setStartAfter(br);
+      nextRange.collapse(true);
+      selection.removeAllRanges();
+      selection.addRange(nextRange);
+      updateActions();
+    };
+
     const splitParagraphInsideBlock = (state: EditableTextState) => {
       const { element } = state;
       const paragraph = ensureParagraphSelection(element);
@@ -1930,6 +1980,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           requestAnimationFrame(() => ensureParagraphSelection(element));
         });
       }
+      if (state.kind === 'paragraphs') {
+        // Native Enter still fires insertParagraph after our keydown split on
+        // some engines (Safari), so one Return became two <p>s.
+        element.addEventListener('beforeinput', (event) => {
+          if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+            event.preventDefault();
+          }
+        });
+      }
       element.addEventListener('keydown', (event) => {
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1941,7 +2000,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         if (event.key !== 'Enter') return;
 
-        if (event.altKey || event.shiftKey) {
+        if (event.shiftKey && !event.altKey) {
+          if (state.kind !== 'paragraphs') return;
+          event.preventDefault();
+          insertSoftBreakInsideParagraph(state);
+          return;
+        }
+
+        if (event.altKey) {
           if (state.kind !== 'paragraphs') return;
           event.preventDefault();
           splitParagraphInsideBlock(state);
@@ -2007,7 +2073,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const insertSectionAt = (
       anchor: EditableSpacingState | HTMLElement,
       type: InsertableSectionType,
-      options?: { placement?: 'before' | 'after'; spacing?: SpacingValue },
+      options?: { placement?: 'before' | 'after'; spacing?: SpacingValue; intro?: boolean },
     ) => {
       const host = anchor instanceof HTMLElement ? anchor : anchor.element;
       const documentKey = anchor instanceof HTMLElement
@@ -2040,7 +2106,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1);
 
-      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing);
+      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro);
       if (placement === 'after') host.after(built.root);
       else host.before(built.root);
 
@@ -2085,6 +2151,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         root: built.root,
         textStates: [textState],
         spacingState: spacingState ?? null,
+        ...(options?.intro ? { intro: true } : {}),
       });
 
       window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
@@ -2240,7 +2307,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           }
           if (type !== 'bodyText' && type !== 'sectionTitle') return;
           dismissGapToolbarAfterAddChoice();
-          insertSectionAt(state, type);
+          const intro = button.dataset.devSectionIntro === 'true';
+          insertSectionAt(state, type, intro ? { intro: true } : undefined);
         });
       });
     };
@@ -2651,7 +2719,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const root = mountInsertedSection(section, documentKey, index);
       const anchor = findInsertAnchor(index);
       if (anchor) anchor.before(root);
-      else document.querySelector('.project-page__main')?.append(root);
+      else document.querySelector('[data-dev-project-drop-zone]')?.append(root);
 
       const spacingState = mountSpacingControl(root);
       if (spacingState) {
@@ -3151,6 +3219,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           }
         }
 
+        const insert = pendingSectionInserts.find((entry) => entry.root === previousRoot);
+        if (insert) insert.level = parsed.level ?? 2;
+
         pendingBlockConverts.push({
           documentKey: block.state.document,
           index,
@@ -3169,6 +3240,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           outlineTitle: text,
           textState: block.state,
           replacedRoot: false,
+          skipPersist: Boolean(insert),
         });
         stickyStatus = '';
         updateActions();
@@ -3195,6 +3267,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       );
       if (precedeRelated) built.root.classList.add('project-stack--precede-related');
 
+      const previousHadIntro =
+        previousRoot.classList.contains('project-block--intro') ||
+        previousRoot.dataset.devIntro === 'true';
+      if (previousHadIntro) {
+        built.root.classList.add('project-block--intro');
+        built.root.dataset.devIntro = 'true';
+      }
+
       const previousRootId = previousRoot.id;
       const fromWasH1 = current === 'sectionTitle:2';
       const toIsH1 = parsed.type === 'sectionTitle' && parsed.level === 2;
@@ -3212,8 +3292,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insert = pendingSectionInserts.find((entry) => entry.root === previousRoot);
       if (insert) {
         insert.root = built.root;
+        insert.type = parsed.type;
+        insert.level = parsed.type === 'sectionTitle' ? (parsed.level ?? 2) : undefined;
         insert.textStates = [block.state];
         insert.spacingState = spacingState ?? null;
+        if (previousHadIntro) insert.intro = true;
       }
 
       block.state.element = built.textElement;
@@ -3294,6 +3377,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         outlineTitle: text,
         textState: block.state,
         replacedRoot: true,
+        skipPersist: Boolean(insert),
       });
 
       stickyStatus = '';

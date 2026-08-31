@@ -1598,6 +1598,15 @@ function contentSectionDevWriter() {
               existing && typeof existing === 'object' && !Array.isArray(existing)
                 ? String(existing.type || '')
                 : '';
+            if (existingType === 'projectGrid') {
+              const gridCount = data.sections.filter(
+                (s) => s && typeof s === 'object' && !Array.isArray(s) && s.type === 'projectGrid',
+              ).length;
+              if (gridCount <= 1) {
+                send(400, { error: 'The gallery grid cannot be removed.' });
+                return;
+              }
+            }
             syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
             data.sections.splice(index, 1);
             await writeContentJson(file, data);
@@ -1748,6 +1757,7 @@ function contentSectionDevWriter() {
             : (index === 0 ? 'none' : 'section');
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
+            const level = Number(body.level) === 3 ? 3 : 2;
             section = {
               type: 'sectionTitle',
               id,
@@ -1755,6 +1765,8 @@ function contentSectionDevWriter() {
               title: 'Section title',
               spacing: insertSpacing,
               tightBottom: false,
+              ...(level === 3 ? { level: 3 } : {}),
+              ...(body.intro === true || body.intro === 'true' ? { intro: true } : {}),
             };
           } else if (type === 'bodyText') {
             const id = `body-${Date.now().toString(36)}`;
@@ -1763,6 +1775,7 @@ function contentSectionDevWriter() {
               id,
               spacing: insertSpacing,
               paragraphs: [''],
+              ...(body.intro === true || body.intro === 'true' ? { intro: true } : {}),
             };
           } else if (type === 'image') {
             if (!srcs.length && !filenames.length) {

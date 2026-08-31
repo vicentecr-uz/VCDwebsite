@@ -71,6 +71,19 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   { eager: true },
 );
 
+export type PageDocumentKey = 'home' | 'work' | 'play';
+
+export type PageDocument = {
+  subtitle?: string;
+  sections: Array<Record<string, unknown>>;
+  outline?: Array<Record<string, unknown>>;
+};
+
+const pageModules = import.meta.glob<{ default: PageDocument }>(
+  '../content/pages/*.json',
+  { eager: true },
+);
+
 function projectPathToSlug(filePath: string): string {
   return filePath.replace('../content/projects/', '').replace('.json', '');
 }
@@ -119,6 +132,24 @@ export function loadAllProjects(): ProjectDocument[] {
 
 export function loadProjectBySlug(slug: string): ProjectDocument | undefined {
   return loadProjectFromDisk(slug) ?? loadAllProjects().find((project) => project.slug === slug);
+}
+
+/** Dev SSR must bypass Vite's eager JSON glob — HMR gate keeps it stale after API writes. */
+function loadPageFromDisk(key: PageDocumentKey): PageDocument | undefined {
+  if (!import.meta.env.DEV) return undefined;
+  try {
+    const file = path.join(process.cwd(), 'src/content/pages', `${key}.json`);
+    return JSON.parse(readFileSync(file, 'utf8')) as PageDocument;
+  } catch {
+    return undefined;
+  }
+}
+
+export function loadPageDocument(key: PageDocumentKey): PageDocument {
+  const fromDisk = loadPageFromDisk(key);
+  if (fromDisk) return fromDisk;
+  const module = pageModules[`../content/pages/${key}.json`];
+  return module?.default ?? { sections: [] };
 }
 
 export function shouldIncludeProjectInBuild(

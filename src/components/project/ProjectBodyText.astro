@@ -12,6 +12,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
+  intro?: boolean;
 }
 
 const {
@@ -20,6 +21,7 @@ const {
   pathPrefix,
   spacing = 'section',
   sectionId,
+  intro = false,
 } = Astro.props;
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
 const sectionPath =
@@ -31,9 +33,10 @@ const deletable = Boolean(editable && sectionPath);
 
 <section
   id={sectionId}
-  class:list={['project-block', stackClass, sectionId && 'section-block']}
+  class:list={['project-block', stackClass, sectionId && 'section-block', intro && 'project-block--intro']}
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={deletable ? 'bodyText' : undefined}
+  data-dev-intro={intro ? 'true' : undefined}
 >
   <div
     class="project-body-text"
