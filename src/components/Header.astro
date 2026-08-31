@@ -225,11 +225,18 @@ const menuLinks = headerSettings.menuLinks;
     let geoLeft = 0;
     let geoWidth = 0;
     const captureGeo = () => {
+      // Only meaningful from the clean in-flow layout, and only once the real
+      // wordmark font is in — a fallback-font capture is narrower and sits
+      // left, which is what read as "jumped right" when pinned out of flow.
+      if (mode !== 'flow') return;
       const rect = header.getBoundingClientRect();
       geoLeft = rect.left;
       geoWidth = rect.width;
     };
-    captureGeo();
+    // Don't capture at init — fonts aren't in yet. captureGeo runs on
+    // fonts.ready / loadingdone below, and on resize.
+    void document.fonts?.ready.then(() => captureGeo());
+    document.fonts?.addEventListener('loadingdone', () => captureGeo());
 
     const applyGeo = () => {
       header.style.left = `${geoLeft}px`;
