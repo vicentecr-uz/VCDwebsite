@@ -5,6 +5,7 @@ import DevImageDrop from '../components/DevImageDrop.astro';
 import TeaserGate from '../components/TeaserGate.astro';
 import { resolveProjectOutline, resolveProjectSectionLinks } from '../lib/projectOutline';
 import { projectImageTier } from '../lib/images';
+import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 import {
   getModernProjectSlugsForBuild,
   loadProjectBySlug,
@@ -50,6 +51,10 @@ const ogImage = listingCover ? projectImageTier(listingCover, 'preview') : undef
   <TeaserGate slug={slug} status={project.status}>
     <div data-dev-project-drop-zone>
       <ProjectSections documentKey={slug} sections={sections} />
+      <div
+        class:list={[projectStackClass('none')]}
+        {...(spacingDevAttrs(slug, ['sections', sections.length], 'none') ?? {})}
+      />
     </div>
     <DevImageDrop documentKey={slug} />
   </TeaserGate>

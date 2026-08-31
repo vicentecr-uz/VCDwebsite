@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
 import { loadPageDocument } from '../lib/projects';
+import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
 const playPage = loadPageDocument('play');
 ---
@@ -17,6 +18,10 @@ const playPage = loadPageDocument('play');
     <main id="main-content" class="listing-main" style="flex: 1;">
       <div data-dev-project-drop-zone>
         <ProjectSections documentKey="play" sections={playPage.sections} />
+        <div
+          class:list={[projectStackClass('none')]}
+          {...(spacingDevAttrs('play', ['sections', playPage.sections.length], 'none') ?? {})}
+        />
       </div>
     </main>
 
