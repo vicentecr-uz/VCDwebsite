@@ -1915,8 +1915,11 @@ const visibilityOptions = [
       window.alert(payload.error || 'Could not delete the project.');
       return;
     }
-    const grid = caches.get(panelSlug)?.grid
-      ?? document.querySelector('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid');
+    const gridItem = caches.get(panelSlug)?.item;
+    const grid =
+      (gridItem ? gridForItem(gridItem) : null)
+      ?? document.querySelector('[data-dev-project-grid]')?.getAttribute('data-dev-project-grid')
+      ?? 'work';
     navigateAway(grid === 'home' ? '/' : grid === 'play' ? '/play' : '/work');
   });
 
