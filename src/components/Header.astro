@@ -210,9 +210,7 @@ const menuLinks = headerSettings.menuLinks;
 
     const isMenuOpen = () =>
       !menuScrollSuppressed &&
-      header.matches(
-        ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
-      );
+      header.matches(':has(.header-trigger.is-menu-open)');
 
     // The slot claims the header's flow height no matter where the header
     // itself is (flow / fixed / absolute), so the page below never jumps.
@@ -259,9 +257,10 @@ const menuLinks = headerSettings.menuLinks;
 
     const setMode = (next: 'flow' | 'docked' | 'riding', fade = false, slide = false) => {
       if (mode === next) return;
-      // Capture the riding offset BEFORE switching modes, so the slide can
-      // start from exactly where the header is visually sitting.
-      const slideFrom = slide && mode === 'riding' ? window.scrollY : null;
+      // Capture the offset BEFORE switching modes, so the slide starts from
+      // exactly where the header is visually sitting. Works from riding
+      // (absolute) or from a partially-scrolled-out flow position.
+      const slideFrom = slide ? Math.max(0, -header.getBoundingClientRect().top) : null;
       mode = next;
       header.classList.toggle('is-docked', mode === 'docked');
       header.classList.toggle('is-riding', mode === 'riding');
@@ -274,12 +273,12 @@ const menuLinks = headerSettings.menuLinks;
         header.style.top = '';
         applyGeo();
         if (slide && slideFrom !== null) {
-          // Menu opened while riding partway: dock (fixed, top 0) but start
-          // translated down by the riding offset, then ease the transform to
-          // 0. A transition on `top` can't run across a position swap, so the
-          // slide has to be a transform.
+          // Menu opened while partially hidden: dock (fixed, top 0) but start
+          // translated UP by the off-screen amount, then ease the transform to
+          // 0 so it slides down into place. A transition on `top` can't run
+          // across a position swap, so the slide has to be a transform.
           header.style.transition = 'none';
-          header.style.transform = `translateY(${slideFrom}px)`;
+          header.style.transform = `translateY(${-slideFrom}px)`;
           requestAnimationFrame(() => {
             header.style.transition = 'transform 0.3s ease';
             header.style.transform = 'translateY(0)';
@@ -343,11 +342,12 @@ const menuLinks = headerSettings.menuLinks;
           ticking = false;
           return;
         } else {
-          // Menu needs the header present. If it's riding partway (only
-          // partially visible), slide it down to docked — but do this ONCE,
-          // not every frame, so the slide transition actually runs and the
-          // menu opens responsively during it.
-          if (mode === 'riding') {
+          // Menu needs the header present. If it's partially scrolled out of
+          // view (in flow but its top is above the viewport, or mid-ride),
+          // slide it down to docked so the menu never opens on a half-shown
+          // header. The slide reads the current visual offset BEFORE docking.
+          const partiallyHidden = header.getBoundingClientRect().top < 0;
+          if (mode === 'riding' || (mode === 'flow' && partiallyHidden)) {
             setMode('docked', false, true);
           } else if (y > headerHeight && mode !== 'docked') {
             setMode('docked');
