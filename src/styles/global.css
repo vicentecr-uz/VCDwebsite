@@ -474,6 +474,11 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   font-synthesis: none;
+  /* Content-column cap consumed by #site-wrapper's gutter below. Declared
+     here (not on #site-wrapper itself) so DevPageWidthToggle can override it
+     live via documentElement.style.setProperty without a shadowing
+     redeclaration fighting the inline style. */
+  --page-max-width: 43.25em;
 }
 
 body {
@@ -482,7 +487,7 @@ body {
 
 #site-wrapper {
   /* Named so the header fill can break out to the viewport edges. */
-  --page-gutter: max(var(--space-unit), calc((100% - 43.25em) / 2));
+  --page-gutter: max(var(--space-unit), calc((100% - var(--page-max-width)) / 2));
   padding-inline: var(--page-gutter);
 }
 
