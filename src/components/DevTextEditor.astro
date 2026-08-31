@@ -754,11 +754,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         pinGapToolbarTop(control);
         return;
       }
-      // Any leave from a freeze crossfades to the gap midpoint — including when
-      // the value was restored to clean (dirty→clean). Dirty alone used to gate
-      // this and skipped that case.
+      // Leave a freeze: if the gap is dirty the chip must stay up, so
+      // crossfade to the (possibly moved) midpoint. If it's clean, unpin in
+      // place — relocating first faded a ghost out then faded the midpoint
+      // pill in, then proximity hid that one too (#344).
       if (control.dataset.gapTopPinned === 'true') {
-        relocatePinnedGapToolbar(control);
+        const dirty = control
+          .closest('[data-dev-spacing-document]')
+          ?.classList.contains('is-dev-spacing-dirty');
+        if (dirty) relocatePinnedGapToolbar(control);
+        else unpinGapToolbarTop(control);
         return;
       }
       unpinGapToolbarTop(control);
