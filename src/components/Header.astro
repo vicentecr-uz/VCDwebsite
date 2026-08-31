@@ -28,6 +28,7 @@ const isDev = import.meta.env.DEV;
 const menuLinks = headerSettings.menuLinks;
 ---
 
+<div class="site-header-slot">
 {navMenu ? (
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
@@ -172,6 +173,7 @@ const menuLinks = headerSettings.menuLinks;
     </div>
   </header>
 )}
+</div>
 
 <script>
   // Touch / no-hover devices open the menu on tap instead of on hover.
@@ -180,8 +182,10 @@ const menuLinks = headerSettings.menuLinks;
 
   const header = document.querySelector('.site-header');
   if (header) {
+    const headerSlot = document.querySelector('.site-header-slot');
     const REVEAL_PX = 4; // pinned reveal: cumulative up-scroll since anchor
     const UNPIN_PX = 4; // pinned release: cumulative down-scroll since anchor
+    const SLIDE_MS = 350;
 
     type HeaderState = 'with-page' | 'hidden' | 'pinned';
 
@@ -190,64 +194,15 @@ const menuLinks = headerSettings.menuLinks;
     let trend: 'up' | 'down' | null = null;
     let anchorY = window.scrollY;
     let state: HeaderState = window.scrollY > headerHeight ? 'pinned' : 'with-page';
-    let releaseTop: number | null = null;
     let ticking = false;
 
-    const clearRelease = () => {
-      if (releaseTop === null) return;
-      releaseTop = null;
-      header.classList.remove('is-released');
-      header.style.removeProperty('top');
-      header.style.removeProperty('left');
-      header.style.removeProperty('width');
-    };
-
-    const applyState = () => {
-      header.classList.toggle('is-pinned', state === 'pinned');
-      header.classList.toggle('is-scrolled-hidden', state === 'hidden' && releaseTop === null);
-      header.classList.toggle('is-released', releaseTop !== null);
-
-      if (releaseTop !== null) {
-        header.style.top = `${releaseTop}px`;
-      } else {
-        header.style.removeProperty('top');
-        header.style.removeProperty('left');
-        header.style.removeProperty('width');
+    const syncSlotHeight = () => {
+      headerHeight = header.offsetHeight;
+      if (headerSlot instanceof HTMLElement) {
+        headerSlot.style.height = `${headerHeight}px`;
       }
     };
-    applyState();
-
-    const enterRelease = (y: number) => {
-      const rect = header.getBoundingClientRect();
-      // No positioned ancestor (#site-wrapper and page shell are static), so
-      // document coords (viewport rect + scroll) match the initial containing block.
-      releaseTop = rect.top + y;
-      header.style.left = `${rect.left + window.scrollX}px`;
-      header.style.width = `${rect.width}px`;
-      state = 'hidden';
-      anchorY = y;
-      applyState();
-    };
-
-    const commit = (next: HeaderState, y: number) => {
-      if (next === 'pinned' || next === 'with-page') {
-        clearRelease();
-      }
-
-      if (next === 'hidden' && state === 'pinned') {
-        enterRelease(y);
-        return;
-      }
-
-      if (next === 'hidden') {
-        clearRelease();
-      }
-
-      if (next === state && releaseTop === null) return;
-      state = next;
-      anchorY = y;
-      applyState();
-    };
+    syncSlotHeight();
 
     const isMenuOpen = () =>
       header.matches(
@@ -257,11 +212,50 @@ const menuLinks = headerSettings.menuLinks;
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
+    const applyVisuals = (y: number, animate: boolean) => {
+      const menuOpen = isMenuOpen();
+      const atTop = y <= headerHeight;
+
+      header.classList.toggle('is-pinned', state === 'pinned' || menuOpen);
+      header.classList.toggle('is-scrolled-hidden', state === 'hidden' && !atTop && !menuOpen);
+
+      let translateY: string;
+      if (menuOpen) {
+        translateY = '0';
+      } else if (atTop) {
+        translateY = `${-y}px`;
+        animate = false;
+      } else if (state === 'pinned') {
+        translateY = '0';
+      } else {
+        translateY = '-100%';
+      }
+
+      if (animate) {
+        const hideDelay = state === 'hidden' && !atTop && !menuOpen ? SLIDE_MS : 0;
+        header.style.transition = `transform ${SLIDE_MS}ms ease, visibility 0s linear ${hideDelay}ms`;
+      } else {
+        header.style.transition = 'none';
+      }
+      header.style.transform = `translateY(${translateY})`;
+    };
+
+    const commit = (next: HeaderState, y: number) => {
+      if (next === state) {
+        applyVisuals(y, y > headerHeight);
+        return;
+      }
+      state = next;
+      anchorY = y;
+      applyVisuals(y, y > headerHeight);
+    };
+
     const update = () => {
       const y = window.scrollY;
 
       if (isSectionReorderDragging()) {
-        commit('hidden', y);
+        state = 'hidden';
+        applyVisuals(y, false);
         trend = null;
         lastY = y;
         ticking = false;
@@ -271,7 +265,8 @@ const menuLinks = headerSettings.menuLinks;
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
       if (isMenuOpen()) {
-        commit('pinned', y);
+        state = 'pinned';
+        applyVisuals(y, y > headerHeight);
         trend = null;
         lastY = y;
         ticking = false;
@@ -279,20 +274,16 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       // Below the header's own height it's still (at least partly) on
-      // screen — leave it as plain in-flow content: no fade, no pin, ever.
-      // Only once it's scrolled fully out of view does the anchor-based
-      // pin/unpin logic below take over.
+      // screen — fake in-flow motion with translateY(-y). Only once it's
+      // scrolled fully out of view does the anchor-based pin/unpin logic
+      // below take over.
       if (y <= headerHeight) {
-        commit('with-page', y);
+        state = 'with-page';
+        applyVisuals(y, false);
         trend = null;
         lastY = y;
         ticking = false;
         return;
-      }
-
-      if (releaseTop !== null && header.getBoundingClientRect().bottom < 0) {
-        clearRelease();
-        applyState();
       }
 
       // Reset the anchor on a genuine direction reversal so cumulative
@@ -310,17 +301,22 @@ const menuLinks = headerSettings.menuLinks;
       if (state === 'pinned') {
         if (y - anchorY > UNPIN_PX) {
           commit('hidden', y);
+        } else {
+          applyVisuals(y, true);
         }
       } else if (anchorY - y > REVEAL_PX) {
         commit('pinned', y);
       } else if (state !== 'hidden') {
         commit('hidden', y);
+      } else {
+        applyVisuals(y, true);
       }
 
       lastY = y;
       ticking = false;
     };
 
+    applyVisuals(window.scrollY, false);
     document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
@@ -335,7 +331,8 @@ const menuLinks = headerSettings.menuLinks;
     );
 
     window.addEventListener('resize', () => {
-      headerHeight = header.offsetHeight;
+      syncSlotHeight();
+      applyVisuals(window.scrollY, false);
     });
   }
 
@@ -945,6 +942,10 @@ const menuLinks = headerSettings.menuLinks;
 </script>
 
 <style>
+  .site-header-slot {
+    flex-shrink: 0;
+  }
+
   .site-header {
     --header-menu-link-size: 1.2em;
 
@@ -969,38 +970,23 @@ const menuLinks = headerSettings.menuLinks;
     --header-wordmark-size: calc(
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
-    position: relative;
+    position: fixed;
     top: 0;
+    left: 0;
+    right: 0;
+    /* Replaces #site-wrapper padding now that the header is viewport-fixed. */
+    padding-block: var(--space-unit);
+    padding-inline: var(--page-gutter, var(--space-unit));
+    transform: translateY(0);
+    transition: transform 0.35s ease, visibility 0s linear 0.35s;
     /* Above mid-page sections (25). Fill fades in only while pinned
        (scroll-up reveal or menu open). Below format bar (90+). */
     z-index: 50;
-    padding: var(--space-unit) 0;
-  }
-
-  /* Sticky only while actively pinned (scroll-up reveal after fully
-     scrolling past the header, or menu open). Otherwise relative — within
-     the header's own height it's plain in-flow content (native scroll,
-     no JS-driven change), and once fully scrolled past it stays relative
-     while hidden, so it never hovers pinned-but-invisible.
-     The opacity transition lives here too, not on the base rule: entering
-     is-pinned should fade in, but leaving it (position already snapping
-     to relative, off-screen at that depth) must be instant, or the
-     opacity lags the snap and reads as a disconnected "disappearing"
-     animation instead of receding with the scroll like native content. */
-  .site-header.is-pinned {
-    position: sticky;
-    transition: opacity 0.35s ease;
   }
 
   .site-header.is-scrolled-hidden {
-    opacity: 0;
     pointer-events: none;
-  }
-
-  /* Unpin release: stay at the captured viewport spot and scroll away
-     with the page instead of snapping back to the in-flow slot at doc top. */
-  .site-header.is-released {
-    position: absolute;
+    visibility: hidden;
   }
 
   .site-header__bg {
@@ -1614,8 +1600,7 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .site-header,
-    .site-header.is-pinned {
+    .site-header {
       transition: none;
     }
 
