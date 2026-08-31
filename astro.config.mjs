@@ -1757,6 +1757,7 @@ function contentSectionDevWriter() {
             : (index === 0 ? 'none' : 'section');
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
+            const level = Number(body.level) === 3 ? 3 : 2;
             section = {
               type: 'sectionTitle',
               id,
@@ -1764,6 +1765,7 @@ function contentSectionDevWriter() {
               title: 'Section title',
               spacing: insertSpacing,
               tightBottom: false,
+              ...(level === 3 ? { level: 3 } : {}),
             };
           } else if (type === 'bodyText') {
             const id = `body-${Date.now().toString(36)}`;
