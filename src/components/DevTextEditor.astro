@@ -1451,17 +1451,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const remapped: Array<{ clientId: string; serverId: string; documentKey: string }> = [];
       for (const entry of pending) {
         const clientId = entry.sectionId;
-        const payload: Record<string, unknown> = {
+        const body: Record<string, unknown> = {
           document: entry.documentKey,
           index: entry.index,
           type: entry.type,
           spacing: entry.spacing,
         };
-        if (entry.type === 'sectionTitle' && entry.level === 3) payload.level = 3;
+        if (entry.type === 'sectionTitle' && entry.level === 3) body.level = 3;
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
