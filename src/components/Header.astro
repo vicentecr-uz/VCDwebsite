@@ -190,16 +190,60 @@ const menuLinks = headerSettings.menuLinks;
     let trend: 'up' | 'down' | null = null;
     let anchorY = window.scrollY;
     let state: HeaderState = window.scrollY > headerHeight ? 'pinned' : 'with-page';
+    let releaseTop: number | null = null;
     let ticking = false;
+
+    const clearRelease = () => {
+      if (releaseTop === null) return;
+      releaseTop = null;
+      header.classList.remove('is-released');
+      header.style.removeProperty('top');
+      header.style.removeProperty('left');
+      header.style.removeProperty('width');
+    };
 
     const applyState = () => {
       header.classList.toggle('is-pinned', state === 'pinned');
-      header.classList.toggle('is-scrolled-hidden', state === 'hidden');
+      header.classList.toggle('is-scrolled-hidden', state === 'hidden' && releaseTop === null);
+      header.classList.toggle('is-released', releaseTop !== null);
+
+      if (releaseTop !== null) {
+        header.style.top = `${releaseTop}px`;
+      } else {
+        header.style.removeProperty('top');
+        header.style.removeProperty('left');
+        header.style.removeProperty('width');
+      }
     };
     applyState();
 
+    const enterRelease = (y: number) => {
+      const rect = header.getBoundingClientRect();
+      // No positioned ancestor (#site-wrapper and page shell are static), so
+      // document coords (viewport rect + scroll) match the initial containing block.
+      releaseTop = rect.top + y;
+      header.style.left = `${rect.left + window.scrollX}px`;
+      header.style.width = `${rect.width}px`;
+      state = 'hidden';
+      anchorY = y;
+      applyState();
+    };
+
     const commit = (next: HeaderState, y: number) => {
-      if (next === state) return;
+      if (next === 'pinned' || next === 'with-page') {
+        clearRelease();
+      }
+
+      if (next === 'hidden' && state === 'pinned') {
+        enterRelease(y);
+        return;
+      }
+
+      if (next === 'hidden') {
+        clearRelease();
+      }
+
+      if (next === state && releaseTop === null) return;
       state = next;
       anchorY = y;
       applyState();
@@ -244,6 +288,11 @@ const menuLinks = headerSettings.menuLinks;
         lastY = y;
         ticking = false;
         return;
+      }
+
+      if (releaseTop !== null && header.getBoundingClientRect().bottom < 0) {
+        clearRelease();
+        applyState();
       }
 
       // Reset the anchor on a genuine direction reversal so cumulative
@@ -922,8 +971,8 @@ const menuLinks = headerSettings.menuLinks;
     );
     position: relative;
     top: 0;
-    /* Above mid-page sections (25). Fill is transparent at page top and
-       fades in on scroll or menu open. Below format bar (90+). */
+    /* Above mid-page sections (25). Fill fades in only while pinned
+       (scroll-up reveal or menu open). Below format bar (90+). */
     z-index: 50;
     padding: var(--space-unit) 0;
   }
@@ -948,6 +997,12 @@ const menuLinks = headerSettings.menuLinks;
     pointer-events: none;
   }
 
+  /* Unpin release: stay at the captured viewport spot and scroll away
+     with the page instead of snapping back to the in-flow slot at doc top. */
+  .site-header.is-released {
+    position: absolute;
+  }
+
   .site-header__bg {
     position: absolute;
     inset-block: 0;
@@ -958,21 +1013,11 @@ const menuLinks = headerSettings.menuLinks;
     background-color: var(--sys-color-srf);
     z-index: 0;
     pointer-events: none;
-    opacity: 1;
+    opacity: 0;
     transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  html.is-page-top .site-header__bg {
-    opacity: 0;
-  }
-
-  html.is-page-top
-    .site-header--nav-menu:has(
-      .header-trigger:hover,
-      .header-trigger:focus-within,
-      .header-trigger.is-menu-open
-    )
-    .site-header__bg {
+  .site-header.is-pinned .site-header__bg {
     opacity: 1;
   }
 
