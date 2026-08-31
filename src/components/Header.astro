@@ -198,21 +198,19 @@ const menuLinks = headerSettings.menuLinks;
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
-    // Docking never moves the header out of flow: a per-frame counter-translate
-    // (translateY = scrollY) holds it at the viewport top while the page scrolls
-    // beneath it. Un-docking is just removing the transform — the header is
-    // already at its natural in-flow position, so there is nothing to measure
-    // and nothing that can drift.
-    const applyDock = (y: number) => {
-      header.style.transform = docked ? `translateY(${y}px)` : '';
-    };
+    // Docking holds the header at the viewport top with position: fixed while
+    // docked — the browser composes it with the scroll, so no per-frame
+    // transform and no jitter. No geometry is ever measured: entering fixed
+    // uses top/left/right 0 + the wrapper's own gutter formula (identical by
+    // construction), and exiting back to flow needs nothing because the
+    // header's in-flow slot is at the document top. Nothing can drift.
+    const applyDock = (_y: number) => {};
 
     const setDocked = (next: boolean, fade: boolean) => {
       if (docked === next) return;
       docked = next;
       header.classList.toggle('is-docked', docked);
       if (!docked) {
-        header.style.transform = '';
         header.style.opacity = '';
         header.style.pointerEvents = '';
         header.style.transition = '';
@@ -248,7 +246,6 @@ const menuLinks = headerSettings.menuLinks;
         // Menu needs the header present at any depth.
         if (y > headerHeight) setDocked(true, false);
         header.classList.remove('is-scrolled-hidden');
-        applyDock(y);
         trend = null;
         lastY = y;
         ticking = false;
@@ -268,9 +265,9 @@ const menuLinks = headerSettings.menuLinks;
 
       if (docked) {
         if (y - anchorY > UNDOCK_PX) {
-          // Hand back to native flow: the header's in-flow slot is above the
-          // viewport at this point, so removing the transform lets it scroll
-          // away naturally from the top edge.
+          // Hand back to native flow: the header's in-flow slot is at the
+          // document top, so leaving fixed lets it scroll away from the top
+          // edge naturally. Opacity is untouched — no fade on the way out.
           setDocked(false, false);
           trend = 'down';
           anchorY = y;
@@ -289,7 +286,6 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       header.classList.remove('is-scrolled-hidden');
-      applyDock(y);
 
       lastY = y;
       ticking = false;
@@ -949,9 +945,19 @@ const menuLinks = headerSettings.menuLinks;
     z-index: 50;
     padding: var(--space-unit) 0;
     transition: opacity 0.35s ease;
-    /* Docking holds the header at the viewport top with a counter-translate
-       (see script) — it never leaves flow, so no layout shift is possible. */
-    will-change: transform;
+  }
+
+  /* Docked: fixed at the viewport top. Horizontal geometry comes from the
+     same gutter formula #site-wrapper uses, so the wordmark/logo land on the
+     identical x-position with no measurement. The header's flow slot stays
+     reserved (it never leaves flow height-wise because the slot is at the
+     document top and the page already scrolled past it). */
+  .site-header.is-docked {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding-inline: max(var(--space-unit), calc((100% - 60em) / 2));
   }
 
   .site-header.is-scrolled-hidden {
@@ -1020,7 +1026,8 @@ const menuLinks = headerSettings.menuLinks;
       opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1)
       var(--menu-backdrop-close-delay, 0.09s);
     pointer-events: none;
-    z-index: 0;
+    /* Above page content (sections sit at 25), below the header bar (50). */
+    z-index: 40;
   }
 
   .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
