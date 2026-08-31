@@ -2,7 +2,6 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
-import { projectImageTier } from '../lib/images';
 import aboutContent from '../content/about.json';
 
 const experience = aboutContent.experience;
@@ -35,45 +34,13 @@ const contactRows = aboutContent.contactRows;
     font-size: var(--text-about-body-size);
     line-height: var(--text-about-body-leading);
     letter-spacing: var(--text-about-body-tracking);
-    /* Default: narrow (mobile-first) */
     grid-template-columns: 1fr;
     grid-template-areas:
-      "photo"
       "contact"
       "about"
       "experience";
   }
 
-  @media (min-width: 40em) {
-    .about-grid {
-      grid-template-columns: 17em 1fr;
-      grid-template-areas:
-        "photo       contact"
-        "about       about"
-        "experience  experience";
-    }
-  }
-  @media (min-width: 50em) {
-    .about-grid {
-      grid-template-areas:
-        "photo   contact"
-        ".       about"
-        ".       experience";
-    }
-    .about-grid .area-photo {
-      aspect-ratio: 3/4;
-      object-position: 50% 50%;
-    }
-  }
-
-  .area-photo {
-    grid-area: photo;
-    width: 100%;
-    object-fit: cover;
-    display: block;
-    aspect-ratio: 1/1;
-    object-position: 50% 35%;
-  }
   .area-contact    { grid-area: contact; }
   .area-about      { grid-area: about; }
   .area-about p    { text-wrap: balance; }
@@ -88,13 +55,6 @@ const contactRows = aboutContent.contactRows;
 
     <main id="main-content" class="flex-1" style="padding-top: 2em; padding-bottom: 3em">
       <div class="about-grid">
-
-        <img
-          class="area-photo"
-          src={projectImageTier(aboutContent.photo.src, 'thumb')}
-          data-image-preview={projectImageTier(aboutContent.photo.src, 'preview')}
-          alt={aboutContent.photo.alt}
-        />
 
         <div class="area-contact">
           <h2 class="section-header" style="margin-bottom: 0.6em">{aboutContent.contactTitle}</h2>
