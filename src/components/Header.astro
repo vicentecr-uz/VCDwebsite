@@ -259,20 +259,31 @@ const menuLinks = headerSettings.menuLinks;
 
     const setMode = (next: 'flow' | 'docked' | 'riding', fade = false, slide = false) => {
       if (mode === next) return;
+      // Capture the riding offset BEFORE switching modes, so the slide can
+      // start from exactly where the header is visually sitting.
+      const slideFrom = slide && mode === 'riding' ? window.scrollY : null;
       mode = next;
       header.classList.toggle('is-docked', mode === 'docked');
       header.classList.toggle('is-riding', mode === 'riding');
       header.style.transition = '';
       header.style.opacity = '';
       header.style.pointerEvents = '';
+      header.style.transform = '';
       if (mode === 'docked') {
         // Fixed at the viewport top, box pinned to its flow x/width.
         header.style.top = '';
         applyGeo();
-        if (slide) {
-          // Menu opened while riding partway: ease down to the docked position
-          // so the menu never opens on a half-visible header.
-          header.style.transition = 'top 0.3s ease';
+        if (slide && slideFrom !== null) {
+          // Menu opened while riding partway: dock (fixed, top 0) but start
+          // translated down by the riding offset, then ease the transform to
+          // 0. A transition on `top` can't run across a position swap, so the
+          // slide has to be a transform.
+          header.style.transition = 'none';
+          header.style.transform = `translateY(${slideFrom}px)`;
+          requestAnimationFrame(() => {
+            header.style.transition = 'transform 0.3s ease';
+            header.style.transform = 'translateY(0)';
+          });
         } else if (fade) {
           // Reveal from fully off-screen: fade in at full height. Docking
           // while partly visible is instant — it just stops scrolling away.
@@ -315,15 +326,22 @@ const menuLinks = headerSettings.menuLinks;
 
       if (isMenuOpen()) {
         // A real downward scroll closes the menu (with its normal close
-        // animation, not the instant force-close) and lets the header ride
-        // away. Suppress re-open until the pointer leaves, so a stationary
-        // hover can't loop it back open mid-scroll.
+        // animation, not the instant force-close). Suppress re-open until the
+        // pointer leaves, so a stationary hover can't loop it back open
+        // mid-scroll. The header STAYS docked — closing the menu is not a
+        // reason to undock; it only rides away on a subsequent scroll once the
+        // menu is fully closed and the pointer is off it.
         if (y > lastY + 1) {
           menuScrollSuppressed = true;
           document.querySelectorAll<HTMLElement>('.header-trigger.is-menu-open').forEach((t) => {
             t.dispatchEvent(new CustomEvent('header:request-close'));
           });
-          // fall through to normal handling (header rides away) below
+          if (mode !== 'docked' && y > headerHeight) setMode('docked');
+          header.classList.remove('is-scrolled-hidden');
+          trend = null;
+          lastY = y;
+          ticking = false;
+          return;
         } else {
           // Menu needs the header present. If it's riding partway (only
           // partially visible), slide it down to docked — but do this ONCE,
