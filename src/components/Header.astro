@@ -180,17 +180,16 @@ const menuLinks = headerSettings.menuLinks;
 
   const header = document.querySelector('.site-header');
   if (header) {
-    const HIDE_PX = 15; // with-page -> hidden: cumulative down-scroll since anchor
-    const REVEAL_PX = 4; // any -> pinned: cumulative up-scroll since anchor
-    const UNPIN_PX = 4; // pinned -> hidden/with-page: cumulative down-scroll since anchor
-    const NEAR_TOP_PX = 8;
+    const REVEAL_PX = 4; // pinned reveal: cumulative up-scroll since anchor
+    const UNPIN_PX = 4; // pinned release: cumulative down-scroll since anchor
 
     type HeaderState = 'with-page' | 'hidden' | 'pinned';
 
+    let headerHeight = header.offsetHeight;
     let lastY = window.scrollY;
     let trend: 'up' | 'down' | null = null;
     let anchorY = window.scrollY;
-    let state: HeaderState = window.scrollY <= NEAR_TOP_PX ? 'with-page' : 'pinned';
+    let state: HeaderState = window.scrollY > headerHeight ? 'pinned' : 'with-page';
     let ticking = false;
 
     const applyState = () => {
@@ -225,8 +224,22 @@ const menuLinks = headerSettings.menuLinks;
         return;
       }
 
+      document.documentElement.classList.toggle('is-page-top', y <= 8);
+
       if (isMenuOpen()) {
         commit('pinned', y);
+        trend = null;
+        lastY = y;
+        ticking = false;
+        return;
+      }
+
+      // Below the header's own height it's still (at least partly) on
+      // screen — leave it as plain in-flow content: no fade, no pin, ever.
+      // Only once it's scrolled fully out of view does the anchor-based
+      // pin/unpin logic below take over.
+      if (y <= headerHeight) {
+        commit('with-page', y);
         trend = null;
         lastY = y;
         ticking = false;
@@ -247,15 +260,13 @@ const menuLinks = headerSettings.menuLinks;
 
       if (state === 'pinned') {
         if (y - anchorY > UNPIN_PX) {
-          commit(y <= NEAR_TOP_PX ? 'with-page' : 'hidden', y);
+          commit('hidden', y);
         }
       } else if (anchorY - y > REVEAL_PX) {
         commit('pinned', y);
-      } else if (state === 'with-page' && y - anchorY > HIDE_PX) {
+      } else if (state !== 'hidden') {
         commit('hidden', y);
       }
-
-      document.documentElement.classList.toggle('is-page-top', y <= 8);
 
       lastY = y;
       ticking = false;
@@ -273,6 +284,10 @@ const menuLinks = headerSettings.menuLinks;
       },
       { passive: true },
     );
+
+    window.addEventListener('resize', () => {
+      headerHeight = header.offsetHeight;
+    });
   }
 
   const setMenuBackdropVisible = (visible: boolean) => {
@@ -914,9 +929,11 @@ const menuLinks = headerSettings.menuLinks;
     transition: opacity 0.35s ease;
   }
 
-  /* Sticky only while actively pinned (scrolled-up reveal, top of page,
-     menu open). Otherwise relative, so the header scrolls away with the
-     page instead of hovering pinned-but-invisible. */
+  /* Sticky only while actively pinned (scroll-up reveal after fully
+     scrolling past the header, or menu open). Otherwise relative — within
+     the header's own height it's plain in-flow content (native scroll,
+     no JS-driven change), and once fully scrolled past it stays relative
+     while hidden, so it never hovers pinned-but-invisible. */
   .site-header.is-pinned {
     position: sticky;
   }
