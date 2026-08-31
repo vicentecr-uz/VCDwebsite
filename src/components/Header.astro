@@ -29,10 +29,10 @@ const menuLinks = headerSettings.menuLinks;
 ---
 
 {navMenu ? (
+  <div class="header-menu-backdrop" aria-hidden="true"></div>
   <div class="site-header-slot">
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
-    <div class="header-menu-backdrop" aria-hidden="true"></div>
     <div class="site-header__row">
       <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
         <span class="header-trigger__sizer" aria-hidden="true">
@@ -339,14 +339,17 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   const setMenuBackdropVisible = (visible: boolean) => {
-    const headerEl = document.querySelector('.site-header--nav-menu');
-    if (!headerEl) return;
+    // The backdrop lives OUTSIDE the header (a sibling), so its z-index sits
+    // between page content and the header bar instead of being trapped in the
+    // header's stacking context and painting over the bar.
+    const backdrop = document.querySelector('.header-menu-backdrop');
+    if (!backdrop) return;
 
     if (visible) {
-      headerEl.style.removeProperty('--menu-backdrop-close-delay');
-      headerEl.classList.add('is-menu-backdrop-visible');
+      (backdrop as HTMLElement).style.removeProperty('--menu-backdrop-close-delay');
+      backdrop.classList.add('is-menu-backdrop-visible');
     } else {
-      headerEl.classList.remove('is-menu-backdrop-visible');
+      backdrop.classList.remove('is-menu-backdrop-visible');
     }
   };
 
@@ -357,8 +360,8 @@ const menuLinks = headerSettings.menuLinks;
       active.blur();
     }
 
-    const headerEl = document.querySelector('.site-header--nav-menu');
-    headerEl?.style.setProperty('--menu-backdrop-close-delay', '0s');
+    const backdrop = document.querySelector('.header-menu-backdrop') as HTMLElement | null;
+    backdrop?.style.setProperty('--menu-backdrop-close-delay', '0s');
     setMenuBackdropVisible(false);
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
@@ -465,7 +468,7 @@ const menuLinks = headerSettings.menuLinks;
     const closeMenu = () => {
       delete trigger.dataset.menuOpen;
       document
-        .querySelector('.site-header--nav-menu')
+        .querySelector('.header-menu-backdrop')
         ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
       setMenuBackdropVisible(false);
       setCloseStagger();
@@ -982,24 +985,18 @@ const menuLinks = headerSettings.menuLinks;
     transition: opacity 0.35s ease;
   }
 
-  /* Docked: fixed at the viewport top. Horizontal geometry comes from the
-     same gutter formula #site-wrapper uses, so the wordmark/logo land on the
-     identical x-position with no measurement. */
+  /* Docked: fixed at the viewport top. left/right stay UNSET so the header
+     keeps the exact x-position and width flow gave it inside #site-wrapper —
+     no gutter formula, no measurement, no inset shift. */
   .site-header.is-docked {
     position: fixed;
     top: 0;
-    left: 0;
-    right: 0;
-    padding-inline: max(var(--space-unit), calc((100% - 60em) / 2));
   }
 
   /* Riding: absolute at the release spot (inline top = scrollY), so it
-     scrolls away with the page. Same horizontal geometry as docked. */
+     scrolls away with the page. Same unset left/right — flow geometry kept. */
   .site-header.is-riding {
     position: absolute;
-    left: 0;
-    right: 0;
-    padding-inline: max(var(--space-unit), calc((100% - 60em) / 2));
   }
 
   .site-header.is-scrolled-hidden {
@@ -1072,7 +1069,7 @@ const menuLinks = headerSettings.menuLinks;
     z-index: 40;
   }
 
-  .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
+  .header-menu-backdrop.is-menu-backdrop-visible {
     opacity: 1;
     transition-delay: 0s;
   }
@@ -1080,7 +1077,7 @@ const menuLinks = headerSettings.menuLinks;
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
      whatever sits under it. */
   @media (hover: none), (pointer: coarse) {
-    .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
+    .header-menu-backdrop.is-menu-backdrop-visible {
       pointer-events: auto;
     }
   }
