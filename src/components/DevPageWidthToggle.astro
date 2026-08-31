@@ -1,0 +1,154 @@
+---
+import SegmentedControl from './ui/SegmentedControl.astro';
+import Button from './ui/Button.astro';
+
+/**
+ * Live A/B for the page's reading-column cap (--page-max-width). Original =
+ * the pre-rotation 60em; Emil = the shipped 43.25em; Custom = a typed em
+ * value. Mirrors DevThemeToggle's html.is-dev-mode-only gating exactly — not
+ * a data-dev-panel-key DevOverlay, which mass-hides on Edit-mode exit and
+ * would vanish mid-comparison.
+ */
+
+const ORIGINAL_EM = 60;
+const EMIL_EM = 43.25;
+---
+
+<div class="dev-page-width-toggle" data-dev-page-width-toggle>
+  <SegmentedControl label="Page width">
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label="Original"
+      data-width-mode="original"
+      aria-pressed="false"
+    />
+    <Button
+      emphasis="ghost"
+      width="fill"
+      label="Emil"
+      data-width-mode="emil"
+      aria-pressed="false"
+    />
+    <input
+      class="dev-page-width-toggle__custom"
+      type="text"
+      inputmode="decimal"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="em"
+      aria-label="Custom page width in em"
+      data-width-custom-input
+    />
+  </SegmentedControl>
+</div>
+
+<style>
+  /* Footer: only show while dev mode is on (matches DevThemeToggle). */
+  .dev-page-width-toggle {
+    display: none;
+    width: max-content;
+  }
+
+  :global(html.is-dev-mode) .dev-page-width-toggle {
+    display: block;
+  }
+
+  .dev-page-width-toggle :global(.dev-segmented) {
+    width: auto;
+  }
+
+  /* Third segment is a real input, not a .dev-btn — match the sibling
+     buttons' segmented sizing (project.css .dev-segmented .dev-btn) so the
+     three read as one control. */
+  .dev-page-width-toggle__custom {
+    flex: 1 1 0;
+    min-width: 3.5em;
+    min-height: 28px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: var(--dev-radius-control);
+    background: transparent;
+    color: var(--sys-color-on-srf-variant);
+    font: var(--dev-text-label);
+    text-align: center;
+    box-sizing: border-box;
+  }
+
+  .dev-page-width-toggle__custom::placeholder {
+    color: var(--sys-color-on-srf-variant);
+    opacity: 0.6;
+  }
+
+  .dev-page-width-toggle__custom:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+  }
+
+  /* Mirrors .dev-segmented .dev-btn[aria-pressed='true'] — applied via a
+     class since aria-pressed isn't valid on a text input. */
+  .dev-page-width-toggle__custom.is-active {
+    background: var(--dev-segmented-selected-fill, var(--comp-button-page-container-selected));
+    color: var(--comp-button-label);
+  }
+</style>
+
+<script>
+  type WidthMode = 'original' | 'emil' | 'custom';
+
+  const ORIGINAL_EM = 60;
+  const EMIL_EM = 43.25;
+  const PROPERTY = '--page-max-width';
+
+  const root = document.querySelector<HTMLElement>('[data-dev-page-width-toggle]');
+  const buttons = root
+    ? [...root.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
+    : [];
+  const customInput = root?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
+
+  const applyWidth = (em: number) => {
+    document.documentElement.style.setProperty(PROPERTY, `${em}em`);
+  };
+
+  const setActiveMode = (mode: WidthMode) => {
+    buttons.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.widthMode === mode));
+    });
+    customInput?.classList.toggle('is-active', mode === 'custom');
+  };
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.dataset.widthMode;
+      if (mode === 'original') {
+        applyWidth(ORIGINAL_EM);
+        setActiveMode('original');
+      } else if (mode === 'emil') {
+        applyWidth(EMIL_EM);
+        setActiveMode('emil');
+      }
+    });
+  });
+
+  const applyCustomValue = () => {
+    if (!customInput) return;
+    const value = parseFloat(customInput.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    applyWidth(value);
+    setActiveMode('custom');
+  };
+
+  customInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyCustomValue();
+    customInput.blur();
+  });
+
+  customInput?.addEventListener('blur', applyCustomValue);
+
+  // Reflect the shipped default (Emil's value, already live via CSS) without
+  // writing an inline override on load — only user interaction should touch
+  // the custom property.
+  setActiveMode('emil');
+</script>
