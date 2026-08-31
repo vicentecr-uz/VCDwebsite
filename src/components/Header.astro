@@ -322,7 +322,9 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (mode === 'docked') {
-        if (y - anchorY > UNDOCK_PX) {
+        // No threshold: the instant you scroll down from docked, it rides —
+        // any dead-zone reads as the header catching on a few pixels late.
+        if (y > anchorY) {
           // Release at the current spot: absolute at scrollY, so it scrolls
           // away with the page from the top edge. No fade on the way out.
           setMode('riding');
@@ -341,13 +343,14 @@ const menuLinks = headerSettings.menuLinks;
       } else if (trend === 'up' && anchorY - y > REVEAL_PX) {
         const rect = header.getBoundingClientRect();
         if (rect.bottom <= 0 && y > headerHeight) {
-          // Fully off-screen: dock + fade in at full height.
+          // Fully off-screen: dock + fade in at full height. Small threshold
+          // stays here so a stray 1px nudge deep in the page doesn't flash it.
           setMode('docked', true);
-        } else if (rect.top <= 0 && y > 0) {
-          // Partly visible, top reached the viewport top: dock, no fade.
-          setMode('docked');
         }
-        // Otherwise it's still riding into view with the page — do nothing.
+        // Partly visible and scrolling up: leave it in flow — it rides down
+        // with the page natively. It only docks once it has fully left and
+        // come back via a ride (handled in the riding branch), so there's no
+        // teleport-to-top jump.
       }
 
       if (mode !== 'riding') {
