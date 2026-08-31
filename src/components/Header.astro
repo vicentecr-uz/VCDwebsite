@@ -29,8 +29,7 @@ const menuLinks = headerSettings.menuLinks;
 ---
 
 {navMenu ? (
-  <>
-  <header class="site-header site-header--static site-header--nav-menu">
+  <header class="site-header site-header--nav-menu">
     <div class="header-menu-backdrop" aria-hidden="true"></div>
     <div class="site-header__row">
       <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
@@ -144,125 +143,8 @@ const menuLinks = headerSettings.menuLinks;
       </div>
     </div>
   </header>
-  <header class="site-header site-header--floating site-header--nav-menu">
-    <div class="site-header__bg" aria-hidden="true"></div>
-    <div class="header-menu-backdrop" aria-hidden="true"></div>
-    <div class="site-header__row">
-      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
-        <span class="header-trigger__sizer" aria-hidden="true">
-          {showWordmarkSwap ? (
-            <span class="header-trigger__sizer-track">
-              <span>{wordmark}</span>
-              <span>{homeWordmark}</span>
-            </span>
-          ) : (
-            wordmark
-          )}
-        </span>
-        <div class="header-trigger__panel">
-          <div class="header-trigger__panel-bg" aria-hidden="true"></div>
-          <div class="header-trigger__brand">
-            {brandHref ? (
-              <a
-                href={brandHref}
-                class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
-              >
-                {showWordmarkSwap ? (
-                  <span class="header-trigger__wordmark-stack">
-                    <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                      {pageChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                      ))}
-                    </WordmarkTag>
-                    <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
-                      {homeChars.map((char) => (
-                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                      ))}
-                    </span>
-                  </span>
-                ) : (
-                  <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
-                )}
-              </a>
-            ) : (
-              <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
-            )}
-          </div>
-          <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
-              <li>
-                <a href={link.href} class="header-menu__link">{link.label}</a>
-              </li>
-            ))}
-            {isDev && (
-              <li data-dev-mode-only hidden>
-                <button
-                  type="button"
-                  class="header-menu__link header-menu__dev-toggle"
-                  data-curve-easing-tuner-toggle
-                  aria-pressed="false"
-                >
-                  Curve Easing Tuner
-                </button>
-              </li>
-            )}
-          </ul>
-        </div>
-      </div>
-      <div class="header-trigger header-trigger--end">
-        <span class="header-trigger__sizer header-trigger__sizer--logo" aria-hidden="true">
-          <span
-            class="header-trigger__logo"
-            style={`--logo-src: url("${headerSettings.logoPath}")`}
-          ></span>
-        </span>
-        <div class="header-trigger__panel">
-          <div class="header-trigger__panel-bg" aria-hidden="true"></div>
-          <div class="header-trigger__brand" data-dev-mode-trigger>
-            {brandHref ? (
-              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
-                <span
-                  class="header-trigger__logo"
-                  style={`--logo-src: url("${headerSettings.logoPath}")`}
-                  aria-hidden="true"
-                ></span>
-              </a>
-            ) : (
-              <span
-                class="header-trigger__logo"
-                style={`--logo-src: url("${headerSettings.logoPath}")`}
-                role="img"
-                aria-label="Logo"
-              ></span>
-            )}
-          </div>
-          <ul class="header-menu" role="list">
-            {menuLinks.map((link) => (
-              <li>
-                <a href={link.href} class="header-menu__link">{link.label}</a>
-              </li>
-            ))}
-            {isDev && (
-              <li data-dev-mode-only hidden>
-                <button
-                  type="button"
-                  class="header-menu__link header-menu__dev-toggle"
-                  data-curve-easing-tuner-toggle
-                  aria-pressed="false"
-                >
-                  Curve Easing Tuner
-                </button>
-              </li>
-            )}
-          </ul>
-        </div>
-      </div>
-    </div>
-  </header>
-  </>
 ) : (
-  <>
-  <header class="site-header site-header--static">
+  <header class="site-header">
     <div class="site-header__row">
       <a
         href={linkHref}
@@ -287,33 +169,6 @@ const menuLinks = headerSettings.menuLinks;
       </nav>
     </div>
   </header>
-  <header class="site-header site-header--floating">
-    <div class="site-header__bg" aria-hidden="true"></div>
-    <div class="site-header__row">
-      <a
-        href={linkHref}
-        class="header-link header-link--wordmark hover:opacity-60 transition-opacity duration-200"
-        style="font-family: var(--font-sans); font-size: var(--header-wordmark-size); line-height: 1; font-weight: var(--text-wordmark-weight); letter-spacing: -0.05ch;"
-      >
-        {title}
-      </a>
-
-      <nav>
-        <a
-          href={linkHref}
-          class="header-link block transition-opacity duration-200 opacity-100 hover:opacity-70"
-          aria-label="Logo"
-        >
-          <span
-            class="header-trigger__logo"
-            style={`--logo-src: url("${headerSettings.logoPath}")`}
-            aria-hidden="true"
-          ></span>
-        </a>
-      </nav>
-    </div>
-  </header>
-  </>
 )}
 
 <script>
@@ -321,120 +176,155 @@ const menuLinks = headerSettings.menuLinks;
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
   const isTapMode = () => tapModeMq.matches;
 
-  const staticHeader = document.querySelector('.site-header--static');
-  const floatingHeader = document.querySelector('.site-header--floating');
-  if (staticHeader && floatingHeader) {
+  const header = document.querySelector('.site-header') as HTMLElement | null;
+  if (header) {
     const REVEAL_PX = 4;
     const UNPIN_PX = 4;
     const FADE_MS = 350;
 
-    type FloatState = 'parked' | 'revealed' | 'receding';
+    type HeaderState = 'flow' | 'riding' | 'pinned' | 'parked';
 
-    let staticIntersecting = staticHeader.getBoundingClientRect().bottom > 0;
-    let floatState: FloatState = 'parked';
-    let recedeDocTop = 0;
+    let state: HeaderState = 'flow';
+    let slotDocTop = 0;
+    let headerHeight = 0;
+    let ridingDocTop = 0;
+    let geoLeft = 0;
+    let geoWidth = 0;
     let lastY = window.scrollY;
     let trend: 'up' | 'down' | null = null;
     let anchorY = window.scrollY;
     let ticking = false;
 
     const isMenuOpen = () =>
-      [...document.querySelectorAll<HTMLElement>('.site-header--nav-menu')].some((headerEl) =>
-        headerEl.matches(
-          ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
-        ),
+      header.matches(
+        ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
       );
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
-    const syncAria = () => {
-      staticHeader.setAttribute('aria-hidden', staticIntersecting ? 'false' : 'true');
+    const clearPositionStyles = () => {
+      header.style.removeProperty('position');
+      header.style.removeProperty('top');
+      header.style.removeProperty('left');
+      header.style.removeProperty('width');
+      header.style.removeProperty('right');
+      header.style.removeProperty('opacity');
+      header.style.removeProperty('visibility');
+      header.style.removeProperty('pointer-events');
+      header.style.removeProperty('transition');
+      header.style.removeProperty('z-index');
     };
 
-    const applyFloatingVisuals = (animate: boolean) => {
-      const menuOpenDeep = isMenuOpen() && !staticIntersecting;
+    const captureGeo = () => {
+      const rect = header.getBoundingClientRect();
+      geoLeft = rect.left;
+      geoWidth = rect.width;
+    };
+
+    const applyGeo = () => {
+      header.style.left = `${geoLeft}px`;
+      header.style.width = `${geoWidth}px`;
+    };
+
+    const measureSlot = () => {
+      const prevState = state;
+      if (prevState !== 'flow') {
+        clearPositionStyles();
+      }
+      slotDocTop = header.offsetTop;
+      headerHeight = header.offsetHeight;
+      captureGeo();
+      if (prevState !== 'flow') {
+        applyVisuals(false);
+      }
+    };
+
+    const applyVisuals = (animate: boolean) => {
       const dragHidden = isSectionReorderDragging();
+      header.classList.toggle('is-scrolled-hidden', dragHidden);
+      header.classList.toggle('is-pinned', state === 'pinned' || (isMenuOpen() && state !== 'flow'));
 
-      floatingHeader.classList.toggle('is-pinned', floatState === 'revealed' || menuOpenDeep);
-      floatingHeader.classList.toggle(
-        'is-scrolled-hidden',
-        dragHidden || (floatState === 'parked' && !menuOpenDeep && !staticIntersecting),
-      );
+      if (dragHidden) return;
 
-      if (animate && !staticIntersecting && !dragHidden) {
-        floatingHeader.style.transition = `opacity ${FADE_MS}ms ease`;
-      } else {
-        floatingHeader.style.transition = 'none';
-      }
-
-      if (staticIntersecting || dragHidden) {
-        floatingHeader.style.position = 'fixed';
-        floatingHeader.style.top = '0';
-        floatingHeader.style.left = '0';
-        floatingHeader.style.right = '0';
-        floatingHeader.style.opacity = '0';
-        floatingHeader.style.visibility = 'hidden';
-        floatingHeader.style.pointerEvents = 'none';
-        return;
-      }
-
-      if (menuOpenDeep) {
-        floatingHeader.style.position = 'fixed';
-        floatingHeader.style.top = '0';
-        floatingHeader.style.left = '0';
-        floatingHeader.style.right = '0';
-        floatingHeader.style.opacity = '1';
-        floatingHeader.style.visibility = 'visible';
-        floatingHeader.style.pointerEvents = 'auto';
-        return;
-      }
-
-      if (floatState === 'parked') {
-        floatingHeader.style.position = 'fixed';
-        floatingHeader.style.top = '0';
-        floatingHeader.style.left = '0';
-        floatingHeader.style.right = '0';
-        floatingHeader.style.opacity = '0';
-        floatingHeader.style.visibility = 'hidden';
-        floatingHeader.style.pointerEvents = 'none';
-      } else if (floatState === 'revealed') {
-        floatingHeader.style.position = 'fixed';
-        floatingHeader.style.top = '0';
-        floatingHeader.style.left = '0';
-        floatingHeader.style.right = '0';
-        floatingHeader.style.opacity = '1';
-        floatingHeader.style.visibility = 'visible';
-        floatingHeader.style.pointerEvents = 'auto';
-      } else {
-        floatingHeader.style.position = 'absolute';
-        floatingHeader.style.top = `${recedeDocTop}px`;
-        floatingHeader.style.left = '0';
-        floatingHeader.style.right = '0';
-        floatingHeader.style.opacity = '1';
-        floatingHeader.style.visibility = 'visible';
-        floatingHeader.style.pointerEvents = 'none';
+      switch (state) {
+        case 'flow':
+          clearPositionStyles();
+          break;
+        case 'pinned':
+          header.style.position = 'fixed';
+          header.style.top = '0';
+          applyGeo();
+          header.style.opacity = '1';
+          header.style.visibility = 'visible';
+          header.style.pointerEvents = 'auto';
+          header.style.zIndex = '50';
+          header.style.transition = animate ? `opacity ${FADE_MS}ms ease` : 'none';
+          break;
+        case 'riding':
+          header.style.position = 'absolute';
+          header.style.top = `${ridingDocTop}px`;
+          applyGeo();
+          header.style.opacity = '1';
+          header.style.visibility = 'visible';
+          header.style.pointerEvents = 'auto';
+          header.style.zIndex = '50';
+          header.style.transition = 'none';
+          break;
+        case 'parked':
+          header.style.position = 'fixed';
+          header.style.top = '0';
+          applyGeo();
+          header.style.opacity = '0';
+          header.style.visibility = 'hidden';
+          header.style.pointerEvents = 'none';
+          header.style.zIndex = '50';
+          header.style.transition = animate ? `opacity ${FADE_MS}ms ease` : 'none';
+          break;
       }
     };
 
-    const parkFloating = (animate: boolean) => {
-      floatState = 'parked';
-      applyFloatingVisuals(animate);
-    };
-
-    const commit = (next: FloatState, y: number) => {
-      if (next === floatState) {
-        applyFloatingVisuals(true);
-        return;
-      }
-      if (next === 'receding') {
-        const rect = floatingHeader.getBoundingClientRect();
-        recedeDocTop = rect.top + y;
-      }
-      floatState = next;
+    const enterFlow = (y: number) => {
+      state = 'flow';
       anchorY = y;
-      applyFloatingVisuals(true);
+      trend = null;
+      clearPositionStyles();
+      header.classList.remove('is-pinned');
+      measureSlot();
     };
+
+    const enterParked = (y: number, animate = false) => {
+      captureGeo();
+      state = 'parked';
+      anchorY = y;
+      applyVisuals(animate);
+    };
+
+    const enterPinned = (y: number, animate = true) => {
+      captureGeo();
+      state = 'pinned';
+      anchorY = y;
+      applyVisuals(false);
+      if (animate) {
+        header.style.opacity = '0';
+        header.style.visibility = 'visible';
+        requestAnimationFrame(() => {
+          header.style.transition = `opacity ${FADE_MS}ms ease`;
+          header.style.opacity = '1';
+        });
+      }
+    };
+
+    const enterRiding = (y: number) => {
+      const rect = header.getBoundingClientRect();
+      ridingDocTop = rect.top + y;
+      captureGeo();
+      state = 'riding';
+      anchorY = y;
+      applyVisuals(false);
+    };
+
+    const isDeep = (y: number) => y > slotDocTop + headerHeight;
 
     const update = () => {
       const y = window.scrollY;
@@ -442,17 +332,7 @@ const menuLinks = headerSettings.menuLinks;
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
       if (isSectionReorderDragging()) {
-        parkFloating(false);
-        syncAria();
-        trend = null;
-        lastY = y;
-        ticking = false;
-        return;
-      }
-
-      if (staticIntersecting) {
-        parkFloating(false);
-        syncAria();
+        header.classList.add('is-scrolled-hidden');
         trend = null;
         lastY = y;
         ticking = false;
@@ -460,20 +340,44 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (isMenuOpen()) {
-        floatState = 'revealed';
-        applyFloatingVisuals(true);
-        syncAria();
+        if (state !== 'flow' || y > slotDocTop) {
+          enterPinned(y, state !== 'pinned');
+        }
         trend = null;
         lastY = y;
         ticking = false;
         return;
       }
 
-      if (floatState === 'receding') {
-        if (floatingHeader.getBoundingClientRect().bottom < 0) {
-          parkFloating(false);
+      if (state === 'riding') {
+        const rect = header.getBoundingClientRect();
+        if (rect.bottom < 0) {
+          enterParked(y, false);
+        } else if (rect.top >= 0 && y <= slotDocTop) {
+          enterFlow(y);
         }
-        syncAria();
+        lastY = y;
+        ticking = false;
+        return;
+      }
+
+      if (state === 'flow') {
+        if (y <= slotDocTop) {
+          lastY = y;
+          ticking = false;
+          return;
+        }
+        const rect = header.getBoundingClientRect();
+        if (rect.bottom < 0) {
+          enterParked(y, false);
+        }
+        lastY = y;
+        ticking = false;
+        return;
+      }
+
+      if (y <= slotDocTop && (state === 'parked' || state === 'pinned')) {
+        enterFlow(y);
         lastY = y;
         ticking = false;
         return;
@@ -487,41 +391,28 @@ const menuLinks = headerSettings.menuLinks;
         anchorY = lastY;
       }
 
-      if (floatState === 'revealed') {
+      if (state === 'pinned') {
         if (y - anchorY > UNPIN_PX) {
-          commit('receding', y);
+          enterRiding(y);
         } else {
-          applyFloatingVisuals(true);
+          applyVisuals(true);
         }
-      } else if (anchorY - y > REVEAL_PX) {
-        commit('revealed', y);
-      } else if (floatState !== 'parked') {
-        commit('parked', y);
-      } else {
-        applyFloatingVisuals(false);
+      } else if (state === 'parked' && isDeep(y) && anchorY - y > REVEAL_PX) {
+        enterPinned(y, true);
+      } else if (state === 'parked') {
+        applyVisuals(false);
       }
 
-      syncAria();
       lastY = y;
       ticking = false;
     };
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        staticIntersecting = entry?.isIntersecting ?? false;
-        if (staticIntersecting) {
-          floatState = 'parked';
-          trend = null;
-        }
-        applyFloatingVisuals(false);
-        syncAria();
-      },
-      { threshold: 0 },
-    );
-    observer.observe(staticHeader);
+    measureSlot();
+    if (window.scrollY > slotDocTop + headerHeight) {
+      state = 'parked';
+      applyVisuals(false);
+    }
 
-    applyFloatingVisuals(false);
-    syncAria();
     document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
@@ -536,7 +427,8 @@ const menuLinks = headerSettings.menuLinks;
     );
 
     window.addEventListener('resize', () => {
-      applyFloatingVisuals(false);
+      measureSlot();
+      applyVisuals(false);
     });
   }
 
@@ -1169,55 +1061,15 @@ const menuLinks = headerSettings.menuLinks;
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
     padding-block: var(--space-unit);
-    padding-inline: var(--page-gutter, var(--space-unit));
-  }
-
-  /* In-flow header at page top — scrolls naturally with content. */
-  .site-header--static {
     position: relative;
-    z-index: auto;
   }
 
-  /* Fixed overlay — fades in on scroll-up reveal; never visible at page top. */
-  .site-header--floating {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
+  .site-header.is-scrolled-hidden {
     opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.35s ease;
-    z-index: 50;
-  }
-
-  .site-header--floating.is-scrolled-hidden {
-    opacity: 0;
-    visibility: hidden;
     pointer-events: none;
   }
 
-  .site-header--floating .site-header__bg {
-    position: absolute;
-    inset-block: 0;
-    /* Full viewport, not the content column — inherit --page-gutter from
-       #site-wrapper (percentage already resolved there, so no 100vw scrollbar). */
-    left: calc(-1 * var(--page-gutter, 0px));
-    right: calc(-1 * var(--page-gutter, 0px));
-    background-color: var(--sys-color-srf);
-    z-index: 0;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-
-  .site-header--floating.is-pinned .site-header__bg {
-    opacity: 1;
-  }
-
-  /* Deliberately z-index: auto — the row must NOT open a stacking context, so
-     .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
-     which lives outside the row. Tree order already puts the row above the bg. */
+  /* Deliberately z-index: auto — the row must NOT open a stacking context. */
   .site-header__row {
     display: flex;
     /* Logo is taller than the trimmed wordmark; centre so the inset above
@@ -1237,10 +1089,6 @@ const menuLinks = headerSettings.menuLinks;
 
   .site-header--nav-menu {
     z-index: 50;
-  }
-
-  .site-header--static.site-header--nav-menu {
-    z-index: auto;
   }
 
   .header-menu-backdrop {
@@ -1343,9 +1191,9 @@ const menuLinks = headerSettings.menuLinks;
     --panel-bottom-radius: 7em;
     --panel-bottom-pad: var(--space-unit);
     position: absolute;
-    /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
-       header band or the opposite trigger's wordmark/logo. Only the part that
-       hangs below the header is actually seen. */
+    /* Behind the header row so the panel never washes over the opposite
+       trigger's wordmark/logo. Only the part that hangs below the header
+       is actually seen. */
     z-index: -1;
     opacity: 0;
     pointer-events: none;
@@ -1812,7 +1660,7 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .site-header--floating {
+    .site-header {
       transition: none;
     }
 
