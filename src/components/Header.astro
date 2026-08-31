@@ -184,6 +184,14 @@ const menuLinks = headerSettings.menuLinks;
 
   const header = document.querySelector('.site-header');
   const headerSlot = document.querySelector('.site-header-slot');
+
+  // Set when a downward scroll closes the menu. While set, the menu reads as
+  // closed even though the cursor is still :hover-ing the trigger — without
+  // this, the hover immediately re-opens it and the dock/ride mode flaps
+  // every frame (the jump-and-animate loop). Cleared on mouseleave. Declared
+  // at script scope so both the scroll handler and the menu listeners see it.
+  let menuScrollSuppressed = false;
+
   if (header) {
     const REVEAL_PX = 4; // cumulative up-scroll before the docked fade-in
     const UNDOCK_PX = 4; // cumulative down-scroll before un-docking
@@ -197,13 +205,14 @@ const menuLinks = headerSettings.menuLinks;
     let headerHeight = header.offsetHeight;
     let ticking = false;
 
+    const isSectionReorderDragging = () =>
+      document.documentElement.classList.contains('is-section-reorder-dragging');
+
     const isMenuOpen = () =>
+      !menuScrollSuppressed &&
       header.matches(
         ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
       );
-
-    const isSectionReorderDragging = () =>
-      document.documentElement.classList.contains('is-section-reorder-dragging');
 
     // The slot claims the header's flow height no matter where the header
     // itself is (flow / fixed / absolute), so the page below never jumps.
@@ -420,11 +429,6 @@ const menuLinks = headerSettings.menuLinks;
       }
     });
   }
-
-  // After a downward scroll closes the menu, don't let a stationary hover
-  // re-open it (the pointer is still over the trigger, so mouseenter would
-  // fire again and loop). Re-arms only when the pointer genuinely leaves.
-  let menuScrollSuppressed = false;
 
   const setMenuBackdropVisible = (visible: boolean) => {
     // The backdrop lives OUTSIDE the header (a sibling), so its z-index sits
