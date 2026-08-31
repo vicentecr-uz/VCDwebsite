@@ -28,9 +28,123 @@ const isDev = import.meta.env.DEV;
 const menuLinks = headerSettings.menuLinks;
 ---
 
-<div class="site-header-slot">
 {navMenu ? (
-  <header class="site-header site-header--nav-menu">
+  <>
+  <header class="site-header site-header--static site-header--nav-menu">
+    <div class="header-menu-backdrop" aria-hidden="true"></div>
+    <div class="site-header__row">
+      <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
+        <span class="header-trigger__sizer" aria-hidden="true">
+          {showWordmarkSwap ? (
+            <span class="header-trigger__sizer-track">
+              <span>{wordmark}</span>
+              <span>{homeWordmark}</span>
+            </span>
+          ) : (
+            wordmark
+          )}
+        </span>
+        <div class="header-trigger__panel">
+          <div class="header-trigger__panel-bg" aria-hidden="true"></div>
+          <div class="header-trigger__brand">
+            {brandHref ? (
+              <a
+                href={brandHref}
+                class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
+              >
+                {showWordmarkSwap ? (
+                  <span class="header-trigger__wordmark-stack">
+                    <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                      {pageChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      ))}
+                    </WordmarkTag>
+                    <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                      {homeChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      ))}
+                    </span>
+                  </span>
+                ) : (
+                  <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
+                )}
+              </a>
+            ) : (
+              <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
+            )}
+          </div>
+          <ul class="header-menu" role="list">
+            {menuLinks.map((link) => (
+              <li>
+                <a href={link.href} class="header-menu__link">{link.label}</a>
+              </li>
+            ))}
+            {isDev && (
+              <li data-dev-mode-only hidden>
+                <button
+                  type="button"
+                  class="header-menu__link header-menu__dev-toggle"
+                  data-curve-easing-tuner-toggle
+                  aria-pressed="false"
+                >
+                  Curve Easing Tuner
+                </button>
+              </li>
+            )}
+          </ul>
+        </div>
+      </div>
+      <div class="header-trigger header-trigger--end">
+        <span class="header-trigger__sizer header-trigger__sizer--logo" aria-hidden="true">
+          <span
+            class="header-trigger__logo"
+            style={`--logo-src: url("${headerSettings.logoPath}")`}
+          ></span>
+        </span>
+        <div class="header-trigger__panel">
+          <div class="header-trigger__panel-bg" aria-hidden="true"></div>
+          <div class="header-trigger__brand" data-dev-mode-trigger>
+            {brandHref ? (
+              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
+                <span
+                  class="header-trigger__logo"
+                  style={`--logo-src: url("${headerSettings.logoPath}")`}
+                  aria-hidden="true"
+                ></span>
+              </a>
+            ) : (
+              <span
+                class="header-trigger__logo"
+                style={`--logo-src: url("${headerSettings.logoPath}")`}
+                role="img"
+                aria-label="Logo"
+              ></span>
+            )}
+          </div>
+          <ul class="header-menu" role="list">
+            {menuLinks.map((link) => (
+              <li>
+                <a href={link.href} class="header-menu__link">{link.label}</a>
+              </li>
+            ))}
+            {isDev && (
+              <li data-dev-mode-only hidden>
+                <button
+                  type="button"
+                  class="header-menu__link header-menu__dev-toggle"
+                  data-curve-easing-tuner-toggle
+                  aria-pressed="false"
+                >
+                  Curve Easing Tuner
+                </button>
+              </li>
+            )}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </header>
+  <header class="site-header site-header--floating site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="header-menu-backdrop" aria-hidden="true"></div>
     <div class="site-header__row">
@@ -145,8 +259,35 @@ const menuLinks = headerSettings.menuLinks;
       </div>
     </div>
   </header>
+  </>
 ) : (
-  <header class="site-header">
+  <>
+  <header class="site-header site-header--static">
+    <div class="site-header__row">
+      <a
+        href={linkHref}
+        class="header-link header-link--wordmark hover:opacity-60 transition-opacity duration-200"
+        style="font-family: var(--font-sans); font-size: var(--header-wordmark-size); line-height: 1; font-weight: var(--text-wordmark-weight); letter-spacing: -0.05ch;"
+      >
+        {title}
+      </a>
+
+      <nav>
+        <a
+          href={linkHref}
+          class="header-link block transition-opacity duration-200 opacity-100 hover:opacity-70"
+          aria-label="Logo"
+        >
+          <span
+            class="header-trigger__logo"
+            style={`--logo-src: url("${headerSettings.logoPath}")`}
+            aria-hidden="true"
+          ></span>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <header class="site-header site-header--floating">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
       <a
@@ -172,124 +313,172 @@ const menuLinks = headerSettings.menuLinks;
       </nav>
     </div>
   </header>
+  </>
 )}
-</div>
 
 <script>
   // Touch / no-hover devices open the menu on tap instead of on hover.
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
   const isTapMode = () => tapModeMq.matches;
 
-  const header = document.querySelector('.site-header');
-  if (header) {
-    const headerSlot = document.querySelector('.site-header-slot');
-    const REVEAL_PX = 4; // pinned reveal: cumulative up-scroll since anchor
-    const UNPIN_PX = 4; // pinned release: cumulative down-scroll since anchor
-    const SLIDE_MS = 350;
+  const staticHeader = document.querySelector('.site-header--static');
+  const floatingHeader = document.querySelector('.site-header--floating');
+  if (staticHeader && floatingHeader) {
+    const REVEAL_PX = 4;
+    const UNPIN_PX = 4;
+    const FADE_MS = 350;
 
-    type HeaderState = 'with-page' | 'hidden' | 'pinned';
+    type FloatState = 'parked' | 'revealed' | 'receding';
 
-    let headerHeight = header.offsetHeight;
+    let staticIntersecting = staticHeader.getBoundingClientRect().bottom > 0;
+    let floatState: FloatState = 'parked';
+    let recedeDocTop = 0;
     let lastY = window.scrollY;
     let trend: 'up' | 'down' | null = null;
     let anchorY = window.scrollY;
-    let state: HeaderState = window.scrollY > headerHeight ? 'pinned' : 'with-page';
     let ticking = false;
 
-    const syncSlotHeight = () => {
-      headerHeight = header.offsetHeight;
-      if (headerSlot instanceof HTMLElement) {
-        headerSlot.style.height = `${headerHeight}px`;
-      }
-    };
-    syncSlotHeight();
-
     const isMenuOpen = () =>
-      header.matches(
-        ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
+      [...document.querySelectorAll<HTMLElement>('.site-header--nav-menu')].some((headerEl) =>
+        headerEl.matches(
+          ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
+        ),
       );
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
-    const applyVisuals = (y: number, animate: boolean) => {
-      const menuOpen = isMenuOpen();
-      const atTop = y <= headerHeight;
-
-      header.classList.toggle('is-pinned', state === 'pinned' || menuOpen);
-      header.classList.toggle('is-scrolled-hidden', state === 'hidden' && !atTop && !menuOpen);
-
-      let translateY: string;
-      if (menuOpen) {
-        translateY = '0';
-      } else if (atTop) {
-        translateY = `${-y}px`;
-        animate = false;
-      } else if (state === 'pinned') {
-        translateY = '0';
-      } else {
-        translateY = '-100%';
-      }
-
-      if (animate) {
-        const hideDelay = state === 'hidden' && !atTop && !menuOpen ? SLIDE_MS : 0;
-        header.style.transition = `transform ${SLIDE_MS}ms ease, visibility 0s linear ${hideDelay}ms`;
-      } else {
-        header.style.transition = 'none';
-      }
-      header.style.transform = `translateY(${translateY})`;
+    const syncAria = () => {
+      staticHeader.setAttribute('aria-hidden', staticIntersecting ? 'false' : 'true');
     };
 
-    const commit = (next: HeaderState, y: number) => {
-      if (next === state) {
-        applyVisuals(y, y > headerHeight);
+    const applyFloatingVisuals = (animate: boolean) => {
+      const menuOpenDeep = isMenuOpen() && !staticIntersecting;
+      const dragHidden = isSectionReorderDragging();
+
+      floatingHeader.classList.toggle('is-pinned', floatState === 'revealed' || menuOpenDeep);
+      floatingHeader.classList.toggle(
+        'is-scrolled-hidden',
+        dragHidden || (floatState === 'parked' && !menuOpenDeep && !staticIntersecting),
+      );
+
+      if (animate && !staticIntersecting && !dragHidden) {
+        floatingHeader.style.transition = `opacity ${FADE_MS}ms ease`;
+      } else {
+        floatingHeader.style.transition = 'none';
+      }
+
+      if (staticIntersecting || dragHidden) {
+        floatingHeader.style.position = 'fixed';
+        floatingHeader.style.top = '0';
+        floatingHeader.style.left = '0';
+        floatingHeader.style.right = '0';
+        floatingHeader.style.opacity = '0';
+        floatingHeader.style.visibility = 'hidden';
+        floatingHeader.style.pointerEvents = 'none';
         return;
       }
-      state = next;
+
+      if (menuOpenDeep) {
+        floatingHeader.style.position = 'fixed';
+        floatingHeader.style.top = '0';
+        floatingHeader.style.left = '0';
+        floatingHeader.style.right = '0';
+        floatingHeader.style.opacity = '1';
+        floatingHeader.style.visibility = 'visible';
+        floatingHeader.style.pointerEvents = 'auto';
+        return;
+      }
+
+      if (floatState === 'parked') {
+        floatingHeader.style.position = 'fixed';
+        floatingHeader.style.top = '0';
+        floatingHeader.style.left = '0';
+        floatingHeader.style.right = '0';
+        floatingHeader.style.opacity = '0';
+        floatingHeader.style.visibility = 'hidden';
+        floatingHeader.style.pointerEvents = 'none';
+      } else if (floatState === 'revealed') {
+        floatingHeader.style.position = 'fixed';
+        floatingHeader.style.top = '0';
+        floatingHeader.style.left = '0';
+        floatingHeader.style.right = '0';
+        floatingHeader.style.opacity = '1';
+        floatingHeader.style.visibility = 'visible';
+        floatingHeader.style.pointerEvents = 'auto';
+      } else {
+        floatingHeader.style.position = 'absolute';
+        floatingHeader.style.top = `${recedeDocTop}px`;
+        floatingHeader.style.left = '0';
+        floatingHeader.style.right = '0';
+        floatingHeader.style.opacity = '1';
+        floatingHeader.style.visibility = 'visible';
+        floatingHeader.style.pointerEvents = 'none';
+      }
+    };
+
+    const parkFloating = (animate: boolean) => {
+      floatState = 'parked';
+      applyFloatingVisuals(animate);
+    };
+
+    const commit = (next: FloatState, y: number) => {
+      if (next === floatState) {
+        applyFloatingVisuals(true);
+        return;
+      }
+      if (next === 'receding') {
+        const rect = floatingHeader.getBoundingClientRect();
+        recedeDocTop = rect.top + y;
+      }
+      floatState = next;
       anchorY = y;
-      applyVisuals(y, y > headerHeight);
+      applyFloatingVisuals(true);
     };
 
     const update = () => {
       const y = window.scrollY;
 
-      if (isSectionReorderDragging()) {
-        state = 'hidden';
-        applyVisuals(y, false);
-        trend = null;
-        lastY = y;
-        ticking = false;
-        return;
-      }
-
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
+      if (isSectionReorderDragging()) {
+        parkFloating(false);
+        syncAria();
+        trend = null;
+        lastY = y;
+        ticking = false;
+        return;
+      }
+
+      if (staticIntersecting) {
+        parkFloating(false);
+        syncAria();
+        trend = null;
+        lastY = y;
+        ticking = false;
+        return;
+      }
+
       if (isMenuOpen()) {
-        state = 'pinned';
-        applyVisuals(y, y > headerHeight);
+        floatState = 'revealed';
+        applyFloatingVisuals(true);
+        syncAria();
         trend = null;
         lastY = y;
         ticking = false;
         return;
       }
 
-      // Below the header's own height it's still (at least partly) on
-      // screen — fake in-flow motion with translateY(-y). Only once it's
-      // scrolled fully out of view does the anchor-based pin/unpin logic
-      // below take over.
-      if (y <= headerHeight) {
-        state = 'with-page';
-        applyVisuals(y, false);
-        trend = null;
+      if (floatState === 'receding') {
+        if (floatingHeader.getBoundingClientRect().bottom < 0) {
+          parkFloating(false);
+        }
+        syncAria();
         lastY = y;
         ticking = false;
         return;
       }
 
-      // Reset the anchor on a genuine direction reversal so cumulative
-      // distance is measured from the turning point, not the previous
-      // frame — a frame-to-frame delta never crosses threshold on a slow
-      // scroll (~1-2px/frame), leaving the header stuck in place.
       if (y > lastY && trend !== 'down') {
         trend = 'down';
         anchorY = lastY;
@@ -298,25 +487,41 @@ const menuLinks = headerSettings.menuLinks;
         anchorY = lastY;
       }
 
-      if (state === 'pinned') {
+      if (floatState === 'revealed') {
         if (y - anchorY > UNPIN_PX) {
-          commit('hidden', y);
+          commit('receding', y);
         } else {
-          applyVisuals(y, true);
+          applyFloatingVisuals(true);
         }
       } else if (anchorY - y > REVEAL_PX) {
-        commit('pinned', y);
-      } else if (state !== 'hidden') {
-        commit('hidden', y);
+        commit('revealed', y);
+      } else if (floatState !== 'parked') {
+        commit('parked', y);
       } else {
-        applyVisuals(y, true);
+        applyFloatingVisuals(false);
       }
 
+      syncAria();
       lastY = y;
       ticking = false;
     };
 
-    applyVisuals(window.scrollY, false);
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        staticIntersecting = entry?.isIntersecting ?? false;
+        if (staticIntersecting) {
+          floatState = 'parked';
+          trend = null;
+        }
+        applyFloatingVisuals(false);
+        syncAria();
+      },
+      { threshold: 0 },
+    );
+    observer.observe(staticHeader);
+
+    applyFloatingVisuals(false);
+    syncAria();
     document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
     window.addEventListener(
@@ -331,13 +536,11 @@ const menuLinks = headerSettings.menuLinks;
     );
 
     window.addEventListener('resize', () => {
-      syncSlotHeight();
-      applyVisuals(window.scrollY, false);
+      applyFloatingVisuals(false);
     });
   }
 
-  const setMenuBackdropVisible = (visible: boolean) => {
-    const headerEl = document.querySelector('.site-header--nav-menu');
+  const setMenuBackdropVisible = (headerEl: Element | null, visible: boolean) => {
     if (!headerEl) return;
 
     if (visible) {
@@ -355,9 +558,10 @@ const menuLinks = headerSettings.menuLinks;
       active.blur();
     }
 
-    const headerEl = document.querySelector('.site-header--nav-menu');
-    headerEl?.style.setProperty('--menu-backdrop-close-delay', '0s');
-    setMenuBackdropVisible(false);
+    document.querySelectorAll<HTMLElement>('.site-header--nav-menu').forEach((headerEl) => {
+      headerEl.style.setProperty('--menu-backdrop-close-delay', '0s');
+      setMenuBackdropVisible(headerEl, false);
+    });
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
       const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
@@ -454,7 +658,7 @@ const menuLinks = headerSettings.menuLinks;
       trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
       trigger.dataset.menuOpen = 'true';
-      setMenuBackdropVisible(true);
+      setMenuBackdropVisible(trigger.closest('.site-header--nav-menu'), true);
       setOpenStagger();
       setPanelReveal(true);
       trigger.dispatchEvent(new CustomEvent('header:trigger-open'));
@@ -462,10 +666,9 @@ const menuLinks = headerSettings.menuLinks;
 
     const closeMenu = () => {
       delete trigger.dataset.menuOpen;
-      document
-        .querySelector('.site-header--nav-menu')
-        ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
-      setMenuBackdropVisible(false);
+      const headerEl = trigger.closest('.site-header--nav-menu');
+      headerEl?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
+      setMenuBackdropVisible(headerEl, false);
       setCloseStagger();
       setPanelReveal(false);
       clearCloseTimer();
@@ -670,10 +873,9 @@ const menuLinks = headerSettings.menuLinks;
   void document.fonts?.ready.then(applyWordmarkKerning);
   document.fonts?.addEventListener('loadingdone', applyWordmarkKerning);
 
-  const startTrigger = document.querySelector('.header-trigger--start');
-  const wordmarkStack = startTrigger?.querySelector('.header-trigger__wordmark-stack');
-
-  if (startTrigger && wordmarkStack) {
+  document.querySelectorAll<HTMLElement>('.header-trigger--start').forEach((startTrigger) => {
+    const wordmarkStack = startTrigger.querySelector('.header-trigger__wordmark-stack');
+    if (!wordmarkStack) return;
     const pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page') as HTMLElement | null;
     const pageChars = [
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--page .header-trigger__char'),
@@ -879,7 +1081,7 @@ const menuLinks = headerSettings.menuLinks;
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
       brandLink?.removeAttribute('aria-label');
     });
-  }
+  });
 
   // DEV-only: show/hide SectionSidebarNav curve playground (persists across pages).
   {
@@ -942,10 +1144,6 @@ const menuLinks = headerSettings.menuLinks;
 </script>
 
 <style>
-  .site-header-slot {
-    flex-shrink: 0;
-  }
-
   .site-header {
     --header-menu-link-size: 1.2em;
 
@@ -970,26 +1168,36 @@ const menuLinks = headerSettings.menuLinks;
     --header-wordmark-size: calc(
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
+    padding-block: var(--space-unit);
+    padding-inline: var(--page-gutter, var(--space-unit));
+  }
+
+  /* In-flow header at page top — scrolls naturally with content. */
+  .site-header--static {
+    position: relative;
+    z-index: auto;
+  }
+
+  /* Fixed overlay — fades in on scroll-up reveal; never visible at page top. */
+  .site-header--floating {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    /* Replaces #site-wrapper padding now that the header is viewport-fixed. */
-    padding-block: var(--space-unit);
-    padding-inline: var(--page-gutter, var(--space-unit));
-    transform: translateY(0);
-    transition: transform 0.35s ease, visibility 0s linear 0.35s;
-    /* Above mid-page sections (25). Fill fades in only while pinned
-       (scroll-up reveal or menu open). Below format bar (90+). */
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
     z-index: 50;
   }
 
-  .site-header.is-scrolled-hidden {
-    pointer-events: none;
+  .site-header--floating.is-scrolled-hidden {
+    opacity: 0;
     visibility: hidden;
+    pointer-events: none;
   }
 
-  .site-header__bg {
+  .site-header--floating .site-header__bg {
     position: absolute;
     inset-block: 0;
     /* Full viewport, not the content column — inherit --page-gutter from
@@ -1003,7 +1211,7 @@ const menuLinks = headerSettings.menuLinks;
     transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .site-header.is-pinned .site-header__bg {
+  .site-header--floating.is-pinned .site-header__bg {
     opacity: 1;
   }
 
@@ -1029,6 +1237,10 @@ const menuLinks = headerSettings.menuLinks;
 
   .site-header--nav-menu {
     z-index: 50;
+  }
+
+  .site-header--static.site-header--nav-menu {
+    z-index: auto;
   }
 
   .header-menu-backdrop {
@@ -1600,7 +1812,7 @@ const menuLinks = headerSettings.menuLinks;
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .site-header {
+    .site-header--floating {
       transition: none;
     }
 
