@@ -219,12 +219,14 @@ const menuLinks = headerSettings.menuLinks;
     // clean in-flow layout (load + resize), stored, and never re-read from a
     // positioned state — so it can't compound or drift. A fixed/absolute
     // header with unset left/right shrink-wraps to its content; this pins the
-    // box to the exact x-position and width flow gave it.
+    // box to the exact x-position and width flow gave it. rect.left is already
+    // viewport-relative, which is exactly what fixed positioning wants — do
+    // NOT add scrollX (that double-counts the gutter and shoves it right).
     let geoLeft = 0;
     let geoWidth = 0;
     const captureGeo = () => {
       const rect = header.getBoundingClientRect();
-      geoLeft = rect.left + window.scrollX;
+      geoLeft = rect.left;
       geoWidth = rect.width;
     };
     captureGeo();
