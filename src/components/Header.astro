@@ -29,7 +29,6 @@ const menuLinks = headerSettings.menuLinks;
 ---
 
 {navMenu ? (
-  <div class="site-header-slot">
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="header-menu-backdrop" aria-hidden="true"></div>
@@ -145,9 +144,7 @@ const menuLinks = headerSettings.menuLinks;
       </div>
     </div>
   </header>
-  </div>
 ) : (
-  <div class="site-header-slot">
   <header class="site-header">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
@@ -174,7 +171,6 @@ const menuLinks = headerSettings.menuLinks;
       </nav>
     </div>
   </header>
-  </div>
 )}
 
 <script>
@@ -182,24 +178,16 @@ const menuLinks = headerSettings.menuLinks;
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
   const isTapMode = () => tapModeMq.matches;
 
-  const header = document.querySelector('.site-header') as HTMLElement | null;
+  const header = document.querySelector('.site-header');
   if (header) {
-    const slot = header.parentElement as HTMLElement | null;
-    const REVEAL_PX = 4;
-    const UNPIN_PX = 4;
-    const FADE_MS = 350;
+    const REVEAL_PX = 4; // cumulative up-scroll before the docked fade-in
+    const UNDOCK_PX = 4; // cumulative down-scroll before un-docking
 
-    type HeaderState = 'flow' | 'riding' | 'pinned' | 'parked';
-
-    let state: HeaderState = 'flow';
-    let slotDocTop = 0;
-    let headerHeight = 0;
-    let ridingDocTop = 0;
-    let geoLeft = 0;
-    let geoWidth = 0;
     let lastY = window.scrollY;
     let trend: 'up' | 'down' | null = null;
     let anchorY = window.scrollY;
+    let docked = false;
+    let headerHeight = header.offsetHeight;
     let ticking = false;
 
     const isMenuOpen = () =>
@@ -210,157 +198,36 @@ const menuLinks = headerSettings.menuLinks;
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
-    const clearPositionStyles = () => {
-      header.style.removeProperty('position');
-      header.style.removeProperty('top');
-      header.style.removeProperty('left');
-      header.style.removeProperty('width');
-      header.style.removeProperty('right');
-      header.style.removeProperty('opacity');
-      header.style.removeProperty('visibility');
-      header.style.removeProperty('pointer-events');
-      header.style.removeProperty('transition');
-      header.style.removeProperty('z-index');
+    // Docking never moves the header out of flow: a per-frame counter-translate
+    // (translateY = scrollY) holds it at the viewport top while the page scrolls
+    // beneath it. Un-docking is just removing the transform — the header is
+    // already at its natural in-flow position, so there is nothing to measure
+    // and nothing that can drift.
+    const applyDock = (y: number) => {
+      header.style.transform = docked ? `translateY(${y}px)` : '';
     };
 
-    const captureGeo = (rect?: DOMRect) => {
-      const r = rect ?? header.getBoundingClientRect();
-      geoLeft = r.left;
-      geoWidth = r.width;
-    };
-
-    const syncSlotHeight = () => {
-      if (!slot) return;
-      if (state === 'flow') {
-        slot.style.removeProperty('height');
-      } else {
-        slot.style.height = `${header.offsetHeight}px`;
-      }
-    };
-
-    const lockSlotHeight = () => {
-      if (!slot) return;
-      slot.style.height = `${header.offsetHeight}px`;
-    };
-
-    const applyGeo = () => {
-      header.style.left = `${geoLeft}px`;
-      header.style.width = `${geoWidth}px`;
-    };
-
-    const measureSlot = () => {
-      const canClearPosition = state === 'flow' || state === 'parked';
-      if (canClearPosition) {
-        clearPositionStyles();
-        slotDocTop = slot?.offsetTop ?? header.offsetTop;
-        headerHeight = header.offsetHeight;
-        captureGeo();
-        if (state !== 'flow') {
-          applyVisuals(false);
-        }
-      } else {
-        slotDocTop = (slot ?? header).getBoundingClientRect().top + window.scrollY;
-        headerHeight = slot?.offsetHeight ?? header.offsetHeight;
-        captureGeo();
-      }
-      syncSlotHeight();
-    };
-
-    const applyVisuals = (animate: boolean) => {
-      const dragHidden = isSectionReorderDragging() && window.scrollY > slotDocTop;
-      header.classList.toggle('is-scrolled-hidden', dragHidden);
-      if (!dragHidden) {
-        header.classList.remove('is-scrolled-hidden');
-      }
-      header.classList.toggle('is-pinned', state === 'pinned' || (isMenuOpen() && state !== 'flow'));
-
-      if (dragHidden) return;
-
-      switch (state) {
-        case 'flow':
-          clearPositionStyles();
-          break;
-        case 'pinned':
-          header.style.position = 'fixed';
-          header.style.top = '0';
-          applyGeo();
-          header.style.opacity = '1';
-          header.style.visibility = 'visible';
-          header.style.pointerEvents = 'auto';
-          header.style.zIndex = '50';
-          header.style.transition = animate ? `opacity ${FADE_MS}ms ease` : 'none';
-          break;
-        case 'riding':
-          header.style.position = 'absolute';
-          header.style.top = `${ridingDocTop}px`;
-          applyGeo();
-          header.style.opacity = '1';
-          header.style.visibility = 'visible';
-          header.style.pointerEvents = 'auto';
-          header.style.zIndex = '50';
-          header.style.transition = 'none';
-          break;
-        case 'parked':
-          header.style.position = 'fixed';
-          header.style.top = '0';
-          applyGeo();
-          header.style.opacity = '0';
-          header.style.visibility = 'hidden';
-          header.style.pointerEvents = 'none';
-          header.style.zIndex = '50';
-          header.style.transition = animate ? `opacity ${FADE_MS}ms ease` : 'none';
-          break;
-      }
-    };
-
-    const enterFlow = (y: number) => {
-      state = 'flow';
-      anchorY = y;
-      trend = null;
-      clearPositionStyles();
-      header.classList.remove('is-pinned');
-      if (slot) slot.style.removeProperty('height');
-      measureSlot();
-    };
-
-    const enterParked = (y: number, animate = false) => {
-      lockSlotHeight();
-      captureGeo();
-      state = 'parked';
-      anchorY = y;
-      syncSlotHeight();
-      applyVisuals(animate);
-    };
-
-    const enterPinned = (y: number, animate = true) => {
-      lockSlotHeight();
-      captureGeo();
-      state = 'pinned';
-      anchorY = y;
-      syncSlotHeight();
-      applyVisuals(false);
-      if (animate) {
+    const setDocked = (next: boolean, fade: boolean) => {
+      if (docked === next) return;
+      docked = next;
+      header.classList.toggle('is-docked', docked);
+      if (!docked) {
+        header.style.transform = '';
+        header.style.opacity = '';
+        header.style.pointerEvents = '';
+        header.style.transition = '';
+      } else if (fade) {
+        // Fade-in only when revealing from fully off-screen. Docking while the
+        // header is partly visible (scrolled back up before it fully left) is
+        // instant — it just stops moving.
+        header.style.transition = 'none';
         header.style.opacity = '0';
-        header.style.visibility = 'visible';
         requestAnimationFrame(() => {
-          header.style.transition = `opacity ${FADE_MS}ms ease`;
+          header.style.transition = '';
           header.style.opacity = '1';
         });
       }
     };
-
-    const enterRiding = (y: number) => {
-      const rect = header.getBoundingClientRect();
-      lockSlotHeight();
-      ridingDocTop = rect.top + y;
-      captureGeo(rect);
-      state = 'riding';
-      anchorY = y;
-      syncSlotHeight();
-      applyVisuals(false);
-    };
-
-    const isDeep = (y: number) => y > slotDocTop + headerHeight;
 
     const update = () => {
       const y = window.scrollY;
@@ -368,11 +235,9 @@ const menuLinks = headerSettings.menuLinks;
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
       if (isSectionReorderDragging()) {
-        const dragHidden = window.scrollY > slotDocTop;
-        header.classList.toggle('is-scrolled-hidden', dragHidden);
-        if (!dragHidden) {
-          header.classList.remove('is-scrolled-hidden');
-        }
+        // At the page top the in-flow header stays visible; deep, hide it so
+        // auto-scroll during the drag doesn't leave a stale bar on screen.
+        header.classList.toggle('is-scrolled-hidden', y > 8);
         trend = null;
         lastY = y;
         ticking = false;
@@ -380,59 +245,19 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (isMenuOpen()) {
-        if (state !== 'flow' || y > slotDocTop) {
-          enterPinned(y, state !== 'pinned');
-        }
+        // Menu needs the header present at any depth.
+        if (y > headerHeight) setDocked(true, false);
+        header.classList.remove('is-scrolled-hidden');
+        applyDock(y);
         trend = null;
         lastY = y;
         ticking = false;
         return;
       }
 
-      if (state === 'riding') {
-        if (y > lastY && trend !== 'down') {
-          trend = 'down';
-          anchorY = lastY;
-        } else if (y < lastY && trend !== 'up') {
-          trend = 'up';
-          anchorY = lastY;
-        }
-
-        const rect = header.getBoundingClientRect();
-        if (rect.bottom < 0) {
-          enterParked(y, false);
-        } else if (rect.top <= 0 && trend === 'up' && isDeep(y)) {
-          enterPinned(y, false);
-        } else if (rect.top >= 0 && y <= slotDocTop) {
-          enterFlow(y);
-        }
-        lastY = y;
-        ticking = false;
-        return;
-      }
-
-      if (state === 'flow') {
-        if (y <= slotDocTop) {
-          lastY = y;
-          ticking = false;
-          return;
-        }
-        const rect = header.getBoundingClientRect();
-        if (rect.bottom < 0) {
-          enterParked(y, false);
-        }
-        lastY = y;
-        ticking = false;
-        return;
-      }
-
-      if (y <= slotDocTop && (state === 'parked' || state === 'pinned')) {
-        enterFlow(y);
-        lastY = y;
-        ticking = false;
-        return;
-      }
-
+      // Genuine direction reversal resets the anchor, so cumulative distance is
+      // measured from the turning point — a frame-to-frame delta never crosses
+      // the threshold on a slow scroll (~1-2px/frame).
       if (y > lastY && trend !== 'down') {
         trend = 'down';
         anchorY = lastY;
@@ -441,27 +266,32 @@ const menuLinks = headerSettings.menuLinks;
         anchorY = lastY;
       }
 
-      if (state === 'pinned') {
-        if (y - anchorY > UNPIN_PX) {
-          enterRiding(y);
-        } else {
-          applyVisuals(true);
+      if (docked) {
+        if (y - anchorY > UNDOCK_PX) {
+          // Hand back to native flow. If the header is fully on screen at this
+          // moment (docked at top), its in-flow slot is above the viewport, so
+          // removing the transform lets it scroll away naturally from the top.
+          setDocked(false, false);
         }
-      } else if (state === 'parked' && isDeep(y) && anchorY - y > REVEAL_PX) {
-        enterPinned(y, true);
-      } else if (state === 'parked') {
-        applyVisuals(false);
+      } else if (trend === 'up' && anchorY - y > REVEAL_PX) {
+        const rect = header.getBoundingClientRect();
+        if (rect.bottom <= 0) {
+          // Fully off-screen: dock + fade in at full height.
+          setDocked(true, true);
+        } else if (rect.top <= 0) {
+          // Partly visible and its top just reached the viewport top: dock in
+          // place, no fade — it simply stops scrolling away.
+          setDocked(true, false);
+        }
+        // Otherwise it's still riding into view with the page — do nothing.
       }
+
+      header.classList.remove('is-scrolled-hidden');
+      applyDock(y);
 
       lastY = y;
       ticking = false;
     };
-
-    measureSlot();
-    if (window.scrollY > slotDocTop + headerHeight) {
-      state = 'parked';
-      applyVisuals(false);
-    }
 
     document.documentElement.classList.toggle('is-page-top', window.scrollY <= 8);
 
@@ -477,12 +307,12 @@ const menuLinks = headerSettings.menuLinks;
     );
 
     window.addEventListener('resize', () => {
-      measureSlot();
-      applyVisuals(false);
+      headerHeight = header.offsetHeight;
     });
   }
 
-  const setMenuBackdropVisible = (headerEl: Element | null, visible: boolean) => {
+  const setMenuBackdropVisible = (visible: boolean) => {
+    const headerEl = document.querySelector('.site-header--nav-menu');
     if (!headerEl) return;
 
     if (visible) {
@@ -500,10 +330,9 @@ const menuLinks = headerSettings.menuLinks;
       active.blur();
     }
 
-    document.querySelectorAll<HTMLElement>('.site-header--nav-menu').forEach((headerEl) => {
-      headerEl.style.setProperty('--menu-backdrop-close-delay', '0s');
-      setMenuBackdropVisible(headerEl, false);
-    });
+    const headerEl = document.querySelector('.site-header--nav-menu');
+    headerEl?.style.setProperty('--menu-backdrop-close-delay', '0s');
+    setMenuBackdropVisible(false);
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
       const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
@@ -600,7 +429,7 @@ const menuLinks = headerSettings.menuLinks;
       trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
       trigger.dataset.menuOpen = 'true';
-      setMenuBackdropVisible(trigger.closest('.site-header--nav-menu'), true);
+      setMenuBackdropVisible(true);
       setOpenStagger();
       setPanelReveal(true);
       trigger.dispatchEvent(new CustomEvent('header:trigger-open'));
@@ -608,9 +437,10 @@ const menuLinks = headerSettings.menuLinks;
 
     const closeMenu = () => {
       delete trigger.dataset.menuOpen;
-      const headerEl = trigger.closest('.site-header--nav-menu');
-      headerEl?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
-      setMenuBackdropVisible(headerEl, false);
+      document
+        .querySelector('.site-header--nav-menu')
+        ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
+      setMenuBackdropVisible(false);
       setCloseStagger();
       setPanelReveal(false);
       clearCloseTimer();
@@ -815,9 +645,10 @@ const menuLinks = headerSettings.menuLinks;
   void document.fonts?.ready.then(applyWordmarkKerning);
   document.fonts?.addEventListener('loadingdone', applyWordmarkKerning);
 
-  document.querySelectorAll<HTMLElement>('.header-trigger--start').forEach((startTrigger) => {
-    const wordmarkStack = startTrigger.querySelector('.header-trigger__wordmark-stack');
-    if (!wordmarkStack) return;
+  const startTrigger = document.querySelector('.header-trigger--start');
+  const wordmarkStack = startTrigger?.querySelector('.header-trigger__wordmark-stack');
+
+  if (startTrigger && wordmarkStack) {
     const pageWordmark = wordmarkStack.querySelector('.header-trigger__wordmark--page') as HTMLElement | null;
     const pageChars = [
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--page .header-trigger__char'),
@@ -1023,7 +854,7 @@ const menuLinks = headerSettings.menuLinks;
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
       brandLink?.removeAttribute('aria-label');
     });
-  });
+  }
 
   // DEV-only: show/hide SectionSidebarNav curve playground (persists across pages).
   {
@@ -1086,10 +917,6 @@ const menuLinks = headerSettings.menuLinks;
 </script>
 
 <style>
-  .site-header-slot {
-    position: relative;
-  }
-
   .site-header {
     --header-menu-link-size: 1.2em;
 
@@ -1114,8 +941,16 @@ const menuLinks = headerSettings.menuLinks;
     --header-wordmark-size: calc(
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
-    padding-block: var(--space-unit);
-    position: relative;
+    position: sticky;
+    top: 0;
+    /* Above mid-page sections (25). Fill is transparent at page top and
+       fades in on scroll or menu open. Below format bar (90+). */
+    z-index: 50;
+    padding: var(--space-unit) 0;
+    transition: opacity 0.35s ease;
+    /* Docking holds the header at the viewport top with a counter-translate
+       (see script) — it never leaves flow, so no layout shift is possible. */
+    will-change: transform;
   }
 
   .site-header.is-scrolled-hidden {
@@ -1133,9 +968,27 @@ const menuLinks = headerSettings.menuLinks;
     background-color: var(--sys-color-srf);
     z-index: 0;
     pointer-events: none;
+    opacity: 1;
+    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  /* Deliberately z-index: auto — the row must NOT open a stacking context. */
+  html.is-page-top .site-header__bg {
+    opacity: 0;
+  }
+
+  html.is-page-top
+    .site-header--nav-menu:has(
+      .header-trigger:hover,
+      .header-trigger:focus-within,
+      .header-trigger.is-menu-open
+    )
+    .site-header__bg {
+    opacity: 1;
+  }
+
+  /* Deliberately z-index: auto — the row must NOT open a stacking context, so
+     .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
+     which lives outside the row. Tree order already puts the row above the bg. */
   .site-header__row {
     display: flex;
     /* Logo is taller than the trimmed wordmark; centre so the inset above
