@@ -263,7 +263,7 @@ const menuLinks = headerSettings.menuLinks;
         if (slide) {
           // Menu opened while riding partway: ease down to the docked position
           // so the menu never opens on a half-visible header.
-          header.style.transition = 'top 0.3s cubic-bezier(0.22, 1, 0.36, 1)';
+          header.style.transition = 'top 0.3s ease';
         } else if (fade) {
           // Reveal from fully off-screen: fade in at full height. Docking
           // while partly visible is instant — it just stops scrolling away.
@@ -305,17 +305,27 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (isMenuOpen()) {
-        // Menu needs the header present at any depth. If it's riding partway
-        // (only partially visible), slide it down to docked first so the menu
-        // never opens on a half-shown header.
-        if (y > headerHeight || mode === 'riding') {
-          setMode('docked', false, mode === 'riding');
+        // A real downward scroll closes the menu (like a mouse-leave) and lets
+        // the header ride away with the page. Only scroll up / hold keeps it.
+        if (y > lastY + 1) {
+          forceCloseMenus();
+          // fall through to normal handling below
+        } else {
+          // Menu needs the header present. If it's riding partway (only
+          // partially visible), slide it down to docked — but do this ONCE,
+          // not every frame, so the slide transition actually runs and the
+          // menu opens responsively during it.
+          if (mode === 'riding') {
+            setMode('docked', false, true);
+          } else if (y > headerHeight && mode !== 'docked') {
+            setMode('docked');
+          }
+          header.classList.remove('is-scrolled-hidden');
+          trend = null;
+          lastY = y;
+          ticking = false;
+          return;
         }
-        header.classList.remove('is-scrolled-hidden');
-        trend = null;
-        lastY = y;
-        ticking = false;
-        return;
       }
 
       // Genuine direction reversal resets the anchor, so cumulative distance is
