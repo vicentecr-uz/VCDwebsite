@@ -185,8 +185,8 @@ const menuLinks = headerSettings.menuLinks;
   const header = document.querySelector('.site-header');
   const headerSlot = document.querySelector('.site-header-slot');
 
-  // Latched when a downward scroll closes the menu, and released when the
-  // pointer leaves the trigger. Two jobs: it stops the still-:hover-ing cursor
+  // Latched when a downward scroll closes the menu, and released once the
+  // pointer is off the header. Two jobs: it stops the still-:hover-ing cursor
   // from re-opening the menu it just closed, and it HOLDS the header in the
   // mode it was in — docked stays docked, which is what keeps the close from
   // handing the header straight to the dock/ride flap. It must not stand in
@@ -214,6 +214,20 @@ const menuLinks = headerSettings.menuLinks;
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
     const isMenuOpen = () => header.matches(':has(.header-trigger.is-menu-open)');
+
+    // Whether the pointer or the keyboard is actually ON the header. This, not
+    // the is-menu-open class, is what may hold the header still. The class
+    // outlives the visual close by the whole close animation (~0.5s), so a
+    // hold gated on the class alone can be latched after the pointer has
+    // already left — and since mouseleave has by then fired for the last time,
+    // nothing would ever release it and the header stays docked for good.
+    // Reading it live means the hold cannot outlive the interaction. Tap
+    // devices have no hover to read, so there the menu being open is the whole
+    // story.
+    const isHeaderEngaged = () =>
+      isTapMode() ||
+      !!header.querySelector('.header-trigger:hover') ||
+      header.contains(document.activeElement);
 
     // The slot claims the header's flow height no matter where the header
     // itself is (flow / fixed / absolute), so the page below never jumps.
@@ -343,8 +357,13 @@ const menuLinks = headerSettings.menuLinks;
         return;
       }
 
+      const headerEngaged = isHeaderEngaged();
+      // Belt and braces: the latch can't survive the pointer leaving, however
+      // it got set. mouseleave clears it too, but only when it actually fires.
+      if (!headerEngaged) menuScrollClosed = false;
+
       const menuOpen = isMenuOpen();
-      if (menuOpen || menuScrollClosed) {
+      if (headerEngaged && (menuOpen || menuScrollClosed)) {
         // A real downward scroll closes the menu, once, with its normal close
         // animation (not the instant force-close). Latching first means the
         // next frames don't re-dispatch the close and restart its stagger.
@@ -356,12 +375,12 @@ const menuLinks = headerSettings.menuLinks;
             t.dispatchEvent(new CustomEvent('header:request-close'));
           });
         }
-        // Freeze the mode while the menu is open or the pointer still holds
-        // the header: docked STAYS docked (closing the menu is not a reason to
-        // undock — it only rides away on a later scroll, once the pointer is
-        // off it), and a header still in flow at the page top keeps scrolling
-        // away natively. Docking on open is the trigger-open listener's job,
-        // so there's nothing to decide here.
+        // Freeze the mode while the pointer is on the header and the menu is
+        // open or just scroll-closed: docked STAYS docked (closing the menu is
+        // not a reason to undock — it rides away on a later scroll, once the
+        // pointer is off it), and a header still in flow at the page top keeps
+        // scrolling away natively. Docking on open is the trigger-open
+        // listener's job, so there's nothing to decide here.
         header.classList.remove('is-scrolled-hidden');
         trend = null;
         lastY = y;
