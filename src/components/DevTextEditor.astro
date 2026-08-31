@@ -301,6 +301,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       textStates: EditableTextState[];
       spacingState: EditableSpacingState | null;
       level?: 2 | 3;
+      intro?: boolean;
     };
 
     type PersistedMediaInsert = {
@@ -544,6 +545,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         const pageTop = isPageTopSpacingBlock(element);
         const initial = raw;
+        const docKey = element.dataset.devSpacingDocument || '';
+        const isGalleryDoc = docKey === 'home' || docKey === 'work' || docKey === 'play';
+        const introMenuItem = isGalleryDoc
+          ? '<button type="button" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro</button>'
+          : '';
 
         const control = document.createElement('div');
         control.className = 'dev-gap-toolbar';
@@ -572,6 +578,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           </div>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
+            ${introMenuItem}
             <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
             <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
             <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
@@ -1458,6 +1465,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           spacing: entry.spacing,
         };
         if (entry.type === 'sectionTitle' && entry.level === 3) body.level = 3;
+        if (entry.intro) body.intro = true;
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -1718,16 +1726,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       documentKey: string,
       index: number,
       spacing: SpacingValue,
+      intro?: boolean,
     ) => {
       const sectionPath = ['sections', index] as Array<string | number>;
       // Inserted titles omit precede-related so the following block keeps its gap.
       const spacingClass = projectStackClassName(spacing, false);
+      const introClass = intro ? ' project-block--intro' : '';
 
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
-          ? `project-block ${spacingClass}`
-          : 'project-block';
+          ? `project-block ${spacingClass}${introClass}`
+          : `project-block${introClass}`;
+        if (intro) wrapper.dataset.devIntro = 'true';
         wrapper.dataset.devSpacingDocument = documentKey;
         wrapper.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
         wrapper.dataset.devSpacingValue = spacing;
@@ -1745,8 +1756,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const section = document.createElement('section');
       section.className = spacingClass
-        ? `project-block ${spacingClass}`
-        : 'project-block';
+        ? `project-block ${spacingClass}${introClass}`
+        : `project-block${introClass}`;
+      if (intro) section.dataset.devIntro = 'true';
       section.dataset.devSpacingDocument = documentKey;
       section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
       section.dataset.devSpacingValue = spacing;
@@ -2061,7 +2073,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const insertSectionAt = (
       anchor: EditableSpacingState | HTMLElement,
       type: InsertableSectionType,
-      options?: { placement?: 'before' | 'after'; spacing?: SpacingValue },
+      options?: { placement?: 'before' | 'after'; spacing?: SpacingValue; intro?: boolean },
     ) => {
       const host = anchor instanceof HTMLElement ? anchor : anchor.element;
       const documentKey = anchor instanceof HTMLElement
@@ -2094,7 +2106,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1);
 
-      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing);
+      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro);
       if (placement === 'after') host.after(built.root);
       else host.before(built.root);
 
@@ -2139,6 +2151,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         root: built.root,
         textStates: [textState],
         spacingState: spacingState ?? null,
+        ...(options?.intro ? { intro: true } : {}),
       });
 
       window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
@@ -2294,7 +2307,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           }
           if (type !== 'bodyText' && type !== 'sectionTitle') return;
           dismissGapToolbarAfterAddChoice();
-          insertSectionAt(state, type);
+          const intro = button.dataset.devSectionIntro === 'true';
+          insertSectionAt(state, type, intro ? { intro: true } : undefined);
         });
       });
     };
@@ -3253,6 +3267,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       );
       if (precedeRelated) built.root.classList.add('project-stack--precede-related');
 
+      const previousHadIntro =
+        previousRoot.classList.contains('project-block--intro') ||
+        previousRoot.dataset.devIntro === 'true';
+      if (previousHadIntro) {
+        built.root.classList.add('project-block--intro');
+        built.root.dataset.devIntro = 'true';
+      }
+
       const previousRootId = previousRoot.id;
       const fromWasH1 = current === 'sectionTitle:2';
       const toIsH1 = parsed.type === 'sectionTitle' && parsed.level === 2;
@@ -3274,6 +3296,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         insert.level = parsed.type === 'sectionTitle' ? (parsed.level ?? 2) : undefined;
         insert.textStates = [block.state];
         insert.spacingState = spacingState ?? null;
+        if (previousHadIntro) insert.intro = true;
       }
 
       block.state.element = built.textElement;

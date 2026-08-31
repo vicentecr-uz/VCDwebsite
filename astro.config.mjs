@@ -1774,6 +1774,7 @@ function contentSectionDevWriter() {
               id,
               spacing: insertSpacing,
               paragraphs: [''],
+              ...(body.intro === true || body.intro === 'true' ? { intro: true } : {}),
             };
           } else if (type === 'image') {
             if (!srcs.length && !filenames.length) {
