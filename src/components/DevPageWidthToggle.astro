@@ -1,20 +1,27 @@
 ---
+import DevPanel from './ui/DevPanel.astro';
 import SegmentedControl from './ui/SegmentedControl.astro';
 import Button from './ui/Button.astro';
 
 /**
  * Live A/B for the page's reading-column cap (--page-max-width). Original =
  * the pre-rotation 60em; Emil = the shipped 43.25em; Custom = a typed em
- * value. Mirrors DevThemeToggle's html.is-dev-mode-only gating exactly — not
- * a data-dev-panel-key DevOverlay, which mass-hides on Edit-mode exit and
- * would vanish mid-comparison.
+ * value. Temporary — remove once Anto settles on a width.
+ *
+ * DevPanel gives real panel chrome (title bar, corner lights, body padding)
+ * but is deliberately NOT given a data-dev-panel-key: that prop opts a panel
+ * into DevModeController's devPanels() visibility system, which mass-hides
+ * every [data-dev-panel-key] element on Edit-mode exit (see Atlas learnings —
+ * a prior DevOverlay A/B hit exactly this and vanished mid-comparison).
+ * Visibility here is owned entirely by our own html.is-dev-mode CSS gate
+ * below, which DevPanel itself has no opinion on either way.
  */
 
 const ORIGINAL_EM = 60;
 const EMIL_EM = 43.25;
 ---
 
-<div class="dev-page-width-toggle" data-dev-page-width-toggle>
+<DevPanel title="Page width" class="dev-page-width-toggle" data-dev-page-width-toggle>
   <SegmentedControl label="Page width">
     <Button
       emphasis="ghost"
@@ -41,17 +48,19 @@ const EMIL_EM = 43.25;
       data-width-custom-input
     />
   </SegmentedControl>
-</div>
+</DevPanel>
 
 <style>
-  /* Footer: only show while dev mode is on (matches DevThemeToggle). */
+  /* Footer: only show while dev mode is on (matches DevThemeToggle). Not
+     gated by data-dev-panel-key — see the header comment. */
   .dev-page-width-toggle {
     display: none;
-    width: max-content;
   }
 
   :global(html.is-dev-mode) .dev-page-width-toggle {
-    display: block;
+    /* .dev-panel's own base display; restated here since this scoped rule
+       needs to be the one deciding visibility. */
+    display: flex;
   }
 
   .dev-page-width-toggle :global(.dev-segmented) {
