@@ -1931,13 +1931,16 @@ const easingOptions = [
     Fixed gutter nav needs ~14.25em per side: 12.5em width + 1em gap to the
     43.25em content column + ≥0.75em from the viewport edge.
     Viewport: 43.25em + 2 × 14.25em = 71.75em. Below that, hide (desktop-only)
+    The `left` calc reads --page-max-width so it follows the live A/B; this
+    breakpoint can't — a media query condition cannot read a custom property.
+    It stays pinned to the shipped width, which is right once the A/B is gone.
     or fall back to the compact sticky strip (Styles).
   */
   @media (min-width: 71.75em) {
     .section-sidebar-nav {
       position: fixed;
       top: 6.75em;
-      left: max(0.75em, calc((100vw - 43.25em) / 2 - 13.5em));
+      left: max(0.75em, calc((100vw - var(--page-max-width)) / 2 - 13.5em));
       width: 12.5em;
       max-height: calc(100dvh - 8em);
       overflow: hidden;
