@@ -207,8 +207,6 @@ const menuLinks = headerSettings.menuLinks;
 
     // The slot claims the header's flow height no matter where the header
     // itself is (flow / fixed / absolute), so the page below never jumps.
-    // Height is the ONLY thing measured — horizontal geometry is never read,
-    // so nothing can drift.
     const syncSlot = () => {
       headerHeight = header.offsetHeight;
       if (headerSlot instanceof HTMLElement) {
@@ -216,6 +214,30 @@ const menuLinks = headerSettings.menuLinks;
       }
     };
     syncSlot();
+
+    // Horizontal geometry for the out-of-flow modes. Measured ONCE from the
+    // clean in-flow layout (load + resize), stored, and never re-read from a
+    // positioned state — so it can't compound or drift. A fixed/absolute
+    // header with unset left/right shrink-wraps to its content; this pins the
+    // box to the exact x-position and width flow gave it.
+    let geoLeft = 0;
+    let geoWidth = 0;
+    const captureGeo = () => {
+      const rect = header.getBoundingClientRect();
+      geoLeft = rect.left + window.scrollX;
+      geoWidth = rect.width;
+    };
+    captureGeo();
+
+    const applyGeo = () => {
+      header.style.left = `${geoLeft}px`;
+      header.style.width = `${geoWidth}px`;
+    };
+
+    const clearGeo = () => {
+      header.style.removeProperty('left');
+      header.style.removeProperty('width');
+    };
 
     const setMode = (next: 'flow' | 'docked' | 'riding', fade = false) => {
       if (mode === next) return;
@@ -226,9 +248,9 @@ const menuLinks = headerSettings.menuLinks;
       header.style.opacity = '';
       header.style.pointerEvents = '';
       if (mode === 'docked') {
-        // Fixed at the viewport top; horizontal geometry from the wrapper's
-        // gutter formula (CSS), never measured.
+        // Fixed at the viewport top, box pinned to its flow x/width.
         header.style.top = '';
+        applyGeo();
         if (fade) {
           // Reveal from fully off-screen: fade in at full height. Docking
           // while partly visible is instant — it just stops scrolling away.
@@ -242,8 +264,10 @@ const menuLinks = headerSettings.menuLinks;
       } else if (mode === 'riding') {
         // Absolute at the current visual spot: rides away with the page.
         header.style.top = `${window.scrollY}px`;
+        applyGeo();
       } else {
         header.style.top = '';
+        clearGeo();
       }
     };
 
@@ -335,6 +359,19 @@ const menuLinks = headerSettings.menuLinks;
 
     window.addEventListener('resize', () => {
       syncSlot();
+      // Re-measure horizontal geometry from a clean flow layout. If the header
+      // is out of flow, briefly restore it to flow to read the true values.
+      if (mode === 'flow') {
+        captureGeo();
+      } else {
+        const prevMode = mode;
+        header.style.transition = 'none';
+        header.style.visibility = 'hidden';
+        setMode('flow');
+        captureGeo();
+        setMode(prevMode);
+        header.style.visibility = '';
+      }
     });
   }
 
