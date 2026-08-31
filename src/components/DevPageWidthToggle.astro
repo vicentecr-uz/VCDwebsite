@@ -51,16 +51,29 @@ const EMIL_EM = 43.25;
 </DevPanel>
 
 <style>
-  /* Footer: only show while dev mode is on (matches DevThemeToggle). Not
-     gated by data-dev-panel-key — see the header comment. */
+  /* Floating dev chrome: only show while dev mode is on. Not gated by
+     data-dev-panel-key — see the header comment. */
   .dev-page-width-toggle {
     display: none;
+    position: fixed;
+    bottom: var(--space-unit);
+    right: var(--space-unit);
+    z-index: 89; /* save bar (.dev-text-actions) is 90 */
   }
 
   :global(html.is-dev-mode) .dev-page-width-toggle {
     /* .dev-panel's own base display; restated here since this scoped rule
        needs to be the one deciding visibility. */
     display: flex;
+  }
+
+  .dev-page-width-toggle :global(.dev-panel__header) {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .dev-page-width-toggle.is-dragging :global(.dev-panel__header) {
+    cursor: grabbing;
   }
 
   .dev-page-width-toggle :global(.dev-segmented) {
@@ -109,11 +122,79 @@ const EMIL_EM = 43.25;
   const EMIL_EM = 43.25;
   const PROPERTY = '--page-max-width';
 
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
   const root = document.querySelector<HTMLElement>('[data-dev-page-width-toggle]');
   const buttons = root
     ? [...root.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
     : [];
   const customInput = root?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
+
+  const initPanelDrag = (panel: HTMLElement) => {
+    const dragHandle = panel.querySelector<HTMLElement>('.dev-panel__header');
+    if (!dragHandle) return;
+
+    let dragPointerId: number | null = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+
+    const anchorToLeftTop = () => {
+      const rect = panel.getBoundingClientRect();
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.left = `${rect.left}px`;
+      panel.style.top = `${rect.top}px`;
+      return { left: rect.left, top: rect.top };
+    };
+
+    const clampPosition = (left: number, top: number) => {
+      const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - panel.offsetHeight);
+      return {
+        left: clamp(left, 0, maxLeft),
+        top: clamp(top, 0, maxTop),
+      };
+    };
+
+    dragHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+
+      const pos = anchorToLeftTop();
+      originLeft = pos.left;
+      originTop = pos.top;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      dragPointerId = event.pointerId;
+      panel.classList.add('is-dragging');
+      dragHandle.setPointerCapture(event.pointerId);
+    });
+
+    dragHandle.addEventListener('pointermove', (event) => {
+      if (dragPointerId !== event.pointerId) return;
+      const dx = event.clientX - dragStartX;
+      const dy = event.clientY - dragStartY;
+      const next = clampPosition(originLeft + dx, originTop + dy);
+      panel.style.left = `${next.left}px`;
+      panel.style.top = `${next.top}px`;
+    });
+
+    const endDrag = (event: PointerEvent) => {
+      if (dragPointerId !== event.pointerId) return;
+      dragPointerId = null;
+      panel.classList.remove('is-dragging');
+      if (dragHandle.hasPointerCapture(event.pointerId)) {
+        dragHandle.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    dragHandle.addEventListener('pointerup', endDrag);
+    dragHandle.addEventListener('pointercancel', endDrag);
+  };
+
+  if (root) initPanelDrag(root);
 
   const applyWidth = (em: number) => {
     document.documentElement.style.setProperty(PROPERTY, `${em}em`);
