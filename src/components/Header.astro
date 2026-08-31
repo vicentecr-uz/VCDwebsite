@@ -29,7 +29,9 @@ const menuLinks = headerSettings.menuLinks;
 ---
 
 {navMenu ? (
+  <div class="site-header-slot">
   <header class="site-header site-header--nav-menu">
+    <div class="site-header__bg" aria-hidden="true"></div>
     <div class="header-menu-backdrop" aria-hidden="true"></div>
     <div class="site-header__row">
       <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
@@ -143,8 +145,11 @@ const menuLinks = headerSettings.menuLinks;
       </div>
     </div>
   </header>
+  </div>
 ) : (
+  <div class="site-header-slot">
   <header class="site-header">
+    <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
       <a
         href={linkHref}
@@ -169,6 +174,7 @@ const menuLinks = headerSettings.menuLinks;
       </nav>
     </div>
   </header>
+  </div>
 )}
 
 <script>
@@ -178,6 +184,7 @@ const menuLinks = headerSettings.menuLinks;
 
   const header = document.querySelector('.site-header') as HTMLElement | null;
   if (header) {
+    const slot = header.parentElement as HTMLElement | null;
     const REVEAL_PX = 4;
     const UNPIN_PX = 4;
     const FADE_MS = 350;
@@ -216,10 +223,24 @@ const menuLinks = headerSettings.menuLinks;
       header.style.removeProperty('z-index');
     };
 
-    const captureGeo = () => {
-      const rect = header.getBoundingClientRect();
-      geoLeft = rect.left;
-      geoWidth = rect.width;
+    const captureGeo = (rect?: DOMRect) => {
+      const r = rect ?? header.getBoundingClientRect();
+      geoLeft = r.left;
+      geoWidth = r.width;
+    };
+
+    const syncSlotHeight = () => {
+      if (!slot) return;
+      if (state === 'flow') {
+        slot.style.removeProperty('height');
+      } else {
+        slot.style.height = `${header.offsetHeight}px`;
+      }
+    };
+
+    const lockSlotHeight = () => {
+      if (!slot) return;
+      slot.style.height = `${header.offsetHeight}px`;
     };
 
     const applyGeo = () => {
@@ -228,21 +249,29 @@ const menuLinks = headerSettings.menuLinks;
     };
 
     const measureSlot = () => {
-      const prevState = state;
-      if (prevState !== 'flow') {
+      const canClearPosition = state === 'flow' || state === 'parked';
+      if (canClearPosition) {
         clearPositionStyles();
+        slotDocTop = slot?.offsetTop ?? header.offsetTop;
+        headerHeight = header.offsetHeight;
+        captureGeo();
+        if (state !== 'flow') {
+          applyVisuals(false);
+        }
+      } else {
+        slotDocTop = (slot ?? header).getBoundingClientRect().top + window.scrollY;
+        headerHeight = slot?.offsetHeight ?? header.offsetHeight;
+        captureGeo();
       }
-      slotDocTop = header.offsetTop;
-      headerHeight = header.offsetHeight;
-      captureGeo();
-      if (prevState !== 'flow') {
-        applyVisuals(false);
-      }
+      syncSlotHeight();
     };
 
     const applyVisuals = (animate: boolean) => {
-      const dragHidden = isSectionReorderDragging();
+      const dragHidden = isSectionReorderDragging() && window.scrollY > slotDocTop;
       header.classList.toggle('is-scrolled-hidden', dragHidden);
+      if (!dragHidden) {
+        header.classList.remove('is-scrolled-hidden');
+      }
       header.classList.toggle('is-pinned', state === 'pinned' || (isMenuOpen() && state !== 'flow'));
 
       if (dragHidden) return;
@@ -290,20 +319,25 @@ const menuLinks = headerSettings.menuLinks;
       trend = null;
       clearPositionStyles();
       header.classList.remove('is-pinned');
+      if (slot) slot.style.removeProperty('height');
       measureSlot();
     };
 
     const enterParked = (y: number, animate = false) => {
+      lockSlotHeight();
       captureGeo();
       state = 'parked';
       anchorY = y;
+      syncSlotHeight();
       applyVisuals(animate);
     };
 
     const enterPinned = (y: number, animate = true) => {
+      lockSlotHeight();
       captureGeo();
       state = 'pinned';
       anchorY = y;
+      syncSlotHeight();
       applyVisuals(false);
       if (animate) {
         header.style.opacity = '0';
@@ -317,10 +351,12 @@ const menuLinks = headerSettings.menuLinks;
 
     const enterRiding = (y: number) => {
       const rect = header.getBoundingClientRect();
+      lockSlotHeight();
       ridingDocTop = rect.top + y;
-      captureGeo();
+      captureGeo(rect);
       state = 'riding';
       anchorY = y;
+      syncSlotHeight();
       applyVisuals(false);
     };
 
@@ -332,7 +368,11 @@ const menuLinks = headerSettings.menuLinks;
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
       if (isSectionReorderDragging()) {
-        header.classList.add('is-scrolled-hidden');
+        const dragHidden = window.scrollY > slotDocTop;
+        header.classList.toggle('is-scrolled-hidden', dragHidden);
+        if (!dragHidden) {
+          header.classList.remove('is-scrolled-hidden');
+        }
         trend = null;
         lastY = y;
         ticking = false;
@@ -350,9 +390,19 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       if (state === 'riding') {
+        if (y > lastY && trend !== 'down') {
+          trend = 'down';
+          anchorY = lastY;
+        } else if (y < lastY && trend !== 'up') {
+          trend = 'up';
+          anchorY = lastY;
+        }
+
         const rect = header.getBoundingClientRect();
         if (rect.bottom < 0) {
           enterParked(y, false);
+        } else if (rect.top <= 0 && trend === 'up' && isDeep(y)) {
+          enterPinned(y, false);
         } else if (rect.top >= 0 && y <= slotDocTop) {
           enterFlow(y);
         }
@@ -1036,6 +1086,10 @@ const menuLinks = headerSettings.menuLinks;
 </script>
 
 <style>
+  .site-header-slot {
+    position: relative;
+  }
+
   .site-header {
     --header-menu-link-size: 1.2em;
 
@@ -1066,6 +1120,18 @@ const menuLinks = headerSettings.menuLinks;
 
   .site-header.is-scrolled-hidden {
     opacity: 0;
+    pointer-events: none;
+  }
+
+  .site-header__bg {
+    position: absolute;
+    inset-block: 0;
+    /* Full viewport, not the content column — inherit --page-gutter from
+       #site-wrapper (percentage already resolved there, so no 100vw scrollbar). */
+    left: calc(-1 * var(--page-gutter, 0px));
+    right: calc(-1 * var(--page-gutter, 0px));
+    background-color: var(--sys-color-srf);
+    z-index: 0;
     pointer-events: none;
   }
 
@@ -1191,9 +1257,9 @@ const menuLinks = headerSettings.menuLinks;
     --panel-bottom-radius: 7em;
     --panel-bottom-pad: var(--space-unit);
     position: absolute;
-    /* Behind the header row so the panel never washes over the opposite
-       trigger's wordmark/logo. Only the part that hangs below the header
-       is actually seen. */
+    /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
+       header band or the opposite trigger's wordmark/logo. Only the part that
+       hangs below the header is actually seen. */
     z-index: -1;
     opacity: 0;
     pointer-events: none;
