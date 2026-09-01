@@ -2,7 +2,6 @@
 import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import SelectField from '../ui/SelectField.astro';
-import ToggleRow from '../ui/ToggleRow.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
 import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
@@ -75,7 +74,23 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       </button>
     </SelectField>
 
-    <ToggleRow label="Constrain width" hidden data-crop-width-constrain-wrap data-crop-width-constrain />
+    <SelectField
+      label="Width"
+      hidden
+      data-crop-width-constrain-wrap
+      data-crop-width-constrain
+      options={[
+        { value: '100', label: 'Full' },
+        { value: 'text', label: 'Match text' },
+        { value: '90', label: '90%' },
+        { value: '80', label: '80%' },
+        { value: '70', label: '70%' },
+        { value: '60', label: '60%' },
+        { value: '50', label: '50%' },
+        { value: '40', label: '40%' },
+        { value: '30', label: '30%' },
+      ]}
+    />
 
     <SelectField
       label="Max view height"
@@ -231,7 +246,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const linkedAspectHint = tuner.querySelector<HTMLButtonElement>('[data-crop-linked-aspect-hint]');
     const linkedAspectTooltip = linkedAspectHint?.querySelector<HTMLElement>('[role="tooltip"]');
     const widthConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-width-constrain-wrap]');
-    const widthConstrainInput = tuner.querySelector<HTMLInputElement>('[data-crop-width-constrain]');
+    const widthConstrainSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-width-constrain]');
     const heightConstrainWrap = tuner.querySelector<HTMLElement>('[data-crop-height-constrain-wrap]');
     const maxVhSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-max-vh]');
     const viewportButtons = [
@@ -262,7 +277,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       !previewImage ||
       !aspectRatioSelect ||
       !widthConstrainWrap ||
-      !widthConstrainInput ||
+      !widthConstrainSelect ||
       !heightConstrainWrap ||
       !maxVhSelect ||
       !viewportButtons.length ||
@@ -568,7 +583,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const syncWidthConstrainUi = () => {
       const show = isStandaloneMedia(editTarget);
       widthConstrainWrap.hidden = !show;
-      widthConstrainInput.checked = draftConstrained[selectedViewport] < 100;
+      widthConstrainSelect.value = String(draftConstrained[selectedViewport]);
       heightConstrainWrap.hidden = !supportsMaxVh(editTarget);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
     };
@@ -2529,24 +2544,26 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : `Crop unlocked on ${selectedViewport} — image edges may enter the frame.`;
     });
 
-    widthConstrainInput.addEventListener('change', () => {
+    widthConstrainSelect.addEventListener('change', () => {
       if (!isStandaloneMedia(editTarget)) {
-        widthConstrainInput.checked = false;
+        widthConstrainSelect.value = '100';
         return;
       }
       pushUndo();
-      draftConstrained = {
+      draftConstrained = resolveImageGridConstrained({
         ...draftConstrained,
-        [selectedViewport]: widthConstrainInput.checked ? 80 : 100,
-      };
+        [selectedViewport]: widthConstrainSelect.value,
+      });
       applyFrameFlagsLive(editTarget, {
         constrained: draftConstrained,
         maxVh: draftMaxVh,
       });
       const percent = draftConstrained[selectedViewport];
-      status.textContent = percent < 100
-        ? `Width constrained to ${percent}% on ${selectedViewport} — unsaved changes.`
-        : `Full width on ${selectedViewport} — unsaved changes.`;
+      status.textContent = percent === 100
+        ? `Full width on ${selectedViewport} — unsaved changes.`
+        : percent === 'text'
+          ? `Width matched to text on ${selectedViewport} — unsaved changes.`
+          : `Width constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
     });
 
     maxVhSelect.addEventListener('change', () => {

@@ -45,6 +45,22 @@ import ToggleRow from '../ui/ToggleRow.astro';
     />
 
     <SelectField
+      label="Width"
+      data-carousel-constrained
+      options={[
+        { value: '100', label: 'Full' },
+        { value: 'text', label: 'Match text' },
+        { value: '90', label: '90%' },
+        { value: '80', label: '80%' },
+        { value: '70', label: '70%' },
+        { value: '60', label: '60%' },
+        { value: '50', label: '50%' },
+        { value: '40', label: '40%' },
+        { value: '30', label: '30%' },
+      ]}
+    />
+
+    <SelectField
       label="Block height"
       data-carousel-height-mode
       options={[
@@ -116,6 +132,11 @@ import ToggleRow from '../ui/ToggleRow.astro';
     type ImageViewport,
     type ResolvedCarouselBreakpoint,
   } from '../../lib/projectImageCarouselSettings';
+  import {
+    imageGridConstrainedStyle,
+    resolveImageGridConstrained,
+    type ImageGridConstrainPercent,
+  } from '../../lib/responsiveImage';
 
   interface CatalogItem {
     id: string;
@@ -141,6 +162,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-carousel-viewport]'),
     ];
     const inheritNote = tuner.querySelector<HTMLElement>('[data-carousel-inherit]');
+    const constrainedSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-constrained]');
     const heightSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-height-mode]');
     const maxSelect = tuner.querySelector<HTMLSelectElement>('[data-carousel-max-vh]');
     const pinnedInput = tuner.querySelector<HTMLInputElement>('[data-carousel-scroll-pinned]');
@@ -158,6 +180,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       !orientationButtons.length
       || !viewportButtons.length
       || !inheritNote
+      || !constrainedSelect
       || !heightSelect
       || !maxSelect
       || !pinnedInput
@@ -215,6 +238,15 @@ import ToggleRow from '../ui/ToggleRow.astro';
       };
     };
 
+    const readConstrainedSource = (target: HTMLElement) => {
+      try {
+        const raw = target.dataset.devCarouselConstrained;
+        return raw ? JSON.parse(raw) : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+
     const cloneDraft = (draft: Draft): Draft => ({
       orientation: draft.orientation,
       byViewport: {
@@ -242,9 +274,12 @@ import ToggleRow from '../ui/ToggleRow.astro';
     let selectedViewport: ImageViewport = matchCarouselViewport();
     let saved = draftFromSource(readSource(editTarget), itemIds);
     let draft = cloneDraft(saved);
+    let savedConstrained: Record<ImageViewport, ImageGridConstrainPercent> = resolveImageGridConstrained(readConstrainedSource(editTarget));
+    let draftConstrained = { ...savedConstrained };
     let liveApply = false;
     let dragItemId: string | null = null;
     const diskBaselines = new Map<string, Draft>();
+    const constrainedBaselines = new Map<string, Record<ImageViewport, ImageGridConstrainPercent>>();
 
     const bp = () => draft.byViewport[selectedViewport];
 
@@ -394,6 +429,25 @@ import ToggleRow from '../ui/ToggleRow.astro';
     const applyLive = () => {
       if (!liveApply) return;
       applyToTarget(editTarget, draft, selectedViewport);
+    };
+
+    const applyConstrainedStyleTo = (
+      target: HTMLElement,
+      values: Record<ImageViewport, ImageGridConstrainPercent>,
+    ) => {
+      for (const part of imageGridConstrainedStyle(values).split(';')) {
+        const colon = part.indexOf(':');
+        if (colon < 0) continue;
+        const key = part.slice(0, colon).trim();
+        const value = part.slice(colon + 1).trim();
+        if (key && value) target.style.setProperty(key, value);
+      }
+      target.dataset.devCarouselConstrained = JSON.stringify(values);
+    };
+
+    const applyConstrainedLive = () => {
+      if (!liveApply) return;
+      applyConstrainedStyleTo(editTarget, draftConstrained);
     };
 
     const removeFromPage = (id: string) => {
@@ -598,14 +652,23 @@ import ToggleRow from '../ui/ToggleRow.astro';
       if (!diskBaselines.has(pendingId)) {
         diskBaselines.set(pendingId, cloneDraft(saved));
       }
+      if (!constrainedBaselines.has(pendingId)) {
+        constrainedBaselines.set(pendingId, { ...savedConstrained });
+      }
       const baseline = cloneDraft(diskBaselines.get(pendingId)!);
+      const constrainedBaseline = { ...constrainedBaselines.get(pendingId)! };
 
       liveApply = true;
       applyLive();
+      applyConstrainedLive();
       const staged = cloneDraft(draft);
+      const stagedConstrained = { ...draftConstrained };
       const source = serializeCarouselSettings(staged.orientation, staged.byViewport, itemIds);
 
-      if (draftsEqual(staged, baseline)) {
+      if (
+        draftsEqual(staged, baseline)
+        && JSON.stringify(stagedConstrained) === JSON.stringify(constrainedBaseline)
+      ) {
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
           detail: { id: pendingId },
         }));
@@ -627,12 +690,16 @@ import ToggleRow from '../ui/ToggleRow.astro';
             dotsPlacement: source.dotsPlacement ?? 'outside',
             visible: source.visible ?? [...itemIds],
             breakpoints: source.breakpoints ?? null,
+            constrained: stagedConstrained,
           },
           revert: () => {
             applyToTarget(target, baseline, selectedViewport);
+            applyConstrainedStyleTo(target, constrainedBaseline);
             if (editTarget === target) {
               saved = cloneDraft(baseline);
               draft = cloneDraft(baseline);
+              savedConstrained = { ...constrainedBaseline };
+              draftConstrained = { ...constrainedBaseline };
               renderDraft();
             }
           },
@@ -746,6 +813,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       const live = bp();
+      constrainedSelect.value = String(draftConstrained[selectedViewport]);
       heightSelect.value = live.heightMode;
       maxSelect.value = live.maxHeightVh ? String(live.maxHeightVh) : '';
       pinnedInput.checked = live.scrollPinned;
@@ -756,6 +824,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       clearOverrideButton.hidden = true;
       renderBoard();
       applyLive();
+      applyConstrainedLive();
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
@@ -769,8 +838,13 @@ import ToggleRow from '../ui/ToggleRow.astro';
       if (!diskBaselines.has(pendingId)) {
         diskBaselines.set(pendingId, draftFromSource(readSource(target), itemIds));
       }
+      if (!constrainedBaselines.has(pendingId)) {
+        constrainedBaselines.set(pendingId, resolveImageGridConstrained(readConstrainedSource(target)));
+      }
       saved = draftFromSource(readSource(target), itemIds);
       draft = cloneDraft(saved);
+      savedConstrained = resolveImageGridConstrained(readConstrainedSource(target));
+      draftConstrained = { ...savedConstrained };
       renderDraft();
       if (live) {
         status.textContent = 'Editing this carousel. Pick a breakpoint, then drag thumbnails to rearrange or park.';
@@ -780,6 +854,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     const saveDraft = () => {
       if (stageDraft('Staged — use Save in the page bar to write to disk.')) {
         saved = cloneDraft(draft);
+        savedConstrained = { ...draftConstrained };
         closePanel();
       }
     };
@@ -794,6 +869,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     const revertToSaved = () => {
       if (!editTarget) return;
       draft = cloneDraft(saved);
+      draftConstrained = { ...savedConstrained };
       const wasLive = liveApply;
       liveApply = true;
       renderDraft();
@@ -837,6 +913,20 @@ import ToggleRow from '../ui/ToggleRow.astro';
         renderDraft();
         status.textContent = `Editing ${viewport} settings.`;
       });
+    });
+
+    constrainedSelect.addEventListener('change', () => {
+      draftConstrained = resolveImageGridConstrained({
+        ...draftConstrained,
+        [selectedViewport]: constrainedSelect.value,
+      });
+      renderDraft();
+      const percent = draftConstrained[selectedViewport];
+      status.textContent = percent === 100
+        ? `Full width on ${selectedViewport} — unsaved changes.`
+        : percent === 'text'
+          ? `Matched to text width on ${selectedViewport} — unsaved changes.`
+          : `Constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
     });
 
     heightSelect.addEventListener('change', () => {
@@ -903,11 +993,16 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
     window.addEventListener('vcd:dev-pending-committed', (() => {
       diskBaselines.clear();
-      if (editTarget) diskBaselines.set(pendingIdFor(editTarget), cloneDraft(saved));
+      constrainedBaselines.clear();
+      if (editTarget) {
+        diskBaselines.set(pendingIdFor(editTarget), cloneDraft(saved));
+        constrainedBaselines.set(pendingIdFor(editTarget), { ...savedConstrained });
+      }
     }) as EventListener);
 
     window.addEventListener('vcd:dev-pending-reverted', (() => {
       diskBaselines.clear();
+      constrainedBaselines.clear();
     }) as EventListener);
   };
 

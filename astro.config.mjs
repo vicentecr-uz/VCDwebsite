@@ -1015,6 +1015,35 @@ const applyCarouselChange = (data, change) => {
     }
   }
 
+  // Block-wide width cap, same shape/validation as applyGridChange's `constrained`.
+  const requestedConstrained = change.constrained && typeof change.constrained === 'object'
+    ? change.constrained
+    : {};
+  /** @type {Record<string, number>} */
+  const constrained = {};
+  for (const viewport of IMAGE_VIEWPORTS) {
+    const raw = requestedConstrained[viewport];
+    if (raw === true) {
+      constrained[viewport] = 80;
+      continue;
+    }
+    if (raw === false || raw === null || raw === undefined) {
+      constrained[viewport] = 100;
+      continue;
+    }
+    const n = Math.round(Number(raw));
+    if (!Number.isFinite(n) || n >= 100) {
+      constrained[viewport] = 100;
+      continue;
+    }
+    const stepped = Math.round(n / 10) * 10;
+    if (stepped < 30 || stepped > 90) {
+      return { ok: false, error: 'Use a constrain width of 30–90% (or None).' };
+    }
+    constrained[viewport] = stepped;
+  }
+  target.constrained = constrained;
+
   return { ok: true };
 };
 
