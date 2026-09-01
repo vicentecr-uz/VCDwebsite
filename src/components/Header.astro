@@ -350,6 +350,8 @@ const menuLinks = headerSettings.menuLinks;
 
       const widthPx = Math.round(current.getBoundingClientRect().width);
       if (widthPx === appliedHeaderWidthPx) return;
+      // A page visit may graduate from text to media width, never back again.
+      if (appliedHeaderWidthPx > 0 && widthPx < appliedHeaderWidthPx) return;
 
       appliedHeaderWidthPx = widthPx;
       siteWrapper.style.setProperty('--page-header-width', `${widthPx}px`);
