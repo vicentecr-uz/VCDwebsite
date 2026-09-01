@@ -4,9 +4,11 @@ import SegmentedControl from './ui/SegmentedControl.astro';
 import Button from './ui/Button.astro';
 
 /**
- * Live A/B for the page's reading-column cap (--page-max-width). Original =
- * the pre-rotation 60em; Emil = the shipped 43.25em; Custom = a typed em
- * value. Temporary — remove once Anto settles on a width.
+ * Live A/B for the page's reading-column caps (--page-text-max-width /
+ * --page-media-max-width). Unlinked, text and media cap independently;
+ * linked, the media row follows the text row. Original = the pre-rotation
+ * 60em; Emil = the shipped 43.25em; Custom = a typed em value. Temporary —
+ * remove once Anto settles on a width.
  *
  * DevPanel gives real panel chrome (title bar, corner lights, body padding)
  * but is deliberately NOT given a data-dev-panel-key: that prop opts a panel
@@ -22,32 +24,92 @@ const EMIL_EM = 43.25;
 ---
 
 <DevPanel title="Page width" class="dev-page-width-toggle" data-dev-page-width-toggle>
-  <SegmentedControl label="Page width">
-    <Button
-      emphasis="ghost"
-      width="fill"
-      label="Original"
-      data-width-mode="original"
-      aria-pressed="false"
-    />
-    <Button
-      emphasis="ghost"
-      width="fill"
-      label="Emil"
-      data-width-mode="emil"
-      aria-pressed="false"
-    />
-    <input
-      class="dev-page-width-toggle__custom"
-      type="text"
-      inputmode="decimal"
-      autocomplete="off"
-      spellcheck="false"
-      placeholder="em"
-      aria-label="Custom page width in em"
-      data-width-custom-input
-    />
-  </SegmentedControl>
+  <div class="dev-page-width-toggle__row" data-width-row="text">
+    <p class="dev-page-width-toggle__label" data-width-scope-label>Text</p>
+    <SegmentedControl label="Text page width" data-width-scope="text">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Original"
+        data-width-mode="original"
+        aria-pressed="false"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Emil"
+        data-width-mode="emil"
+        aria-pressed="false"
+      />
+      <input
+        class="dev-page-width-toggle__custom"
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="em"
+        aria-label="Custom text page width in em"
+        data-width-custom-input
+      />
+    </SegmentedControl>
+  </div>
+
+  <Button
+    class="dev-page-width-toggle__link"
+    emphasis="ghost"
+    label=""
+    aria-label="Link text and media widths"
+    title="Link text and media widths"
+    selected={true}
+    data-width-link
+  >
+    <svg
+      slot="icon"
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      focusable="false"
+    >
+      <rect x="4" y="6.4" width="8" height="3.2" rx="1.6" transform="rotate(45 8 8)" />
+      <rect x="4" y="6.4" width="8" height="3.2" rx="1.6" transform="rotate(-45 8 8)" />
+    </svg>
+  </Button>
+
+  <div class="dev-page-width-toggle__row" data-width-row="media">
+    <p class="dev-page-width-toggle__label">Media</p>
+    <SegmentedControl label="Media page width" data-width-scope="media">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Original"
+        data-width-mode="original"
+        aria-pressed="false"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Emil"
+        data-width-mode="emil"
+        aria-pressed="false"
+      />
+      <input
+        class="dev-page-width-toggle__custom"
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="em"
+        aria-label="Custom media page width in em"
+        data-width-custom-input
+      />
+    </SegmentedControl>
+  </div>
 </DevPanel>
 
 <style>
@@ -80,9 +142,32 @@ const EMIL_EM = 43.25;
     width: auto;
   }
 
+  .dev-page-width-toggle__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-label-gap);
+    width: 100%;
+  }
+
+  .dev-page-width-toggle__label {
+    font: var(--dev-text-label);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  /* Greys the row, its label included — set alongside disabling each control
+     itself so the row reads as inert, not just dim. */
+  .dev-page-width-toggle__row.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .dev-page-width-toggle__link {
+    align-self: center;
+  }
+
   /* Third segment is a real input, not a .dev-btn — match the sibling
      buttons' segmented sizing (project.css .dev-segmented .dev-btn) so the
-     three read as one control. */
+     three read as one control. Shared by both rows' custom inputs. */
   .dev-page-width-toggle__custom {
     flex: 1 1 0;
     min-width: 3.5em;
@@ -117,18 +202,33 @@ const EMIL_EM = 43.25;
 
 <script>
   type WidthMode = 'original' | 'emil' | 'custom';
+  type Scope = 'text' | 'media';
 
   const ORIGINAL_EM = 60;
   const EMIL_EM = 43.25;
-  const PROPERTY = '--page-max-width';
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
   const root = document.querySelector<HTMLElement>('[data-dev-page-width-toggle]');
-  const buttons = root
-    ? [...root.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
+
+  const scopeElement = (scope: Scope) =>
+    root?.querySelector<HTMLElement>(`[data-width-scope="${scope}"]`) ?? null;
+
+  const textScope = scopeElement('text');
+  const mediaScope = scopeElement('media');
+  const textRow = root?.querySelector<HTMLElement>('[data-width-row="text"]') ?? null;
+  const mediaRow = root?.querySelector<HTMLElement>('[data-width-row="media"]') ?? null;
+  const textScopeLabel = textRow?.querySelector<HTMLElement>('[data-width-scope-label]') ?? null;
+  const linkButton = root?.querySelector<HTMLButtonElement>('[data-width-link]') ?? null;
+
+  const textButtons = textScope
+    ? [...textScope.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
     : [];
-  const customInput = root?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
+  const mediaButtons = mediaScope
+    ? [...mediaScope.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
+    : [];
+  const textCustomInput = textScope?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
+  const mediaCustomInput = mediaScope?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
 
   const initPanelDrag = (panel: HTMLElement) => {
     const dragHandle = panel.querySelector<HTMLElement>('.dev-panel__header');
@@ -196,49 +296,127 @@ const EMIL_EM = 43.25;
 
   if (root) initPanelDrag(root);
 
-  const applyWidth = (em: number) => {
-    document.documentElement.style.setProperty(PROPERTY, `${em}em`);
+  let linked = true;
+  let textEm = EMIL_EM;
+  let mediaEm = EMIL_EM;
+  let textMode: WidthMode = 'emil';
+  let mediaMode: WidthMode = 'emil';
+
+  const applyText = (em: number) => {
+    textEm = em;
+    document.documentElement.style.setProperty('--page-text-max-width', `${em}em`);
+    if (linked) applyMedia(em);
   };
 
-  const setActiveMode = (mode: WidthMode) => {
+  const applyMedia = (em: number) => {
+    mediaEm = em;
+    document.documentElement.style.setProperty('--page-media-max-width', `${em}em`);
+  };
+
+  const setScopeMode = (buttons: HTMLButtonElement[], customInput: HTMLInputElement | null, mode: WidthMode) => {
     buttons.forEach((button) => {
       button.setAttribute('aria-pressed', String(button.dataset.widthMode === mode));
     });
     customInput?.classList.toggle('is-active', mode === 'custom');
   };
 
-  buttons.forEach((button) => {
+  const render = () => {
+    if (textScopeLabel) textScopeLabel.textContent = linked ? 'All' : 'Text';
+    linkButton?.setAttribute('aria-pressed', String(linked));
+    linkButton?.classList.toggle('is-selected', linked);
+
+    mediaButtons.forEach((button) => {
+      button.disabled = linked;
+    });
+    if (mediaCustomInput) mediaCustomInput.disabled = linked;
+    mediaRow?.classList.toggle('is-disabled', linked);
+
+    setScopeMode(textButtons, textCustomInput, textMode);
+    setScopeMode(mediaButtons, mediaCustomInput, mediaMode);
+  };
+
+  const setLinked = (next: boolean) => {
+    linked = next;
+    if (linked) {
+      applyMedia(textEm);
+      mediaMode = textMode;
+    }
+    render();
+  };
+
+  textButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const mode = button.dataset.widthMode;
       if (mode === 'original') {
-        applyWidth(ORIGINAL_EM);
-        setActiveMode('original');
+        textMode = 'original';
+        applyText(ORIGINAL_EM);
       } else if (mode === 'emil') {
-        applyWidth(EMIL_EM);
-        setActiveMode('emil');
+        textMode = 'emil';
+        applyText(EMIL_EM);
       }
+      if (linked) mediaMode = textMode;
+      render();
     });
   });
 
-  const applyCustomValue = () => {
-    if (!customInput) return;
-    const value = parseFloat(customInput.value);
-    if (!Number.isFinite(value) || value <= 0) return;
-    applyWidth(value);
-    setActiveMode('custom');
-  };
-
-  customInput?.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    applyCustomValue();
-    customInput.blur();
+  mediaButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (linked) return;
+      const mode = button.dataset.widthMode;
+      if (mode === 'original') {
+        mediaMode = 'original';
+        applyMedia(ORIGINAL_EM);
+      } else if (mode === 'emil') {
+        mediaMode = 'emil';
+        applyMedia(EMIL_EM);
+      }
+      render();
+    });
   });
 
-  customInput?.addEventListener('blur', applyCustomValue);
+  const applyTextCustomValue = () => {
+    if (!textCustomInput) return;
+    const value = parseFloat(textCustomInput.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    textMode = 'custom';
+    applyText(value);
+    if (linked) mediaMode = 'custom';
+    render();
+  };
+
+  textCustomInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyTextCustomValue();
+    textCustomInput.blur();
+  });
+
+  textCustomInput?.addEventListener('blur', applyTextCustomValue);
+
+  const applyMediaCustomValue = () => {
+    if (!mediaCustomInput || linked) return;
+    const value = parseFloat(mediaCustomInput.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    mediaMode = 'custom';
+    applyMedia(value);
+    render();
+  };
+
+  mediaCustomInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyMediaCustomValue();
+    mediaCustomInput.blur();
+  });
+
+  mediaCustomInput?.addEventListener('blur', applyMediaCustomValue);
+
+  linkButton?.addEventListener('click', () => {
+    setLinked(!linked);
+  });
 
   // Reflect the shipped default (Emil's value, already live via CSS) without
   // writing an inline override on load — only user interaction should touch
-  // the custom property.
-  setActiveMode('emil');
+  // the custom properties.
+  render();
 </script>
