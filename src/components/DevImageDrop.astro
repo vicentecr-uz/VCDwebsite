@@ -414,6 +414,57 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const appendToCarousel = async (filenames = [], srcs = [], target = targetedCarousel) => {
     if (!target) throw new Error('Could not find that carousel.');
     await flushPendingEdits(target.documentKey);
+    /** @type {Record<string, any>} */
+    let source = {};
+    /** @type {string[]} */
+    let itemIds = [];
+    try {
+      const parsedSource = JSON.parse(
+        target.target.dataset.devCarouselSettings
+        || target.target.dataset.carouselSettings
+        || '{}',
+      );
+      source = parsedSource && typeof parsedSource === 'object' && !Array.isArray(parsedSource)
+        ? parsedSource
+        : {};
+      const items = JSON.parse(target.target.dataset.devCarouselItems || '[]');
+      if (Array.isArray(items)) {
+        itemIds = items.map((item) => String(item?.id || '')).filter(Boolean);
+      }
+    } catch {
+      throw new Error('Could not read the current carousel settings.');
+    }
+    const settingsResponse = await fetch('/api/content-batch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        carousels: [{
+          document: target.documentKey,
+          path: target.path,
+          orientation: source.orientation === 'vertical' ? 'vertical' : 'horizontal',
+          heightMode: source.heightMode === 'tallest' ? 'tallest' : 'dynamic',
+          maxHeightVh: Number(source.maxHeightVh) || 0,
+          scrollPinned: source.scrollPinned === true,
+          dotsPlacement: ['over', 'hidden'].includes(source.dotsPlacement)
+            ? source.dotsPlacement
+            : 'outside',
+          visible: Array.isArray(source.visible) ? source.visible : itemIds,
+          breakpoints: source.breakpoints ?? null,
+        }],
+      }),
+    });
+    const settingsResult = await settingsResponse.json();
+    if (!settingsResponse.ok) {
+      throw new Error(settingsResult.error || 'Could not save the current carousel settings.');
+    }
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
+      detail: {
+        id: `carousel:${target.documentKey}:${target.target.dataset.devCarouselPath || JSON.stringify(target.path)}`,
+      },
+    }));
+    window.dispatchEvent(new CustomEvent('vcd:dev-carousel-prepare-append', {
+      detail: { target: target.target },
+    }));
     const response = await fetch('/api/content-section', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -608,6 +659,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const onDragEnter = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     if (!isValidImageDrag(event.dataTransfer)) return;
+    if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) {
+      prevent(event);
+      return;
+    }
     dragDepth += 1;
     document.documentElement.dataset.devImageDrag = 'true';
     prevent(event);
@@ -627,9 +682,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
   };
 
-  const onDragLeave = () => {
-    dragDepth = Math.max(0, dragDepth - 1);
-    if (dragDepth === 0) clearDragState();
+  const onDragLeave = (event) => {
+    if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) return;
+    dragDepth = 0;
+    clearDragState();
   };
 
   const onDrop = (event) => {
