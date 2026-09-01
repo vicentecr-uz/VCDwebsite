@@ -1725,7 +1725,7 @@ const easingOptions = [
   }
 
   /* Force gutter nav visible while the section editor is active (any width). */
-  @media (max-width: 88.4375em) {
+  @media (max-width: 78.4375em) {
     :global(html.show-section-nav-editor.is-dev-mode) .section-sidebar-nav--desktop-only {
       display: block;
       position: fixed;
@@ -1929,15 +1929,20 @@ const easingOptions = [
 
   /*
     Fixed gutter nav needs ~14.25em per side: 12.5em width + 1em gap to the
-    60em content column + ≥0.75em from the viewport edge.
-    Viewport: 60em + 2 × 14.25em = 88.5em. Below that, hide (desktop-only)
+    50em outer content column + ≥0.75em from the viewport edge.
+    Viewport: 50em + 2 × 14.25em = 78.5em. Below that, hide (desktop-only)
     or fall back to the compact sticky strip (Styles).
+
+    DERIVED, NOT CHOSEN: this is outer column + 28.5em, and must be re-derived
+    whenever --page-media-max-width moves. A media query condition cannot read
+    a custom property, so it can't follow on its own. See docs/page-width.md
+    for every literal that has to move with it.
   */
-  @media (min-width: 88.5em) {
+  @media (min-width: 78.5em) {
     .section-sidebar-nav {
       position: fixed;
       top: 6.75em;
-      left: max(0.75em, calc((100vw - 60em) / 2 - 13.5em));
+      left: max(0.75em, calc((100vw - var(--page-max-width)) / 2 - 13.5em));
       width: 12.5em;
       max-height: calc(100dvh - 8em);
       overflow: hidden;
@@ -1970,7 +1975,7 @@ const easingOptions = [
     }
   }
 
-  @media (max-width: 88.4375em) {
+  @media (max-width: 78.4375em) {
     .section-sidebar-nav--desktop-only {
       display: none;
     }

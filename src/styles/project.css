@@ -1048,7 +1048,7 @@ h3.project-section-title {
 }
 
 .project-body-text p + p {
-  margin-top: 26px;
+  margin-top: 1lh;
 }
 
 .project-body-text strong {
@@ -1107,6 +1107,20 @@ h3.project-section-title {
   /* Lets max-vh images cap width as % of the column while the figure
      shrink-wraps to the bitmap (so captions/shadows match the image). */
   container-type: inline-size;
+}
+
+/* Column caps. Media is the default; text blocks opt down to the text cap.
+   Both centre in the outer column, so a narrower text block sits symmetric
+   inside a wider media column rather than sharing its left edge. */
+.project-block,
+.project-image-grid,
+.project-image-carousel {
+  margin-inline: auto;
+  max-width: var(--page-media-max-width);
+}
+
+.project-block--text {
+  max-width: var(--page-text-max-width);
 }
 
 .project-block--centered {
@@ -1979,16 +1993,17 @@ h3.project-section-title {
 
 /*
   In-page section title visibility by breakpoint.
-  desktop = sidebar gutter zone (≥88.5em); tablet/mobile use 48em split.
+  desktop = sidebar gutter zone (≥78.5em); tablet/mobile use 48em split.
+  78.5em is derived from the column, not chosen — see docs/page-width.md.
 */
-@media (min-width: 88.5em) {
+@media (min-width: 78.5em) {
   .project-section-title--hide-desktop .project-section-title,
   .project-section-title--hide-when-sidebar .project-section-title {
     display: none;
   }
 }
 
-@media (min-width: 48em) and (max-width: 88.4375em) {
+@media (min-width: 48em) and (max-width: 78.4375em) {
   .project-section-title--hide-tablet .project-section-title {
     display: none;
   }

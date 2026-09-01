@@ -73,6 +73,31 @@ const collectRefTokenEntries = (refNode) => {
   return entries;
 };
 const IMAGE_VIEWPORTS = new Set(['desktop', 'tablet', 'mobile']);
+
+/**
+ * Normalize one viewport's constrain value, mirroring the client's
+ * `normalizeConstrainPercent` in src/lib/responsiveImage.ts.
+ *
+ * Returns a stepped percent 30–90, 100 (full width), the string 'text'
+ * (match the text column), or null when the value is out of range — the
+ * caller decides whether that is a 400 or a silent clamp.
+ *
+ * ONE copy on purpose. This lived as four hand-duplicated numeric-only
+ * parsers, and every one of them ran Number('text') → NaN → 100, so a
+ * "Match text" width saved silently as "Full" with no error anywhere. The
+ * read side and the write side have to agree about the value space, and
+ * four copies is how they stopped agreeing.
+ */
+const normalizeConstrainValue = (raw) => {
+  if (raw === 'text') return 'text';
+  if (raw === true) return 80;
+  if (raw === false || raw === null || raw === undefined) return 100;
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n >= 100) return 100;
+  const stepped = Math.round(n / 10) * 10;
+  if (stepped < 30 || stepped > 90) return null;
+  return stepped;
+};
 /** Presets plus freeform `W:H` from the crop-frame handles. */
 const isAllowedAspectRatio = (value) => {
   if (value === 'original') return true;
@@ -229,26 +254,12 @@ function imageGridDevWriter() {
           /** @type {Record<string, number>} */
           const constrained = {};
           for (const viewport of IMAGE_VIEWPORTS) {
-            const raw = requestedConstrained[viewport];
-            if (raw === true) {
-              constrained[viewport] = 80;
-              continue;
-            }
-            if (raw === false || raw === null || raw === undefined) {
-              constrained[viewport] = 100;
-              continue;
-            }
-            const n = Math.round(Number(raw));
-            if (!Number.isFinite(n) || n >= 100) {
-              constrained[viewport] = 100;
-              continue;
-            }
-            const stepped = Math.round(n / 10) * 10;
-            if (stepped < 30 || stepped > 90) {
+            const value = normalizeConstrainValue(requestedConstrained[viewport]);
+            if (value === null) {
               send(400, { error: 'Use a constrain width of 30–90% (or None).' });
               return;
             }
-            constrained[viewport] = stepped;
+            constrained[viewport] = value;
           }
 
           const defaultAspectRatio = String(body.defaultAspectRatio || '');
@@ -570,33 +581,17 @@ const applyImageWidthFlags = (target, change) => {
     /** @type {Record<string, number>} */
     const constrained = {};
     for (const viewport of IMAGE_VIEWPORTS) {
-      const raw = requestedConstrained[viewport];
-      if (raw === true) {
-        constrained[viewport] = 80;
-        continue;
-      }
-      if (raw === false || raw === null || raw === undefined) {
-        constrained[viewport] = 100;
-        continue;
-      }
-      const n = Math.round(Number(raw));
-      if (!Number.isFinite(n) || n >= 100) {
-        constrained[viewport] = 100;
-        continue;
-      }
-      const stepped = Math.round(n / 10) * 10;
-      if (stepped < 30 || stepped > 90) {
-        constrained[viewport] = 100;
-        continue;
-      }
-      constrained[viewport] = stepped;
+      const value = normalizeConstrainValue(requestedConstrained[viewport]);
+      constrained[viewport] = value === null ? 100 : value;
     }
-    const allFull = [...IMAGE_VIEWPORTS].every((viewport) => constrained[viewport] === 100);
-    const allEighty = [...IMAGE_VIEWPORTS].every((viewport) => constrained[viewport] === 80);
-    if (allFull) {
+    const uniform = (match) => [...IMAGE_VIEWPORTS].every((v) => constrained[v] === match);
+    if (uniform(100)) {
       delete target.constrained;
-    } else if (allEighty) {
+    } else if (uniform(80)) {
+      // Legacy scalar shorthand: `true` still reads back as 80.
       target.constrained = true;
+    } else if (uniform('text')) {
+      target.constrained = 'text';
     } else {
       target.constrained = constrained;
     }
@@ -804,25 +799,11 @@ const applyGridChange = (data, change) => {
   /** @type {Record<string, number>} */
   const constrained = {};
   for (const viewport of IMAGE_VIEWPORTS) {
-    const raw = requestedConstrained[viewport];
-    if (raw === true) {
-      constrained[viewport] = 80;
-      continue;
-    }
-    if (raw === false || raw === null || raw === undefined) {
-      constrained[viewport] = 100;
-      continue;
-    }
-    const n = Math.round(Number(raw));
-    if (!Number.isFinite(n) || n >= 100) {
-      constrained[viewport] = 100;
-      continue;
-    }
-    const stepped = Math.round(n / 10) * 10;
-    if (stepped < 30 || stepped > 90) {
+    const value = normalizeConstrainValue(requestedConstrained[viewport]);
+    if (value === null) {
       return { ok: false, error: 'Use a constrain width of 30–90% (or None).' };
     }
-    constrained[viewport] = stepped;
+    constrained[viewport] = value;
   }
 
   const defaultAspectRatio = String(change.defaultAspectRatio || '');
@@ -1012,6 +993,29 @@ const applyCarouselChange = (data, change) => {
       }
       if (Object.keys(next).length) target.breakpoints = next;
       else delete target.breakpoints;
+    }
+  }
+
+  // Block-wide width cap, same value space as applyGridChange's `constrained`.
+  // Only touched when the change actually carries it — an unconditional write
+  // would stamp a redundant all-100 object into every carousel save.
+  if (change.constrained !== undefined) {
+    const requestedConstrained = change.constrained && typeof change.constrained === 'object'
+      ? change.constrained
+      : {};
+    /** @type {Record<string, number | 'text'>} */
+    const constrained = {};
+    for (const viewport of IMAGE_VIEWPORTS) {
+      const value = normalizeConstrainValue(requestedConstrained[viewport]);
+      if (value === null) {
+        return { ok: false, error: 'Use a constrain width of 30–90% (or None).' };
+      }
+      constrained[viewport] = value;
+    }
+    if ([...IMAGE_VIEWPORTS].every((v) => constrained[v] === 100)) {
+      delete target.constrained;
+    } else {
+      target.constrained = constrained;
     }
   }
 

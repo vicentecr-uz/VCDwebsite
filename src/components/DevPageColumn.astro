@@ -1,0 +1,98 @@
+---
+/**
+ * Keeps `--page-max-width` honest while authoring.
+ *
+ * `pageColumnStyle()` computes the page's column on the server, but the
+ * content HMR gate drops every `full-reload`, so adding or constraining a
+ * media block in the browser leaves that inline style stale until a manual
+ * reload — the header and gutter would keep the old page's width. This
+ * recomputes the same rule from the DOM whenever the sections change.
+ *
+ * Dev only. It reads `data-dev-constrained`, which is not emitted in a
+ * production build, and it deliberately mirrors src/lib/pageColumn.ts rather
+ * than sharing code: the server walks JSON sections, this walks rendered
+ * nodes. If you change the rule, change both.
+ */
+---
+
+<script>
+  const wrapper = document.querySelector<HTMLElement>('#site-wrapper');
+  const zone = document.querySelector<HTMLElement>('[data-dev-project-drop-zone]');
+
+  if (wrapper && zone) {
+    // Media sections. Text blocks only ever contribute the floor, and the
+    // trailing spacing sentinel matches nothing here, so both are skipped.
+    const MEDIA_SELECTOR = [
+      '.project-block:not(.project-block--text)',
+      '.project-image-grid',
+      '.project-image-carousel',
+    ].join(',');
+
+    /** Fraction of the media cap this section occupies; null = caps at text. */
+    const fractionOf = (section: HTMLElement): number | null => {
+      const node = section.matches('[data-dev-constrained]')
+        ? section
+        : section.querySelector<HTMLElement>('[data-dev-constrained]');
+      const raw = node?.dataset.devConstrained;
+      // No attribute at all means nothing has constrained it: full width.
+      if (!raw) return 1;
+      try {
+        const desktop = (JSON.parse(raw) as { desktop?: number | string }).desktop;
+        if (desktop === 'text') return null;
+        const n = Number(desktop);
+        return Number.isFinite(n) ? n / 100 : 1;
+      } catch {
+        return 1;
+      }
+    };
+
+    const sync = () => {
+      let widest = 0;
+      let full = false;
+
+      for (const child of zone.children) {
+        if (!(child instanceof HTMLElement) || !child.matches(MEDIA_SELECTOR)) continue;
+        const fraction = fractionOf(child);
+        if (fraction === null) continue;
+        if (fraction >= 1) {
+          full = true;
+          break;
+        }
+        widest = Math.max(widest, fraction);
+      }
+
+      if (full) {
+        wrapper.style.removeProperty('--page-max-width');
+      } else if (widest === 0) {
+        wrapper.style.setProperty('--page-max-width', 'var(--page-text-max-width)');
+      } else {
+        wrapper.style.setProperty(
+          '--page-max-width',
+          `max(var(--page-text-max-width), calc(var(--page-media-max-width) * ${widest}))`,
+        );
+      }
+    };
+
+    // Coalesce: a single tuner save can fire several mutations plus the
+    // committed event, and each would otherwise recompute independently.
+    let queued = false;
+    const schedule = () => {
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        sync();
+      });
+    };
+
+    new MutationObserver(schedule).observe(zone, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-dev-constrained', 'class'],
+    });
+
+    document.addEventListener('vcd:dev-pending-committed', schedule);
+    schedule();
+  }
+</script>
