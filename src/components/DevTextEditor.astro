@@ -100,6 +100,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
+  import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
@@ -2907,10 +2908,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       documentKey?: string;
       index?: number;
       section?: Record<string, unknown>;
+      activeItemId?: string;
     }>) => {
-      const { documentKey, index, section } = event.detail ?? {};
+      const { documentKey, index, section, activeItemId } = event.detail ?? {};
       if (!documentKey || typeof index !== 'number' || !section) return;
-      replaceMediaSectionInPlace(section, documentKey, index);
+      const root = replaceMediaSectionInPlace(section, documentKey, index);
+      if (root && activeItemId) restoreCarouselActiveItem(root, activeItemId);
     }) as EventListener);
 
     window.addEventListener('vcd:dev-placeholder-fill-pending', ((event: CustomEvent<{
