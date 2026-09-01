@@ -1,6 +1,7 @@
 // @ts-check
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { defineConfig } from 'astro/config';
 
 import tailwindcss from '@tailwindcss/vite';
@@ -2326,30 +2327,50 @@ function contentNavDevWriter() {
 // https://astro.build/config
 /**
  * Lapse (the dev-only animation inspector) resolves from a private registry that
- * needs a token in a machine-local ~/.npmrc. CI has no token, so the package is
- * declared `optional` and is simply absent there.
+ * needs a token in a machine-local ~/.npmrc. Machines without that token (CI,
+ * cloud agents, a fresh contributor) have no way to install it, so the package
+ * is declared `optional` and is simply absent there.
  *
  * Astro still walks every `<script>` it finds — the `{showDevTools && ...}` guard
- * in Layout.astro gates *rendering*, not bundling — so Rollup tries to resolve
- * `@aiforui/lapse/*` during a production build and hard-fails when it is missing.
- * Stubbing it at build time fixes that, and drops the ~800KB Lapse+React orphan
- * chunk that was being emitted into every deploy and referenced by nothing.
+ * in Layout.astro gates *rendering*, not bundling — so Vite/Rollup tries to
+ * resolve `@aiforui/lapse/*` and hard-fails when it is missing. In a production
+ * build that fails `astro build`; under `astro dev` it throws a resolve error
+ * overlay on *every* page, which is what makes the dev server unusable wherever
+ * the private package is absent.
+ *
+ * So: in a production build always stub — Lapse is dev-only and never rendered
+ * in prod, and stubbing also drops the ~800KB Lapse+React orphan chunk that was
+ * emitted into every deploy and referenced by nothing. Under `astro dev` stub
+ * only when the package is genuinely absent, so a machine that *does* have it
+ * (Anto's local, with the token) keeps the real inspector.
  *
  * @returns {import('vite').Plugin}
  */
-function stubLapseInBuild() {
+function stubLapseWhenUnavailable() {
   const PREFIX = '\0vcd-lapse-stub:';
   const stubbed = new Set(['@aiforui/lapse/install', '@aiforui/lapse/panel']);
+  const lapseInstalled = (() => {
+    try {
+      createRequire(import.meta.url).resolve('@aiforui/lapse/panel');
+      return true;
+    } catch {
+      return false;
+    }
+  })();
+  let command = 'serve';
   return {
     name: 'vcd-stub-lapse',
-    apply: 'build',
+    configResolved(config) {
+      command = config.command;
+    },
     resolveId(id) {
-      return stubbed.has(id) ? PREFIX + id : null;
+      if (!stubbed.has(id)) return null;
+      return command === 'build' || !lapseInstalled ? PREFIX + id : null;
     },
     load(id) {
       if (!id.startsWith(PREFIX)) return null;
       // Same shape lapseDev.ts imports, so the module still type-checks and the
-      // (never-rendered) production script is inert rather than throwing.
+      // (never-rendered) script is inert rather than throwing.
       return 'export const getSharedEngine = () => ({ registerGSAP() {} });\n'
         + 'export const mountLapse = () => {};\n';
     },
@@ -2377,7 +2398,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
-      stubLapseInBuild(),
+      stubLapseWhenUnavailable(),
       contentHmrGate(),
       mediaDevServer(),
       uploadDevWriter(),
