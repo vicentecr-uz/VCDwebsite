@@ -75,6 +75,36 @@ there is no header-specific width logic, and there should not be.
   the default column.
 - Anything in between → `max(text, media × widest fraction)`.
 
+### The header row follows its content context
+
+`pageColumnStyle()` emits the initial `--page-header-width` from the page's
+**first** section, so the pre-JS header already lines up with an intro or hero.
+After that, `Header.astro` may widen the row for the block beneath its docked
+footprint — but commits a change only while the header is fully off-screen. Its
+next fade-in therefore reveals it already correct. Width is one-way during a
+page visit: once media widens the header, later text never narrows it again. A
+wide header over narrow text reads fine; a narrow header over wider imagery is
+the mismatch this machinery prevents. Do not add a width transition: visible
+resizing calls attention to chrome that is meant to feel stable.
+
+**Only `.site-header__row` narrows.** The header box, its `.site-header-slot`
+and `.site-header__bg` all stay at the column width. That is deliberate and
+load-bearing in two places:
+
+- The fill breaks out via `left/right: calc(-1 * var(--page-gutter))`. Narrow
+  the header box and the fill stops short of the viewport edge instead of
+  spanning it.
+- The dock/ride scroll machinery measures the header box, and pins `left: 0`
+  against the slot while riding. Narrowing either would move the docked header
+  off its flow position.
+
+So: change the row, never the box.
+
+The homepage role line reads the same `--page-header-width`. Its source is the
+top-level `home.subtitle` field (editable at `['subtitle']`), not a section: it
+follows the header visually without participating in the page-column resolver
+as a text block of its own.
+
 **This is only safe because a block's width does not depend on its column.**
 Percentages measure against `--page-media-max-width`, a fixed baseline. If they
 measured against the column, shrinking the column would shrink the very block

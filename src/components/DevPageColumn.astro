@@ -71,6 +71,11 @@
           `max(var(--page-text-max-width), calc(var(--page-media-max-width) * ${widest}))`,
         );
       }
+
+      // --page-header-width is owned by the scroll sync in Header.astro, which
+      // measures the block actually under the header. Tell it the sections
+      // changed rather than writing that property from here too.
+      document.dispatchEvent(new CustomEvent('vcd:page-column-changed'));
     };
 
     // Coalesce: a single tuner save can fire several mutations plus the
