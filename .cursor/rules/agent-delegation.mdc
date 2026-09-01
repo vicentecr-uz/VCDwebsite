@@ -11,6 +11,8 @@ Cursor doesn't read `CLAUDE.md` automatically, so this is mirrored here. Canonic
 
 When this chat is pinned to an expensive model (Opus 5, Grok), **this session is the manager**. Its job is diagnosis, architecture judgment, specification, and review — not keystrokes.
 
+The manager also owns isolated worktree/branch allocation and collision-free preview ports across parallel tasks. The primary checkout at `$HOME/Developer/VCDwebsite` and port `4321` are Anto-owned; he stays on `main` there so live editing is uninterrupted. Agents never edit, switch, commit/reset, or control the dev session/branch sync there. Every task that changes repo or git state uses its own sibling worktree before the first edit; a harness-provided worktree counts.
+
 **QA rotation** is the live queue on top of this split. Canonical: `qa-rotation` skill (`~/.cursor/skills/qa-rotation`). Trigger: "let's work with the QA rotation workflow" (or "rotation"). If he says it to you, you are the manager — load the skill and walk it; do not reconstruct the loop from this file.
 
 ## This rule beats your harness default
@@ -71,9 +73,9 @@ Subagent reports are claims, not results. "Build passed, matches spec" is not ev
 
 ## Verification is Anto's step, by design
 
-**Default: finish the work, hand Anto a numbered test script — exact steps, exact expected results — and stop.** Do not open a browser to satisfy yourself that your own work behaves correctly. He would rather run it himself: it is faster, cheaper, and it is how he catches what the diff review misses.
+**Default for site/UI/content work: finish the work, hand Anto a clickable persistent worktree-preview link, PR, and numbered test script — exact steps, exact expected results — and stop.** The manager checks the helper and route with `curl`; that proves availability only. Do not open a browser to satisfy yourself that your own work behaves correctly. Anto remains the interactive verification step.
 
-This applies to managers and workers alike, not just worktree agents (though those genuinely cannot reach a browser — one dev session owns port 4321 and it serves the main checkout).
+This applies to managers and workers alike. Worktree results are browser-reviewable through a dedicated persistent port `4322+`; the manager prepares that preview for Anto without performing interactive UI verification.
 
 - **Browser use is for settling a specific factual question**, not for checking your work: a computed style, whether a DOM node or attribute exists, an API response, what a token resolves to. One or two calls, and it ends an argument.
 - **Hard stop at ~2 calls.** If it hasn't answered the question by then, stop and ask Anto to look. Iterating in a browser to hunt a bug is the expensive failure mode — tokens, wall-clock time, and he can usually answer in seconds by looking at the screen.
@@ -81,10 +83,10 @@ This applies to managers and workers alike, not just worktree agents (though tho
 
 ## Branch hygiene
 
-- **Say which branch the checkout is on whenever it changes.** Testing a branch that doesn't contain the fix under test has already cost a full round.
+- **Say which branch the task worktree is on whenever it changes.** Testing a branch that doesn't contain the fix under test has already cost a full round.
 - **Never merge a second branch into a feature branch just to test them together.** Use a throwaway integration branch, or merge to `main` once approved. Separating it afterwards costs a reset plus cherry-picks.
 - **Docs and standards commits get their own branch**, straight to `main` — never bundled into feature work.
-- **Tear down the worktree once you've reviewed the diff.** A worktree holds its branch **exclusively**, so a leftover one makes `git switch <branch>` fail when Anto goes to QA — exactly when he needs it. Harnesses only auto-clean an *unchanged* worktree, and a worker that committed is never unchanged. Sequence: review → push → `git worktree remove` → **`git switch` the main checkout onto the feature branch** → `SetActiveBranch` → restart the dev session if the ref moved → open the PR → hand the test script. **Before handing over a test script, `git worktree list` must show only the main checkout, and that checkout must already be on the branch under test.** It also reclaims a second full copy of the repo plus `node_modules` and `dist`.
+- **Keep the worktree for review.** After diff review, the manager allocates an unused collision-free port `4322+`, runs `bash scripts/dev-worktree-preview.sh start <port>` from the task worktree, verifies helper `status` plus the relevant route with `curl`, opens the PR, and gives Anto a clickable Markdown link to that exact route plus the numbered test script. Never advertise a worker's transient `astro dev` process. Keep the detached preview and worktree alive; recheck/restart before later handoffs if needed. Stop the preview and remove the worktree only after Anto says review is done/declined, or after merge makes it unnecessary. Never move or restart Anto's primary checkout/session for QA.
 
 ## When not to bother
 
@@ -100,14 +102,14 @@ Atlas `AGENT-GUIDE.md` → *Implementation handoff (builder-ready)*. Minimum: **
 
 ## Branch base
 
-When the fix builds on unpushed local work, cut the worktree branch from that **local** branch, not `origin/main`, and have the worker confirm the parent commit before editing. See `.cursor/rules/git-workflow.mdc`.
+Default every task worktree to latest `origin/main`. Only cut it from another local branch when the task explicitly depends on that unpushed work, and have the worker confirm the parent commit before editing. See `.cursor/rules/git-workflow.mdc`.
 
 ## Landmines for workers
 
 Spell these out in every spec — worktree agents don't inherit session context:
 
 - Bun is not on `PATH`: use `$HOME/.bun/bin/bun`.
-- **Do not start a dev server.** One already runs on port 4321 against the main checkout; a worktree agent cannot verify in the browser. Verification happens after merge.
+- **Workers do not start preview servers.** After reviewing their diff, the manager starts the detached worktree preview for Anto on an unused port `4322+`. Port `4321` remains Anto's uninterrupted primary workspace.
 - Commit with `bun run commit:engine "<msg>" <explicit paths>` — never the no-paths form, which sweeps other agents' in-flight work.
 - Never stage `src/content/**` or `public/images/**`.
 - Name the files other parallel agents are editing, as off-limits.

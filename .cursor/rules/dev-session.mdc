@@ -1,33 +1,17 @@
 ---
-description: Start/stop the local Astro + branch-sync dev session for VCDwebsite
+description: Protect Anto's primary session and run persistent agent worktree previews
 alwaysApply: true
 ---
 
-# VCDwebsite dev session
+# VCDwebsite dev sessions
 
-This repo uses a **persistent dev session** so one chat can own the local servers. Other agents in the same or another harness (Cursor, Claude) should reuse them — do not start duplicates.
+## Anto's primary session — agents do not control it
 
-## When the user starts a session
+The primary checkout at `$HOME/Developer/VCDwebsite`, its branch, `localhost:4321`, `bun run dev:session`, and branch sync are Anto-owned. He stays on `main` there so live editing remains uninterrupted while agent tasks run in parallel.
 
-Phrases like: *"I'm going to work on the site"*, *"start dev session"*, *"spin up the servers"*.
+Agents may inspect the primary checkout only enough to create or find an isolated worktree. Never edit files there, switch its branch, commit/reset there, or start/stop/restart its dev session or branch sync. Do not reuse port `4321` for agent previews.
 
-1. Run `bun run dev:session:status` first.
-2. If already running → report URLs and continue work. Do **not** start again.
-3. If stopped → run `bun run dev:session` (uses `$HOME/.bun/bin/bun` via the script).
-   - **Run it in the foreground — never wrap the start command with `&`, and never launch it as a backgrounded shell job.** The script self-daemonizes Astro + branch sync and returns on its own (~20s). Backgrounding the *whole* start command puts the servers in the agent's short-lived process group, so they get killed the moment that command ends. If you need to wait, use a longer block/await on the foreground command instead of `&`.
-4. Tell the user:
-   - Site: `http://localhost:4321`
-   - Phone (same Wi‑Fi): `http://<lan-ip>:4321` — also printed by `dev:session:status` as `Phone:`
-
-For preview/testing in this chat, assume these URLs are available. Prefer browser checks against localhost rather than starting new dev servers.
-
-## When the user ends a session
-
-Phrases like: *"I'm done"*, *"shut down the dev session"*, *"stop the servers"*, *"wrap up the site session"*.
-
-1. Run `bun run dev:session:stop`.
-2. Confirm Astro (and sync) are stopped (`bun run dev:session:status` should show both stopped).
-3. Briefly confirm the user can archive this chat.
+The commands below are operator reference for Anto's session, not agent task commands.
 
 ## Manual commands
 
@@ -39,13 +23,26 @@ bun run dev:session:stop     # stop
 
 Logs: `.dev-session/astro.log`, `.dev-session/branch-sync.log`
 
+## Agent worktree review previews
+
+Every agent task that changes repo or git state runs in its own sibling worktree; a harness-provided task worktree counts. For site/UI/content review, the responsible manager owns worktree/branch/port allocation and collision avoidance across parallel tasks.
+
+After diff review:
+
+1. From the task worktree, choose an unused port `4322+` and run `bash scripts/dev-worktree-preview.sh start <port>`.
+2. Confirm it with `bash scripts/dev-worktree-preview.sh status <port>` and `curl` the relevant route.
+3. Hand Anto the PR, numbered test script, and a clickable Markdown link to that exact localhost route so it opens directly without copying an address.
+
+The helper is detached and persistent. Never advertise a worker's transient `astro dev` process. Worker subagents do not start preview servers; the manager starts the persistent preview after reviewing their diff. `curl` proves availability only — Anto remains the interactive UI verification step.
+
+Keep the preview and worktree alive after handoff. Recheck and restart the helper before a later handoff if needed. Run `bash scripts/dev-worktree-preview.sh stop <port>` and remove the worktree only after Anto says review is done/declined, or after merge makes the review environment unnecessary.
+
 ## Branch sync (auto-pull)
 
-While the dev session is running, a background **branch sync** polls every 60s and pulls the **currently checked-out branch** from its upstream. No auto-commit or push — local dirty files are preserved via `--autostash` when a rebase is needed.
+While Anto's primary dev session is running, a background **branch sync** polls every 60s and pulls its currently checked-out branch from upstream. No auto-commit or push — local dirty files are preserved via `--autostash` when a rebase is needed.
 
 - Starts automatically with `dev:session`; stops with `dev:session:stop`.
-- **Agents: do not run `git pull` manually** when sync is running — check `bun run branch:sync:status` first. Applies to **Cursor and Claude**; canonical copy in `CLAUDE.md` → *Key conventions*.
-- Switching branches (Cursor checkout) is picked up on the next poll cycle.
+- Agents never control this sync or rely on it for their task worktrees.
 
 Manual commands:
 
@@ -56,14 +53,14 @@ bun run branch:sync:status   # running? which branch?
 bun run branch:sync:once     # single fetch/pull now
 ```
 
-## Stale transforms after the git ref moves
+## Stale transforms after the primary git ref moves
 
 Because `contentHmrGate` drops every Vite `full-reload`, the running dev server can keep serving a **stale transform** of a component's `<style>` block after the checked-out branch's ref moves — a `git pull` (including branch sync's own autopull), a `git switch`, or a merge landing on the current branch. A hard reload in the browser does **not** clear this; it is server-side, not a browser cache.
 
 **Recurred three times on 2026-08-07** (a pull, a switch, a same-branch merge) — treat it as expected, not exceptional.
 
 - The tell: a change appears *partially* — one `<style>` block updates, a sibling one doesn't, or new markup renders with old CSS.
-- **Restart proactively whenever the ref moves**, don't wait for a visible symptom: `bun run dev:session:stop` then `bun run dev:session`.
+- The primary operator should restart proactively whenever the ref moves, rather than waiting for a visible symptom: `bun run dev:session:stop` then `bun run dev:session`. Agents must not perform that restart.
 - To confirm before restarting, check what is actually served, not what is on disk:
   ```bash
   curl -s "http://localhost:4321/src/components/Thing.astro?astro&type=style&index=0&lang.css" | grep -o 'your-selector' | wc -l
