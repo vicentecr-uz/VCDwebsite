@@ -42,11 +42,12 @@ export interface ImageSourceDims {
 export type ImageGridColumns = number | Partial<Record<ImageViewport, number>>;
 
 /**
- * Grid width constraint as a percent (30–90), or 100 / false / omitted for full width.
- * Legacy boolean `true` maps to 80. Per-breakpoint object inherits smaller widths
- * from the next larger breakpoint when omitted.
+ * Grid width constraint as a percent (30–90), 'text' (match the text column),
+ * or 100 / false / omitted for full width. Legacy boolean `true` maps to 80.
+ * Per-breakpoint object inherits smaller widths from the next larger
+ * breakpoint when omitted.
  */
-export type ImageGridConstrainedValue = number | boolean;
+export type ImageGridConstrainedValue = number | boolean | 'text';
 export type ImageGridConstrained =
   | ImageGridConstrainedValue
   | Partial<Record<ImageViewport, ImageGridConstrainedValue>>;
@@ -54,7 +55,7 @@ export type ImageGridConstrained =
 /** Allowed constrain dropdown values (100 = None / full width). */
 export const IMAGE_GRID_CONSTRAIN_PERCENTS = [30, 40, 50, 60, 70, 80, 90, 100] as const;
 
-export type ImageGridConstrainPercent = (typeof IMAGE_GRID_CONSTRAIN_PERCENTS)[number];
+export type ImageGridConstrainPercent = (typeof IMAGE_GRID_CONSTRAIN_PERCENTS)[number] | 'text';
 
 /** Visible item ids for one breakpoint. Omitted breakpoints inherit from the next larger one. */
 export interface ImageGridLayout {
@@ -76,6 +77,7 @@ const VIEWPORTS = IMAGE_VIEWPORTS;
 
 const normalizeConstrainPercent = (value: unknown, fallback = 100): ImageGridConstrainPercent => {
   if (value === true) return 80;
+  if (value === 'text') return 'text';
   if (value === false || value === null || value === undefined) return fallback as ImageGridConstrainPercent;
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) return fallback as ImageGridConstrainPercent;
@@ -112,7 +114,7 @@ export function imageGridColumnsStyle(columns: Record<ImageViewport, number>): s
 export function resolveImageGridConstrained(
   constrained: ImageGridConstrained | undefined,
 ): Record<ImageViewport, ImageGridConstrainPercent> {
-  if (typeof constrained === 'boolean' || typeof constrained === 'number') {
+  if (typeof constrained === 'boolean' || typeof constrained === 'number' || constrained === 'text') {
     const percent = normalizeConstrainPercent(constrained, 100);
     return { desktop: percent, tablet: percent, mobile: percent };
   }
@@ -129,11 +131,26 @@ export function resolveImageGridConstrained(
   return { desktop: 100, tablet: 100, mobile: 100 };
 }
 
+/**
+ * Percentages measure against the media column cap (`--page-media-max-width`),
+ * not the containing block, so a constrained block's width no longer chases a
+ * page column that later shrinks to fit its content. `min(100%, …)` is not
+ * optional: `calc(50em * 0.8)` is an absolute length (~40em) that would
+ * overflow a narrow phone, where the old `80%` was always safe — every
+ * non-100 branch must stay wrapped in it. Do not "simplify" this away.
+ */
 export function imageGridConstrainedStyle(
-  constrained: Record<ImageViewport, number>,
+  constrained: Record<ImageViewport, ImageGridConstrainPercent>,
 ): string {
   return VIEWPORTS
-    .map((viewport) => `--project-image-grid-width-${viewport}:${constrained[viewport]}%`)
+    .map((viewport) => {
+      const value = constrained[viewport];
+      if (value === 100) return `--project-image-grid-width-${viewport}:100%`;
+      if (value === 'text') {
+        return `--project-image-grid-width-${viewport}:min(100%, var(--page-text-max-width))`;
+      }
+      return `--project-image-grid-width-${viewport}:min(100%, calc(var(--page-media-max-width) * ${value} / 100))`;
+    })
     .join(';');
 }
 
@@ -141,7 +158,7 @@ export function imageGridConstrainedStyle(
 export function imageHasWidthConstraint(
   constrained: Record<ImageViewport, ImageGridConstrainPercent>,
 ): boolean {
-  return VIEWPORTS.some((viewport) => constrained[viewport] < 100);
+  return VIEWPORTS.some((viewport) => constrained[viewport] !== 100);
 }
 
 const sanitizeVisibleIds = (itemIds: string[], visible: string[] | undefined): string[] => {

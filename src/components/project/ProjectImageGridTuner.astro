@@ -35,8 +35,9 @@ import Button from '../ui/Button.astro';
       data-grid-constrained
       options={[
         { value: '100', label: 'Full' },
+        { value: 'text', label: 'Match text' },
         { value: '90', label: '90%' },
-        { value: '80', label: '80% (constrained)' },
+        { value: '80', label: '80%' },
         { value: '70', label: '70%' },
         { value: '60', label: '60%' },
         { value: '50', label: '50%' },
@@ -114,6 +115,11 @@ import Button from '../ui/Button.astro';
 
 <script>
   import { refreshProjectCropCovers } from '../../lib/projectCropCover';
+  import {
+    imageGridConstrainedStyle,
+    resolveImageGridConstrained,
+    type ImageGridConstrainPercent,
+  } from '../../lib/responsiveImage';
 
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
 
@@ -184,36 +190,13 @@ import Button from '../ui/Button.astro';
       }
     };
 
-    const normalizeConstrainPercent = (value: unknown, fallback = 100): number => {
-      if (value === true) return 80;
-      if (value === false || value === null || value === undefined) return fallback;
-      const n = Math.round(Number(value));
-      if (!Number.isFinite(n) || n >= 100) return 100;
-      const stepped = Math.round(n / 10) * 10;
-      if (stepped < 30) return 30;
-      if (stepped > 90) return 90;
-      return stepped;
-    };
-
-    const readConstrained = (target: HTMLElement) => {
+    const readConstrained = (target: HTMLElement): Record<ImageViewport, ImageGridConstrainPercent> => {
       try {
         const raw = target.dataset.devGridConstrained;
-        if (!raw) return { desktop: 100, tablet: 100, mobile: 100 };
-        const parsed = JSON.parse(raw);
-        if (typeof parsed === 'boolean' || typeof parsed === 'number') {
-          const percent = normalizeConstrainPercent(parsed, 100);
-          return { desktop: percent, tablet: percent, mobile: percent };
-        }
-        const desktop = normalizeConstrainPercent(parsed?.desktop, 100);
-        const tablet = parsed?.tablet === undefined
-          ? desktop
-          : normalizeConstrainPercent(parsed.tablet, desktop);
-        const mobile = parsed?.mobile === undefined
-          ? tablet
-          : normalizeConstrainPercent(parsed.mobile, tablet);
-        return { desktop, tablet, mobile };
+        if (!raw) return resolveImageGridConstrained(undefined);
+        return resolveImageGridConstrained(JSON.parse(raw));
       } catch {
-        return { desktop: 100, tablet: 100, mobile: 100 };
+        return resolveImageGridConstrained(undefined);
       }
     };
 
@@ -302,7 +285,7 @@ import Button from '../ui/Button.astro';
     let dragItemId: string | null = null;
     type GridBaseline = {
       columns: Record<ImageViewport, number>;
-      constrained: Record<ImageViewport, number>;
+      constrained: Record<ImageViewport, ImageGridConstrainPercent>;
       aspect: string;
       matchHeight: boolean;
       layouts: GridLayouts;
@@ -387,12 +370,13 @@ import Button from '../ui/Button.astro';
 
     const applyConstrainedLive = () => {
       if (!liveApply) return;
-      VIEWPORTS.forEach((viewport) => {
-        editTarget.style.setProperty(
-          `--project-image-grid-width-${viewport}`,
-          `${draftConstrained[viewport]}%`,
-        );
-      });
+      for (const part of imageGridConstrainedStyle(draftConstrained).split(';')) {
+        const colon = part.indexOf(':');
+        if (colon < 0) continue;
+        const key = part.slice(0, colon).trim();
+        const value = part.slice(colon + 1).trim();
+        if (key && value) editTarget.style.setProperty(key, value);
+      }
       editTarget.dataset.devGridConstrained = JSON.stringify(draftConstrained);
     };
 
@@ -883,12 +867,17 @@ import Button from '../ui/Button.astro';
     });
 
     constrainedSelect.addEventListener('change', () => {
-      draftConstrained[selectedViewport] = normalizeConstrainPercent(constrainedSelect.value, 100);
+      draftConstrained = resolveImageGridConstrained({
+        ...draftConstrained,
+        [selectedViewport]: constrainedSelect.value,
+      });
       renderDraft();
       const percent = draftConstrained[selectedViewport];
-      status.textContent = percent >= 100
+      status.textContent = percent === 100
         ? `Full width on ${selectedViewport} — unsaved changes.`
-        : `Constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
+        : percent === 'text'
+          ? `Matched to text width on ${selectedViewport} — unsaved changes.`
+          : `Constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
     });
 
     aspectSelect.addEventListener('change', () => {
