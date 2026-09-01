@@ -360,6 +360,7 @@ function describeManifest(manifest = {}, files = []) {
   const labels = {
     text: ['text field', 'text fields'],
     spacing: ['spacing change', 'spacing changes'],
+    layout: ['Intro height change', 'Intro height changes'],
     crop: ['image crop', 'image crops'],
     grid: ['image grid', 'image grids'],
     carousel: ['carousel', 'carousels'],

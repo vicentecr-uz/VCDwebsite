@@ -1165,7 +1165,7 @@ const applyCaptionChange = (data, change) => {
 };
 
 /**
- * Dev-only batch writer so staged image/grid/text/spacing edits hit disk in one
+ * Dev-only batch writer so staged image/grid/text/layout edits hit disk in one
  * write per document (avoids mid-save HMR wiping later changes).
  *
  * @returns {import('vite').Plugin}
@@ -1304,16 +1304,21 @@ function contentBatchDevWriter() {
             const fieldPath = change?.path;
             const value = change?.value;
             const resolved = resolveBatchChange(documentKey, fieldPath);
+            const field = resolved?.path?.at(-1);
+            const validSpacing = field === 'spacing' && EDITABLE_SPACING_VALUES.has(value);
+            const validIntroHeight = field === 'introHeight'
+              && Number.isInteger(value)
+              && value >= 1
+              && value <= 100;
             if (
               !resolved ||
               !Array.isArray(resolved.path) ||
               resolved.path.length < 2 ||
               resolved.path.length > 8 ||
-              resolved.path.at(-1) !== 'spacing' ||
-              !EDITABLE_SPACING_VALUES.has(value) ||
+              (!validSpacing && !validIntroHeight) ||
               resolved.path.some((part) => !isSafePathPart(part))
             ) {
-              send(400, { error: 'One or more spacing fields are not editable.' });
+              send(400, { error: 'One or more layout fields are not editable.' });
               return;
             }
             resolved.group.spacing.push({ ...change, path: resolved.path });
@@ -1388,16 +1393,21 @@ function contentBatchDevWriter() {
                   typeof target !== 'object' ||
                   !Object.prototype.hasOwnProperty.call(target, part)
                 ) {
-                  send(400, { error: 'A spacing path no longer exists.' });
+                  send(400, { error: 'A layout path no longer exists.' });
                   return;
                 }
                 target = target[part];
               }
               if (target === null || typeof target !== 'object' || Array.isArray(target)) {
-                send(400, { error: 'A spacing path no longer exists.' });
+                send(400, { error: 'A layout path no longer exists.' });
                 return;
               }
-              target.spacing = change.value;
+              const field = change.path.at(-1);
+              if (field === 'introHeight' && target.intro !== true) {
+                send(400, { error: 'Intro height is only editable on Intro blocks.' });
+                return;
+              }
+              target[field] = change.value;
             }
 
             await writeDevDocument(relativeFile, data);
@@ -1422,8 +1432,8 @@ function contentBatchDevWriter() {
 }
 
 /**
- * Dev-only writer for project section spacing tokens. Same document allowlist
- * as text edits; creates `spacing` on the section node when missing.
+ * Dev-only writer for project section layout fields. Same document allowlist
+ * as text edits; creates `spacing` or `introHeight` on the section when missing.
  *
  * @returns {import('vite').Plugin}
  */
@@ -1845,6 +1855,11 @@ function contentSectionDevWriter() {
           const insertSpacing = EDITABLE_SPACING_VALUES.has(requestedSpacing)
             ? requestedSpacing
             : (index === 0 ? 'none' : 'section');
+          const intro = body.intro === true || body.intro === 'true';
+          const requestedIntroHeight = Number(body.introHeight);
+          const introHeight = Number.isFinite(requestedIntroHeight)
+            ? Math.min(100, Math.max(1, Math.round(requestedIntroHeight)))
+            : 75;
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
             const level = Number(body.level) === 3 ? 3 : 2;
@@ -1856,7 +1871,7 @@ function contentSectionDevWriter() {
               spacing: insertSpacing,
               tightBottom: false,
               ...(level === 3 ? { level: 3 } : {}),
-              ...(body.intro === true || body.intro === 'true' ? { intro: true } : {}),
+              ...(intro ? { intro: true, introHeight } : {}),
             };
           } else if (type === 'bodyText') {
             const id = `body-${Date.now().toString(36)}`;
@@ -1865,7 +1880,7 @@ function contentSectionDevWriter() {
               id,
               spacing: insertSpacing,
               paragraphs: [''],
-              ...(body.intro === true || body.intro === 'true' ? { intro: true } : {}),
+              ...(intro ? { intro: true, introHeight } : {}),
             };
           } else if (type === 'image') {
             if (!srcs.length && !filenames.length) {
@@ -1940,16 +1955,16 @@ function contentSpacingDevWriter() {
           for await (const chunk of req) {
             size += chunk.length;
             if (size > 20_000) {
-              send(413, { error: 'The spacing update is too large.' });
+              send(413, { error: 'The layout update is too large.' });
               return;
             }
             chunks.push(chunk);
           }
 
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
-                    const changes = Array.isArray(body.changes) ? body.changes : [];
+          const changes = Array.isArray(body.changes) ? body.changes : [];
           if (!changes.length) {
-            send(400, { error: 'No spacing changes were provided.' });
+            send(400, { error: 'No layout changes were provided.' });
             return;
           }
 
@@ -1959,16 +1974,21 @@ function contentSpacingDevWriter() {
             const fieldPath = change.path;
             const value = change.value;
             const target = resolveDevFieldTarget(documentKey, '', fieldPath);
+            const field = target?.path?.at(-1);
+            const validSpacing = field === 'spacing' && EDITABLE_SPACING_VALUES.has(value);
+            const validIntroHeight = field === 'introHeight'
+              && Number.isInteger(value)
+              && value >= 1
+              && value <= 100;
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||
               target.path.length < 2 ||
               target.path.length > 8 ||
-              target.path.at(-1) !== 'spacing' ||
-              !EDITABLE_SPACING_VALUES.has(value) ||
+              (!validSpacing && !validIntroHeight) ||
               target.path.some((part) => !isSafePathPart(part))
             ) {
-              send(400, { error: 'One or more spacing fields are not editable.' });
+              send(400, { error: 'One or more layout fields are not editable.' });
               return;
             }
             const documentChanges = grouped.get(target.relativeFile) || [];
@@ -1987,7 +2007,7 @@ function contentSpacingDevWriter() {
                   typeof target !== 'object' ||
                   !Object.prototype.hasOwnProperty.call(target, part)
                 ) {
-                  send(400, { error: 'A spacing path no longer exists.' });
+                  send(400, { error: 'A layout path no longer exists.' });
                   return;
                 }
                 target = target[part];
@@ -1995,11 +2015,15 @@ function contentSpacingDevWriter() {
 
               const field = change.path.at(-1);
               if (target === null || typeof target !== 'object' || Array.isArray(target)) {
-                send(400, { error: 'A spacing path no longer exists.' });
+                send(400, { error: 'A layout path no longer exists.' });
+                return;
+              }
+              if (field === 'introHeight' && target.intro !== true) {
+                send(400, { error: 'Intro height is only editable on Intro blocks.' });
                 return;
               }
               target[field] = change.value;
-              if (Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
+              if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
                 delete target.tightTop;
               }
             }
@@ -2009,7 +2033,7 @@ function contentSpacingDevWriter() {
 
           send(200, { ok: true, count: changes.length });
         } catch {
-          send(400, { error: 'Could not parse or write the spacing changes.' });
+          send(400, { error: 'Could not parse or write the layout changes.' });
         }
       });
     },

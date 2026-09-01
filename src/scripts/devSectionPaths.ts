@@ -2,6 +2,7 @@
 
 export const DEV_PATH_ATTRS = [
   'data-dev-spacing-path',
+  'data-dev-intro-height-path',
   'data-dev-text-path',
   'data-dev-image-path',
   'data-dev-grid-path',
