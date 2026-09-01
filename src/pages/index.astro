@@ -4,6 +4,7 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
 import { loadPageDocument } from '../lib/projects';
+import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
 const homePage = loadPageDocument('home');
 ---
@@ -16,6 +17,10 @@ const homePage = loadPageDocument('home');
       <p class="home-role">Product Design Engineer</p>
       <div data-dev-project-drop-zone>
         <ProjectSections documentKey="home" sections={homePage.sections} />
+        <div
+          class:list={[projectStackClass('none')]}
+          {...(spacingDevAttrs('home', ['sections', homePage.sections.length], 'none') ?? {})}
+        />
       </div>
     </main>
 
@@ -29,9 +34,8 @@ const homePage = loadPageDocument('home');
   }
 
   .home-role {
-    /* Eat the header's bottom padding so this sits under the wordmark,
-       not under the full logo-tall row. 0.35em is the leftover air. */
-    margin: calc(-1 * var(--space-unit) + 0.35em) 0 0;
+    /* Clear of the header's box, so the fill never clips it. */
+    margin: 0;
     font-size: var(--header-menu-link-size, 1.2em);
     font-weight: var(--text-nav-weight);
     color: var(--sys-color-on-srf-variant);
