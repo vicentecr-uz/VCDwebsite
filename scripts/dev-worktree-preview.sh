@@ -15,6 +15,41 @@ pid_alive() {
   kill -0 "$pid" 2>/dev/null
 }
 
+read_pid() {
+  local file="$1"
+  if [[ -f "$file" ]]; then
+    cat "$file"
+  fi
+}
+
+use_launchd() {
+  [[ "$(uname -s)" == "Darwin" ]] && command -v launchctl >/dev/null 2>&1
+}
+
+launchd_loaded() {
+  local label="$1"
+  launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1
+}
+
+launchd_pid() {
+  local label="$1"
+  launchctl print "gui/$(id -u)/$label" 2>/dev/null \
+    | awk '/^[[:space:]]*pid = / { print $3; exit }' \
+    || true
+}
+
+remove_launchd_job() {
+  local label="$1"
+
+  launchctl remove "$label" 2>/dev/null || true
+  for _ in {1..20}; do
+    if ! launchd_loaded "$label"; then
+      return 0
+    fi
+    sleep 0.25
+  done
+}
+
 port_in_use() {
   local port="$1"
   lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>/dev/null
@@ -47,11 +82,19 @@ fi
 
 PID_FILE="$SESSION_DIR/astro-${PORT}.pid"
 LOG_FILE="$SESSION_DIR/astro-${PORT}.log"
+LAUNCHD_LABEL="com.vcruzdesigns.vcdwebsite.preview.${PORT}"
 
 cmd_status() {
-  local pid=""
-  if [[ -f "$PID_FILE" ]]; then
-    pid="$(cat "$PID_FILE")"
+  local pid
+  if use_launchd; then
+    pid="$(launchd_pid "$LAUNCHD_LABEL")"
+    if [[ -n "$pid" ]] && pid_alive "$pid"; then
+      echo "$pid" >"$PID_FILE"
+    else
+      pid="$(read_pid "$PID_FILE" || true)"
+    fi
+  else
+    pid="$(read_pid "$PID_FILE" || true)"
   fi
   if [[ -n "$pid" ]] && pid_alive "$pid"; then
     echo "Astro: running (pid $pid, port $PORT)  http://localhost:${PORT}/"
@@ -66,30 +109,48 @@ cmd_status() {
 }
 
 cmd_stop() {
-  local pid=""
-  if [[ -f "$PID_FILE" ]]; then
-    pid="$(cat "$PID_FILE")"
+  local pid was_alive=0
+  pid="$(read_pid "$PID_FILE" || true)"
+  if use_launchd && launchd_loaded "$LAUNCHD_LABEL"; then
+    pid="$(launchd_pid "$LAUNCHD_LABEL")"
+    if [[ -n "$pid" ]] && pid_alive "$pid"; then
+      was_alive=1
+    fi
+    remove_launchd_job "$LAUNCHD_LABEL"
   fi
   if [[ -n "$pid" ]] && pid_alive "$pid"; then
+    was_alive=1
     kill "$pid" 2>/dev/null || true
     for _ in {1..20}; do
       pid_alive "$pid" || break
       sleep 0.25
     done
     pid_alive "$pid" && kill -9 "$pid" 2>/dev/null || true
+  fi
+  if [[ "$was_alive" -eq 1 ]]; then
     echo "  stopped pid $pid"
   fi
   rm -f "$PID_FILE"
 }
 
 cmd_start() {
-  if [[ -f "$PID_FILE" ]]; then
-    local existing
-    existing="$(cat "$PID_FILE")"
-    if pid_alive "$existing"; then
+  local existing
+  if use_launchd; then
+    existing="$(launchd_pid "$LAUNCHD_LABEL")"
+    if [[ -n "$existing" ]] && pid_alive "$existing"; then
+      echo "$existing" >"$PID_FILE"
       echo "Already running (pid $existing)  http://localhost:${PORT}/"
       return 0
     fi
+    if launchd_loaded "$LAUNCHD_LABEL"; then
+      remove_launchd_job "$LAUNCHD_LABEL"
+    fi
+  fi
+
+  existing="$(read_pid "$PID_FILE" || true)"
+  if [[ -n "$existing" ]] && pid_alive "$existing"; then
+    echo "Already running (pid $existing)  http://localhost:${PORT}/"
+    return 0
   fi
   if port_in_use "$PORT"; then
     echo "Port $PORT is already in use."
@@ -97,10 +158,48 @@ cmd_start() {
   fi
 
   : >"$LOG_FILE"
-  # Same detach as scripts/dev-session.sh — nohup + disown so a short-lived
-  # agent shell cannot take Astro down with it.
-  nohup bash -c "cd '$ROOT'; exec \"\$@\"" _ "$BUN" x astro dev --port "$PORT" --host >>"$LOG_FILE" 2>&1 &
-  local pid=$!
+  local pid
+  if use_launchd; then
+    if ! launchctl submit -l "$LAUNCHD_LABEL" -o "$LOG_FILE" -e "$LOG_FILE" -- \
+      /bin/bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$BUN" x astro dev --port "$PORT" --host; then
+      echo "Failed to start — see $LOG_FILE"
+      tail -n 20 "$LOG_FILE" || true
+      rm -f "$PID_FILE"
+      exit 1
+    fi
+
+    local current_pid candidate_pid="" stable_ticks=0
+    for _ in {1..40}; do
+      current_pid="$(launchd_pid "$LAUNCHD_LABEL")"
+      if [[ -n "$current_pid" ]] && pid_alive "$current_pid"; then
+        echo "$current_pid" >"$PID_FILE"
+        if [[ "$current_pid" == "$candidate_pid" ]]; then
+          stable_ticks=$((stable_ticks + 1))
+        else
+          candidate_pid="$current_pid"
+          stable_ticks=1
+        fi
+        if [[ "$stable_ticks" -ge 3 ]] && port_in_use "$PORT"; then
+          echo "Astro: started (pid $current_pid, port $PORT)  http://localhost:${PORT}/"
+          return 0
+        fi
+      else
+        candidate_pid=""
+        stable_ticks=0
+        rm -f "$PID_FILE"
+      fi
+      sleep 0.25
+    done
+    remove_launchd_job "$LAUNCHD_LABEL"
+    rm -f "$PID_FILE"
+    echo "Failed to start — see $LOG_FILE"
+    tail -n 20 "$LOG_FILE" || true
+    exit 1
+  fi
+
+  # Non-macOS fallback for environments without a per-user launchd session.
+  nohup bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$BUN" x astro dev --port "$PORT" --host >>"$LOG_FILE" 2>&1 &
+  pid=$!
   echo "$pid" >"$PID_FILE"
   disown "$pid" 2>/dev/null || true
 
