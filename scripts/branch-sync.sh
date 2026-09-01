@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SESSION_DIR="$ROOT/.dev-session"
 PID_FILE="$SESSION_DIR/branch-sync.pid"
 LOG_FILE="$SESSION_DIR/branch-sync.log"
+LAUNCHD_LABEL="com.vcruzdesigns.vcdwebsite.branch-sync"
 
 INTERVAL="${BRANCH_SYNC_INTERVAL:-60}"
 
@@ -18,6 +19,30 @@ read_pid() {
   if [[ -f "$PID_FILE" ]]; then
     cat "$PID_FILE"
   fi
+}
+
+use_launchd() {
+  [[ "$(uname -s)" == "Darwin" ]] && command -v launchctl >/dev/null 2>&1
+}
+
+launchd_loaded() {
+  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" >/dev/null 2>&1
+}
+
+launchd_pid() {
+  launchctl print "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null \
+    | awk '/^[[:space:]]*pid = / { print $3; exit }' \
+    || true
+}
+
+remove_launchd_job() {
+  launchctl remove "$LAUNCHD_LABEL" 2>/dev/null || true
+  for _ in {1..20}; do
+    if ! launchd_loaded; then
+      return 0
+    fi
+    sleep 0.25
+  done
 }
 
 sync_once() {
@@ -86,6 +111,16 @@ daemon_loop() {
 cmd_start() {
   mkdir -p "$SESSION_DIR"
 
+  if use_launchd; then
+    local job_pid
+    job_pid="$(launchd_pid)"
+    if [[ -n "$job_pid" ]] && pid_alive "$job_pid"; then
+      echo "$job_pid" >"$PID_FILE"
+      echo "Branch sync: already running (pid $job_pid)"
+      return 0
+    fi
+  fi
+
   local existing_pid
   existing_pid="$(read_pid || true)"
   if [[ -n "$existing_pid" ]] && pid_alive "$existing_pid"; then
@@ -93,28 +128,82 @@ cmd_start() {
     return 0
   fi
 
-  : >"$LOG_FILE"
-  nohup bash -c "cd '$ROOT'; exec '$ROOT/scripts/branch-sync.sh' _daemon" >>"$LOG_FILE" 2>&1 &
+  local pid
+  if use_launchd; then
+    if launchd_loaded; then
+      remove_launchd_job
+    fi
+    : >"$LOG_FILE"
 
-  local pid=$!
-  echo "$pid" >"$PID_FILE"
-  disown "$pid" 2>/dev/null || true
+    if ! launchctl submit -l "$LAUNCHD_LABEL" -o "$LOG_FILE" -e "$LOG_FILE" -- \
+      /bin/bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" \
+      /usr/bin/env "BRANCH_SYNC_INTERVAL=$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon; then
+      echo "Branch sync: failed to start — see $LOG_FILE"
+      tail -n 10 "$LOG_FILE" || true
+      rm -f "$PID_FILE"
+      return 1
+    fi
 
-  sleep 0.5
-  if pid_alive "$pid"; then
+    local current_pid candidate_pid="" stable_ticks=0 stable_pid=""
+    for _ in {1..20}; do
+      current_pid="$(launchd_pid)"
+      if [[ -n "$current_pid" ]] && pid_alive "$current_pid"; then
+        echo "$current_pid" >"$PID_FILE"
+        if [[ "$current_pid" == "$candidate_pid" ]]; then
+          stable_ticks=$((stable_ticks + 1))
+        else
+          candidate_pid="$current_pid"
+          stable_ticks=1
+        fi
+        if [[ "$stable_ticks" -ge 3 ]]; then
+          stable_pid="$current_pid"
+          break
+        fi
+      else
+        candidate_pid=""
+        stable_ticks=0
+        rm -f "$PID_FILE"
+      fi
+      sleep 0.25
+    done
+    pid="$stable_pid"
+  else
+    : >"$LOG_FILE"
+    nohup bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$ROOT/scripts/branch-sync.sh" _daemon >>"$LOG_FILE" 2>&1 &
+    pid=$!
+    echo "$pid" >"$PID_FILE"
+    disown "$pid" 2>/dev/null || true
+    sleep 0.5
+  fi
+
+  if [[ -n "${pid:-}" ]] && pid_alive "$pid"; then
     echo "Branch sync: started (pid $pid, every ${INTERVAL}s)"
     echo "  Log: tail -f .dev-session/branch-sync.log"
   else
     echo "Branch sync: failed to start — see $LOG_FILE"
     tail -n 10 "$LOG_FILE" || true
+    if use_launchd; then
+      remove_launchd_job
+    fi
     rm -f "$PID_FILE"
     return 1
   fi
 }
 
 cmd_stop() {
-  local pid
+  local pid was_alive=0 removed_job=0
   pid="$(read_pid || true)"
+
+  if use_launchd && launchd_loaded; then
+    if [[ -z "$pid" ]]; then
+      pid="$(launchd_pid)"
+    fi
+    if [[ -n "$pid" ]] && pid_alive "$pid"; then
+      was_alive=1
+    fi
+    remove_launchd_job
+    removed_job=1
+  fi
 
   if [[ -z "$pid" ]]; then
     echo "Branch sync: not tracked"
@@ -123,6 +212,7 @@ cmd_stop() {
   fi
 
   if pid_alive "$pid"; then
+    was_alive=1
     kill "$pid" 2>/dev/null || true
     for _ in {1..20}; do
       if ! pid_alive "$pid"; then
@@ -133,6 +223,8 @@ cmd_stop() {
     if pid_alive "$pid"; then
       kill -9 "$pid" 2>/dev/null || true
     fi
+    echo "Branch sync: stopped (pid $pid)"
+  elif [[ "$was_alive" -eq 1 || "$removed_job" -eq 1 ]]; then
     echo "Branch sync: stopped (pid $pid)"
   else
     echo "Branch sync: already stopped (stale pid $pid)"
