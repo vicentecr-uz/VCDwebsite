@@ -62,6 +62,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
   import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
   import { getLastPointerPosition } from '../lib/lastPointer';
 
+  const ASSET_DRAG_TYPE = 'application/x-vcd-asset-src';
+
   const dropZone = document.querySelector('[data-dev-project-drop-zone]');
   const pageDropVeil = document.querySelector('[data-dev-image-drop]');
   const panel = document.querySelector('[data-dev-image-picker]');
@@ -90,6 +92,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
   let activePlaceholder = null;
   /** Skip reset when we hide this panel to open Asset manager mid-pick. */
   let suppressCloseReset = false;
+  /** @type {{ documentKey: string, path: Array<string | number>, target: HTMLElement } | null} */
+  let targetedCarousel = null;
+  /** @type {HTMLElement | null} */
+  let activeCarouselDrop = null;
 
   const dropLabel = pageDropVeil instanceof HTMLElement
     ? pageDropVeil.querySelector('[data-dev-image-drop-label]')
@@ -102,10 +108,55 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (dropLabel instanceof HTMLElement) dropLabel.textContent = 'Drop images to add';
   };
 
+  const clearCarouselDropTarget = () => {
+    const target = activeCarouselDrop;
+    activeCarouselDrop = null;
+    if (!target) return;
+    delete target.dataset.devCarouselDropActive;
+    const veil = target.querySelector(':scope > .dev-carousel-drop-veil');
+    if (!(veil instanceof HTMLElement)) return;
+    veil.classList.remove('is-active');
+    const remove = () => veil.remove();
+    veil.addEventListener('transitionend', remove, { once: true });
+    window.setTimeout(remove, 200);
+  };
+
+  const setCarouselDropTarget = (target) => {
+    if (activeCarouselDrop === target) return;
+    clearCarouselDropTarget();
+    activeCarouselDrop = target;
+    if (!target) return;
+    target.dataset.devCarouselDropActive = 'true';
+    const veil = document.createElement('div');
+    veil.className = 'dev-carousel-drop-veil';
+    veil.textContent = 'Add image to carousel';
+    target.append(veil);
+    requestAnimationFrame(() => veil.classList.add('is-active'));
+  };
+
   const clearDragState = () => {
     document.documentElement.removeAttribute('data-dev-image-drag');
     if (pageDropVeil instanceof HTMLElement) delete pageDropVeil.dataset.active;
+    clearCarouselDropTarget();
     clearPlaceholderTarget();
+  };
+
+  const carouselAtPoint = (clientX, clientY) => {
+    const hit = document.elementFromPoint(clientX, clientY);
+    if (!(hit instanceof Element)) return null;
+    return hit.closest('[data-dev-carousel-target]');
+  };
+
+  const carouselTargetFromElement = (target) => {
+    if (!(target instanceof HTMLElement)) return null;
+    const targetDocumentKey = target.dataset.devDocument || '';
+    try {
+      const path = JSON.parse(target.dataset.devCarouselPath || '[]');
+      if (!targetDocumentKey || !Array.isArray(path) || !path.length) return null;
+      return { documentKey: targetDocumentKey, path, target };
+    } catch {
+      return null;
+    }
   };
 
   const standalonePlaceholderAtPoint = (clientX, clientY) => {
@@ -200,16 +251,20 @@ const globeSvg = sizeIcon(globeIcon, 16);
     || preferredType === 'imageCarousel'
   );
 
+  const hasCarouselTarget = () => Boolean(targetedCarousel);
+
   const syncTitle = () => {
     if (!(titleEl instanceof HTMLElement)) return;
-    titleEl.textContent = preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
+    titleEl.textContent = hasCarouselTarget()
+      ? 'Add image'
+      : preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
   };
 
   const syncPickerState = () => {
     const fileCount = pendingFiles.length;
     const srcCount = pendingSrcs.length;
     const count = fileCount || srcCount;
-    const typedUpstream = hasPreferredType();
+    const typedUpstream = hasPreferredType() || hasCarouselTarget();
 
     syncTitle();
 
@@ -217,7 +272,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       typeActions.hidden = typedUpstream;
     }
     if (placeholderButton instanceof HTMLButtonElement) {
-      placeholderButton.hidden = preferredType === 'imageCarousel';
+      placeholderButton.hidden = preferredType === 'imageCarousel' || hasCarouselTarget();
       placeholderButton.disabled = count > 0;
     }
 
@@ -241,6 +296,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     pendingFiles = [];
     pendingSrcs = [];
     preferredType = null;
+    targetedCarousel = null;
     syncPickerState();
   };
 
@@ -355,6 +411,30 @@ const globeSvg = sizeIcon(globeIcon, 16);
     closePicker();
   };
 
+  const appendToCarousel = async (filenames = [], srcs = [], target = targetedCarousel) => {
+    if (!target) throw new Error('Could not find that carousel.');
+    await flushPendingEdits(target.documentKey);
+    const response = await fetch('/api/content-section', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        document: target.documentKey,
+        action: 'appendMediaItems',
+        path: target.path,
+        ...(srcs.length ? { srcs } : { filenames }),
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not add images to that carousel.');
+    window.dispatchEvent(new CustomEvent('vcd:dev-carousel-media-appended', {
+      detail: {
+        documentKey: target.documentKey,
+        index: result.index,
+        section: result.section,
+      },
+    }));
+  };
+
   const pickFromAssetManager = () => new Promise((resolve, reject) => {
     window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
       detail: {
@@ -363,7 +443,9 @@ const globeSvg = sizeIcon(globeIcon, 16);
         mode: 'pick',
         opener: panel instanceof HTMLElement ? panel : undefined,
         // Carry Add-block menu choice (Image / Carousel) into the pick session.
-        ...(hasPreferredType() ? { type: preferredType } : {}),
+        ...(hasCarouselTarget()
+          ? { type: 'imageCarousel' }
+          : hasPreferredType() ? { type: preferredType } : {}),
         resolve,
         reject,
       },
@@ -458,6 +540,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
   };
 
   const insertWithPreferredType = async (filenames = [], srcs = []) => {
+    if (hasCarouselTarget()) {
+      await appendToCarousel(filenames, srcs);
+      closePicker();
+      return true;
+    }
     if (!hasPreferredType()) return false;
     await insertSection(preferredType, filenames, srcs);
     return true;
@@ -510,21 +597,32 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
   };
 
+  const isValidImageDrag = (transfer) => {
+    if (!transfer) return false;
+    if (Array.from(transfer.types || []).includes(ASSET_DRAG_TYPE)) return true;
+    if (!Array.from(transfer.types || []).includes('Files')) return false;
+    const items = Array.from(transfer.items || []);
+    return !items.length || items.some((item) => item.kind === 'file' && item.type.startsWith('image/'));
+  };
+
   const onDragEnter = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    if (!isValidImageDrag(event.dataTransfer)) return;
     dragDepth += 1;
     document.documentElement.dataset.devImageDrag = 'true';
-    if (pageDropVeil instanceof HTMLElement) pageDropVeil.dataset.active = 'true';
     prevent(event);
   };
 
   const onDragOver = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
+    if (!isValidImageDrag(event.dataTransfer)) return;
     prevent(event);
+    const carousel = carouselAtPoint(event.clientX, event.clientY);
+    setCarouselDropTarget(carousel);
     const placeholder = standalonePlaceholderAtPoint(event.clientX, event.clientY);
-    setPlaceholderTarget(placeholder);
+    setPlaceholderTarget(carousel ? null : placeholder);
     if (pageDropVeil instanceof HTMLElement) {
-      if (placeholder) delete pageDropVeil.dataset.active;
+      if (carousel || placeholder) delete pageDropVeil.dataset.active;
       else pageDropVeil.dataset.active = 'true';
     }
   };
@@ -539,8 +637,29 @@ const globeSvg = sizeIcon(globeIcon, 16);
     event.preventDefault();
     const { clientX, clientY } = event;
     const transfer = event.dataTransfer;
+    if (!isValidImageDrag(transfer)) return;
+    const carousel = carouselAtPoint(clientX, clientY);
+    const carouselTarget = carouselTargetFromElement(carousel);
+    const assetSrc = transfer?.getData(ASSET_DRAG_TYPE) || '';
     dragDepth = 0;
     clearDragState();
+    if (carouselTarget && (assetSrc || transfer?.files?.length)) {
+      void (async () => {
+        try {
+          if (assetSrc) {
+            await appendToCarousel([], [assetSrc], carouselTarget);
+            return;
+          }
+          const images = Array.from(transfer.files).filter((file) => file.type.startsWith('image/'));
+          if (!images.length) return;
+          const filenames = await uploadFiles(images);
+          await appendToCarousel(filenames, [], carouselTarget);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not add images to that carousel.');
+        }
+      })();
+      return;
+    }
     if (!transfer?.files?.length) return;
     handleFiles(transfer.files, clientY, clientX);
   };
@@ -594,6 +713,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
           showPanel();
           return;
         }
+        if (hasCarouselTarget()) {
+          await appendToCarousel([], srcs);
+          closePicker();
+          return;
+        }
         if (hasPreferredType()) {
           await insertSection(preferredType, [], srcs);
           return;
@@ -619,7 +743,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) return;
     setPendingFiles(fileInput.files);
     fileInput.value = '';
-    if (hasPreferredType() && pendingFiles.length) {
+    if ((hasPreferredType() || hasCarouselTarget()) && pendingFiles.length) {
       void (async () => {
         try {
           const filenames = await uploadFiles(pendingFiles);
@@ -646,7 +770,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (dropzone instanceof HTMLElement) dropzone.classList.remove('is-dragover');
     if (!event.dataTransfer?.files?.length) return;
     setPendingFiles(event.dataTransfer.files);
-    if (hasPreferredType() && pendingFiles.length) {
+    if ((hasPreferredType() || hasCarouselTarget()) && pendingFiles.length) {
       void (async () => {
         try {
           const filenames = await uploadFiles(pendingFiles);
@@ -670,6 +794,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
   root.addEventListener('dragover', onDragOver);
   root.addEventListener('dragleave', onDragLeave);
   root.addEventListener('drop', onDrop);
+  document.addEventListener('dragend', () => {
+    dragDepth = 0;
+    clearDragState();
+  });
 
   window.addEventListener('vcd:dev-mode-change', syncVisibility);
 
@@ -677,10 +805,30 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const detail = event.detail ?? {};
     if (detail.documentKey !== documentKey || typeof detail.index !== 'number') return;
     pendingInsertIndex = detail.index;
+    targetedCarousel = null;
     preferredType = typeof detail.preferredType === 'string' ? detail.preferredType : null;
     pendingFiles = [];
     pendingSrcs = [];
     openPicker();
+  }));
+
+  window.addEventListener('vcd:dev-carousel-image-picker-open', ((event) => {
+    const detail = event.detail ?? {};
+    if (
+      detail.documentKey !== documentKey
+      || !Array.isArray(detail.path)
+      || !detail.path.length
+      || !(detail.target instanceof HTMLElement)
+    ) return;
+    targetedCarousel = {
+      documentKey: detail.documentKey,
+      path: detail.path,
+      target: detail.target,
+    };
+    preferredType = null;
+    pendingFiles = [];
+    pendingSrcs = [];
+    showPanel();
   }));
 
   syncVisibility();
@@ -723,6 +871,26 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   html.is-dev-mode .project-media--placeholder[data-dev-drop-target='true']::after {
     border-color: var(--ref-palette-grey-400);
+  }
+
+  .dev-carousel-drop-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    border-radius: inherit;
+    background: color-mix(in srgb, var(--color-bg) 88%, transparent);
+    color: var(--sys-color-on-srf);
+    font-size: 1rem;
+    letter-spacing: -0.02em;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .dev-carousel-drop-veil.is-active {
+    opacity: 1;
   }
 
   .dev-overlay[data-dev-panel-key='add-image'] {

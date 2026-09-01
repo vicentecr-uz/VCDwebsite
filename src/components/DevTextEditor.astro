@@ -2903,6 +2903,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       mountMediaSectionInPlace(section, documentKey, index);
     }) as EventListener);
 
+    window.addEventListener('vcd:dev-carousel-media-appended', ((event: CustomEvent<{
+      documentKey?: string;
+      index?: number;
+      section?: Record<string, unknown>;
+    }>) => {
+      const { documentKey, index, section } = event.detail ?? {};
+      if (!documentKey || typeof index !== 'number' || !section) return;
+      replaceMediaSectionInPlace(section, documentKey, index);
+    }) as EventListener);
+
     window.addEventListener('vcd:dev-placeholder-fill-pending', ((event: CustomEvent<{
       documentKey?: string;
       index?: number;
