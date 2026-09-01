@@ -41,6 +41,12 @@ interface Props {
    * Project pages pass their own cover; everything else gets the site default.
    */
   ogImage?: string;
+  /**
+   * Inline style for #site-wrapper, used to narrow the page column to what the
+   * page's own content needs. Build it with `pageColumnStyle()` from
+   * src/lib/pageColumn.ts; omit it to keep the default column.
+   */
+  columnStyle?: string;
 }
 
 const {
@@ -48,6 +54,7 @@ const {
   description = 'Portfolio of Vicente Cruz — London-based industrial designer.',
   serif = false,
   ogImage = DEFAULT_OG_IMAGE,
+  columnStyle,
 } = Astro.props;
 
 // Astro.site comes from `site` in astro.config.mjs. Absolute URLs are required:
@@ -110,7 +117,7 @@ const showDevTools = import.meta.env.DEV;
     <!-- Page transition overlay (GSAP fades this in/out) -->
     <div id="transition-overlay"></div>
 
-    <div id="site-wrapper">
+    <div id="site-wrapper" style={columnStyle}>
       <slot />
     </div>
 

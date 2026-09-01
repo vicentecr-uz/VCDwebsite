@@ -55,6 +55,44 @@ Both groups are centred (`margin-inline: auto`), so a narrower text block sits
 symmetric inside a wider media column rather than sharing its left edge. That
 was a deliberate call — changing it is a one-line edit here, nothing else.
 
+## The page column adapts to its own content
+
+A page doesn't always need the full media column. `pageColumnStyle()`
+(`src/lib/pageColumn.ts`) walks a page's sections and returns the column that
+page actually needs, as an inline style for `#site-wrapper`:
+
+```
+column = max(text cap, widest media block on the page)
+```
+
+`ProjectLayout` and the `index` / `work` / `play` templates pass it through to
+`Layout`. **The header sits inside `#site-wrapper`, so it inherits this** —
+there is no header-specific width logic, and there should not be.
+
+- No media at all, or every media block set to **Match text** → the column is
+  `--page-text-max-width`, and the header narrows with it.
+- Any media block at full width → no override is written at all; the page keeps
+  the default column.
+- Anything in between → `max(text, media × widest fraction)`.
+
+**This is only safe because a block's width does not depend on its column.**
+Percentages measure against `--page-media-max-width`, a fixed baseline. If they
+measured against the column, shrinking the column would shrink the very block
+that determined it, and the two would chase each other. Do not "simplify"
+`imageGridConstrainedStyle` back to a plain percentage without also deleting
+this.
+
+Only the widest block matters, so a single full-width image keeps the whole page
+wide — that is intended. Unknown section types are treated as **text**, on
+purpose: `MEDIA_SECTION_TYPES` is an explicit allowlist, because defaulting an
+unrecognised type to media would silently widen a page that should have stayed
+narrow. Add new media section types to that set.
+
+Note that on current content **no page narrows**: `home`, `work` and `play` each
+end in a full-width `projectGrid`, and project pages carry full-width imagery.
+The path is live, not dead — it just needs a page whose media is constrained (or
+absent) before it does anything visible.
+
 ## The derived breakpoint — the part that bites
 
 The gutter nav needs **14.25em per side** (12.5em nav + 1em gap + 0.75em
