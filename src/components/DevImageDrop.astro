@@ -89,6 +89,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const pageDropVeil = document.querySelector('[data-dev-image-drop]');
   const multiDropChoice = document.querySelector('[data-dev-image-drop-choice]');
   const multiDropChoiceButtons = multiDropChoice?.querySelectorAll('[data-dev-image-drop-choice-type]') ?? [];
+  const multiDropChoiceHome = multiDropChoice?.parentNode ?? null;
+  const multiDropChoiceNextSibling = multiDropChoice?.nextSibling ?? null;
   const panel = document.querySelector('[data-dev-image-picker]');
   const documentKey = panel instanceof HTMLElement ? (panel.dataset.documentKey || '') : '';
   const pickerCount = document.querySelector('[data-dev-image-picker-count]');
@@ -119,6 +121,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
   let targetedCarousel = null;
   /** @type {HTMLElement | null} */
   let activeCarouselDrop = null;
+  /** @type {HTMLElement | null} */
+  let multiDropChoiceHost = null;
 
   const dropLabel = pageDropVeil instanceof HTMLElement
     ? pageDropVeil.querySelector('[data-dev-image-drop-label]')
@@ -185,7 +189,24 @@ const globeSvg = sizeIcon(globeIcon, 16);
   };
 
   const closeMultiDropChoice = () => {
-    if (multiDropChoice instanceof HTMLElement) multiDropChoice.hidden = true;
+    if (multiDropChoice instanceof HTMLElement) {
+      multiDropChoice.hidden = true;
+      multiDropChoice.classList.remove('is-gap-mounted');
+      multiDropChoice.style.removeProperty('left');
+      multiDropChoice.style.removeProperty('top');
+      if (multiDropChoiceHome) {
+        if (
+          multiDropChoiceNextSibling
+          && multiDropChoiceNextSibling.parentNode === multiDropChoiceHome
+        ) {
+          multiDropChoiceHome.insertBefore(multiDropChoice, multiDropChoiceNextSibling);
+        } else {
+          multiDropChoiceHome.append(multiDropChoice);
+        }
+      }
+    }
+    multiDropChoiceHost?.classList.remove('is-media-choice-open');
+    multiDropChoiceHost = null;
     document.documentElement.removeAttribute('data-dev-image-drop-choice-open');
     pendingFiles = [];
   };
@@ -194,6 +215,17 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!(multiDropChoice instanceof HTMLElement)) return;
     document.documentElement.dataset.devImageDropChoiceOpen = 'true';
     document.dispatchEvent(new CustomEvent('dev:clear-gap-proximity'));
+    const gapToolbar = gapToolbarForInsertIndex(pendingInsertIndex);
+    if (gapToolbar) {
+      multiDropChoiceHost = gapToolbar;
+      gapToolbar.classList.add('is-media-choice-open');
+      multiDropChoice.classList.add('is-gap-mounted');
+      gapToolbar.append(multiDropChoice);
+      multiDropChoice.hidden = false;
+      const first = multiDropChoiceButtons[0];
+      if (first instanceof HTMLButtonElement) first.focus();
+      return;
+    }
     multiDropChoice.hidden = false;
     const rect = multiDropChoice.getBoundingClientRect();
     const gapAnchor = gapAnchorForInsertIndex(pendingInsertIndex);
@@ -300,6 +332,22 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const spacingBlocks = () => Array.from(
     document.querySelectorAll('[data-dev-spacing-document]'),
   );
+
+  const spacingBlockForInsertIndex = (insertIndex) => spacingBlocks().find((block) => {
+    try {
+      const path = JSON.parse(block.dataset.devSpacingPath || '[]');
+      return path.at(-2) === insertIndex;
+    } catch {
+      return false;
+    }
+  });
+
+  const gapToolbarForInsertIndex = (insertIndex) => {
+    const block = spacingBlockForInsertIndex(insertIndex);
+    if (!(block instanceof HTMLElement)) return null;
+    const toolbar = block.querySelector(':scope > .dev-gap-toolbar');
+    return toolbar instanceof HTMLElement ? toolbar : null;
+  };
 
   const gapAnchorForInsertIndex = (insertIndex) => {
     const indexed = spacingBlocks().map((block) => {
@@ -1070,6 +1118,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   .dev-image-drop-choice[hidden] {
     display: none;
+  }
+
+  .dev-image-drop-choice.is-gap-mounted {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
   }
 
   .dev-image-drop-choice .dev-btn {
