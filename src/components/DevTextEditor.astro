@@ -100,6 +100,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
+  import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
 
@@ -1011,7 +1012,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const gapsSuppressed = () =>
       isDevTextCaretActive()
       || document.documentElement.classList.contains('is-dev-asset-manager-open')
-      || document.documentElement.classList.contains('is-dev-tuner-open');
+      || document.documentElement.classList.contains('is-dev-tuner-open')
+      || document.documentElement.hasAttribute('data-dev-image-drop-choice-open');
 
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (
@@ -1141,10 +1143,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         syncSpacingProximity(event.detail.clientX, event.detail.clientY);
       }) as EventListener);
       document.addEventListener('dev:clear-gap-proximity', () => {
-        spacingStates.forEach(({ control }) => {
-          if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
-        });
-        document.documentElement.classList.remove('is-page-top-gap-above-header');
+        if (document.documentElement.hasAttribute('data-dev-image-drop-choice-open')) {
+          closeSectionMenus();
+        }
+        clearGapProximityAll();
       });
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control }) => {
@@ -2902,6 +2904,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { documentKey, index, section } = event.detail ?? {};
       if (!documentKey || typeof index !== 'number' || !section) return;
       mountMediaSectionInPlace(section, documentKey, index);
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-carousel-media-appended', ((event: CustomEvent<{
+      documentKey?: string;
+      index?: number;
+      section?: Record<string, unknown>;
+      activeItemId?: string;
+    }>) => {
+      const { documentKey, index, section, activeItemId } = event.detail ?? {};
+      if (!documentKey || typeof index !== 'number' || !section) return;
+      const root = replaceMediaSectionInPlace(section, documentKey, index);
+      if (root && activeItemId) restoreCarouselActiveItem(root, activeItemId);
     }) as EventListener);
 
     window.addEventListener('vcd:dev-placeholder-fill-pending', ((event: CustomEvent<{
@@ -5174,6 +5188,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     z-index: 80;
   }
 
+  .dev-gap-toolbar.is-media-choice-open,
+  .is-dev-mode [data-dev-spacing-document]:has(> .dev-gap-toolbar.is-media-choice-open) {
+    z-index: 90;
+  }
+
   [data-dev-spacing-document].project-stack--related > .dev-gap-toolbar {
     top: calc(var(--space-related) / -2);
   }
@@ -5245,7 +5264,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   /* Tuner open: force-hide even dirty / near chips (same as asset manager). */
-  html.is-dev-tuner-open .dev-gap-toolbar__pill {
+  html.is-dev-tuner-open .dev-gap-toolbar__pill,
+  html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__pill,
+  html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__menu {
     opacity: 0 !important;
     pointer-events: none !important;
   }

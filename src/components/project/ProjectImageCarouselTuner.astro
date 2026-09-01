@@ -121,6 +121,8 @@ import ToggleRow from '../ui/ToggleRow.astro';
 </DevOverlay>
 
 <script>
+  import plusIcon from 'lucide-static/icons/plus.svg?raw';
+  import { sizeIcon } from '../../lib/icons';
   import { applyCarouselViewportSettings } from '../../lib/projectImageCarousel';
   import {
     IMAGE_VIEWPORTS,
@@ -606,6 +608,35 @@ import ToggleRow from '../ui/ToggleRow.astro';
       return wrap;
     };
 
+    const makeAddThumb = () => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'project-carousel-tuner__add';
+      button.setAttribute('aria-label', 'Add image to carousel');
+      button.innerHTML = sizeIcon(plusIcon, 18);
+      button.addEventListener('click', () => {
+        const target = editTarget;
+        const documentKey = target.dataset.devDocument || '';
+        let path: Array<string | number> = [];
+        try {
+          path = JSON.parse(target.dataset.devCarouselPath || '[]');
+        } catch {
+          path = [];
+        }
+        if (!documentKey || !Array.isArray(path) || !path.length) {
+          status.textContent = 'This carousel is not wired for saving.';
+          return;
+        }
+        if (stageDraft('Staged — adding an image will save these carousel settings.')) {
+          saved = cloneDraft(draft);
+        }
+        window.dispatchEvent(new CustomEvent('vcd:dev-carousel-image-picker-open', {
+          detail: { documentKey, path, target },
+        }));
+      });
+      return button;
+    };
+
     const insertIdAt = (list: string[], id: string, beforeId: string | null) => {
       const without = list.filter((entry) => entry !== id);
       if (!beforeId) {
@@ -790,6 +821,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       const visible = bp().visible;
       const visibleSet = new Set(visible);
       visibleBoard.replaceChildren(
+        makeAddThumb(),
         ...visible
           .map((id) => byId.get(id))
           .filter((item): item is CatalogItem => !!item)
@@ -891,6 +923,11 @@ import ToggleRow from '../ui/ToggleRow.astro';
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'carousel') return;
       restoreOnClose();
+    }) as EventListener);
+
+    window.addEventListener('vcd:dev-carousel-prepare-append', ((event: CustomEvent) => {
+      if (event.detail?.target !== editTarget) return;
+      closePanel();
     }) as EventListener);
 
     selectTarget(initialTarget, false);
@@ -1013,7 +1050,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     .forEach(initProjectImageCarouselTuner);
 </script>
 
-<style>
+<style is:global>
   /* Width + height caps read as one decision, so they share a row. Collapses
      to nothing when both children are hidden — an empty flex item would still
      take the parent column's gap. */
@@ -1030,7 +1067,6 @@ import ToggleRow from '../ui/ToggleRow.astro';
     flex: 1 1 0;
     min-width: 0;
   }
-
   .project-carousel-tuner {
     position: relative;
     display: flex;
@@ -1092,6 +1128,39 @@ import ToggleRow from '../ui/ToggleRow.astro';
     grid-template-rows: auto auto;
     gap: 0.15em;
     min-width: 0;
+  }
+
+  .project-carousel-tuner__add {
+    display: grid;
+    place-items: center;
+    align-self: start;
+    width: 100%;
+    aspect-ratio: 1;
+    margin: 0;
+    padding: 0;
+    border: var(--dev-edit-dash);
+    border-color: var(--dev-edit-dash-color);
+    border-radius: 0.2em;
+    background: transparent;
+    color: var(--sys-color-on-srf-variant);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .project-carousel-tuner__add:focus-visible {
+    outline: 2px solid var(--sys-color-primary);
+    outline-offset: 2px;
+  }
+
+  .project-carousel-tuner__add:active {
+    transform: scale(0.96);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-carousel-tuner__add:hover {
+      background: var(--sys-color-srf-container-high);
+      color: var(--sys-color-on-srf);
+    }
   }
 
   .project-carousel-tuner__thumb {
