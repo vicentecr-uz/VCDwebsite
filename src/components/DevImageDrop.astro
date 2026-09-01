@@ -420,6 +420,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const appendToCarousel = async (filenames = [], srcs = [], target = targetedCarousel) => {
     if (!target) throw new Error('Could not find that carousel.');
+    const activeIndex = Number(target.target.dataset.activeIndex);
+    const activeSlide = Number.isInteger(activeIndex)
+      ? target.target.querySelector(
+        `[data-carousel-slide][data-carousel-index="${activeIndex}"]:not([data-carousel-parked])`,
+      )
+      : null;
+    const activeItemId = activeSlide instanceof HTMLElement
+      ? activeSlide.dataset.gridItemId || undefined
+      : undefined;
     await flushPendingEdits(target.documentKey);
     /** @type {Record<string, any>} */
     let source = {};
@@ -489,6 +498,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
         documentKey: target.documentKey,
         index: result.index,
         section: result.section,
+        activeItemId,
       },
     }));
   };
@@ -634,9 +644,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
     pendingInsertIndex = insertIndexForY(clientY);
     if (images.length === 1) {
-      preferredType = null;
-      pendingFiles = images;
-      openPicker(clientY);
+      void (async () => {
+        try {
+          const filenames = await uploadFiles(images);
+          await insertSection('image', filenames);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not add image.');
+        }
+      })();
       return;
     }
     void (async () => {
@@ -725,11 +740,9 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
     if (assetSrc) {
       pendingInsertIndex = insertIndexForY(clientY);
-      pendingFiles = [];
-      pendingSrcs = [assetSrc];
-      preferredType = null;
-      targetedCarousel = null;
-      openPicker(clientY);
+      void insertSection('image', [], [assetSrc]).catch((error) => {
+        window.alert(error instanceof Error ? error.message : 'Could not add image.');
+      });
       return;
     }
     if (!transfer?.files?.length) return;
@@ -950,7 +963,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     inset: 0;
     z-index: 30;
     border-radius: inherit;
-    background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+    background: color-mix(in srgb, var(--sys-color-srf) 72%, var(--sys-color-srf-container-low));
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s ease;

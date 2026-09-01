@@ -324,6 +324,22 @@ function scrollToIndex(carousel: Carousel, index: number, smooth = true): void {
   });
 }
 
+/** Restore a remounted carousel to the same visible item without replaying slide-one motion. */
+export function restoreCarouselActiveItem(block: HTMLElement, itemId: string): boolean {
+  const carousel = registry.get(block);
+  if (!carousel || !itemId) return false;
+  const index = carousel.slides.findIndex((slide) => slide.dataset.gridItemId === itemId);
+  if (index < 0) return false;
+  carousel.active = index;
+  carousel.progress = index;
+  block.dataset.activeIndex = String(index);
+  scrollToIndex(carousel, index, false);
+  renderDots(carousel);
+  syncCaptions(carousel);
+  applyHeight(carousel);
+  return true;
+}
+
 /** Mouse users get click-drag; touch and trackpad already work natively. */
 function bindDrag(carousel: Carousel): void {
   const { track } = carousel;
