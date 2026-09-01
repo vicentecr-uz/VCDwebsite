@@ -63,9 +63,15 @@
   flex-direction: column;
   justify-content: center;
   align-items: flex-start;
-  /* Per-block safe vh percentage, minus ~header+Home-role so the gallery still peeks.
-     4.5em is a ceiling; upgrade if a shared header-height token lands. */
-  min-height: calc(var(--vh-safe, 1svh) * var(--intro-height, 75) - 4.5em);
+  /* The measured page offset includes the header and any page-specific lead-in,
+     so 100% places the following block exactly at the initial viewport fold. */
+  min-height: max(
+    0px,
+    calc(
+      var(--vh-safe, 1svh) * var(--intro-height, 75)
+      - var(--intro-fold-offset, 4.5em)
+    )
+  );
 }
 
 /* Flush galleries: abut consecutive flush blocks; first still uses default/own spacing.

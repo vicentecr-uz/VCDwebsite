@@ -145,8 +145,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     { value: 'major', label: '12em', title: 'Major · 12em' },
   ];
 
-  /** Only the page-top gap control offers 0. */
-  const PAGE_TOP_NONE_OPTION: SpacingOption = {
+  /** Page boundary gap controls offer 0. */
+  const NONE_OPTION: SpacingOption = {
     value: 'none',
     label: '0',
     title: 'None · 0',
@@ -160,11 +160,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     none: 'project-stack--none',
   };
 
-  const spacingOptionsFor = (pageTop: boolean): SpacingOption[] =>
-    pageTop ? [PAGE_TOP_NONE_OPTION, ...SPACING_OPTIONS] : SPACING_OPTIONS;
+  const spacingOptionsFor = (pageTop: boolean, pageBottom: boolean): SpacingOption[] =>
+    pageTop || pageBottom ? [NONE_OPTION, ...SPACING_OPTIONS] : SPACING_OPTIONS;
 
-  const spacingButtonsHtml = (pageTop: boolean) =>
-    spacingOptionsFor(pageTop)
+  const spacingButtonsHtml = (pageTop: boolean, pageBottom: boolean) =>
+    spacingOptionsFor(pageTop, pageBottom)
       .map(
         (option) => `
           <button
@@ -199,9 +199,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     return siblings[0] === element;
   };
 
+  const isPageBottomSpacingBlock = (element: HTMLElement) => {
+    const parent = element.parentElement;
+    if (!isSpacingStackParent(parent)) return false;
+    const siblings = [...parent.children].filter(
+      (child): child is HTMLElement =>
+        child instanceof HTMLElement && child.hasAttribute('data-dev-spacing-document'),
+    );
+    return siblings.at(-1) === element;
+  };
+
   /**
    * Gallery intros sit flush under the header by design, so their page-top
-   * spacing toolbar is redundant (and is the only one exposing the 0 option).
+   * spacing toolbar is redundant.
    * Keep the control mounted so section reordering can reveal it again; only
    * suppress it while a non-grid section is first on Home / Work / Play.
    */
@@ -566,20 +576,26 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       });
     };
 
-    const rebuildSpacingOptionButtons = (state: EditableSpacingState, pageTop: boolean) => {
-      state.spacingGroup.innerHTML = spacingButtonsHtml(pageTop);
+    const rebuildSpacingOptionButtons = (
+      state: EditableSpacingState,
+      pageTop: boolean,
+      pageBottom: boolean,
+    ) => {
+      state.spacingGroup.innerHTML = spacingButtonsHtml(pageTop, pageBottom);
       bindSpacingOptionClicks(state);
       syncSpacingControl(state);
       state.control.dataset.pageTop = pageTop ? 'true' : 'false';
+      state.control.dataset.pageBottom = pageBottom ? 'true' : 'false';
     };
 
     /**
-     * Page-top is the only control with a 0 option. When structure changes,
-     * rebuild option sets and coerce legacy/invalid values.
+     * Page boundaries offer 0. When structure changes, rebuild option sets and
+     * only coerce a former page-top 0 that has actually moved into the stack.
      */
     const syncPageTopSpacingControls = () => {
       spacingStates.forEach((state) => {
         const pageTop = isPageTopSpacingBlock(state.element);
+        const pageBottom = isPageBottomSpacingBlock(state.element);
         const wasPageTop = state.control.dataset.pageTop === 'true';
         state.control.toggleAttribute(
           'data-dev-suppress-gallery-page-top',
@@ -595,13 +611,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = 'none';
         }
 
-        if (!pageTop && state.currentValue === 'none') {
+        if (!pageTop && wasPageTop && state.currentValue === 'none') {
           applySpacingClass(state.element, 'section');
           state.currentValue = 'section';
           if (state.savedValue === 'none') state.savedValue = 'section';
         }
 
-        rebuildSpacingOptionButtons(state, pageTop);
+        rebuildSpacingOptionButtons(state, pageTop, pageBottom);
       });
     };
 
@@ -613,6 +629,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
 
         const pageTop = isPageTopSpacingBlock(element);
+        const pageBottom = isPageBottomSpacingBlock(element);
         const initial = raw;
         const docKey = element.dataset.devSpacingDocument || '';
         const supportsIntro = docKey === 'home' || docKey === 'work' || docKey === 'play' || docKey === 'about';
@@ -622,11 +639,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const isIntro = element.dataset.devIntro === 'true';
         const introHeightControl = isIntro
           ? `<label class="dev-intro-height-control">
-              <span>Intro height</span>
+              <span class="sr-only">Intro height</span>
               <input type="number" min="1" max="100" step="1" inputmode="numeric" aria-label="Intro height" data-dev-intro-height-input>
               <span aria-hidden="true">%</span>
-            </label>
-            <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>`
+            </label>`
           : '';
 
         const control = document.createElement('div');
@@ -634,6 +650,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         control.setAttribute('data-dev-spacing-control', '');
         control.setAttribute('data-dev-mode-only', '');
         control.dataset.pageTop = pageTop ? 'true' : 'false';
+        control.dataset.pageBottom = pageBottom ? 'true' : 'false';
         control.toggleAttribute(
           'data-dev-suppress-gallery-page-top',
           suppressGalleryPageTopSpacing(element, pageTop),
@@ -642,7 +659,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
         control.innerHTML = `
           <div class="dev-gap-toolbar__pill">
-            ${introHeightControl}
             <button
               type="button"
               class="dev-gap-toolbar__add"
@@ -656,8 +672,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             </button>
             <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
             <div class="dev-gap-toolbar__spacing">
-              ${spacingButtonsHtml(pageTop)}
+              ${spacingButtonsHtml(pageTop, pageBottom)}
             </div>
+            ${isIntro ? '<span class="dev-hairline dev-hairline--vertical dev-intro-height-separator" role="presentation"></span>' : ''}
+            ${introHeightControl}
           </div>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
             <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
@@ -5518,10 +5536,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: flex;
     align-items: center;
     gap: 4px;
+    min-width: 3.5em;
     min-height: var(--dev-control-height);
     box-sizing: border-box;
-    padding: 8px;
+    padding: 6px 8px;
     border-radius: var(--dev-radius-control);
+    background: var(--dev-segmented-selected-fill, var(--comp-button-page-container-selected));
     color: var(--comp-button-label);
     font: var(--dev-text-label);
     cursor: text;
@@ -5534,6 +5554,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-intro-height-control input {
     width: 3ch;
+    min-width: 0;
     padding: 0;
     border: 0;
     outline: 0;
