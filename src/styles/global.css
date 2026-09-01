@@ -474,11 +474,15 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   font-synthesis: none;
-  /* Content-column cap consumed by #site-wrapper's gutter below. Declared
-     here (not on #site-wrapper itself) so DevPageWidthToggle can override it
-     live via documentElement.style.setProperty without a shadowing
-     redeclaration fighting the inline style. */
-  --page-max-width: 43.25em;
+  /* Split column caps. Text blocks and media blocks cap independently;
+     --page-max-width is the DERIVED outer column (the wider of the two) and is
+     what the wrapper gutter, header feather and sidebar nav read, so page
+     chrome always tracks the true column edge. DevPageWidthToggle overrides
+     the two inputs live via documentElement.style.setProperty — declared here,
+     not on #site-wrapper, so no shadowing redeclaration fights the inline. */
+  --page-text-max-width: 43.25em;
+  --page-media-max-width: 43.25em;
+  --page-max-width: max(var(--page-text-max-width), var(--page-media-max-width));
 }
 
 body {
