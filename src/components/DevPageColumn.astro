@@ -46,32 +46,19 @@
       }
     };
 
-    // Any real section — the trailing spacing sentinel matches neither and is
-    // correctly skipped, so the header follows the first block a reader sees.
-    const SECTION_SELECTOR = `.project-block--text,${MEDIA_SELECTOR}`;
-
     const sync = () => {
       let widest = 0;
       let full = false;
-      let headerWidth: string | null | undefined;
 
       for (const child of zone.children) {
-        if (!(child instanceof HTMLElement) || !child.matches(SECTION_SELECTOR)) continue;
-        const isMedia = child.matches(MEDIA_SELECTOR);
-        const fraction = isMedia ? fractionOf(child) : null;
-
-        if (headerWidth === undefined) {
-          headerWidth =
-            !isMedia || fraction === null
-              ? 'var(--page-text-max-width)'
-              : fraction >= 1
-                ? null
-                : `calc(var(--page-media-max-width) * ${fraction})`;
+        if (!(child instanceof HTMLElement) || !child.matches(MEDIA_SELECTOR)) continue;
+        const fraction = fractionOf(child);
+        if (fraction === null) continue;
+        if (fraction >= 1) {
+          full = true;
+          break;
         }
-
-        if (!isMedia || fraction === null) continue;
-        if (fraction >= 1) full = true;
-        else widest = Math.max(widest, fraction);
+        widest = Math.max(widest, fraction);
       }
 
       if (full) {
@@ -85,9 +72,10 @@
         );
       }
 
-      if (headerWidth === undefined) headerWidth = 'var(--page-text-max-width)';
-      if (headerWidth === null) wrapper.style.removeProperty('--page-header-width');
-      else wrapper.style.setProperty('--page-header-width', headerWidth);
+      // --page-header-width is owned by the scroll sync in Header.astro, which
+      // measures the block actually under the header. Tell it the sections
+      // changed rather than writing that property from here too.
+      document.dispatchEvent(new CustomEvent('vcd:page-column-changed'));
     };
 
     // Coalesce: a single tuner save can fire several mutations plus the
