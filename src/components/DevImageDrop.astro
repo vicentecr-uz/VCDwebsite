@@ -19,6 +19,27 @@ const globeSvg = sizeIcon(globeIcon, 16);
   <p data-dev-image-drop-label>Drop images to add</p>
 </div>
 
+<div class="dev-image-drop-choice" data-dev-image-drop-choice hidden role="menu">
+  <Button
+    type="button"
+    emphasis="page"
+    align="start"
+    width="fill"
+    label="Image grid"
+    role="menuitem"
+    data-dev-image-drop-choice-type="imageGrid"
+  />
+  <Button
+    type="button"
+    emphasis="page"
+    align="start"
+    width="fill"
+    label="Carousel"
+    role="menuitem"
+    data-dev-image-drop-choice-type="imageCarousel"
+  />
+</div>
+
 <DevOverlay
   storageKey="add-image"
   panelKey="add-image"
@@ -66,6 +87,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const dropZone = document.querySelector('[data-dev-project-drop-zone]');
   const pageDropVeil = document.querySelector('[data-dev-image-drop]');
+  const multiDropChoice = document.querySelector('[data-dev-image-drop-choice]');
+  const multiDropChoiceButtons = multiDropChoice?.querySelectorAll('[data-dev-image-drop-choice-type]') ?? [];
   const panel = document.querySelector('[data-dev-image-picker]');
   const documentKey = panel instanceof HTMLElement ? (panel.dataset.documentKey || '') : '';
   const pickerCount = document.querySelector('[data-dev-image-picker-count]');
@@ -133,7 +156,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     slot.className = 'dev-carousel-drop-veil__slot';
     const label = document.createElement('span');
     label.className = 'dev-carousel-drop-veil__label';
-    label.textContent = 'Add image to carousel';
+    label.textContent = 'Append to carousel';
     slot.append(label);
     veil.append(slot);
     target.append(veil);
@@ -146,6 +169,25 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (pageDropVeil instanceof HTMLElement) delete pageDropVeil.dataset.active;
     clearCarouselDropTarget();
     clearPlaceholderTarget();
+  };
+
+  const closeMultiDropChoice = () => {
+    if (multiDropChoice instanceof HTMLElement) multiDropChoice.hidden = true;
+    pendingFiles = [];
+  };
+
+  const showMultiDropChoice = (clientX, clientY) => {
+    if (!(multiDropChoice instanceof HTMLElement)) return;
+    multiDropChoice.hidden = false;
+    multiDropChoice.style.left = `${clientX + 8}px`;
+    multiDropChoice.style.top = `${clientY + 8}px`;
+    const rect = multiDropChoice.getBoundingClientRect();
+    const left = Math.min(Math.max(8, clientX + 8), Math.max(8, window.innerWidth - rect.width - 8));
+    const top = Math.min(Math.max(8, clientY + 8), Math.max(8, window.innerHeight - rect.height - 8));
+    multiDropChoice.style.left = `${left}px`;
+    multiDropChoice.style.top = `${top}px`;
+    const first = multiDropChoiceButtons[0];
+    if (first instanceof HTMLButtonElement) first.focus();
   };
 
   const carouselAtPoint = (clientX, clientY) => {
@@ -227,6 +269,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!devMode) {
       dragDepth = 0;
       clearDragState();
+      closeMultiDropChoice();
       if (panel instanceof HTMLElement) panel.hidden = true;
     }
   };
@@ -654,14 +697,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
       })();
       return;
     }
-    void (async () => {
-      try {
-        const filenames = await uploadFiles(images);
-        await insertSection('imageGrid', filenames);
-      } catch (error) {
-        window.alert(error instanceof Error ? error.message : 'Could not add images.');
-      }
-    })();
+    pendingFiles = images;
+    pendingSrcs = [];
+    preferredType = null;
+    targetedCarousel = null;
+    showMultiDropChoice(clientX, clientY);
   };
 
   const prevent = (event) => {
@@ -715,6 +755,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     event.preventDefault();
     const { clientX, clientY } = event;
     const transfer = event.dataTransfer;
+    closeMultiDropChoice();
     if (!isValidImageDrag(transfer)) return;
     const carousel = carouselAtPoint(clientX, clientY);
     const carouselTarget = carouselTargetFromElement(carousel);
@@ -767,6 +808,35 @@ const globeSvg = sizeIcon(globeIcon, 16);
         }
       })();
     });
+  });
+
+  multiDropChoiceButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const type = button.getAttribute('data-dev-image-drop-choice-type');
+      if (type !== 'imageGrid' && type !== 'imageCarousel') return;
+      const files = [...pendingFiles];
+      closeMultiDropChoice();
+      void (async () => {
+        try {
+          const filenames = await uploadFiles(files);
+          await insertSection(type, filenames);
+        } catch (error) {
+          window.alert(error instanceof Error ? error.message : 'Could not add images.');
+        }
+      })();
+    });
+  });
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!(multiDropChoice instanceof HTMLElement) || multiDropChoice.hidden) return;
+    if (event.target instanceof Node && multiDropChoice.contains(event.target)) return;
+    closeMultiDropChoice();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !(multiDropChoice instanceof HTMLElement) || multiDropChoice.hidden) return;
+    event.preventDefault();
+    closeMultiDropChoice();
   });
 
   placeholderButton?.addEventListener('click', () => {
@@ -924,6 +994,25 @@ const globeSvg = sizeIcon(globeIcon, 16);
   html.is-dev-mode[data-dev-image-drag='true'],
   html.is-dev-mode[data-dev-image-drag='true'] * {
     cursor: copy !important;
+  }
+
+  .dev-image-drop-choice {
+    position: fixed;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 10em;
+  }
+
+  .dev-image-drop-choice[hidden] {
+    display: none;
+  }
+
+  .dev-image-drop-choice .dev-btn {
+    --dev-btn-hit-inset: 0;
+    border: 1px solid var(--sys-color-srf-container-low);
+    box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
   }
 
   .dev-image-drop {
