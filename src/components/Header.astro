@@ -326,7 +326,7 @@ const menuLinks = headerSettings.menuLinks;
     // first block, from pageColumnStyle) is the pre-JS value this replaces.
     const BLOCK_SELECTOR = '.project-block, .project-image-grid, .project-image-carousel';
     const siteWrapper = document.querySelector<HTMLElement>('#site-wrapper');
-    let appliedHeaderWidth = '';
+    let appliedHeaderWidthPx = 0;
 
     /**
      * Only ever commits a new width while the header is off-screen, so the
@@ -335,8 +335,11 @@ const menuLinks = headerSettings.menuLinks;
      * a wide header over narrow text is fine, so there is nothing to fix in a
      * hurry and no reason to animate. Resize and authoring edits explicitly
      * supply the visible header edge because deferring those would look stale.
+     * Normal scrolling is monotonic: once media has widened the header, later
+     * text cannot narrow it again. A wide header over text reads fine; the
+     * reverse is the only mismatch this machinery exists to prevent.
      */
-    const syncHeaderWidth = (probeEdge: number, commit = true) => {
+    const syncHeaderWidth = (probeEdge: number, allowShrink = false) => {
       if (!siteWrapper) return;
       const blocks = document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
       if (!blocks.length) return;
@@ -352,12 +355,12 @@ const menuLinks = headerSettings.menuLinks;
         if (block.getBoundingClientRect().bottom > probeEdge) break;
       }
 
-      const width = `${Math.round(current.getBoundingClientRect().width)}px`;
-      if (width === appliedHeaderWidth) return;
-      if (!commit) return;
+      const widthPx = Math.round(current.getBoundingClientRect().width);
+      if (widthPx === appliedHeaderWidthPx) return;
+      if (!allowShrink && appliedHeaderWidthPx > 0 && widthPx < appliedHeaderWidthPx) return;
 
-      appliedHeaderWidth = width;
-      siteWrapper.style.setProperty('--page-header-width', width);
+      appliedHeaderWidthPx = widthPx;
+      siteWrapper.style.setProperty('--page-header-width', `${widthPx}px`);
     };
 
     const update = () => {
@@ -490,17 +493,18 @@ const menuLinks = headerSettings.menuLinks;
       const rect = header.getBoundingClientRect();
       // Authoring changes may update the visible top-of-page header directly;
       // deep in the page they only prepare the next hidden reveal.
-      syncHeaderWidth(mode === 'flow' && rect.bottom > 0 ? rect.bottom : headerHeight);
+      syncHeaderWidth(mode === 'flow' && rect.bottom > 0 ? rect.bottom : headerHeight, true);
     });
 
-    void document.fonts?.ready.then(() => syncHeaderWidth(header.getBoundingClientRect().bottom));
-    syncHeaderWidth(header.getBoundingClientRect().bottom);
+    void document.fonts?.ready.then(() => syncHeaderWidth(header.getBoundingClientRect().bottom, true));
+    syncHeaderWidth(header.getBoundingClientRect().bottom, true);
 
     window.addEventListener('resize', () => {
       syncHeaderWidth(
         mode === 'flow' && header.getBoundingClientRect().bottom > 0
           ? header.getBoundingClientRect().bottom
           : headerHeight,
+        true,
       );
       syncSlot();
       // Re-measure horizontal geometry from a clean flow layout. If the header
