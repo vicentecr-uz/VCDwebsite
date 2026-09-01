@@ -63,21 +63,24 @@ const EMIL_EM = 43.25;
     selected={true}
     data-width-link
   >
+    <!-- Two links of a chain, offset along one diagonal. NOT two capsules
+         rotated ±45 about the same centre — that crosses them into an X,
+         which reads as "unlink". -->
     <svg
       slot="icon"
       aria-hidden="true"
-      viewBox="0 0 16 16"
+      viewBox="0 0 24 24"
       width="16"
       height="16"
       fill="none"
       stroke="currentColor"
-      stroke-width="1.2"
+      stroke-width="1.8"
       stroke-linecap="round"
       stroke-linejoin="round"
       focusable="false"
     >
-      <rect x="4" y="6.4" width="8" height="3.2" rx="1.6" transform="rotate(45 8 8)" />
-      <rect x="4" y="6.4" width="8" height="3.2" rx="1.6" transform="rotate(-45 8 8)" />
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
   </Button>
 
@@ -296,6 +299,69 @@ const EMIL_EM = 43.25;
 
   if (root) initPanelDrag(root);
 
+  // The sidebar nav's gutter breakpoint can't read a custom property — no
+  // media query condition can. But a rule's condition IS writable at runtime
+  // (CSSMediaRule.media.mediaText), so the A/B rewrites it to match the width
+  // being tested. Without this the nav appears at a threshold computed for the
+  // shipped width and the preview lies about the layout you're choosing.
+  //
+  // 14.25em of gutter per side: 12.5em nav + 1em gap + 0.75em viewport edge.
+  // At the shipped 43.25em column that reproduces 71.75em exactly, so this is
+  // a no-op until a width actually moves — production is untouched.
+  const NAV_GUTTER_EM = 14.25;
+  const BASE_MIN_EM = 71.75;
+  const BASE_MAX_EM = 71.6875; // BASE_MIN - 0.0625: the "just below desktop" edge
+
+  // Keyed by rule so a re-scan after HMR can't treat an already-rewritten
+  // condition as the original and compound the offset.
+  const baseMediaText = new WeakMap<CSSMediaRule, string>();
+
+  const collectNavMediaRules = () => {
+    const found: CSSMediaRule[] = [];
+
+    const walk = (rules: CSSRuleList) => {
+      for (let i = 0; i < rules.length; i += 1) {
+        const rule = rules[i];
+        if (rule instanceof CSSMediaRule) {
+          const base = baseMediaText.get(rule) ?? rule.media.mediaText;
+          if (base.includes(`${BASE_MIN_EM}em`) || base.includes(`${BASE_MAX_EM}em`)) {
+            if (!baseMediaText.has(rule)) baseMediaText.set(rule, base);
+            found.push(rule);
+          }
+        }
+        // Media rules can sit inside @supports / @layer.
+        const grouping = rule as CSSGroupingRule;
+        if (grouping.cssRules) walk(grouping.cssRules);
+      }
+    };
+
+    for (const sheet of document.styleSheets) {
+      // A cross-origin sheet throws on .cssRules; nothing of ours is one.
+      try {
+        walk(sheet.cssRules);
+      } catch {
+        /* not readable — skip */
+      }
+    }
+
+    return found;
+  };
+
+  const syncNavBreakpoint = () => {
+    const outerEm = Math.max(textEm, mediaEm);
+    const minEm = outerEm + NAV_GUTTER_EM * 2;
+    const maxEm = minEm - 0.0625;
+
+    for (const rule of collectNavMediaRules()) {
+      const base = baseMediaText.get(rule);
+      if (!base) continue;
+      const next = base
+        .replaceAll(`${BASE_MIN_EM}em`, `${minEm}em`)
+        .replaceAll(`${BASE_MAX_EM}em`, `${maxEm}em`);
+      if (rule.media.mediaText !== next) rule.media.mediaText = next;
+    }
+  };
+
   let linked = true;
   let textEm = EMIL_EM;
   let mediaEm = EMIL_EM;
@@ -328,11 +394,21 @@ const EMIL_EM = 43.25;
     mediaButtons.forEach((button) => {
       button.disabled = linked;
     });
-    if (mediaCustomInput) mediaCustomInput.disabled = linked;
+    if (mediaCustomInput) {
+      mediaCustomInput.disabled = linked;
+      // Linked, the media row reports what text is applying. Without this the
+      // media input lights up as the active segment while showing an empty
+      // box, because only the text input holds the typed number.
+      if (linked && textCustomInput) mediaCustomInput.value = textCustomInput.value;
+    }
     mediaRow?.classList.toggle('is-disabled', linked);
 
     setScopeMode(textButtons, textCustomInput, textMode);
     setScopeMode(mediaButtons, mediaCustomInput, mediaMode);
+
+    // Idempotent: recomputed from each rule's cached original, so at the
+    // shipped width it writes nothing at all.
+    syncNavBreakpoint();
   };
 
   const setLinked = (next: boolean) => {
