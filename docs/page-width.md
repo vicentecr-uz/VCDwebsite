@@ -79,12 +79,13 @@ there is no header-specific width logic, and there should not be.
 
 `pageColumnStyle()` emits the initial `--page-header-width` from the page's
 **first** section, so the pre-JS header already lines up with an intro or hero.
-After that, `Header.astro` prepares the row width for the block beneath its
-docked footprint — but commits a change only while the header is fully
-off-screen. Its next fade-in therefore reveals it already correct. A wide header
-over narrow text is allowed; a narrow header over wider imagery is the case the
-sync prevents. Do not add a width transition: visible resizing calls attention
-to chrome that is meant to feel stable.
+After that, `Header.astro` may widen the row for the block beneath its docked
+footprint — but commits a change only while the header is fully off-screen. Its
+next fade-in therefore reveals it already correct. Width is one-way during a
+page visit: once media widens the header, later text never narrows it again. A
+wide header over narrow text reads fine; a narrow header over wider imagery is
+the mismatch this machinery prevents. Do not add a width transition: visible
+resizing calls attention to chrome that is meant to feel stable.
 
 **Only `.site-header__row` narrows.** The header box, its `.site-header-slot`
 and `.site-header__bg` all stay at the column width. That is deliberate and
