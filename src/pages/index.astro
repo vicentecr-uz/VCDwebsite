@@ -8,6 +8,7 @@ import { pageColumnStyle } from '../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
 const homePage = loadPageDocument('home');
+const editable = import.meta.env.DEV;
 ---
 
 <Layout title="Vicente Cruz — Industrial Designer" columnStyle={pageColumnStyle(homePage.sections)}>
@@ -15,7 +16,12 @@ const homePage = loadPageDocument('home');
     <Header navMenu wordmarkAsH1 />
 
     <main id="main-content" class="listing-main" style="flex: 1;">
-      <p class="home-role">Product Design Engineer</p>
+      <p
+        class="home-role"
+        data-dev-text-document={editable ? 'home' : undefined}
+        data-dev-text-path={editable ? JSON.stringify(['subtitle']) : undefined}
+        data-dev-text-kind={editable ? 'text' : undefined}
+      >{String(homePage.subtitle ?? 'Product Design Engineer')}</p>
       <div data-dev-project-drop-zone>
         <ProjectSections documentKey="home" sections={homePage.sections} />
         <div
