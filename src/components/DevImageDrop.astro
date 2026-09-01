@@ -179,11 +179,18 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const showMultiDropChoice = (clientX, clientY) => {
     if (!(multiDropChoice instanceof HTMLElement)) return;
     multiDropChoice.hidden = false;
-    multiDropChoice.style.left = `${clientX + 8}px`;
-    multiDropChoice.style.top = `${clientY + 8}px`;
     const rect = multiDropChoice.getBoundingClientRect();
-    const left = Math.min(Math.max(8, clientX + 8), Math.max(8, window.innerWidth - rect.width - 8));
-    const top = Math.min(Math.max(8, clientY + 8), Math.max(8, window.innerHeight - rect.height - 8));
+    const gapAnchor = gapAnchorForInsertIndex(pendingInsertIndex);
+    const anchorX = gapAnchor?.x ?? clientX;
+    const anchorY = gapAnchor?.y ?? clientY;
+    const left = Math.min(
+      Math.max(8, anchorX - rect.width / 2),
+      Math.max(8, window.innerWidth - rect.width - 8),
+    );
+    const top = Math.min(
+      Math.max(8, anchorY - rect.height / 2),
+      Math.max(8, window.innerHeight - rect.height - 8),
+    );
     multiDropChoice.style.left = `${left}px`;
     multiDropChoice.style.top = `${top}px`;
     const first = multiDropChoiceButtons[0];
@@ -277,6 +284,43 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const spacingBlocks = () => Array.from(
     document.querySelectorAll('[data-dev-spacing-document]'),
   );
+
+  const gapAnchorForInsertIndex = (insertIndex) => {
+    const blocks = spacingBlocks();
+    const indexed = blocks.map((block) => {
+      try {
+        const path = JSON.parse(block.dataset.devSpacingPath || '[]');
+        const sectionIndex = path.at(-2);
+        return { block, sectionIndex: typeof sectionIndex === 'number' ? sectionIndex : null };
+      } catch {
+        return { block, sectionIndex: null };
+      }
+    });
+    const matching = indexed.find((entry) => entry.sectionIndex === insertIndex)?.block;
+    let anchorY = null;
+    if (matching instanceof HTMLElement) {
+      const toolbar = matching.querySelector(':scope > .dev-gap-toolbar');
+      const rect = toolbar instanceof HTMLElement
+        ? toolbar.getBoundingClientRect()
+        : matching.getBoundingClientRect();
+      anchorY = toolbar instanceof HTMLElement ? rect.top + rect.height / 2 : rect.top;
+    } else {
+      const last = indexed.at(-1);
+      if (
+        last?.block instanceof HTMLElement
+        && typeof last.sectionIndex === 'number'
+        && insertIndex === last.sectionIndex + 1
+      ) {
+        anchorY = last.block.getBoundingClientRect().bottom;
+      }
+    }
+    if (anchorY == null) return null;
+    const zoneRect = dropZone instanceof HTMLElement ? dropZone.getBoundingClientRect() : null;
+    return {
+      x: zoneRect ? zoneRect.left + zoneRect.width / 2 : window.innerWidth / 2,
+      y: anchorY,
+    };
+  };
 
   const insertIndexForY = (clientY) => {
     const blocks = spacingBlocks();
@@ -1052,7 +1096,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     inset: 0;
     z-index: 30;
     border-radius: inherit;
-    background: color-mix(in srgb, var(--sys-color-srf) 72%, var(--sys-color-srf-container-low));
+    background: color-mix(in srgb, var(--sys-color-srf) 55%, transparent);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s ease;
