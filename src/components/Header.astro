@@ -23,8 +23,6 @@ const pageChars = [...wordmark];
 const homeChars = [...homeWordmark];
 const isHome = Astro.url.pathname === '/';
 const brandHref = isHome ? null : '/';
-const isDev = import.meta.env.DEV;
-
 const menuLinks = headerSettings.menuLinks;
 ---
 
@@ -80,18 +78,6 @@ const menuLinks = headerSettings.menuLinks;
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
             ))}
-            {isDev && (
-              <li data-dev-mode-only hidden>
-                <button
-                  type="button"
-                  class="header-menu__link header-menu__dev-toggle"
-                  data-curve-easing-tuner-toggle
-                  aria-pressed="false"
-                >
-                  Curve Easing Tuner
-                </button>
-              </li>
-            )}
           </ul>
         </div>
       </div>
@@ -128,18 +114,6 @@ const menuLinks = headerSettings.menuLinks;
                 <a href={link.href} class="header-menu__link">{link.label}</a>
               </li>
             ))}
-            {isDev && (
-              <li data-dev-mode-only hidden>
-                <button
-                  type="button"
-                  class="header-menu__link header-menu__dev-toggle"
-                  data-curve-easing-tuner-toggle
-                  aria-pressed="false"
-                >
-                  Curve Easing Tuner
-                </button>
-              </li>
-            )}
           </ul>
         </div>
       </div>
@@ -341,8 +315,56 @@ const menuLinks = headerSettings.menuLinks;
       }
     });
 
+    // The header row spans whatever block it is currently over, so the wordmark
+    // and logo line up with the content behind them instead of with one
+    // page-wide column. Measured from the rendered block, which already
+    // accounts for the text vs media caps, constrained percentages and narrow
+    // viewports — none of that is re-derived here.
+    //
+    // No feedback loop: a block's width comes from the column and its own cap,
+    // never from the header row. The server-rendered --page-header-width (the
+    // first block, from pageColumnStyle) is the pre-JS value this replaces.
+    const BLOCK_SELECTOR = '.project-block, .project-image-grid, .project-image-carousel';
+    const siteWrapper = document.querySelector<HTMLElement>('#site-wrapper');
+    let appliedHeaderWidthPx = 0;
+
+    /** Commit width only while fully off-screen; the next fade masks the swap. */
+    const syncHeaderWidth = (probeEdge: number, initialize = false) => {
+      if (!siteWrapper) return;
+      const headerRect = header.getBoundingClientRect();
+      if (!initialize && (mode !== 'flow' || headerRect.bottom > 0)) return;
+
+      const blocks = document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
+      if (!blocks.length) return;
+
+      // The block under the supplied viewport edge: the first one that edge
+      // hasn't fully passed. While the header is hidden we probe at the place
+      // it WILL occupy when docked (`headerHeight`), not at the hidden flow
+      // header's negative rect.bottom — that negative edge always selected the
+      // first block, then a later forced sync corrected it visibly after reveal.
+      let current = blocks[0];
+      for (const block of blocks) {
+        current = block;
+        if (block.getBoundingClientRect().bottom > probeEdge) break;
+      }
+
+      const widthPx = Math.round(current.getBoundingClientRect().width);
+      if (widthPx === appliedHeaderWidthPx) return;
+      // A page visit may graduate from text to media width, never back again.
+      if (appliedHeaderWidthPx > 0 && widthPx < appliedHeaderWidthPx) return;
+
+      appliedHeaderWidthPx = widthPx;
+      siteWrapper.style.setProperty('--page-header-width', `${widthPx}px`);
+    };
+
     const update = () => {
       const y = window.scrollY;
+      const headerRect = header.getBoundingClientRect();
+      // Once the flow header is fully off-screen, keep its next reveal width
+      // current using the docked footprint. Never write while it is visible.
+      if (mode === 'flow' && headerRect.bottom <= 0) {
+        syncHeaderWidth(headerHeight);
+      }
 
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
@@ -428,6 +450,9 @@ const menuLinks = headerSettings.menuLinks;
         if (rect.bottom <= 0 && y > headerHeight) {
           // Fully off-screen: dock + fade in at full height. Small threshold
           // stays here so a stray 1px nudge deep in the page doesn't flash it.
+          // Final same-frame sync before docking. The fade then reveals the
+          // already-correct row; there is no visible width transition.
+          syncHeaderWidth(headerHeight);
           setMode('docked', true);
         }
         // Partly visible and scrolling up: leave it in flow — it rides down
@@ -457,7 +482,16 @@ const menuLinks = headerSettings.menuLinks;
       { passive: true },
     );
 
+    // Sections added or removed while authoring — dispatched by DevPageColumn.
+    document.addEventListener('vcd:page-column-changed', () => {
+      syncHeaderWidth(headerHeight);
+    });
+
+    void document.fonts?.ready.then(() => syncHeaderWidth(headerHeight));
+    syncHeaderWidth(header.getBoundingClientRect().bottom, true);
+
     window.addEventListener('resize', () => {
+      syncHeaderWidth(headerHeight);
       syncSlot();
       // Re-measure horizontal geometry from a clean flow layout. If the header
       // is out of flow, briefly restore it to flow to read the true values.
@@ -1043,63 +1077,6 @@ const menuLinks = headerSettings.menuLinks;
     });
   }
 
-  // DEV-only: show/hide SectionSidebarNav curve playground (persists across pages).
-  {
-    const toggles = [...document.querySelectorAll('[data-curve-easing-tuner-toggle]')];
-    if (toggles.length) {
-      const storageKey = 'vcdShowCurveEasingTuner';
-      const className = 'show-curve-easing-tuner';
-
-      const apply = (show: boolean) => {
-        document.documentElement.classList.toggle(className, show);
-        toggles.forEach((button) => {
-          if (!(button instanceof HTMLElement)) return;
-          button.setAttribute('aria-pressed', show ? 'true' : 'false');
-          button.classList.toggle('is-active', show);
-        });
-      };
-
-      let show = false;
-      try {
-        show = window.localStorage.getItem(storageKey) === 'true';
-      } catch {
-        // Keep closed when storage is unavailable.
-      }
-      // Only restore the panel when already in is-dev-mode.
-      apply(show && document.documentElement.classList.contains('is-dev-mode'));
-
-      toggles.forEach((button) => {
-        button.addEventListener('click', (event) => {
-          event.preventDefault();
-          if (!document.documentElement.classList.contains('is-dev-mode')) return;
-          const next = !document.documentElement.classList.contains(className);
-          try {
-            window.localStorage.setItem(storageKey, String(next));
-          } catch {
-            // Ignore storage failures in private mode.
-          }
-          apply(next);
-          forceCloseMenus();
-        });
-      });
-
-      window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
-        if (event.detail?.active === false) {
-          apply(false);
-          return;
-        }
-        // Re-entering DEV mode: restore persisted preference.
-        let preferred = false;
-        try {
-          preferred = window.localStorage.getItem(storageKey) === 'true';
-        } catch {
-          // Ignore.
-        }
-        apply(preferred);
-      }) as EventListener);
-    }
-  }
-
   // DEV-only: Section Editor is toggled via Alt+E (see DevModeController).
 </script>
 
@@ -1193,6 +1170,18 @@ const menuLinks = headerSettings.menuLinks;
      .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
      which lives outside the row. Tree order already puts the row above the bg. */
   .site-header__row {
+    /* The header reads as a pair with the block directly under it, so the row
+       spans that first block's width (see pageColumnStyle in
+       src/lib/pageColumn.ts). ONLY the row narrows: the header box, its slot
+       and .site-header__bg stay at the column width, so the fill still reaches
+       the viewport edge and the dock/ride geometry — which measures the header
+       box, and pins `left: 0` against the slot when riding — is unaffected. */
+    max-width: var(--page-header-width, 100%);
+    margin-inline: auto;
+    width: 100%;
+    /* Deliberately NOT transitioned. The width only ever changes while the
+       header is off-screen (see syncHeaderWidth), so there is nothing to
+       animate — and easing it would be the one thing that draws the eye. */
     display: flex;
     /* Logo is taller than the trimmed wordmark; centre so the inset above
        the caps equals the inset below the baseline. */
@@ -1630,23 +1619,6 @@ const menuLinks = headerSettings.menuLinks;
     transition:
       opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s),
       color var(--menu-link-color-duration, 0.45s) ease;
-  }
-
-  button.header-menu__dev-toggle {
-    appearance: none;
-    border: 0;
-    background: transparent;
-    padding: 0;
-    margin: 0;
-    cursor: pointer;
-    text-align: inherit;
-    width: auto;
-    font: inherit;
-  }
-
-  .header-trigger.is-menu-open button.header-menu__dev-toggle.is-active,
-  .header-trigger:focus-within button.header-menu__dev-toggle.is-active {
-    color: var(--sys-color-on-srf);
   }
 
   .header-trigger__wordmark {
