@@ -7,7 +7,8 @@ import Button from './ui/Button.astro';
  * Live A/B for the page's reading-column caps (--page-text-max-width /
  * --page-media-max-width). Unlinked, text and media cap independently;
  * linked, the media row follows the text row. Original = the pre-rotation
- * 60em; Emil = the shipped 43.25em; Custom = a typed em value. Temporary —
+ * 60em; Emil = 43.25em; Custom = a typed em value. The site now ships 40em
+ * text / 50em media, so neither preset is the default. Temporary —
  * remove once Anto settles on a width.
  *
  * DevPanel gives real panel chrome (title bar, corner lights, body padding)
@@ -21,6 +22,9 @@ import Button from './ui/Button.astro';
 
 const ORIGINAL_EM = 60;
 const EMIL_EM = 43.25;
+/* What the site actually ships — see docs/page-width.md. */
+const SHIPPED_TEXT_EM = 40;
+const SHIPPED_MEDIA_EM = 50;
 ---
 
 <DevPanel title="Page width" class="dev-page-width-toggle" data-dev-page-width-toggle>
@@ -48,6 +52,7 @@ const EMIL_EM = 43.25;
         autocomplete="off"
         spellcheck="false"
         placeholder="em"
+        value={String(SHIPPED_TEXT_EM)}
         aria-label="Custom text page width in em"
         data-width-custom-input
       />
@@ -108,6 +113,7 @@ const EMIL_EM = 43.25;
         autocomplete="off"
         spellcheck="false"
         placeholder="em"
+        value={String(SHIPPED_MEDIA_EM)}
         aria-label="Custom media page width in em"
         data-width-custom-input
       />
@@ -209,6 +215,8 @@ const EMIL_EM = 43.25;
 
   const ORIGINAL_EM = 60;
   const EMIL_EM = 43.25;
+  const SHIPPED_TEXT_EM = 40;
+  const SHIPPED_MEDIA_EM = 50;
 
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
@@ -306,11 +314,11 @@ const EMIL_EM = 43.25;
   // shipped width and the preview lies about the layout you're choosing.
   //
   // 14.25em of gutter per side: 12.5em nav + 1em gap + 0.75em viewport edge.
-  // At the shipped 43.25em column that reproduces 71.75em exactly, so this is
+  // At the shipped 50em outer column that reproduces 78.5em exactly, so this is
   // a no-op until a width actually moves — production is untouched.
   const NAV_GUTTER_EM = 14.25;
-  const BASE_MIN_EM = 71.75;
-  const BASE_MAX_EM = 71.6875; // BASE_MIN - 0.0625: the "just below desktop" edge
+  const BASE_MIN_EM = 78.5; // SHIPPED_MEDIA_EM + NAV_GUTTER_EM * 2
+  const BASE_MAX_EM = 78.4375; // BASE_MIN - 0.0625: the "just below desktop" edge
 
   // Keyed by rule so a re-scan after HMR can't treat an already-rewritten
   // condition as the original and compound the offset.
@@ -362,11 +370,11 @@ const EMIL_EM = 43.25;
     }
   };
 
-  let linked = true;
-  let textEm = EMIL_EM;
-  let mediaEm = EMIL_EM;
-  let textMode: WidthMode = 'emil';
-  let mediaMode: WidthMode = 'emil';
+  let linked = false;
+  let textEm = SHIPPED_TEXT_EM;
+  let mediaEm = SHIPPED_MEDIA_EM;
+  let textMode: WidthMode = 'custom';
+  let mediaMode: WidthMode = 'custom';
 
   const applyText = (em: number) => {
     textEm = em;
@@ -491,8 +499,10 @@ const EMIL_EM = 43.25;
     setLinked(!linked);
   });
 
-  // Reflect the shipped default (Emil's value, already live via CSS) without
-  // writing an inline override on load — only user interaction should touch
-  // the custom properties.
+  // Reflect the shipped defaults (already live via CSS, and pre-filled into
+  // the two custom inputs) without writing an inline override on load — only
+  // user interaction should touch the custom properties. Neither preset
+  // matches what ships any more, so both rows open on `custom`, and the panel
+  // opens unlinked because text and media are no longer the same number.
   render();
 </script>
