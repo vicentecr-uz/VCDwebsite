@@ -29,9 +29,10 @@ const menuLinks = headerSettings.menuLinks;
 ---
 
 {navMenu ? (
+  <div class="header-menu-backdrop" aria-hidden="true"></div>
+  <div class="site-header-slot">
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
-    <div class="header-menu-backdrop" aria-hidden="true"></div>
     <div class="site-header__row">
       <div class:list={['header-trigger', 'header-trigger--start', isHome && 'header-trigger--home']}>
         <span class="header-trigger__sizer" aria-hidden="true">
@@ -144,7 +145,9 @@ const menuLinks = headerSettings.menuLinks;
       </div>
     </div>
   </header>
+  </div>
 ) : (
+  <div class="site-header-slot">
   <header class="site-header">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
@@ -171,6 +174,7 @@ const menuLinks = headerSettings.menuLinks;
       </nav>
     </div>
   </header>
+  </div>
 )}
 
 <script>
@@ -179,37 +183,262 @@ const menuLinks = headerSettings.menuLinks;
   const isTapMode = () => tapModeMq.matches;
 
   const header = document.querySelector('.site-header');
-  if (header) {
-    let lastY = window.scrollY;
-    let ticking = false;
+  const headerSlot = document.querySelector('.site-header-slot');
 
-    const isMenuOpen = () =>
-      header.matches(
-        ':has(.header-trigger:hover, .header-trigger:focus-within, .header-trigger.is-menu-open)',
-      );
+  // Latched when a downward scroll closes the menu, and released once the
+  // pointer is off the header. Two jobs: it stops the still-:hover-ing cursor
+  // from re-opening the menu it just closed, and it HOLDS the header in the
+  // mode it was in — docked stays docked, which is what keeps the close from
+  // handing the header straight to the dock/ride flap. It must not stand in
+  // for "the menu is closed": making isMenuOpen() lie is what let the header
+  // ride away mid-close. Hover-only — in tap mode there is no pointer to wait
+  // on, so it is never latched there (it would freeze the header forever).
+  // Declared at script scope so both the scroll handler and the menu
+  // listeners see it.
+  let menuScrollClosed = false;
+
+  if (header) {
+    const REVEAL_PX = 4; // cumulative up-scroll before the docked fade-in
+
+    let lastY = window.scrollY;
+    let trend: 'up' | 'down' | null = null;
+    let anchorY = window.scrollY;
+    // 'flow' | 'docked' | 'riding' — riding = absolute at the spot it was
+    // released, scrolling away with the page until it docks or reaches home.
+    let mode: 'flow' | 'docked' | 'riding' = 'flow';
+    let headerHeight = header.offsetHeight;
+    let ticking = false;
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
 
+    const isMenuOpen = () => header.matches(':has(.header-trigger.is-menu-open)');
+
+    // Whether the pointer or the keyboard is actually ON the header. This, not
+    // the is-menu-open class, is what may hold the header still. The class
+    // outlives the visual close by the whole close animation (~0.5s), so a
+    // hold gated on the class alone can be latched after the pointer has
+    // already left — and since mouseleave has by then fired for the last time,
+    // nothing would ever release it and the header stays docked for good.
+    // Reading it live means the hold cannot outlive the interaction. Tap
+    // devices have no hover to read, so there the menu being open is the whole
+    // story.
+    const isHeaderEngaged = () =>
+      isTapMode() ||
+      !!header.querySelector('.header-trigger:hover') ||
+      header.contains(document.activeElement);
+
+    // The slot claims the header's flow height no matter where the header
+    // itself is (flow / fixed / absolute), so the page below never jumps.
+    const syncSlot = () => {
+      headerHeight = header.offsetHeight;
+      if (headerSlot instanceof HTMLElement) {
+        headerSlot.style.height = `${headerHeight}px`;
+      }
+    };
+    syncSlot();
+
+    // Horizontal geometry for the out-of-flow modes. Measured ONCE from the
+    // clean in-flow layout (load + resize), stored, and never re-read from a
+    // positioned state — so it can't compound or drift. A fixed/absolute
+    // header with unset left/right shrink-wraps to its content; this pins the
+    // box to the exact x-position and width flow gave it. rect.left is already
+    // viewport-relative, which is exactly what fixed positioning wants — do
+    // NOT add scrollX (that double-counts the gutter and shoves it right).
+    let geoLeft = 0;
+    let geoWidth = 0;
+    const captureGeo = () => {
+      // Only meaningful from the clean in-flow layout, and only once the real
+      // wordmark font is in — a fallback-font capture is narrower and sits
+      // left, which is what read as "jumped right" when pinned out of flow.
+      if (mode !== 'flow') return;
+      const rect = header.getBoundingClientRect();
+      geoLeft = rect.left;
+      geoWidth = rect.width;
+    };
+    // Don't capture at init — fonts aren't in yet. captureGeo runs on
+    // fonts.ready / loadingdone below, and on resize.
+    void document.fonts?.ready.then(() => captureGeo());
+    document.fonts?.addEventListener('loadingdone', () => captureGeo());
+
+    const applyGeo = () => {
+      header.style.left = `${geoLeft}px`;
+      header.style.width = `${geoWidth}px`;
+    };
+
+    const clearGeo = () => {
+      header.style.removeProperty('left');
+      header.style.removeProperty('width');
+    };
+
+    const setMode = (next: 'flow' | 'docked' | 'riding', fade = false, slide = false) => {
+      if (mode === next) return;
+      // Capture the offset BEFORE switching modes, so the slide starts from
+      // exactly where the header is visually sitting. Works from riding
+      // (absolute) or from a partially-scrolled-out flow position.
+      const slideFrom = slide ? Math.max(0, -header.getBoundingClientRect().top) : null;
+      mode = next;
+      header.classList.toggle('is-docked', mode === 'docked');
+      header.classList.toggle('is-riding', mode === 'riding');
+      header.style.transition = '';
+      header.style.opacity = '';
+      header.style.pointerEvents = '';
+      header.style.transform = '';
+      if (mode === 'docked') {
+        // Fixed at the viewport top, box pinned to its flow x/width.
+        header.style.top = '';
+        applyGeo();
+        if (slide && slideFrom !== null) {
+          // Menu opened while partially hidden: dock (fixed, top 0) but start
+          // translated UP by the off-screen amount, then ease the transform to
+          // 0 so it slides down into place. A transition on `top` can't run
+          // across a position swap, so the slide has to be a transform.
+          header.style.transition = 'none';
+          header.style.transform = `translateY(${-slideFrom}px)`;
+          // Commit the start value with a forced reflow rather than a rAF. The
+          // slide is triggered by the menu opening, i.e. from a pointer/focus
+          // handler — a rAF scheduled there lands in the SAME style recalc as
+          // the handler, so start and end transforms coalesce and nothing
+          // animates. Reading offsetHeight flushes layout, so the start value
+          // is real before the transition is armed.
+          void header.offsetHeight;
+          header.style.transition = 'transform 0.3s ease';
+          header.style.transform = 'translateY(0)';
+        } else if (fade) {
+          // Reveal from fully off-screen: fade in at full height. Docking
+          // while partly visible is instant — it just stops scrolling away.
+          header.style.transition = 'none';
+          header.style.opacity = '0';
+          requestAnimationFrame(() => {
+            header.style.transition = '';
+            header.style.opacity = '1';
+          });
+        }
+      } else if (mode === 'riding') {
+        // Absolute at the current visual spot: rides away with the page.
+        // Absolute positions against the slot (position: relative), which is
+        // ALREADY at the correct x-offset in the content column — so left must
+        // be 0, not the viewport-relative geoLeft (that would double-count the
+        // gutter and shove it right). Width still comes from the flow measure.
+        header.style.top = `${window.scrollY}px`;
+        header.style.left = '0';
+        header.style.width = `${geoWidth}px`;
+      } else {
+        header.style.top = '';
+        clearGeo();
+      }
+    };
+
+    // The menu needs a whole header under it, so opening while the header is
+    // half scrolled out slides it down to docked. This has to hang off the
+    // open itself, not off a scroll frame: hovering the wordmark with the page
+    // stationary fires no scroll, so update() would never see it.
+    header.addEventListener('header:trigger-open', () => {
+      // Riding is always at or above the viewport top (it docks the moment its
+      // top comes back down to 0), so both cases are "not fully in place".
+      if (mode === 'riding' || header.getBoundingClientRect().top < 0) {
+        setMode('docked', false, true);
+      }
+    });
+
     const update = () => {
       const y = window.scrollY;
 
+      document.documentElement.classList.toggle('is-page-top', y <= 8);
+
       if (isSectionReorderDragging()) {
-        header.classList.add('is-scrolled-hidden');
+        // At the page top the in-flow header stays visible; deep, hide it so
+        // auto-scroll during the drag doesn't leave a stale bar on screen.
+        header.classList.toggle('is-scrolled-hidden', y > 8);
+        trend = null;
         lastY = y;
         ticking = false;
         return;
       }
 
-      if (isMenuOpen() || y <= 8) {
+      const headerEngaged = isHeaderEngaged();
+      // Belt and braces: the latch can't survive the pointer leaving, however
+      // it got set. mouseleave clears it too, but only when it actually fires.
+      if (!headerEngaged) menuScrollClosed = false;
+
+      const menuOpen = isMenuOpen();
+      if (headerEngaged && (menuOpen || menuScrollClosed)) {
+        // A real downward scroll closes the menu, once, with its normal close
+        // animation (not the instant force-close). Latching first means the
+        // next frames don't re-dispatch the close and restart its stagger.
+        if (menuOpen && !menuScrollClosed && y > lastY + 1) {
+          // Tap mode never latches: there's no pointer to release it, so the
+          // hold below would never end and the header would freeze docked.
+          menuScrollClosed = !isTapMode();
+          document.querySelectorAll<HTMLElement>('.header-trigger.is-menu-open').forEach((t) => {
+            t.dispatchEvent(new CustomEvent('header:request-close'));
+          });
+        }
+        // Freeze the mode while the pointer is on the header and the menu is
+        // open or just scroll-closed: docked STAYS docked (closing the menu is
+        // not a reason to undock — it rides away on a later scroll, once the
+        // pointer is off it), and a header still in flow at the page top keeps
+        // scrolling away natively. Docking on open is the trigger-open
+        // listener's job, so there's nothing to decide here.
         header.classList.remove('is-scrolled-hidden');
-      } else if (y > lastY + 4) {
-        header.classList.add('is-scrolled-hidden');
-      } else if (y < lastY - 4) {
-        header.classList.remove('is-scrolled-hidden');
+        trend = null;
+        lastY = y;
+        ticking = false;
+        return;
       }
 
-      document.documentElement.classList.toggle('is-page-top', y <= 8);
+      // Genuine direction reversal resets the anchor, so cumulative distance is
+      // measured from the turning point — a frame-to-frame delta never crosses
+      // the threshold on a slow scroll (~1-2px/frame).
+      if (y > lastY && trend !== 'down') {
+        trend = 'down';
+        anchorY = lastY;
+      } else if (y < lastY && trend !== 'up') {
+        trend = 'up';
+        anchorY = lastY;
+      }
+
+      if (mode === 'docked') {
+        // Reached the very top with upward momentum: hand back to flow so the
+        // header springs with the page's rubber-band instead of staying pinned.
+        if (y <= 0) {
+          setMode('flow');
+          trend = null;
+          anchorY = y;
+        } else if (y > anchorY) {
+          // No threshold: the instant you scroll down from docked, it rides —
+          // any dead-zone reads as the header catching on a few pixels late.
+          // Release at the current spot: absolute at scrollY, so it scrolls
+          // away with the page from the top edge. No fade on the way out.
+          setMode('riding');
+          trend = 'down';
+          anchorY = y;
+        }
+      } else if (mode === 'riding') {
+        const rect = header.getBoundingClientRect();
+        if (trend === 'up' && rect.top >= 0) {
+          // Rode back down and its top reached the viewport top: dock, no fade.
+          setMode('docked');
+        } else if (rect.bottom < 0) {
+          // Scrolled fully away: back to its flow slot, invisible up top.
+          setMode('flow');
+        }
+      } else if (trend === 'up' && anchorY - y > REVEAL_PX) {
+        const rect = header.getBoundingClientRect();
+        if (rect.bottom <= 0 && y > headerHeight) {
+          // Fully off-screen: dock + fade in at full height. Small threshold
+          // stays here so a stray 1px nudge deep in the page doesn't flash it.
+          setMode('docked', true);
+        }
+        // Partly visible and scrolling up: leave it in flow — it rides down
+        // with the page natively. It only docks once it has fully left and
+        // come back via a ride (handled in the riding branch), so there's no
+        // teleport-to-top jump.
+      }
+
+      if (mode !== 'riding') {
+        header.classList.remove('is-scrolled-hidden');
+      }
 
       lastY = y;
       ticking = false;
@@ -227,29 +456,50 @@ const menuLinks = headerSettings.menuLinks;
       },
       { passive: true },
     );
+
+    window.addEventListener('resize', () => {
+      syncSlot();
+      // Re-measure horizontal geometry from a clean flow layout. If the header
+      // is out of flow, briefly restore it to flow to read the true values.
+      if (mode === 'flow') {
+        captureGeo();
+      } else {
+        const prevMode = mode;
+        header.style.transition = 'none';
+        header.style.visibility = 'hidden';
+        setMode('flow');
+        captureGeo();
+        setMode(prevMode);
+        header.style.visibility = '';
+      }
+    });
   }
 
   const setMenuBackdropVisible = (visible: boolean) => {
-    const headerEl = document.querySelector('.site-header--nav-menu');
-    if (!headerEl) return;
+    // The backdrop lives OUTSIDE the header (a sibling), so its z-index sits
+    // between page content and the header bar instead of being trapped in the
+    // header's stacking context and painting over the bar.
+    const backdrop = document.querySelector('.header-menu-backdrop');
+    if (!backdrop) return;
 
     if (visible) {
-      headerEl.style.removeProperty('--menu-backdrop-close-delay');
-      headerEl.classList.add('is-menu-backdrop-visible');
+      (backdrop as HTMLElement).style.removeProperty('--menu-backdrop-close-delay');
+      backdrop.classList.add('is-menu-backdrop-visible');
     } else {
-      headerEl.classList.remove('is-menu-backdrop-visible');
+      backdrop.classList.remove('is-menu-backdrop-visible');
     }
   };
 
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
   const forceCloseMenus = () => {
+    menuScrollClosed = false;
     const active = document.activeElement;
     if (active instanceof HTMLElement && active.closest('.site-header--nav-menu')) {
       active.blur();
     }
 
-    const headerEl = document.querySelector('.site-header--nav-menu');
-    headerEl?.style.setProperty('--menu-backdrop-close-delay', '0s');
+    const backdrop = document.querySelector('.header-menu-backdrop') as HTMLElement | null;
+    backdrop?.style.setProperty('--menu-backdrop-close-delay', '0s');
     setMenuBackdropVisible(false);
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
@@ -350,13 +600,25 @@ const menuLinks = headerSettings.menuLinks;
       setMenuBackdropVisible(true);
       setOpenStagger();
       setPanelReveal(true);
-      trigger.dispatchEvent(new CustomEvent('header:trigger-open'));
+      // Bubbles: the scroll state machine listens on .site-header to dock the
+      // header when the menu opens. The per-trigger listeners are on the
+      // target itself, so they're unaffected.
+      trigger.dispatchEvent(new CustomEvent('header:trigger-open', { bubbles: true }));
     };
 
-    const closeMenu = () => {
+    /**
+     * @param force Bypass the :hover gate on removing `is-menu-open`. A
+     *   scroll-close happens with the cursor still parked on the trigger, so
+     *   the normal gate would leave the class on forever — the class then
+     *   reads as "open" on later frames and flaps the header's mode. Focus is
+     *   still honoured: a focused menu link holds the panel open via
+     *   :focus-within regardless of the class, so removing it there would only
+     *   desync the two.
+     */
+    const closeMenu = (force = false) => {
       delete trigger.dataset.menuOpen;
       document
-        .querySelector('.site-header--nav-menu')
+        .querySelector('.header-menu-backdrop')
         ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
       setMenuBackdropVisible(false);
       setCloseStagger();
@@ -365,7 +627,7 @@ const menuLinks = headerSettings.menuLinks;
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
         delete trigger.dataset.menuCloseTimer;
-        if (!trigger.matches(':hover') && !trigger.contains(document.activeElement)) {
+        if ((force || !trigger.matches(':hover')) && !trigger.contains(document.activeElement)) {
           trigger.classList.remove('is-menu-open');
         }
       }, closeLayoutMs);
@@ -386,11 +648,18 @@ const menuLinks = headerSettings.menuLinks;
 
     trigger.addEventListener('mouseenter', (event) => {
       if (isTapMode()) return;
+      if (menuScrollClosed) return;
       openMenu(event);
     });
     trigger.addEventListener('mouseleave', () => {
       if (isTapMode()) return;
+      menuScrollClosed = false;
       closeMenu();
+    });
+    // Scroll-driven close: run the normal animated close, not the instant
+    // force-close, so the menu fades/staggers out like a mouse-leave.
+    trigger.addEventListener('header:request-close', () => {
+      closeMenu(true);
     });
     trigger.addEventListener('focusin', () => {
       if (isTapMode() && isPointerDrivenFocus()) return;
@@ -835,6 +1104,12 @@ const menuLinks = headerSettings.menuLinks;
 </script>
 
 <style>
+  /* The slot claims the header's flow height in every mode, so the page
+     below never jumps when the header docks (fixed) or rides (absolute). */
+  .site-header-slot {
+    position: relative;
+  }
+
   .site-header {
     --header-menu-link-size: 1.2em;
 
@@ -859,13 +1134,26 @@ const menuLinks = headerSettings.menuLinks;
     --header-wordmark-size: calc(
       var(--header-logo-size) * var(--wordmark-in-logo) / var(--wordmark-cap)
     );
-    position: sticky;
-    top: 0;
+    position: relative;
     /* Above mid-page sections (25). Fill is transparent at page top and
        fades in on scroll or menu open. Below format bar (90+). */
     z-index: 50;
     padding: var(--space-unit) 0;
     transition: opacity 0.35s ease;
+  }
+
+  /* Docked: fixed at the viewport top. left/right stay UNSET so the header
+     keeps the exact x-position and width flow gave it inside #site-wrapper —
+     no gutter formula, no measurement, no inset shift. */
+  .site-header.is-docked {
+    position: fixed;
+    top: 0;
+  }
+
+  /* Riding: absolute at the release spot (inline top = scrollY), so it
+     scrolls away with the page. Same unset left/right — flow geometry kept. */
+  .site-header.is-riding {
+    position: absolute;
   }
 
   .site-header.is-scrolled-hidden {
@@ -934,10 +1222,11 @@ const menuLinks = headerSettings.menuLinks;
       opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1)
       var(--menu-backdrop-close-delay, 0.09s);
     pointer-events: none;
-    z-index: 0;
+    /* Above page content (sections sit at 25), below the header bar (50). */
+    z-index: 40;
   }
 
-  .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
+  .header-menu-backdrop.is-menu-backdrop-visible {
     opacity: 1;
     transition-delay: 0s;
   }
@@ -945,7 +1234,7 @@ const menuLinks = headerSettings.menuLinks;
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
      whatever sits under it. */
   @media (hover: none), (pointer: coarse) {
-    .site-header--nav-menu.is-menu-backdrop-visible .header-menu-backdrop {
+    .header-menu-backdrop.is-menu-backdrop-visible {
       pointer-events: auto;
     }
   }
