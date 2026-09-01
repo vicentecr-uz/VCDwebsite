@@ -29,6 +29,8 @@ interface Props {
   outline?: OutlineEntry[];
   /** Derived or legacy nested sidebar tree. Prefer `outline`. */
   sectionLinks?: SectionNavItem[];
+  /** Narrowed page column from `pageColumnStyle()`; see src/lib/pageColumn.ts. */
+  columnStyle?: string;
   sectionNavLabel?: string;
   /** Project JSON document key for DEV section-nav editing. */
   sectionNavDocument?: string;
@@ -44,6 +46,7 @@ const {
   sectionNavLabel = 'Project sections',
   sectionNavDocument,
   ogImage,
+  columnStyle,
 } = Astro.props;
 
 const outline = resolveProjectOutline({
@@ -59,7 +62,7 @@ const hasSidebar = Array.isArray(sectionLinks) && sectionLinks.length > 0;
 const navDocument = sectionNavDocument ?? '';
 ---
 
-<Layout title={`${title} — Vicente Cruz`} description={description} ogImage={ogImage}>
+<Layout title={`${title} — Vicente Cruz`} description={description} ogImage={ogImage} columnStyle={columnStyle}>
   <div
     class="project-page flex flex-col min-h-dvh"
     data-section-nav-root={hasSidebar ? '' : undefined}

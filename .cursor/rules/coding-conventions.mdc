@@ -68,3 +68,15 @@ When a response references a Figma node — a component, frame, or mockup — li
 Reason: a bare name forces Anto to search Figma by hand for something the agent already had the exact node ID for; the link is one click.
 
 Canonical: Atlas `standards.md` → *Design System — Figma links, not bare names*; also `CLAUDE.md` and `AGENTS.md`.
+
+## Page width — two caps, and a breakpoint derived from them
+
+The page has **two** column caps, not one. `--page-text-max-width` (`40em`) caps body text and section titles; `--page-media-max-width` (`50em`) caps everything else — images, grids, carousels, video, press ticker, Reddit board, project grid. `--page-max-width` is **derived** as `max()` of the two and is the *outer* column that `#site-wrapper`'s gutter, the header fill feather and the sidebar nav read. All three live in the `html { }` block of `src/styles/global.css`.
+
+Media is the default and text opts down via `.project-block--text` (only `ProjectBodyText.astro` and `ProjectSectionTitle.astro` add it). `.project-image-grid` and `.project-image-carousel` are named separately in that rule because their roots don't carry `.project-block` — check any new media component for the same.
+
+**The trap:** the sidebar-nav breakpoint is derived from the outer column (`column + 28.5em`, currently `78.5em`; tablet ceiling `78.4375em`), and **a media query condition cannot read a custom property**. So roughly six literals across `SectionSidebarNav.astro`, `project.css`, `DevTextEditor.astro` and `DevPageWidthToggle.astro` are hand-maintained and must all be re-derived when the outer column moves. Miss one and the failure is silent — a `min-width` lowered without its `max-width` companion leaves a band where the nav is positioned *and* hidden at once, so the new breakpoint never takes effect. That shipped once already.
+
+Read `docs/page-width.md` before changing any width — it lists every literal and the grep to find them. A dev-mode **Page width** panel A/Bs both caps live (and rewrites the breakpoint at runtime so the preview is honest; it does not update the shipped CSS for you).
+
+Canonical: `docs/page-width.md`; also `CLAUDE.md` and `AGENTS.md` → **Key conventions**.

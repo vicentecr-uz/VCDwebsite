@@ -213,7 +213,7 @@
   --sys-color-srf-container-high: var(--ref-palette-grey-800);
   --sys-color-inverse-srf: var(--ref-palette-grey-0);
   --sys-color-inverse-srf-hover: var(--ref-palette-grey-100);
-  --sys-color-on-srf: var(--ref-palette-grey-100);
+  --sys-color-on-srf: var(--ref-palette-grey-150);
   --sys-color-on-srf-variant: var(--ref-palette-grey-300);
   --sys-color-on-srf-subtle: var(--ref-palette-grey-600);
   --sys-color-on-light-media: var(--ref-palette-grey-400);
@@ -474,6 +474,15 @@ html {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   font-synthesis: none;
+  /* Split column caps. Text blocks and media blocks cap independently;
+     --page-max-width is the DERIVED outer column (the wider of the two) and is
+     what the wrapper gutter, header feather and sidebar nav read, so page
+     chrome always tracks the true column edge. DevPageWidthToggle overrides
+     the two inputs live via documentElement.style.setProperty — declared here,
+     not on #site-wrapper, so no shadowing redeclaration fights the inline. */
+  --page-text-max-width: 40em;
+  --page-media-max-width: 50em;
+  --page-max-width: max(var(--page-text-max-width), var(--page-media-max-width));
 }
 
 body {
@@ -482,7 +491,7 @@ body {
 
 #site-wrapper {
   /* Named so the header fill can break out to the viewport edges. */
-  --page-gutter: max(var(--space-unit), calc((100% - 60em) / 2));
+  --page-gutter: max(var(--space-unit), calc((100% - var(--page-max-width)) / 2));
   padding-inline: var(--page-gutter);
 }
 

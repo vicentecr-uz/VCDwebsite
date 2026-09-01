@@ -1,0 +1,508 @@
+---
+import DevPanel from './ui/DevPanel.astro';
+import SegmentedControl from './ui/SegmentedControl.astro';
+import Button from './ui/Button.astro';
+
+/**
+ * Live A/B for the page's reading-column caps (--page-text-max-width /
+ * --page-media-max-width). Unlinked, text and media cap independently;
+ * linked, the media row follows the text row. Original = the pre-rotation
+ * 60em; Emil = 43.25em; Custom = a typed em value. The site now ships 40em
+ * text / 50em media, so neither preset is the default. Temporary —
+ * remove once Anto settles on a width.
+ *
+ * DevPanel gives real panel chrome (title bar, corner lights, body padding)
+ * but is deliberately NOT given a data-dev-panel-key: that prop opts a panel
+ * into DevModeController's devPanels() visibility system, which mass-hides
+ * every [data-dev-panel-key] element on Edit-mode exit (see Atlas learnings —
+ * a prior DevOverlay A/B hit exactly this and vanished mid-comparison).
+ * Visibility here is owned entirely by our own html.is-dev-mode CSS gate
+ * below, which DevPanel itself has no opinion on either way.
+ */
+
+const ORIGINAL_EM = 60;
+const EMIL_EM = 43.25;
+/* What the site actually ships — see docs/page-width.md. */
+const SHIPPED_TEXT_EM = 40;
+const SHIPPED_MEDIA_EM = 50;
+---
+
+<DevPanel title="Page width" class="dev-page-width-toggle" data-dev-page-width-toggle>
+  <div class="dev-page-width-toggle__row" data-width-row="text">
+    <p class="dev-page-width-toggle__label" data-width-scope-label>Text</p>
+    <SegmentedControl label="Text page width" data-width-scope="text">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Original"
+        data-width-mode="original"
+        aria-pressed="false"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Emil"
+        data-width-mode="emil"
+        aria-pressed="false"
+      />
+      <input
+        class="dev-page-width-toggle__custom"
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="em"
+        value={String(SHIPPED_TEXT_EM)}
+        aria-label="Custom text page width in em"
+        data-width-custom-input
+      />
+    </SegmentedControl>
+  </div>
+
+  <Button
+    class="dev-page-width-toggle__link"
+    emphasis="ghost"
+    label=""
+    aria-label="Link text and media widths"
+    title="Link text and media widths"
+    selected={true}
+    data-width-link
+  >
+    <!-- Two links of a chain, offset along one diagonal. NOT two capsules
+         rotated ±45 about the same centre — that crosses them into an X,
+         which reads as "unlink". -->
+    <svg
+      slot="icon"
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.8"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      focusable="false"
+    >
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+  </Button>
+
+  <div class="dev-page-width-toggle__row" data-width-row="media">
+    <p class="dev-page-width-toggle__label">Media</p>
+    <SegmentedControl label="Media page width" data-width-scope="media">
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Original"
+        data-width-mode="original"
+        aria-pressed="false"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Emil"
+        data-width-mode="emil"
+        aria-pressed="false"
+      />
+      <input
+        class="dev-page-width-toggle__custom"
+        type="text"
+        inputmode="decimal"
+        autocomplete="off"
+        spellcheck="false"
+        placeholder="em"
+        value={String(SHIPPED_MEDIA_EM)}
+        aria-label="Custom media page width in em"
+        data-width-custom-input
+      />
+    </SegmentedControl>
+  </div>
+</DevPanel>
+
+<style>
+  /* Floating dev chrome: only show while dev mode is on. Not gated by
+     data-dev-panel-key — see the header comment. */
+  .dev-page-width-toggle {
+    display: none;
+    position: fixed;
+    bottom: var(--space-unit);
+    right: var(--space-unit);
+    z-index: 89; /* save bar (.dev-text-actions) is 90 */
+  }
+
+  :global(html.is-dev-mode) .dev-page-width-toggle {
+    /* .dev-panel's own base display; restated here since this scoped rule
+       needs to be the one deciding visibility. */
+    display: flex;
+  }
+
+  .dev-page-width-toggle :global(.dev-panel__header) {
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .dev-page-width-toggle.is-dragging :global(.dev-panel__header) {
+    cursor: grabbing;
+  }
+
+  .dev-page-width-toggle :global(.dev-segmented) {
+    width: auto;
+  }
+
+  .dev-page-width-toggle__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--dev-panel-label-gap);
+    width: 100%;
+  }
+
+  .dev-page-width-toggle__label {
+    font: var(--dev-text-label);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  /* Greys the row, its label included — set alongside disabling each control
+     itself so the row reads as inert, not just dim. */
+  .dev-page-width-toggle__row.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .dev-page-width-toggle__link {
+    align-self: center;
+  }
+
+  /* Third segment is a real input, not a .dev-btn — match the sibling
+     buttons' segmented sizing (project.css .dev-segmented .dev-btn) so the
+     three read as one control. Shared by both rows' custom inputs. */
+  .dev-page-width-toggle__custom {
+    flex: 1 1 0;
+    min-width: 3.5em;
+    min-height: 28px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: var(--dev-radius-control);
+    background: transparent;
+    color: var(--sys-color-on-srf-variant);
+    font: var(--dev-text-label);
+    text-align: center;
+    box-sizing: border-box;
+  }
+
+  .dev-page-width-toggle__custom::placeholder {
+    color: var(--sys-color-on-srf-variant);
+    opacity: 0.6;
+  }
+
+  .dev-page-width-toggle__custom:focus-visible {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 2px;
+  }
+
+  /* Mirrors .dev-segmented .dev-btn[aria-pressed='true'] — applied via a
+     class since aria-pressed isn't valid on a text input. */
+  .dev-page-width-toggle__custom.is-active {
+    background: var(--dev-segmented-selected-fill, var(--comp-button-page-container-selected));
+    color: var(--comp-button-label);
+  }
+</style>
+
+<script>
+  type WidthMode = 'original' | 'emil' | 'custom';
+  type Scope = 'text' | 'media';
+
+  const ORIGINAL_EM = 60;
+  const EMIL_EM = 43.25;
+  const SHIPPED_TEXT_EM = 40;
+  const SHIPPED_MEDIA_EM = 50;
+
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+  const root = document.querySelector<HTMLElement>('[data-dev-page-width-toggle]');
+
+  const scopeElement = (scope: Scope) =>
+    root?.querySelector<HTMLElement>(`[data-width-scope="${scope}"]`) ?? null;
+
+  const textScope = scopeElement('text');
+  const mediaScope = scopeElement('media');
+  const textRow = root?.querySelector<HTMLElement>('[data-width-row="text"]') ?? null;
+  const mediaRow = root?.querySelector<HTMLElement>('[data-width-row="media"]') ?? null;
+  const textScopeLabel = textRow?.querySelector<HTMLElement>('[data-width-scope-label]') ?? null;
+  const linkButton = root?.querySelector<HTMLButtonElement>('[data-width-link]') ?? null;
+
+  const textButtons = textScope
+    ? [...textScope.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
+    : [];
+  const mediaButtons = mediaScope
+    ? [...mediaScope.querySelectorAll<HTMLButtonElement>('button[data-width-mode]')]
+    : [];
+  const textCustomInput = textScope?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
+  const mediaCustomInput = mediaScope?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
+
+  const initPanelDrag = (panel: HTMLElement) => {
+    const dragHandle = panel.querySelector<HTMLElement>('.dev-panel__header');
+    if (!dragHandle) return;
+
+    let dragPointerId: number | null = null;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let originLeft = 0;
+    let originTop = 0;
+
+    const anchorToLeftTop = () => {
+      const rect = panel.getBoundingClientRect();
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.left = `${rect.left}px`;
+      panel.style.top = `${rect.top}px`;
+      return { left: rect.left, top: rect.top };
+    };
+
+    const clampPosition = (left: number, top: number) => {
+      const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - panel.offsetHeight);
+      return {
+        left: clamp(left, 0, maxLeft),
+        top: clamp(top, 0, maxTop),
+      };
+    };
+
+    dragHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+
+      const pos = anchorToLeftTop();
+      originLeft = pos.left;
+      originTop = pos.top;
+      dragStartX = event.clientX;
+      dragStartY = event.clientY;
+      dragPointerId = event.pointerId;
+      panel.classList.add('is-dragging');
+      dragHandle.setPointerCapture(event.pointerId);
+    });
+
+    dragHandle.addEventListener('pointermove', (event) => {
+      if (dragPointerId !== event.pointerId) return;
+      const dx = event.clientX - dragStartX;
+      const dy = event.clientY - dragStartY;
+      const next = clampPosition(originLeft + dx, originTop + dy);
+      panel.style.left = `${next.left}px`;
+      panel.style.top = `${next.top}px`;
+    });
+
+    const endDrag = (event: PointerEvent) => {
+      if (dragPointerId !== event.pointerId) return;
+      dragPointerId = null;
+      panel.classList.remove('is-dragging');
+      if (dragHandle.hasPointerCapture(event.pointerId)) {
+        dragHandle.releasePointerCapture(event.pointerId);
+      }
+    };
+
+    dragHandle.addEventListener('pointerup', endDrag);
+    dragHandle.addEventListener('pointercancel', endDrag);
+  };
+
+  if (root) initPanelDrag(root);
+
+  // The sidebar nav's gutter breakpoint can't read a custom property — no
+  // media query condition can. But a rule's condition IS writable at runtime
+  // (CSSMediaRule.media.mediaText), so the A/B rewrites it to match the width
+  // being tested. Without this the nav appears at a threshold computed for the
+  // shipped width and the preview lies about the layout you're choosing.
+  //
+  // 14.25em of gutter per side: 12.5em nav + 1em gap + 0.75em viewport edge.
+  // At the shipped 50em outer column that reproduces 78.5em exactly, so this is
+  // a no-op until a width actually moves — production is untouched.
+  const NAV_GUTTER_EM = 14.25;
+  const BASE_MIN_EM = 78.5; // SHIPPED_MEDIA_EM + NAV_GUTTER_EM * 2
+  const BASE_MAX_EM = 78.4375; // BASE_MIN - 0.0625: the "just below desktop" edge
+
+  // Keyed by rule so a re-scan after HMR can't treat an already-rewritten
+  // condition as the original and compound the offset.
+  const baseMediaText = new WeakMap<CSSMediaRule, string>();
+
+  const collectNavMediaRules = () => {
+    const found: CSSMediaRule[] = [];
+
+    const walk = (rules: CSSRuleList) => {
+      for (let i = 0; i < rules.length; i += 1) {
+        const rule = rules[i];
+        if (rule instanceof CSSMediaRule) {
+          const base = baseMediaText.get(rule) ?? rule.media.mediaText;
+          if (base.includes(`${BASE_MIN_EM}em`) || base.includes(`${BASE_MAX_EM}em`)) {
+            if (!baseMediaText.has(rule)) baseMediaText.set(rule, base);
+            found.push(rule);
+          }
+        }
+        // Media rules can sit inside @supports / @layer.
+        const grouping = rule as CSSGroupingRule;
+        if (grouping.cssRules) walk(grouping.cssRules);
+      }
+    };
+
+    for (const sheet of document.styleSheets) {
+      // A cross-origin sheet throws on .cssRules; nothing of ours is one.
+      try {
+        walk(sheet.cssRules);
+      } catch {
+        /* not readable — skip */
+      }
+    }
+
+    return found;
+  };
+
+  const syncNavBreakpoint = () => {
+    const outerEm = Math.max(textEm, mediaEm);
+    const minEm = outerEm + NAV_GUTTER_EM * 2;
+    const maxEm = minEm - 0.0625;
+
+    for (const rule of collectNavMediaRules()) {
+      const base = baseMediaText.get(rule);
+      if (!base) continue;
+      const next = base
+        .replaceAll(`${BASE_MIN_EM}em`, `${minEm}em`)
+        .replaceAll(`${BASE_MAX_EM}em`, `${maxEm}em`);
+      if (rule.media.mediaText !== next) rule.media.mediaText = next;
+    }
+  };
+
+  let linked = false;
+  let textEm = SHIPPED_TEXT_EM;
+  let mediaEm = SHIPPED_MEDIA_EM;
+  let textMode: WidthMode = 'custom';
+  let mediaMode: WidthMode = 'custom';
+
+  const applyText = (em: number) => {
+    textEm = em;
+    document.documentElement.style.setProperty('--page-text-max-width', `${em}em`);
+    if (linked) applyMedia(em);
+  };
+
+  const applyMedia = (em: number) => {
+    mediaEm = em;
+    document.documentElement.style.setProperty('--page-media-max-width', `${em}em`);
+  };
+
+  const setScopeMode = (buttons: HTMLButtonElement[], customInput: HTMLInputElement | null, mode: WidthMode) => {
+    buttons.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.widthMode === mode));
+    });
+    customInput?.classList.toggle('is-active', mode === 'custom');
+  };
+
+  const render = () => {
+    if (textScopeLabel) textScopeLabel.textContent = linked ? 'All' : 'Text';
+    linkButton?.setAttribute('aria-pressed', String(linked));
+    linkButton?.classList.toggle('is-selected', linked);
+
+    mediaButtons.forEach((button) => {
+      button.disabled = linked;
+    });
+    if (mediaCustomInput) {
+      mediaCustomInput.disabled = linked;
+      // Linked, the media row reports what text is applying. Without this the
+      // media input lights up as the active segment while showing an empty
+      // box, because only the text input holds the typed number.
+      if (linked && textCustomInput) mediaCustomInput.value = textCustomInput.value;
+    }
+    mediaRow?.classList.toggle('is-disabled', linked);
+
+    setScopeMode(textButtons, textCustomInput, textMode);
+    setScopeMode(mediaButtons, mediaCustomInput, mediaMode);
+
+    // Idempotent: recomputed from each rule's cached original, so at the
+    // shipped width it writes nothing at all.
+    syncNavBreakpoint();
+  };
+
+  const setLinked = (next: boolean) => {
+    linked = next;
+    if (linked) {
+      applyMedia(textEm);
+      mediaMode = textMode;
+    }
+    render();
+  };
+
+  textButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.dataset.widthMode;
+      if (mode === 'original') {
+        textMode = 'original';
+        applyText(ORIGINAL_EM);
+      } else if (mode === 'emil') {
+        textMode = 'emil';
+        applyText(EMIL_EM);
+      }
+      if (linked) mediaMode = textMode;
+      render();
+    });
+  });
+
+  mediaButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      if (linked) return;
+      const mode = button.dataset.widthMode;
+      if (mode === 'original') {
+        mediaMode = 'original';
+        applyMedia(ORIGINAL_EM);
+      } else if (mode === 'emil') {
+        mediaMode = 'emil';
+        applyMedia(EMIL_EM);
+      }
+      render();
+    });
+  });
+
+  const applyTextCustomValue = () => {
+    if (!textCustomInput) return;
+    const value = parseFloat(textCustomInput.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    textMode = 'custom';
+    applyText(value);
+    if (linked) mediaMode = 'custom';
+    render();
+  };
+
+  textCustomInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyTextCustomValue();
+    textCustomInput.blur();
+  });
+
+  textCustomInput?.addEventListener('blur', applyTextCustomValue);
+
+  const applyMediaCustomValue = () => {
+    if (!mediaCustomInput || linked) return;
+    const value = parseFloat(mediaCustomInput.value);
+    if (!Number.isFinite(value) || value <= 0) return;
+    mediaMode = 'custom';
+    applyMedia(value);
+    render();
+  };
+
+  mediaCustomInput?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    applyMediaCustomValue();
+    mediaCustomInput.blur();
+  });
+
+  mediaCustomInput?.addEventListener('blur', applyMediaCustomValue);
+
+  linkButton?.addEventListener('click', () => {
+    setLinked(!linked);
+  });
+
+  // Reflect the shipped defaults (already live via CSS, and pre-filled into
+  // the two custom inputs) without writing an inline override on load — only
+  // user interaction should touch the custom properties. Neither preset
+  // matches what ships any more, so both rows open on `custom`, and the panel
+  // opens unlinked because text and media are no longer the same number.
+  render();
+</script>
