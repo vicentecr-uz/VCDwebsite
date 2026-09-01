@@ -59,6 +59,7 @@ const { documentKey = '' } = Astro.props;
   import { getLastPointerPosition } from '../lib/lastPointer';
 
   const UNASSIGNED = '__unassigned__';
+  const ASSET_DRAG_TYPE = 'application/x-vcd-asset-src';
 
   /** @typedef {{
    *   id: string,
@@ -266,6 +267,7 @@ const { documentKey = '' } = Astro.props;
       button.title = asset.filename;
       button.setAttribute('aria-label', `${asset.filename}${onPage ? '' : ' (library only)'}`);
       button.setAttribute('aria-pressed', selected.has(asset.id) ? 'true' : 'false');
+      button.draggable = true;
 
       const img = document.createElement('img');
       img.alt = '';
@@ -302,6 +304,12 @@ const { documentKey = '' } = Astro.props;
         }
         syncSelectionUI();
         syncPickButtons();
+      });
+
+      button.addEventListener('dragstart', (event) => {
+        if (!event.dataTransfer) return;
+        event.dataTransfer.setData(ASSET_DRAG_TYPE, asset.src);
+        event.dataTransfer.effectAllowed = 'copy';
       });
 
       trash.addEventListener('click', (event) => {

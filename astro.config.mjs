@@ -1543,6 +1543,8 @@ function contentSectionDevWriter() {
             ? 'delete'
             : body.action === 'fillPlaceholder'
               ? 'fillPlaceholder'
+              : body.action === 'appendMediaItems'
+                ? 'appendMediaItems'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
                 : body.action === 'convert'
@@ -1578,6 +1580,90 @@ function contentSectionDevWriter() {
             } catch (error) {
               send(400, {
                 error: error instanceof Error ? error.message : 'Could not remove that image.',
+              });
+            }
+            return;
+          }
+
+          if (action === 'appendMediaItems') {
+            const fieldPath = Array.isArray(body.path) ? body.path : [];
+            const filenames = Array.isArray(body.filenames)
+              ? body.filenames.map((value) => String(value || '').trim()).filter(Boolean)
+              : [];
+            const srcs = Array.isArray(body.srcs)
+              ? body.srcs.map((value) => String(value || '').trim()).filter(Boolean)
+              : [];
+            if (!fieldPath.length || !fieldPath.every(isSafePathPart)) {
+              send(400, { error: 'That carousel path is invalid.' });
+              return;
+            }
+            if (!filenames.length && !srcs.length) {
+              send(400, { error: 'At least one image file is required.' });
+              return;
+            }
+
+            let target = data;
+            for (const part of fieldPath) {
+              if (!target || typeof target !== 'object') {
+                target = null;
+                break;
+              }
+              target = target[part];
+            }
+            if (
+              !target
+              || typeof target !== 'object'
+              || Array.isArray(target)
+              || target.type !== 'imageCarousel'
+              || !Array.isArray(target.items)
+            ) {
+              send(400, { error: 'That carousel path no longer exists.' });
+              return;
+            }
+
+            try {
+              const built = srcs.length
+                ? await buildImageCarouselSectionFromSrcs(srcs)
+                : await buildImageCarouselSection(documentKey, filenames);
+              const appendedItems = Array.isArray(built.items) ? built.items : [];
+              const appendedIds = appendedItems.map((item) => String(item.id || '')).filter(Boolean);
+              if (!appendedItems.length || appendedItems.length !== appendedIds.length) {
+                throw new Error('Could not build those carousel images.');
+              }
+
+              const existingIds = target.items
+                .map((item) => String(item?.id || ''))
+                .filter(Boolean);
+              target.items.push(...appendedItems);
+              target.visible = [
+                ...(Array.isArray(target.visible) ? target.visible.map(String) : existingIds),
+                ...appendedIds,
+              ];
+              if (target.breakpoints && typeof target.breakpoints === 'object' && !Array.isArray(target.breakpoints)) {
+                for (const breakpoint of Object.values(target.breakpoints)) {
+                  if (!breakpoint || typeof breakpoint !== 'object' || Array.isArray(breakpoint)) continue;
+                  if (!Array.isArray(breakpoint.visible)) continue;
+                  breakpoint.visible.push(...appendedIds);
+                }
+              }
+
+              const sectionIndex = fieldPath[0] === 'sections' && Number.isInteger(fieldPath[1])
+                ? fieldPath[1]
+                : -1;
+              if (sectionIndex < 0 || sectionIndex >= data.sections.length) {
+                throw new Error('That carousel section no longer exists.');
+              }
+              await writeContentJson(file, data);
+              send(200, {
+                ok: true,
+                action: 'appendMediaItems',
+                path: fieldPath,
+                index: sectionIndex,
+                section: data.sections[sectionIndex],
+              });
+            } catch (error) {
+              send(400, {
+                error: error instanceof Error ? error.message : 'Could not add images to that carousel.',
               });
             }
             return;
