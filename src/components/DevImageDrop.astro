@@ -129,9 +129,16 @@ const globeSvg = sizeIcon(globeIcon, 16);
     target.dataset.devCarouselDropActive = 'true';
     const veil = document.createElement('div');
     veil.className = 'dev-carousel-drop-veil';
-    veil.textContent = 'Add image to carousel';
+    const slot = document.createElement('div');
+    slot.className = 'dev-carousel-drop-veil__slot';
+    const label = document.createElement('span');
+    label.className = 'dev-carousel-drop-veil__label';
+    label.textContent = 'Add image to carousel';
+    slot.append(label);
+    veil.append(slot);
     target.append(veil);
-    requestAnimationFrame(() => veil.classList.add('is-active'));
+    void veil.offsetWidth;
+    veil.classList.add('is-active');
   };
 
   const clearDragState = () => {
@@ -716,6 +723,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
       })();
       return;
     }
+    if (assetSrc) {
+      pendingInsertIndex = insertIndexForY(clientY);
+      pendingFiles = [];
+      pendingSrcs = [assetSrc];
+      preferredType = null;
+      targetedCarousel = null;
+      openPicker(clientY);
+      return;
+    }
     if (!transfer?.files?.length) return;
     handleFiles(transfer.files, clientY, clientX);
   };
@@ -845,7 +861,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     resetPickerState();
   }));
 
-  const root = dropZone ?? document.body;
+  const root = dropZone?.closest('main') ?? dropZone ?? document.body;
   root.addEventListener('dragenter', onDragEnter);
   root.addEventListener('dragover', onDragOver);
   root.addEventListener('dragleave', onDragLeave);
@@ -933,13 +949,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
     position: absolute;
     inset: 0;
     z-index: 30;
-    display: grid;
-    place-items: center;
     border-radius: inherit;
-    background: color-mix(in srgb, var(--color-bg) 88%, transparent);
-    color: var(--sys-color-on-srf);
-    font-size: 1rem;
-    letter-spacing: -0.02em;
+    background: color-mix(in srgb, var(--color-bg) 72%, transparent);
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.15s ease;
@@ -947,6 +958,24 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   .dev-carousel-drop-veil.is-active {
     opacity: 1;
+  }
+
+  .dev-carousel-drop-veil__slot {
+    position: absolute;
+    inset: 12px;
+    display: grid;
+    place-items: center;
+    border: var(--dev-edit-dash);
+    border-radius: 8px;
+  }
+
+  .dev-carousel-drop-veil__label {
+    color: var(--sys-color-on-srf);
+    font-family: 'Hanken Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 16px;
+    text-align: center;
   }
 
   .dev-overlay[data-dev-panel-key='add-image'] {
