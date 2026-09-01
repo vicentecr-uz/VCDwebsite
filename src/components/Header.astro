@@ -493,7 +493,8 @@ const menuLinks = headerSettings.menuLinks;
       const rect = header.getBoundingClientRect();
       // Authoring changes may update the visible top-of-page header directly;
       // deep in the page they only prepare the next hidden reveal.
-      syncHeaderWidth(mode === 'flow' && rect.bottom > 0 ? rect.bottom : headerHeight, true);
+      const atPageTop = mode === 'flow' && rect.bottom > 0;
+      syncHeaderWidth(atPageTop ? rect.bottom : headerHeight, atPageTop);
     });
 
     void document.fonts?.ready.then(() => syncHeaderWidth(header.getBoundingClientRect().bottom, true));
