@@ -5,31 +5,28 @@ alwaysApply: true
 
 # Git workflow & localhost preview
 
-**One local checkout = one branch in the browser.** `localhost:4321` serves whatever branch is checked out in this repo folder. Agents put Anto on **this chat’s** feature branch when he needs to preview or QA it — not by telling him to switch.
+The primary checkout at `$HOME/Developer/VCDwebsite` and `localhost:4321` are Anto's uninterrupted live editing workspace. He stays on `main` there. Agents may inspect it only enough to create or find an isolated worktree; never edit it, switch its branch, commit/reset there, or start/stop/restart its dev session or branch sync.
 
 ## New feature work → new branch off `main`
 
-**Default for VCDwebsite (Cursor and Claude):** start feature / fix work on a **new branch based on latest `main`**. **Do not implement on `main`** unless Anto **explicitly** says to work on `main` for that task.
+**Default for VCDwebsite (Cursor and Claude):** every agent task that changes repo or git state starts in a dedicated sibling worktree before its first edit. A harness-provided task worktree counts. Agents never implement in the primary checkout or directly on its `main`.
 
-1. Before the first edit: ensure `main` is current — `git fetch origin` (when network allows), then `git switch main`. If **branch sync** is running (`bun run dev:session:status` shows `Sync: running`), do **not** `git pull` the checked-out branch manually — sync handles it; run `bun run branch:sync:once` if you need an immediate update. If sync is stopped, `git pull` on `main` is fine.
-2. Create and check out the feature branch: `git switch -c feat/<short-name>` (or the name Anto gives).
-3. Call `SetActiveBranch` so this chat’s UI tracks that branch.
-4. Say which branch you’re on when it matters.
+1. The manager owns worktree and branch allocation across parallel tasks. Check existing worktrees/branches for collisions.
+2. Unless the task explicitly depends on another local base, fetch and base the task branch/worktree on latest `origin/main`.
+3. Create or enter a sibling worktree (for example `../VCDwebsite-<branch>`) before the first edit. All edits, commits, resets, builds, and task git operations happen there.
+4. Say which worktree and branch you’re using when it matters.
 
-This *is* permission to create/switch to **that feature branch for this chat’s work**. Do **not** wait for Anto to say “make a branch” for ordinary new features — branch first, then edit.
+This is permission to create the task branch/worktree. Do not wait for Anto to say “make a branch” for ordinary new features.
 
-**Put him on the right checkout — do not assign checkout homework.** Before a QA test script (and after tearing down a worker worktree), `git switch` the main checkout onto the branch under test, `SetActiveBranch`, and restart the dev session when the ref moved. Prefer zero Terminal for him; if a paste is unavoidable, give the exact command plus one line on what it does.
+## Review preview — keep Anto's checkout untouched
 
-## Do not steal the preview for unrelated work
+- For any site/UI/content result handed to Anto, the responsible manager allocates an unused, collision-free port `4322+` and runs `bash scripts/dev-worktree-preview.sh start <port>` from that task worktree after diff review. Worker subagents do not start preview servers.
+- Check both `bash scripts/dev-worktree-preview.sh status <port>` and the relevant route with `curl` before handoff. Present the exact route as a clickable Markdown localhost link, alongside the PR and numbered test script, so Anto can open it directly without copying an address.
+- The helper is detached and persistent. Never advertise a worker's transient `astro dev` process. Keep the preview and worktree alive after handoff; recheck/restart the helper before a later handoff if needed.
+- Anto performs interactive verification. Agent `curl` checks prove availability only, not UI correctness.
+- Stop the helper and remove the worktree only after Anto says review is done/declined, or after merge makes that review environment unnecessary.
 
-- Do **not** switch this checkout to some other chat’s branch, or to an unrelated feature, without Anto asking (e.g. Checkout branch, or “check out …”).
-- Before any git operation, run `git branch --show-current` and mention which branch you’re on if it matters.
-
-## Parallel work (other chats / features)
-
-- Prefer **cloud agents** for side features so commits push to GitHub without changing the user’s local checkout.
-- Local alternative: **git worktree** in a sibling folder (e.g. `../VCDwebsite-<branch>`) — never steal the main repo checkout for parallel edits.
-- Do **not** start unrelated feature work on the user’s current preview branch without asking.
+Never switch or commandeer the primary checkout to preview or QA agent work, and never leave checkout commands as homework for Anto. The clickable worktree preview is the handoff.
 
 ## Commits
 
@@ -49,14 +46,14 @@ See CLAUDE.md → *Content vs engine*.
 ## PRs and main
 
 - **Open PR** ≠ merge. Merge only when the user asks.
-- After merge, switch to `main` (`git checkout main`; pull only if branch sync is not running — otherwise wait for sync or `bun run branch:sync:once`), then reload the browser. Production deploys from `main` push (Cloudflare Pages).
-- **After every merge — delete the feature branch (do this from `main`):** remove the **remote** branch (`git push origin --delete <branch>` or `gh pr merge --delete-branch`) and the **local** branch (`git branch -d <branch>`). Do not leave merged branches around to pile up. Skip only for stacked PRs still based on that branch. See Atlas `standards.md` → *Git — Delete merged feature branches*.
+- Production deploys from the `main` push (Cloudflare Pages). Do not switch or restart Anto's primary checkout/session after merge.
+- **After every merge:** once the review worktree is no longer needed, stop its preview, remove the worktree, then delete the **remote** branch (`git push origin --delete <branch>` or `gh pr merge --delete-branch`) and **local** branch (`git branch -d <branch>`). Do not leave merged branches around to pile up. Skip only for stacked PRs still based on that branch. See Atlas `standards.md` → *Git — Delete merged feature branches*.
 - **After merge or an impactful commit:** always log a short **why / learning / reuse** note to Atlas (`learnings.md`, `decisions-log.md`, or `standards.md`) in the same turn — do not wait to be asked. Skip only if nothing new. See Atlas `standards.md` → *Git — Log learnings after merge / impactful commit*.
 
 ## Dev session
 
-Reuse the existing dev session (`bun run dev:session:status`) — do not start duplicate servers. See `dev-session.mdc`.
+Port `4321` and `bun run dev:session` belong to Anto's primary checkout. Agents neither reuse nor control that session; use the task worktree preview flow above. See `dev-session.mdc`.
 
 ## Branch sync (auto-pull)
 
-While the dev session is running, **branch sync** auto-pulls the checked-out branch every ~60s. **Do not run `git pull` manually** when sync is running — check `bun run branch:sync:status` first. Canonical details: `CLAUDE.md` → *Key conventions* → Dev session / Branch sync.
+Branch sync belongs to Anto's primary checkout. Agents do not start, stop, restart, or use it for task work. Canonical details: `CLAUDE.md` → *Key conventions* → Anto's dev session.
