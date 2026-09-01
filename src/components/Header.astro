@@ -328,19 +328,12 @@ const menuLinks = headerSettings.menuLinks;
     const siteWrapper = document.querySelector<HTMLElement>('#site-wrapper');
     let appliedHeaderWidthPx = 0;
 
-    /**
-     * Only ever commits a new width while the header is off-screen, so the
-     * change is never watched happening — the docked fade-in reveals it already
-     * correct. A narrow header over a wide image is the case that reads wrong;
-     * a wide header over narrow text is fine, so there is nothing to fix in a
-     * hurry and no reason to animate. Resize and authoring edits explicitly
-     * supply the visible header edge because deferring those would look stale.
-     * Normal scrolling is monotonic: once media has widened the header, later
-     * text cannot narrow it again. A wide header over text reads fine; the
-     * reverse is the only mismatch this machinery exists to prevent.
-     */
-    const syncHeaderWidth = (probeEdge: number, allowShrink = false) => {
+    /** Commit width only while fully off-screen; the next fade masks the swap. */
+    const syncHeaderWidth = (probeEdge: number, initialize = false) => {
       if (!siteWrapper) return;
+      const headerRect = header.getBoundingClientRect();
+      if (!initialize && (mode !== 'flow' || headerRect.bottom > 0)) return;
+
       const blocks = document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
       if (!blocks.length) return;
 
@@ -357,7 +350,6 @@ const menuLinks = headerSettings.menuLinks;
 
       const widthPx = Math.round(current.getBoundingClientRect().width);
       if (widthPx === appliedHeaderWidthPx) return;
-      if (!allowShrink && appliedHeaderWidthPx > 0 && widthPx < appliedHeaderWidthPx) return;
 
       appliedHeaderWidthPx = widthPx;
       siteWrapper.style.setProperty('--page-header-width', `${widthPx}px`);
@@ -490,23 +482,14 @@ const menuLinks = headerSettings.menuLinks;
 
     // Sections added or removed while authoring — dispatched by DevPageColumn.
     document.addEventListener('vcd:page-column-changed', () => {
-      const rect = header.getBoundingClientRect();
-      // Authoring changes may update the visible top-of-page header directly;
-      // deep in the page they only prepare the next hidden reveal.
-      const atPageTop = mode === 'flow' && rect.bottom > 0;
-      syncHeaderWidth(atPageTop ? rect.bottom : headerHeight, atPageTop);
+      syncHeaderWidth(headerHeight);
     });
 
-    void document.fonts?.ready.then(() => syncHeaderWidth(header.getBoundingClientRect().bottom, true));
+    void document.fonts?.ready.then(() => syncHeaderWidth(headerHeight));
     syncHeaderWidth(header.getBoundingClientRect().bottom, true);
 
     window.addEventListener('resize', () => {
-      syncHeaderWidth(
-        mode === 'flow' && header.getBoundingClientRect().bottom > 0
-          ? header.getBoundingClientRect().bottom
-          : headerHeight,
-        true,
-      );
+      syncHeaderWidth(headerHeight);
       syncSlot();
       // Re-measure horizontal geometry from a clean flow layout. If the header
       // is out of flow, briefly restore it to flow to read the true values.
