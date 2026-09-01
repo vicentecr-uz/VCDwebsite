@@ -122,6 +122,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     path: Array<string | number>;
     savedValue: SpacingValue;
     currentValue: SpacingValue;
+    introHeight: EditableIntroHeightState | null;
+  }
+
+  interface EditableIntroHeightState {
+    element: HTMLElement;
+    input: HTMLInputElement;
+    document: string;
+    path: Array<string | number>;
+    savedValue: number;
+    currentValue: number;
   }
 
   type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageCarousel';
@@ -317,6 +327,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       spacingState: EditableSpacingState | null;
       level?: 2 | 3;
       intro?: boolean;
+      introHeight?: number;
     };
 
     type PersistedMediaInsert = {
@@ -460,6 +471,45 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       );
     };
 
+    const syncIntroHeightControl = (state: EditableIntroHeightState) => {
+      state.input.value = String(state.currentValue);
+      state.element.dataset.devIntroHeightValue = String(state.currentValue);
+      state.element.style.setProperty('--intro-height', String(state.currentValue));
+      state.element.classList.toggle(
+        'is-dev-intro-height-dirty',
+        state.currentValue !== state.savedValue,
+      );
+    };
+
+    const bindIntroHeightInput = (state: EditableIntroHeightState) => {
+      state.input.addEventListener('input', () => {
+        const value = Number(state.input.value);
+        if (!Number.isInteger(value) || value < 1 || value > 100) return;
+        state.currentValue = value;
+        state.element.dataset.devIntroHeightValue = String(value);
+        state.element.style.setProperty('--intro-height', String(value));
+        state.element.classList.toggle('is-dev-intro-height-dirty', value !== state.savedValue);
+        stickyStatus = '';
+        updateActions();
+      });
+      const commit = () => {
+        const raw = state.input.value.trim();
+        const value = Number(state.input.value);
+        state.currentValue = raw && Number.isFinite(value)
+          ? Math.min(100, Math.max(1, Math.round(value)))
+          : state.currentValue;
+        syncIntroHeightControl(state);
+        updateActions();
+      };
+      state.input.addEventListener('change', commit);
+      state.input.addEventListener('blur', commit);
+      state.input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        state.input.blur();
+      });
+    };
+
     /**
      * Freeze only while the pointer is on the pill/menu (not mere vicinity).
      * Vicinity-revealed toolbars stay `position:absolute` in the gap middle so
@@ -565,9 +615,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const pageTop = isPageTopSpacingBlock(element);
         const initial = raw;
         const docKey = element.dataset.devSpacingDocument || '';
-        const isGalleryDoc = docKey === 'home' || docKey === 'work' || docKey === 'play';
-        const introMenuItem = isGalleryDoc
+        const supportsIntro = docKey === 'home' || docKey === 'work' || docKey === 'play' || docKey === 'about';
+        const introMenuItem = supportsIntro
           ? '<button type="button" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro</button>'
+          : '';
+        const isIntro = element.dataset.devIntro === 'true';
+        const introHeightControl = isIntro
+          ? `<label class="dev-intro-height-control">
+              <span>Intro height</span>
+              <input type="number" min="1" max="100" step="1" inputmode="numeric" aria-label="Intro height" data-dev-intro-height-input>
+              <span aria-hidden="true">%</span>
+            </label>
+            <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>`
           : '';
 
         const control = document.createElement('div');
@@ -583,6 +642,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
         control.innerHTML = `
           <div class="dev-gap-toolbar__pill">
+            ${introHeightControl}
             <button
               type="button"
               class="dev-gap-toolbar__add"
@@ -619,6 +679,28 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
         element.prepend(control);
 
+        let introHeightState: EditableIntroHeightState | null = null;
+        const introHeightInput = control.querySelector<HTMLInputElement>('[data-dev-intro-height-input]');
+        if (isIntro && introHeightInput) {
+          const introHeightPath = JSON.parse(element.dataset.devIntroHeightPath || '[]');
+          const rawHeight = Number(element.dataset.devIntroHeightValue);
+          const initialHeight = Number.isFinite(rawHeight)
+            ? Math.min(100, Math.max(1, Math.round(rawHeight)))
+            : 75;
+          if (Array.isArray(introHeightPath) && element.dataset.devIntroHeightDocument) {
+            introHeightState = {
+              element,
+              input: introHeightInput,
+              document: element.dataset.devIntroHeightDocument,
+              path: introHeightPath,
+              savedValue: initialHeight,
+              currentValue: initialHeight,
+            };
+            bindIntroHeightInput(introHeightState);
+            syncIntroHeightControl(introHeightState);
+          }
+        }
+
         const state: EditableSpacingState = {
           element,
           control,
@@ -629,6 +711,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           path,
           savedValue: initial,
           currentValue: initial,
+          introHeight: introHeightState,
         };
         bindSpacingOptionClicks(state);
         syncSpacingControl(state);
@@ -645,9 +728,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     });
     syncPageTopSpacingControls();
 
-    /** Paths on media/text/spacing editors — bumped when sections are inserted/deleted in-place. */
+    /** Paths on media/text/layout editors — bumped when sections are inserted/deleted in-place. */
     const DEV_PATH_ATTRS = [
       'data-dev-spacing-path',
+      'data-dev-intro-height-path',
       'data-dev-text-path',
       'data-dev-image-path',
       'data-dev-grid-path',
@@ -681,6 +765,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (newIdx !== undefined) state.path[1] = newIdx;
         }
       });
+      spacingStates.forEach((state) => {
+        if (!state.introHeight) return;
+        const newIdx = indexMap[state.introHeight.path[1] as number];
+        if (newIdx !== undefined) state.introHeight.path[1] = newIdx;
+      });
     };
 
     const reindexDevPaths = (fromIndex: number, delta: number) => {
@@ -709,6 +798,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       });
       spacingStates.forEach((state) => {
         bumpSectionPath(state.path, fromIndex, delta);
+        if (state.introHeight) bumpSectionPath(state.introHeight.path, fromIndex, delta);
       });
       pendingBlockConverts.forEach((entry) => {
         // Connected roots already moved with the document query above.
@@ -1200,6 +1290,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       textStates.filter((state) => !valuesMatch(readValue(state), state.savedValue));
     const dirtySpacingStates = () =>
       spacingStates.filter((state) => state.currentValue !== state.savedValue);
+    const dirtyIntroHeightStates = () =>
+      spacingStates.flatMap((state) => state.introHeight ? [state.introHeight] : [])
+        .filter((state) => state.currentValue !== state.savedValue);
 
     const revertAllPending = () => {
       [...pendingMedia.values()].forEach((change) => {
@@ -1432,7 +1525,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const dirtyText = dirtyTextStates().filter((state) => state.document === documentKey);
       const dirtySpacing = dirtySpacingStates().filter((state) => state.document === documentKey);
-      if (!dirtyText.length && !dirtySpacing.length) return;
+      const dirtyIntroHeights = dirtyIntroHeightStates().filter((state) => state.document === documentKey);
+      if (!dirtyText.length && !dirtySpacing.length && !dirtyIntroHeights.length) return;
 
       if (dirtyText.length) {
         const response = await fetch('/api/content-text', {
@@ -1454,23 +1548,35 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         syncSavedSectionTitleLabels(dirtyText);
       }
 
-      if (dirtySpacing.length) {
+      const dirtyLayout = [
+        ...dirtySpacing.map((state) => ({
+          document: state.document,
+          path: state.path,
+          value: state.currentValue,
+        })),
+        ...dirtyIntroHeights.map((state) => ({
+          document: state.document,
+          path: state.path,
+          value: state.currentValue,
+        })),
+      ];
+      if (dirtyLayout.length) {
         const response = await fetch('/api/content-spacing', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            changes: dirtySpacing.map((state) => ({
-              document: state.document,
-              path: state.path,
-              value: state.currentValue,
-            })),
+            changes: dirtyLayout,
           }),
         });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Could not save pending spacing before inserting images.');
+        if (!response.ok) throw new Error(payload.error || 'Could not save pending layout before inserting images.');
         dirtySpacing.forEach((state) => {
           state.savedValue = state.currentValue;
           syncSpacingControl(state);
+        });
+        dirtyIntroHeights.forEach((state) => {
+          state.savedValue = state.currentValue;
+          syncIntroHeightControl(state);
         });
       }
 
@@ -1495,6 +1601,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         };
         if (entry.type === 'sectionTitle' && entry.level === 3) body.level = 3;
         if (entry.intro) body.intro = true;
+        if (entry.intro) body.introHeight = entry.introHeight ?? 75;
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -1602,11 +1709,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         applySpacingClass(state.element, state.savedValue);
         syncSpacingControl(state);
       });
+      dirtyIntroHeightStates().forEach((state) => {
+        state.currentValue = state.savedValue;
+        syncIntroHeightControl(state);
+      });
     };
 
     const unsavedChangeCount = () =>
       dirtyTextStates().length
       + dirtySpacingStates().length
+      + dirtyIntroHeightStates().length
       + pendingMedia.size
       + pendingSectionDeletes.length
       + pendingSectionInserts.length
@@ -1656,6 +1768,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const hasPendingEdits = () => Boolean(
       dirtyTextStates().length
       || dirtySpacingStates().length
+      || dirtyIntroHeightStates().length
       || pendingMedia.size
       || pendingSectionDeletes.length
       || pendingSectionInserts.length
@@ -1680,8 +1793,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const updateActions = () => {
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
+      const dirtyIntroHeights = dirtyIntroHeightStates();
       // Include persistedMediaInserts: already on disk, but still reversible until Save.
-      const dirtyCount = dirtyText.length + dirtySpacing.length + pendingMedia.size
+      const dirtyCount = dirtyText.length + dirtySpacing.length + dirtyIntroHeights.length + pendingMedia.size
         + pendingSectionDeletes.length + pendingSectionInserts.length
         + pendingBlockConverts.length
         + persistedMediaInserts.length;
@@ -1756,6 +1870,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       index: number,
       spacing: SpacingValue,
       intro?: boolean,
+      introHeight = 75,
     ) => {
       const sectionPath = ['sections', index] as Array<string | number>;
       // Inserted titles omit precede-related so the following block keeps its gap.
@@ -1767,7 +1882,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         wrapper.className = spacingClass
           ? `project-block ${spacingClass}${introClass}`
           : `project-block${introClass}`;
-        if (intro) wrapper.dataset.devIntro = 'true';
+        if (intro) {
+          wrapper.dataset.devIntro = 'true';
+          wrapper.dataset.devIntroHeightDocument = documentKey;
+          wrapper.dataset.devIntroHeightPath = JSON.stringify([...sectionPath, 'introHeight']);
+          wrapper.dataset.devIntroHeightValue = String(introHeight);
+          wrapper.style.setProperty('--intro-height', String(introHeight));
+        }
         wrapper.dataset.devSpacingDocument = documentKey;
         wrapper.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
         wrapper.dataset.devSpacingValue = spacing;
@@ -1787,7 +1908,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       section.className = spacingClass
         ? `project-block ${spacingClass}${introClass}`
         : `project-block${introClass}`;
-      if (intro) section.dataset.devIntro = 'true';
+      if (intro) {
+        section.dataset.devIntro = 'true';
+        section.dataset.devIntroHeightDocument = documentKey;
+        section.dataset.devIntroHeightPath = JSON.stringify([...sectionPath, 'introHeight']);
+        section.dataset.devIntroHeightValue = String(introHeight);
+        section.style.setProperty('--intro-height', String(introHeight));
+      }
       section.dataset.devSpacingDocument = documentKey;
       section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
       section.dataset.devSpacingValue = spacing;
@@ -2135,7 +2262,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1);
 
-      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro);
+      const introHeight = options?.intro ? 75 : undefined;
+      const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
       if (placement === 'after') host.after(built.root);
       else host.before(built.root);
 
@@ -2181,6 +2309,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         textStates: [textState],
         spacingState: spacingState ?? null,
         ...(options?.intro ? { intro: true } : {}),
+        ...(options?.intro ? { introHeight } : {}),
       });
 
       window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
@@ -3177,6 +3306,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           next.currentValue = previous.currentValue;
           applySpacingClass(newRoot, previous.currentValue);
           syncSpacingControl(next);
+          if (next.introHeight && previous.introHeight) {
+            next.introHeight.savedValue = previous.introHeight.savedValue;
+            next.introHeight.currentValue = previous.introHeight.currentValue;
+            syncIntroHeightControl(next.introHeight);
+          }
         }
         spacingStates.push(next);
         wireSectionAddMenu(next);
@@ -3314,6 +3448,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (previousHadIntro) {
         built.root.classList.add('project-block--intro');
         built.root.dataset.devIntro = 'true';
+        built.root.dataset.devIntroHeightDocument = previousRoot.dataset.devIntroHeightDocument || block.state.document;
+        built.root.dataset.devIntroHeightPath = previousRoot.dataset.devIntroHeightPath
+          || JSON.stringify(['sections', index, 'introHeight']);
+        built.root.dataset.devIntroHeightValue = previousRoot.dataset.devIntroHeightValue || '75';
+        built.root.style.setProperty(
+          '--intro-height',
+          previousRoot.style.getPropertyValue('--intro-height') || previousRoot.dataset.devIntroHeightValue || '75',
+        );
       }
 
       const previousRootId = previousRoot.id;
@@ -3338,6 +3480,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         insert.textStates = [block.state];
         insert.spacingState = spacingState ?? null;
         if (previousHadIntro) insert.intro = true;
+        if (previousHadIntro) {
+          insert.introHeight = spacingState?.introHeight?.currentValue ?? 75;
+        }
       }
 
       block.state.element = built.textElement;
@@ -4177,6 +4322,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const dirtyText = dirtyTextStates();
       const dirtySpacing = dirtySpacingStates();
+      const dirtyIntroHeights = dirtyIntroHeightStates();
       const pendingChanges = [...pendingMedia.values()];
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length
         + pendingBlockConverts.length;
@@ -4204,6 +4350,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (
         !dirtyText.length
         && !dirtySpacing.length
+        && !dirtyIntroHeights.length
         && !pendingChanges.length
         && !structuralPending
         && !mediaInsertPending
@@ -4212,6 +4359,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const documents = new Set<string>();
       dirtyText.forEach((state) => documents.add(state.document));
       dirtySpacing.forEach((state) => documents.add(state.document));
+      dirtyIntroHeights.forEach((state) => documents.add(state.document));
       pendingBlockConverts.forEach((entry) => documents.add(entry.documentKey));
       pendingChanges.forEach((change) => {
         const payload = change.payload as {
@@ -4232,6 +4380,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         changes: {
           text: dirtyText.length,
           spacing: dirtySpacing.length,
+          layout: dirtyIntroHeights.length,
           crop: imageChanges.filter((change) => change.kind === 'crop').length,
           grid: imageChanges.filter((change) => change.kind === 'grid').length,
           carousel: imageChanges.filter((change) => change.kind === 'carousel').length,
@@ -4261,7 +4410,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       try {
         // Structural mutations first: client paths are already reindexed, so
-        // JSON must match before text/spacing writes (otherwise Save hits
+        // JSON must match before text/layout writes (otherwise Save hits
         // "editable text field no longer exists" after deleting a section).
         const insertedSections = await persistPendingSectionInserts();
         await persistPendingSectionDeletes();
@@ -4389,7 +4538,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 document: state.document,
                 path: state.path,
                 value: state.currentValue,
-              })),
+              })).concat(dirtyIntroHeights.map((state) => ({
+                document: state.document,
+                path: state.path,
+                value: state.currentValue,
+              }))),
             }),
           });
           const payload = await response.json();
@@ -4411,20 +4564,28 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
           }
 
-          if (dirtySpacing.length) {
+          const dirtyLayout = [
+            ...dirtySpacing.map((state) => ({
+              document: state.document,
+              path: state.path,
+              value: state.currentValue,
+            })),
+            ...dirtyIntroHeights.map((state) => ({
+              document: state.document,
+              path: state.path,
+              value: state.currentValue,
+            })),
+          ];
+          if (dirtyLayout.length) {
             const response = await fetch('/api/content-spacing', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
-                changes: dirtySpacing.map((state) => ({
-                  document: state.document,
-                  path: state.path,
-                  value: state.currentValue,
-                })),
+                changes: dirtyLayout,
               }),
             });
             const payload = await response.json();
-            if (!response.ok) throw new Error(payload.error || 'Could not save the spacing.');
+            if (!response.ok) throw new Error(payload.error || 'Could not save the layout.');
           }
         }
 
@@ -4434,6 +4595,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         dirtySpacing.forEach((state) => {
           state.savedValue = state.currentValue;
           syncSpacingControl(state);
+        });
+        dirtyIntroHeights.forEach((state) => {
+          state.savedValue = state.currentValue;
+          syncIntroHeightControl(state);
         });
         for (const change of sectionOrderChanges) {
           const response = await fetch('/api/content-section-order', {
@@ -4741,10 +4906,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (document.documentElement.classList.contains('is-dev-crop-open')) return;
       if (devServerReloading) return;
       // Structural insert/delete is already reflected in the DOM — only warn when
-      // text, spacing, or media edits would be lost (or during a dev-server reload).
+      // text, layout, or media edits would be lost (or during a dev-server reload).
       const hasContentEdits =
         dirtyTextStates().length > 0
         || dirtySpacingStates().length > 0
+        || dirtyIntroHeightStates().length > 0
         || pendingMedia.size > 0;
       if (!hasContentEdits) return;
       event.preventDefault();
@@ -5200,10 +5366,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   /* The control stays mounted so a section reorder can restore it without
-     rebuilding editor state; DevModeController may toggle [hidden], so this
-     dedicated attribute owns the structural suppression. */
-  .dev-gap-toolbar[data-dev-suppress-gallery-page-top] {
+     rebuilding editor state. A page-top Intro keeps its height field and Add;
+     only the redundant spacing row stays suppressed. */
+  .dev-gap-toolbar[data-dev-suppress-gallery-page-top]:not(:has(.dev-intro-height-control)) {
     display: none !important;
+  }
+
+  .dev-gap-toolbar[data-dev-suppress-gallery-page-top]:has(.dev-intro-height-control)
+    :is(.dev-gap-toolbar__spacing, .dev-hairline:has(+ .dev-gap-toolbar__spacing)) {
+    display: none;
   }
 
   /* Above mid-page siblings; drop zone still traps under header until lifted. */
@@ -5260,6 +5431,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   .is-dev-mode .dev-gap-toolbar.is-near-spacing > .dev-gap-toolbar__pill,
   .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__pill,
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__pill,
+  .is-dev-mode [data-dev-spacing-document].is-dev-intro-height-dirty > .dev-gap-toolbar > .dev-gap-toolbar__pill,
   .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__pill:focus-within, > .dev-gap-toolbar__menu:focus-within)
     > .dev-gap-toolbar__pill {
     opacity: 1;
@@ -5340,6 +5512,43 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-gap-toolbar__pill > .dev-hairline--vertical {
     align-self: stretch;
+  }
+
+  .dev-intro-height-control {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-height: var(--dev-control-height);
+    box-sizing: border-box;
+    padding: 8px;
+    border-radius: var(--dev-radius-control);
+    color: var(--comp-button-label);
+    font: var(--dev-text-label);
+    cursor: text;
+  }
+
+  .dev-intro-height-control:has(input:focus-visible) {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: 2px;
+  }
+
+  .dev-intro-height-control input {
+    width: 3ch;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 16px;
+    text-align: right;
+    appearance: textfield;
+  }
+
+  .dev-intro-height-control input::-webkit-inner-spin-button,
+  .dev-intro-height-control input::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
   }
 
   .dev-gap-toolbar__add {

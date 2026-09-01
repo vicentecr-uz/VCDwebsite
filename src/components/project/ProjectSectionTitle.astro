@@ -31,6 +31,7 @@ interface Props {
   /** @deprecated Prefer showTitle.desktop === false */
   hideWhenSidebarVisible?: boolean;
   intro?: boolean;
+  introHeight?: number;
 }
 
 const {
@@ -44,6 +45,7 @@ const {
   showTitle: showTitleProp,
   hideWhenSidebarVisible = false,
   intro = false,
+  introHeight,
 } = Astro.props;
 
 const showTitle = {
@@ -57,6 +59,10 @@ const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
 const deletable = Boolean(editable);
+const rawIntroHeight = Number(introHeight);
+const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
+  ? Math.min(100, Math.max(1, Math.round(rawIntroHeight)))
+  : 75;
 ---
 
 <div
@@ -76,6 +82,10 @@ const deletable = Boolean(editable);
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={deletable ? 'sectionTitle' : undefined}
   data-dev-intro={intro ? 'true' : undefined}
+  data-dev-intro-height-document={intro && editable ? documentKey : undefined}
+  data-dev-intro-height-path={intro && editable ? JSON.stringify([...sectionPath!, 'introHeight']) : undefined}
+  data-dev-intro-height-value={intro ? String(normalizedIntroHeight) : undefined}
+  style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
   data-dev-section-title={editable ? 'true' : undefined}
   data-dev-show-title={editable ? JSON.stringify(showTitle) : undefined}
 >

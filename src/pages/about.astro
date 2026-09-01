@@ -2,8 +2,12 @@
 import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import ProjectSections from '../components/project/ProjectSections.astro';
 import aboutContent from '../content/about.json';
+import { loadPageDocument } from '../lib/projects';
+import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
+const aboutPage = loadPageDocument('about');
 const experience = aboutContent.experience;
 const contactRows = aboutContent.contactRows;
 ---
@@ -45,6 +49,14 @@ const contactRows = aboutContent.contactRows;
   .area-about      { grid-area: about; }
   .area-about p    { text-wrap: balance; }
   .area-experience { grid-area: experience; text-wrap: balance; }
+
+  .about-modern-zone:has(> :not(.about-modern-sentinel)) + .about-grid {
+    margin-top: var(--space-section);
+  }
+
+  .about-modern-zone {
+    padding-bottom: 0;
+  }
 </style>
 
 <Layout title="About — Vicente Cruz">
@@ -54,6 +66,17 @@ const contactRows = aboutContent.contactRows;
     <h1 class="sr-only">About — Vicente Cruz</h1>
 
     <main id="main-content" class="flex-1" style="padding-top: 2em; padding-bottom: 3em">
+      <div
+        class="project-page__main about-modern-zone"
+        data-dev-project-drop-zone
+        data-dev-page-column-static
+      >
+        <ProjectSections documentKey="about" sections={aboutPage.sections} />
+        <div
+          class:list={['about-modern-sentinel', projectStackClass('none')]}
+          {...(spacingDevAttrs('about', ['sections', aboutPage.sections.length], 'none') ?? {})}
+        />
+      </div>
       <div class="about-grid">
 
         <div class="area-contact">

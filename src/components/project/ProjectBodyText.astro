@@ -13,6 +13,7 @@ interface Props {
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
   intro?: boolean;
+  introHeight?: number;
 }
 
 const {
@@ -22,6 +23,7 @@ const {
   spacing = 'section',
   sectionId,
   intro = false,
+  introHeight,
 } = Astro.props;
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
 const sectionPath =
@@ -29,6 +31,10 @@ const sectionPath =
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 const stackClass = projectStackClass(spacing);
 const deletable = Boolean(editable && sectionPath);
+const rawIntroHeight = Number(introHeight);
+const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
+  ? Math.min(100, Math.max(1, Math.round(rawIntroHeight)))
+  : 75;
 ---
 
 <section
@@ -37,6 +43,10 @@ const deletable = Boolean(editable && sectionPath);
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={deletable ? 'bodyText' : undefined}
   data-dev-intro={intro ? 'true' : undefined}
+  data-dev-intro-height-document={intro && editable ? documentKey : undefined}
+  data-dev-intro-height-path={intro && editable ? JSON.stringify([...sectionPath!, 'introHeight']) : undefined}
+  data-dev-intro-height-value={intro ? String(normalizedIntroHeight) : undefined}
+  style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
 >
   <div
     class="project-body-text"
