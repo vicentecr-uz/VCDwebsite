@@ -341,8 +341,43 @@ const menuLinks = headerSettings.menuLinks;
       }
     });
 
+    // The header row spans whatever block it is currently over, so the wordmark
+    // and logo line up with the content behind them instead of with one
+    // page-wide column. Measured from the rendered block, which already
+    // accounts for the text vs media caps, constrained percentages and narrow
+    // viewports — none of that is re-derived here.
+    //
+    // No feedback loop: a block's width comes from the column and its own cap,
+    // never from the header row. The server-rendered --page-header-width (the
+    // first block, from pageColumnStyle) is the pre-JS value this replaces.
+    const BLOCK_SELECTOR = '.project-block, .project-image-grid, .project-image-carousel';
+    const siteWrapper = document.querySelector<HTMLElement>('#site-wrapper');
+    let lastHeaderWidth = '';
+
+    const syncHeaderWidth = () => {
+      if (!siteWrapper) return;
+      const blocks = document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
+      if (!blocks.length) return;
+
+      // The block the header sits over: the first one it hasn't fully passed.
+      // At the page top that resolves to the first block; scrolled past the
+      // last, it stays with the last rather than snapping to a default.
+      const edge = header.getBoundingClientRect().bottom;
+      let current = blocks[0];
+      for (const block of blocks) {
+        current = block;
+        if (block.getBoundingClientRect().bottom > edge) break;
+      }
+
+      const width = `${Math.round(current.getBoundingClientRect().width)}px`;
+      if (width === lastHeaderWidth) return;
+      lastHeaderWidth = width;
+      siteWrapper.style.setProperty('--page-header-width', width);
+    };
+
     const update = () => {
       const y = window.scrollY;
+      syncHeaderWidth();
 
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
@@ -457,7 +492,18 @@ const menuLinks = headerSettings.menuLinks;
       { passive: true },
     );
 
+    // Sections added or removed while authoring — dispatched by DevPageColumn.
+    document.addEventListener('vcd:page-column-changed', () => {
+      lastHeaderWidth = '';
+      syncHeaderWidth();
+    });
+
+    void document.fonts?.ready.then(() => syncHeaderWidth());
+    syncHeaderWidth();
+
     window.addEventListener('resize', () => {
+      lastHeaderWidth = '';
+      syncHeaderWidth();
       syncSlot();
       // Re-measure horizontal geometry from a clean flow layout. If the header
       // is out of flow, briefly restore it to flow to read the true values.
@@ -1202,6 +1248,9 @@ const menuLinks = headerSettings.menuLinks;
     max-width: var(--page-header-width, 100%);
     margin-inline: auto;
     width: 100%;
+    /* Blocks change width in steps, so ease between them — the point is a
+       header that adapts without the reader noticing it happen. */
+    transition: max-width 0.3s cubic-bezier(0.22, 1, 0.36, 1);
     display: flex;
     /* Logo is taller than the trimmed wordmark; centre so the inset above
        the caps equals the inset below the baseline. */
