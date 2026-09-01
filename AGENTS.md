@@ -6,6 +6,18 @@
 >
 > So: **when you change a convention, update every surface it names, not just the file you happened to be editing.** For agent workflow that means Atlas `standards.md`, `CLAUDE.md`, this file, and `.cursor/rules/agent-delegation.mdc`. A rule written in one place is a rule the next agent silently won't follow, and Anto ends up re-explaining it by hand. Docs/standards commits get their own branch straight to `main` (see below) — never bundled into feature work.
 
+## Codex Cloud
+
+When running in an OpenAI-hosted Codex Cloud environment, these rules override conflicting local-only instructions below:
+
+- Atlas and paths under `$HOME` are unavailable. Skip Atlas reads and updates rather than treating them as blockers.
+- Bun is installed by the cloud environment setup at `$HOME/.bun/bin/bun`; use that full path.
+- Do not start `dev:session` or branch sync.
+- Run `$HOME/.bun/bin/bun run build` and any relevant tests before handing work back.
+- Work from the Git ref selected for the cloud task and open a pull request. Never merge or push directly to `main`.
+- Do not modify `src/content/**` or `public/images/**` unless the task explicitly requires a content migration.
+- Visual acceptance remains Anto's responsibility after the pull request is available locally.
+
 ## Project
 Astro + Bun + Tailwind CSS v4 + GSAP portfolio site for Vicente Cruz (industrial designer, London). Rebuilding vcruzdesigns.com as an independent site.
 
