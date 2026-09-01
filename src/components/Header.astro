@@ -359,28 +359,28 @@ const menuLinks = headerSettings.menuLinks;
      * change is never watched happening — the docked fade-in reveals it already
      * correct. A narrow header over a wide image is the case that reads wrong;
      * a wide header over narrow text is fine, so there is nothing to fix in a
-     * hurry and no reason to animate. `force` is for layout changes the reader
-     * is already watching (resize, authoring edits), where deferring would just
-     * look stale.
+     * hurry and no reason to animate. Resize and authoring edits explicitly
+     * supply the visible header edge because deferring those would look stale.
      */
-    const syncHeaderWidth = (force = false) => {
+    const syncHeaderWidth = (probeEdge: number, commit = true) => {
       if (!siteWrapper) return;
       const blocks = document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
       if (!blocks.length) return;
 
-      // The block the header sits over: the first one it hasn't fully passed.
-      // At the page top that resolves to the first block; scrolled past the
-      // last, it stays with the last rather than snapping to a default.
-      const edge = header.getBoundingClientRect().bottom;
+      // The block under the supplied viewport edge: the first one that edge
+      // hasn't fully passed. While the header is hidden we probe at the place
+      // it WILL occupy when docked (`headerHeight`), not at the hidden flow
+      // header's negative rect.bottom — that negative edge always selected the
+      // first block, then a later forced sync corrected it visibly after reveal.
       let current = blocks[0];
       for (const block of blocks) {
         current = block;
-        if (block.getBoundingClientRect().bottom > edge) break;
+        if (block.getBoundingClientRect().bottom > probeEdge) break;
       }
 
       const width = `${Math.round(current.getBoundingClientRect().width)}px`;
       if (width === appliedHeaderWidth) return;
-      if (!force && header.getBoundingClientRect().bottom > 0) return;
+      if (!commit) return;
 
       appliedHeaderWidth = width;
       siteWrapper.style.setProperty('--page-header-width', width);
@@ -388,7 +388,12 @@ const menuLinks = headerSettings.menuLinks;
 
     const update = () => {
       const y = window.scrollY;
-      syncHeaderWidth();
+      const headerRect = header.getBoundingClientRect();
+      // Once the flow header is fully off-screen, keep its next reveal width
+      // current using the docked footprint. Never write while it is visible.
+      if (mode === 'flow' && headerRect.bottom <= 0) {
+        syncHeaderWidth(headerHeight);
+      }
 
       document.documentElement.classList.toggle('is-page-top', y <= 8);
 
@@ -474,6 +479,9 @@ const menuLinks = headerSettings.menuLinks;
         if (rect.bottom <= 0 && y > headerHeight) {
           // Fully off-screen: dock + fade in at full height. Small threshold
           // stays here so a stray 1px nudge deep in the page doesn't flash it.
+          // Final same-frame sync before docking. The fade then reveals the
+          // already-correct row; there is no visible width transition.
+          syncHeaderWidth(headerHeight);
           setMode('docked', true);
         }
         // Partly visible and scrolling up: leave it in flow — it rides down
@@ -504,13 +512,22 @@ const menuLinks = headerSettings.menuLinks;
     );
 
     // Sections added or removed while authoring — dispatched by DevPageColumn.
-    document.addEventListener('vcd:page-column-changed', () => syncHeaderWidth(true));
+    document.addEventListener('vcd:page-column-changed', () => {
+      const rect = header.getBoundingClientRect();
+      // Authoring changes may update the visible top-of-page header directly;
+      // deep in the page they only prepare the next hidden reveal.
+      syncHeaderWidth(mode === 'flow' && rect.bottom > 0 ? rect.bottom : headerHeight);
+    });
 
-    void document.fonts?.ready.then(() => syncHeaderWidth());
-    syncHeaderWidth();
+    void document.fonts?.ready.then(() => syncHeaderWidth(header.getBoundingClientRect().bottom));
+    syncHeaderWidth(header.getBoundingClientRect().bottom);
 
     window.addEventListener('resize', () => {
-      syncHeaderWidth(true);
+      syncHeaderWidth(
+        mode === 'flow' && header.getBoundingClientRect().bottom > 0
+          ? header.getBoundingClientRect().bottom
+          : headerHeight,
+      );
       syncSlot();
       // Re-measure horizontal geometry from a clean flow layout. If the header
       // is out of flow, briefly restore it to flow to read the true values.
