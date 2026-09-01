@@ -97,7 +97,11 @@ print_urls() {
 }
 
 cmd_status() {
-  local astro_pid astro_ok=0
+  local astro_pid astro_ok=0 astro_via_launchd=0
+
+  if use_launchd && adopt_launchd_job "$ASTRO_LABEL" "$ASTRO_PID"; then
+    astro_via_launchd=1
+  fi
 
   astro_pid="$(read_pid "$ASTRO_PID" || true)"
 
@@ -105,7 +109,11 @@ cmd_status() {
   echo "------------------"
 
   if [[ -n "$astro_pid" ]] && pid_alive "$astro_pid"; then
-    echo "  Astro: running (pid $astro_pid, port $ASTRO_PORT)"
+    if [[ "$astro_via_launchd" -eq 1 ]]; then
+      echo "  Astro: running (pid $astro_pid, port $ASTRO_PORT, via launchd)"
+    else
+      echo "  Astro: running (pid $astro_pid, port $ASTRO_PORT)"
+    fi
     astro_ok=1
   elif port_in_use "$ASTRO_PORT"; then
     echo "  Astro: port $ASTRO_PORT in use (not tracked by this script)"
@@ -113,10 +121,17 @@ cmd_status() {
     echo "  Astro: stopped"
   fi
 
-  local sync_pid sync_ok=0
+  local sync_pid sync_ok=0 sync_via_launchd=0
+  if use_launchd && adopt_launchd_job "$SYNC_LABEL" "$SYNC_PID"; then
+    sync_via_launchd=1
+  fi
   sync_pid="$(read_pid "$SYNC_PID" || true)"
   if [[ -n "$sync_pid" ]] && pid_alive "$sync_pid"; then
-    echo "  Sync:  running (pid $sync_pid)"
+    if [[ "$sync_via_launchd" -eq 1 ]]; then
+      echo "  Sync:  running (pid $sync_pid, via launchd)"
+    else
+      echo "  Sync:  running (pid $sync_pid)"
+    fi
     sync_ok=1
   else
     echo "  Sync:  stopped"

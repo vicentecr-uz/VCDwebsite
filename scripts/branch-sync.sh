@@ -234,14 +234,27 @@ cmd_stop() {
 }
 
 cmd_status() {
-  local pid
+  local pid job_pid via_launchd=0
+
+  if use_launchd; then
+    job_pid="$(launchd_pid)"
+    if [[ -n "$job_pid" ]] && pid_alive "$job_pid"; then
+      echo "$job_pid" >"$PID_FILE"
+      via_launchd=1
+    fi
+  fi
+
   pid="$(read_pid || true)"
 
   if [[ -n "$pid" ]] && pid_alive "$pid"; then
     local branch upstream
     branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || echo '?')"
     upstream="$(git -C "$ROOT" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || echo 'none')"
-    echo "Branch sync: running (pid $pid, every ${INTERVAL}s)"
+    if [[ "$via_launchd" -eq 1 ]]; then
+      echo "Branch sync: running (pid $pid, every ${INTERVAL}s, via launchd)"
+    else
+      echo "Branch sync: running (pid $pid, every ${INTERVAL}s)"
+    fi
     echo "  Branch: $branch → $upstream"
     echo "  Log: tail -f .dev-session/branch-sync.log"
   else
