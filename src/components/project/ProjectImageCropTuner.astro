@@ -74,40 +74,42 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       </button>
     </SelectField>
 
-    <SelectField
-      label="Width"
-      hidden
-      data-crop-width-constrain-wrap
-      data-crop-width-constrain
-      options={[
-        { value: '100', label: 'Full' },
-        { value: 'text', label: 'Match text' },
-        { value: '90', label: '90%' },
-        { value: '80', label: '80%' },
-        { value: '70', label: '70%' },
-        { value: '60', label: '60%' },
-        { value: '50', label: '50%' },
-        { value: '40', label: '40%' },
-        { value: '30', label: '30%' },
-      ]}
-    />
+    <div class="tapico-crop-tuner__pair">
+      <SelectField
+        label="Width"
+        hidden
+        data-crop-width-constrain-wrap
+        data-crop-width-constrain
+        options={[
+          { value: '100', label: 'Full' },
+          { value: 'text', label: 'Match text' },
+          { value: '90', label: '90%' },
+          { value: '80', label: '80%' },
+          { value: '70', label: '70%' },
+          { value: '60', label: '60%' },
+          { value: '50', label: '50%' },
+          { value: '40', label: '40%' },
+          { value: '30', label: '30%' },
+        ]}
+      />
 
-    <SelectField
-      label="Max view height"
-      hidden
-      data-crop-height-constrain-wrap
-      data-crop-max-vh
-      options={[
-        { value: '', label: 'Off' },
-        { value: '90', label: '90%' },
-        { value: '80', label: '80%' },
-        { value: '70', label: '70%' },
-        { value: '60', label: '60%' },
-        { value: '50', label: '50%' },
-        { value: '40', label: '40%' },
-        { value: '30', label: '30%' },
-      ]}
-    />
+      <SelectField
+        label="Max view height"
+        hidden
+        data-crop-height-constrain-wrap
+        data-crop-max-vh
+        options={[
+          { value: '', label: 'Off' },
+          { value: '90', label: '90%' },
+          { value: '80', label: '80%' },
+          { value: '70', label: '70%' },
+          { value: '60', label: '60%' },
+          { value: '50', label: '50%' },
+          { value: '40', label: '40%' },
+          { value: '30', label: '30%' },
+        ]}
+      />
+    </div>
 
     <div class="tapico-crop-tuner__stage">
       <div class="tapico-crop-tuner__preview" data-crop-preview>
@@ -2949,6 +2951,23 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </script>
 
 <style>
+  /* Width + height caps read as one decision, so they share a row. Collapses
+     to nothing when both children are hidden — an empty flex item would still
+     take the parent column's gap. */
+  .tapico-crop-tuner__pair {
+    display: none;
+    gap: var(--space-unit);
+  }
+
+  .tapico-crop-tuner__pair:has(> *:not([hidden])) {
+    display: flex;
+  }
+
+  .tapico-crop-tuner__pair > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
   .tapico-crop-tuner {
     position: relative;
     display: flex;
