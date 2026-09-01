@@ -32,36 +32,69 @@ const mediaFraction = (section: Record<string, unknown>): number | null => {
   return desktop / 100;
 };
 
+/** CSS length for one section's block width, or null when it can't widen the page. */
+const blockWidth = (section: Record<string, unknown>, type: string): string | null => {
+  if (!MEDIA_SECTION_TYPES.has(type)) return 'var(--page-text-max-width)';
+  const fraction = mediaFraction(section);
+  if (fraction === null) return 'var(--page-text-max-width)';
+  if (fraction >= 1) return null; // full media column
+  return `calc(var(--page-media-max-width) * ${fraction})`;
+};
+
 /**
- * The column a page actually needs, as an inline `style` value for
- * `#site-wrapper` — or `undefined` when the page wants the default and no
- * override should be written.
+ * Inline style for `#site-wrapper`, carrying two things:
  *
- * A page's column is the widest block on it, floored at the text column, so a
- * text-only page pulls its gutter — and the header sitting inside it — in to
- * the text width instead of reserving room for media it doesn't have.
+ * - `--page-max-width`: the column the page needs — the widest block on it,
+ *   floored at the text column. A page with no media pulls its gutter (and the
+ *   header sitting inside it) in to the text width.
+ * - `--page-header-width`: what the header ROW spans, taken from the **first**
+ *   block. The header reads as a pair with whatever sits directly under it, so
+ *   the wordmark and logo line up with the intro text on a gallery page and
+ *   with the hero image on a project page. Only the row narrows — the header
+ *   box, its slot and its full-bleed fill stay at the column width, so the fill
+ *   still reaches the viewport edge and the dock/ride geometry is untouched.
  *
- * This is only safe because a block's width no longer depends on its column:
+ * Returns undefined when the page wants the defaults and no override is needed.
+ *
+ * This is only safe because a block's width doesn't depend on its column:
  * percentages measure against `--page-media-max-width`, a fixed baseline. If
- * they measured against the column, shrinking the column would shrink the
- * block that determined it, and the two would chase each other. See
- * docs/page-width.md.
+ * they measured against the column, shrinking the column would shrink the block
+ * that determined it. See docs/page-width.md.
  */
 export function pageColumnStyle(sections: unknown): string | undefined {
   if (!Array.isArray(sections)) return undefined;
 
   let widest = 0;
+  let full = false;
+  let headerWidth: string | null | undefined;
+
   for (const section of sections) {
     if (!section || typeof section !== 'object') continue;
-    const type = String((section as Record<string, unknown>).type ?? '');
-    if (!MEDIA_SECTION_TYPES.has(type)) continue;
+    const record = section as Record<string, unknown>;
+    const type = String(record.type ?? '');
 
-    const fraction = mediaFraction(section as Record<string, unknown>);
+    if (headerWidth === undefined) headerWidth = blockWidth(record, type);
+
+    if (!MEDIA_SECTION_TYPES.has(type)) continue;
+    const fraction = mediaFraction(record);
     if (fraction === null) continue; // caps at text; can't widen the page
-    if (fraction >= 1) return undefined; // full-width media: the default column
-    widest = Math.max(widest, fraction);
+    if (fraction >= 1) full = true;
+    else widest = Math.max(widest, fraction);
   }
 
-  if (widest === 0) return '--page-max-width: var(--page-text-max-width)';
-  return `--page-max-width: max(var(--page-text-max-width), calc(var(--page-media-max-width) * ${widest}))`;
+  const declarations: string[] = [];
+
+  if (!full) {
+    declarations.push(
+      widest === 0
+        ? '--page-max-width: var(--page-text-max-width)'
+        : `--page-max-width: max(var(--page-text-max-width), calc(var(--page-media-max-width) * ${widest}))`,
+    );
+  }
+  // A page with no sections at all has nothing under the header; the text
+  // column is the sane floor, and matches the column chosen above.
+  if (headerWidth === undefined) headerWidth = 'var(--page-text-max-width)';
+  if (headerWidth !== null) declarations.push(`--page-header-width: ${headerWidth}`);
+
+  return declarations.length ? declarations.join('; ') : undefined;
 }

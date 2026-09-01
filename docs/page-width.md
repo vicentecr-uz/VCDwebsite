@@ -75,6 +75,26 @@ there is no header-specific width logic, and there should not be.
   the default column.
 - Anything in between → `max(text, media × widest fraction)`.
 
+### The header row follows the *first* block
+
+`pageColumnStyle()` also emits `--page-header-width`, taken from the page's
+**first** section rather than the widest. The header reads as a pair with
+whatever sits directly under it, so on a gallery page the wordmark and logo line
+up with the intro text, and on a project page they line up with the hero image.
+
+**Only `.site-header__row` narrows.** The header box, its `.site-header-slot`
+and `.site-header__bg` all stay at the column width. That is deliberate and
+load-bearing in two places:
+
+- The fill breaks out via `left/right: calc(-1 * var(--page-gutter))`. Narrow
+  the header box and the fill stops short of the viewport edge instead of
+  spanning it.
+- The dock/ride scroll machinery measures the header box, and pins `left: 0`
+  against the slot while riding. Narrowing either would move the docked header
+  off its flow position.
+
+So: change the row, never the box.
+
 **This is only safe because a block's width does not depend on its column.**
 Percentages measure against `--page-media-max-width`, a fixed baseline. If they
 measured against the column, shrinking the column would shrink the very block

@@ -1193,6 +1193,15 @@ const menuLinks = headerSettings.menuLinks;
      .header-trigger__panel-bg (z-index: -1) can drop behind .site-header__bg,
      which lives outside the row. Tree order already puts the row above the bg. */
   .site-header__row {
+    /* The header reads as a pair with the block directly under it, so the row
+       spans that first block's width (see pageColumnStyle in
+       src/lib/pageColumn.ts). ONLY the row narrows: the header box, its slot
+       and .site-header__bg stay at the column width, so the fill still reaches
+       the viewport edge and the dock/ride geometry — which measures the header
+       box, and pins `left: 0` against the slot when riding — is unaffected. */
+    max-width: var(--page-header-width, 100%);
+    margin-inline: auto;
+    width: 100%;
     display: flex;
     /* Logo is taller than the trimmed wordmark; centre so the inset above
        the caps equals the inset below the baseline. */
