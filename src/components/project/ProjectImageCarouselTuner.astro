@@ -571,6 +571,9 @@ import ToggleRow from '../ui/ToggleRow.astro';
           status.textContent = 'This carousel is not wired for saving.';
           return;
         }
+        if (stageDraft('Staged — adding an image will save these carousel settings.')) {
+          saved = cloneDraft(draft);
+        }
         closePanel();
         window.dispatchEvent(new CustomEvent('vcd:dev-carousel-image-picker-open', {
           detail: { documentKey, path, target },
@@ -845,6 +848,11 @@ import ToggleRow from '../ui/ToggleRow.astro';
       restoreOnClose();
     }) as EventListener);
 
+    window.addEventListener('vcd:dev-carousel-prepare-append', ((event: CustomEvent) => {
+      if (event.detail?.target !== editTarget) return;
+      closePanel();
+    }) as EventListener);
+
     selectTarget(initialTarget, false);
 
     orientationButtons.forEach((button) => {
@@ -1013,6 +1021,8 @@ import ToggleRow from '../ui/ToggleRow.astro';
   .project-carousel-tuner__add {
     display: grid;
     place-items: center;
+    align-self: start;
+    width: 100%;
     aspect-ratio: 1;
     margin: 0;
     padding: 0;
