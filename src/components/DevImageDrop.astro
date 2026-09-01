@@ -136,7 +136,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     activeCarouselDrop = null;
     if (!target) return;
     delete target.dataset.devCarouselDropActive;
-    const veil = target.querySelector(':scope > .dev-carousel-drop-veil');
+    const veil = target.querySelector('.dev-carousel-drop-veil');
     if (!(veil instanceof HTMLElement)) return;
     veil.classList.remove('is-active');
     const remove = () => veil.remove();
@@ -150,6 +150,19 @@ const globeSvg = sizeIcon(globeIcon, 16);
     activeCarouselDrop = target;
     if (!target) return;
     target.dataset.devCarouselDropActive = 'true';
+    const activeIndex = Number(target.dataset.activeIndex);
+    const activeSlide = Number.isInteger(activeIndex)
+      ? target.querySelector(
+        `[data-carousel-slide][data-carousel-index="${activeIndex}"]:not([data-carousel-parked])`,
+      )
+      : null;
+    const visibleSlide = activeSlide instanceof HTMLElement
+      ? activeSlide
+      : target.querySelector('[data-carousel-slide]:not([data-carousel-parked])');
+    const frame = visibleSlide instanceof HTMLElement
+      ? visibleSlide.querySelector('[data-carousel-frame]')
+      : null;
+    if (!(frame instanceof HTMLElement)) return;
     const veil = document.createElement('div');
     veil.className = 'dev-carousel-drop-veil';
     const slot = document.createElement('div');
@@ -159,7 +172,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     label.textContent = 'Append to carousel';
     slot.append(label);
     veil.append(slot);
-    target.append(veil);
+    frame.append(veil);
     void veil.offsetWidth;
     veil.classList.add('is-active');
   };
@@ -173,11 +186,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const closeMultiDropChoice = () => {
     if (multiDropChoice instanceof HTMLElement) multiDropChoice.hidden = true;
+    document.documentElement.removeAttribute('data-dev-image-drop-choice-open');
     pendingFiles = [];
   };
 
   const showMultiDropChoice = (clientX, clientY) => {
     if (!(multiDropChoice instanceof HTMLElement)) return;
+    document.documentElement.dataset.devImageDropChoiceOpen = 'true';
+    document.dispatchEvent(new CustomEvent('dev:clear-gap-proximity'));
     multiDropChoice.hidden = false;
     const rect = multiDropChoice.getBoundingClientRect();
     const gapAnchor = gapAnchorForInsertIndex(pendingInsertIndex);
@@ -286,8 +302,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   );
 
   const gapAnchorForInsertIndex = (insertIndex) => {
-    const blocks = spacingBlocks();
-    const indexed = blocks.map((block) => {
+    const indexed = spacingBlocks().map((block) => {
       try {
         const path = JSON.parse(block.dataset.devSpacingPath || '[]');
         const sectionIndex = path.at(-2);
@@ -295,24 +310,28 @@ const globeSvg = sizeIcon(globeIcon, 16);
       } catch {
         return { block, sectionIndex: null };
       }
-    });
-    const matching = indexed.find((entry) => entry.sectionIndex === insertIndex)?.block;
+    }).filter((entry) => entry.block instanceof HTMLElement && typeof entry.sectionIndex === 'number')
+      .sort((a, b) => a.sectionIndex - b.sectionIndex);
+    const matchingIndex = indexed.findIndex((entry) => entry.sectionIndex === insertIndex);
+    const matching = matchingIndex >= 0 ? indexed[matchingIndex] : null;
+    const last = indexed.at(-1);
     let anchorY = null;
-    if (matching instanceof HTMLElement) {
-      const toolbar = matching.querySelector(':scope > .dev-gap-toolbar');
-      const rect = toolbar instanceof HTMLElement
-        ? toolbar.getBoundingClientRect()
-        : matching.getBoundingClientRect();
-      anchorY = toolbar instanceof HTMLElement ? rect.top + rect.height / 2 : rect.top;
-    } else {
-      const last = indexed.at(-1);
-      if (
-        last?.block instanceof HTMLElement
-        && typeof last.sectionIndex === 'number'
-        && insertIndex === last.sectionIndex + 1
-      ) {
-        anchorY = last.block.getBoundingClientRect().bottom;
+    if (matching) {
+      const nextTop = matching.block.getBoundingClientRect().top;
+      const previous = indexed[matchingIndex - 1];
+      if (previous) {
+        anchorY = (previous.block.getBoundingClientRect().bottom + nextTop) / 2;
+      } else {
+        const anchorRoot = dropZone instanceof HTMLElement
+          ? dropZone
+          : document.querySelector('main');
+        const rootTop = anchorRoot instanceof HTMLElement
+          ? anchorRoot.getBoundingClientRect().top
+          : nextTop;
+        anchorY = rootTop === nextTop ? nextTop : (rootTop + nextTop) / 2;
       }
+    } else if (last && insertIndex === last.sectionIndex + 1) {
+      anchorY = last.block.getBoundingClientRect().bottom;
     }
     if (anchorY == null) return null;
     const zoneRect = dropZone instanceof HTMLElement ? dropZone.getBoundingClientRect() : null;

@@ -1011,7 +1011,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const gapsSuppressed = () =>
       isDevTextCaretActive()
       || document.documentElement.classList.contains('is-dev-asset-manager-open')
-      || document.documentElement.classList.contains('is-dev-tuner-open');
+      || document.documentElement.classList.contains('is-dev-tuner-open')
+      || document.documentElement.hasAttribute('data-dev-image-drop-choice-open');
 
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (
@@ -1141,10 +1142,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         syncSpacingProximity(event.detail.clientX, event.detail.clientY);
       }) as EventListener);
       document.addEventListener('dev:clear-gap-proximity', () => {
-        spacingStates.forEach(({ control }) => {
-          if (!control.classList.contains('is-menu-open')) clearGapProximity(control);
-        });
-        document.documentElement.classList.remove('is-page-top-gap-above-header');
+        if (document.documentElement.hasAttribute('data-dev-image-drop-choice-open')) {
+          closeSectionMenus();
+        }
+        clearGapProximityAll();
       });
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control }) => {
@@ -5257,7 +5258,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   /* Tuner open: force-hide even dirty / near chips (same as asset manager). */
-  html.is-dev-tuner-open .dev-gap-toolbar__pill {
+  html.is-dev-tuner-open .dev-gap-toolbar__pill,
+  html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__pill,
+  html[data-dev-image-drop-choice-open='true'] .dev-gap-toolbar__menu {
     opacity: 0 !important;
     pointer-events: none !important;
   }
