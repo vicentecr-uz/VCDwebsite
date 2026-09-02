@@ -56,6 +56,8 @@ const { title, layout = 'portrait', draggable = false, class: className, ...rest
       let frame: number | null = null;
       let pendingLeft = 0;
       let pendingTop = 0;
+      let userPositioned = false;
+      let pendingReclamp = false;
 
       const clampPosition = (left: number, top: number) => ({
         left: clamp(left, 0, Math.max(0, window.innerWidth - panel.offsetWidth)),
@@ -78,6 +80,23 @@ const { title, layout = 'portrait', draggable = false, class: className, ...rest
         const next = clampPosition(left, top);
         if (frame !== null) cancelAnimationFrame(frame);
         frame = null;
+        panel.style.translate = 'none';
+        panel.style.left = `${next.left}px`;
+        panel.style.top = `${next.top}px`;
+        userPositioned = true;
+        pendingReclamp = false;
+      };
+
+      const reclampPosition = () => {
+        if (!panel.isConnected || panel.getClientRects().length === 0) {
+          pendingReclamp = true;
+          return;
+        }
+        pendingReclamp = false;
+        const rect = panel.getBoundingClientRect();
+        const next = clampPosition(rect.left, rect.top);
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
         panel.style.translate = 'none';
         panel.style.left = `${next.left}px`;
         panel.style.top = `${next.top}px`;
@@ -110,7 +129,7 @@ const { title, layout = 'portrait', draggable = false, class: className, ...rest
       };
 
       dragHandle.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0 || event.isPrimary === false || event.target instanceof Element && event.target.closest('[data-drag-ignore]')) return;
+        if (pointerId !== null || event.button !== 0 || event.isPrimary === false || event.target instanceof Element && event.target.closest('[data-drag-ignore]')) return;
         event.preventDefault();
         const rect = anchorToLeftTop();
         const next = clampPosition(rect.left, rect.top);
@@ -142,15 +161,14 @@ const { title, layout = 'portrait', draggable = false, class: className, ...rest
       });
 
       window.addEventListener('resize', () => {
-        if (!panel.isConnected || panel.getClientRects().length === 0 || pointerId !== null) return;
-        const rect = panel.getBoundingClientRect();
-        const next = clampPosition(rect.left, rect.top);
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
-        panel.style.translate = 'none';
-        panel.style.left = `${next.left}px`;
-        panel.style.top = `${next.top}px`;
+        if (!userPositioned || pointerId !== null) return;
+        reclampPosition();
       });
+
+      new ResizeObserver(() => {
+        if (!userPositioned || !pendingReclamp || pointerId !== null) return;
+        reclampPosition();
+      }).observe(panel);
     });
   };
 
