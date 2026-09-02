@@ -419,7 +419,7 @@ set in Atom Variants (`State=Rest/Hover`). The variants use `comp/footer/rest` a
 - **Verify the consumer, not just the component.** After changing an atom, screenshot
   something two levels up that depends on it.
 - **Anto tests the work.** Hand him a numbered script and stop; don't drive interactive
-  UI headlessly. (Project convention — see `CLAUDE.md`.)
+  UI headlessly. (Project convention — see [`AGENTS.md`](../AGENTS.md).)
 - **Component descriptions are the intended component-level documentation.** They
   travel with the component and surface in `get_design_context`, but current coverage
   is incomplete and some descriptions lag their live sets. Verify the canvas, then
