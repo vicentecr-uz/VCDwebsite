@@ -12,7 +12,7 @@ const execFile = promisify(execFileCb);
 /**
  * The content surface. Everything here publishes from the dev save bar straight
  * to main; everything else is engine work and belongs on a feature branch.
- * Keep in sync with scripts/commit-engine.sh and CLAUDE.md.
+ * Keep in sync with scripts/commit-engine.sh and AGENTS.md.
  */
 export const CONTENT_PATHS = ['src/content', 'media'];
 const PUBLISH_BRANCH = 'main';
