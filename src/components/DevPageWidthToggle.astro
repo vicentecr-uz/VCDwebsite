@@ -29,7 +29,7 @@ const SHIPPED_TEXT_EM = 40;
 const SHIPPED_MEDIA_EM = 50;
 ---
 
-<DevPanel title="Page width" class="dev-page-width-toggle" data-dev-page-width-toggle>
+<DevPanel title="Page width" class="dev-page-width-toggle" data-dev-page-width-toggle draggable>
   <div class="dev-page-width-toggle__row" data-width-row="text">
     <p class="dev-page-width-toggle__label" data-width-scope-label>Text</p>
     <SegmentedControl label="Text page width" data-width-scope="text">
@@ -140,15 +140,6 @@ const SHIPPED_MEDIA_EM = 50;
     display: flex;
   }
 
-  .dev-page-width-toggle :global(.dev-panel__header) {
-    cursor: grab;
-    touch-action: none;
-  }
-
-  .dev-page-width-toggle.is-dragging :global(.dev-panel__header) {
-    cursor: grabbing;
-  }
-
   .dev-page-width-toggle :global(.dev-segmented) {
     width: auto;
   }
@@ -220,8 +211,6 @@ const SHIPPED_MEDIA_EM = 50;
   const SHIPPED_TEXT_EM = 40;
   const SHIPPED_MEDIA_EM = 50;
 
-  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
   const root = document.querySelector<HTMLElement>('[data-dev-page-width-toggle]');
 
   const scopeElement = (scope: Scope) =>
@@ -242,72 +231,6 @@ const SHIPPED_MEDIA_EM = 50;
     : [];
   const textCustomInput = textScope?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
   const mediaCustomInput = mediaScope?.querySelector<HTMLInputElement>('[data-width-custom-input]') ?? null;
-
-  const initPanelDrag = (panel: HTMLElement) => {
-    const dragHandle = panel.querySelector<HTMLElement>('.dev-panel__header');
-    if (!dragHandle) return;
-
-    let dragPointerId: number | null = null;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let originLeft = 0;
-    let originTop = 0;
-
-    const anchorToLeftTop = () => {
-      const rect = panel.getBoundingClientRect();
-      panel.style.right = 'auto';
-      panel.style.bottom = 'auto';
-      panel.style.left = `${rect.left}px`;
-      panel.style.top = `${rect.top}px`;
-      return { left: rect.left, top: rect.top };
-    };
-
-    const clampPosition = (left: number, top: number) => {
-      const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
-      const maxTop = Math.max(0, window.innerHeight - panel.offsetHeight);
-      return {
-        left: clamp(left, 0, maxLeft),
-        top: clamp(top, 0, maxTop),
-      };
-    };
-
-    dragHandle.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-
-      const pos = anchorToLeftTop();
-      originLeft = pos.left;
-      originTop = pos.top;
-      dragStartX = event.clientX;
-      dragStartY = event.clientY;
-      dragPointerId = event.pointerId;
-      panel.classList.add('is-dragging');
-      dragHandle.setPointerCapture(event.pointerId);
-    });
-
-    dragHandle.addEventListener('pointermove', (event) => {
-      if (dragPointerId !== event.pointerId) return;
-      const dx = event.clientX - dragStartX;
-      const dy = event.clientY - dragStartY;
-      const next = clampPosition(originLeft + dx, originTop + dy);
-      panel.style.left = `${next.left}px`;
-      panel.style.top = `${next.top}px`;
-    });
-
-    const endDrag = (event: PointerEvent) => {
-      if (dragPointerId !== event.pointerId) return;
-      dragPointerId = null;
-      panel.classList.remove('is-dragging');
-      if (dragHandle.hasPointerCapture(event.pointerId)) {
-        dragHandle.releasePointerCapture(event.pointerId);
-      }
-    };
-
-    dragHandle.addEventListener('pointerup', endDrag);
-    dragHandle.addEventListener('pointercancel', endDrag);
-  };
-
-  if (root) initPanelDrag(root);
 
   // The sidebar nav's gutter breakpoint can't read a custom property — no
   // media query condition can. But a rule's condition IS writable at runtime
