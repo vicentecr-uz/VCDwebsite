@@ -1,8 +1,8 @@
 # VCDwebsite — agent guide
 
-This is the canonical project guide for every agent harness. `CLAUDE.md` and `.cursor/rules/vcdwebsite.mdc` are adapters that point here; do not duplicate common policy in them.
+This is the canonical project guide for every agent harness. `CLAUDE.md`, `.cursor/rules/vcdwebsite.mdc`, and `.codex/agents/vcd-worker.toml` are harness adapters that point here or encode provider-specific role configuration; do not duplicate common policy in them.
 
-Harness and system instructions outrank repository prose. This guide defines project invariants and delivery outcomes, not model names, spawning policy, or unsupported harness mechanics.
+Harness and system instructions outrank repository prose. This guide defines project invariants and delivery outcomes, not provider-specific model names or unsupported harness mechanics.
 
 ## Project and sources of truth
 
@@ -40,7 +40,7 @@ There is no shell-Git direct-to-`main` lane in VCDwebsite. The only direct-main 
 
 ## Engine and docs lifecycle
 
-The responsible top-level agent owns this sequence. When work is delegated, the worker's default boundary is: edit in the assigned worktree, run the requested checks, commit explicit paths, and report the commit SHA and evidence. Unless the manager explicitly delegates another bounded step, workers do not push, open PRs, start previews, merge, or clean up.
+The responsible top-level agent owns this sequence. When the active harness exposes a repository-configured implementation-worker role, use it for bounded worker steps; otherwise use the harness's native worker mechanism. When work is delegated, the worker's default boundary is: edit in the assigned worktree, run the requested checks, commit explicit paths, and report the commit SHA and evidence. Unless the manager explicitly delegates another bounded step, workers do not push, open PRs, start previews, merge, or clean up.
 
 Use this sequence for every engine or repository-docs change:
 
