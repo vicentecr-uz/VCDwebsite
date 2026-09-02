@@ -15,10 +15,10 @@ const paragraphs = [
 ---
 
 <Layout title="Link underline (dev)">
-  <main class="link-underline-prototype" style="--link-underline-rest-opacity: 25%; --link-underline-hover-opacity: 35%;">
+  <main class="link-underline-prototype" style="--link-underline-rest-opacity: 25%; --link-underline-hover-opacity: 35%; --link-underline-fade-duration: 150ms;">
     <ProjectBodyText paragraphs={paragraphs} />
 
-    <DevPanel title="Link underline" class="link-underline-prototype__panel">
+    <DevPanel title="Link underline" class="link-underline-prototype__panel" draggable>
       <div class="link-underline-prototype__controls">
         <label class="link-underline-prototype__field" for="link-underline-rest">
           <span>Rest</span>
@@ -32,6 +32,12 @@ const paragraphs = [
         </label>
         <input id="link-underline-hover" type="range" min="0" max="100" step="1" value="35" />
 
+        <label class="link-underline-prototype__field" for="link-underline-fade">
+          <span>Fade</span>
+          <output id="link-underline-fade-output" for="link-underline-fade">150ms</output>
+        </label>
+        <input id="link-underline-fade" type="range" min="0" max="1000" step="10" value="150" />
+
         <Button label="Copy" emphasis="soft" class="link-underline-prototype__copy">
           <span id="link-underline-copy-label">Copy</span>
         </Button>
@@ -44,8 +50,10 @@ const paragraphs = [
   const root = document.querySelector('.link-underline-prototype') as HTMLElement | null;
   const rest = document.querySelector('#link-underline-rest') as HTMLInputElement | null;
   const hover = document.querySelector('#link-underline-hover') as HTMLInputElement | null;
+  const fade = document.querySelector('#link-underline-fade') as HTMLInputElement | null;
   const restOutput = document.querySelector('#link-underline-rest-output');
   const hoverOutput = document.querySelector('#link-underline-hover-output');
+  const fadeOutput = document.querySelector('#link-underline-fade-output');
   const copy = document.querySelector('.link-underline-prototype__copy') as HTMLButtonElement | null;
   const copyLabel = document.querySelector('#link-underline-copy-label');
 
@@ -56,9 +64,17 @@ const paragraphs = [
     output.textContent = value;
   };
 
+  const updateFade = () => {
+    if (!fade || !root || !fadeOutput) return;
+    const value = `${fade.value}ms`;
+    root.style.setProperty('--link-underline-fade-duration', value);
+    fadeOutput.textContent = value;
+  };
+
   const update = () => {
     updateValue(rest, restOutput, '--link-underline-rest-opacity');
     updateValue(hover, hoverOutput, '--link-underline-hover-opacity');
+    updateFade();
   };
 
   const copyText = (value: string) => {
@@ -86,8 +102,9 @@ const paragraphs = [
 
   rest?.addEventListener('input', update);
   hover?.addEventListener('input', update);
+  fade?.addEventListener('input', update);
   copy?.addEventListener('click', async () => {
-    const config = `--link-underline-rest-opacity: ${rest?.value ?? 25}%;\n--link-underline-hover-opacity: ${hover?.value ?? 35}%;`;
+    const config = `--link-underline-rest-opacity: ${rest?.value ?? 25}%;\n--link-underline-hover-opacity: ${hover?.value ?? 35}%;\n--link-underline-fade-duration: ${fade?.value ?? 150}ms;`;
     try {
       await copyText(config);
       if (copyLabel) copyLabel.textContent = 'Copied';
@@ -110,6 +127,7 @@ const paragraphs = [
 
   .link-underline-prototype :global(.project-body-text a:not(.is-underline-off)) {
     text-decoration-color: color-mix(in srgb, currentColor var(--link-underline-rest-opacity), transparent);
+    transition: text-decoration-color var(--link-underline-fade-duration) ease;
   }
 
   .link-underline-prototype__panel {
@@ -143,6 +161,7 @@ const paragraphs = [
   .link-underline-prototype__controls input[type='range'] {
     width: 100%;
     min-height: 44px;
+    font-size: 16px;
     margin: 0;
     accent-color: var(--sys-color-on-srf);
     cursor: pointer;
