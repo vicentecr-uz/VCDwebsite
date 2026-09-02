@@ -3,7 +3,8 @@
 Context for anyone (human or agent) picking up work in the VCD Website Figma file.
 Read this before touching the Design System page.
 
-**File:** `$FIGMA_FILE_KEY` · **Page:** `Design System` (`285:525`)
+**File:** `$FIGMA_FILE_KEY` · **Page:**
+[`Design System`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=285-525)
 
 Companion docs: [`button-design-system.md`](button-design-system.md) is the original
 build plan for Button specifically — still accurate on the governing idea, superseded
@@ -36,60 +37,77 @@ converge, but **they are not in sync today** — see *Relationship to code* belo
 
 ## Page architecture
 
-Two top-level frames:
+The page has one top-level frame:
+**[LGTM](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=391-2710)**,
+the signed-off design system and its kitchen-sink specimens.
 
-| Frame | Role |
-| --- | --- |
-| **Site Screens Ref** | Everything from the old `Site Screens` page, moved wholesale. Unreviewed, legacy, reference-only. To be deleted eventually. |
-| **LGTM** | Signed-off work. Nothing enters without Anto's approval. |
+LGTM has side-by-side
+**[Light](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=480-1237)**
+and **[Dark](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=481-1237)**
+columns. Light is the working, populated column. Dark is intentionally empty while
+Anto is not actively working on dark mode; it is not a mirror that must be kept
+current. When a dark pass is useful, copy the frames inside Light into Dark. Dark's
+explicit `sys/Dark` mode then resolves their bound variables automatically.
+Dark also still carries the deprecated `_deprecated Color - Theme/Dark` override.
+It is inert for current masters and can disappear with that deprecated collection;
+do not use it as the active theme mechanism.
 
-This is a **filter, not a library split**. Material moves Ref → LGTM one piece at a
-time as it's rebuilt on the new architecture. The old `Site Screens` page is now
-empty and can be deleted.
-
-**The admission test is objective:** a frame can enter LGTM when zero instances
-inside it resolve to a master living in Site Screens Ref. Check it with a traversal,
-not by eye — `getMainComponentAsync()` on every instance, then walk `parent` up to
-see whether the chain passes through `Site Screens Ref` or `LGTM`.
+Within Light, `Tokens Group` comes first, followed by `Dev Components`, `Layout
+Blocks`, and `Site Pages`. The latter two are page-level areas for larger
+compositions and eventual screen specimens; reusable component masters belong in
+the tier ladder below.
 
 ### The tier ladder (inside LGTM › Dev Components › Container)
 
-Ordered by **compositional depth**, not category. Nothing in a tier may depend on
-anything to its right:
+The ladder is a **reading and organisation model**, ordered from small reusable parts
+toward assembled UI. It is not a strict dependency DAG: a structural base may hold a
+default or swappable instance whose master is displayed in a later tier. Place a
+master by what it owns and how it is used, not by forcing every dependency to point
+left.
 
-1. **Particles** — icons, type ramp, crop handle. Things with no interactive identity.
-2. **Atoms** — `Button Base`, `Field Base`, `Checkbox Base`, `DevPanel Base`, `Traffic Light Base`, `Traffic Light Container`. Shape only, no skin.
-3. **Atom Variants** — `Button`, `Field`, `Checkbox`, `traffic-light`, `Dev Panel Title`, `DevPanel Content`. Skin + state.
-4. **Elements** — `Button Container`, `Panel Actions`, `dev-overlay__lights`. Compositions of atom variants.
-5. **Component Variants** — `Segmented Control`.
-6. **Dev Panel Components** — `dev-overlay__head`, `Select Field`, `Text Field`, `Text Area`, `Toggle Row`, `Viewport Selector`.
-7. **Dev Panels** — assembled panels. Currently `Project settings`, `Caption`.
+1. **[Particles](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-3348)** — icons, type particles, hairlines and crop handles; things with no interactive identity.
+2. **[Atoms](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-3356)** — structural bases such as `Button Base`, `Field Base`, `Checkbox Base`, `DevPanel Base` and `Footer Base`.
+3. **[Atom Variants](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-3368)** — skin/state families such as `Button`, `Field`, `Checkbox`, `traffic-light`, `Grid Thumb`, `Save bar`, `DevPanel Layout` and `Footer`.
+4. **[Elements](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-3376)** — small compositions such as `Button Container`, `Slider Row`, `Crop Toolbar`, `Crop Stage`, `Thumb Board` and `dev-overlay__lights`.
+5. **[Component Variants](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-3384)** — variants of larger compositions, currently including `Segmented Control` and `Checked Field`.
+6. **[Dev Panel Components](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-3392)** — panel-ready controls such as `dev-overlay__head`, `Select Field`, `Text Field`, `Text Area`, `Toggle Row`, `Panel Actions` and the viewport/theme selectors.
+7. **[Dev Panel Contents](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=531-21987)** — the `DevPanel Content` set, with one body variant per panel type.
+8. **[Dev Panels](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=397-4502)** — assembled panel specimens plus related authoring-chrome specimens.
 
-Each tier frame is `Frame Name Container` + `Contents`, driven off a `Frame Template`
-component so labelling stays consistent.
+Each tier shell is plain frame scaffolding: `Frame Name Container` + `Contents`.
+There is no shared `Frame Template` component relationship to preserve.
 
 ---
 
 ## The governing pattern: Base + Variants
 
-**Master owns shape. Variants own skin.** Applied consistently:
+**Master owns stable structure. Variants own selectable skin/state.** This is the
+recurring pattern:
 
-| Atom (shape) | Variant set (skin/state) |
+| Base structure | Variant family |
 | --- | --- |
-| `Button Base` — radius, padding, slots, min-size | `Button` — Emphasis × State (20) |
+| `Button Base` — radius, padding, slots, min-size | `Button` — Emphasis × State (25) |
 | `Field Base` — `radius/input`, padding, slots | `Field` — State (Rest/Hover) |
 | `Checkbox Base` — 16×16 fixed, `radius/checkbox` | `Checkbox` — Checked × State (6) |
-| `DevPanel Base` — header + Contents slot | `DevPanel Content` — one variant per panel |
+| [`Footer Base`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=926-4038) — structure built from the [`Footer text`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=778-4307) particle | [`Footer`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=722-4165) — State (Rest/Hover) |
+| `DevPanel Base` — shared header + content structure | `DevPanel Layout` — Layout × State (4) |
 
-**Why it matters:** change radius once on the atom, every variant follows. Colour
-never propagates because every variant overrides it deliberately. That split is the
-whole design, and it also sets up dark mode — shape is theme-invariant, skin isn't.
+**Why it matters:** change radius once on the atom, every variant follows. State skin
+is chosen at the variant layer, either through a paint override or through inherited
+`Content` / `Ink Emphasis` modes. That split is the whole design, and it also sets up
+dark mode — shape is theme-invariant, skin isn't.
+
+`DevPanel Content` is not the skin half of `DevPanel Base`. It is a separate family
+of ten panel bodies, selected through the base's `Panel` instance swap. A complete
+panel reads as `DevPanel Layout` → `DevPanel Base` → `dev-overlay__head` +
+`DevPanel Content`; the header swaps a matching `Dev Panel Title` variant.
 
 ### Content is booleans, not variants
 
 Hard rule, repeatedly validated. `Button Base` has `Show leading icon` /
 `Show label` / `Show trailing icon` as booleans plus instance-swap for the icon
-itself. Making content a variant axis would take Button from 20 variants to 60+.
+itself. Making content another variant axis would multiply the existing 25-state
+Button matrix for no structural benefit.
 
 Same for `Button Container` (`Show button 3/4`) and `Panel Actions`
 (`Show button 1/2`). Hidden children drop out of auto-layout flow, so the parent
@@ -109,22 +127,24 @@ different mode structure**, and modes are per-collection:
 
 | Collection | Modes | Purpose |
 | --- | --- | --- |
-| `ref` | Value | Raw palette — **the whole Tailwind v4 set**: 17 chromatic hues × 11 steps, plus the 13-step custom `grey`, `warm/800` and `brand/*`. 203 tokens. Literal hex, theme-invariant. |
-| `sys` | Light / Dark | Semantic roles — `color/srf`, `color/on-srf`, `color/outline`, `color/error*`. **The only tier that carries light/dark.** Surface ladder is M3's: `srf` → `srf-container-low` → `srf-container` → `srf-container-high`. |
-| `comp` | Value | One component's rules — `button/*`, `traffic-light/*`. **One mode on purpose.** |
-| `Content` | Ink / Ink-Solid / Danger-Text / Bg | Which ink **role** for icon + label inside a control. |
-| `Ink Emphasis` | Full / Subtle | How **strong** that ink is. |
-| `Primitives` | Mode 1 | Radii, spacing, motion, opacity. |
-| `Responsive` | Desktop / Mobile | `space/unit` only. |
-| `_deprecated Color Palette` / `_deprecated Color - Theme` / `_deprecated Color - Adaptive` | — | The pre-refactor collections, kept as the undo path. Nothing binds to them. Safe to delete once the new system has bedded in. |
+| `ref` | Value | 207 raw colour primitives: the Tailwind v4 chromatic ramps plus the custom `grey`, `warm/800` and `brand/*` values. Literal hex, theme-invariant. |
+| `sys` | Light / Dark | 42 semantic roles — `color/srf`, `color/on-srf`, `color/outline-container`, `color/outline-on-srf`, `color/error*`. **The only tier that carries light/dark.** Surface ladder is M3's: `srf` → `srf-container-low` → `srf-container` → `srf-container-high`. |
+| `comp` | Value | 49 component rules — `button/*`, `traffic-light/*`, `footer/*` and other state families. **One mode on purpose.** |
+| `Content` | Ink / Ink-Solid / Danger-Text / Bg | 2 variables selecting which ink **role** applies to icon + label inside a control. |
+| `Ink Emphasis` | Full / Subtle | 2 variables selecting how **strong** that ink is. |
+| `Primitives` | Mode 1 | 22 radii, spacing, motion and opacity values. |
+| `Responsive` | Desktop / Mobile | `space/unit` only (1 variable). |
+| `_deprecated Color Palette` / `_deprecated Color - Theme` / `_deprecated Color - Adaptive` | — | Hidden pre-refactor collections (24 / 45 / 1 variables), kept as the undo path. Current component masters do not bind to them. |
 
 ### Why the tiers are separate collections
 
 `comp` having **one mode is the load-bearing decision.** There is no dark slot to
-hardcode, so every `comp` token *must* alias a `sys` role — which means dark mode is
-inherited rather than re-decided per component. Before the refactor, ~20 `button/*`
-tokens each carried their own Light and Dark values; that was the same theme decision
-made twenty times, and it is why dark mode was painful.
+hardcode, so theme-sensitive `comp` tokens ultimately resolve through `sys` — dark
+mode is inherited rather than re-decided per component. Fixed brand values may alias
+`ref`, related component values may alias another `comp` token, and the ghost fill is
+a deliberate transparent literal. Before the refactor, ~20 `button/*` tokens each
+carried their own Light and Dark values; that was the same theme decision made twenty
+times, and it is why dark mode was painful.
 
 Naming is a **mechanical transform in both directions**, so no lookup table exists or
 is needed:
@@ -288,74 +308,103 @@ a viable way to stamp agent-touched nodes if the "who changed this" problem recu
 
 ## Relationship to code
 
-**The two sides are now one system, wired through a generated file.** This replaced the
-old arrangement where `color/*` was a hand-kept transcription of `global.css`.
+The repo's token files and generated CSS form one code-side pipeline, but the live
+Figma variables and `tokens/design-tokens.json` have **material drift today**. Neither
+side is safe to overwrite blindly from the other. Reconcile names, aliases and values
+before the next Figma or code token write, then update both representations from that
+reviewed result.
 
-- `tokens/design-tokens.json` (DTCG format) is the **single source of truth** for colour.
+**Current drift snapshot (`2026-09-02`):** live Figma has `207 / 42 / 49`
+`ref / sys / comp` variables; `tokens/design-tokens.json` has `206 / 44 / 39`.
+Notable Figma-only material includes `warm/800`, `outline-on-srf`,
+`inverse-srf-disabled`, checkbox states, toolbar outlines, the colour-swatch outline
+and the field placeholder. Code retains the old `outline` role and four media-ink
+roles that are absent from Figma. Two values also disagree: Light `on-srf` is
+`grey/100` in Figma versus `grey/150` in code, and `outline-variant` is `warm/800`
+versus `grey/800`.
+
+Footer exposes the most immediate regression risk. Figma and the checked-in generated
+CSS use Rest → `srf-container` and Hover → `srf-container-high`; the JSON still says
+Rest → `srf-container-low` and Hover → `srf-container`. Therefore `bun run
+tokens:check` currently fails, and running `tokens:build` before reconciliation would
+overwrite the newer CSS aliases with the older JSON graph.
+
+- `tokens/design-tokens.json` (DTCG format) is the code-side source for generated colour CSS.
 - `bun run tokens:build` regenerates the block between `/* @tokens:start */` and
   `/* @tokens:end */` in `src/styles/global.css`. Idempotent; never hand-edit that block.
 - `bun run tokens:check` fails on drift — an undefined `var(--ref|sys|comp-*)`, a
   leftover `--color-*`, stale generated CSS, **or** a mismatch against the Figma name
   snapshot in `tokens/figma-tokens.json`.
 
-**`tokens/figma-tokens.json` is a manual snapshot.** It is what closes the Figma↔source
-loop, and nothing refreshes it automatically. **After adding or renaming a Figma
-variable, re-export the `ref`/`sys`/`comp` collections and rewrite it**, or
-`tokens:check` will fail (which is the point).
+**`tokens/figma-tokens.json` is a manual name snapshot, not proof of parity.** Nothing
+refreshes it automatically. Once a Figma variable change has been reconciled with the
+code graph, re-export the `ref`/`sys`/`comp` collections and rewrite the snapshot, or
+`tokens:check` will fail. Do not refresh the snapshot merely to make an unexplained
+Figma/code difference pass.
 
 ### Editing a colour
 
-Only `ref` tokens hold literal hex, so **only `ref` tokens are editable**. `sys` and
-`comp` are alias expressions — you change what a role *points at*, not its value.
+The editor/API deliberately allows value edits only on `ref`; treat that as a product
+policy rather than a claim that every `sys` and `comp` value is an alias. Nineteen
+live `sys` roles still use deliberate hot-pink placeholder literals, and
+`comp.button.ghost.container` is literal transparent. For established semantic and
+component roles, change what the role points at rather than painting a resolved value.
 `/styles` reflects this: an editable **ref · palette** section, and a read-only
 **sys · roles** section showing what each role resolves to. `/api/style-token` accepts
 only `ref` names and rejects everything else.
 
 `tokens/design-tokens.json` is stored pre-normalised to `JSON.stringify(json, null, 2)`
-— the exact shape the editor writes — so a one-colour edit is a one-line diff instead of
-reformatting all 441 lines. **Don't reformat it.**
+— the exact shape the editor writes — so a one-colour edit stays a small diff instead
+of reformatting the full file. **Don't reformat it.**
 
 ---
 
 ## Current state
 
-**Built and in LGTM:** `Tokens Group` in both Light and Dark columns (swatches are
-**bound to the variables**, not literal, so the same structure resolves per theme —
-if a swatch ever looks wrong, the token is wrong). A change-summary frame sits above
-LGTM documenting the token refactor. Full Button system (25 variants), Field/Field Base, Checkbox
-(2×3), Segmented Control, Button Container, Panel Actions, Select Field, Text Field,
-Text Area, Toggle Row, dev-overlay__head, traffic lights, DevPanel Base + Content,
-14 icons (incl. Lock/Unlock/AlignCenterX/AlignCenterY), Grid Thumb Base, 5 type components.
+Light holds the current working system; Dark is intentionally empty as described in
+*Page architecture*. The live high-level inventory includes **34 icons**, **19 type
+particles**, the full 25-variant Button set, Field and Checkbox families, ten
+`Dev Panel Title` variants, ten `DevPanel Content` variants, and ten assembled panel
+specimens.
 
-**Dev Panels assembled: 5 of 5** — Project settings, Caption, Edit image, Edit grid,
-Edit carousel. All fully LGTM-sourced, all mirrored into the Dark column.
+The reusable-style layer currently consists of **20 Hanken Grotesk text styles** and
+no paint, effect or grid styles. All text styles are consumed. Elevation remains
+duplicated as inline shadow/blur effects rather than represented by effect styles.
+The canvas token specimens also lag the live collections: the `sys` specimen shows
+40 roles against 42 variables, and the `comp` specimen shows 21 against 49.
 
-Relative to the legacy panels, the new ones deliberately **drop sub-titles, hint
-paragraphs and status lines** (`p[data-*-status]`, `p.*__hint`, the toggle hints, and
-the crop stage's "Drag to reposition" caption). Labels only — if a control needs a
-sentence, the control is wrong. Board labels (`Visible` / `Parking lot`) stay, because
-they name a thing rather than explain it.
+The assembled panels are **Edit image**, **Edit grid**, **Edit carousel**, **Caption**,
+**Project settings**, **Outline marker**, **Log new issue**, **Edit colour token**,
+**Gallery Manager**, and **Asset Manager**. The first eight use the portrait layout;
+Gallery Manager and Asset Manager use landscape. Each is an instance of `DevPanel
+Layout`, so title, body and layout are exercised through the same composition a real
+consumer uses. The title variant currently spells `Edit color token` while the body
+variant spells `Edit colour token`; keep the two matched by meaning until the names
+are normalised.
 
-**Components built for those panels** (all in LGTM, all token-bound):
+The panels deliberately use **labels only**: no explanatory sub-titles, hint
+paragraphs or status prose. Board labels such as `Visible` and `Parking lot` stay
+because they name a thing rather than explain a control. If a control needs a
+sentence, fix its label, grouping or interaction.
+
+Footer follows the component ladder:
+[`Footer text`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=778-4307)
+particle → [`Footer Base`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=926-4038)
+atom → [`Footer`](https://www.figma.com/design/$FIGMA_FILE_KEY?node-id=722-4165)
+set in Atom Variants (`State=Rest/Hover`). The variants use `comp/footer/rest` and
+`comp/footer/hover` respectively.
+
+**Key panel building blocks** (all in LGTM and token-bound):
 
 | Component | Tier | Notes |
 | --- | --- | --- |
-| `Grid Thumb` | Atom Variants | `State=Rest/Hover` on `Grid Thumb Base`; Hover turns the Remove label `sys.color.error`. |
+| `Grid Thumb` | Atom Variants | `State=Rest/No remove/Hover/Selected` on `Grid Thumb Base`; Hover turns the Remove label `sys.color.error`. |
 | `Slider Row` | Elements | Label, track with fill + knob, value readout. Edit image zoom. |
 | `Crop Toolbar` | Elements | Centre-X, centre-Y, crop lock. Uses `Icon/AlignCenterX/Y` + `Icon/Lock`. |
 | `Crop Stage` | Elements | Crop frame, eight resize handles, centre reposition handle. |
 | `Thumb Board` | Elements | Label + tray of `Grid Thumb`. One per breakpoint board. |
-| `Viewport Selector` | Dev Panel Components | **Now a real master** — was a bare instance with overrides. Desktop/Tablet/Mobile. |
+| `Viewport Selector` | Dev Panel Components | Desktop/Tablet/Mobile through `Segmented Control`. |
 | `Theme Selector` | Dev Panel Components | System/Light/Dark, icon-only. Mirrors `DevThemeToggle.astro`. |
-
-**Components still needed** (all still legacy-only in Ref):
-
-- **Grid Thumb variants** — `Grid Thumb Base` now exists in Atoms (72-wide media slot, radius 3, centred Remove affordance, bound to `sys` tokens). Still needs the `State=Rest/Hover` variant set on top of it, where Hover swaps the Remove label to `sys.color.error`. **15 instances** across Edit grid + Edit carousel. Related: `Board — Drop Target`, `project-grid-tuner__thumb.is-dragging` (the image re-order interaction).
-- **Slider track / Slider Row** — Edit image's zoom control.
-- ~~**Crop lock toggle**~~ — `Icon/Lock` + `Icon/Unlock` built (2026-08-23), replacing the 🔒 emoji.
-- ~~**Crop center controls**~~ — `Icon/AlignCenterX` / `Icon/AlignCenterY` built (2026-08-23) from Lucide `align-center-vertical` / `align-center-horizontal`, re-weighted to the house 16px / 1.167-stroke grid. Bars are rounded rectangles at radius 0.7; at radius 1.167 (Lucide's rx scaled) the rounding dominated at 16px and they read as pills.
-
-Legacy components in Ref that are **superseded, not migrated** — `Button Default/Dark/Outline/Danger`, `SegButton *`, `Text Pill`, `Icon Chip`, `Icon Control`, plus the three `*Hover` components that only existed because the old system had no State axis.
 
 ---
 
@@ -371,9 +420,11 @@ Legacy components in Ref that are **superseded, not migrated** — `Button Defau
   something two levels up that depends on it.
 - **Anto tests the work.** Hand him a numbered script and stop; don't drive interactive
   UI headlessly. (Project convention — see `CLAUDE.md`.)
-- **Component descriptions are the real documentation.** They travel with the component
-  and surface in `get_design_context`. A standalone checklist doc was tried and deleted
-  — it drifted within days. Put the *why* in the description.
+- **Component descriptions are the intended component-level documentation.** They
+  travel with the component and surface in `get_design_context`, but current coverage
+  is incomplete and some descriptions lag their live sets. Verify the canvas, then
+  update the description whenever you touch a master. Put the *why* there; keep this
+  handbook for system-level architecture and traps.
 - **Batched API writes can leave the canvas stale.** Elements sometimes render out of
   place until a real interaction forces relayout; a 1px nudge fixes it. There is no
   API to force a relayout pass. Don't chase it as a config bug — but do check
