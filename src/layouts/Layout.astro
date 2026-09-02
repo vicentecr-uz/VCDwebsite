@@ -187,10 +187,24 @@ const showDevTools = import.meta.env.DEV;
         }
       };
 
-      const waitForVisibleImages = async () => {
+      const waitForVisibleContent = async () => {
         const visibleImages = Array.from(document.images).filter(isInViewport);
-        await Promise.all(visibleImages.map(whenImageReady));
+        await Promise.all([
+          document.fonts?.ready ?? Promise.resolve(),
+          ...visibleImages.map(whenImageReady),
+        ]);
       };
+
+      // Two nested RAFs guarantee the initially-opaque veil has painted once
+      // before fade-out can begin (important with warm cache paints).
+      const waitForOpaquePaint = () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              resolve();
+            });
+          });
+        });
 
       let revealing = false;
 
@@ -202,7 +216,10 @@ const showDevTools = import.meta.env.DEV;
         overlay.style.animation = 'none';
         overlay.style.opacity = '1';
 
-        await Promise.race([waitForVisibleImages(), sleep(MAX_WAIT_MS)]);
+        await Promise.all([
+          Promise.race([waitForVisibleContent(), sleep(MAX_WAIT_MS)]),
+          waitForOpaquePaint(),
+        ]);
         openImagePreviewUpgrade();
 
         gsap.to(overlay, {
@@ -256,7 +273,7 @@ const showDevTools = import.meta.env.DEV;
 
           gsap.to('#transition-overlay', {
             opacity: 1,
-            duration: 0.5,
+            duration: 0.25,
             ease: 'power2.in',
             onComplete: () => {
               window.location.href = target;
