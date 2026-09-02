@@ -4,14 +4,16 @@ import '../../styles/dev-chrome.css';
 interface Props {
   title: string;
   layout?: 'portrait' | 'landscape';
+  /** Session-only header dragging for temporary panels. */
+  draggable?: boolean;
   [key: string]: any;
 }
 
-const { title, layout = 'portrait', class: className, ...rest } = Astro.props;
+const { title, layout = 'portrait', draggable = false, class: className, ...rest } = Astro.props;
 ---
 
-<div class:list={['dev-panel', `dev-panel--${layout}`, className]} {...rest}>
-  <header class="dev-panel__header">
+<div class:list={['dev-panel', `dev-panel--${layout}`, className]} data-dev-panel-draggable={draggable || undefined} {...rest}>
+  <header class="dev-panel__header" data-drag-handle={draggable || undefined}>
     <p class="dev-panel__title">{title}</p>
     <span class="dev-panel__lights" aria-hidden="true">
       <span class="dev-panel__light"></span>
@@ -22,3 +24,154 @@ const { title, layout = 'portrait', class: className, ...rest } = Astro.props;
     <slot />
   </div>
 </div>
+
+<style>
+  .dev-panel[data-dev-panel-draggable] [data-drag-handle] {
+    min-height: 44px;
+    touch-action: none;
+    user-select: none;
+    cursor: grab;
+  }
+
+  .dev-panel[data-dev-panel-draggable].is-dragging [data-drag-handle] {
+    cursor: grabbing;
+  }
+</style>
+
+<script>
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+  const initDraggableDevPanels = () => {
+    document.querySelectorAll<HTMLElement>('[data-dev-panel-draggable]').forEach((panel) => {
+      if (panel.dataset.devPanelDragInitialized === 'true') return;
+      const dragHandle = panel.querySelector<HTMLElement>('[data-drag-handle]');
+      if (!dragHandle) return;
+      panel.dataset.devPanelDragInitialized = 'true';
+
+      let pointerId: number | null = null;
+      let startX = 0;
+      let startY = 0;
+      let originLeft = 0;
+      let originTop = 0;
+      let frame: number | null = null;
+      let pendingLeft = 0;
+      let pendingTop = 0;
+      let userPositioned = false;
+      let pendingReclamp = false;
+
+      const clampPosition = (left: number, top: number) => ({
+        left: clamp(left, 0, Math.max(0, window.innerWidth - panel.offsetWidth)),
+        top: clamp(top, 0, Math.max(0, window.innerHeight - panel.offsetHeight)),
+      });
+
+      const applyPendingPosition = () => {
+        frame = null;
+        const next = clampPosition(pendingLeft, pendingTop);
+        panel.style.translate = `${next.left - originLeft}px ${next.top - originTop}px`;
+      };
+
+      const schedulePosition = (left: number, top: number) => {
+        pendingLeft = left;
+        pendingTop = top;
+        if (frame === null) frame = requestAnimationFrame(applyPendingPosition);
+      };
+
+      const commitPosition = (left: number, top: number) => {
+        const next = clampPosition(left, top);
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        panel.style.translate = 'none';
+        panel.style.left = `${next.left}px`;
+        panel.style.top = `${next.top}px`;
+        userPositioned = true;
+        pendingReclamp = false;
+      };
+
+      const reclampPosition = () => {
+        if (!panel.isConnected || panel.getClientRects().length === 0) {
+          pendingReclamp = true;
+          return;
+        }
+        pendingReclamp = false;
+        const rect = panel.getBoundingClientRect();
+        const next = clampPosition(rect.left, rect.top);
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        panel.style.translate = 'none';
+        panel.style.left = `${next.left}px`;
+        panel.style.top = `${next.top}px`;
+      };
+
+      const anchorToLeftTop = () => {
+        const rect = panel.getBoundingClientRect();
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        panel.style.left = `${rect.left}px`;
+        panel.style.top = `${rect.top}px`;
+        panel.style.translate = 'none';
+        return rect;
+      };
+
+      const endDrag = (event: PointerEvent) => {
+        if (pointerId !== event.pointerId) return;
+        commitPosition(originLeft + event.clientX - startX, originTop + event.clientY - startY);
+        pointerId = null;
+        panel.classList.remove('is-dragging');
+        if (dragHandle.hasPointerCapture(event.pointerId)) dragHandle.releasePointerCapture(event.pointerId);
+      };
+
+      const cancelDrag = (event: PointerEvent) => {
+        if (pointerId !== event.pointerId) return;
+        commitPosition(pendingLeft, pendingTop);
+        pointerId = null;
+        panel.classList.remove('is-dragging');
+        if (dragHandle.hasPointerCapture(event.pointerId)) dragHandle.releasePointerCapture(event.pointerId);
+      };
+
+      dragHandle.addEventListener('pointerdown', (event) => {
+        if (pointerId !== null || event.button !== 0 || event.isPrimary === false || event.target instanceof Element && event.target.closest('[data-drag-ignore]')) return;
+        event.preventDefault();
+        const rect = anchorToLeftTop();
+        const next = clampPosition(rect.left, rect.top);
+        originLeft = next.left;
+        originTop = next.top;
+        pendingLeft = originLeft;
+        pendingTop = originTop;
+        panel.style.left = `${originLeft}px`;
+        panel.style.top = `${originTop}px`;
+        startX = event.clientX;
+        startY = event.clientY;
+        pointerId = event.pointerId;
+        panel.classList.add('is-dragging');
+        dragHandle.setPointerCapture(event.pointerId);
+      });
+
+      dragHandle.addEventListener('pointermove', (event) => {
+        if (pointerId !== event.pointerId) return;
+        schedulePosition(originLeft + event.clientX - startX, originTop + event.clientY - startY);
+      });
+
+      dragHandle.addEventListener('pointerup', endDrag);
+      dragHandle.addEventListener('pointercancel', cancelDrag);
+      dragHandle.addEventListener('lostpointercapture', (event: PointerEvent) => {
+        if (pointerId !== event.pointerId) return;
+        commitPosition(pendingLeft, pendingTop);
+        pointerId = null;
+        panel.classList.remove('is-dragging');
+      });
+
+      window.addEventListener('resize', () => {
+        if (!userPositioned || pointerId !== null) return;
+        reclampPosition();
+      });
+
+      new ResizeObserver(() => {
+        if (!userPositioned || !pendingReclamp || pointerId !== null) return;
+        reclampPosition();
+      }).observe(panel);
+    });
+  };
+
+  initDraggableDevPanels();
+  document.addEventListener('astro:page-load', initDraggableDevPanels);
+</script>
