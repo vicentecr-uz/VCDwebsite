@@ -3,7 +3,7 @@
 #
 # The content surface (src/content, media) is published straight to
 # main from the dev save bar, so it must never ride along in a feature commit.
-# See CLAUDE.md → "Content vs engine".
+# See AGENTS.md → "Choose the delivery lane first".
 #
 #   bun run commit:engine "message"                  # every dirty engine file
 #   bun run commit:engine "message" path/a path/b    # only these paths
@@ -13,7 +13,7 @@
 # else dirty in the tree — another agent's work, a half-finished experiment —
 # and will commit all of it under your message.
 #
-# --schema-migration is the documented exception in CLAUDE.md for a change
+# --schema-migration is the documented exception in AGENTS.md for a change
 # that requires touching content JSON alongside the code that reads it. It
 # only lifts the content-path refusal for THIS invocation — say so in the
 # message, and pass explicit paths (never the no-paths sweep) alongside it.
@@ -47,7 +47,7 @@ if [ ${#paths[@]} -gt 0 ]; then
   for path in "${paths[@]}"; do
     if is_content_path "$path"; then
       echo "Refusing: '$path' is content, not engine." >&2
-      echo "Content publishes to main from the dev save bar — see CLAUDE.md." >&2
+      echo "Content publishes to main from the dev save bar — see AGENTS.md." >&2
       exit 1
     fi
   done
