@@ -58,6 +58,7 @@
   let sourceGapIndicatorStartsAfterSource = false;
   let sourceGapIndicatorInitialOwner: HTMLElement | null = null;
   let preservedGapPaintOwner: HTMLElement | null = null;
+  let sourceGapPlacementSide: 'before' | 'after' | null = null;
   let sourceGapPreview: {
     element: HTMLElement;
     marginTop: string;
@@ -240,8 +241,8 @@
       };
     },
     resolveInsertPlacement: ({ items, centerY, currentIndex, currentKey, sourceIndex, direction, slot }) => {
-      let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
       if (!activeIntroDrag) {
+        let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
         const full = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
         for (let i = 0; i < full.length;) {
           if (full[i].dataset.devIntro !== 'true') { i += 1; continue; }
@@ -263,6 +264,39 @@
         return { index: target };
       }
 
+      const slotRect = slot?.getBoundingClientRect();
+      const currentGapSide = currentKey === SOURCE_PLACEMENT_KEY
+        ? sourceGapPlacementSide
+        : currentKey === GAP_BEFORE_PLACEMENT_KEY
+          ? 'before'
+          : currentKey === GAP_AFTER_PLACEMENT_KEY
+            ? 'after'
+            : null;
+      if (slotRect && currentGapSide) {
+        const previousBottom = items[currentIndex - 1]?.getBoundingClientRect().bottom;
+        const nextTop = items[currentIndex]?.getBoundingClientRect().top;
+        const gapTop = currentGapSide === 'before' ? slotRect.bottom : previousBottom;
+        const gapBottom = currentGapSide === 'before' ? nextTop : slotRect.top;
+        if (gapTop !== undefined && gapBottom !== undefined && gapBottom > gapTop) {
+          const nextSide = resolveGapLaneSide(
+            gapTop,
+            gapBottom,
+            centerY,
+            direction,
+            currentGapSide,
+          );
+          if (nextSide !== currentGapSide) {
+            return {
+              index: currentIndex,
+              key: nextSide === 'before'
+                ? GAP_BEFORE_PLACEMENT_KEY
+                : GAP_AFTER_PLACEMENT_KEY,
+            };
+          }
+        }
+      }
+
+      const target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
       if (currentKey === SOURCE_PLACEMENT_KEY && target === sourceIndex) {
         return { index: target, key: SOURCE_PLACEMENT_KEY };
       }
@@ -285,36 +319,6 @@
           index: target,
           key: gapSide === 'before' ? GAP_BEFORE_PLACEMENT_KEY : GAP_AFTER_PLACEMENT_KEY,
         };
-      }
-
-      const slotRect = slot?.getBoundingClientRect();
-      if (slotRect && currentKey === GAP_BEFORE_PLACEMENT_KEY && direction > 0) {
-        const nextRect = items[currentIndex]?.getBoundingClientRect();
-        if (nextRect && nextRect.top > slotRect.bottom) {
-          if (resolveGapLaneSide(
-            slotRect.bottom,
-            nextRect.top,
-            centerY,
-            direction,
-            'before',
-          ) === 'after') {
-            return { index: currentIndex, key: GAP_AFTER_PLACEMENT_KEY };
-          }
-        }
-      }
-      if (slotRect && currentKey === GAP_AFTER_PLACEMENT_KEY && direction < 0) {
-        const previousRect = items[currentIndex - 1]?.getBoundingClientRect();
-        if (previousRect && slotRect.top > previousRect.bottom) {
-          if (resolveGapLaneSide(
-            previousRect.bottom,
-            slotRect.top,
-            centerY,
-            direction,
-            'after',
-          ) === 'before') {
-            return { index: currentIndex, key: GAP_BEFORE_PLACEMENT_KEY };
-          }
-        }
       }
 
       return {
@@ -469,6 +473,7 @@
       sourceGapPreview?.element.style.removeProperty('margin-top');
     }
     sourceGapPreview = null;
+    sourceGapPlacementSide = null;
     grabMarginSnapshot.clear();
     activePlacementKey = '';
     setIntroFoldOffsets();
@@ -488,6 +493,7 @@
     const nextGap = Number.parseFloat(getComputedStyle(next).marginTop) || 0;
     const sourceGapWins = !previous || rootGap >= nextGap;
     const winningGapOwner = sourceGapWins ? root : next;
+    sourceGapPlacementSide = sourceGapWins ? 'after' : 'before';
     const height = previous
       ? Math.max(rootGap, nextGap)
       : 0;
