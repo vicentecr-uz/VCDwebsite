@@ -100,6 +100,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
+  import { reorderProjectStackSpacings } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -480,14 +481,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
     });
 
+    let activeGapRelocation: { control: HTMLElement; ghost: HTMLElement } | null = null;
+
+    const cancelGapRelocation = (control: HTMLElement) => {
+      if (activeGapRelocation?.control === control) {
+        activeGapRelocation.ghost.remove();
+        activeGapRelocation = null;
+      }
+      control.classList.remove('is-gap-relocating', 'is-gap-relocating-in');
+    };
+
     const syncSpacingControl = (state: EditableSpacingState) => {
       state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
         button.classList.toggle('is-active', button.dataset.devSpacingOption === state.currentValue);
       });
-      state.element.classList.toggle(
-        'is-dev-spacing-dirty',
-        state.currentValue !== state.savedValue,
-      );
+      const dirty = state.currentValue !== state.savedValue;
+      state.element.classList.toggle('is-dev-spacing-dirty', dirty);
+      if (!dirty) cancelGapRelocation(state.control);
     };
 
     const syncIntroHeightControl = (state: EditableIntroHeightState) => {
@@ -920,7 +930,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     let suppressGapProximity = false;
 
     const syncGapToolbarTopPin = (control: HTMLElement, pinned: boolean) => {
-      if (control.classList.contains('is-gap-relocating')) return;
+      if (control.classList.contains('is-gap-relocating')) {
+        const dirty = control
+          .closest('[data-dev-spacing-document]')
+          ?.classList.contains('is-dev-spacing-dirty');
+        if (!pinned && !dirty) {
+          cancelGapRelocation(control);
+          unpinGapToolbarTop(control);
+        }
+        return;
+      }
       if (pinned) {
         pinGapToolbarTop(control);
         return;
@@ -952,7 +971,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return;
       }
 
-      document.querySelectorAll('.dev-gap-toolbar__pill-ghost').forEach((node) => node.remove());
+      if (activeGapRelocation) cancelGapRelocation(activeGapRelocation.control);
 
       const rect = pill.getBoundingClientRect();
       const ghost = pill.cloneNode(true) as HTMLElement;
@@ -970,6 +989,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         'transition:opacity 0.15s ease',
       ].join(';');
       document.body.append(ghost);
+      activeGapRelocation = { control, ghost };
 
       // Lock before unpin so pointermove cannot re-pin at the old viewport Y.
       control.classList.add('is-gap-relocating');
@@ -978,17 +998,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       // No layout shift (hovered without changing the gap) — skip the pulse.
       if (Math.abs(pill.getBoundingClientRect().top - rect.top) < 2) {
-        ghost.remove();
-        control.classList.remove('is-gap-relocating');
+        cancelGapRelocation(control);
         return;
       }
 
       requestAnimationFrame(() => {
+        if (activeGapRelocation?.ghost !== ghost) return;
         requestAnimationFrame(() => {
+          if (activeGapRelocation?.ghost !== ghost) return;
           ghost.style.opacity = '0';
           control.classList.add('is-gap-relocating-in');
+          let settled = false;
           const finish = () => {
+            if (settled) return;
+            settled = true;
             ghost.remove();
+            if (activeGapRelocation?.ghost !== ghost) return;
+            activeGapRelocation = null;
             control.classList.remove('is-gap-relocating', 'is-gap-relocating-in');
             unpinGapToolbarTop(control);
           };
@@ -1180,6 +1206,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      */
     const gapsSuppressed = () =>
       isDevTextCaretActive()
+      || document.documentElement.classList.contains('is-section-reorder-dragging')
       || document.documentElement.classList.contains('is-dev-asset-manager-open')
       || document.documentElement.classList.contains('is-dev-tuner-open')
       || document.documentElement.hasAttribute('data-dev-image-drop-choice-open');
@@ -2620,6 +2647,38 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     spacingStates.forEach(wireSectionAddMenu);
     syncIntroRunControls();
+    window.addEventListener('vcd:dev-section-reordered', ((event: CustomEvent<{
+      document?: string;
+      moved?: HTMLElement;
+      before?: HTMLElement[];
+      after?: HTMLElement[];
+    }>) => {
+      const { document: reorderedDocument, moved, before, after } = event.detail ?? {};
+      if (!reorderedDocument || !moved || !before || !after || before.length !== after.length) return;
+      const sourceIndex = before.indexOf(moved);
+      const insertIndex = after.indexOf(moved);
+      if (sourceIndex < 0 || insertIndex < 0 || sourceIndex === insertIndex) return;
+
+      const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
+      const reorderedStates = before.map((root) => statesByElement.get(root));
+      if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
+
+      const values = reorderProjectStackSpacings(
+        reorderedStates.map((state) => state!.currentValue),
+        sourceIndex,
+        insertIndex,
+      );
+      reorderedStates.forEach((state, index) => {
+        if (!state || state.currentValue === values[index]) return;
+        state.currentValue = values[index];
+        applySpacingClass(state.element, state.currentValue);
+        syncSpacingControl(state);
+      });
+      syncPageTopSpacingControls();
+      syncIntroRunControls();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      updateActions();
+    }) as EventListener);
     window.addEventListener('vcd:dev-section-structure-changed', () => {
       requestAnimationFrame(syncIntroRunControls);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
@@ -2631,6 +2690,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     });
     window.addEventListener('vcd:dev-pending-reverted', () => {
+      syncPageTopSpacingControls();
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     });
@@ -5653,6 +5713,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     pointer-events: none !important;
   }
 
+  html.is-section-reorder-dragging .dev-gap-toolbar__pill,
+  html.is-section-reorder-dragging .dev-gap-toolbar__menu,
+  html.is-section-reorder-dragging .dev-gap-toolbar__pill-ghost {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
   /* Text hover dash + section chips paint at z 60–65 and show through panels
      that sit at the DevOverlay base (60). Kill the chrome while any tuner is up. */
   html.is-dev-tuner-open [data-dev-text-document]::before,
@@ -5957,6 +6024,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       .project-stack--group
     ):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none)::before {
     height: var(--space-related);
+  }
+
+  html.is-section-reorder-dragging.is-dev-mode
+    [data-dev-spacing-document]:is(
+      .is-section-lifted-session,
+      .is-section-source-gap-preview
+    ).is-dev-spacing-dirty::before {
+    content: none;
   }
 
   /* ── Section delete (DEV) ───────────────────────────────── */

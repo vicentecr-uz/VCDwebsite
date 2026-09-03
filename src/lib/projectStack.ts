@@ -1,6 +1,63 @@
 /** Vertical rhythm between project page sections (parent-owned stack). */
 export type ProjectStackSpacing = 'related' | 'group' | 'section' | 'major' | 'none';
 
+const PROJECT_STACK_SPACING_ORDER: ProjectStackSpacing[] = [
+  'none',
+  'related',
+  'group',
+  'section',
+  'major',
+];
+
+const largerProjectStackSpacing = (
+  left: ProjectStackSpacing,
+  right: ProjectStackSpacing,
+) => PROJECT_STACK_SPACING_ORDER[
+  Math.max(
+    PROJECT_STACK_SPACING_ORDER.indexOf(left),
+    PROJECT_STACK_SPACING_ORDER.indexOf(right),
+  )
+];
+
+/** Values stay aligned to the original block identities; only their seams change. */
+export function reorderProjectStackSpacings(
+  spacings: ProjectStackSpacing[],
+  sourceIndex: number,
+  insertIndex: number,
+): ProjectStackSpacing[] {
+  const next = [...spacings];
+  if (
+    sourceIndex < 0
+    || sourceIndex >= spacings.length
+    || insertIndex < 0
+    || insertIndex >= spacings.length
+    || sourceIndex === insertIndex
+  ) {
+    return next;
+  }
+
+  const identities = spacings.map((_, index) => index);
+  const [moved] = identities.splice(sourceIndex, 1);
+  identities.splice(insertIndex, 0, moved);
+
+  const sourceNext = sourceIndex + 1;
+  if (sourceNext < spacings.length) {
+    next[sourceNext] = sourceIndex === 0
+      ? 'none'
+      : largerProjectStackSpacing(spacings[sourceIndex], spacings[sourceNext]);
+  }
+
+  if (insertIndex === 0) {
+    next[sourceIndex] = 'none';
+    const destinationNext = identities[1];
+    if (destinationNext !== undefined) next[destinationNext] = 'related';
+  } else {
+    next[sourceIndex] = 'related';
+  }
+
+  return next;
+}
+
 export function projectStackClass(
   spacing: ProjectStackSpacing = 'section',
   options?: { precedeRelated?: boolean; flush?: boolean },
