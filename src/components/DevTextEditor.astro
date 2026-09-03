@@ -548,8 +548,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     /**
      * Freeze only while the pointer is on the pill/menu (not mere vicinity).
-     * Vicinity-revealed toolbars stay `position:absolute` in the gap middle so
-     * they scroll with the page; fixed freeze is for deliberate interaction.
+     * Vicinity-revealed toolbars stay `position:absolute` so they scroll with
+     * the page; fixed freeze is for deliberate interaction.
      */
     const pinGapToolbarTop = (control: HTMLElement) => {
       if (control.classList.contains('is-gap-relocating')) return;
@@ -569,8 +569,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const restoreGapToolbarTop = (control: HTMLElement) => {
-      if (control.classList.contains('is-intro-outer-gap')) {
-        control.style.top = 'calc(var(--intro-outer-air, 0px) / -2)';
+      if (control.classList.contains('is-intro-leading-gap')) {
+        control.style.top = 'calc(min(var(--intro-outer-air, 0px), var(--space-group)) / -2)';
+      } else if (control.classList.contains('is-intro-trailing-gap')) {
+        control.style.top = 'calc(0px - var(--intro-outer-air, 0px) + min(var(--intro-outer-air, 0px), var(--space-group)) / 2)';
       } else {
         control.style.removeProperty('top');
       }
@@ -2536,13 +2538,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const currentIntro = state.element.dataset.devIntro === 'true';
       const previousIntro = previous?.dataset.devIntro === 'true';
       const hasIntro = roots.some((root) => root.dataset.devIntro === 'true');
-      const internal = currentIntro && previousIntro;
       const boundary = currentIntro || previousIntro;
-      state.control.classList.toggle('is-intro-outer-gap', boundary && !internal);
+      const leading = currentIntro && !previousIntro;
+      const trailing = !currentIntro && previousIntro;
+      state.control.classList.toggle('is-intro-outer-gap', leading || trailing);
+      state.control.classList.toggle('is-intro-leading-gap', leading);
+      state.control.classList.toggle('is-intro-trailing-gap', trailing);
       if (state.control.dataset.gapTopPinned !== 'true') restoreGapToolbarTop(state.control);
       const normal = state.control.querySelector<HTMLElement>('[data-dev-normal-section-menu]');
       const intro = state.control.querySelector<HTMLElement>('[data-dev-intro-section-menu]');
-      if (normal) normal.hidden = internal;
+      if (normal) normal.hidden = boundary;
       const supportsIntro = ['home', 'work', 'play', 'about'].includes(state.document);
       if (intro) intro.hidden = !supportsIntro || (hasIntro && !boundary);
     };
@@ -2608,7 +2613,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (type !== 'bodyText' && type !== 'sectionTitle') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
-          insertSectionAt(state, type, intro ? { intro: true } : undefined);
+          insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
         });
       });
     };
