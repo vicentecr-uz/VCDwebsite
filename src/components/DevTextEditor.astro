@@ -382,6 +382,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }
 
     const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
+    const PARAGRAPH_PLACEHOLDER_ATTRIBUTE = 'data-dev-placeholder';
+    const createParagraphPlaceholderBreak = () => {
+      const br = document.createElement('br');
+      br.setAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE, 'true');
+      return br;
+    };
     /** Keep authored inline markup through Save; unwrap anything else. */
     const serializeInlineHtml = (root: ParentNode): string => {
       const walk = (node: Node): string => {
@@ -392,7 +398,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         const inner = [...node.childNodes].map(walk).join('');
         const tag = node.tagName;
-        if (tag === 'BR') return '<br>';
+        if (tag === 'BR') {
+          if (node.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE)) return '';
+          return '<br>';
+        }
         if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
         if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
         if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
@@ -417,7 +426,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
     const fillParagraph = (paragraph: HTMLElement, html: string) => {
       if (html) paragraph.innerHTML = html;
-      else paragraph.replaceChildren(document.createElement('br'));
+      else paragraph.replaceChildren(createParagraphPlaceholderBreak());
     };
     const readParagraphsValue = (element: HTMLElement): string[] => {
       const paragraphs = [...element.querySelectorAll<HTMLElement>(':scope > p')];
@@ -1944,7 +1953,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       body.dataset.devTextPath = JSON.stringify([...sectionPath, 'paragraphs']);
       body.dataset.devTextKind = 'paragraphs';
       const paragraph = document.createElement('p');
-      paragraph.append(document.createElement('br'));
+      paragraph.append(createParagraphPlaceholderBreak());
       body.append(paragraph);
       section.append(body);
       return {
@@ -1975,7 +1984,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           title = heading;
         }
         title.textContent = text;
-        if (!text) title.append(document.createElement('br'));
+        if (!text) title.append(createParagraphPlaceholderBreak());
         return { ...built, textElement: title };
       }
 
@@ -1984,7 +1993,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const paragraphs = (lines.length ? lines : ['']).map((line) => {
         const paragraph = document.createElement('p');
         if (line) paragraph.textContent = line;
-        else paragraph.append(document.createElement('br'));
+        else paragraph.append(createParagraphPlaceholderBreak());
         return paragraph;
       });
       built.textElement.replaceChildren(...paragraphs);
@@ -2048,7 +2057,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       const created = document.createElement('p');
-      created.append(document.createElement('br'));
+      created.append(createParagraphPlaceholderBreak());
       element.append(created);
       placeCaretInParagraph(created, true);
       return created;
@@ -2059,6 +2068,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         serializeInlineHtml(node as HTMLElement) ||
         node.textContent?.replaceAll('\u00a0', ' ').trim(),
       );
+
+    const stripParagraphPlaceholders = (paragraph: HTMLElement) => {
+      paragraph.querySelectorAll(`br[${PARAGRAPH_PLACEHOLDER_ATTRIBUTE}]`).forEach((br) => br.remove());
+    };
+
+    const normalizeParagraphPlaceholders = (element: HTMLElement) => {
+      element.querySelectorAll<HTMLParagraphElement>(':scope > p').forEach((paragraph) => {
+        if (fragmentHasContent(paragraph)) {
+          stripParagraphPlaceholders(paragraph);
+          return;
+        }
+        stripParagraphPlaceholders(paragraph);
+        paragraph.append(createParagraphPlaceholderBreak());
+      });
+    };
 
     const extractTrailingFromParagraph = (
       paragraph: HTMLParagraphElement,
@@ -2071,11 +2095,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const nextParagraph = document.createElement('p');
       const empty = !fragmentHasContent(trailing);
-      if (empty) nextParagraph.append(document.createElement('br'));
+      if (empty) nextParagraph.append(createParagraphPlaceholderBreak());
       else nextParagraph.append(trailing);
 
       if (!fragmentHasContent(paragraph)) {
-        paragraph.replaceChildren(document.createElement('br'));
+        paragraph.replaceChildren(createParagraphPlaceholderBreak());
       }
 
       return { nextParagraph, empty };
@@ -2084,6 +2108,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const insertSoftBreakInsideParagraph = (state: EditableTextState) => {
       const paragraph = ensureParagraphSelection(state.element);
       if (!paragraph) return;
+      stripParagraphPlaceholders(paragraph);
 
       const selection = window.getSelection();
       if (!selection?.rangeCount) return;
@@ -2102,7 +2127,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       trailingRange.setStartAfter(br);
       trailingRange.setEnd(paragraph, paragraph.childNodes.length);
       if (!fragmentHasContent(trailingRange.cloneContents())) {
-        br.after(document.createElement('br'));
+        br.after(createParagraphPlaceholderBreak());
       }
 
       const nextRange = document.createRange();
@@ -2150,6 +2175,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { element } = state;
       // Typing is the signal that the last Save/Publish message has been read.
       element.addEventListener('input', () => {
+        if (state.kind === 'paragraphs') normalizeParagraphPlaceholders(element);
         stickyStatus = '';
         updateActions();
       });
@@ -2430,7 +2456,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         pre.selectNodeContents(state.element);
         pre.setEnd(caretRange.startContainer, caretRange.startOffset);
         const offset = pre.toString().length;
-        const text = state.element.textContent ?? '';
+        const text = readPlainDomText(state.element);
         headingRemainder = text.slice(offset);
         state.element.textContent = text.slice(0, offset);
       } else {
@@ -2731,10 +2757,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       target: HTMLParagraphElement,
       source: HTMLParagraphElement,
     ): Node | null => {
+      stripParagraphPlaceholders(target);
+      stripParagraphPlaceholders(source);
       if (!fragmentHasContent(target)) {
         const incoming = [...source.childNodes];
         if (!incoming.length) {
-          target.replaceChildren(document.createElement('br'));
+          target.replaceChildren(createParagraphPlaceholderBreak());
           return null;
         }
         target.replaceChildren(...incoming);
@@ -2749,7 +2777,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const last = blockParagraphs(element).at(-1);
       if (last) return last;
       const created = document.createElement('p');
-      created.append(document.createElement('br'));
+      created.append(createParagraphPlaceholderBreak());
       element.append(created);
       return created;
     };
@@ -2780,10 +2808,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         placeCaretAtEndOfBlock(survivor);
         return;
       }
-      const joinOffset = (survivor.element.textContent ?? '').length;
-      const parts = incoming.map((paragraph) => paragraph.textContent ?? '');
+      const survivorText = readPlainDomText(survivor.element);
+      const joinOffset = survivorText.length;
+      const parts = incoming.map(readPlainDomText);
       const addition = `${parts[0]}${parts.slice(1).map((text) => `\n${text}`).join('')}`;
-      survivor.element.textContent = `${survivor.element.textContent ?? ''}${addition}`;
+      survivor.element.textContent = `${survivorText}${addition}`;
       placeCaretInHeading(survivor.element, joinOffset);
     };
 
@@ -2791,12 +2820,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       survivor: EditableTextState,
       absorbed: EditableTextState,
     ) => {
-      const headingText = absorbed.element.textContent ?? '';
+      const headingText = readPlainDomText(absorbed.element);
       if (!headingText) {
         placeCaretAtEndOfBlock(survivor);
         return;
       }
       const last = lastOrCreateParagraph(survivor.element);
+      stripParagraphPlaceholders(last);
       survivor.element.focus();
       if (!fragmentHasContent(last)) {
         const node = document.createTextNode(headingText);
@@ -2813,13 +2843,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       survivor: EditableTextState,
       absorbed: EditableTextState,
     ) => {
-      const extra = absorbed.element.textContent ?? '';
+      const extra = readPlainDomText(absorbed.element);
       if (!extra) {
         placeCaretAtEndOfBlock(survivor);
         return;
       }
-      const joinOffset = (survivor.element.textContent ?? '').length;
-      survivor.element.textContent = `${survivor.element.textContent ?? ''}${extra}`;
+      const survivorText = readPlainDomText(survivor.element);
+      const joinOffset = survivorText.length;
+      survivor.element.textContent = `${survivorText}${extra}`;
       placeCaretInHeading(survivor.element, joinOffset);
     };
 
@@ -3272,7 +3303,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const readPlainDomText = (node: HTMLElement): string => {
       const clone = node.cloneNode(true) as HTMLElement;
       if (clone.childNodes.length === 1 && clone.firstChild instanceof HTMLBRElement) return '';
-      clone.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+      clone.querySelectorAll('br').forEach((br) => {
+        if (br.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE)) br.remove();
+        else br.replaceWith('\n');
+      });
       return cleanText(clone.textContent ?? '');
     };
 
