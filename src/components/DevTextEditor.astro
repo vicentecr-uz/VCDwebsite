@@ -1990,14 +1990,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       const built = buildInsertedSection('bodyText', documentKey, index, spacing);
+      const paragraph = document.createElement('p');
       const lines = text.split('\n');
-      const paragraphs = (lines.length ? lines : ['']).map((line) => {
-        const paragraph = document.createElement('p');
-        if (line) paragraph.textContent = line;
-        else paragraph.append(createParagraphPlaceholderBreak());
-        return paragraph;
+      lines.forEach((line, lineIndex) => {
+        if (lineIndex) paragraph.append(document.createElement('br'));
+        if (line) paragraph.append(document.createTextNode(line));
       });
-      built.textElement.replaceChildren(...paragraphs);
+      if (!fragmentHasContent(paragraph)) paragraph.append(createParagraphPlaceholderBreak());
+      built.textElement.replaceChildren(paragraph);
       return built;
     };
 
