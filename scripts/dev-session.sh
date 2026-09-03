@@ -234,6 +234,11 @@ start_process() {
     : >"$log_file"
 
     if ! launchctl submit -l "$label" -o "$log_file" -e "$log_file" -- \
+      /usr/bin/env \
+      "PATH=${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" \
+      "HOME=${HOME:-}" \
+      "USER=${USER:-$(id -un)}" \
+      "LOGNAME=${LOGNAME:-${USER:-$(id -un)}}" \
       /bin/bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" "$@"; then
       echo "  $name: failed to start — see $log_file"
       tail -n 20 "$log_file" || true
