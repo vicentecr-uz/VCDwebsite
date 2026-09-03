@@ -29,6 +29,10 @@ assert.equal(resolveGapLaneSide(100, 200, 124, 1, 'before'), 'before');
 assert.equal(resolveGapLaneSide(100, 200, 125, 1, 'before'), 'after');
 assert.equal(resolveGapLaneSide(100, 200, 176, -1, 'after'), 'after');
 assert.equal(resolveGapLaneSide(100, 200, 175, -1, 'after'), 'before');
+assert.equal(resolveGapLaneSide(200, 600, 299, 1, 'before'), 'before');
+assert.equal(resolveGapLaneSide(200, 600, 300, 1, 'before'), 'after');
+assert.equal(resolveGapLaneSide(200, 600, 501, -1, 'after'), 'after');
+assert.equal(resolveGapLaneSide(200, 600, 500, -1, 'after'), 'before');
 
 assert.deepEqual(
   reorderProjectStackSpacings(['none', 'group', 'related'], 1, 0),
