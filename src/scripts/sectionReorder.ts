@@ -383,6 +383,8 @@ export type ResolveInsertContext = {
 
 export type ReorderHost = {
   getItems: () => HTMLElement[];
+  /** Extra in-flow elements whose position changes when the host rewrites layout during slot sync. */
+  getFlipElements?: () => HTMLElement[];
   getDropZone: () => HTMLElement | null;
   getDragItem: () => HTMLElement | null;
   classes: ReorderClasses;
@@ -747,7 +749,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const affected = getAffectedItems(items, fromIndex, toIndex);
     // Include in-flight FLIP nodes so a fast re-target continues from their
     // current visual position instead of snapping when they leave `affected`.
-    const captureElements = [...new Set([...flipMovingElements, ...affected])];
+    const captureElements = [...new Set([
+      ...flipMovingElements,
+      ...affected,
+      ...(host.getFlipElements?.() ?? []),
+    ])];
     const firstRects = new Map(
       captureElements.map((el) => [el, el.getBoundingClientRect()]),
     );

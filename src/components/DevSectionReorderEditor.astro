@@ -12,6 +12,7 @@
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar, getDevSectionOutline } from '../scripts/devSectionOutlineSync';
   import { createReorderController, REORDER_TIMING, resolveInsertIndexFromY } from '../scripts/sectionReorder';
+  import { setIntroFoldOffsets } from '../lib/safeVh';
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
 
@@ -24,6 +25,7 @@
   // Shared with the controller, which holds the drop slot back behind this fade.
   const LIFT_BACKDROP_FADE_MS = REORDER_TIMING.LIFT_CARD_FADE_MS;
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
+  const SECTION_CONTROLS_REVEAL_CLASS = 'is-section-reorder-controls-revealing';
   /** Fist cursor only while the button is down — settle may continue after. */
   const SECTION_HOLDING_CLASS = 'is-section-reorder-holding';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
@@ -47,7 +49,15 @@
     previousValue: string;
     previousPriority: string;
     applied: boolean;
+    suppressDirty: boolean;
   } | null = null;
+  let destinationGapPreview: {
+    element: HTMLElement;
+    previousValue: string;
+    previousPriority: string;
+    suppressDirty: boolean;
+  } | null = null;
+  let grabMarginSnapshot = new Map<HTMLElement, string>();
   let baselineOrder: number[] | null = null;
   let documentKey = '';
   let sessionPointerActive = false;
@@ -61,6 +71,7 @@
   let sessionSeq = 0;
   let activeSessionId = 0;
   let droppingSessionId = 0;
+  let controlsRevealFrame = 0;
 
   const dropZone = () => getDropZone();
 
@@ -159,6 +170,9 @@
 
   const controller = createReorderController({
     getItems: getContentSections,
+    getFlipElements: () => activeIntroDrag
+      ? getSectionRootsInDomOrder().filter((section) => section !== dragItem && !isChromeNode(section))
+      : [],
     getDropZone: dropZone,
     getDragItem: () => dragItem,
     classes: {
@@ -177,13 +191,21 @@
     // Tapico spaces via margin-top. Put that margin on the indicator itself
     // (not --gap-top) so collapse matches the live section and the dashed
     // body lines up with the border box. Internal rails stay at 0.
-    measureInsertGaps: (insertIndex, sourceIndex, liftGaps) => ({
-      top: '0px',
-      bottom: '0px',
-      marginTop: insertIndex === sourceIndex
-        ? liftGaps.top
-        : insertIndex === 0 ? '0px' : 'var(--space-related)',
-    }),
+    measureInsertGaps: (insertIndex, sourceIndex, liftGaps) => {
+      const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
+      const destinationNext = remaining[insertIndex];
+      return {
+        top: '0px',
+        bottom: '0px',
+        marginTop: insertIndex === sourceIndex
+          ? liftGaps.top
+          : insertIndex === 0
+            ? '0px'
+            : destinationNext
+              ? (grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop)
+              : 'var(--space-related)',
+      };
+    },
     resolveInsertIndex: ({ centerY, currentIndex, direction }) => {
       const items = getContentSections();
       let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
@@ -215,23 +237,69 @@
         'data-dev-section-insert-at-start',
         movedAway && insertIndex === 0,
       );
-      if (!sourceGapPreview || sourceGapPreview.applied === movedAway) return;
-      if (movedAway) {
-        sourceGapPreview.element.style.setProperty(
+      indicator.removeAttribute('data-dev-section-preserved-gap-dirty');
+      indicator.style.removeProperty('--dev-section-preserved-gap-height');
+      if (destinationGapPreview?.suppressDirty) {
+        destinationGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+      }
+      if (destinationGapPreview?.previousValue) {
+        destinationGapPreview.element.style.setProperty(
           'margin-top',
-          sourceGapPreview.marginTop,
-          'important',
-        );
-      } else if (sourceGapPreview.previousValue) {
-        sourceGapPreview.element.style.setProperty(
-          'margin-top',
-          sourceGapPreview.previousValue,
-          sourceGapPreview.previousPriority,
+          destinationGapPreview.previousValue,
+          destinationGapPreview.previousPriority,
         );
       } else {
-        sourceGapPreview.element.style.removeProperty('margin-top');
+        destinationGapPreview?.element.style.removeProperty('margin-top');
       }
-      sourceGapPreview.applied = movedAway;
+      destinationGapPreview = null;
+
+      if (sourceGapPreview && sourceGapPreview.applied !== movedAway) {
+        if (movedAway) {
+          sourceGapPreview.element.style.setProperty(
+            'margin-top',
+            sourceGapPreview.marginTop,
+            'important',
+          );
+          if (sourceGapPreview.suppressDirty) {
+            sourceGapPreview.element.classList.add('is-dev-gap-preview-suppressed');
+          }
+        } else if (sourceGapPreview.previousValue) {
+          sourceGapPreview.element.style.setProperty(
+            'margin-top',
+            sourceGapPreview.previousValue,
+            sourceGapPreview.previousPriority,
+          );
+        } else {
+          sourceGapPreview.element.style.removeProperty('margin-top');
+        }
+        if (!movedAway && sourceGapPreview.suppressDirty) {
+          sourceGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+        }
+        sourceGapPreview.applied = movedAway;
+      }
+
+      const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
+      const destinationNext = movedAway ? remaining[insertIndex] : null;
+      if (destinationNext) {
+        const preserveDestinationGap = insertIndex > 0;
+        const suppressDirty = destinationNext.classList.contains('is-dev-spacing-dirty');
+        destinationGapPreview = {
+          element: destinationNext,
+          previousValue: destinationNext.style.getPropertyValue('margin-top'),
+          previousPriority: destinationNext.style.getPropertyPriority('margin-top'),
+          suppressDirty,
+        };
+        if (suppressDirty) destinationNext.classList.add('is-dev-gap-preview-suppressed');
+        if (preserveDestinationGap && suppressDirty) {
+          indicator.setAttribute('data-dev-section-preserved-gap-dirty', '');
+          indicator.style.setProperty(
+            '--dev-section-preserved-gap-height',
+            grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop,
+          );
+        }
+        destinationNext.style.setProperty('margin-top', 'var(--space-related)', 'important');
+      }
+      if (indicator.isConnected) setIntroFoldOffsets();
     },
   });
 
@@ -244,6 +312,22 @@
   const clearSourceGapPreview = () => {
     sourceGapIndicator?.remove();
     sourceGapIndicator = null;
+    if (destinationGapPreview?.suppressDirty) {
+      destinationGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+    }
+    if (destinationGapPreview?.previousValue) {
+      destinationGapPreview.element.style.setProperty(
+        'margin-top',
+        destinationGapPreview.previousValue,
+        destinationGapPreview.previousPriority,
+      );
+    } else {
+      destinationGapPreview?.element.style.removeProperty('margin-top');
+    }
+    destinationGapPreview = null;
+    if (sourceGapPreview?.suppressDirty) {
+      sourceGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+    }
     if (sourceGapPreview?.previousValue) {
       sourceGapPreview.element.style.setProperty(
         'margin-top',
@@ -254,6 +338,8 @@
       sourceGapPreview?.element.style.removeProperty('margin-top');
     }
     sourceGapPreview = null;
+    grabMarginSnapshot.clear();
+    setIntroFoldOffsets();
   };
 
   const prepareSourceGapPreview = (
@@ -264,13 +350,11 @@
     clearSourceGapPreview();
     const previous = sections[sourceIndex - 1];
     const next = sections[sourceIndex + 1];
-    const zone = dropZone();
-    if (!next || !zone) return;
+    if (!next) return;
 
-    const rootRect = root.getBoundingClientRect();
-    const zoneRect = zone.getBoundingClientRect();
     const rootGap = Number.parseFloat(getComputedStyle(root).marginTop) || 0;
     const nextGap = Number.parseFloat(getComputedStyle(next).marginTop) || 0;
+    const sourceGapWins = !previous || rootGap >= nextGap;
     const height = previous
       ? Math.max(rootGap, nextGap)
       : 0;
@@ -280,11 +364,13 @@
       previousValue: next.style.getPropertyValue('margin-top'),
       previousPriority: next.style.getPropertyPriority('margin-top'),
       applied: false,
+      suppressDirty: sourceGapWins && next.classList.contains('is-dev-spacing-dirty'),
     };
 
     if (
       !previous
       || height <= 0
+      || !sourceGapWins
       || !root.classList.contains('is-dev-spacing-dirty')
       || root.dataset.devSpacingValue === 'none'
     ) return;
@@ -292,11 +378,8 @@
     sourceGapIndicator = document.createElement('div');
     sourceGapIndicator.className = SOURCE_GAP_INDICATOR_CLASS;
     sourceGapIndicator.setAttribute('aria-hidden', 'true');
-    sourceGapIndicator.style.top = `${rootRect.top - rootGap - zoneRect.top}px`;
-    sourceGapIndicator.style.left = `${rootRect.left - zoneRect.left}px`;
-    sourceGapIndicator.style.width = `${rootRect.width}px`;
     sourceGapIndicator.style.height = `${height}px`;
-    zone.append(sourceGapIndicator);
+    next.append(sourceGapIndicator);
   };
 
   const commitReorderSpacing = (root: HTMLElement | null) => {
@@ -360,10 +443,27 @@
   };
 
   const setSectionDragging = (active: boolean) => {
-    document.documentElement.classList.toggle(SECTION_DRAGGING_CLASS, active);
+    const page = document.documentElement;
+    window.cancelAnimationFrame(controlsRevealFrame);
+    controlsRevealFrame = 0;
+    if (active) page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+    const shouldReveal = !active
+      && page.classList.contains(SECTION_DRAGGING_CLASS)
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (shouldReveal) page.classList.add(SECTION_CONTROLS_REVEAL_CLASS);
+    else if (!active) page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+    page.classList.toggle(SECTION_DRAGGING_CLASS, active);
     if (!active) {
-      document.documentElement.classList.remove(SECTION_HOLDING_CLASS);
+      page.classList.remove(SECTION_HOLDING_CLASS);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      if (shouldReveal) {
+        controlsRevealFrame = requestAnimationFrame(() => {
+          controlsRevealFrame = requestAnimationFrame(() => {
+            controlsRevealFrame = 0;
+            page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+          });
+        });
+      }
     }
     if (active) {
       document.querySelector('.site-header')?.classList.add('is-scrolled-hidden');
@@ -480,6 +580,9 @@
       activeSourceIndex = sourceIndex;
 
       prepareSourceGapPreview(root, activeItems, sourceIndex);
+      grabMarginSnapshot = new Map(
+        activeItems.map((section) => [section, getComputedStyle(section).marginTop]),
+      );
       controller.beginLift(root, handle, x, y, sourceIndex);
       attachLiftBackdrop(root);
       syncSlotMediaInset(root);
@@ -1140,9 +1243,33 @@
 
   .dev-section-source-gap-indicator {
     position: absolute;
-    z-index: 35;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    z-index: -2;
     box-sizing: border-box;
     margin: 0 !important;
+    border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
+    pointer-events: none;
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-gap-preview-suppressed::before {
+    content: none !important;
+  }
+
+  .dev-section-drop-indicator[data-dev-section-preserved-gap-dirty] {
+    position: relative;
+  }
+
+  .dev-section-drop-indicator[data-dev-section-preserved-gap-dirty]::before {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    z-index: 20;
+    box-sizing: border-box;
+    height: var(--dev-section-preserved-gap-height, 0px);
     border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
     pointer-events: none;
   }

@@ -51,7 +51,6 @@ export function setSafeVh(root: HTMLElement = document.documentElement): void {
 
 /** Keep an Intro's percentage endpoint relative to the page fold, not its own top. */
 export function setIntroFoldOffsets(root: ParentNode = document): void {
-  if (document.documentElement.classList.contains('is-section-reorder-dragging')) return;
   const scrollTop = window.scrollY;
   const intros = [...root.querySelectorAll<HTMLElement>(INTRO_SELECTOR)];
   const spacers = [...root.querySelectorAll<HTMLElement>(`.${INTRO_AIR_CLASS}`)];
