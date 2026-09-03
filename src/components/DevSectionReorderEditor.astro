@@ -17,6 +17,7 @@
     resolveGapLaneSide,
     resolveInsertIndexFromY,
   } from '../scripts/sectionReorder';
+  import { shouldKeepLeadingSpacingSeam } from '../lib/projectStack';
   import { setIntroFoldOffsets } from '../lib/safeVh';
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
@@ -491,7 +492,14 @@
 
     const rootGap = Number.parseFloat(getComputedStyle(root).marginTop) || 0;
     const nextGap = Number.parseFloat(getComputedStyle(next).marginTop) || 0;
-    const sourceGapWins = !previous || rootGap >= nextGap;
+    const rootDirty = root.classList.contains('is-dev-spacing-dirty');
+    const nextDirty = next.classList.contains('is-dev-spacing-dirty');
+    const sourceGapWins = !previous || shouldKeepLeadingSpacingSeam(
+      rootGap,
+      nextGap,
+      rootDirty,
+      nextDirty,
+    );
     const winningGapOwner = sourceGapWins ? root : next;
     sourceGapPlacementSide = sourceGapWins ? 'after' : 'before';
     const height = previous
@@ -503,7 +511,7 @@
       previousValue: next.style.getPropertyValue('margin-top'),
       previousPriority: next.style.getPropertyPriority('margin-top'),
       applied: false,
-      suppressDirty: sourceGapWins && next.classList.contains('is-dev-spacing-dirty'),
+      suppressDirty: sourceGapWins && nextDirty,
     };
 
     if (
@@ -626,7 +634,10 @@
       }
     }
     if (active) {
-      document.querySelector('.site-header')?.classList.add('is-scrolled-hidden');
+      document.querySelector('.site-header')?.classList.toggle(
+        'is-scrolled-hidden',
+        window.scrollY > 8,
+      );
     }
   };
 

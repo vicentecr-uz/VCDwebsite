@@ -2748,13 +2748,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
 
+      const visualSavedValues = reorderedStates.map((state) => state!.visualSavedValue);
       const reorder = reorderProjectStackSpacingSeams(
         reorderedStates.map((state) => state!.currentValue),
         sourceIndex,
         insertIndex,
         destinationSide,
+        reorderedStates.map((state) => state!.currentValue !== state!.visualSavedValue),
       );
-      const visualSavedValues = reorderedStates.map((state) => state!.visualSavedValue);
       reorderedStates.forEach((state, index) => {
         if (!state) return;
         const nextValue = reorder.values[index];
