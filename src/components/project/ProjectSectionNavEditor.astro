@@ -8,6 +8,7 @@
  * A section owns page blocks from its start until the next section or group.
  */
 import DevOverlay from '../DevOverlay.astro';
+import TextField from '../ui/TextField.astro';
 ---
 
 <div class="section-nav-editor" data-section-nav-editor hidden>
@@ -33,12 +34,7 @@ import DevOverlay from '../DevOverlay.astro';
           </span>
           <span class="dev-toggle__label">Section group</span>
         </label>
-        <div class="section-nav-editor__field dev-field" data-nav-group-label-wrap>
-          <div class="dev-field__value">
-            <input type="text" class="dev-field__input" data-nav-group-label maxlength="120"
-                   autocomplete="off" placeholder="Group name" aria-label="Group name" />
-          </div>
-        </div>
+        <TextField class="section-nav-editor__field" label="Group name" hideLabel data-nav-group-label maxlength="120" autocomplete="off" placeholder="Group name" />
       </div>
 
       <div class="section-nav-editor__group">
@@ -53,12 +49,7 @@ import DevOverlay from '../DevOverlay.astro';
           </span>
           <span class="dev-toggle__label">Section</span>
         </label>
-        <div class="section-nav-editor__field dev-field" data-nav-section-label-wrap>
-          <div class="dev-field__value">
-            <input type="text" class="dev-field__input" data-nav-section-label maxlength="120"
-                   autocomplete="off" placeholder="Section name" aria-label="Section name" />
-          </div>
-        </div>
+        <TextField class="section-nav-editor__field" label="Section name" hideLabel data-nav-section-label maxlength="120" autocomplete="off" placeholder="Section name" />
       </div>
 
       <div class="section-nav-editor__title-vis" data-nav-title-vis hidden>
@@ -190,8 +181,8 @@ import DevOverlay from '../DevOverlay.astro';
     const asSectionInput = shell.querySelector<HTMLInputElement>('[data-nav-as-section]');
     const groupLabelInput = shell.querySelector<HTMLInputElement>('[data-nav-group-label]');
     const sectionLabelInput = shell.querySelector<HTMLInputElement>('[data-nav-section-label]');
-    const groupLabelWrap = shell.querySelector<HTMLElement>('[data-nav-group-label-wrap]');
-    const sectionLabelWrap = shell.querySelector<HTMLElement>('[data-nav-section-label-wrap]');
+    const groupLabelWrap = shell.querySelector<HTMLInputElement>('[data-nav-group-label]')?.closest<HTMLElement>('.section-nav-editor__field') ?? null;
+    const sectionLabelWrap = shell.querySelector<HTMLInputElement>('[data-nav-section-label]')?.closest<HTMLElement>('.section-nav-editor__field') ?? null;
     const belongsEl = shell.querySelector<HTMLElement>('[data-nav-belongs]');
     const titleVis = shell.querySelector<HTMLElement>('[data-nav-title-vis]');
     const statusEl = shell.querySelector<HTMLElement>('[data-nav-status]');

@@ -223,6 +223,162 @@
   min-width: 0;
 }
 
+.dev-field__value:has(> .dev-text-field) {
+  min-width: 0;
+  padding: 0;
+}
+
+.dev-text-field {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-radius: inherit;
+  --dev-text-field-fade-width: 22px;
+  --dev-text-field-caret-penetration: 4px;
+  --dev-text-field-fade-solid: 8px;
+  --dev-text-field-edge-gutter: 8px;
+  --dev-text-field-fade-surface: var(--comp-field-container);
+}
+
+.dev-field:hover .dev-text-field {
+  --dev-text-field-fade-surface: var(--comp-button-soft-container-hover);
+}
+
+.dev-text-field::before,
+.dev-text-field::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  z-index: 2;
+  width: calc(var(--dev-text-field-fade-width) + 1px);
+  opacity: 0;
+  pointer-events: none;
+  background: var(--dev-text-field-fade-surface);
+  transition: opacity 150ms ease;
+}
+
+.dev-text-field::before {
+  left: -1px;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(var(--dev-text-field-fade-solid) + 1px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    #000 0,
+    #000 calc(var(--dev-text-field-fade-solid) + 1px),
+    transparent 100%
+  );
+}
+
+.dev-text-field::after {
+  right: -1px;
+  -webkit-mask-image: linear-gradient(
+    to left,
+    #000 0,
+    #000 calc(var(--dev-text-field-fade-solid) + 1px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to left,
+    #000 0,
+    #000 calc(var(--dev-text-field-fade-solid) + 1px),
+    transparent 100%
+  );
+}
+
+.dev-text-field.is-fade-left::before,
+.dev-text-field.is-fade-right::after {
+  opacity: 1;
+}
+
+.dev-text-field__track {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-padding-inline: calc(
+    var(--dev-text-field-fade-width)
+      - var(--dev-text-field-caret-penetration)
+      - var(--dev-text-field-edge-gutter)
+  );
+  /* Keep text one device-independent pixel inside the fractional field clip. */
+  -webkit-clip-path: inset(0 1px);
+  clip-path: inset(0 1px);
+}
+
+.dev-text-field__track::-webkit-scrollbar {
+  display: none;
+}
+
+.dev-field:has(.dev-text-field input:not(:disabled)) :where(.dev-field__value, .dev-field__value *, .dev-field__label, .dev-field__label *) {
+  cursor: text;
+}
+
+.dev-text-field__content {
+  min-width: 0;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+  padding: 8px var(--dev-text-field-edge-gutter);
+}
+
+.dev-text-field__prefix {
+  flex: none;
+  color: var(--sys-color-on-srf-variant);
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.dev-text-field__track .dev-field__input {
+  display: block;
+  flex: 1 0 auto;
+  width: auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.dev-text-field.is-caret-outside .dev-field__input {
+  caret-color: transparent;
+}
+
+.dev-text-field__measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  white-space: pre;
+  pointer-events: none;
+  user-select: none;
+}
+
+#component-ui-text-field .component-preview .dev-field ~ .dev-field {
+  margin-top: var(--space-unit);
+}
+
+@media (min-width: 40em) {
+  #component-ui-text-field .dev-field {
+    width: calc(100% / 3);
+  }
+}
+
+.dev-field__value:has(.dev-text-field):focus-within:not(.is-error) {
+  box-shadow: none;
+}
+
 .dev-field:hover .dev-field__value {
   background: var(--comp-button-soft-container-hover);
 }
