@@ -2530,6 +2530,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const hasIntro = roots.some((root) => root.dataset.devIntro === 'true');
       const internal = currentIntro && previousIntro;
       const boundary = currentIntro || previousIntro;
+      state.control.classList.toggle('is-intro-outer-gap', boundary && !internal);
       const normal = state.control.querySelector<HTMLElement>('[data-dev-normal-section-menu]');
       const intro = state.control.querySelector<HTMLElement>('[data-dev-intro-section-menu]');
       if (normal) normal.hidden = internal;
@@ -5539,6 +5540,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none;
   }
 
+  .dev-gap-toolbar.is-intro-outer-gap
+    :is(.dev-gap-toolbar__spacing, .dev-hairline:has(+ .dev-gap-toolbar__spacing)) {
+    display: none;
+  }
+
   /* Above mid-page siblings; drop zone still traps under header until lifted. */
   .dev-gap-toolbar[data-page-top='true'] {
     z-index: 55;
@@ -5573,6 +5579,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   [data-dev-spacing-document].project-stack--none > .dev-gap-toolbar,
   .project-stack--flush + [data-dev-spacing-document].project-stack--flush > .dev-gap-toolbar {
     top: 0;
+  }
+
+  :is([data-intro-run-start], [data-intro-after-run])
+    > .dev-gap-toolbar.is-intro-outer-gap {
+    top: calc(var(--intro-outer-air, 0px) / -2) !important;
   }
 
   .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--group):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {

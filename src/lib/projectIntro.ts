@@ -34,13 +34,12 @@ export function introLayout(
   targetVh: number,
   safeVhPx: number,
   naturalHeightPx: number,
-  memberCount: number,
 ) {
   const targetPx = Math.max(0, safeVhPx * normalizeIntroHeight(targetVh) / 100);
   const flexibleAirPx = Math.max(0, targetPx - naturalHeightPx);
   return {
     targetPx,
     flexibleAirPx,
-    slotPx: flexibleAirPx / (Math.max(0, memberCount) + 1),
+    outerGapPx: flexibleAirPx / 2,
   };
 }
