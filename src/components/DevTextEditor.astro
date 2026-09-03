@@ -639,7 +639,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      * Page boundaries offer 0. When structure changes, rebuild option sets and
      * only coerce a former page-top 0 that has actually moved into the stack.
      */
-    const syncPageTopSpacingControls = () => {
+    const syncPageTopSpacingControls = (coerce = true) => {
       spacingStates.forEach((state) => {
         const pageTop = isPageTopSpacingBlock(state.element);
         const pageBottom = isPageBottomSpacingBlock(state.element);
@@ -649,7 +649,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           suppressGalleryPageTopSpacing(state.element, pageTop),
         );
 
-        if (pageTop && !wasPageTop
+        if (coerce && pageTop && !wasPageTop
           && state.currentValue === 'section'
           && state.savedValue === 'section') {
           // Became page-top with between-sibling default — page top should be flush.
@@ -658,7 +658,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = 'none';
         }
 
-        if (!pageTop && wasPageTop && state.currentValue === 'none') {
+        if (coerce && !pageTop && wasPageTop && state.currentValue === 'none') {
           applySpacingClass(state.element, 'section');
           state.currentValue = 'section';
           if (state.savedValue === 'none') state.savedValue = 'section';
@@ -2690,7 +2690,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     });
     window.addEventListener('vcd:dev-pending-reverted', () => {
-      syncPageTopSpacingControls();
+      syncPageTopSpacingControls(false);
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     });
@@ -6027,10 +6027,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   html.is-section-reorder-dragging.is-dev-mode
-    [data-dev-spacing-document]:is(
-      .is-section-lifted-session,
-      .is-section-source-gap-preview
-    ).is-dev-spacing-dirty::before {
+    [data-dev-spacing-document].is-section-lifted-session.is-dev-spacing-dirty::before {
     content: none;
   }
 

@@ -1,23 +1,18 @@
 /** Vertical rhythm between project page sections (parent-owned stack). */
 export type ProjectStackSpacing = 'related' | 'group' | 'section' | 'major' | 'none';
 
-const PROJECT_STACK_SPACING_ORDER: ProjectStackSpacing[] = [
-  'none',
-  'related',
-  'group',
-  'section',
-  'major',
-];
+const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacing, number> = {
+  none: 0,
+  related: 1,
+  group: 2,
+  section: 3,
+  major: 4,
+};
 
 const largerProjectStackSpacing = (
   left: ProjectStackSpacing,
   right: ProjectStackSpacing,
-) => PROJECT_STACK_SPACING_ORDER[
-  Math.max(
-    PROJECT_STACK_SPACING_ORDER.indexOf(left),
-    PROJECT_STACK_SPACING_ORDER.indexOf(right),
-  )
-];
+) => PROJECT_STACK_SPACING_ORDER[left] >= PROJECT_STACK_SPACING_ORDER[right] ? left : right;
 
 /** Values stay aligned to the original block identities; only their seams change. */
 export function reorderProjectStackSpacings(
