@@ -2214,7 +2214,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           stripParagraphPlaceholders(paragraph);
           return;
         }
-        paragraph.replaceChildren(createParagraphPlaceholderBreak());
+        // Keep the browser-owned caret node so Firefox can undo the deletion.
+        if (
+          paragraph.childNodes.length === 1
+          && paragraph.firstChild instanceof HTMLBRElement
+        ) return;
+        stripParagraphPlaceholders(paragraph);
+        paragraph.append(createParagraphPlaceholderBreak());
       });
     };
 
