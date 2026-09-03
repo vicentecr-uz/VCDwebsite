@@ -57,6 +57,7 @@ export function setSafeVh(root: HTMLElement = document.documentElement): void {
 
 /** Keep an Intro's percentage endpoint relative to the page fold, not its own top. */
 export function setIntroFoldOffsets(root: ParentNode = document): void {
+  const scrollTopBefore = window.scrollY;
   const allIntros = [...root.querySelectorAll<HTMLElement>(INTRO_SELECTOR)];
   const intros = allIntros.filter((intro) => !intro.classList.contains('is-section-lifted'));
   const spacers = [...root.querySelectorAll<HTMLElement>(`.${INTRO_AIR_CLASS}`)];
@@ -132,6 +133,8 @@ export function setIntroFoldOffsets(root: ParentNode = document): void {
   spacers.forEach((spacer) => {
     if (!usedSpacers.has(spacer)) spacer.remove();
   });
+  void document.documentElement.offsetHeight;
+  if (window.scrollY !== scrollTopBefore) window.scrollTo(0, scrollTopBefore);
 }
 
 /**
