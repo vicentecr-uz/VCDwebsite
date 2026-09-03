@@ -3269,13 +3269,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return { type: 'bodyText' };
     };
 
+    const readPlainDomText = (node: HTMLElement): string => {
+      const clone = node.cloneNode(true) as HTMLElement;
+      if (clone.childNodes.length === 1 && clone.firstChild instanceof HTMLBRElement) return '';
+      clone.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+      return cleanText(clone.textContent ?? '');
+    };
+
     const readPlainBlockText = (state: EditableTextState): string => {
       if (state.kind !== 'paragraphs') {
-        return cleanText(state.element.textContent ?? '');
+        return readPlainDomText(state.element);
       }
       const paragraphs = [...state.element.querySelectorAll<HTMLElement>(':scope > p')];
-      if (!paragraphs.length) return cleanText(state.element.textContent ?? '');
-      return paragraphs.map((paragraph) => cleanText(paragraph.textContent ?? '')).join('\n');
+      if (!paragraphs.length) return readPlainDomText(state.element);
+      return paragraphs.map(readPlainDomText).join('\n');
     };
 
     const sectionIndexFromBlock = (section: HTMLElement): number | null => {
@@ -3368,7 +3375,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const heading = document.createElement(nextTag);
         [...previousTextElement.attributes].forEach((attr) => heading.setAttribute(attr.name, attr.value));
         heading.className = previousTextElement.className;
-        heading.textContent = previousTextElement.textContent;
+        heading.textContent = text;
         previousTextElement.replaceWith(heading);
         block.state.element = heading;
         enableConvertedText(heading, 'text');
