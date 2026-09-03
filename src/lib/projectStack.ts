@@ -14,13 +14,20 @@ const largerProjectStackSpacing = (
   right: ProjectStackSpacing,
 ) => PROJECT_STACK_SPACING_ORDER[left] >= PROJECT_STACK_SPACING_ORDER[right] ? left : right;
 
+export type ProjectStackSpacingReorder = {
+  values: ProjectStackSpacing[];
+  /** Original seam index supplying each value; null means a generated default seam. */
+  origins: Array<number | null>;
+};
+
 /** Values stay aligned to the original block identities; only their seams change. */
-export function reorderProjectStackSpacings(
+export function reorderProjectStackSpacingSeams(
   spacings: ProjectStackSpacing[],
   sourceIndex: number,
   insertIndex: number,
-): ProjectStackSpacing[] {
-  const next = [...spacings];
+): ProjectStackSpacingReorder {
+  const values = [...spacings];
+  const origins = spacings.map((_, index) => index as number | null);
   if (
     sourceIndex < 0
     || sourceIndex >= spacings.length
@@ -28,29 +35,57 @@ export function reorderProjectStackSpacings(
     || insertIndex >= spacings.length
     || sourceIndex === insertIndex
   ) {
-    return next;
+    return { values, origins };
   }
 
   const identities = spacings.map((_, index) => index);
   const [moved] = identities.splice(sourceIndex, 1);
-  identities.splice(insertIndex, 0, moved);
 
   const sourceNext = sourceIndex + 1;
   if (sourceNext < spacings.length) {
-    next[sourceNext] = sourceIndex === 0
-      ? 'none'
-      : largerProjectStackSpacing(spacings[sourceIndex], spacings[sourceNext]);
+    if (sourceIndex === 0) {
+      values[sourceNext] = 'none';
+      origins[sourceNext] = null;
+    } else {
+      const winner = largerProjectStackSpacing(spacings[sourceIndex], spacings[sourceNext])
+        === spacings[sourceIndex]
+        ? sourceIndex
+        : sourceNext;
+      values[sourceNext] = spacings[winner];
+      origins[sourceNext] = winner;
+    }
   }
 
   if (insertIndex === 0) {
-    next[sourceIndex] = 'none';
-    const destinationNext = identities[1];
-    if (destinationNext !== undefined) next[destinationNext] = 'related';
+    values[moved] = 'none';
+    origins[moved] = null;
+    const destinationNext = identities[0];
+    if (destinationNext !== undefined) {
+      values[destinationNext] = 'related';
+      origins[destinationNext] = null;
+    }
   } else {
-    next[sourceIndex] = 'related';
+    const destinationNext = identities[insertIndex];
+    if (destinationNext === undefined) {
+      values[moved] = 'related';
+      origins[moved] = null;
+    } else {
+      values[moved] = values[destinationNext];
+      origins[moved] = origins[destinationNext];
+      values[destinationNext] = 'related';
+      origins[destinationNext] = null;
+    }
   }
 
-  return next;
+  return { values, origins };
+}
+
+export function reorderProjectStackSpacings(
+  spacings: ProjectStackSpacing[],
+  sourceIndex: number,
+  insertIndex: number,
+): ProjectStackSpacing[] {
+  return reorderProjectStackSpacingSeams(spacings, sourceIndex, insertIndex).values;
 }
 
 export function projectStackClass(

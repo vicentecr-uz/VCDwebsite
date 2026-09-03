@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { introLayout, introRun, normalizeIntroHeight, resolveIntroHeight } from '../../src/lib/projectIntro.ts';
-import { reorderProjectStackSpacings } from '../../src/lib/projectStack.ts';
+import {
+  reorderProjectStackSpacings,
+  reorderProjectStackSpacingSeams,
+} from '../../src/lib/projectStack.ts';
 
 assert.equal(normalizeIntroHeight(80.4), 80);
 assert.equal(normalizeIntroHeight('bad'), 75);
@@ -31,7 +34,21 @@ assert.deepEqual(
 );
 assert.deepEqual(
   reorderProjectStackSpacings(['none', 'group', 'related', 'section'], 1, 2),
-  ['none', 'related', 'group', 'section'],
+  ['none', 'section', 'group', 'related'],
+);
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(['none', 'related', 'section'], 0, 1),
+  {
+    values: ['section', 'none', 'related'],
+    origins: [2, null, null],
+  },
+);
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(['none', 'section', 'related'], 1, 0),
+  {
+    values: ['related', 'none', 'section'],
+    origins: [null, null, 1],
+  },
 );
 
 console.log('project-intro: ok');

@@ -100,7 +100,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
-  import { reorderProjectStackSpacings } from '../lib/projectStack';
+  import { reorderProjectStackSpacingSeams } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   type EditableTextValue = string | string[];
   type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
@@ -122,6 +122,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     document: string;
     path: Array<string | number>;
     savedValue: SpacingValue;
+    visualSavedValue: SpacingValue;
     currentValue: SpacingValue;
     introHeight: EditableIntroHeightState | null;
   }
@@ -495,7 +496,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
         button.classList.toggle('is-active', button.dataset.devSpacingOption === state.currentValue);
       });
-      const dirty = state.currentValue !== state.savedValue;
+      const dirty = state.currentValue !== state.visualSavedValue;
       state.element.classList.toggle('is-dev-spacing-dirty', dirty);
       if (!dirty) cancelGapRelocation(state.control);
     };
@@ -656,12 +657,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           applySpacingClass(state.element, 'none');
           state.currentValue = 'none';
           state.savedValue = 'none';
+          state.visualSavedValue = 'none';
         }
 
         if (coerce && !pageTop && wasPageTop && state.currentValue === 'none') {
           applySpacingClass(state.element, 'section');
           state.currentValue = 'section';
-          if (state.savedValue === 'none') state.savedValue = 'section';
+          if (state.savedValue === 'none') {
+            state.savedValue = 'section';
+            state.visualSavedValue = 'section';
+          }
         }
 
         rebuildSpacingOptionButtons(state, pageTop, pageBottom);
@@ -778,6 +783,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           document: element.dataset.devSpacingDocument,
           path,
           savedValue: initial,
+          visualSavedValue: initial,
           currentValue: initial,
           introHeight: introHeightState,
         };
@@ -1025,7 +1031,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const clearGapProximity = (control: HTMLElement) => {
-      if (control.classList.contains('is-menu-open')) {
+      if (
+        control.classList.contains('is-menu-open')
+        || control.classList.contains('is-menu-closing')
+      ) {
         control.classList.remove('is-near-add', 'is-near-spacing');
         return;
       }
@@ -1052,9 +1061,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       } else {
         return;
       }
+      const openMenu = spacingStates.find((state) =>
+        state.control.classList.contains('is-menu-open'));
+      if (openMenu && !isPointerOverToolbarHitbox(openMenu, x, y)) {
+        closeSectionMenus(undefined, true);
+        clearGapProximityAll();
+        suppressGapProximity = true;
+        return;
+      }
       const held = spacingStates.some((state) => {
         if (state.control.hidden) return false;
-        if (state.control.classList.contains('is-menu-open')) return true;
         const pillUp =
           state.control.classList.contains('is-near-add')
           || state.control.classList.contains('is-near-spacing')
@@ -1117,7 +1133,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return distanceToRect(pill.getBoundingClientRect(), clientX, clientY);
     };
 
-    const isSectionMenuOpen = (state: EditableSpacingState) => !state.menu.hidden;
+    const isSectionMenuOpen = (state: EditableSpacingState) =>
+      state.control.classList.contains('is-menu-open');
 
     const isAddControlPinned = (state: EditableSpacingState) =>
       isSectionMenuOpen(state) ||
@@ -1155,7 +1172,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           !control.hidden &&
           (control.classList.contains('is-near-add') ||
             control.classList.contains('is-near-spacing') ||
-            control.classList.contains('is-menu-open')),
+            control.classList.contains('is-menu-open') ||
+            control.classList.contains('is-menu-closing')),
       );
       const root = document.documentElement;
       const wasActive = root.classList.contains('is-page-top-gap-above-header');
@@ -1165,12 +1183,40 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
     };
 
-    const closeSectionMenus = (except?: EditableSpacingState) => {
+    const sectionMenuCloseTimers = new WeakMap<HTMLElement, number>();
+
+    const cancelSectionMenuClose = (state: EditableSpacingState) => {
+      const timer = sectionMenuCloseTimers.get(state.control);
+      if (timer !== undefined) window.clearTimeout(timer);
+      sectionMenuCloseTimers.delete(state.control);
+      state.control.classList.remove('is-menu-closing');
+    };
+
+    const closeSectionMenus = (except?: EditableSpacingState, animate = false) => {
       spacingStates.forEach((state) => {
         if (except && state === except) return;
-        state.menu.hidden = true;
+        cancelSectionMenuClose(state);
         state.addButton.setAttribute('aria-expanded', 'false');
         state.control.classList.remove('is-menu-open');
+        state.control.classList.remove('is-near-add', 'is-near-spacing');
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && state.control.contains(active)) active.blur();
+        const shouldAnimate = animate
+          && !state.menu.hidden
+          && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!shouldAnimate) {
+          state.menu.hidden = true;
+          syncGapToolbarTopPin(state.control, false);
+          return;
+        }
+        state.control.classList.add('is-menu-closing');
+        sectionMenuCloseTimers.set(state.control, window.setTimeout(() => {
+          sectionMenuCloseTimers.delete(state.control);
+          state.menu.hidden = true;
+          state.control.classList.remove('is-menu-closing');
+          syncGapToolbarTopPin(state.control, false);
+          syncPageTopGapStacking();
+        }, 180));
       });
       syncPageTopGapStacking();
     };
@@ -1669,6 +1715,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (!response.ok) throw new Error(payload.error || 'Could not save pending layout before inserting images.');
         dirtySpacing.forEach((state) => {
           state.savedValue = state.currentValue;
+          state.visualSavedValue = state.currentValue;
           syncSpacingControl(state);
         });
         dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
@@ -1802,6 +1849,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       });
       dirtySpacingStates().forEach((state) => {
         state.currentValue = state.savedValue;
+        state.visualSavedValue = state.savedValue;
         applySpacingClass(state.element, state.savedValue);
         syncSpacingControl(state);
       });
@@ -2105,22 +2153,34 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (existing instanceof HTMLParagraphElement && existing.parentElement === element) {
         return existing;
       }
-
-      // Caret is on the root (or outside any <p>) — snap into a neighbour.
-      if (range.startContainer === element) {
-        const atOffset = element.childNodes[range.startOffset];
-        if (atOffset instanceof HTMLParagraphElement) {
-          placeCaretInParagraph(atOffset, true);
-          return atOffset;
-        }
-        const before = element.childNodes[range.startOffset - 1];
-        if (before instanceof HTMLParagraphElement) {
-          placeCaretInParagraph(before, false);
-          return before;
-        }
-      }
+      if (!range.collapsed) return null;
 
       const paragraphs = [...element.querySelectorAll<HTMLParagraphElement>(':scope > p')];
+      // A click in server-rendered whitespace can leave the caret on the root
+      // beside a paragraph. Choose the paragraph on that side instead of always
+      // jumping to the start of the block, where Backspace means merge.
+      const children = [...element.childNodes];
+      let boundary = range.startOffset;
+      if (range.startContainer !== element) {
+        let direct: Node = range.startContainer;
+        while (direct.parentNode && direct.parentNode !== element) direct = direct.parentNode;
+        const directIndex = children.indexOf(direct);
+        if (directIndex >= 0) boundary = directIndex + (range.startOffset > 0 ? 1 : 0);
+      }
+      const before = children.slice(0, boundary).reverse().find(
+        (node): node is HTMLParagraphElement => node instanceof HTMLParagraphElement,
+      );
+      if (before) {
+        placeCaretInParagraph(before, false);
+        return before;
+      }
+      const after = children.slice(boundary).find(
+        (node): node is HTMLParagraphElement => node instanceof HTMLParagraphElement,
+      );
+      if (after) {
+        placeCaretInParagraph(after, true);
+        return after;
+      }
       if (paragraphs.length) {
         const fallback = paragraphs[0];
         placeCaretInParagraph(fallback, true);
@@ -2152,6 +2212,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
         stripParagraphPlaceholders(paragraph);
         paragraph.append(createParagraphPlaceholderBreak());
+      });
+    };
+
+    const removeParagraphRootWhitespace = (element: HTMLElement) => {
+      [...element.childNodes].forEach((node) => {
+        if (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) node.remove();
       });
     };
 
@@ -2244,6 +2310,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const bindTextState = (state: EditableTextState) => {
       const { element } = state;
+      if (state.kind === 'paragraphs') removeParagraphRootWhitespace(element);
       // Typing is the signal that the last Save/Publish message has been read.
       element.addEventListener('input', () => {
         if (state.kind === 'paragraphs') normalizeParagraphPlaceholders(element);
@@ -2262,12 +2329,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         element.addEventListener('beforeinput', (event) => {
           if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
             event.preventDefault();
+          } else if (event.inputType.startsWith('delete')) {
+            ensureParagraphSelection(element);
           }
+        });
+        element.addEventListener('pointerup', () => {
+          requestAnimationFrame(() => ensureParagraphSelection(element));
         });
       }
       element.addEventListener('keydown', (event) => {
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
+          if (state.kind === 'paragraphs') ensureParagraphSelection(element);
           if (tryMergeBlockAtCaret(state, event.key === 'Delete' ? 'forward' : 'backward')) {
             event.preventDefault();
           }
@@ -2608,9 +2681,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       state.addButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        const opening = state.menu.hidden;
+        const opening = !state.control.classList.contains('is-menu-open');
         closeSectionMenus(opening ? state : undefined);
         if (!opening) return;
+        cancelSectionMenuClose(state);
         refreshSectionMenu(state);
         state.menu.hidden = false;
         state.addButton.setAttribute('aria-expanded', 'true');
@@ -2663,15 +2737,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
 
-      const values = reorderProjectStackSpacings(
+      const reorder = reorderProjectStackSpacingSeams(
         reorderedStates.map((state) => state!.currentValue),
         sourceIndex,
         insertIndex,
       );
+      const visualSavedValues = reorderedStates.map((state) => state!.visualSavedValue);
       reorderedStates.forEach((state, index) => {
-        if (!state || state.currentValue === values[index]) return;
-        state.currentValue = values[index];
-        applySpacingClass(state.element, state.currentValue);
+        if (!state) return;
+        const nextValue = reorder.values[index];
+        const origin = reorder.origins[index];
+        const nextVisualSavedValue = origin === null
+          ? nextValue
+          : visualSavedValues[origin];
+        const valueChanged = state.currentValue !== nextValue;
+        state.currentValue = nextValue;
+        state.visualSavedValue = nextVisualSavedValue;
+        if (valueChanged) applySpacingClass(state.element, state.currentValue);
         syncSpacingControl(state);
       });
       syncPageTopSpacingControls();
@@ -2720,6 +2802,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       for (let i = pendingBlockConverts.length - 1; i >= 0; i -= 1) {
         if (pendingBlockConverts[i].root === element) pendingBlockConverts.splice(i, 1);
       }
+      const active = document.activeElement;
+      const formatNode = savedFormatRange?.commonAncestorContainer;
+      if (
+        (active instanceof Node && (active === element || element.contains(active)))
+        || (formatNode && (formatNode === element || element.contains(formatNode)))
+      ) {
+        window.getSelection()?.removeAllRanges();
+        if (active instanceof HTMLElement) active.blur();
+        hideFormatBar();
+        syncSpacingCaretSuppression();
+      }
+      closeSectionMenus();
       const { texts, spacing } = detachSectionStates(element);
 
       const deletableIdx = deletableSections.indexOf(element);
@@ -3540,6 +3634,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (next) {
         if (previous) {
           next.savedValue = previous.savedValue;
+          next.visualSavedValue = previous.visualSavedValue;
           next.currentValue = previous.currentValue;
           applySpacingClass(newRoot, previous.currentValue);
           syncSpacingControl(next);
@@ -4831,6 +4926,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
         dirtySpacing.forEach((state) => {
           state.savedValue = state.currentValue;
+          state.visualSavedValue = state.currentValue;
           syncSpacingControl(state);
         });
         dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
@@ -4852,6 +4948,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           remapSectionPaths(indexMap);
           remapPathsInStates(indexMap);
           resetSectionOrderIds();
+          const reorderedDocument = String(change.payload.document || '');
+          spacingStates.forEach((state) => {
+            if (state.document !== reorderedDocument) return;
+            state.savedValue = state.currentValue;
+            state.visualSavedValue = state.currentValue;
+            syncSpacingControl(state);
+          });
         }
         syncPageTopSpacingControls();
         insertedSections.forEach(({ clientId, serverId }) => {
@@ -5714,6 +5817,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   html.is-section-reorder-dragging .dev-gap-toolbar__pill,
+  html.is-section-reorder-controls-revealing .dev-gap-toolbar__pill,
   html.is-section-reorder-dragging .dev-gap-toolbar__menu,
   html.is-section-reorder-dragging .dev-gap-toolbar__pill-ghost {
     opacity: 0 !important;
@@ -5859,6 +5963,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     gap: 4px;
     min-width: 10em;
     transform: translateX(-50%);
+    opacity: 1;
+    transition: opacity 0.15s ease;
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
   }
@@ -5867,8 +5973,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     z-index: 2;
   }
 
+  .dev-gap-toolbar.is-menu-closing > .dev-gap-toolbar__pill,
+  .dev-gap-toolbar.is-menu-closing > .dev-gap-toolbar__menu {
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
   .dev-gap-toolbar__menu[hidden] {
     display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-gap-toolbar__pill,
+    .dev-gap-toolbar__menu {
+      transition: none;
+    }
   }
 
   /* Page emphasis, Align=Start. */
