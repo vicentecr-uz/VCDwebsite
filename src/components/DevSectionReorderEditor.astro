@@ -11,7 +11,14 @@
     sectionOrderId,
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar, getDevSectionOutline } from '../scripts/devSectionOutlineSync';
-  import { createReorderController, REORDER_TIMING } from '../scripts/sectionReorder';
+  import {
+    createReorderController,
+    REORDER_TIMING,
+    resolveGapLaneSide,
+    resolveInsertIndexFromY,
+  } from '../scripts/sectionReorder';
+  import { shouldKeepLeadingSpacingSeam } from '../lib/projectStack';
+  import { setIntroFoldOffsets } from '../lib/safeVh';
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
 
@@ -24,10 +31,18 @@
   // Shared with the controller, which holds the drop slot back behind this fade.
   const LIFT_BACKDROP_FADE_MS = REORDER_TIMING.LIFT_CARD_FADE_MS;
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
+  const SECTION_CONTROLS_REVEAL_CLASS = 'is-section-reorder-controls-revealing';
+  const SECTION_CONTROLS_SETTLING_CLASS = 'is-section-reorder-controls-settling';
   /** Fist cursor only while the button is down — settle may continue after. */
   const SECTION_HOLDING_CLASS = 'is-section-reorder-holding';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
+  const SOURCE_GAP_INDICATOR_CLASS = 'dev-section-source-gap-indicator';
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
+  const SOURCE_PLACEMENT_KEY = 'source';
+  const START_PLACEMENT_KEY = 'start';
+  const END_PLACEMENT_KEY = 'end';
+  const GAP_BEFORE_PLACEMENT_KEY = 'gap-before';
+  const GAP_AFTER_PLACEMENT_KEY = 'gap-after';
 
   let reorderActive = false;
   let dragItem: HTMLElement | null = null;
@@ -38,16 +53,43 @@
   // Every drop-zone child at grab time, so an abort puts the page back exactly —
   // sections and the non-section children they were dragged past alike.
   let grabNodeSnapshot: ChildNode[] | null = null;
+  let grabSpacingSnapshot: HTMLElement[] | null = null;
+  let sourceGapIndicator: HTMLElement | null = null;
+  let sourceGapIndicatorFollowsSlot = false;
+  let sourceGapIndicatorStartsAfterSource = false;
+  let sourceGapIndicatorInitialOwner: HTMLElement | null = null;
+  let preservedGapPaintOwner: HTMLElement | null = null;
+  let sourceGapPlacementSide: 'before' | 'after' | null = null;
+  let sourceGapPreview: {
+    element: HTMLElement;
+    marginTop: string;
+    previousValue: string;
+    previousPriority: string;
+    applied: boolean;
+    suppressDirty: boolean;
+  } | null = null;
+  let destinationGapPreview: {
+    element: HTMLElement;
+    previousValue: string;
+    previousPriority: string;
+    suppressDirty: boolean;
+  } | null = null;
+  let grabMarginSnapshot = new Map<HTMLElement, string>();
   let baselineOrder: number[] | null = null;
   let documentKey = '';
   let sessionPointerActive = false;
   let sessionButtonDown = false;
+  let activeItems: HTMLElement[] | null = null;
+  let activeIntroDrag = false;
+  let activeSourceIndex = 0;
+  let activePlacementKey = '';
   // A drop keeps running (settle glide, then card fade) after the controller
   // goes idle, so a re-grab can start while the previous session is still
   // finishing. Tag each lift so that tail only tears down chrome it still owns.
   let sessionSeq = 0;
   let activeSessionId = 0;
   let droppingSessionId = 0;
+  let controlsRevealFrame = 0;
 
   const dropZone = () => getDropZone();
 
@@ -56,7 +98,7 @@
     || el.classList.contains(DROP_INDICATOR_CLASS);
 
   const getContentSections = () =>
-    getSectionRootsInDomOrder().filter((el) => el !== dragItem && !isChromeNode(el));
+    (activeItems ?? getSectionRootsInDomOrder()).filter((el) => el !== dragItem && !isChromeNode(el));
 
   const ordersMatch = (left: number[], right: number[]) =>
     JSON.stringify(left) === JSON.stringify(right);
@@ -146,8 +188,17 @@
 
   const controller = createReorderController({
     getItems: getContentSections,
+    getFlipElements: () => activeIntroDrag
+      ? [
+          ...getSectionRootsInDomOrder().filter(
+            (section) => section !== dragItem && !isChromeNode(section),
+          ),
+          ...(sourceGapIndicator?.isConnected ? [sourceGapIndicator] : []),
+        ]
+      : [],
     getDropZone: dropZone,
     getDragItem: () => dragItem,
+    moveIndicatorWithFlip: true,
     classes: {
       indicator: DROP_INDICATOR_CLASS,
       indicatorBody: DROP_INDICATOR_BODY_CLASS,
@@ -155,6 +206,7 @@
       lifted: 'is-section-lifted',
       fadeGhost: 'is-drop-indicator-fade-ghost',
       liftBackdrop: LIFT_BACKDROP_CLASS,
+      dropPreviewBelow: 'is-drop-preview-below',
     },
     measureLiftGaps: (item) => ({
       top: getComputedStyle(item).marginTop || '0px',
@@ -163,17 +215,356 @@
     // Tapico spaces via margin-top. Put that margin on the indicator itself
     // (not --gap-top) so collapse matches the live section and the dashed
     // body lines up with the border box. Internal rails stay at 0.
-    measureInsertGaps: (_insertIndex, _sourceIndex, liftGaps) => ({
-      top: '0px',
-      bottom: '0px',
-      marginTop: liftGaps.top,
-    }),
+    get initialPlacementKey() {
+      return activeIntroDrag ? SOURCE_PLACEMENT_KEY : '';
+    },
+    measureInsertGaps: (insertIndex, sourceIndex, liftGaps, placementKey) => {
+      const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
+      const destinationNext = remaining[insertIndex];
+      const movedAway = activeIntroDrag
+        ? placementKey !== SOURCE_PLACEMENT_KEY
+        : insertIndex !== sourceIndex;
+      const destinationGap = destinationNext
+        ? sourceGapPreview?.element === destinationNext && movedAway
+          ? sourceGapPreview.marginTop
+          : (grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop)
+        : 'var(--space-related)';
+      return {
+        top: '0px',
+        bottom: '0px',
+        marginTop: !movedAway
+          ? liftGaps.top
+          : insertIndex === 0
+            ? '0px'
+            : !destinationNext || (activeIntroDrag && placementKey === GAP_BEFORE_PLACEMENT_KEY)
+              ? 'var(--space-related)'
+              : destinationGap,
+      };
+    },
+    resolveInsertPlacement: ({ items, centerY, currentIndex, currentKey, sourceIndex, direction, slot }) => {
+      if (!activeIntroDrag) {
+        let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
+        const full = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
+        for (let i = 0; i < full.length;) {
+          if (full[i].dataset.devIntro !== 'true') { i += 1; continue; }
+          const run = [];
+          while (i < full.length && full[i].dataset.devIntro === 'true') run.push(full[i++]);
+          const positions = run.map((el) => items.indexOf(el)).filter((index) => index >= 0);
+          if (!positions.length) continue;
+          const start = Math.min(...positions);
+          const end = Math.max(...positions) + 1;
+          if (target > start && target < end) {
+            if (direction < 0) target = start;
+            else if (direction > 0) target = end;
+            else {
+              const midpoint = (run[0].getBoundingClientRect().top + run.at(-1).getBoundingClientRect().bottom) / 2;
+              target = centerY < midpoint ? start : end;
+            }
+          }
+        }
+        return { index: target };
+      }
+
+      const slotRect = slot?.getBoundingClientRect();
+      const currentGapSide = currentKey === SOURCE_PLACEMENT_KEY
+        ? sourceGapPlacementSide
+        : currentKey === GAP_BEFORE_PLACEMENT_KEY
+          ? 'before'
+          : currentKey === GAP_AFTER_PLACEMENT_KEY
+            ? 'after'
+            : null;
+      if (slotRect && currentGapSide) {
+        const previousBottom = items[currentIndex - 1]?.getBoundingClientRect().bottom;
+        const nextTop = items[currentIndex]?.getBoundingClientRect().top;
+        const gapTop = currentGapSide === 'before' ? slotRect.bottom : previousBottom;
+        const gapBottom = currentGapSide === 'before' ? nextTop : slotRect.top;
+        if (gapTop !== undefined && gapBottom !== undefined && gapBottom > gapTop) {
+          const nextSide = resolveGapLaneSide(
+            gapTop,
+            gapBottom,
+            centerY,
+            direction,
+            currentGapSide,
+          );
+          if (nextSide !== currentGapSide) {
+            return {
+              index: currentIndex,
+              key: nextSide === 'before'
+                ? GAP_BEFORE_PLACEMENT_KEY
+                : GAP_AFTER_PLACEMENT_KEY,
+            };
+          }
+        }
+      }
+
+      const target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
+      if (currentKey === SOURCE_PLACEMENT_KEY && target === sourceIndex) {
+        return { index: target, key: SOURCE_PLACEMENT_KEY };
+      }
+      if (target <= 0) return { index: 0, key: START_PLACEMENT_KEY };
+      if (target >= items.length) return { index: items.length, key: END_PLACEMENT_KEY };
+      if (target !== currentIndex) {
+        const previousRect = items[target - 1]?.getBoundingClientRect();
+        const nextRect = items[target]?.getBoundingClientRect();
+        const initialSide = direction < 0 ? 'after' : 'before';
+        const gapSide = previousRect && nextRect && nextRect.top > previousRect.bottom
+          ? resolveGapLaneSide(
+              previousRect.bottom,
+              nextRect.top,
+              centerY,
+              direction,
+              initialSide,
+            )
+          : initialSide;
+        return {
+          index: target,
+          key: gapSide === 'before' ? GAP_BEFORE_PLACEMENT_KEY : GAP_AFTER_PLACEMENT_KEY,
+        };
+      }
+
+      return {
+        index: currentIndex,
+        key: currentKey || (direction < 0 ? GAP_AFTER_PLACEMENT_KEY : GAP_BEFORE_PLACEMENT_KEY),
+      };
+    },
+    onSlotSync: (indicator, insertIndex, placementKey) => {
+      activePlacementKey = placementKey;
+      const movedAway = activeIntroDrag
+        ? placementKey !== SOURCE_PLACEMENT_KEY
+        : insertIndex !== activeSourceIndex;
+      indicator.classList.toggle('project-block--intro', activeIntroDrag);
+      if (activeIntroDrag) {
+        indicator.dataset.devIntroHeightValue = dragItem?.dataset.devIntroHeightValue || '75';
+      } else {
+        delete indicator.dataset.devIntroHeightValue;
+      }
+      indicator.toggleAttribute(
+        'data-dev-section-insert-at-start',
+        movedAway && insertIndex === 0,
+      );
+      indicator.removeAttribute('data-dev-section-preserved-gap-dirty');
+      indicator.style.removeProperty('--dev-section-preserved-gap-height');
+      if (destinationGapPreview?.suppressDirty) {
+        destinationGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+      }
+      if (destinationGapPreview?.previousValue) {
+        destinationGapPreview.element.style.setProperty(
+          'margin-top',
+          destinationGapPreview.previousValue,
+          destinationGapPreview.previousPriority,
+        );
+      } else {
+        destinationGapPreview?.element.style.removeProperty('margin-top');
+      }
+      destinationGapPreview = null;
+
+      if (sourceGapPreview && sourceGapPreview.applied !== movedAway) {
+        if (movedAway) {
+          sourceGapPreview.element.style.setProperty(
+            'margin-top',
+            sourceGapPreview.marginTop,
+            'important',
+          );
+          if (sourceGapPreview.suppressDirty) {
+            sourceGapPreview.element.classList.add('is-dev-gap-preview-suppressed');
+          }
+        } else if (sourceGapPreview.previousValue) {
+          sourceGapPreview.element.style.setProperty(
+            'margin-top',
+            sourceGapPreview.previousValue,
+            sourceGapPreview.previousPriority,
+          );
+        } else {
+          sourceGapPreview.element.style.removeProperty('margin-top');
+        }
+        if (!movedAway && sourceGapPreview.suppressDirty) {
+          sourceGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+        }
+        sourceGapPreview.applied = movedAway;
+      }
+
+      const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
+      const destinationNext = movedAway ? remaining[insertIndex] : null;
+      let sourceGapOwner = movedAway || sourceGapIndicatorStartsAfterSource
+        ? sourceGapPreview?.element
+        : indicator;
+      const insertsAfterGap = !activeIntroDrag || placementKey !== GAP_BEFORE_PLACEMENT_KEY;
+      if (destinationNext && insertsAfterGap) {
+        const preserveDestinationGap = insertIndex > 0;
+        const suppressDirty = destinationNext.classList.contains('is-dev-spacing-dirty');
+        const sourceGapMovesToSlot = Boolean(
+          preserveDestinationGap
+          && sourceGapIndicator
+          && sourceGapPreview?.element === destinationNext,
+        );
+        destinationGapPreview = {
+          element: destinationNext,
+          previousValue: destinationNext.style.getPropertyValue('margin-top'),
+          previousPriority: destinationNext.style.getPropertyPriority('margin-top'),
+          suppressDirty,
+        };
+        if (suppressDirty) destinationNext.classList.add('is-dev-gap-preview-suppressed');
+        if (preserveDestinationGap && suppressDirty && !sourceGapMovesToSlot) {
+          indicator.setAttribute('data-dev-section-preserved-gap-dirty', '');
+          indicator.style.setProperty(
+            '--dev-section-preserved-gap-height',
+            sourceGapPreview?.element === destinationNext
+              ? sourceGapPreview.marginTop
+              : (grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop),
+          );
+        }
+        if (sourceGapMovesToSlot) sourceGapOwner = indicator;
+        destinationNext.style.setProperty('margin-top', 'var(--space-related)', 'important');
+      }
+      if (sourceGapIndicator && sourceGapOwner) {
+        sourceGapIndicatorFollowsSlot = sourceGapOwner === indicator;
+        sourceGapOwner.append(sourceGapIndicator);
+      }
+      if (indicator.isConnected) setIntroFoldOffsets();
+    },
   });
 
   const removeLiftBackdrop = () => {
     liftBackdrop?.remove();
     liftBackdrop = null;
     dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
+  };
+
+  const removeSourceGapIndicator = () => {
+    sourceGapIndicatorInitialOwner?.classList.remove('is-dev-gap-preview-suppressed');
+    preservedGapPaintOwner?.classList.remove('is-dev-gap-preview-suppressed');
+    sourceGapIndicator?.remove();
+    sourceGapIndicator = null;
+    sourceGapIndicatorFollowsSlot = false;
+    sourceGapIndicatorStartsAfterSource = false;
+    sourceGapIndicatorInitialOwner = null;
+    preservedGapPaintOwner = null;
+  };
+
+  const clearSourceGapPreview = (preserveIndicator = false) => {
+    if (!preserveIndicator) removeSourceGapIndicator();
+    else {
+      sourceGapIndicatorInitialOwner?.classList.remove('is-dev-gap-preview-suppressed');
+      sourceGapIndicatorInitialOwner = null;
+      sourceGapIndicatorStartsAfterSource = false;
+    }
+    if (destinationGapPreview?.suppressDirty) {
+      destinationGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+    }
+    if (destinationGapPreview?.previousValue) {
+      destinationGapPreview.element.style.setProperty(
+        'margin-top',
+        destinationGapPreview.previousValue,
+        destinationGapPreview.previousPriority,
+      );
+    } else {
+      destinationGapPreview?.element.style.removeProperty('margin-top');
+    }
+    destinationGapPreview = null;
+    if (sourceGapPreview?.suppressDirty) {
+      sourceGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
+    }
+    if (sourceGapPreview?.previousValue) {
+      sourceGapPreview.element.style.setProperty(
+        'margin-top',
+        sourceGapPreview.previousValue,
+        sourceGapPreview.previousPriority,
+      );
+    } else {
+      sourceGapPreview?.element.style.removeProperty('margin-top');
+    }
+    sourceGapPreview = null;
+    sourceGapPlacementSide = null;
+    grabMarginSnapshot.clear();
+    activePlacementKey = '';
+    setIntroFoldOffsets();
+  };
+
+  const prepareSourceGapPreview = (
+    root: HTMLElement,
+    sections: HTMLElement[],
+    sourceIndex: number,
+  ) => {
+    clearSourceGapPreview();
+    const previous = sections[sourceIndex - 1];
+    const next = sections[sourceIndex + 1];
+    if (!next) return;
+
+    const rootGap = Number.parseFloat(getComputedStyle(root).marginTop) || 0;
+    const nextGap = Number.parseFloat(getComputedStyle(next).marginTop) || 0;
+    const rootDirty = root.classList.contains('is-dev-spacing-dirty');
+    const nextDirty = next.classList.contains('is-dev-spacing-dirty');
+    const sourceGapWins = !previous || shouldKeepLeadingSpacingSeam(
+      rootGap,
+      nextGap,
+      rootDirty,
+      nextDirty,
+    );
+    const winningGapOwner = sourceGapWins ? root : next;
+    sourceGapPlacementSide = sourceGapWins ? 'after' : 'before';
+    const height = previous
+      ? Math.max(rootGap, nextGap)
+      : 0;
+    sourceGapPreview = {
+      element: next,
+      marginTop: `${Math.max(0, height)}px`,
+      previousValue: next.style.getPropertyValue('margin-top'),
+      previousPriority: next.style.getPropertyPriority('margin-top'),
+      applied: false,
+      suppressDirty: sourceGapWins && nextDirty,
+    };
+
+    if (
+      !previous
+      || height <= 0
+      || !winningGapOwner.classList.contains('is-dev-spacing-dirty')
+      || winningGapOwner.dataset.devSpacingValue === 'none'
+    ) return;
+
+    sourceGapIndicator = document.createElement('div');
+    sourceGapIndicator.className = SOURCE_GAP_INDICATOR_CLASS;
+    sourceGapIndicator.setAttribute('aria-hidden', 'true');
+    sourceGapIndicator.style.height = `${height}px`;
+    sourceGapIndicatorStartsAfterSource = !sourceGapWins;
+    sourceGapIndicatorInitialOwner = winningGapOwner;
+    winningGapOwner.classList.add('is-dev-gap-preview-suppressed');
+  };
+
+  const commitReorderSpacing = (root: HTMLElement | null, preserveIndicator = false) => {
+    const before = grabSpacingSnapshot;
+    grabSpacingSnapshot = null;
+    if (!before || !root) {
+      clearSourceGapPreview(preserveIndicator);
+      return;
+    }
+
+    const members = new Set(before);
+    const after = getSectionRootsInDomOrder().filter((section) => members.has(section));
+    const orderChanged = before.some((section, index) => section !== after[index]);
+    const seamChanged = activeIntroDrag
+      && activePlacementKey !== ''
+      && activePlacementKey !== SOURCE_PLACEMENT_KEY;
+    if (orderChanged || seamChanged) {
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-reordered', {
+        detail: {
+          document: root.dataset.devSpacingDocument || documentKey,
+          moved: root,
+          before,
+          after,
+          destinationSide: activePlacementKey === GAP_BEFORE_PLACEMENT_KEY
+            ? 'before'
+            : 'after',
+        },
+      }));
+    }
+    clearSourceGapPreview(preserveIndicator);
+    if (preserveIndicator) {
+      const owner = sourceGapIndicator?.parentElement;
+      if (owner && !owner.classList.contains(DROP_INDICATOR_CLASS)) {
+        preservedGapPaintOwner = owner;
+        owner.classList.add('is-dev-gap-preview-suppressed');
+      }
+    }
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
@@ -214,12 +605,39 @@
   };
 
   const setSectionDragging = (active: boolean) => {
-    document.documentElement.classList.toggle(SECTION_DRAGGING_CLASS, active);
+    const page = document.documentElement;
+    const controlsAlreadySettling = page.classList.contains(SECTION_CONTROLS_SETTLING_CLASS);
+    window.cancelAnimationFrame(controlsRevealFrame);
+    controlsRevealFrame = 0;
+    if (active) {
+      page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+      page.classList.remove(SECTION_CONTROLS_SETTLING_CLASS);
+    }
+    const shouldReveal = !active
+      && page.classList.contains(SECTION_DRAGGING_CLASS)
+      && !controlsAlreadySettling
+      && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (shouldReveal) page.classList.add(SECTION_CONTROLS_REVEAL_CLASS);
+    else if (!active) page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+    page.classList.toggle(SECTION_DRAGGING_CLASS, active);
     if (!active) {
-      document.documentElement.classList.remove(SECTION_HOLDING_CLASS);
+      page.classList.remove(SECTION_CONTROLS_SETTLING_CLASS);
+      page.classList.remove(SECTION_HOLDING_CLASS);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      if (shouldReveal) {
+        controlsRevealFrame = requestAnimationFrame(() => {
+          controlsRevealFrame = requestAnimationFrame(() => {
+            controlsRevealFrame = 0;
+            page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+          });
+        });
+      }
     }
     if (active) {
-      document.querySelector('.site-header')?.classList.add('is-scrolled-hidden');
+      document.querySelector('.site-header')?.classList.toggle(
+        'is-scrolled-hidden',
+        window.scrollY > 8,
+      );
     }
   };
 
@@ -291,6 +709,8 @@
       } else if (!controller.settleNow()) {
         return;
       } else {
+        commitReorderSpacing(previous);
+        syncPending();
         releaseSessionRoot(previous);
       }
     }
@@ -313,9 +733,27 @@
 
     if (!resumed) {
       const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
-      let sourceIndex = sections.indexOf(root);
+      activeIntroDrag = root.dataset.devIntro === 'true';
+      if (activeIntroDrag) {
+        const all = sections;
+        const at = all.indexOf(root);
+        let start = at;
+        let end = at;
+        while (start > 0 && all[start - 1].dataset.devIntro === 'true') start -= 1;
+        while (end + 1 < all.length && all[end + 1].dataset.devIntro === 'true') end += 1;
+        activeItems = all.slice(start, end + 1);
+      } else {
+        activeItems = sections;
+      }
+      grabSpacingSnapshot = [...activeItems];
+      let sourceIndex = activeItems.indexOf(root);
       if (sourceIndex < 0) sourceIndex = 0;
+      activeSourceIndex = sourceIndex;
 
+      prepareSourceGapPreview(root, activeItems, sourceIndex);
+      grabMarginSnapshot = new Map(
+        activeItems.map((section) => [section, getComputedStyle(section).marginTop]),
+      );
       controller.beginLift(root, handle, x, y, sourceIndex);
       attachLiftBackdrop(root);
       syncSlotMediaInset(root);
@@ -341,6 +779,13 @@
     sessionButtonDown = false;
     // Open the fist immediately — settle / card fade can keep running.
     setSectionHolding(false);
+    const releaseState = controller.getState();
+    if (
+      releaseState.placedIndex === releaseState.sourceIndex
+      && (!activeIntroDrag || releaseState.placedKey === SOURCE_PLACEMENT_KEY)
+    ) {
+      document.documentElement.classList.add(SECTION_CONTROLS_SETTLING_CLASS);
+    }
     unbindSessionPointerListeners();
 
     if (dragHandle && dragPointerId != null) {
@@ -364,6 +809,10 @@
       // A re-grab (mid-settle or during the fade) owns the lift chrome now —
       // leave its card alone and only publish the order this session committed.
       if (sessionId === activeSessionId) {
+        if (sourceGapIndicatorFollowsSlot && sourceGapIndicator && !sourceGapIndicator.isConnected) {
+          root.append(sourceGapIndicator);
+        }
+        commitReorderSpacing(root, true);
         // Card stays visible through the settle; fade it only after it lands.
         await fadeOutLiftBackdrop();
       }
@@ -371,16 +820,20 @@
         clearHostLiftChrome();
         grabOrderSnapshot = null;
         grabNodeSnapshot = null;
+        grabSpacingSnapshot = null;
       }
       syncPending();
     } finally {
       if (droppingSessionId === sessionId) droppingSessionId = 0;
       if (sessionId === activeSessionId) {
         setSectionDragging(false);
+        releaseSessionRoot(root);
+        removeSourceGapIndicator();
         dragItem = null;
         dragHandle = null;
         dragPointerId = null;
-        releaseSessionRoot(root);
+        activeItems = null;
+        activeIntroDrag = false;
       }
     }
   };
@@ -582,6 +1035,7 @@
     if (grabNodeSnapshot) restoreNodeOrder(grabNodeSnapshot);
     else if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
     controller.destroy();
+    clearSourceGapPreview();
     clearHostLiftChrome();
     if (root) {
       root.classList.remove('is-section-lifted-session');
@@ -593,6 +1047,9 @@
     dragPointerId = null;
     grabOrderSnapshot = null;
     grabNodeSnapshot = null;
+    grabSpacingSnapshot = null;
+    activeItems = null;
+    activeIntroDrag = false;
   };
 
   const setReorderActive = (active: boolean) => {
@@ -942,6 +1399,14 @@
     will-change: transform;
   }
 
+  .dev-section-drop-indicator.is-section-flip-moving {
+    will-change: transform;
+  }
+
+  .dev-section-source-gap-indicator.is-section-flip-moving {
+    will-change: transform;
+  }
+
   /* A neighbour on the move carries the same card as the lifted block, so it
      reads as a solid sheet sliding past and the gap indicator never shows
      through it. No elevation shadow — these slide under the lifted block,
@@ -964,6 +1429,39 @@
     user-select: none;
     /* Slot relocates must not be swallowed by scroll anchoring (#75). */
     overflow-anchor: none;
+  }
+
+  .dev-section-source-gap-indicator {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    z-index: -2;
+    box-sizing: border-box;
+    margin: 0 !important;
+    border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
+    pointer-events: none;
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-gap-preview-suppressed::before {
+    content: none !important;
+  }
+
+  .dev-section-drop-indicator[data-dev-section-preserved-gap-dirty] {
+    position: relative;
+  }
+
+  .dev-section-drop-indicator[data-dev-section-preserved-gap-dirty]::before {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    z-index: -2;
+    box-sizing: border-box;
+    height: var(--dev-section-preserved-gap-height, 0px);
+    border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
+    pointer-events: none;
   }
 
   /* Fist only while the pointer is down — drop settle must not keep grabbing. */
@@ -1024,8 +1522,11 @@
     margin-inline: 0;
   }
 
-  .is-dev-mode [data-dev-project-drop-zone] > .is-drop-preview-below {
-    margin-top: 0 !important;
+  .is-dev-mode
+    [data-dev-project-drop-zone]
+    > .dev-section-drop-indicator[data-dev-section-insert-at-start]
+    + .is-drop-preview-below {
+    margin-top: var(--space-related) !important;
   }
 
   .dev-section-reorder-spacer {
@@ -1038,6 +1539,7 @@
 
   .dev-section-drop-indicator {
     --section-lift-card-inset: 0.75em;
+    position: relative;
     display: grid;
     grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
     margin: 0;
@@ -1119,10 +1621,6 @@
     transition:
       height 140ms ease-out,
       opacity 90ms ease-out;
-  }
-
-  .dev-section-drop-indicator.is-repositioning {
-    transition: none !important;
   }
 
   .dev-section-drop-indicator.is-repositioning .dev-section-drop-indicator__body {

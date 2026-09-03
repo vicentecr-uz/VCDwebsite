@@ -46,6 +46,7 @@ const RENDERING_PATHS = [
   'src/pages/index.astro',
   'src/pages/work.astro',
   'src/pages/play.astro',
+  'src/pages/about.astro',
   'src/pages/[slug].astro',
   'src/styles/project.css',
   'src/scripts/adaptiveMediaInk.ts',
@@ -601,12 +602,12 @@ async function publishFromBranch(manifest, files) {
 }
 
 /**
- * Throw away unpublished content edits: restore each ahead content-surface path
- * to the publish branch tip (`origin/main` / `main`). Engine files are untouched.
+ * Throw away unpublished content edits. Paths changed by this branch restore to
+ * `HEAD`; all other paths restore to the publish branch tip. Engine files and
+ * committed branch migrations are untouched.
  *
- * Untracked content that never existed on main is deleted. Tracked paths are
- * checked out from the publish base. Used by the save-bar Revert when there is
- * nothing in-memory left to undo (#196).
+ * Untracked content that never existed in either ref is deleted. Used by the
+ * save-bar Revert when there is nothing in-memory left to undo (#196).
  */
 export async function revertUnpublishedContent() {
   // Match publish: reason about a current tip, not a stale fetch.
@@ -629,6 +630,13 @@ export async function revertUnpublishedContent() {
   const restored = [];
   /** @type {Record<string, string | null>} */
   const recordUpdates = {};
+  let mergeBase = null;
+  try {
+    mergeBase = await git('merge-base', 'HEAD', base);
+  } catch {
+    // With no shared history, prefer HEAD whenever it differs from main. That
+    // preserves branch work rather than guessing that main owns the path.
+  }
 
   for (const file of files) {
     if (!isContentPath(file)) {
@@ -636,6 +644,24 @@ export async function revertUnpublishedContent() {
     }
     const absolute = path.join(process.cwd(), file);
     const onBase = await blobAt(base, file);
+    const onHead = await blobAt('HEAD', file);
+    const onBranchBase = mergeBase ? await blobAt(mergeBase, file) : onBase;
+
+    // A schema/content migration may modify or delete a path that also exists
+    // on main. Revert only the working-tree edit in that case; checking out
+    // main would silently undo the branch commit and can empty the live page.
+    if (onHead !== onBranchBase) {
+      const ours = existsSync(absolute) ? await git('hash-object', '--', absolute) : null;
+      if (ours === onHead) continue;
+      if (onHead) {
+        await git('checkout', 'HEAD', '--', file);
+      } else if (existsSync(absolute)) {
+        await rm(absolute, { force: true });
+      }
+      restored.push(file);
+      continue;
+    }
+
     if (onBase) {
       await git('checkout', base, '--', file);
       restored.push(file);
@@ -649,7 +675,6 @@ export async function revertUnpublishedContent() {
       // branch-new content directory looks exactly like this from main's side
       // — media/ before #211 lands is 289 files that all pass the old test —
       // so restore the committed version and leave the publish record alone.
-      const onHead = await blobAt('HEAD', file);
       if (onHead) {
         await git('checkout', 'HEAD', '--', file);
         restored.push(file);
@@ -698,7 +723,7 @@ export async function publishContent(manifest, { force = false } = {}) {
  * Dev-only publish route. `apply: 'serve'` keeps it out of the static build, so
  * the live site never has it. GET reports whether publishing is available on
  * the current branch; POST commits the content surface and pushes to main.
- * `/api/content-revert` restores unpublished content to the publish branch tip.
+ * `/api/content-revert` discards unpublished working-tree content edits.
  *
  * @returns {import('vite').Plugin}
  */
