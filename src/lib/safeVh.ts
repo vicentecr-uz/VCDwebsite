@@ -56,7 +56,13 @@ export function setIntroFoldOffsets(root: ParentNode = document): void {
     const first = run[0];
     const last = run.at(-1)!;
     const height = Number(first.dataset.devIntroHeightValue) || 75;
-    const naturalDocumentBottom = last.getBoundingClientRect().bottom + scrollTop;
+    let next = last.nextElementSibling;
+    while (next && [...REORDER_CHROME].some((name) => next!.classList.contains(name))) {
+      next = next.nextElementSibling;
+    }
+    const naturalDocumentBottom = next
+      ? next.getBoundingClientRect().top + scrollTop
+      : last.getBoundingClientRect().bottom + scrollTop;
     const layout = introLayout(height, safeViewportHeight || window.innerHeight, naturalDocumentBottom, run.length);
     const slot = layout.slotPx;
     run.forEach((intro) => intro.style.setProperty(INTRO_AIR_PROP, `${slot}px`));
