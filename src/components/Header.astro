@@ -212,26 +212,25 @@ const menuLinks = headerSettings.menuLinks;
     };
     syncSlot();
 
-    // Horizontal geometry for the out-of-flow modes. Measured ONCE from the
-    // clean in-flow layout (load + resize), stored, and never re-read from a
-    // positioned state — so it can't compound or drift. A fixed/absolute
-    // header with unset left/right shrink-wraps to its content; this pins the
-    // box to the exact x-position and width flow gave it. rect.left is already
-    // viewport-relative, which is exactly what fixed positioning wants — do
-    // NOT add scrollX (that double-counts the gutter and shoves it right).
+    // Horizontal geometry for the out-of-flow modes. The always-in-flow slot
+    // provides the clean layout geometry (load + resize), stored and never
+    // re-read from a positioned state — so it can't compound or drift. A
+    // fixed/absolute header with unset left/right shrink-wraps to its content;
+    // this pins the box to the exact x-position and width flow gave it.
+    // rect.left is already viewport-relative, which is exactly what fixed
+    // positioning wants — do NOT add scrollX (that double-counts the gutter and
+    // shoves it right).
     let geoLeft = 0;
     let geoWidth = 0;
     const captureGeo = () => {
-      // Only meaningful from the clean in-flow layout, and only once the real
-      // wordmark font is in — a fallback-font capture is narrower and sits
-      // left, which is what read as "jumped right" when pinned out of flow.
-      if (mode !== 'flow') return;
-      const rect = header.getBoundingClientRect();
+      const rect = headerSlot instanceof HTMLElement
+        ? headerSlot.getBoundingClientRect()
+        : header.getBoundingClientRect();
       geoLeft = rect.left;
       geoWidth = rect.width;
     };
-    // Don't capture at init — fonts aren't in yet. captureGeo runs on
-    // fonts.ready / loadingdone below, and on resize.
+    // Capture synchronously to guard the gap before the font recapture can run.
+    captureGeo();
     void document.fonts?.ready.then(() => captureGeo());
     document.fonts?.addEventListener('loadingdone', () => captureGeo());
 
@@ -324,7 +323,7 @@ const menuLinks = headerSettings.menuLinks;
     // No feedback loop: a block's width comes from the column and its own cap,
     // never from the header row. The server-rendered --page-header-width (the
     // first block, from pageColumnStyle) is the pre-JS value this replaces.
-    const BLOCK_SELECTOR = '.project-block, .project-image-grid, .project-image-carousel';
+    const BLOCK_SELECTOR = '.project-block, .project-image, .project-image-grid, .project-image-carousel';
     const siteWrapper = document.querySelector<HTMLElement>('#site-wrapper');
     let appliedHeaderWidthPx = 0;
 
@@ -334,24 +333,29 @@ const menuLinks = headerSettings.menuLinks;
       const headerRect = header.getBoundingClientRect();
       if (!initialize && (mode !== 'flow' || headerRect.bottom > 0)) return;
 
-      const blocks = document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
+      const blocks = Array.from(document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)).filter(
+        (block) => !block.closest('.component-preview'),
+      );
       if (!blocks.length) return;
 
-      // The block under the supplied viewport edge: the first one that edge
-      // hasn't fully passed. While the header is hidden we probe at the place
-      // it WILL occupy when docked (`headerHeight`), not at the hidden flow
-      // header's negative rect.bottom — that negative edge always selected the
-      // first block, then a later forced sync corrected it visibly after reveal.
-      let current = blocks[0];
-      for (const block of blocks) {
-        current = block;
-        if (block.getBoundingClientRect().bottom > probeEdge) break;
+      // Keep a short first text block in charge of the gap until its successor reaches the probe edge.
+      const firstBlock = blocks[0];
+      const nextBlock = blocks[1];
+      const firstTextStillLeads = firstBlock.matches('.project-block--text') &&
+        (!nextBlock || nextBlock.getBoundingClientRect().top > probeEdge);
+      let current = firstBlock;
+      if (!firstTextStillLeads) {
+        for (const block of blocks) {
+          current = block;
+          if (block.getBoundingClientRect().bottom > probeEdge) break;
+        }
       }
 
       const widthPx = Math.round(current.getBoundingClientRect().width);
       if (widthPx === appliedHeaderWidthPx) return;
-      // A page visit may graduate from text to media width, never back again.
-      if (appliedHeaderWidthPx > 0 && widthPx < appliedHeaderWidthPx) return;
+      // Only the page's first text block may return the header to its narrower width.
+      const isFirstTextBlock = current === firstBlock && current.matches('.project-block--text');
+      if (appliedHeaderWidthPx > 0 && widthPx < appliedHeaderWidthPx && !isFirstTextBlock) return;
 
       appliedHeaderWidthPx = widthPx;
       siteWrapper.style.setProperty('--page-header-width', `${widthPx}px`);

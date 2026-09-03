@@ -4,6 +4,7 @@ import DevOverlay from './DevOverlay.astro';
 import Button from './ui/Button.astro';
 import PanelActions from './ui/PanelActions.astro';
 import SelectField from './ui/SelectField.astro';
+import TextField from './ui/TextField.astro';
 import eyeOffIcon from 'lucide-static/icons/eye-off.svg?raw';
 import filePenIcon from 'lucide-static/icons/file-pen.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
@@ -72,24 +73,7 @@ const visibilityOptions = [
     </div>
 
     <div class="dev-project-settings__slug-wrap" data-ps-slug-wrap>
-      <label class="dev-project-settings__field dev-field">
-        <span class="dev-field__label">Slug</span>
-        <div class="dev-field__value dev-project-settings__slug-value">
-          <div class="dev-project-settings__slug-scroll" data-ps-slug-scroll>
-            <span class="dev-project-settings__slug-prefix" aria-hidden="true">vcruzdesigns.com/</span>
-            <input
-              type="text"
-              class="dev-field__input"
-              autocomplete="off"
-              spellcheck="false"
-              data-ps-slug
-              aria-label="Slug"
-            />
-          </div>
-          <span class="dev-project-settings__slug-fade dev-project-settings__slug-fade--left" aria-hidden="true"></span>
-          <span class="dev-project-settings__slug-fade dev-project-settings__slug-fade--right" aria-hidden="true"></span>
-        </div>
-      </label>
+      <TextField class="dev-project-settings__field" label="Slug" prefix="vcruzdesigns.com/" autocomplete="off" spellcheck="false" data-ps-slug />
       <p class="dev-project-settings__slug-error" data-ps-slug-error aria-live="polite"></p>
     </div>
 
@@ -192,74 +176,11 @@ const visibilityOptions = [
   const slugInput = settingsRoot?.querySelector('[data-ps-slug]');
   const slugWrap = settingsRoot?.querySelector('[data-ps-slug-wrap]');
   const slugError = settingsRoot?.querySelector('[data-ps-slug-error]');
-  const slugScroll = settingsRoot?.querySelector('[data-ps-slug-scroll]');
-  const slugPrefix = settingsRoot?.querySelector('.dev-project-settings__slug-prefix');
-  const slugValueBox = settingsRoot?.querySelector('.dev-project-settings__slug-value');
   const deleteButton = settingsRoot?.querySelector('[data-ps-delete]');
   const revertButton = settingsRoot?.querySelector('[data-ps-revert]');
   const saveButton = settingsRoot?.querySelector('[data-ps-save]');
   const statusLine = settingsRoot?.querySelector('[data-ps-status-line]');
   const overlayTitle = settingsPanel?.querySelector('.dev-overlay__title');
-
-  /** Grow the slug input to its content so prefix+slug scroll as one row. */
-  const syncSlugInputWidth = () => {
-    if (!(slugInput instanceof HTMLInputElement)) return;
-    const style = getComputedStyle(slugInput);
-    const mirror = document.createElement('span');
-    mirror.style.cssText = [
-      'position:absolute',
-      'visibility:hidden',
-      'white-space:pre',
-      `font:${style.font}`,
-      `letter-spacing:${style.letterSpacing}`,
-    ].join(';');
-    // Trailing pad so the caret isn't flush against the clip edge.
-    mirror.textContent = `${slugInput.value || ''}\u200b`;
-    document.body.appendChild(mirror);
-    slugInput.style.width = `${Math.max(mirror.offsetWidth, 16)}px`;
-    mirror.remove();
-  };
-
-  const syncSlugFade = () => {
-    if (!(slugValueBox instanceof HTMLElement) || !(slugScroll instanceof HTMLElement)) return;
-    const max = Math.max(0, slugScroll.scrollWidth - slugScroll.clientWidth);
-    const left = slugScroll.scrollLeft;
-    slugValueBox.classList.toggle('is-fade-left', left > 0.5);
-    slugValueBox.classList.toggle('is-fade-right', max > 0.5 && left < max - 0.5);
-  };
-
-  /** Keep the caret in view inside the shared scroll track (not the input). */
-  const syncSlugScrollToCaret = () => {
-    if (
-      !(slugInput instanceof HTMLInputElement)
-      || !(slugScroll instanceof HTMLElement)
-      || !(slugPrefix instanceof HTMLElement)
-    ) return;
-    const style = getComputedStyle(slugInput);
-    const mirror = document.createElement('span');
-    mirror.style.cssText = [
-      'position:absolute',
-      'visibility:hidden',
-      'white-space:pre',
-      `font:${style.font}`,
-      `letter-spacing:${style.letterSpacing}`,
-    ].join(';');
-    mirror.textContent = slugInput.value.slice(0, slugInput.selectionEnd ?? slugInput.value.length);
-    document.body.appendChild(mirror);
-    const caretX = slugPrefix.offsetWidth + mirror.offsetWidth;
-    mirror.remove();
-    const pad = 8;
-    const viewL = slugScroll.scrollLeft;
-    const viewR = viewL + slugScroll.clientWidth;
-    if (caretX > viewR - pad) slugScroll.scrollLeft = caretX - slugScroll.clientWidth + pad;
-    else if (caretX < viewL + pad) slugScroll.scrollLeft = Math.max(0, caretX - pad);
-    syncSlugFade();
-  };
-
-  const syncSlugLayout = () => {
-    syncSlugInputWidth();
-    syncSlugScrollToCaret();
-  };
 
   const clearSlugError = () => {
     if (!(slugWrap instanceof HTMLElement)) return;
@@ -276,8 +197,7 @@ const visibilityOptions = [
    * animation-duration in WebKit, so the shake never ran. */
   const shakeSlugError = (message) => {
     if (!(slugWrap instanceof HTMLElement)) return;
-    const fieldValue = slugWrap.querySelector('.dev-project-settings__slug-value')
-      || slugWrap.querySelector('.dev-field__value');
+    const fieldValue = slugWrap.querySelector('.dev-field__value');
     slugWrap.classList.add('is-error');
     if (slugError instanceof HTMLElement) slugError.textContent = message;
     if (!(fieldValue instanceof HTMLElement)) return;
@@ -966,7 +886,7 @@ const visibilityOptions = [
     }
     if (slugInput instanceof HTMLInputElement) {
       slugInput.value = entry.draft.slug || panelSlug || '';
-      syncSlugLayout();
+      slugInput.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     }
     syncBgField(entry.draft.listing.bg || '#efefef');
     const gridLabel = entry.grid === 'home' ? 'Home' : entry.grid === 'work' ? 'Work' : 'Play';
@@ -1783,18 +1703,8 @@ const visibilityOptions = [
     if (!entry) return;
     entry.draft.slug = target instanceof HTMLInputElement ? target.value.trim() : entry.draft.slug;
     clearSlugError();
-    syncSlugLayout();
     syncPanelActionButtons();
   });
-
-  slugInput?.addEventListener('keydown', () => {
-    requestAnimationFrame(syncSlugScrollToCaret);
-  });
-  slugInput?.addEventListener('keyup', syncSlugScrollToCaret);
-  slugInput?.addEventListener('click', syncSlugScrollToCaret);
-  slugInput?.addEventListener('select', syncSlugScrollToCaret);
-  slugInput?.addEventListener('focus', syncSlugLayout);
-  slugScroll?.addEventListener('scroll', syncSlugFade, { passive: true });
 
   bgSwatch?.addEventListener('click', () => {
     const value = normalizeHex(bgInput instanceof HTMLInputElement ? bgInput.value : '')
@@ -2110,89 +2020,6 @@ const visibilityOptions = [
     width: 100%;
   }
 
-  .dev-project-settings__slug-value {
-    /* Clip the scroll track; fade sits on top of the left edge. */
-    position: relative;
-    display: flex;
-    align-items: center;
-    overflow: hidden;
-  }
-
-  .dev-project-settings__slug-scroll {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    width: 100%;
-    min-width: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .dev-project-settings__slug-scroll::-webkit-scrollbar {
-    display: none;
-  }
-
-  .dev-project-settings__slug-prefix {
-    flex: 0 0 auto;
-    color: var(--sys-color-on-srf-variant);
-    font: var(--dev-text-label);
-    user-select: none;
-    pointer-events: none;
-    white-space: nowrap;
-  }
-
-  /* Content-sized — width set in JS — so the track scrolls, not the input. */
-  .dev-project-settings__slug-value .dev-field__input {
-    flex: 0 0 auto;
-    width: auto;
-    min-width: 2ch;
-    margin: 0;
-    padding: 0;
-    color: var(--sys-color-on-srf);
-  }
-
-  /* Scroll-limit fades (8px inset). Shifted 0.5px outward so a subpixel
-     misalign between clip and gradient can’t flash a hard-edge sliver. */
-  .dev-project-settings__slug-fade {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 14px;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 150ms ease-out;
-    background: var(--comp-field-container);
-  }
-
-  .dev-project-settings__slug-fade--left {
-    left: 7.5px;
-    -webkit-mask-image: linear-gradient(to right, #fff 20%, transparent);
-    mask-image: linear-gradient(to right, #fff 20%, transparent);
-  }
-
-  .dev-project-settings__slug-fade--right {
-    right: 7.5px;
-    -webkit-mask-image: linear-gradient(to left, #fff 20%, transparent);
-    mask-image: linear-gradient(to left, #fff 20%, transparent);
-  }
-
-  .dev-field:hover .dev-project-settings__slug-fade {
-    background: var(--comp-button-soft-container-hover);
-  }
-
-  .dev-project-settings__slug-value.is-fade-left .dev-project-settings__slug-fade--left,
-  .dev-project-settings__slug-value.is-fade-right .dev-project-settings__slug-fade--right {
-    opacity: 1;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .dev-project-settings__slug-fade {
-      transition: none;
-    }
-  }
-
   .dev-project-settings__slug-error {
     margin: 0;
     min-height: 0;
@@ -2214,19 +2041,19 @@ const visibilityOptions = [
   }
 
   /* Transitions.dev error-state-shake — literal ms/px (var calc breaks animation-duration). */
-  .dev-project-settings__slug-wrap .dev-project-settings__slug-value {
+  .dev-project-settings__slug-wrap .dev-field__value {
     box-shadow: inset 0 0 0 1px transparent;
     transition: box-shadow 150ms ease-out;
   }
 
-  .dev-project-settings__slug-wrap .dev-project-settings__slug-value.is-error {
+  .dev-project-settings__slug-wrap .dev-field__value.is-error {
     box-shadow: inset 0 0 0 1px var(--comp-button-danger-label);
     transition: box-shadow 280ms ease-out;
   }
 
   /* Spring-decay shake — amplitude falls each peak so it settles instead of
      buzzing at full strength (transitions.dev's equal-leg ease felt stiff). */
-  .dev-project-settings__slug-wrap .dev-project-settings__slug-value.is-shaking {
+  .dev-project-settings__slug-wrap .dev-field__value.is-shaking {
     animation: t-input-shake 480ms cubic-bezier(0.22, 0.68, 0.36, 1) both;
   }
 
@@ -2258,7 +2085,7 @@ const visibilityOptions = [
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .dev-project-settings__slug-wrap .dev-project-settings__slug-value.is-shaking {
+    .dev-project-settings__slug-wrap .dev-field__value.is-shaking {
       animation: none !important;
       transform: none !important;
     }

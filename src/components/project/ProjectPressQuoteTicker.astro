@@ -116,6 +116,8 @@ const loopItems = [...items, ...items];
   .press-quote-ticker__viewport {
     position: relative;
     overflow: hidden;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 3.5em, #000 calc(100% - 3.5em), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 3.5em, #000 calc(100% - 3.5em), transparent 100%);
     /* Vertical page scroll still works; horizontal drag is ours. */
     touch-action: pan-y;
     cursor: grab;
@@ -124,28 +126,6 @@ const loopItems = [...items, ...items];
 
   .press-quote-ticker__viewport.is-dragging {
     cursor: grabbing;
-  }
-
-  /* Fade to page background at the content edges (not full-bleed). */
-  .press-quote-ticker__viewport::before,
-  .press-quote-ticker__viewport::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 3.5em;
-    z-index: 1;
-    pointer-events: none;
-  }
-
-  .press-quote-ticker__viewport::before {
-    left: 0;
-    background: linear-gradient(to right, var(--sys-color-srf) 0%, transparent 100%);
-  }
-
-  .press-quote-ticker__viewport::after {
-    right: 0;
-    background: linear-gradient(to left, var(--sys-color-srf) 0%, transparent 100%);
   }
 
   .press-quote-ticker__track {

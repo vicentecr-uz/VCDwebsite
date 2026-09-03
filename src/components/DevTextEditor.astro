@@ -4,17 +4,22 @@ import boldIcon from 'lucide-static/icons/bold.svg?raw';
 import italicIcon from 'lucide-static/icons/italic.svg?raw';
 import underlineIcon from 'lucide-static/icons/underline.svg?raw';
 import linkIcon from 'lucide-static/icons/link.svg?raw';
+import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+import checkIcon from 'lucide-static/icons/check.svg?raw';
 import pilcrowIcon from 'lucide-static/icons/pilcrow.svg?raw';
 import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
 import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import SelectField from './ui/SelectField.astro';
+import TextField from './ui/TextField.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
 const formatItalicSvg = sizeIcon(italicIcon, 16);
 const formatUnderlineSvg = sizeIcon(underlineIcon, 16);
 const formatLinkSvg = sizeIcon(linkIcon, 16);
+const formatTrashSvg = sizeIcon(trashIcon, 16);
+const formatCheckSvg = sizeIcon(checkIcon, 16);
 const formatPilcrowSvg = sizeIcon(pilcrowIcon, 16);
 const formatHeading1Svg = sizeIcon(heading1Icon, 16);
 const formatHeading2Svg = sizeIcon(heading2Icon, 16);
@@ -64,17 +69,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       </div>
     </div>
     <form class="dev-text-format__link" data-dev-text-link-panel aria-hidden="true">
-      <button type="button" data-dev-text-unlink>Unlink</button>
-      <input
-        type="text"
-        inputmode="url"
-        data-dev-text-link-input
-        placeholder="google.com"
-        autocomplete="off"
-        spellcheck="false"
-        aria-label="Link URL"
-      />
-      <button type="submit">Apply</button>
+      <button type="button" data-dev-text-unlink title="Remove link" aria-label="Remove link">
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatTrashSvg} />
+      </button>
+      <TextField class="dev-text-format__link-input" label="Link URL" hideLabel inputmode="url" data-dev-text-link-input placeholder="google.com" autocomplete="off" spellcheck="false" />
+      <button type="submit" title="Apply link" aria-label="Apply link">
+        <span class="dev-text-format__icon" aria-hidden="true" set:html={formatCheckSvg} />
+      </button>
     </form>
   </div>
 </div>
@@ -2330,6 +2331,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         // Native Enter still fires insertParagraph after our keydown split on
         // some engines (Safari), so one Return became two <p>s.
         element.addEventListener('beforeinput', (event) => {
+          if (linkPanelOpen) hideFormatBar();
           if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
             event.preventDefault();
           } else if (event.inputType.startsWith('delete')) {
@@ -2343,6 +2345,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       element.addEventListener('keydown', (event) => {
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
+          if (linkPanelOpen) hideFormatBar();
           if (state.kind === 'paragraphs') ensureParagraphSelection(element);
           if (tryMergeBlockAtCaret(state, event.key === 'Delete' ? 'forward' : 'backward')) {
             event.preventDefault();
@@ -2351,6 +2354,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
 
         if (event.key !== 'Enter') return;
+        if (linkPanelOpen) hideFormatBar();
 
         if (event.shiftKey && !event.altKey) {
           if (state.kind !== 'paragraphs') return;
@@ -3511,16 +3515,29 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     /* ── Selection formatting popup ───────────────────────── */
     let savedFormatRange: Range | null = null;
+    let savedFormatFocusEdge: 'start' | 'end' = 'end';
     /** Fallback paint when collapsed selection empties getClientRects (Edge). */
     let savedFormatRects: DOMRect[] = [];
     let linkPanelOpen = false;
     let formatPlacement: 'above' | 'below' = 'above';
     let formatRaf = 0;
+    let formatDismissGeneration = 0;
+    let formatDismissTimer = 0;
+    let linkInputFocusRaf = 0;
+    let formatDismissPointer: {
+      id: number;
+      generation: number;
+      active: boolean;
+    } | null = null;
 
     const canCustomHighlight =
       typeof CSS !== 'undefined'
       && Boolean(CSS.highlights)
       && typeof Highlight !== 'undefined';
+
+    const isFormatBarDismissing = () =>
+      formatDismissTimer !== 0
+      || formatBar.classList.contains('is-dev-text-format-dismissing');
 
     const paragraphStates = () => textStates.filter((state) => state.kind === 'paragraphs');
 
@@ -3934,12 +3951,34 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return el?.closest('a') ?? null;
     };
 
+    const saveFormatRange = (range: Range, selection = window.getSelection()) => {
+      savedFormatRange = range.cloneRange();
+      savedFormatFocusEdge = selection?.focusNode === range.startContainer
+        && selection.focusOffset === range.startOffset
+        ? 'start'
+        : 'end';
+      return savedFormatRange;
+    };
+
     const restoreFormatRange = () => {
       if (!savedFormatRange) return false;
       const selection = window.getSelection();
       if (!selection) return false;
-      selection.removeAllRanges();
-      selection.addRange(savedFormatRange);
+      if (savedFormatFocusEdge === 'start') {
+        selection.setBaseAndExtent(
+          savedFormatRange.endContainer,
+          savedFormatRange.endOffset,
+          savedFormatRange.startContainer,
+          savedFormatRange.startOffset,
+        );
+      } else {
+        selection.setBaseAndExtent(
+          savedFormatRange.startContainer,
+          savedFormatRange.startOffset,
+          savedFormatRange.endContainer,
+          savedFormatRange.endOffset,
+        );
+      }
       return true;
     };
 
@@ -3949,12 +3988,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const range = selection.getRangeAt(0);
       if (range.collapsed) return null;
       if (!findParagraphState(range.commonAncestorContainer)) return null;
-      savedFormatRange = range.cloneRange();
-      return savedFormatRange;
+      return saveFormatRange(range, selection);
     };
 
     const FORMAT_HIGHLIGHT = 'vcd-format-sel';
     const FORMAT_BAR_GAP = 20;
+    const syncLinkTextField = () => {
+      linkInput.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
+    };
 
     const getFormatRangeRects = (range: Range): DOMRect[] => {
       let rects = [...range.getClientRects()];
@@ -3965,12 +4006,44 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return rects;
     };
 
+    const getFormatEndpointLineRect = (
+      range: Range,
+      focusEdge: 'start' | 'end',
+      owner: HTMLElement,
+    ): DOMRect => {
+      const endpoint = range.cloneRange();
+      endpoint.collapse(focusEdge === 'start');
+      const endpointRect = endpoint.getBoundingClientRect();
+      if (endpointRect.height > 0) return endpointRect;
+      const endpointClientRect = [...endpoint.getClientRects()].find((rect) => rect.height > 0);
+      if (endpointClientRect) return endpointClientRect;
+
+      const rangeRects = [...range.getClientRects()].filter((rect) => rect.height > 0);
+      const rangeEdgeRect = focusEdge === 'start' ? rangeRects[0] : rangeRects.at(-1);
+      if (rangeEdgeRect) return rangeEdgeRect;
+
+      if (range.collapsed) {
+        const suffix = range.cloneRange();
+        suffix.setEnd(owner, owner.childNodes.length);
+        const suffixRect = [...suffix.getClientRects()].find((rect) => rect.height > 0);
+        if (suffixRect) return suffixRect;
+
+        const prefix = range.cloneRange();
+        prefix.setStart(owner, 0);
+        const prefixRects = [...prefix.getClientRects()].filter((rect) => rect.height > 0);
+        const prefixRect = prefixRects.at(-1);
+        if (prefixRect) return prefixRect;
+      }
+
+      return owner.getBoundingClientRect();
+    };
+
     const captureFormatRects = (range: Range | null) => {
       savedFormatRects = range ? getFormatRangeRects(range) : [];
     };
 
-    /** Out of flow while closed — measure open size without affecting layout. */
-    const measureLinkPanel = (): { height: number; width: number } => {
+    /** Out of flow while closed — measure open height without affecting layout. */
+    const measureLinkPanelHeight = (): number => {
       const prev = {
         display: linkPanel.style.display,
         position: linkPanel.style.position,
@@ -3983,44 +4056,88 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       linkPanel.style.display = prev.display;
       linkPanel.style.position = prev.position;
       linkPanel.style.visibility = prev.visibility;
-      return { height: rect.height || 33, width: rect.width || 332 };
+      return rect.height || 33;
     };
 
-    const hideFormatBar = () => {
-      formatBar.hidden = true;
+    const hideFormatBar = (pointerId: number | null = null) => {
+      cancelAnimationFrame(formatRaf);
+      formatRaf = 0;
+      cancelAnimationFrame(linkInputFocusRaf);
+      linkInputFocusRaf = 0;
+      if (formatDismissTimer) window.clearTimeout(formatDismissTimer);
+      const generation = ++formatDismissGeneration;
+      formatDismissPointer = pointerId == null
+        ? null
+        : { id: pointerId, generation, active: true };
       linkPanelOpen = false;
-      formatBar.dataset.linkOpen = 'false';
-      linkPanel.setAttribute('aria-hidden', 'true');
-      linkInput.value = '';
       savedFormatRange = null;
+      savedFormatFocusEdge = 'end';
       savedFormatRects = [];
       formatBar.dataset.placement = 'above';
-      syncFormatSelectionOverlay();
+      if (canCustomHighlight) CSS.highlights.delete(FORMAT_HIGHLIGHT);
+      formatSel.replaceChildren();
+      formatSel.hidden = true;
+      formatBar.getBoundingClientRect();
+      formatBar.classList.add('is-dev-text-format-dismissing');
+      formatBar.classList.remove('is-dev-text-format-offscreen');
+      formatBar.inert = true;
+      formatDismissTimer = window.setTimeout(() => {
+        if (generation !== formatDismissGeneration) return;
+        formatDismissTimer = 0;
+        linkInput.value = '';
+        linkInput.setCustomValidity('');
+        syncLinkTextField();
+        formatBar.dataset.linkOpen = 'false';
+        linkPanel.setAttribute('aria-hidden', 'true');
+        formatBar.hidden = true;
+        formatBar.classList.remove('is-dev-text-format-dismissing');
+        formatBar.inert = false;
+        maybeScheduleFormatBarAfterDismiss(generation);
+      }, 150);
     };
 
     const setLinkPanelOpen = (open: boolean) => {
+      cancelAnimationFrame(linkInputFocusRaf);
+      linkInputFocusRaf = 0;
       linkPanelOpen = open;
       formatBar.dataset.linkOpen = open ? 'true' : 'false';
       linkPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
       if (open) {
         if (savedFormatRange) captureFormatRects(savedFormatRange);
-        const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
+        const anchors = savedFormatRange ? anchorsInRange(savedFormatRange) : [];
+        const anchor = anchors.length === 1 ? anchors[0] : null;
         linkInput.value = anchor?.getAttribute('href') || '';
+        syncLinkTextField();
         // Paint stand-in before focus collapses the native selection (Edge).
         syncFormatSelectionOverlay();
-        requestAnimationFrame(() => {
+        const generation = formatDismissGeneration;
+        linkInputFocusRaf = requestAnimationFrame(() => {
+          linkInputFocusRaf = 0;
+          if (
+            !linkPanelOpen
+            || generation !== formatDismissGeneration
+            || formatBar.hidden
+            || formatBar.inert
+          ) return;
           linkInput.focus();
           linkInput.select();
           syncFormatSelectionOverlay();
         });
       } else {
         linkInput.value = '';
+        syncLinkTextField();
         syncFormatSelectionOverlay();
       }
     };
 
     const syncFormatSelectionOverlay = () => {
-      const show = Boolean(savedFormatRange && !formatBar.hidden && linkPanelOpen);
+      const show = Boolean(
+        savedFormatRange
+        && !formatBar.hidden
+        && !formatBar.classList.contains('is-dev-text-format-offscreen')
+        && !formatBar.classList.contains('is-dev-text-format-dismissing')
+        && linkPanelOpen,
+      );
       if (canCustomHighlight) {
         if (show && savedFormatRange) {
           CSS.highlights.set(FORMAT_HIGHLIGHT, new Highlight(savedFormatRange));
@@ -4054,6 +4171,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncFormatButtons = () => {
+      const selectedAnchors = savedFormatRange ? anchorsInRange(savedFormatRange) : [];
+      const hasSelectedLink = selectedAnchors.length === 1;
       formatButtons.forEach((button) => {
         const command = button.dataset.devFormat;
         let active = false;
@@ -4064,9 +4183,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             active = false;
           }
         } else if (command === 'underline') {
-          const anchor = closestAnchor(savedFormatRange?.commonAncestorContainer ?? null);
-          if (anchor) {
-            active = !anchor.classList.contains('is-underline-off');
+          if (hasSelectedLink) {
+            active = false;
           } else {
             try {
               active = document.queryCommandState('underline');
@@ -4075,8 +4193,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }
           }
         } else if (command === 'link') {
-          active = Boolean(closestAnchor(savedFormatRange?.commonAncestorContainer ?? null))
-            || linkPanelOpen;
+          active = hasSelectedLink || linkPanelOpen;
         }
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
@@ -4084,6 +4201,30 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const positionFormatBar = (range: Range) => {
+      const owner = findBlockState(range.commonAncestorContainer)?.state.element ?? null;
+      const endpointLineRect = owner
+        ? getFormatEndpointLineRect(range, savedFormatFocusEdge, owner)
+        : null;
+      const endpointLineOffscreen = Boolean(
+        endpointLineRect
+        && (endpointLineRect.bottom <= 0 || endpointLineRect.top >= window.innerHeight),
+      );
+
+      if (endpointLineOffscreen) {
+        formatBar.hidden = false;
+        if (formatBar.contains(document.activeElement)) {
+          owner?.focus({ preventScroll: true });
+          restoreFormatRange();
+        }
+        formatBar.classList.add('is-dev-text-format-offscreen');
+        formatBar.inert = true;
+        syncFormatSelectionOverlay();
+        return;
+      }
+
+      formatBar.classList.remove('is-dev-text-format-offscreen');
+      formatBar.inert = false;
+
       let rect = range.getBoundingClientRect();
       if (!rect.width && !rect.height) {
         const client = range.getClientRects()[0];
@@ -4117,13 +4258,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const padY = surfaceStyle
         ? Number.parseFloat(surfaceStyle.paddingTop) + Number.parseFloat(surfaceStyle.paddingBottom)
         : 12;
+      const borderX = surfaceStyle
+        ? Number.parseFloat(surfaceStyle.borderLeftWidth) + Number.parseFloat(surfaceStyle.borderRightWidth)
+        : 2;
+      const borderY = surfaceStyle
+        ? Number.parseFloat(surfaceStyle.borderTopWidth) + Number.parseFloat(surfaceStyle.borderBottomWidth)
+        : 2;
       const flexGap = surfaceStyle ? Number.parseFloat(surfaceStyle.rowGap || surfaceStyle.gap) || 4 : 4;
       const buttonsRect = buttons?.getBoundingClientRect();
       const buttonsH = buttonsRect?.height ?? 32;
-      const iconWidth = (buttonsRect?.width ?? 0) + padX;
-      const linkPanelSize = measureLinkPanel();
-      const openHeight = padY + buttonsH + flexGap + linkPanelSize.height;
-      const openWidth = linkPanelSize.width + padX;
+      const buttonsW = buttonsRect?.width ?? 0;
+      const slotWidth = buttonsW + padX + borderX;
+      if (surface) surface.style.width = `${slotWidth}px`;
+      const linkPanelHeight = measureLinkPanelHeight();
+      const closedHeight = buttonsH + padY + borderY;
+      const openHeight = closedHeight + flexGap + linkPanelHeight;
 
       const spaceAbove = rect.top;
       const spaceBelow = window.innerHeight - rect.bottom;
@@ -4133,29 +4282,29 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       formatBar.dataset.placement = formatPlacement;
 
       /*
-        Slot is always openWidth, clamped to the viewport. Closed pill nests in
-        the slot center so Link grows equally left and right — icons stay put.
+        The surface always flows buttons then link row. The closed bar occupies
+        the top of one fixed-width, open-height slot, so Link reveals downward
+        without moving the controls. Left never changes because link content
+        cannot participate in toolbar width.
       */
-      let top = preferAbove
+      let slotTop = preferAbove
         ? rect.top - openHeight - FORMAT_BAR_GAP
         : rect.bottom + FORMAT_BAR_GAP;
 
       const pad = 8;
-      const currentWidth = linkPanelOpen ? openWidth : iconWidth;
-      let slotLeft = rect.left + rect.width / 2 - openWidth / 2;
-      slotLeft = Math.min(Math.max(pad, slotLeft), window.innerWidth - openWidth - pad);
-      let left = slotLeft + (openWidth - currentWidth) / 2;
-      top = Math.min(
-        Math.max(pad, top),
+      let slotLeft = rect.left + rect.width / 2 - slotWidth / 2;
+      slotLeft = Math.min(Math.max(pad, slotLeft), window.innerWidth - slotWidth - pad);
+      slotTop = Math.min(
+        Math.max(pad, slotTop),
         window.innerHeight - openHeight - pad,
       );
-
-      formatBar.style.top = `${Math.round(top)}px`;
-      formatBar.style.left = `${Math.round(left)}px`;
+      formatBar.style.top = `${Math.round(slotTop)}px`;
+      formatBar.style.left = `${Math.round(slotLeft)}px`;
       syncFormatSelectionOverlay();
     };
 
     const updateFormatBar = () => {
+      if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       if (!document.documentElement.classList.contains('is-dev-mode')) {
         hideFormatBar();
         return;
@@ -4209,7 +4358,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return;
       }
 
-      savedFormatRange = range.cloneRange();
+      saveFormatRange(range, selection);
       if (!linkPanelOpen) setLinkPanelOpen(false);
       syncBlockStyleSelect(block.state);
       syncFormatInlineVisibility(block.state);
@@ -4218,8 +4367,35 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const scheduleFormatBarUpdate = () => {
+      if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       cancelAnimationFrame(formatRaf);
-      formatRaf = requestAnimationFrame(updateFormatBar);
+      const generation = formatDismissGeneration;
+      formatRaf = requestAnimationFrame(() => {
+        formatRaf = 0;
+        if (
+          generation !== formatDismissGeneration
+          || isFormatBarDismissing()
+          || formatDismissPointer?.active
+        ) return;
+        updateFormatBar();
+      });
+    };
+
+    const maybeScheduleFormatBarAfterDismiss = (generation: number) => {
+      const gesture = formatDismissPointer;
+      if (
+        !gesture
+        || gesture.generation !== generation
+        || gesture.active
+        || generation !== formatDismissGeneration
+        || isFormatBarDismissing()
+      ) return;
+      formatDismissPointer = null;
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || selection.isCollapsed) return;
+      const range = selection.getRangeAt(0);
+      if (!findBlockState(range.commonAncestorContainer)) return;
+      scheduleFormatBarUpdate();
     };
 
     const refreshFormatBarAfterCommand = () => {
@@ -4233,7 +4409,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         hideFormatBar();
         return;
       }
-      savedFormatRange = nextRange.cloneRange();
+      saveFormatRange(nextRange, selection);
       setLinkPanelOpen(false);
       positionFormatBar(savedFormatRange);
       syncFormatButtons();
@@ -4317,7 +4493,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (target instanceof Element && target.closest('.dev-text-format__block-style, .dev-select__listbox')) {
+      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-select__listbox')) {
         return;
       }
       event.preventDefault();
@@ -4381,19 +4557,31 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       hideFormatBar();
     });
 
-    document.addEventListener('selectionchange', scheduleFormatBarUpdate);
-    window.addEventListener('scroll', scheduleFormatBarUpdate, true);
+    document.addEventListener('selectionchange', () => {
+      if (isFormatBarDismissing() || formatDismissPointer?.active) return;
+      if (document.activeElement === linkInput) return;
+      scheduleFormatBarUpdate();
+    });
+    window.addEventListener('scroll', (event) => {
+      const target = event.target;
+      if (target instanceof Node && formatBar.contains(target)) return;
+      scheduleFormatBarUpdate();
+    }, true);
     window.addEventListener('resize', scheduleFormatBarUpdate);
     // Dismiss even while the link URL field is focused / open.
     document.addEventListener(
       'pointerdown',
       (event) => {
-        if (formatBar.hidden) return;
+        if (formatBar.hidden || isFormatBarDismissing()) return;
         const target = event.target;
         if (!(target instanceof Node)) return;
         const targetEl = target instanceof Element ? target : target.parentElement;
         if (formatBar.contains(target) || targetEl?.closest('.dev-select__listbox')) return;
-        if (findBlockState(target)) return;
+        const targetBlock = findBlockState(target);
+        if (targetBlock) {
+          if (linkPanelOpen) hideFormatBar(event.pointerId);
+          return;
+        }
         const active = document.activeElement;
         if (
           active instanceof HTMLElement
@@ -4405,6 +4593,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       },
       true,
     );
+    const releaseFormatDismissPointer = (event: PointerEvent) => {
+      const gesture = formatDismissPointer;
+      if (!gesture || gesture.id !== event.pointerId) return;
+      gesture.active = false;
+      maybeScheduleFormatBarAfterDismiss(gesture.generation);
+    };
+    document.addEventListener('pointerup', releaseFormatDismissPointer, true);
+    document.addEventListener('pointercancel', releaseFormatDismissPointer, true);
 
     /**
      * Esc while editing body text — same outcome as click-away:
@@ -4524,9 +4720,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         linkRange.selectNodeContents(anchor);
         selection.removeAllRanges();
         selection.addRange(linkRange);
-        savedFormatRange = linkRange.cloneRange();
+        saveFormatRange(linkRange, selection);
       } else {
-        savedFormatRange = range.cloneRange();
+        saveFormatRange(range, selection);
       }
 
       if (linkPanelOpen) {
@@ -5520,6 +5716,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     background: transparent;
     padding: 0;
     box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
+    transition: opacity 0.15s ease;
+  }
+
+  .dev-text-format.is-dev-text-format-offscreen,
+  .dev-text-format.is-dev-text-format-dismissing {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .dev-text-format[hidden] {
@@ -5532,10 +5735,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     align-items: center;
     gap: 4px;
     padding: 6px;
+    box-sizing: border-box;
     border-radius: 12px;
     border: 1px solid var(--sys-color-srf-container-low);
     background: var(--sys-color-srf);
     width: fit-content;
+    max-width: calc(100vw - 16px);
   }
 
   .dev-text-format__buttons {
@@ -5595,7 +5800,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   .dev-text-format__buttons button[data-dev-format]:focus-visible {
-    outline: none;
+    position: relative;
+    z-index: 1;
   }
 
   /* Ghost/Selected binds button/ghost/container at ~16% paint opacity, which
@@ -5616,9 +5822,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   .dev-text-format__link {
-    display: flex;
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
     align-items: center;
     gap: 4px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
   }
 
   .dev-text-format:not([data-link-open='true']) .dev-text-format__link {
@@ -5626,23 +5836,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   .dev-text-format[data-link-open='true'] .dev-text-format__link {
-    display: flex;
+    display: grid;
   }
 
-  .dev-text-format__link input {
-    width: 180px;
-    max-width: min(180px, 55vw);
-    padding: 8px;
-    border: 0;
-    border-radius: var(--dev-radius-control);
-    background: var(--comp-field-container);
-    color: var(--sys-color-on-srf);
-    font: var(--dev-text-label);
-  }
-
-  .dev-text-format__link input:focus,
-  .dev-text-format__link input:focus-visible {
-    outline: none;
+  .dev-text-format__link > :global(.dev-text-format__link-input) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .dev-text-format__link button {
@@ -5657,8 +5858,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     justify-content: center;
     white-space: nowrap;
     cursor: pointer;
-    width: 72px;
-    min-width: var(--dev-control-min-width);
+    width: var(--dev-control-height);
+    min-width: var(--dev-control-height);
   }
 
   .dev-text-format__link button[data-dev-text-unlink] {
@@ -5689,7 +5890,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   .dev-text-format-sel {
     position: fixed;
     inset: 0;
-    z-index: 94;
+    z-index: 49;
     pointer-events: none;
   }
 
