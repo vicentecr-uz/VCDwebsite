@@ -57,22 +57,21 @@
   margin-top: 0;
 }
 
-.project-block--intro {
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  /* The measured page offset includes the header and any page-specific lead-in,
-     so 100% places the following block exactly at the initial viewport fold. */
-  min-height: max(
-    0px,
-    calc(
-      var(--vh-safe, 1svh) * var(--intro-height, 75)
-      - var(--intro-fold-offset, 4.5em)
-    )
-  );
+.project-intro-air {
+  flex: 0 0 auto;
+  height: 0;
+  margin: 0 !important;
+  pointer-events: none;
 }
+
+/* Intro height owns only the two outside gaps. Internal block spacing remains
+   authored, while member border boxes stay content-sized for reorder lifts. */
+[data-intro-run-start],
+[data-intro-after-run] {
+  margin-top: 0 !important;
+}
+
+
 
 /* Flush galleries: abut consecutive flush blocks; first still uses default/own spacing.
    Explicit related / group / major / section spacing must still win (dev spacing preview + saved values). */

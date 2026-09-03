@@ -1,6 +1,110 @@
 /** Vertical rhythm between project page sections (parent-owned stack). */
 export type ProjectStackSpacing = 'related' | 'group' | 'section' | 'major' | 'none';
 
+const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacing, number> = {
+  none: 0,
+  related: 1,
+  group: 2,
+  section: 3,
+  major: 4,
+};
+
+export const shouldKeepLeadingSpacingSeam = (
+  leadingSize: number,
+  trailingSize: number,
+  leadingDirty = false,
+  trailingDirty = false,
+) => {
+  if (leadingSize !== trailingSize) return leadingSize > trailingSize;
+  if (leadingDirty !== trailingDirty) return leadingDirty;
+  return true;
+};
+
+export type ProjectStackSpacingReorder = {
+  values: ProjectStackSpacing[];
+  /** Original seam index supplying each value; null means a generated default seam. */
+  origins: Array<number | null>;
+};
+
+export type ProjectStackInsertionSide = 'before' | 'after';
+
+/** Values stay with block identities; `destinationSide` chooses which side keeps the authored seam. */
+export function reorderProjectStackSpacingSeams(
+  spacings: ProjectStackSpacing[],
+  sourceIndex: number,
+  insertIndex: number,
+  destinationSide?: ProjectStackInsertionSide,
+  dirtySeams: boolean[] = [],
+): ProjectStackSpacingReorder {
+  const values = [...spacings];
+  const origins = spacings.map((_, index) => index as number | null);
+  if (
+    sourceIndex < 0
+    || sourceIndex >= spacings.length
+    || insertIndex < 0
+    || insertIndex >= spacings.length
+    || (sourceIndex === insertIndex && destinationSide === undefined)
+  ) {
+    return { values, origins };
+  }
+
+  const identities = spacings.map((_, index) => index);
+  const [moved] = identities.splice(sourceIndex, 1);
+
+  const sourceNext = sourceIndex + 1;
+  if (sourceNext < spacings.length) {
+    if (sourceIndex === 0) {
+      values[sourceNext] = 'none';
+      origins[sourceNext] = null;
+    } else {
+      const winner = shouldKeepLeadingSpacingSeam(
+        PROJECT_STACK_SPACING_ORDER[spacings[sourceIndex]],
+        PROJECT_STACK_SPACING_ORDER[spacings[sourceNext]],
+        dirtySeams[sourceIndex],
+        dirtySeams[sourceNext],
+      )
+        ? sourceIndex
+        : sourceNext;
+      values[sourceNext] = spacings[winner];
+      origins[sourceNext] = winner;
+    }
+  }
+
+  if (insertIndex === 0) {
+    values[moved] = 'none';
+    origins[moved] = null;
+    const destinationNext = identities[0];
+    if (destinationNext !== undefined) {
+      values[destinationNext] = 'related';
+      origins[destinationNext] = null;
+    }
+  } else {
+    const destinationNext = identities[insertIndex];
+    if (destinationNext === undefined) {
+      values[moved] = 'related';
+      origins[moved] = null;
+    } else if (destinationSide === 'before') {
+      values[moved] = 'related';
+      origins[moved] = null;
+    } else {
+      values[moved] = values[destinationNext];
+      origins[moved] = origins[destinationNext];
+      values[destinationNext] = 'related';
+      origins[destinationNext] = null;
+    }
+  }
+
+  return { values, origins };
+}
+
+export function reorderProjectStackSpacings(
+  spacings: ProjectStackSpacing[],
+  sourceIndex: number,
+  insertIndex: number,
+): ProjectStackSpacing[] {
+  return reorderProjectStackSpacingSeams(spacings, sourceIndex, insertIndex).values;
+}
+
 export function projectStackClass(
   spacing: ProjectStackSpacing = 'section',
   options?: { precedeRelated?: boolean; flush?: boolean },

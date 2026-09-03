@@ -68,6 +68,24 @@ export const getAffectedItems = (
 /** Share of a neighbour's height, centred on it, that yields to the lifted block. */
 export const NEIGHBOR_HIT_BAND = 0.5;
 
+export type GapLaneSide = 'before' | 'after';
+
+/** Switch a gap's insertion edge at the same directional hit band as a block. */
+export const resolveGapLaneSide = (
+  top: number,
+  bottom: number,
+  clientY: number,
+  direction: number,
+  current: GapLaneSide,
+): GapLaneSide => {
+  const height = bottom - top;
+  if (height <= 0 || direction === 0) return current;
+  const inset = (height * (1 - NEIGHBOR_HIT_BAND)) / 2;
+  if (current === 'before' && direction > 0 && clientY >= top + inset) return 'after';
+  if (current === 'after' && direction < 0 && clientY <= bottom - inset) return 'before';
+  return current;
+};
+
 /** Travel under this is subpixel noise — hold the direction rather than flip it. */
 const TRAVEL_EPSILON_PX = 0.5;
 
@@ -342,6 +360,8 @@ export type ReorderState = {
   sourceIndex: number;
   targetIndex: number;
   placedIndex: number;
+  targetKey: string;
+  placedKey: string;
   pointerX: number;
   pointerY: number;
   grabPointerY: number;
@@ -375,6 +395,8 @@ export type ResolveInsertContext = {
   centerX: number;
   centerY: number;
   currentIndex: number;
+  currentKey: string;
+  sourceIndex: number;
   /** Sign of travel through the page; 0 before the block has moved. */
   direction: number;
   /** The drop slot as currently placed, so it can compete for the position. */
@@ -383,6 +405,8 @@ export type ResolveInsertContext = {
 
 export type ReorderHost = {
   getItems: () => HTMLElement[];
+  /** Extra in-flow elements whose position changes when the host rewrites layout during slot sync. */
+  getFlipElements?: () => HTMLElement[];
   getDropZone: () => HTMLElement | null;
   getDragItem: () => HTMLElement | null;
   classes: ReorderClasses;
@@ -400,7 +424,9 @@ export type ReorderHost = {
     insertIndex: number,
     sourceIndex: number,
     liftGaps: { top: string; bottom: string },
+    placementKey: string,
   ) => { top: string; bottom: string; marginTop?: string };
+  initialPlacementKey?: string;
   /** Tag for the drop slot. `div` suits a section list; a grid `<ul>` wants `li`. */
   indicatorTag?: string;
   /**
@@ -410,6 +436,8 @@ export type ReorderHost = {
    * front-loads more of the distance.
    */
   flipEasing?: string;
+  /** Move the existing slot with its neighbours instead of crossfading locations. */
+  moveIndicatorWithFlip?: boolean;
   /**
    * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
    * wants a longer, gentler ramp than a page of full-width sections — the same
@@ -427,11 +455,14 @@ export type ReorderHost = {
    * {@link resolveInsertIndexInGrid}.
    */
   resolveInsertIndex?: (context: ResolveInsertContext) => number;
+  resolveInsertPlacement?: (
+    context: ResolveInsertContext,
+  ) => { index: number; key?: string };
   /**
    * Called after the slot is placed. Hosts set whatever sizing the shared gap
    * model does not own — a grid slot's column span, for instance.
    */
-  onSlotSync?: (indicator: HTMLElement, insertIndex: number) => void;
+  onSlotSync?: (indicator: HTMLElement, insertIndex: number, placementKey: string) => void;
   onStatus?: (text: string) => void;
 };
 
@@ -454,6 +485,8 @@ const idleState = (): ReorderState => ({
   sourceIndex: 0,
   targetIndex: 0,
   placedIndex: 0,
+  targetKey: '',
+  placedKey: '',
   pointerX: 0,
   pointerY: 0,
   grabPointerY: 0,
@@ -547,6 +580,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
    * while the block keeps travelling under auto-scroll.
    */
   let travelDirection = 0;
+  let lastTravelX: number | null = null;
   let lastTravelY: number | null = null;
   let dropAnimation: Animation | null = null;
   let dropShadowAnimation: Animation | null = null;
@@ -645,12 +679,12 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     else zone.append(dropIndicator);
   };
 
-  const applySlotMetrics = (insertIndex: number) => {
+  const applySlotMetrics = (insertIndex: number, placementKey: string) => {
     if (!dropIndicator) return;
     const gaps = host.measureInsertGaps(insertIndex, state.sourceIndex, {
       top: state.gapTop,
       bottom: state.gapBottom,
-    });
+    }, placementKey);
     dropIndicator.style.setProperty('--gap-top', gaps.top);
     dropIndicator.style.setProperty('--gap-bottom', gaps.bottom);
     dropIndicator.style.setProperty('--gap-height', `${state.blockHeight}px`);
@@ -658,12 +692,12 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     dropIndicator.style.marginTop = gaps.marginTop ?? '';
   };
 
-  const syncPlacement = (insertIndex: number) => {
+  const syncPlacement = (insertIndex: number, placementKey: string) => {
     releaseNeighbor();
-    applySlotMetrics(insertIndex);
+    applySlotMetrics(insertIndex, placementKey);
     placeIndicatorBeforeIndex(insertIndex);
     bindNeighbor(insertIndex);
-    if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex);
+    if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex, placementKey);
   };
 
   /** Centre of the lifted block in viewport space — what placement is keyed off. */
@@ -673,22 +707,35 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   });
 
   const resolveInsert = (centerX: number, centerY: number) => {
-    if (host.resolveInsertIndex) {
-      return host.resolveInsertIndex({
-        items: host.getItems(),
-        centerX,
-        centerY,
-        currentIndex: state.placedIndex,
-        direction: travelDirection,
-        slot: getIndicatorBody(),
-      });
+    const items = host.getItems();
+    const itemCount = items.length;
+    const normalize = (index: number, key = '') => ({
+      index: Math.max(0, Math.min(index, itemCount)),
+      key,
+    });
+    const context = {
+      items,
+      centerX,
+      centerY,
+      currentIndex: state.placedIndex,
+      currentKey: state.placedKey,
+      sourceIndex: state.sourceIndex,
+      direction: travelDirection,
+      slot: getIndicatorBody(),
+    };
+    if (host.resolveInsertPlacement) {
+      const placement = host.resolveInsertPlacement(context);
+      return normalize(placement.index, placement.key);
     }
-    return resolveInsertIndexFromY(
-      host.getItems(),
+    if (host.resolveInsertIndex) {
+      return normalize(host.resolveInsertIndex(context));
+    }
+    return normalize(resolveInsertIndexFromY(
+      items,
       centerY,
       state.placedIndex,
       travelDirection,
-    );
+    ));
   };
 
   const createIndicator = () => {
@@ -737,17 +784,19 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     });
   };
 
-  const performFlipRelocate = (fromIndex: number, toIndex: number) => {
-    if (!dropIndicator || fromIndex === toIndex) {
-      syncPlacement(toIndex);
-      return;
-    }
+  const performFlipRelocate = (fromIndex: number, toIndex: number, toKey: string) => {
+    if (!dropIndicator) return;
 
     const items = host.getItems();
     const affected = getAffectedItems(items, fromIndex, toIndex);
     // Include in-flight FLIP nodes so a fast re-target continues from their
     // current visual position instead of snapping when they leave `affected`.
-    const captureElements = [...new Set([...flipMovingElements, ...affected])];
+    const captureElements = [...new Set([
+      ...flipMovingElements,
+      ...affected,
+      ...(host.moveIndicatorWithFlip ? [dropIndicator] : []),
+      ...(host.getFlipElements?.() ?? []),
+    ])];
     const firstRects = new Map(
       captureElements.map((el) => [el, el.getBoundingClientRect()]),
     );
@@ -769,7 +818,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     // anchoring would pin those nodes' viewport tops (deltaY ≈ 0), so downward
     // FLIP skips and neighbors snap. Pin scrollY across the layout write.
     const scrollYBefore = window.scrollY;
-    syncPlacement(toIndex);
+    syncPlacement(toIndex, toKey);
     if (window.scrollY !== scrollYBefore) {
       window.scrollTo(0, scrollYBefore);
     }
@@ -777,15 +826,38 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
     const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.FLIP_REPOSITION_MS;
     const moving: HTMLElement[] = [];
+    const rawDeltas = new Map<HTMLElement, { x: number; y: number }>();
 
+    // Measure every final rect before applying any transform. A dirty gap can
+    // move between a section and the slot, so its own invert must subtract the
+    // captured transform of its new ancestor instead of inheriting it twice.
     captureElements.forEach((el) => {
       const first = firstRects.get(el);
       if (!first) return;
       const last = el.getBoundingClientRect();
+      rawDeltas.set(el, {
+        x: first.left - last.left,
+        y: first.top - last.top,
+      });
+    });
+
+    captureElements.forEach((el) => {
+      const raw = rawDeltas.get(el);
+      if (!raw) return;
+      let ancestor = el.parentElement;
+      let ancestorDelta = { x: 0, y: 0 };
+      while (ancestor) {
+        const captured = rawDeltas.get(ancestor);
+        if (captured) {
+          ancestorDelta = captured;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
       // Both axes: a section list only ever moves vertically (deltaX stays 0),
       // but a grid reflows sideways as items wrap between rows.
-      const deltaX = first.left - last.left;
-      const deltaY = first.top - last.top;
+      const deltaX = raw.x - ancestorDelta.x;
+      const deltaY = raw.y - ancestorDelta.y;
       if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
       el.classList.add(host.classes.flipMoving);
       el.style.transition = 'none';
@@ -819,19 +891,26 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     });
   };
 
-  const relocateToTarget = (toIndex: number) => {
-    if (!dropIndicator || state.placedIndex === toIndex) return;
+  const relocateToTarget = (toIndex: number, toKey: string) => {
+    if (
+      !dropIndicator
+      || (state.placedIndex === toIndex && state.placedKey === toKey)
+    ) return;
 
     const fromIndex = state.placedIndex;
-    // Ghost the old slot, then show the new one immediately while neighbors
-    // FLIP. Hiding the indicator during FLIP made downward moves look dead —
-    // neighbors animate up under the lifted card with no visible gap cue.
-    if (state.indicatorOpacity > 0.05 && !prefersReducedMotion()) {
+    // Crossfade hosts leave a ghost at the old slot; physical-slot hosts move
+    // the indicator itself in the same FLIP as their neighbours.
+    if (
+      !host.moveIndicatorWithFlip
+      && state.indicatorOpacity > 0.05
+      && !prefersReducedMotion()
+    ) {
       spawnFadeGhost();
     }
 
-    performFlipRelocate(fromIndex, toIndex);
+    performFlipRelocate(fromIndex, toIndex, toKey);
     state.placedIndex = toIndex;
+    state.placedKey = toKey;
     // Relocating during the opening delay must not jump the slot in early —
     // leave that fade in charge and let it finish on its own schedule.
     if (indicatorAnim.type === 'steady') applyIndicatorOpacity(1);
@@ -840,7 +919,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   const advanceIndicatorAnim = (now: number) => {
     if (indicatorAnim.type === 'fadeInWait') {
       if (now < indicatorAnim.until) return;
-      if (state.placedIndex !== state.targetIndex) {
+      if (
+        state.placedIndex !== state.targetIndex
+        || state.placedKey !== state.targetKey
+      ) {
         indicatorAnim = { type: 'steady' };
         return;
       }
@@ -860,7 +942,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     }
 
     if (indicatorAnim.type === 'fadeIn') {
-      if (state.placedIndex !== state.targetIndex) {
+      if (
+        state.placedIndex !== state.targetIndex
+        || state.placedKey !== state.targetKey
+      ) {
         indicatorAnim = { type: 'steady' };
         return;
       }
@@ -874,7 +959,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const updateStatus = () => {
     if (!host.onStatus || state.phase === 'idle') return;
-    const key = `${state.sourceIndex}:${state.targetIndex}:${Math.round(window.scrollY)}`;
+    const key = `${state.sourceIndex}:${state.targetIndex}:${state.targetKey}:${Math.round(window.scrollY)}`;
     if (key === lastStatusKey) return;
     lastStatusKey = key;
     host.onStatus(
@@ -907,19 +992,32 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       renderLift();
 
       const center = liftCenter();
+      const travelX = center.x + window.scrollX;
       const travelY = center.y + window.scrollY;
-      if (lastTravelY !== null && Math.abs(travelY - lastTravelY) > TRAVEL_EPSILON_PX) {
-        travelDirection = Math.sign(travelY - lastTravelY);
+      const deltaX = lastTravelX === null ? 0 : travelX - lastTravelX;
+      const deltaY = lastTravelY === null ? 0 : travelY - lastTravelY;
+      const travelled = Math.hypot(deltaX, deltaY) > TRAVEL_EPSILON_PX;
+      if (travelled) {
+        if (Math.abs(deltaY) > TRAVEL_EPSILON_PX) travelDirection = Math.sign(deltaY);
+        lastTravelX = travelX;
         lastTravelY = travelY;
-      } else if (lastTravelY === null) {
+      } else if (lastTravelX === null || lastTravelY === null) {
+        lastTravelX = travelX;
         lastTravelY = travelY;
       }
 
-      state.targetIndex = resolveInsert(center.x, center.y);
+      if (travelled) {
+        const placement = resolveInsert(center.x, center.y);
+        state.targetIndex = placement.index;
+        state.targetKey = placement.key;
+      }
     }
 
-    if (state.targetIndex !== state.placedIndex) {
-      relocateToTarget(state.targetIndex);
+    if (
+      state.targetIndex !== state.placedIndex
+      || state.targetKey !== state.placedKey
+    ) {
+      relocateToTarget(state.targetIndex, state.targetKey);
     }
 
     advanceIndicatorAnim(now);
@@ -1169,11 +1267,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         top: measureGapAbove(item),
         bottom: measureGapBelow(item),
       };
+      const initialPlacementKey = host.initialPlacementKey ?? '';
       state = {
         phase: 'lifted',
         sourceIndex,
         targetIndex: sourceIndex,
         placedIndex: sourceIndex,
+        targetKey: initialPlacementKey,
+        placedKey: initialPlacementKey,
         pointerX,
         pointerY,
         grabPointerY: pointerY,
@@ -1213,19 +1314,19 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       setLiftTransformOrigin(item, handle);
 
       dropIndicator = createIndicator();
+      // Layout space is present from the first connected frame; opacity owns
+      // the delayed visual reveal independently.
+      dropIndicator.classList.add('is-visible');
+      applyIndicatorOpacity(0);
       // Size and span the slot *before* it enters the flow. Inserting a bare
       // cell and correcting it inside syncPlacement costs a frame of wrong
       // layout — unnoticeable in a single column, violent in a grid, where a
       // column-spanning block is briefly replaced by a one-column, zero-height
       // cell and every card after it reflows and snaps back.
-      applySlotMetrics(sourceIndex);
-      host.onSlotSync?.(dropIndicator, sourceIndex);
+      applySlotMetrics(sourceIndex, initialPlacementKey);
+      host.onSlotSync?.(dropIndicator, sourceIndex, initialPlacementKey);
       item.before(dropIndicator);
-      syncPlacement(sourceIndex);
-      // `is-visible` holds the vacated space open straight away, but the slot
-      // waits out the lift card's fade before painting itself in.
-      dropIndicator.classList.add('is-visible');
-      applyIndicatorOpacity(0);
+      syncPlacement(sourceIndex, initialPlacementKey);
       // Force the layout the pin is guarding, then undo any adjustment the
       // browser made. Reading scrollY without this reads the pre-layout value
       // and the pin silently does nothing.
@@ -1248,7 +1349,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       scrollDriver.reset();
       travelDirection = 0;
-      lastTravelY = null;
+      const initialCenter = liftCenter();
+      lastTravelX = initialCenter.x + window.scrollX;
+      lastTravelY = initialCenter.y + window.scrollY;
       startTick();
       updateStatus();
     },
@@ -1325,11 +1428,14 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       state.liftTop = currentTop;
       state.liftLeft = currentLeft;
       state.targetIndex = state.placedIndex;
+      state.targetKey = state.placedKey;
       setLiftTransformOrigin(item, handle);
 
       scrollDriver.reset();
       travelDirection = 0;
-      lastTravelY = null;
+      const resumedCenter = liftCenter();
+      lastTravelX = resumedCenter.x + window.scrollX;
+      lastTravelY = resumedCenter.y + window.scrollY;
       startTick();
       updateStatus();
       return true;
@@ -1371,6 +1477,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       if (state.phase !== 'lifted') return;
       const max = host.getItems().length;
       state.targetIndex = Math.max(0, Math.min(index, max));
+      state.targetKey = '';
     },
 
     endDrop: async () => {
@@ -1389,18 +1496,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       const openingFadePending = indicatorAnim.type !== 'steady';
       indicatorAnim = { type: 'steady' };
 
-      // Same seed and direction the last tick used, so the block lands in the
-      // slot the indicator is showing rather than re-deciding on drop.
-      const finalCenter = liftCenter();
-      const finalIndex = followPointer
-        ? resolveInsert(finalCenter.x, finalCenter.y)
-        : state.targetIndex;
+      // Release commits the exact slot already shown. Re-resolving against an
+      // in-flight FLIP can choose a different lane after the user's decision.
+      const finalIndex = state.placedIndex;
       state.targetIndex = finalIndex;
-
-      if (state.placedIndex !== finalIndex) {
-        syncPlacement(finalIndex);
-        state.placedIndex = finalIndex;
-      }
+      state.targetKey = state.placedKey;
       // Dropped before the opening fade landed: carry on from where it got to
       // rather than popping the slot to full for the settle.
       if (!openingFadePending) applyIndicatorOpacity(1);

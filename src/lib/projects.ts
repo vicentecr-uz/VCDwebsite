@@ -75,6 +75,7 @@ export type PageDocumentKey = 'home' | 'work' | 'play' | 'about';
 
 export type PageDocument = {
   subtitle?: string;
+  introHeight?: number;
   sections: Array<Record<string, unknown>>;
   outline?: Array<Record<string, unknown>>;
 };

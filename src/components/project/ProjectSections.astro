@@ -12,13 +12,23 @@ import ProjectScrollFinale from './ProjectScrollFinale.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 import { getProjectGridListings } from '../../lib/projects';
+import { introRun, resolveIntroHeight } from '../../lib/projectIntro';
 
 interface Props {
   documentKey: string;
   sections: Array<Record<string, unknown>>;
+  introHeight?: number;
 }
 
-const { documentKey, sections } = Astro.props;
+const { documentKey, sections, introHeight: documentIntroHeight } = Astro.props;
+const introMembers = new Map<number, Record<string, unknown>>();
+for (const run of introRun(sections)) {
+  const height = resolveIntroHeight(documentIntroHeight, run);
+  for (const member of run) {
+    const index = sections.indexOf(member);
+    if (index >= 0) introMembers.set(index, { ...member, introHeight: height });
+  }
+}
 
 const sectionSpacing = (
   section: Record<string, unknown>,
@@ -45,6 +55,8 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
   const path = ['sections', sectionIndex];
   const spacing = sectionSpacing(section, sectionIndex);
   const type = String(section.type ?? '');
+  const intro = introMembers.get(sectionIndex);
+  const introHeight = intro?.introHeight as number | undefined;
 
   if (type === 'heroImage') {
     return (
@@ -110,8 +122,9 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         pathPrefix={[...path, 'paragraphs']}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
-        intro={section.intro === true}
-        introHeight={section.introHeight as number | undefined}
+        intro={intro !== undefined}
+        introHeight={introHeight}
+        introHeightPath={intro ? ['introHeight'] : undefined}
       />
     );
   }
@@ -128,8 +141,9 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         sectionId={section.sectionId as string | undefined}
         showTitle={section.showTitle as never}
         hideWhenSidebarVisible={(section.hideWhenSidebarVisible as boolean | undefined) ?? false}
-        intro={section.intro === true}
-        introHeight={section.introHeight as number | undefined}
+        intro={intro !== undefined}
+        introHeight={introHeight}
+        introHeightPath={intro ? ['introHeight'] : undefined}
       />
     );
   }

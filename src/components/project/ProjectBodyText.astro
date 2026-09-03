@@ -14,6 +14,7 @@ interface Props {
   sectionId?: string;
   intro?: boolean;
   introHeight?: number;
+  introHeightPath?: Array<string | number>;
 }
 
 const {
@@ -24,6 +25,7 @@ const {
   sectionId,
   intro = false,
   introHeight,
+  introHeightPath,
 } = Astro.props;
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
 const sectionPath =
@@ -44,7 +46,7 @@ const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
   data-dev-section-deletable={deletable ? 'bodyText' : undefined}
   data-dev-intro={intro ? 'true' : undefined}
   data-dev-intro-height-document={intro && editable ? documentKey : undefined}
-  data-dev-intro-height-path={intro && editable ? JSON.stringify([...sectionPath!, 'introHeight']) : undefined}
+  data-dev-intro-height-path={intro && editable ? JSON.stringify(introHeightPath ?? [...sectionPath!, 'introHeight']) : undefined}
   data-dev-intro-height-value={intro ? String(normalizedIntroHeight) : undefined}
   style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
 >
