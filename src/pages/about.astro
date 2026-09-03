@@ -3,111 +3,60 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import ProjectSections from '../components/project/ProjectSections.astro';
-import aboutContent from '../content/about.json';
+import DevImageDrop from '../components/DevImageDrop.astro';
+import '../styles/project.css';
 import { loadPageDocument } from '../lib/projects';
+import { pageColumnStyle } from '../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
 const aboutPage = loadPageDocument('about');
-const experience = aboutContent.experience;
-const contactRows = aboutContent.contactRows;
+const editable = import.meta.env.DEV;
 ---
-
-<style>
-  /* Contact links: grey, darkening to ink on hover (Webflow .contact-body.link).
-     Duration cut from the original 1s (read as laggy) to 0.3s — same bezier shape
-     so the "slow, considered" darken character survives, just not at 1s. */
-  .contact-link { color: var(--sys-color-on-srf-variant); letter-spacing: -0.3px; transition: color 0.3s cubic-bezier(0, .206, .304, .995); }
-  .contact-link:hover { color: var(--sys-color-on-srf); }
-
-  /* Section headers (Webflow .contact-header) — About heading role */
-  .section-header {
-    font-size: var(--text-about-heading-size);
-    font-weight: var(--text-about-heading-weight);
-    letter-spacing: var(--text-about-heading-tracking);
-    line-height: var(--text-about-heading-leading);
-    color: var(--sys-color-on-srf);
-    text-wrap: balance;
-  }
-
-  .about-grid {
-    display: grid;
-    gap: 2em;
-    align-items: start;
-    /* Body text (Webflow .contact-body + element-level p tracking) — About body role */
-    font-weight: var(--text-about-body-weight);
-    font-size: var(--text-about-body-size);
-    line-height: var(--text-about-body-leading);
-    letter-spacing: var(--text-about-body-tracking);
-    grid-template-columns: 1fr;
-    grid-template-areas:
-      "contact"
-      "about"
-      "experience";
-  }
-
-  .area-contact    { grid-area: contact; }
-  .area-about      { grid-area: about; }
-  .area-about p    { text-wrap: balance; }
-  .area-experience { grid-area: experience; text-wrap: balance; }
-
-  .about-modern-zone:has(> :not(.about-modern-sentinel)) + .about-grid {
-    margin-top: var(--space-section);
-  }
-
-  .about-modern-zone {
-    padding-bottom: 0;
-  }
-</style>
-
-<Layout title="About — Vicente Cruz">
+<Layout title="About — Vicente Cruz" columnStyle={pageColumnStyle(aboutPage.sections)}>
   <div class="flex flex-col min-h-dvh">
     <Header />
 
     <h1 class="sr-only">About — Vicente Cruz</h1>
 
-    <main id="main-content" class="flex-1" style="padding-top: 2em; padding-bottom: 3em">
-      <div
-        class="project-page__main about-modern-zone"
-        data-dev-project-drop-zone
-        data-dev-page-column-static
-      >
+    <main id="main-content" class="listing-main" style="flex: 1;">
+      <p
+        class="home-role"
+        data-dev-text-document={editable ? 'about' : undefined}
+        data-dev-text-path={editable ? JSON.stringify(['subtitle']) : undefined}
+        data-dev-text-kind={editable ? 'text' : undefined}
+      >{String(aboutPage.subtitle ?? 'Product Design Engineer')}</p>
+      <div data-dev-project-drop-zone>
         <ProjectSections documentKey="about" sections={aboutPage.sections} />
         <div
-          class:list={['about-modern-sentinel', projectStackClass('none')]}
+          class:list={[projectStackClass('none')]}
           {...(spacingDevAttrs('about', ['sections', aboutPage.sections.length], 'none') ?? {})}
         />
-      </div>
-      <div class="about-grid">
-
-        <div class="area-contact">
-          <h2 class="section-header" style="margin-bottom: 0.6em">{aboutContent.contactTitle}</h2>
-          {contactRows.map((row, i) => (
-            <p style={`margin-bottom: ${i < contactRows.length - 1 ? '0.35em' : '0'}`}>
-              {row.label && <span>{row.label}: </span>}
-              {row.prefix && <span>{row.prefix}{' '}</span>}
-              <a href={row.href} target={row.href.startsWith('mailto:') ? undefined : '_blank'} rel={row.href.startsWith('mailto:') ? undefined : 'noopener'} class="contact-link" style="font-weight: 800">{row.text}</a>
-            </p>
-          ))}
-        </div>
-
-        <div class="area-about">
-          <h2 class="section-header" style="margin-bottom: 0.4em">{aboutContent.aboutTitle}</h2>
-          <p style="max-width: 38em">
-            {aboutContent.aboutText}
-          </p>
-        </div>
-
-        <ul class="area-experience" style="list-style: none; padding: 0; margin: 0">
-          {experience.map((item) => (
-            <li style="margin-bottom: 0.4em">
-              <span style="font-weight: 900; letter-spacing: -0.3px">{item.years}:</span>{' '}{item.role}{' '}{item.prep}{' '}{item.company}
-            </li>
-          ))}
-        </ul>
-
       </div>
     </main>
 
     <Footer />
   </div>
+  <DevImageDrop documentKey="about" />
 </Layout>
+
+<style>
+  .listing-main {
+    padding: 0;
+  }
+
+  .home-role {
+    /* Same role line as the home page — tracks the header row. */
+    max-width: var(--page-header-width, 100%);
+    margin-inline: auto;
+    line-height: 1;
+    margin-block: -0.1515em 0;
+    font-size: var(--header-menu-link-size, 1.2em);
+    font-weight: var(--text-nav-weight);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  /* Contact / experience are line lists, not narrative paragraphs. */
+  :global(.listing-main .project-body-text p + p) {
+    margin-top: 0;
+  }
+</style>

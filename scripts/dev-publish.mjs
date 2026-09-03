@@ -46,6 +46,7 @@ const RENDERING_PATHS = [
   'src/pages/index.astro',
   'src/pages/work.astro',
   'src/pages/play.astro',
+  'src/pages/about.astro',
   'src/pages/[slug].astro',
   'src/styles/project.css',
   'src/scripts/adaptiveMediaInk.ts',
