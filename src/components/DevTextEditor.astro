@@ -1209,6 +1209,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           syncGapToolbarTopPin(state.control, false);
           return;
         }
+        // Release the interaction freeze before the wheel/touch scroll lands,
+        // so the closing pill and menu travel with their document anchor.
+        unpinGapToolbarTop(state.control);
         state.control.classList.add('is-menu-closing');
         sectionMenuCloseTimers.set(state.control, window.setTimeout(() => {
           sectionMenuCloseTimers.delete(state.control);
@@ -2726,12 +2729,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       moved?: HTMLElement;
       before?: HTMLElement[];
       after?: HTMLElement[];
+      destinationSide?: 'before' | 'after';
     }>) => {
-      const { document: reorderedDocument, moved, before, after } = event.detail ?? {};
+      const {
+        document: reorderedDocument,
+        moved,
+        before,
+        after,
+        destinationSide,
+      } = event.detail ?? {};
       if (!reorderedDocument || !moved || !before || !after || before.length !== after.length) return;
       const sourceIndex = before.indexOf(moved);
       const insertIndex = after.indexOf(moved);
-      if (sourceIndex < 0 || insertIndex < 0 || sourceIndex === insertIndex) return;
+      if (sourceIndex < 0 || insertIndex < 0) return;
+      if (sourceIndex === insertIndex && destinationSide === undefined) return;
 
       const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
       const reorderedStates = before.map((root) => statesByElement.get(root));
@@ -2741,6 +2752,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         reorderedStates.map((state) => state!.currentValue),
         sourceIndex,
         insertIndex,
+        destinationSide,
       );
       const visualSavedValues = reorderedStates.map((state) => state!.visualSavedValue);
       reorderedStates.forEach((state, index) => {

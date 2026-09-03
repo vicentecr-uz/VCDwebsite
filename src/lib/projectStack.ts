@@ -20,11 +20,14 @@ export type ProjectStackSpacingReorder = {
   origins: Array<number | null>;
 };
 
-/** Values stay aligned to the original block identities; only their seams change. */
+export type ProjectStackInsertionSide = 'before' | 'after';
+
+/** Values stay with block identities; `destinationSide` chooses which side keeps the authored seam. */
 export function reorderProjectStackSpacingSeams(
   spacings: ProjectStackSpacing[],
   sourceIndex: number,
   insertIndex: number,
+  destinationSide?: ProjectStackInsertionSide,
 ): ProjectStackSpacingReorder {
   const values = [...spacings];
   const origins = spacings.map((_, index) => index as number | null);
@@ -33,7 +36,7 @@ export function reorderProjectStackSpacingSeams(
     || sourceIndex >= spacings.length
     || insertIndex < 0
     || insertIndex >= spacings.length
-    || sourceIndex === insertIndex
+    || (sourceIndex === insertIndex && destinationSide === undefined)
   ) {
     return { values, origins };
   }
@@ -67,6 +70,9 @@ export function reorderProjectStackSpacingSeams(
   } else {
     const destinationNext = identities[insertIndex];
     if (destinationNext === undefined) {
+      values[moved] = 'related';
+      origins[moved] = null;
+    } else if (destinationSide === 'before') {
       values[moved] = 'related';
       origins[moved] = null;
     } else {
