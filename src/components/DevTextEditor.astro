@@ -2214,9 +2214,55 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           stripParagraphPlaceholders(paragraph);
           return;
         }
+        // Keep the browser-owned caret node so Firefox can undo the deletion.
+        if (
+          paragraph.childNodes.length === 1
+          && paragraph.firstChild instanceof HTMLBRElement
+        ) return;
         stripParagraphPlaceholders(paragraph);
         paragraph.append(createParagraphPlaceholderBreak());
       });
+    };
+
+    const restoreTrailingSoftLineCaret = (element: HTMLElement) => {
+      const selection = window.getSelection();
+      if (!selection?.rangeCount || !selection.isCollapsed) return;
+      const anchor = selection.anchorNode instanceof Element
+        ? selection.anchorNode
+        : selection.anchorNode?.parentElement;
+      const paragraph = anchor?.closest('p');
+      if (!(paragraph instanceof HTMLParagraphElement) || paragraph.parentElement !== element) return;
+      const breaks = [...paragraph.querySelectorAll<HTMLBRElement>('br')];
+      const softBreak = breaks.at(-1);
+      if (!softBreak) return;
+
+      const caret = selection.getRangeAt(0);
+      const trailing = document.createRange();
+      trailing.setStartAfter(softBreak);
+      trailing.setEnd(paragraph, paragraph.childNodes.length);
+      if (fragmentHasContent(trailing.cloneContents())) return;
+
+      // Chromium supplies an untagged filler; Firefox needs one appended.
+      const breakStart = document.createRange();
+      breakStart.setStartBefore(softBreak);
+      breakStart.collapse(true);
+      if (caret.compareBoundaryPoints(Range.START_TO_START, breakStart) === 0) {
+        const authoredBreak = breaks.at(-2);
+        if (!authoredBreak) return;
+        const authoredBreakEnd = document.createRange();
+        authoredBreakEnd.setStartAfter(authoredBreak);
+        authoredBreakEnd.collapse(true);
+        if (caret.compareBoundaryPoints(Range.START_TO_START, authoredBreakEnd) === 0) {
+          softBreak.setAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE, 'true');
+        }
+        return;
+      }
+
+      const breakEnd = document.createRange();
+      breakEnd.setStartAfter(softBreak);
+      breakEnd.collapse(true);
+      if (caret.compareBoundaryPoints(Range.START_TO_START, breakEnd) !== 0) return;
+      softBreak.after(createParagraphPlaceholderBreak());
     };
 
     const removeParagraphRootWhitespace = (element: HTMLElement) => {
@@ -2276,6 +2322,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       nextRange.collapse(true);
       selection.removeAllRanges();
       selection.addRange(nextRange);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     };
 
@@ -2303,6 +2350,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       nextRange.collapse(true);
       selection.removeAllRanges();
       selection.addRange(nextRange);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     };
 
@@ -2317,7 +2365,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (state.kind === 'paragraphs') removeParagraphRootWhitespace(element);
       // Typing is the signal that the last Save/Publish message has been read.
       element.addEventListener('input', () => {
-        if (state.kind === 'paragraphs') normalizeParagraphPlaceholders(element);
+        if (state.kind === 'paragraphs') {
+          normalizeParagraphPlaceholders(element);
+          restoreTrailingSoftLineCaret(element);
+        }
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         stickyStatus = '';
         updateActions();
       });
@@ -3308,6 +3360,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       syncPageTopSpacingControls();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
       return root;
     };
@@ -3780,6 +3833,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           skipPersist: Boolean(insert),
         });
         stickyStatus = '';
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         updateActions();
         requestAnimationFrame(() => {
           heading.focus();
@@ -4444,6 +4498,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
       }
       document.execCommand(command);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       refreshFormatBarAfterCommand();
       updateActions();
     };
@@ -4703,6 +4758,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           runFormatCommand('underline');
         } else {
           document.execCommand(formatCommand);
+          window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           // Re-read selection after execCommand — the pre-command Range can be
           // detached, which left the format bar stuck on the previous state.
           refreshFormatBarAfterCommand();
