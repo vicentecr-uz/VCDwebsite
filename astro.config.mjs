@@ -52,6 +52,29 @@ const isSafePathPart = (part) => (
   part !== 'constructor'
 );
 
+const normalizeIntroHeight = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(100, Math.max(1, Math.round(number))) : 75;
+};
+
+const normalizeCanonicalIntroHeight = (data, value) => {
+  const height = normalizeIntroHeight(value);
+  if (!Array.isArray(data.sections)) throw new Error('Intro height requires an Intro block.');
+  const hasIntro = data.sections.some((section) => (
+    section && typeof section === 'object'
+    && (section.type === 'bodyText' || section.type === 'sectionTitle')
+    && section.intro === true
+  ));
+  if (!hasIntro) throw new Error('Intro height requires an Intro block.');
+  data.introHeight = height;
+  for (const section of data.sections) {
+    if (section && typeof section === 'object' && section.intro === true) {
+      delete section.introHeight;
+    }
+  }
+  return height;
+};
+
 /**
  * Only `ref` tokens hold literal hex — `sys` and `comp` are aliases that
  * inherit whatever their referenced `ref` token resolves to. Walk the `ref`
@@ -1314,7 +1337,7 @@ function contentBatchDevWriter() {
             if (
               !resolved ||
               !Array.isArray(resolved.path) ||
-              resolved.path.length < 2 ||
+              (resolved.path.length < 2 && !(validIntroHeight && resolved.path.length === 1)) ||
               resolved.path.length > 8 ||
               (!validSpacing && !validIntroHeight) ||
               resolved.path.some((part) => !isSafePathPart(part))
@@ -1404,11 +1427,15 @@ function contentBatchDevWriter() {
                 return;
               }
               const field = change.path.at(-1);
-              if (field === 'introHeight' && target.intro !== true) {
-                send(400, { error: 'Intro height is only editable on Intro blocks.' });
-                return;
+              if (field === 'introHeight' && change.path.length === 1) {
+                normalizeCanonicalIntroHeight(data, change.value);
+              } else {
+                if (field === 'introHeight' && target.intro !== true) {
+                  send(400, { error: 'Intro height is only editable on Intro blocks.' });
+                  return;
+                }
+                target[field] = change.value;
               }
-              target[field] = change.value;
             }
 
             await writeDevDocument(relativeFile, data);
@@ -1708,6 +1735,11 @@ function contentSectionDevWriter() {
                 return;
               }
             }
+            if (existing?.intro === true) {
+              const legacyHeight = data.introHeight
+                ?? data.sections.find((section) => section?.intro === true && Number.isFinite(Number(section.introHeight)))?.introHeight;
+              normalizeCanonicalIntroHeight(data, legacyHeight);
+            }
             syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
             data.sections.splice(index, 1);
             await writeContentJson(file, data);
@@ -1857,10 +1889,6 @@ function contentSectionDevWriter() {
             ? requestedSpacing
             : (index === 0 ? 'none' : 'section');
           const intro = body.intro === true || body.intro === 'true';
-          const requestedIntroHeight = Number(body.introHeight);
-          const introHeight = Number.isFinite(requestedIntroHeight)
-            ? Math.min(100, Math.max(1, Math.round(requestedIntroHeight)))
-            : 75;
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
             const level = Number(body.level) === 3 ? 3 : 2;
@@ -1872,7 +1900,7 @@ function contentSectionDevWriter() {
               spacing: insertSpacing,
               tightBottom: false,
               ...(level === 3 ? { level: 3 } : {}),
-              ...(intro ? { intro: true, introHeight } : {}),
+              ...(intro ? { intro: true } : {}),
             };
           } else if (type === 'bodyText') {
             const id = `body-${Date.now().toString(36)}`;
@@ -1881,7 +1909,7 @@ function contentSectionDevWriter() {
               id,
               spacing: insertSpacing,
               paragraphs: [''],
-              ...(intro ? { intro: true, introHeight } : {}),
+              ...(intro ? { intro: true } : {}),
             };
           } else if (type === 'image') {
             if (!srcs.length && !filenames.length) {
@@ -1984,7 +2012,7 @@ function contentSpacingDevWriter() {
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||
-              target.path.length < 2 ||
+              (target.path.length < 2 && !(validIntroHeight && target.path.length === 1)) ||
               target.path.length > 8 ||
               (!validSpacing && !validIntroHeight) ||
               target.path.some((part) => !isSafePathPart(part))
@@ -2019,11 +2047,15 @@ function contentSpacingDevWriter() {
                 send(400, { error: 'A layout path no longer exists.' });
                 return;
               }
-              if (field === 'introHeight' && target.intro !== true) {
-                send(400, { error: 'Intro height is only editable on Intro blocks.' });
-                return;
+              if (field === 'introHeight' && change.path.length === 1) {
+                normalizeCanonicalIntroHeight(data, change.value);
+              } else {
+                if (field === 'introHeight' && target.intro !== true) {
+                  send(400, { error: 'Intro height is only editable on Intro blocks.' });
+                  return;
+                }
+                target[field] = change.value;
               }
-              target[field] = change.value;
               if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
                 delete target.tightTop;
               }

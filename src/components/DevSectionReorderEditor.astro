@@ -11,7 +11,7 @@
     sectionOrderId,
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar, getDevSectionOutline } from '../scripts/devSectionOutlineSync';
-  import { createReorderController, REORDER_TIMING } from '../scripts/sectionReorder';
+  import { createReorderController, REORDER_TIMING, resolveInsertIndexFromY } from '../scripts/sectionReorder';
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
 
@@ -42,6 +42,8 @@
   let documentKey = '';
   let sessionPointerActive = false;
   let sessionButtonDown = false;
+  let activeItems: HTMLElement[] | null = null;
+  let activeIntroDrag = false;
   // A drop keeps running (settle glide, then card fade) after the controller
   // goes idle, so a re-grab can start while the previous session is still
   // finishing. Tag each lift so that tail only tears down chrome it still owns.
@@ -56,7 +58,7 @@
     || el.classList.contains(DROP_INDICATOR_CLASS);
 
   const getContentSections = () =>
-    getSectionRootsInDomOrder().filter((el) => el !== dragItem && !isChromeNode(el));
+    (activeItems ?? getSectionRootsInDomOrder()).filter((el) => el !== dragItem && !isChromeNode(el));
 
   const ordersMatch = (left: number[], right: number[]) =>
     JSON.stringify(left) === JSON.stringify(right);
@@ -168,6 +170,31 @@
       bottom: '0px',
       marginTop: liftGaps.top,
     }),
+    resolveInsertIndex: ({ centerY, currentIndex, direction }) => {
+      const items = getContentSections();
+      let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
+      if (!activeIntroDrag) {
+        const full = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
+        for (let i = 0; i < full.length;) {
+          if (full[i].dataset.devIntro !== 'true') { i += 1; continue; }
+          const run = [];
+          while (i < full.length && full[i].dataset.devIntro === 'true') run.push(full[i++]);
+          const positions = run.map((el) => items.indexOf(el)).filter((index) => index >= 0);
+          if (!positions.length) continue;
+          const start = Math.min(...positions);
+          const end = Math.max(...positions) + 1;
+          if (target > start && target < end) {
+            if (direction < 0) target = start;
+            else if (direction > 0) target = end;
+            else {
+              const midpoint = (run[0].getBoundingClientRect().top + run.at(-1).getBoundingClientRect().bottom) / 2;
+              target = centerY < midpoint ? start : end;
+            }
+          }
+        }
+      }
+      return target;
+    },
   });
 
   const removeLiftBackdrop = () => {
@@ -313,7 +340,19 @@
 
     if (!resumed) {
       const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
-      let sourceIndex = sections.indexOf(root);
+      activeIntroDrag = root.dataset.devIntro === 'true';
+      if (activeIntroDrag) {
+        const all = sections;
+        const at = all.indexOf(root);
+        let start = at;
+        let end = at;
+        while (start > 0 && all[start - 1].dataset.devIntro === 'true') start -= 1;
+        while (end + 1 < all.length && all[end + 1].dataset.devIntro === 'true') end += 1;
+        activeItems = all.slice(start, end + 1);
+      } else {
+        activeItems = sections;
+      }
+      let sourceIndex = activeItems.indexOf(root);
       if (sourceIndex < 0) sourceIndex = 0;
 
       controller.beginLift(root, handle, x, y, sourceIndex);
@@ -380,6 +419,8 @@
         dragItem = null;
         dragHandle = null;
         dragPointerId = null;
+        activeItems = null;
+        activeIntroDrag = false;
         releaseSessionRoot(root);
       }
     }
@@ -593,6 +634,8 @@
     dragPointerId = null;
     grabOrderSnapshot = null;
     grabNodeSnapshot = null;
+    activeItems = null;
+    activeIntroDrag = false;
   };
 
   const setReorderActive = (active: boolean) => {

@@ -337,7 +337,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       spacingState: EditableSpacingState | null;
       level?: 2 | 3;
       intro?: boolean;
-      introHeight?: number;
     };
 
     type PersistedMediaInsert = {
@@ -499,6 +498,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         'is-dev-intro-height-dirty',
         state.currentValue !== state.savedValue,
       );
+      document.querySelectorAll<HTMLInputElement>(
+        `[data-dev-intro-height-input][data-dev-intro-height-document="${CSS.escape(state.document)}"]`,
+      ).forEach((input) => {
+        input.value = String(state.currentValue);
+      });
     };
 
     const bindIntroHeightInput = (state: EditableIntroHeightState) => {
@@ -509,6 +513,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         state.element.dataset.devIntroHeightValue = String(value);
         state.element.style.setProperty('--intro-height', String(value));
         state.element.classList.toggle('is-dev-intro-height-dirty', value !== state.savedValue);
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+        spacingStates.forEach((candidate) => {
+          if (candidate.document !== state.document || !candidate.introHeight || candidate.introHeight === state) return;
+          candidate.introHeight.currentValue = value;
+          syncIntroHeightControl(candidate.introHeight);
+        });
         stickyStatus = '';
         updateActions();
       });
@@ -518,6 +528,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         state.currentValue = raw && Number.isFinite(value)
           ? Math.min(100, Math.max(1, Math.round(value)))
           : state.currentValue;
+        spacingStates.forEach((candidate) => {
+          if (candidate.document !== state.document || !candidate.introHeight) return;
+          candidate.introHeight.currentValue = state.currentValue;
+          syncIntroHeightControl(candidate.introHeight);
+        });
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         syncIntroHeightControl(state);
         updateActions();
       };
@@ -580,6 +596,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           pinGapToolbarTop(state.control);
           state.currentValue = next;
           applySpacingClass(state.element, next);
+          window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           syncSpacingControl(state);
           updateActions();
         });
@@ -644,7 +661,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const docKey = element.dataset.devSpacingDocument || '';
         const supportsIntro = docKey === 'home' || docKey === 'work' || docKey === 'play' || docKey === 'about';
         const introMenuItem = supportsIntro
-          ? '<button type="button" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro</button>'
+          ? '<button type="button" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro text</button><button type="button" role="menuitem" data-dev-section-type="sectionTitle" data-dev-section-intro="true">Intro heading</button>'
           : '';
         const isIntro = element.dataset.devIntro === 'true';
         const introHeightControl = isIntro
@@ -688,11 +705,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             ${introHeightControl}
           </div>
           <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
-            <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
-            ${introMenuItem}
-            <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
-            <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
-            <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
+            <span data-dev-normal-section-menu>
+              <button type="button" role="menuitem" data-dev-section-type="bodyText">Text section</button>
+              <button type="button" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
+              <button type="button" role="menuitem" data-dev-section-type="image">Image</button>
+              <button type="button" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
+            </span>
+            <span data-dev-intro-section-menu>${introMenuItem}</span>
           </div>
         `;
 
@@ -710,6 +729,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         let introHeightState: EditableIntroHeightState | null = null;
         const introHeightInput = control.querySelector<HTMLInputElement>('[data-dev-intro-height-input]');
         if (isIntro && introHeightInput) {
+          introHeightInput.dataset.devIntroHeightDocument = element.dataset.devIntroHeightDocument || '';
           const introHeightPath = JSON.parse(element.dataset.devIntroHeightPath || '[]');
           const rawHeight = Number(element.dataset.devIntroHeightValue);
           const initialHeight = Number.isFinite(rawHeight)
@@ -1319,8 +1339,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const dirtySpacingStates = () =>
       spacingStates.filter((state) => state.currentValue !== state.savedValue);
     const dirtyIntroHeightStates = () =>
-      spacingStates.flatMap((state) => state.introHeight ? [state.introHeight] : [])
-        .filter((state) => state.currentValue !== state.savedValue);
+      [...spacingStates.reduce((states, state) => {
+        if (!state.introHeight || state.introHeight.currentValue === state.introHeight.savedValue) return states;
+        if (!states.has(state.document)) states.set(state.document, state.introHeight);
+        return states;
+      }, new Map<string, EditableIntroHeightState>()).values()];
+
+    const syncIntroHeightDocument = (documentKey: string, value: number, savedValue = value) => {
+      spacingStates.forEach((state) => {
+        if (!state.introHeight || state.document !== documentKey) return;
+        state.introHeight.currentValue = value;
+        state.introHeight.savedValue = savedValue;
+        syncIntroHeightControl(state.introHeight);
+      });
+    };
 
     const revertAllPending = () => {
       [...pendingMedia.values()].forEach((change) => {
@@ -1602,10 +1634,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = state.currentValue;
           syncSpacingControl(state);
         });
-        dirtyIntroHeights.forEach((state) => {
-          state.savedValue = state.currentValue;
-          syncIntroHeightControl(state);
-        });
+        dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
+          state.document,
+          state.currentValue,
+        ));
       }
 
       updateActions();
@@ -1629,7 +1661,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         };
         if (entry.type === 'sectionTitle' && entry.level === 3) body.level = 3;
         if (entry.intro) body.intro = true;
-        if (entry.intro) body.introHeight = entry.introHeight ?? 75;
         const response = await fetch('/api/content-section', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -1737,10 +1768,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         applySpacingClass(state.element, state.savedValue);
         syncSpacingControl(state);
       });
-      dirtyIntroHeightStates().forEach((state) => {
-        state.currentValue = state.savedValue;
-        syncIntroHeightControl(state);
-      });
+      const dirtyHeights = dirtyIntroHeightStates();
+      dirtyHeights.forEach((state) => syncIntroHeightDocument(
+        state.document,
+        state.savedValue,
+        state.savedValue,
+      ));
     };
 
     const unsavedChangeCount = () =>
@@ -1913,7 +1946,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (intro) {
           wrapper.dataset.devIntro = 'true';
           wrapper.dataset.devIntroHeightDocument = documentKey;
-          wrapper.dataset.devIntroHeightPath = JSON.stringify([...sectionPath, 'introHeight']);
+          wrapper.dataset.devIntroHeightPath = JSON.stringify(['introHeight']);
           wrapper.dataset.devIntroHeightValue = String(introHeight);
           wrapper.style.setProperty('--intro-height', String(introHeight));
         }
@@ -1939,7 +1972,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (intro) {
         section.dataset.devIntro = 'true';
         section.dataset.devIntroHeightDocument = documentKey;
-        section.dataset.devIntroHeightPath = JSON.stringify([...sectionPath, 'introHeight']);
+        section.dataset.devIntroHeightPath = JSON.stringify(['introHeight']);
         section.dataset.devIntroHeightValue = String(introHeight);
         section.style.setProperty('--intro-height', String(introHeight));
       }
@@ -2312,7 +2345,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1);
 
-      const introHeight = options?.intro ? 75 : undefined;
+      const introHeight = options?.intro
+        ? (spacingStates.find((candidate) => candidate.document === documentKey && candidate.introHeight)?.introHeight?.currentValue ?? 75)
+        : undefined;
       const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
       if (placement === 'after') host.after(built.root);
       else host.before(built.root);
@@ -2359,7 +2394,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         textStates: [textState],
         spacingState: spacingState ?? null,
         ...(options?.intro ? { intro: true } : {}),
-        ...(options?.intro ? { introHeight } : {}),
       });
 
       window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
@@ -2467,6 +2501,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const built = insertSectionAt(root, 'bodyText', {
         placement: 'after',
         spacing: 'related',
+        intro: root.dataset.devIntro === 'true',
       });
       if (!built) return;
 
@@ -2481,13 +2516,60 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
+    const sectionRoots = () => {
+      const zone = document.querySelector<HTMLElement>('[data-dev-project-drop-zone]');
+      return [...(zone?.querySelectorAll<HTMLElement>('[data-dev-spacing-document]') ?? [])]
+        .filter((element) => element.dataset.devSectionDeletable || element.dataset.devSpacingPath);
+    };
+    const refreshSectionMenu = (state: EditableSpacingState) => {
+      const roots = sectionRoots();
+      const index = roots.indexOf(state.element);
+      const previous = roots[index - 1];
+      const currentIntro = state.element.dataset.devIntro === 'true';
+      const previousIntro = previous?.dataset.devIntro === 'true';
+      const hasIntro = roots.some((root) => root.dataset.devIntro === 'true');
+      const internal = currentIntro && previousIntro;
+      const boundary = currentIntro || previousIntro;
+      const normal = state.control.querySelector<HTMLElement>('[data-dev-normal-section-menu]');
+      const intro = state.control.querySelector<HTMLElement>('[data-dev-intro-section-menu]');
+      if (normal) normal.hidden = internal;
+      const supportsIntro = ['home', 'work', 'play', 'about'].includes(state.document);
+      if (intro) intro.hidden = !supportsIntro || (hasIntro && !boundary);
+    };
+    const syncIntroRunControls = () => {
+      let previousIntro = false;
+      let lead: EditableIntroHeightState | null = null;
+      const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
+      const orderedStates = sectionRoots()
+        .map((root) => statesByElement.get(root))
+        .filter((state): state is EditableSpacingState => Boolean(state));
+      orderedStates.forEach((state) => {
+        if (!state.element.isConnected) return;
+        refreshSectionMenu(state);
+        const isIntro = state.element.dataset.devIntro === 'true';
+        if (!isIntro) { previousIntro = false; lead = null; return; }
+        if (!previousIntro) lead = state.introHeight;
+        if (lead && state.introHeight && state.introHeight !== lead) {
+          state.introHeight.currentValue = lead.currentValue;
+          state.introHeight.savedValue = lead.savedValue;
+        }
+        const input = state.control.querySelector<HTMLElement>('.dev-intro-height-control');
+        const separator = state.control.querySelector<HTMLElement>('.dev-intro-height-separator');
+        if (input) input.hidden = state.introHeight !== lead;
+        if (separator) separator.hidden = state.introHeight !== lead;
+        previousIntro = true;
+      });
+    };
+
     const wireSectionAddMenu = (state: EditableSpacingState) => {
+      refreshSectionMenu(state);
       state.addButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         const opening = state.menu.hidden;
         closeSectionMenus(opening ? state : undefined);
         if (!opening) return;
+        refreshSectionMenu(state);
         state.menu.hidden = false;
         state.addButton.setAttribute('aria-expanded', 'true');
         state.control.classList.add('is-near-add', 'is-menu-open');
@@ -2522,6 +2604,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     spacingStates.forEach(wireSectionAddMenu);
+    syncIntroRunControls();
+    window.addEventListener('vcd:dev-section-structure-changed', () => {
+      requestAnimationFrame(syncIntroRunControls);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+    });
+    window.addEventListener('vcd:dev-pending-upsert', (event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.kind !== 'section-order') return;
+      syncIntroRunControls();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+    });
+    window.addEventListener('vcd:dev-pending-reverted', () => {
+      syncIntroRunControls();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+    });
 
     deleteSectionAt = async (element: HTMLElement) => {
       let path: Array<string | number> = [];
@@ -3515,7 +3612,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         built.root.dataset.devIntro = 'true';
         built.root.dataset.devIntroHeightDocument = previousRoot.dataset.devIntroHeightDocument || block.state.document;
         built.root.dataset.devIntroHeightPath = previousRoot.dataset.devIntroHeightPath
-          || JSON.stringify(['sections', index, 'introHeight']);
+          || JSON.stringify(['introHeight']);
         built.root.dataset.devIntroHeightValue = previousRoot.dataset.devIntroHeightValue || '75';
         built.root.style.setProperty(
           '--intro-height',
@@ -3545,9 +3642,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         insert.textStates = [block.state];
         insert.spacingState = spacingState ?? null;
         if (previousHadIntro) insert.intro = true;
-        if (previousHadIntro) {
-          insert.introHeight = spacingState?.introHeight?.currentValue ?? 75;
-        }
       }
 
       block.state.element = built.textElement;
@@ -3630,6 +3724,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         replacedRoot: true,
         skipPersist: Boolean(insert),
       });
+
+      syncIntroRunControls();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
 
       stickyStatus = '';
       updateActions();
@@ -4661,10 +4758,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = state.currentValue;
           syncSpacingControl(state);
         });
-        dirtyIntroHeights.forEach((state) => {
-          state.savedValue = state.currentValue;
-          syncIntroHeightControl(state);
-        });
+        dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
+          state.document,
+          state.currentValue,
+        ));
         for (const change of sectionOrderChanges) {
           const response = await fetch('/api/content-section-order', {
             method: 'POST',
@@ -5577,6 +5674,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-gap-toolbar__pill > .dev-hairline--vertical {
     align-self: stretch;
+  }
+
+  .dev-gap-toolbar__menu [data-dev-normal-section-menu],
+  .dev-gap-toolbar__menu [data-dev-intro-section-menu] {
+    display: contents;
   }
 
   .dev-intro-height-control {

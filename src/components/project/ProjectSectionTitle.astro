@@ -32,6 +32,7 @@ interface Props {
   hideWhenSidebarVisible?: boolean;
   intro?: boolean;
   introHeight?: number;
+  introHeightPath?: Array<string | number>;
 }
 
 const {
@@ -46,6 +47,7 @@ const {
   hideWhenSidebarVisible = false,
   intro = false,
   introHeight,
+  introHeightPath,
 } = Astro.props;
 
 const showTitle = {
@@ -83,7 +85,7 @@ const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
   data-dev-section-deletable={deletable ? 'sectionTitle' : undefined}
   data-dev-intro={intro ? 'true' : undefined}
   data-dev-intro-height-document={intro && editable ? documentKey : undefined}
-  data-dev-intro-height-path={intro && editable ? JSON.stringify([...sectionPath!, 'introHeight']) : undefined}
+  data-dev-intro-height-path={intro && editable ? JSON.stringify(introHeightPath ?? [...sectionPath!, 'introHeight']) : undefined}
   data-dev-intro-height-value={intro ? String(normalizedIntroHeight) : undefined}
   style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
   data-dev-section-title={editable ? 'true' : undefined}
