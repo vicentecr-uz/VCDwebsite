@@ -568,13 +568,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       control.dataset.gapTopPinned = 'true';
     };
 
+    const restoreGapToolbarTop = (control: HTMLElement) => {
+      if (control.classList.contains('is-intro-outer-gap')) {
+        control.style.top = 'calc(var(--intro-outer-air, 0px) / -2)';
+      } else {
+        control.style.removeProperty('top');
+      }
+    };
+
     const unpinGapToolbarTop = (control: HTMLElement) => {
       control.style.removeProperty('position');
-      control.style.removeProperty('top');
       control.style.removeProperty('left');
       control.style.removeProperty('right');
       control.style.removeProperty('width');
       control.style.removeProperty('transform');
+      restoreGapToolbarTop(control);
       delete control.dataset.gapTopPinned;
       delete control.dataset.gapPinnedTop;
       delete control.dataset.gapPinnedLeft;
@@ -2531,6 +2539,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const internal = currentIntro && previousIntro;
       const boundary = currentIntro || previousIntro;
       state.control.classList.toggle('is-intro-outer-gap', boundary && !internal);
+      if (state.control.dataset.gapTopPinned !== 'true') restoreGapToolbarTop(state.control);
       const normal = state.control.querySelector<HTMLElement>('[data-dev-normal-section-menu]');
       const intro = state.control.querySelector<HTMLElement>('[data-dev-intro-section-menu]');
       if (normal) normal.hidden = internal;
@@ -5579,11 +5588,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   [data-dev-spacing-document].project-stack--none > .dev-gap-toolbar,
   .project-stack--flush + [data-dev-spacing-document].project-stack--flush > .dev-gap-toolbar {
     top: 0;
-  }
-
-  :is([data-intro-run-start], [data-intro-after-run])
-    > .dev-gap-toolbar.is-intro-outer-gap {
-    top: calc(var(--intro-outer-air, 0px) / -2) !important;
   }
 
   .project-stack--precede-related + [data-dev-spacing-document]:not(.project-stack--related):not(.project-stack--group):not(.project-stack--section):not(.project-stack--major):not(.project-stack--none) > .dev-gap-toolbar {
