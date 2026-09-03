@@ -2276,6 +2276,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       nextRange.collapse(true);
       selection.removeAllRanges();
       selection.addRange(nextRange);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     };
 
@@ -2303,6 +2304,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       nextRange.collapse(true);
       selection.removeAllRanges();
       selection.addRange(nextRange);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     };
 
@@ -3309,6 +3311,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       syncPageTopSpacingControls();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
       return root;
     };
@@ -3781,6 +3784,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           skipPersist: Boolean(insert),
         });
         stickyStatus = '';
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         updateActions();
         requestAnimationFrame(() => {
           heading.focus();
@@ -4445,6 +4449,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
       }
       document.execCommand(command);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       refreshFormatBarAfterCommand();
       updateActions();
     };
@@ -4704,6 +4709,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           runFormatCommand('underline');
         } else {
           document.execCommand(formatCommand);
+          window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           // Re-read selection after execCommand — the pre-command Range can be
           // detached, which left the format bar stuck on the previous state.
           refreshFormatBarAfterCommand();
