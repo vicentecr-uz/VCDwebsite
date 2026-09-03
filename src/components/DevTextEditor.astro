@@ -1898,8 +1898,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
-          ? `project-block ${spacingClass}${introClass}`
-          : `project-block${introClass}`;
+          ? `project-block project-block--text ${spacingClass}${introClass}`
+          : `project-block project-block--text${introClass}`;
         if (intro) {
           wrapper.dataset.devIntro = 'true';
           wrapper.dataset.devIntroHeightDocument = documentKey;
@@ -1924,8 +1924,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       const section = document.createElement('section');
       section.className = spacingClass
-        ? `project-block ${spacingClass}${introClass}`
-        : `project-block${introClass}`;
+        ? `project-block project-block--text ${spacingClass}${introClass}`
+        : `project-block project-block--text${introClass}`;
       if (intro) {
         section.dataset.devIntro = 'true';
         section.dataset.devIntroHeightDocument = documentKey;
@@ -2098,7 +2098,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       liveRange.insertNode(br);
       // A trailing br is collapsed by the engine; a second one holds the caret
       // on the new visual line, same as a wrap.
-      if (!br.nextSibling) br.after(document.createElement('br'));
+      const trailingRange = document.createRange();
+      trailingRange.setStartAfter(br);
+      trailingRange.setEnd(paragraph, paragraph.childNodes.length);
+      if (!fragmentHasContent(trailingRange.cloneContents())) {
+        br.after(document.createElement('br'));
+      }
 
       const nextRange = document.createRange();
       nextRange.setStartAfter(br);
