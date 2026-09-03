@@ -68,6 +68,24 @@ export const getAffectedItems = (
 /** Share of a neighbour's height, centred on it, that yields to the lifted block. */
 export const NEIGHBOR_HIT_BAND = 0.5;
 
+export type GapLaneSide = 'before' | 'after';
+
+/** Switch a gap's insertion edge at the same directional hit band as a block. */
+export const resolveGapLaneSide = (
+  top: number,
+  bottom: number,
+  clientY: number,
+  direction: number,
+  current: GapLaneSide,
+): GapLaneSide => {
+  const height = bottom - top;
+  if (height <= 0 || direction === 0) return current;
+  const inset = (height * (1 - NEIGHBOR_HIT_BAND)) / 2;
+  if (current === 'before' && direction > 0 && clientY >= top + inset) return 'after';
+  if (current === 'after' && direction < 0 && clientY <= bottom - inset) return 'before';
+  return current;
+};
+
 /** Travel under this is subpixel noise — hold the direction rather than flip it. */
 const TRAVEL_EPSILON_PX = 0.5;
 
@@ -808,15 +826,38 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
     const motionMs = prefersReducedMotion() ? 0 : REORDER_TIMING.FLIP_REPOSITION_MS;
     const moving: HTMLElement[] = [];
+    const rawDeltas = new Map<HTMLElement, { x: number; y: number }>();
 
+    // Measure every final rect before applying any transform. A dirty gap can
+    // move between a section and the slot, so its own invert must subtract the
+    // captured transform of its new ancestor instead of inheriting it twice.
     captureElements.forEach((el) => {
       const first = firstRects.get(el);
       if (!first) return;
       const last = el.getBoundingClientRect();
+      rawDeltas.set(el, {
+        x: first.left - last.left,
+        y: first.top - last.top,
+      });
+    });
+
+    captureElements.forEach((el) => {
+      const raw = rawDeltas.get(el);
+      if (!raw) return;
+      let ancestor = el.parentElement;
+      let ancestorDelta = { x: 0, y: 0 };
+      while (ancestor) {
+        const captured = rawDeltas.get(ancestor);
+        if (captured) {
+          ancestorDelta = captured;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
       // Both axes: a section list only ever moves vertically (deltaX stays 0),
       // but a grid reflows sideways as items wrap between rows.
-      const deltaX = first.left - last.left;
-      const deltaY = first.top - last.top;
+      const deltaX = raw.x - ancestorDelta.x;
+      const deltaY = raw.y - ancestorDelta.y;
       if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) return;
       el.classList.add(host.classes.flipMoving);
       el.style.transition = 'none';

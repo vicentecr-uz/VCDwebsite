@@ -11,7 +11,12 @@
     sectionOrderId,
   } from '../scripts/devSectionPaths';
   import { syncDevSectionOutlineSidebar, getDevSectionOutline } from '../scripts/devSectionOutlineSync';
-  import { createReorderController, REORDER_TIMING, resolveInsertIndexFromY } from '../scripts/sectionReorder';
+  import {
+    createReorderController,
+    REORDER_TIMING,
+    resolveGapLaneSide,
+    resolveInsertIndexFromY,
+  } from '../scripts/sectionReorder';
   import { setIntroFoldOffsets } from '../lib/safeVh';
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
@@ -26,6 +31,7 @@
   const LIFT_BACKDROP_FADE_MS = REORDER_TIMING.LIFT_CARD_FADE_MS;
   const SECTION_DRAGGING_CLASS = 'is-section-reorder-dragging';
   const SECTION_CONTROLS_REVEAL_CLASS = 'is-section-reorder-controls-revealing';
+  const SECTION_CONTROLS_SETTLING_CLASS = 'is-section-reorder-controls-settling';
   /** Fist cursor only while the button is down — settle may continue after. */
   const SECTION_HOLDING_CLASS = 'is-section-reorder-holding';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
@@ -48,6 +54,7 @@
   let grabNodeSnapshot: ChildNode[] | null = null;
   let grabSpacingSnapshot: HTMLElement[] | null = null;
   let sourceGapIndicator: HTMLElement | null = null;
+  let sourceGapIndicatorFollowsSlot = false;
   let sourceGapPreview: {
     element: HTMLElement;
     marginTop: string;
@@ -177,9 +184,12 @@
   const controller = createReorderController({
     getItems: getContentSections,
     getFlipElements: () => activeIntroDrag
-      ? getSectionRootsInDomOrder().filter(
-          (section) => section !== dragItem && !isChromeNode(section),
-        )
+      ? [
+          ...getSectionRootsInDomOrder().filter(
+            (section) => section !== dragItem && !isChromeNode(section),
+          ),
+          ...(sourceGapIndicator?.isConnected ? [sourceGapIndicator] : []),
+        ]
       : [],
     getDropZone: dropZone,
     getDragItem: () => dragItem,
@@ -258,14 +268,19 @@
       if (target !== currentIndex) {
         const previousRect = items[target - 1]?.getBoundingClientRect();
         const nextRect = items[target]?.getBoundingClientRect();
-        const gapMidpoint = previousRect && nextRect && nextRect.top > previousRect.bottom
-          ? (previousRect.bottom + nextRect.top) / 2
-          : null;
+        const initialSide = direction < 0 ? 'after' : 'before';
+        const gapSide = previousRect && nextRect && nextRect.top > previousRect.bottom
+          ? resolveGapLaneSide(
+              previousRect.bottom,
+              nextRect.top,
+              centerY,
+              direction,
+              initialSide,
+            )
+          : initialSide;
         return {
           index: target,
-          key: gapMidpoint === null
-            ? direction < 0 ? GAP_AFTER_PLACEMENT_KEY : GAP_BEFORE_PLACEMENT_KEY
-            : centerY < gapMidpoint ? GAP_BEFORE_PLACEMENT_KEY : GAP_AFTER_PLACEMENT_KEY,
+          key: gapSide === 'before' ? GAP_BEFORE_PLACEMENT_KEY : GAP_AFTER_PLACEMENT_KEY,
         };
       }
 
@@ -273,8 +288,13 @@
       if (slotRect && currentKey === GAP_BEFORE_PLACEMENT_KEY && direction > 0) {
         const nextRect = items[currentIndex]?.getBoundingClientRect();
         if (nextRect && nextRect.top > slotRect.bottom) {
-          const midpoint = (slotRect.bottom + nextRect.top) / 2;
-          if (centerY >= midpoint) {
+          if (resolveGapLaneSide(
+            slotRect.bottom,
+            nextRect.top,
+            centerY,
+            direction,
+            'before',
+          ) === 'after') {
             return { index: currentIndex, key: GAP_AFTER_PLACEMENT_KEY };
           }
         }
@@ -282,8 +302,13 @@
       if (slotRect && currentKey === GAP_AFTER_PLACEMENT_KEY && direction < 0) {
         const previousRect = items[currentIndex - 1]?.getBoundingClientRect();
         if (previousRect && slotRect.top > previousRect.bottom) {
-          const midpoint = (previousRect.bottom + slotRect.top) / 2;
-          if (centerY <= midpoint) {
+          if (resolveGapLaneSide(
+            previousRect.bottom,
+            slotRect.top,
+            centerY,
+            direction,
+            'after',
+          ) === 'before') {
             return { index: currentIndex, key: GAP_BEFORE_PLACEMENT_KEY };
           }
         }
@@ -381,7 +406,10 @@
         if (sourceGapMovesToSlot) sourceGapOwner = indicator;
         destinationNext.style.setProperty('margin-top', 'var(--space-related)', 'important');
       }
-      if (sourceGapIndicator && sourceGapOwner) sourceGapOwner.append(sourceGapIndicator);
+      if (sourceGapIndicator && sourceGapOwner) {
+        sourceGapIndicatorFollowsSlot = sourceGapOwner === indicator;
+        sourceGapOwner.append(sourceGapIndicator);
+      }
       if (indicator.isConnected) setIntroFoldOffsets();
     },
   });
@@ -392,9 +420,14 @@
     dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
   };
 
-  const clearSourceGapPreview = () => {
+  const removeSourceGapIndicator = () => {
     sourceGapIndicator?.remove();
     sourceGapIndicator = null;
+    sourceGapIndicatorFollowsSlot = false;
+  };
+
+  const clearSourceGapPreview = (preserveIndicator = false) => {
+    if (!preserveIndicator) removeSourceGapIndicator();
     if (destinationGapPreview?.suppressDirty) {
       destinationGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
     }
@@ -465,11 +498,11 @@
     sourceGapIndicator.style.height = `${height}px`;
   };
 
-  const commitReorderSpacing = (root: HTMLElement | null) => {
+  const commitReorderSpacing = (root: HTMLElement | null, preserveIndicator = false) => {
     const before = grabSpacingSnapshot;
     grabSpacingSnapshot = null;
     if (!before || !root) {
-      clearSourceGapPreview();
+      clearSourceGapPreview(preserveIndicator);
       return;
     }
 
@@ -492,7 +525,7 @@
         },
       }));
     }
-    clearSourceGapPreview();
+    clearSourceGapPreview(preserveIndicator);
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
@@ -534,16 +567,22 @@
 
   const setSectionDragging = (active: boolean) => {
     const page = document.documentElement;
+    const controlsAlreadySettling = page.classList.contains(SECTION_CONTROLS_SETTLING_CLASS);
     window.cancelAnimationFrame(controlsRevealFrame);
     controlsRevealFrame = 0;
-    if (active) page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+    if (active) {
+      page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
+      page.classList.remove(SECTION_CONTROLS_SETTLING_CLASS);
+    }
     const shouldReveal = !active
       && page.classList.contains(SECTION_DRAGGING_CLASS)
+      && !controlsAlreadySettling
       && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (shouldReveal) page.classList.add(SECTION_CONTROLS_REVEAL_CLASS);
     else if (!active) page.classList.remove(SECTION_CONTROLS_REVEAL_CLASS);
     page.classList.toggle(SECTION_DRAGGING_CLASS, active);
     if (!active) {
+      page.classList.remove(SECTION_CONTROLS_SETTLING_CLASS);
       page.classList.remove(SECTION_HOLDING_CLASS);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       if (shouldReveal) {
@@ -698,6 +737,13 @@
     sessionButtonDown = false;
     // Open the fist immediately — settle / card fade can keep running.
     setSectionHolding(false);
+    const releaseState = controller.getState();
+    if (
+      releaseState.placedIndex === releaseState.sourceIndex
+      && (!activeIntroDrag || releaseState.placedKey === SOURCE_PLACEMENT_KEY)
+    ) {
+      document.documentElement.classList.add(SECTION_CONTROLS_SETTLING_CLASS);
+    }
     unbindSessionPointerListeners();
 
     if (dragHandle && dragPointerId != null) {
@@ -721,7 +767,10 @@
       // A re-grab (mid-settle or during the fade) owns the lift chrome now —
       // leave its card alone and only publish the order this session committed.
       if (sessionId === activeSessionId) {
-        commitReorderSpacing(root);
+        if (sourceGapIndicatorFollowsSlot && sourceGapIndicator && !sourceGapIndicator.isConnected) {
+          root.append(sourceGapIndicator);
+        }
+        commitReorderSpacing(root, true);
         // Card stays visible through the settle; fade it only after it lands.
         await fadeOutLiftBackdrop();
       }
@@ -736,12 +785,13 @@
       if (droppingSessionId === sessionId) droppingSessionId = 0;
       if (sessionId === activeSessionId) {
         setSectionDragging(false);
+        releaseSessionRoot(root);
+        removeSourceGapIndicator();
         dragItem = null;
         dragHandle = null;
         dragPointerId = null;
         activeItems = null;
         activeIntroDrag = false;
-        releaseSessionRoot(root);
       }
     }
   };
@@ -1308,6 +1358,10 @@
   }
 
   .dev-section-drop-indicator.is-section-flip-moving {
+    will-change: transform;
+  }
+
+  .dev-section-source-gap-indicator.is-section-flip-moving {
     will-change: transform;
   }
 
