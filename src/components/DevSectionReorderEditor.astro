@@ -27,6 +27,7 @@
   /** Fist cursor only while the button is down — settle may continue after. */
   const SECTION_HOLDING_CLASS = 'is-section-reorder-holding';
   const SPACER_CLASS = 'dev-section-reorder-spacer';
+  const SOURCE_GAP_INDICATOR_CLASS = 'dev-section-source-gap-indicator';
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
 
   let reorderActive = false;
@@ -38,12 +39,23 @@
   // Every drop-zone child at grab time, so an abort puts the page back exactly —
   // sections and the non-section children they were dragged past alike.
   let grabNodeSnapshot: ChildNode[] | null = null;
+  let grabSpacingSnapshot: HTMLElement[] | null = null;
+  let sourceGapIndicator: HTMLElement | null = null;
+  let sourceGapIndicatorHost: HTMLElement | null = null;
+  let sourceGapPreview: {
+    element: HTMLElement;
+    marginTop: string;
+    previousValue: string;
+    previousPriority: string;
+    applied: boolean;
+  } | null = null;
   let baselineOrder: number[] | null = null;
   let documentKey = '';
   let sessionPointerActive = false;
   let sessionButtonDown = false;
   let activeItems: HTMLElement[] | null = null;
   let activeIntroDrag = false;
+  let activeSourceIndex = 0;
   // A drop keeps running (settle glide, then card fade) after the controller
   // goes idle, so a re-grab can start while the previous session is still
   // finishing. Tag each lift so that tail only tears down chrome it still owns.
@@ -157,6 +169,7 @@
       lifted: 'is-section-lifted',
       fadeGhost: 'is-drop-indicator-fade-ghost',
       liftBackdrop: LIFT_BACKDROP_CLASS,
+      dropPreviewBelow: 'is-drop-preview-below',
     },
     measureLiftGaps: (item) => ({
       top: getComputedStyle(item).marginTop || '0px',
@@ -165,10 +178,12 @@
     // Tapico spaces via margin-top. Put that margin on the indicator itself
     // (not --gap-top) so collapse matches the live section and the dashed
     // body lines up with the border box. Internal rails stay at 0.
-    measureInsertGaps: (_insertIndex, _sourceIndex, liftGaps) => ({
+    measureInsertGaps: (insertIndex, sourceIndex, liftGaps) => ({
       top: '0px',
       bottom: '0px',
-      marginTop: liftGaps.top,
+      marginTop: insertIndex === sourceIndex
+        ? liftGaps.top
+        : insertIndex === 0 ? '0px' : 'var(--space-related)',
     }),
     resolveInsertIndex: ({ centerY, currentIndex, direction }) => {
       const items = getContentSections();
@@ -195,12 +210,121 @@
       }
       return target;
     },
+    onSlotSync: (indicator, insertIndex) => {
+      const movedAway = insertIndex !== activeSourceIndex;
+      indicator.toggleAttribute(
+        'data-dev-section-insert-at-start',
+        movedAway && insertIndex === 0,
+      );
+      if (!sourceGapPreview || sourceGapPreview.applied === movedAway) return;
+      if (movedAway) {
+        sourceGapPreview.element.style.setProperty(
+          'margin-top',
+          sourceGapPreview.marginTop,
+          'important',
+        );
+      } else if (sourceGapPreview.previousValue) {
+        sourceGapPreview.element.style.setProperty(
+          'margin-top',
+          sourceGapPreview.previousValue,
+          sourceGapPreview.previousPriority,
+        );
+      } else {
+        sourceGapPreview.element.style.removeProperty('margin-top');
+      }
+      sourceGapPreview.applied = movedAway;
+    },
   });
 
   const removeLiftBackdrop = () => {
     liftBackdrop?.remove();
     liftBackdrop = null;
     dragItem?.querySelector(`.${LIFT_BACKDROP_CLASS}`)?.remove();
+  };
+
+  const clearSourceGapPreview = () => {
+    sourceGapIndicator?.remove();
+    sourceGapIndicator = null;
+    sourceGapIndicatorHost?.classList.remove('is-section-source-gap-preview');
+    sourceGapIndicatorHost = null;
+    if (sourceGapPreview?.previousValue) {
+      sourceGapPreview.element.style.setProperty(
+        'margin-top',
+        sourceGapPreview.previousValue,
+        sourceGapPreview.previousPriority,
+      );
+    } else {
+      sourceGapPreview?.element.style.removeProperty('margin-top');
+    }
+    sourceGapPreview = null;
+  };
+
+  const prepareSourceGapPreview = (
+    root: HTMLElement,
+    sections: HTMLElement[],
+    sourceIndex: number,
+  ) => {
+    clearSourceGapPreview();
+    const previous = sections[sourceIndex - 1];
+    const next = sections[sourceIndex + 1];
+    const zone = dropZone();
+    if (!next || !zone) return;
+
+    const rootRect = root.getBoundingClientRect();
+    const zoneRect = zone.getBoundingClientRect();
+    const rootGap = Number.parseFloat(getComputedStyle(root).marginTop) || 0;
+    const nextGap = Number.parseFloat(getComputedStyle(next).marginTop) || 0;
+    const height = previous
+      ? Math.max(rootGap, nextGap)
+      : 0;
+    sourceGapPreview = {
+      element: next,
+      marginTop: `${Math.max(0, height)}px`,
+      previousValue: next.style.getPropertyValue('margin-top'),
+      previousPriority: next.style.getPropertyPriority('margin-top'),
+      applied: false,
+    };
+
+    if (
+      !previous
+      || height <= 0
+      || !root.classList.contains('is-dev-spacing-dirty')
+      || root.dataset.devSpacingValue === 'none'
+    ) return;
+
+    sourceGapIndicator = document.createElement('div');
+    sourceGapIndicator.className = SOURCE_GAP_INDICATOR_CLASS;
+    sourceGapIndicator.setAttribute('aria-hidden', 'true');
+    sourceGapIndicator.style.top = `${rootRect.top - rootGap - zoneRect.top}px`;
+    sourceGapIndicator.style.left = `${rootRect.left - zoneRect.left}px`;
+    sourceGapIndicator.style.width = `${rootRect.width}px`;
+    sourceGapIndicator.style.height = `${height}px`;
+    sourceGapIndicatorHost = next;
+    sourceGapIndicatorHost.classList.add('is-section-source-gap-preview');
+    zone.append(sourceGapIndicator);
+  };
+
+  const commitReorderSpacing = (root: HTMLElement | null) => {
+    const before = grabSpacingSnapshot;
+    grabSpacingSnapshot = null;
+    if (!before || !root) {
+      clearSourceGapPreview();
+      return;
+    }
+
+    const members = new Set(before);
+    const after = getSectionRootsInDomOrder().filter((section) => members.has(section));
+    if (before.some((section, index) => section !== after[index])) {
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-reordered', {
+        detail: {
+          document: root.dataset.devSpacingDocument || documentKey,
+          moved: root,
+          before,
+          after,
+        },
+      }));
+    }
+    clearSourceGapPreview();
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
@@ -319,6 +443,8 @@
       } else if (!controller.settleNow()) {
         return;
       } else {
+        commitReorderSpacing(previous);
+        syncPending();
         releaseSessionRoot(previous);
       }
     }
@@ -353,9 +479,12 @@
       } else {
         activeItems = sections;
       }
+      grabSpacingSnapshot = [...activeItems];
       let sourceIndex = activeItems.indexOf(root);
       if (sourceIndex < 0) sourceIndex = 0;
+      activeSourceIndex = sourceIndex;
 
+      prepareSourceGapPreview(root, activeItems, sourceIndex);
       controller.beginLift(root, handle, x, y, sourceIndex);
       attachLiftBackdrop(root);
       syncSlotMediaInset(root);
@@ -404,6 +533,7 @@
       // A re-grab (mid-settle or during the fade) owns the lift chrome now —
       // leave its card alone and only publish the order this session committed.
       if (sessionId === activeSessionId) {
+        commitReorderSpacing(root);
         // Card stays visible through the settle; fade it only after it lands.
         await fadeOutLiftBackdrop();
       }
@@ -411,6 +541,7 @@
         clearHostLiftChrome();
         grabOrderSnapshot = null;
         grabNodeSnapshot = null;
+        grabSpacingSnapshot = null;
       }
       syncPending();
     } finally {
@@ -624,6 +755,7 @@
     if (grabNodeSnapshot) restoreNodeOrder(grabNodeSnapshot);
     else if (grabOrderSnapshot) restoreDomOrder(grabOrderSnapshot);
     controller.destroy();
+    clearSourceGapPreview();
     clearHostLiftChrome();
     if (root) {
       root.classList.remove('is-section-lifted-session');
@@ -635,6 +767,7 @@
     dragPointerId = null;
     grabOrderSnapshot = null;
     grabNodeSnapshot = null;
+    grabSpacingSnapshot = null;
     activeItems = null;
     activeIntroDrag = false;
   };
@@ -1010,6 +1143,15 @@
     overflow-anchor: none;
   }
 
+  .dev-section-source-gap-indicator {
+    position: absolute;
+    z-index: 35;
+    box-sizing: border-box;
+    margin: 0 !important;
+    border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
+    pointer-events: none;
+  }
+
   /* Fist only while the pointer is down — drop settle must not keep grabbing. */
   html.is-section-reorder-holding {
     cursor: grabbing;
@@ -1068,8 +1210,11 @@
     margin-inline: 0;
   }
 
-  .is-dev-mode [data-dev-project-drop-zone] > .is-drop-preview-below {
-    margin-top: 0 !important;
+  .is-dev-mode
+    [data-dev-project-drop-zone]
+    > .dev-section-drop-indicator[data-dev-section-insert-at-start]
+    + .is-drop-preview-below {
+    margin-top: var(--space-related) !important;
   }
 
   .dev-section-reorder-spacer {
