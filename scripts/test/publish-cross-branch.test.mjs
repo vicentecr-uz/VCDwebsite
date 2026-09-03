@@ -401,6 +401,56 @@ await inRepo('revert restores an uncommitted edit to branch-committed content', 
   );
 });
 
+await inRepo('revert preserves an existing path modified and committed on the branch', async (repo) => {
+  await repo.git('switch', '-c', 'feat/content-migration');
+  const migrated = path.join(repo.work, 'src/content/projects/tapico.json');
+  await writeFile(migrated, '{"title":"Migrated on branch"}\n');
+  await repo.git('add', 'src/content/projects/tapico.json');
+  await repo.git('commit', '-m', 'content: migrate existing document');
+
+  const stray = path.join(repo.work, 'src/content/projects/stray.json');
+  await writeFile(stray, '{"title":"Never committed"}\n');
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check(
+    'committed migration survives',
+    (await readFile(migrated, 'utf8')).includes('Migrated on branch'),
+  );
+  check('genuinely untracked file still deleted', !existsSync(stray));
+});
+
+await inRepo('revert restores edits to an existing branch-migrated path from HEAD', async (repo) => {
+  await repo.git('switch', '-c', 'feat/content-migration');
+  const migrated = path.join(repo.work, 'src/content/projects/tapico.json');
+  await writeFile(migrated, '{"title":"Migrated on branch"}\n');
+  await repo.git('add', 'src/content/projects/tapico.json');
+  await repo.git('commit', '-m', 'content: migrate existing document');
+
+  await writeFile(migrated, '{"title":"Edited after migration"}\n');
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check(
+    'restored branch version instead of main',
+    (await readFile(migrated, 'utf8')).includes('Migrated on branch'),
+  );
+});
+
+await inRepo('revert preserves a deletion committed on the branch', async (repo) => {
+  await repo.git('switch', '-c', 'feat/content-migration');
+  const migrated = path.join(repo.work, 'src/content/projects/tapico.json');
+  await rm(migrated);
+  await repo.git('add', 'src/content/projects/tapico.json');
+  await repo.git('commit', '-m', 'content: delete migrated document');
+
+  await writeFile(migrated, '{"title":"Resurrected working copy"}\n');
+
+  const result = await revertUnpublishedContent();
+  check('reverted', result.ok === true, result.error);
+  check('committed deletion survives', !existsSync(migrated));
+});
+
 await inRepo('revert with nothing unpublished refuses', async () => {
   const result = await revertUnpublishedContent();
   check('refused', result.ok === false && /No unpublished content/.test(result.error), result.error);
