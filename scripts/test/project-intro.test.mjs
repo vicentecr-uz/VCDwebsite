@@ -50,5 +50,26 @@ assert.deepEqual(
     origins: [null, null, 1],
   },
 );
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(['none', 'related', 'section'], 0, 1, 'before'),
+  {
+    values: ['related', 'none', 'section'],
+    origins: [null, null, 2],
+  },
+);
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(['none', 'section', 'related'], 1, 1, 'before'),
+  {
+    values: ['none', 'related', 'section'],
+    origins: [0, null, 1],
+  },
+);
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(['none', 'section', 'related'], 1, 1, 'after'),
+  {
+    values: ['none', 'section', 'related'],
+    origins: [0, 1, null],
+  },
+);
 
 console.log('project-intro: ok');

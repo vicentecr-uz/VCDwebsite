@@ -31,6 +31,11 @@
   const SPACER_CLASS = 'dev-section-reorder-spacer';
   const SOURCE_GAP_INDICATOR_CLASS = 'dev-section-source-gap-indicator';
   const FLIP_MOVING_CLASS = 'is-section-flip-moving';
+  const SOURCE_PLACEMENT_KEY = 'source';
+  const START_PLACEMENT_KEY = 'start';
+  const END_PLACEMENT_KEY = 'end';
+  const GAP_BEFORE_PLACEMENT_KEY = 'gap-before';
+  const GAP_AFTER_PLACEMENT_KEY = 'gap-after';
 
   let reorderActive = false;
   let dragItem: HTMLElement | null = null;
@@ -65,6 +70,7 @@
   let activeItems: HTMLElement[] | null = null;
   let activeIntroDrag = false;
   let activeSourceIndex = 0;
+  let activePlacementKey = '';
   // A drop keeps running (settle glide, then card fade) after the controller
   // goes idle, so a re-grab can start while the previous session is still
   // finishing. Tag each lift so that tail only tears down chrome it still owns.
@@ -171,10 +177,13 @@
   const controller = createReorderController({
     getItems: getContentSections,
     getFlipElements: () => activeIntroDrag
-      ? getSectionRootsInDomOrder().filter((section) => section !== dragItem && !isChromeNode(section))
+      ? getSectionRootsInDomOrder().filter(
+          (section) => section !== dragItem && !isChromeNode(section),
+        )
       : [],
     getDropZone: dropZone,
     getDragItem: () => dragItem,
+    moveIndicatorWithFlip: true,
     classes: {
       indicator: DROP_INDICATOR_CLASS,
       indicatorBody: DROP_INDICATOR_BODY_CLASS,
@@ -191,23 +200,33 @@
     // Tapico spaces via margin-top. Put that margin on the indicator itself
     // (not --gap-top) so collapse matches the live section and the dashed
     // body lines up with the border box. Internal rails stay at 0.
-    measureInsertGaps: (insertIndex, sourceIndex, liftGaps) => {
+    get initialPlacementKey() {
+      return activeIntroDrag ? SOURCE_PLACEMENT_KEY : '';
+    },
+    measureInsertGaps: (insertIndex, sourceIndex, liftGaps, placementKey) => {
       const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
       const destinationNext = remaining[insertIndex];
+      const movedAway = activeIntroDrag
+        ? placementKey !== SOURCE_PLACEMENT_KEY
+        : insertIndex !== sourceIndex;
+      const destinationGap = destinationNext
+        ? sourceGapPreview?.element === destinationNext && movedAway
+          ? sourceGapPreview.marginTop
+          : (grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop)
+        : 'var(--space-related)';
       return {
         top: '0px',
         bottom: '0px',
-        marginTop: insertIndex === sourceIndex
+        marginTop: !movedAway
           ? liftGaps.top
           : insertIndex === 0
             ? '0px'
-            : destinationNext
-              ? (grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop)
-              : 'var(--space-related)',
+            : !destinationNext || (activeIntroDrag && placementKey === GAP_BEFORE_PLACEMENT_KEY)
+              ? 'var(--space-related)'
+              : destinationGap,
       };
     },
-    resolveInsertIndex: ({ centerY, currentIndex, direction }) => {
-      const items = getContentSections();
+    resolveInsertPlacement: ({ items, centerY, currentIndex, currentKey, sourceIndex, direction, slot }) => {
       let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
       if (!activeIntroDrag) {
         const full = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
@@ -228,11 +247,64 @@
             }
           }
         }
+        return { index: target };
       }
-      return target;
+
+      if (currentKey === SOURCE_PLACEMENT_KEY && target === sourceIndex) {
+        return { index: target, key: SOURCE_PLACEMENT_KEY };
+      }
+      if (target <= 0) return { index: 0, key: START_PLACEMENT_KEY };
+      if (target >= items.length) return { index: items.length, key: END_PLACEMENT_KEY };
+      if (target !== currentIndex) {
+        const previousRect = items[target - 1]?.getBoundingClientRect();
+        const nextRect = items[target]?.getBoundingClientRect();
+        const gapMidpoint = previousRect && nextRect && nextRect.top > previousRect.bottom
+          ? (previousRect.bottom + nextRect.top) / 2
+          : null;
+        return {
+          index: target,
+          key: gapMidpoint === null
+            ? direction < 0 ? GAP_AFTER_PLACEMENT_KEY : GAP_BEFORE_PLACEMENT_KEY
+            : centerY < gapMidpoint ? GAP_BEFORE_PLACEMENT_KEY : GAP_AFTER_PLACEMENT_KEY,
+        };
+      }
+
+      const slotRect = slot?.getBoundingClientRect();
+      if (slotRect && currentKey === GAP_BEFORE_PLACEMENT_KEY && direction > 0) {
+        const nextRect = items[currentIndex]?.getBoundingClientRect();
+        if (nextRect && nextRect.top > slotRect.bottom) {
+          const midpoint = (slotRect.bottom + nextRect.top) / 2;
+          if (centerY >= midpoint) {
+            return { index: currentIndex, key: GAP_AFTER_PLACEMENT_KEY };
+          }
+        }
+      }
+      if (slotRect && currentKey === GAP_AFTER_PLACEMENT_KEY && direction < 0) {
+        const previousRect = items[currentIndex - 1]?.getBoundingClientRect();
+        if (previousRect && slotRect.top > previousRect.bottom) {
+          const midpoint = (previousRect.bottom + slotRect.top) / 2;
+          if (centerY <= midpoint) {
+            return { index: currentIndex, key: GAP_BEFORE_PLACEMENT_KEY };
+          }
+        }
+      }
+
+      return {
+        index: currentIndex,
+        key: currentKey || (direction < 0 ? GAP_AFTER_PLACEMENT_KEY : GAP_BEFORE_PLACEMENT_KEY),
+      };
     },
-    onSlotSync: (indicator, insertIndex) => {
-      const movedAway = insertIndex !== activeSourceIndex;
+    onSlotSync: (indicator, insertIndex, placementKey) => {
+      activePlacementKey = placementKey;
+      const movedAway = activeIntroDrag
+        ? placementKey !== SOURCE_PLACEMENT_KEY
+        : insertIndex !== activeSourceIndex;
+      indicator.classList.toggle('project-block--intro', activeIntroDrag);
+      if (activeIntroDrag) {
+        indicator.dataset.devIntroHeightValue = dragItem?.dataset.devIntroHeightValue || '75';
+      } else {
+        delete indicator.dataset.devIntroHeightValue;
+      }
       indicator.toggleAttribute(
         'data-dev-section-insert-at-start',
         movedAway && insertIndex === 0,
@@ -280,9 +352,16 @@
 
       const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
       const destinationNext = movedAway ? remaining[insertIndex] : null;
-      if (destinationNext) {
+      let sourceGapOwner = movedAway ? sourceGapPreview?.element : indicator;
+      const insertsAfterGap = !activeIntroDrag || placementKey !== GAP_BEFORE_PLACEMENT_KEY;
+      if (destinationNext && insertsAfterGap) {
         const preserveDestinationGap = insertIndex > 0;
         const suppressDirty = destinationNext.classList.contains('is-dev-spacing-dirty');
+        const sourceGapMovesToSlot = Boolean(
+          preserveDestinationGap
+          && sourceGapIndicator
+          && sourceGapPreview?.element === destinationNext,
+        );
         destinationGapPreview = {
           element: destinationNext,
           previousValue: destinationNext.style.getPropertyValue('margin-top'),
@@ -290,15 +369,19 @@
           suppressDirty,
         };
         if (suppressDirty) destinationNext.classList.add('is-dev-gap-preview-suppressed');
-        if (preserveDestinationGap && suppressDirty) {
+        if (preserveDestinationGap && suppressDirty && !sourceGapMovesToSlot) {
           indicator.setAttribute('data-dev-section-preserved-gap-dirty', '');
           indicator.style.setProperty(
             '--dev-section-preserved-gap-height',
-            grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop,
+            sourceGapPreview?.element === destinationNext
+              ? sourceGapPreview.marginTop
+              : (grabMarginSnapshot.get(destinationNext) ?? getComputedStyle(destinationNext).marginTop),
           );
         }
+        if (sourceGapMovesToSlot) sourceGapOwner = indicator;
         destinationNext.style.setProperty('margin-top', 'var(--space-related)', 'important');
       }
+      if (sourceGapIndicator && sourceGapOwner) sourceGapOwner.append(sourceGapIndicator);
       if (indicator.isConnected) setIntroFoldOffsets();
     },
   });
@@ -339,6 +422,7 @@
     }
     sourceGapPreview = null;
     grabMarginSnapshot.clear();
+    activePlacementKey = '';
     setIntroFoldOffsets();
   };
 
@@ -379,7 +463,6 @@
     sourceGapIndicator.className = SOURCE_GAP_INDICATOR_CLASS;
     sourceGapIndicator.setAttribute('aria-hidden', 'true');
     sourceGapIndicator.style.height = `${height}px`;
-    next.append(sourceGapIndicator);
   };
 
   const commitReorderSpacing = (root: HTMLElement | null) => {
@@ -392,13 +475,20 @@
 
     const members = new Set(before);
     const after = getSectionRootsInDomOrder().filter((section) => members.has(section));
-    if (before.some((section, index) => section !== after[index])) {
+    const orderChanged = before.some((section, index) => section !== after[index]);
+    const seamChanged = activeIntroDrag
+      && activePlacementKey !== ''
+      && activePlacementKey !== SOURCE_PLACEMENT_KEY;
+    if (orderChanged || seamChanged) {
       window.dispatchEvent(new CustomEvent('vcd:dev-section-reordered', {
         detail: {
           document: root.dataset.devSpacingDocument || documentKey,
           moved: root,
           before,
           after,
+          destinationSide: activePlacementKey === GAP_BEFORE_PLACEMENT_KEY
+            ? 'before'
+            : 'after',
         },
       }));
     }
@@ -1217,6 +1307,10 @@
     will-change: transform;
   }
 
+  .dev-section-drop-indicator.is-section-flip-moving {
+    will-change: transform;
+  }
+
   /* A neighbour on the move carries the same card as the lifted block, so it
      reads as a solid sheet sliding past and the gap indicator never shows
      through it. No elevation shadow — these slide under the lifted block,
@@ -1267,7 +1361,7 @@
     right: 0;
     bottom: 100%;
     left: 0;
-    z-index: 20;
+    z-index: -2;
     box-sizing: border-box;
     height: var(--dev-section-preserved-gap-height, 0px);
     border: 1px dashed color-mix(in srgb, var(--sys-color-on-srf-variant) 55%, transparent);
@@ -1349,6 +1443,7 @@
 
   .dev-section-drop-indicator {
     --section-lift-card-inset: 0.75em;
+    position: relative;
     display: grid;
     grid-template-rows: var(--gap-top, 0px) auto var(--gap-bottom, 0px);
     margin: 0;
@@ -1430,10 +1525,6 @@
     transition:
       height 140ms ease-out,
       opacity 90ms ease-out;
-  }
-
-  .dev-section-drop-indicator.is-repositioning {
-    transition: none !important;
   }
 
   .dev-section-drop-indicator.is-repositioning .dev-section-drop-indicator__body {

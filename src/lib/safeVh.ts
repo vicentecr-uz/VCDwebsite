@@ -34,8 +34,14 @@ let safeViewportHeight = 0;
 
 type SafeVhWindow = Window & { [BOUND_FLAG]?: boolean };
 
-const isReorderChrome = (element: Element) =>
-  [...REORDER_CHROME].some((name) => element.classList.contains(name));
+const isReorderChrome = (element: Element) => {
+  if (element.classList.contains('is-section-lifted')) return true;
+  if (
+    element.classList.contains('dev-section-drop-indicator')
+    && element.classList.contains('project-block--intro')
+  ) return false;
+  return [...REORDER_CHROME].some((name) => element.classList.contains(name));
+};
 
 const nextLogicalSibling = (element: Element): HTMLElement | null => {
   let sibling = element.nextElementSibling;
@@ -52,7 +58,8 @@ export function setSafeVh(root: HTMLElement = document.documentElement): void {
 /** Keep an Intro's percentage endpoint relative to the page fold, not its own top. */
 export function setIntroFoldOffsets(root: ParentNode = document): void {
   const scrollTop = window.scrollY;
-  const intros = [...root.querySelectorAll<HTMLElement>(INTRO_SELECTOR)];
+  const allIntros = [...root.querySelectorAll<HTMLElement>(INTRO_SELECTOR)];
+  const intros = allIntros.filter((intro) => !intro.classList.contains('is-section-lifted'));
   const spacers = [...root.querySelectorAll<HTMLElement>(`.${INTRO_AIR_CLASS}`)];
   const usedSpacers = new Set<HTMLElement>();
 
@@ -62,7 +69,7 @@ export function setIntroFoldOffsets(root: ParentNode = document): void {
     element.removeAttribute(INTRO_AFTER_RUN_ATTR);
     element.style.removeProperty(INTRO_OUTER_AIR_PROP);
   });
-  intros.forEach((intro) => {
+  allIntros.forEach((intro) => {
     intro.style.removeProperty(LEGACY_INTRO_AIR_PROP);
     intro.style.removeProperty('padding-bottom');
   });
@@ -140,7 +147,13 @@ export function bindSafeVh(): void {
   let introSyncFrame = 0;
   const scheduleIntroSync = () => {
     cancelAnimationFrame(introSyncFrame);
-    introSyncFrame = requestAnimationFrame(() => setIntroFoldOffsets());
+    introSyncFrame = requestAnimationFrame(() => {
+      // The reorder host synchronizes Intro air in the same layout write as
+      // its slot. Measuring again while FLIP transforms are running would read
+      // visual rather than layout positions and pull the group off-centre.
+      if (document.documentElement.classList.contains('is-section-reorder-dragging')) return;
+      setIntroFoldOffsets();
+    });
   };
 
   new MutationObserver(scheduleIntroSync).observe(document.body, {
