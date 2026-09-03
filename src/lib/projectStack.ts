@@ -9,10 +9,16 @@ const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacing, number> = {
   major: 4,
 };
 
-const largerProjectStackSpacing = (
-  left: ProjectStackSpacing,
-  right: ProjectStackSpacing,
-) => PROJECT_STACK_SPACING_ORDER[left] >= PROJECT_STACK_SPACING_ORDER[right] ? left : right;
+export const shouldKeepLeadingSpacingSeam = (
+  leadingSize: number,
+  trailingSize: number,
+  leadingDirty = false,
+  trailingDirty = false,
+) => {
+  if (leadingSize !== trailingSize) return leadingSize > trailingSize;
+  if (leadingDirty !== trailingDirty) return leadingDirty;
+  return true;
+};
 
 export type ProjectStackSpacingReorder = {
   values: ProjectStackSpacing[];
@@ -28,6 +34,7 @@ export function reorderProjectStackSpacingSeams(
   sourceIndex: number,
   insertIndex: number,
   destinationSide?: ProjectStackInsertionSide,
+  dirtySeams: boolean[] = [],
 ): ProjectStackSpacingReorder {
   const values = [...spacings];
   const origins = spacings.map((_, index) => index as number | null);
@@ -50,8 +57,12 @@ export function reorderProjectStackSpacingSeams(
       values[sourceNext] = 'none';
       origins[sourceNext] = null;
     } else {
-      const winner = largerProjectStackSpacing(spacings[sourceIndex], spacings[sourceNext])
-        === spacings[sourceIndex]
+      const winner = shouldKeepLeadingSpacingSeam(
+        PROJECT_STACK_SPACING_ORDER[spacings[sourceIndex]],
+        PROJECT_STACK_SPACING_ORDER[spacings[sourceNext]],
+        dirtySeams[sourceIndex],
+        dirtySeams[sourceNext],
+      )
         ? sourceIndex
         : sourceNext;
       values[sourceNext] = spacings[winner];

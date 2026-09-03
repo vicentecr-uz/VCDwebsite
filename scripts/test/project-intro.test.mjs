@@ -3,6 +3,7 @@ import { introLayout, introRun, normalizeIntroHeight, resolveIntroHeight } from 
 import {
   reorderProjectStackSpacings,
   reorderProjectStackSpacingSeams,
+  shouldKeepLeadingSpacingSeam,
 } from '../../src/lib/projectStack.ts';
 import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 
@@ -33,6 +34,10 @@ assert.equal(resolveGapLaneSide(200, 600, 299, 1, 'before'), 'before');
 assert.equal(resolveGapLaneSide(200, 600, 300, 1, 'before'), 'after');
 assert.equal(resolveGapLaneSide(200, 600, 501, -1, 'after'), 'after');
 assert.equal(resolveGapLaneSide(200, 600, 500, -1, 'after'), 'before');
+assert.equal(shouldKeepLeadingSpacingSeam(128, 64, false, true), true);
+assert.equal(shouldKeepLeadingSpacingSeam(64, 128, true, false), false);
+assert.equal(shouldKeepLeadingSpacingSeam(128, 128, false, true), false);
+assert.equal(shouldKeepLeadingSpacingSeam(128, 128, true, false), true);
 
 assert.deepEqual(
   reorderProjectStackSpacings(['none', 'group', 'related'], 1, 0),
@@ -79,6 +84,32 @@ assert.deepEqual(
   {
     values: ['none', 'section', 'related'],
     origins: [0, 1, null],
+  },
+);
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(
+    ['none', 'section', 'section'],
+    1,
+    0,
+    undefined,
+    [false, false, true],
+  ),
+  {
+    values: ['related', 'none', 'section'],
+    origins: [null, null, 2],
+  },
+);
+assert.deepEqual(
+  reorderProjectStackSpacingSeams(
+    ['none', 'group', 'section'],
+    1,
+    0,
+    undefined,
+    [false, true, true],
+  ),
+  {
+    values: ['related', 'none', 'section'],
+    origins: [null, null, 2],
   },
 );
 
