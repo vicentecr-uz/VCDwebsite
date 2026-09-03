@@ -4,6 +4,7 @@ import {
   reorderProjectStackSpacings,
   reorderProjectStackSpacingSeams,
 } from '../../src/lib/projectStack.ts';
+import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 
 assert.equal(normalizeIntroHeight(80.4), 80);
 assert.equal(normalizeIntroHeight('bad'), 75);
@@ -23,6 +24,11 @@ assert.equal(layout.flexibleAirPx, 400);
 assert.equal(layout.outerGapPx, 200);
 assert.equal(introLayout(100, 1000, 1000).flexibleAirPx, 0);
 assert.equal(introLayout(80, 1000, 100).outerGapPx, 350);
+
+assert.equal(resolveGapLaneSide(100, 200, 124, 1, 'before'), 'before');
+assert.equal(resolveGapLaneSide(100, 200, 125, 1, 'before'), 'after');
+assert.equal(resolveGapLaneSide(100, 200, 176, -1, 'after'), 'after');
+assert.equal(resolveGapLaneSide(100, 200, 175, -1, 'after'), 'before');
 
 assert.deepEqual(
   reorderProjectStackSpacings(['none', 'group', 'related'], 1, 0),
