@@ -57,13 +57,16 @@ export function setSafeVh(root: HTMLElement = document.documentElement): void {
 
 /** Keep an Intro's percentage endpoint relative to the page fold, not its own top. */
 export function setIntroFoldOffsets(root: ParentNode = document): void {
-  const scrollTop = window.scrollY;
   const allIntros = [...root.querySelectorAll<HTMLElement>(INTRO_SELECTOR)];
   const intros = allIntros.filter((intro) => !intro.classList.contains('is-section-lifted'));
   const spacers = [...root.querySelectorAll<HTMLElement>(`.${INTRO_AIR_CLASS}`)];
   const usedSpacers = new Set<HTMLElement>();
 
   spacers.forEach((spacer) => { spacer.style.height = '0px'; });
+  // Commit the collapsed gaps before reading scrollY: near the page bottom the
+  // browser clamps it to the new maximum, so the pre-collapse value is stale.
+  void document.documentElement.offsetHeight;
+  const scrollTop = window.scrollY;
   root.querySelectorAll<HTMLElement>(`[${INTRO_RUN_START_ATTR}], [${INTRO_AFTER_RUN_ATTR}]`).forEach((element) => {
     element.removeAttribute(INTRO_RUN_START_ATTR);
     element.removeAttribute(INTRO_AFTER_RUN_ATTR);
