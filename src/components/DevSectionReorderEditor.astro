@@ -55,6 +55,9 @@
   let grabSpacingSnapshot: HTMLElement[] | null = null;
   let sourceGapIndicator: HTMLElement | null = null;
   let sourceGapIndicatorFollowsSlot = false;
+  let sourceGapIndicatorStartsAfterSource = false;
+  let sourceGapIndicatorInitialOwner: HTMLElement | null = null;
+  let preservedGapPaintOwner: HTMLElement | null = null;
   let sourceGapPreview: {
     element: HTMLElement;
     marginTop: string;
@@ -377,7 +380,9 @@
 
       const remaining = (grabSpacingSnapshot ?? []).filter((section) => section !== dragItem);
       const destinationNext = movedAway ? remaining[insertIndex] : null;
-      let sourceGapOwner = movedAway ? sourceGapPreview?.element : indicator;
+      let sourceGapOwner = movedAway || sourceGapIndicatorStartsAfterSource
+        ? sourceGapPreview?.element
+        : indicator;
       const insertsAfterGap = !activeIntroDrag || placementKey !== GAP_BEFORE_PLACEMENT_KEY;
       if (destinationNext && insertsAfterGap) {
         const preserveDestinationGap = insertIndex > 0;
@@ -421,13 +426,23 @@
   };
 
   const removeSourceGapIndicator = () => {
+    sourceGapIndicatorInitialOwner?.classList.remove('is-dev-gap-preview-suppressed');
+    preservedGapPaintOwner?.classList.remove('is-dev-gap-preview-suppressed');
     sourceGapIndicator?.remove();
     sourceGapIndicator = null;
     sourceGapIndicatorFollowsSlot = false;
+    sourceGapIndicatorStartsAfterSource = false;
+    sourceGapIndicatorInitialOwner = null;
+    preservedGapPaintOwner = null;
   };
 
   const clearSourceGapPreview = (preserveIndicator = false) => {
     if (!preserveIndicator) removeSourceGapIndicator();
+    else {
+      sourceGapIndicatorInitialOwner?.classList.remove('is-dev-gap-preview-suppressed');
+      sourceGapIndicatorInitialOwner = null;
+      sourceGapIndicatorStartsAfterSource = false;
+    }
     if (destinationGapPreview?.suppressDirty) {
       destinationGapPreview.element.classList.remove('is-dev-gap-preview-suppressed');
     }
@@ -472,6 +487,7 @@
     const rootGap = Number.parseFloat(getComputedStyle(root).marginTop) || 0;
     const nextGap = Number.parseFloat(getComputedStyle(next).marginTop) || 0;
     const sourceGapWins = !previous || rootGap >= nextGap;
+    const winningGapOwner = sourceGapWins ? root : next;
     const height = previous
       ? Math.max(rootGap, nextGap)
       : 0;
@@ -487,15 +503,17 @@
     if (
       !previous
       || height <= 0
-      || !sourceGapWins
-      || !root.classList.contains('is-dev-spacing-dirty')
-      || root.dataset.devSpacingValue === 'none'
+      || !winningGapOwner.classList.contains('is-dev-spacing-dirty')
+      || winningGapOwner.dataset.devSpacingValue === 'none'
     ) return;
 
     sourceGapIndicator = document.createElement('div');
     sourceGapIndicator.className = SOURCE_GAP_INDICATOR_CLASS;
     sourceGapIndicator.setAttribute('aria-hidden', 'true');
     sourceGapIndicator.style.height = `${height}px`;
+    sourceGapIndicatorStartsAfterSource = !sourceGapWins;
+    sourceGapIndicatorInitialOwner = winningGapOwner;
+    winningGapOwner.classList.add('is-dev-gap-preview-suppressed');
   };
 
   const commitReorderSpacing = (root: HTMLElement | null, preserveIndicator = false) => {
@@ -526,6 +544,13 @@
       }));
     }
     clearSourceGapPreview(preserveIndicator);
+    if (preserveIndicator) {
+      const owner = sourceGapIndicator?.parentElement;
+      if (owner && !owner.classList.contains(DROP_INDICATOR_CLASS)) {
+        preservedGapPaintOwner = owner;
+        owner.classList.add('is-dev-gap-preview-suppressed');
+      }
+    }
   };
 
   const attachLiftBackdrop = (root: HTMLElement) => {
