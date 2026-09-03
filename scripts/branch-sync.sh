@@ -136,6 +136,11 @@ cmd_start() {
     : >"$LOG_FILE"
 
     if ! launchctl submit -l "$LAUNCHD_LABEL" -o "$LOG_FILE" -e "$LOG_FILE" -- \
+      /usr/bin/env \
+      "PATH=${PATH:-/usr/bin:/bin:/usr/sbin:/sbin}" \
+      "HOME=${HOME:-}" \
+      "USER=${USER:-$(id -un)}" \
+      "LOGNAME=${LOGNAME:-${USER:-$(id -un)}}" \
       /bin/bash -c 'cd "$1"; shift; exec "$@"' _ "$ROOT" \
       /usr/bin/env "BRANCH_SYNC_INTERVAL=$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon; then
       echo "Branch sync: failed to start — see $LOG_FILE"
