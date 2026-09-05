@@ -364,10 +364,10 @@
   --font-serif: 'EB Garamond', Georgia, serif;
   --font-sans: 'Hanken Grotesk', system-ui, sans-serif;
 
-  /* Core spacing unit — site gutter, header/footer padding, grid gaps,
+  /* Core spacing unit — default site gutter, header/footer padding, grid gaps,
      and the project-stack "related" step. rem (not em) so it is the same
      distance wherever it is used, including inside elements with a scaled
-     font-size. Tightened on phones below. */
+     font-size. Tightened on phones below; the phone gutter overrides it. */
   --space-unit: 1rem;
 
   /* Project stack rhythm (one gap between siblings — see project.css).
@@ -456,9 +456,8 @@
   }
 }
 
-/* Phone: edge space is at a premium, so the core unit steps down.
-   Everything built on --space-unit (gutter, header, footer, grid gaps)
-   tightens together. */
+/* Phone: the core unit steps down for chrome and compact content rhythm.
+   The page gutter is widened separately below so content stays off the edge. */
 @media (max-width: 40em) {
   :root {
     --space-unit: 0.75rem;
@@ -517,6 +516,13 @@ body {
   /* Named so the header fill can break out to the viewport edges. */
   --page-gutter: max(var(--space-unit), calc((100% - var(--page-max-width)) / 2));
   padding-inline: var(--page-gutter);
+}
+
+@media (max-width: 40em) {
+  #site-wrapper {
+    /* Matches nelson.co's mobile px-8 gutter (2rem / 32px). */
+    --page-gutter: 2rem;
+  }
 }
 
 img {
