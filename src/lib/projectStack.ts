@@ -138,16 +138,37 @@ export function resolveProjectSpacing(
 }
 
 export const isProjectStackSpacingValue = (value: unknown): value is ProjectStackSpacingValue =>
-  typeof value === 'string' && value in PROJECT_STACK_SPACING_ORDER;
+  typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROJECT_STACK_SPACING_ORDER, value);
 
 export const resolveProjectStackSpacing = (
   spacing?: ProjectStackSpacing,
 ): ProjectStackSpacingResolved => {
   const source = spacing && typeof spacing === 'object' ? spacing : {};
-  const desktop = isProjectStackSpacingValue(spacing) ? spacing : source.desktop ?? 'section';
-  const tablet = source.tablet ?? desktop;
-  const mobile = source.mobile ?? tablet;
+  const desktop = isProjectStackSpacingValue(spacing)
+    ? spacing
+    : isProjectStackSpacingValue(source.desktop) ? source.desktop : 'section';
+  const tablet = isProjectStackSpacingValue(source.tablet) ? source.tablet : desktop;
+  const mobile = isProjectStackSpacingValue(source.mobile) ? source.mobile : tablet;
   return { desktop, tablet, mobile };
+};
+
+export const setProjectStackSpacingAtViewport = (
+  current: ProjectStackSpacingResolved,
+  viewport: ProjectStackSpacingViewport,
+  nextValue: ProjectStackSpacingValue,
+): ProjectStackSpacingResolved => {
+  const next = { ...current };
+  if (viewport === 'desktop') {
+    next.desktop = nextValue;
+    next.tablet = nextValue;
+    next.mobile = nextValue;
+  } else if (viewport === 'tablet') {
+    next.tablet = nextValue;
+    next.mobile = nextValue;
+  } else {
+    next.mobile = nextValue;
+  }
+  return next;
 };
 
 export const canonicalizeProjectStackSpacing = (value: unknown): ProjectStackSpacing => {
