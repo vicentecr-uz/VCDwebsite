@@ -53,6 +53,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ]}
       />
       <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
+      <SelectField
+        class="dev-text-format__emphasis-style"
+        hideLabel
+        label="Emphasis"
+        data-dev-emphasis-style
+        value="normal"
+        options={[
+          { value: 'normal', label: 'Normal' },
+          { value: 'emphasis', label: 'Emphasis' },
+        ]}
+      />
+      <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
       <div class="dev-text-format__inline" data-dev-format-inline>
         <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
           <span class="dev-text-format__icon" aria-hidden="true" set:html={formatBoldSvg} />
@@ -289,6 +301,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
     const blockStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-block-style]');
+    const emphasisStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-emphasis-style]');
+    const emphasisStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__emphasis-style');
     const formatInline = formatBar?.querySelector<HTMLElement>('[data-dev-format-inline]');
     const formatButtons = formatBar
       ? [...formatBar.querySelectorAll<HTMLButtonElement>('[data-dev-format]')]
@@ -300,7 +314,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
-    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !formatInline) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !emphasisStyleField || !formatInline) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -405,6 +419,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           return '<br>';
         }
         if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
+        if (tag === 'SPAN' && node.classList.contains('text-emphasis')) {
+          return inner ? `<span class="text-emphasis">${inner}</span>` : '';
+        }
         if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
         if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
         if (tag === 'A') {
@@ -3700,7 +3717,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncFormatInlineVisibility = (state: EditableTextState) => {
-      formatInline.hidden = state.kind !== 'paragraphs';
+      const hidden = state.kind !== 'paragraphs';
+      formatInline.hidden = hidden;
+      emphasisStyleField.hidden = hidden;
     };
 
     const enableConvertedText = (element: HTMLElement, kind: EditableTextState['kind']) => {
@@ -4231,20 +4250,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const command = button.dataset.devFormat;
         let active = false;
         if (command === 'bold' || command === 'italic') {
-          try {
-            active = document.queryCommandState(command);
-          } catch {
-            active = false;
-          }
+          active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, command));
         } else if (command === 'underline') {
           if (hasSelectedLink) {
             active = false;
           } else {
-            try {
-              active = document.queryCommandState('underline');
-            } catch {
-              active = false;
-            }
+            active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'underline'));
           }
         } else if (command === 'link') {
           active = hasSelectedLink || linkPanelOpen;
@@ -4252,6 +4263,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      syncEmphasisStyle();
     };
 
     const positionFormatBar = (range: Range) => {
@@ -4485,6 +4497,206 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return found;
     };
 
+    const markSelector = {
+      emphasis: '.text-emphasis',
+      bold: 'strong, b',
+      italic: 'em, i',
+      underline: 'u',
+    } as const;
+
+    const markCoversRange = (range: Range, mark: keyof typeof markSelector) => {
+      const startElement = range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+      const endElement = range.endContainer instanceof Element
+        ? range.endContainer
+        : range.endContainer.parentElement;
+      const block = startElement?.closest<HTMLElement>('[data-dev-text-document]');
+      if (!block || !endElement || !block.contains(endElement)) return false;
+      const startMark = startElement.closest(markSelector[mark]);
+      const endMark = endElement.closest(markSelector[mark]);
+      if (startMark && startMark === endMark && block.contains(startMark)) return true;
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      const selectedTextNodes: Text[] = [];
+      let current = walker.nextNode();
+      while (current) {
+        const text = current as Text;
+        if (text.data) {
+          const textRange = document.createRange();
+          textRange.selectNodeContents(text);
+          const overlaps = range.compareBoundaryPoints(Range.START_TO_END, textRange) > 0
+            && range.compareBoundaryPoints(Range.END_TO_START, textRange) < 0;
+          if (overlaps) selectedTextNodes.push(text);
+        }
+        current = walker.nextNode();
+      }
+      return selectedTextNodes.length > 0 && selectedTextNodes.every((text) => {
+        const match = text.parentElement?.closest(markSelector[mark]);
+        return Boolean(match && block.contains(match));
+      });
+    };
+
+    const syncEmphasisStyle = () => {
+      const active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'emphasis'));
+      emphasisStyleSelect.value = active
+        ? 'emphasis'
+        : 'normal';
+    };
+
+    type InlineMarks = {
+      emphasis: boolean;
+      bold: boolean;
+      italic: boolean;
+      underline: boolean;
+      link: { href: string; underlineOff: boolean } | null;
+    };
+    type InlineAtom = {
+      kind: 'text' | 'break';
+      text: string;
+      marks: InlineMarks;
+      selected: boolean;
+    };
+
+    const applyEmphasisMark = (range: Range, emphasized: boolean) => {
+      const startElement = range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+      const endElement = range.endContainer instanceof Element
+        ? range.endContainer
+        : range.endContainer.parentElement;
+      const paragraph = startElement?.closest<HTMLParagraphElement>('p');
+      if (!paragraph || paragraph !== endElement?.closest('p')) return null;
+
+      const startBoundary = document.createElement('span');
+      const endBoundary = document.createElement('span');
+      startBoundary.hidden = true;
+      endBoundary.hidden = true;
+      const endRange = range.cloneRange();
+      endRange.collapse(false);
+      endRange.insertNode(endBoundary);
+      const startRange = range.cloneRange();
+      startRange.collapse(true);
+      startRange.insertNode(startBoundary);
+
+      const atoms: InlineAtom[] = [];
+      let selected = false;
+      const visit = (node: Node, inherited: InlineMarks) => {
+        if (node === startBoundary) {
+          selected = true;
+          return;
+        }
+        if (node === endBoundary) {
+          selected = false;
+          return;
+        }
+        if (node instanceof Text) {
+          if (node.data) atoms.push({ kind: 'text', text: node.data, marks: inherited, selected });
+          return;
+        }
+        if (!(node instanceof HTMLElement)) return;
+        const marks = { ...inherited };
+        if (node.matches(markSelector.emphasis)) marks.emphasis = true;
+        if (node.matches(markSelector.bold)) marks.bold = true;
+        if (node.matches(markSelector.italic)) marks.italic = true;
+        if (node.matches(markSelector.underline)) marks.underline = true;
+        if (node instanceof HTMLAnchorElement) {
+          marks.link = {
+            href: node.getAttribute('href') || '',
+            underlineOff: node.classList.contains('is-underline-off'),
+          };
+        }
+        if (node instanceof HTMLBRElement) {
+          atoms.push({ kind: 'break', text: '', marks, selected });
+          return;
+        }
+        [...node.childNodes].forEach((child) => visit(child, marks));
+      };
+      const emptyMarks: InlineMarks = {
+        emphasis: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        link: null,
+      };
+      [...paragraph.childNodes].forEach((child) => visit(child, emptyMarks));
+      const selectedAtoms = atoms.filter((atom) => atom.selected);
+      if (!selectedAtoms.length) return null;
+      selectedAtoms.forEach((atom) => {
+        atom.marks = { ...atom.marks, emphasis: emphasized };
+      });
+
+      const keyFor = (atom: InlineAtom) => JSON.stringify({
+        selected: atom.selected,
+        marks: atom.marks,
+      });
+      const groups: InlineAtom[][] = [];
+      atoms.forEach((atom) => {
+        const previous = groups.at(-1);
+        if (previous && keyFor(previous[0]) === keyFor(atom)) previous.push(atom);
+        else groups.push([atom]);
+      });
+
+      const wrap = (content: Node, tag: keyof HTMLElementTagNameMap, className = '') => {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        element.append(content);
+        return element;
+      };
+      const renderGroup = (group: InlineAtom[]) => {
+        const content = document.createDocumentFragment();
+        group.forEach((atom) => {
+          content.append(atom.kind === 'break' ? document.createElement('br') : atom.text);
+        });
+        const { marks } = group[0];
+        let rendered: Node = content;
+        if (marks.underline) rendered = wrap(rendered, 'u');
+        if (marks.italic) rendered = wrap(rendered, 'em');
+        if (marks.bold) rendered = wrap(rendered, 'strong');
+        if (marks.emphasis) rendered = wrap(rendered, 'span', 'text-emphasis');
+        if (marks.link?.href) {
+          const anchor = wrap(rendered, 'a', marks.link.underlineOff ? 'is-underline-off' : '');
+          anchor.setAttribute('href', marks.link.href);
+          rendered = anchor;
+        }
+        return rendered;
+      };
+
+      const fragment = document.createDocumentFragment();
+      const restoredStart = document.createElement('span');
+      const restoredEnd = document.createElement('span');
+      restoredStart.hidden = true;
+      restoredEnd.hidden = true;
+      const firstSelectedGroup = groups.findIndex((group) => group[0].selected);
+      const lastSelectedGroup = groups.findLastIndex((group) => group[0].selected);
+      groups.forEach((group, index) => {
+        if (index === firstSelectedGroup) fragment.append(restoredStart);
+        fragment.append(renderGroup(group));
+        if (index === lastSelectedGroup) fragment.append(restoredEnd);
+      });
+      paragraph.replaceChildren(fragment);
+      const restored = document.createRange();
+      restored.setStartAfter(restoredStart);
+      restored.setEndBefore(restoredEnd);
+      restoredStart.remove();
+      restoredEnd.remove();
+      return restored;
+    };
+
+    const applyEmphasisStyle = (value: string) => {
+      if (!restoreFormatRange() || !savedFormatRange || savedFormatRange.collapsed) return;
+      const block = findParagraphState(savedFormatRange.commonAncestorContainer)?.element;
+      if (!block) return;
+      const range = applyEmphasisMark(savedFormatRange, value === 'emphasis');
+      if (!range) return;
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      captureFormatRange();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      refreshFormatBarAfterCommand();
+      updateActions();
+    };
+
     const runFormatCommand = (command: 'bold' | 'italic' | 'underline') => {
       if (!restoreFormatRange() || !savedFormatRange) return;
       if (command === 'underline') {
@@ -4548,7 +4760,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-select__listbox')) {
+      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-select__listbox')) {
         return;
       }
       event.preventDefault();
@@ -4557,6 +4769,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     blockStyleSelect.addEventListener('change', () => {
       if (syncingBlockStyle) return;
       convertCurrentBlock(blockStyleSelect.value);
+    });
+
+    emphasisStyleSelect.addEventListener('change', () => {
+      applyEmphasisStyle(emphasisStyleSelect.value);
     });
 
     formatButtons.forEach((button) => {
@@ -4754,16 +4970,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (formatCommand) {
         event.preventDefault();
         if (!savedFormatRange) captureFormatRange();
-        if (formatCommand === 'underline') {
-          runFormatCommand('underline');
-        } else {
-          document.execCommand(formatCommand);
-          window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-          // Re-read selection after execCommand — the pre-command Range can be
-          // detached, which left the format bar stuck on the previous state.
-          refreshFormatBarAfterCommand();
-        }
-        updateActions();
+        runFormatCommand(formatCommand);
         return;
       }
 
@@ -5815,22 +6022,29 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none;
   }
 
-  .dev-text-format .dev-text-format__block-style {
+  .dev-text-format .dev-text-format__block-style,
+  .dev-text-format .dev-text-format__emphasis-style {
     width: auto;
   }
 
-  .dev-text-format__block-style .dev-field__value {
+  .dev-text-format__block-style .dev-field__value,
+  .dev-text-format__emphasis-style .dev-field__value {
     width: auto;
     min-height: var(--dev-control-height);
   }
 
-  .dev-text-format__block-style .dev-field__input--select {
+  .dev-text-format__block-style .dev-field__input--select,
+  .dev-text-format__emphasis-style .dev-field__input--select {
     margin: 0;
     padding: 8px;
     padding-right: 28px;
     width: auto;
     min-height: var(--dev-control-height);
     min-width: 9.5em;
+  }
+
+  .dev-text-format__emphasis-style .dev-field__input--select {
+    min-width: 7.5em;
   }
 
   .dev-text-format__buttons button[data-dev-format] {
