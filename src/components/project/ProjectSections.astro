@@ -9,7 +9,7 @@ import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
 import ProjectSectionTitle from './ProjectSectionTitle.astro';
 import ProjectVideo from './ProjectVideo.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
-import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs } from '../../lib/projectStack';
+import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 import { getProjectGridListings } from '../../lib/projects';
 import { introRun, resolveIntroHeight } from '../../lib/projectIntro';
@@ -35,7 +35,7 @@ const sectionSpacing = (
   index: number,
   fallback = 'section',
 ) => {
-  const raw = section?.spacing ? String(section.spacing) : undefined;
+  const raw = section?.spacing as ProjectStackSpacing | undefined;
   if (raw) return resolveStackSpacingForIndex(index, resolveProjectSpacing(raw));
   if (fallback !== 'section') return resolveStackSpacingForIndex(index, fallback as never);
   return resolveStackSpacingForIndex(index, undefined);

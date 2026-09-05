@@ -113,10 +113,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
-  import { reorderProjectStackSpacingSeams } from '../lib/projectStack';
+  import {
+    projectStackClass,
+    resolveProjectStackSpacing,
+    reorderProjectStackSpacingSeams,
+    type ProjectStackSpacingResolved,
+    type ProjectStackSpacingValue,
+    type ProjectStackSpacingViewport,
+  } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   type EditableTextValue = string | string[];
-  type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
+  type SpacingValue = ProjectStackSpacingValue;
+  type SpacingMap = ProjectStackSpacingResolved;
 
   interface EditableTextState {
     element: HTMLElement;
@@ -134,9 +142,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     menu: HTMLElement;
     document: string;
     path: Array<string | number>;
-    savedValue: SpacingValue;
-    visualSavedValue: SpacingValue;
-    currentValue: SpacingValue;
+    savedValue: SpacingMap;
+    visualSavedValue: SpacingMap;
+    currentValue: SpacingMap;
     introHeight: EditableIntroHeightState | null;
   }
 
@@ -167,12 +175,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     title: 'None · 0',
   };
 
-  const STACK_CLASS: Record<SpacingValue, string | null> = {
-    related: 'project-stack--related',
-    group: 'project-stack--group',
-    section: 'project-stack--section',
-    major: 'project-stack--major',
-    none: 'project-stack--none',
+  const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
+  const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
+    left.desktop === right.desktop && left.tablet === right.tablet && left.mobile === right.mobile
+  );
+  const currentSpacingViewport = (): ProjectStackSpacingViewport => {
+    if (window.innerWidth <= 767) return 'mobile';
+    if (window.innerWidth <= 991) return 'tablet';
+    return 'desktop';
   };
 
   const spacingOptionsFor = (pageTop: boolean, pageBottom: boolean): SpacingOption[] =>
@@ -263,13 +273,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     return null;
   };
 
-  const applySpacingClass = (element: HTMLElement, spacing: SpacingValue) => {
-    Object.values(STACK_CLASS).forEach((className) => {
-      if (className) element.classList.remove(className);
-    });
-    const next = STACK_CLASS[spacing];
-    if (next) element.classList.add(next);
-    element.dataset.devSpacingValue = spacing;
+  const applySpacingClass = (element: HTMLElement, spacing: SpacingMap) => {
+    element.className = element.className
+      .split(/\s+/)
+      .filter((name) => !/^project-stack--(?:related|group|section|major|none|tablet-|mobile-)/.test(name))
+      .concat(projectStackClass(spacing))
+      .filter(Boolean)
+      .join(' ');
+    const active = spacing[currentSpacingViewport()];
+    element.dataset.devSpacingValue = active;
+    element.dataset.devSpacingValues = JSON.stringify(spacing);
   };
 
   const followsHiddenSidebarTitle = (element: HTMLElement) => {
@@ -511,10 +524,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingControl = (state: EditableSpacingState) => {
+      const active = state.currentValue[currentSpacingViewport()];
       state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
-        button.classList.toggle('is-active', button.dataset.devSpacingOption === state.currentValue);
+        button.classList.toggle('is-active', button.dataset.devSpacingOption === active);
       });
-      const dirty = state.currentValue !== state.visualSavedValue;
+      applySpacingClass(state.element, state.currentValue);
+      const dirty = !spacingEqual(state.currentValue, state.visualSavedValue);
       state.element.classList.toggle('is-dev-spacing-dirty', dirty);
       if (!dirty) cancelGapRelocation(state.control);
     };
@@ -629,12 +644,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           // until a click elsewhere, instead of releasing on pointer leave.
           button.blur();
           const next = button.dataset.devSpacingOption as SpacingValue;
-          if (!next || next === state.currentValue) return;
+          const viewport = currentSpacingViewport();
+          if (!next || next === state.currentValue[viewport]) return;
           // Pin before the margin changes — after applySpacingClass the
           // absolute midpoint has already moved.
           pinGapToolbarTop(state.control);
-          state.currentValue = next;
-          applySpacingClass(state.element, next);
+          const current = cloneSpacing(state.currentValue);
+          if (viewport === 'desktop') {
+            current.desktop = next;
+            current.tablet = next;
+            current.mobile = next;
+          } else if (viewport === 'tablet') {
+            current.tablet = next;
+            current.mobile = next;
+          } else current.mobile = next;
+          state.currentValue = current;
+          applySpacingClass(state.element, current);
           window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           syncSpacingControl(state);
           updateActions();
@@ -668,23 +693,37 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           suppressGalleryPageTopSpacing(state.element, pageTop),
         );
 
-        if (coerce && pageTop && !wasPageTop
-          && state.currentValue === 'section'
-          && state.savedValue === 'section') {
+        if (coerce && pageTop && !wasPageTop) {
           // Became page-top with between-sibling default — page top should be flush.
-          applySpacingClass(state.element, 'none');
-          state.currentValue = 'none';
-          state.savedValue = 'none';
-          state.visualSavedValue = 'none';
+          const current = cloneSpacing(state.currentValue);
+          const saved = cloneSpacing(state.savedValue);
+          const visualSaved = cloneSpacing(state.visualSavedValue);
+          (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
+            if (current[viewport] === 'section' && saved[viewport] === 'section') {
+              current[viewport] = 'none';
+              saved[viewport] = 'none';
+              visualSaved[viewport] = 'none';
+            }
+          });
+          state.currentValue = current;
+          state.savedValue = saved;
+          state.visualSavedValue = visualSaved;
         }
 
-        if (coerce && !pageTop && wasPageTop && state.currentValue === 'none') {
-          applySpacingClass(state.element, 'section');
-          state.currentValue = 'section';
-          if (state.savedValue === 'none') {
-            state.savedValue = 'section';
-            state.visualSavedValue = 'section';
-          }
+        if (coerce && !pageTop && wasPageTop) {
+          const current = cloneSpacing(state.currentValue);
+          const saved = cloneSpacing(state.savedValue);
+          const visualSaved = cloneSpacing(state.visualSavedValue);
+          (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
+            if (current[viewport] === 'none' && saved[viewport] === 'none') {
+              current[viewport] = 'section';
+              saved[viewport] = 'section';
+              visualSaved[viewport] = 'section';
+            }
+          });
+          state.currentValue = current;
+          state.savedValue = saved;
+          state.visualSavedValue = visualSaved;
         }
 
         rebuildSpacingOptionButtons(state, pageTop, pageBottom);
@@ -694,13 +733,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const mountSpacingControl = (element: HTMLElement): EditableSpacingState | null => {
       try {
         const path = JSON.parse(element.dataset.devSpacingPath || '[]');
-        const raw = (element.dataset.devSpacingValue || 'section') as SpacingValue;
+        let raw: ProjectStackSpacingResolved;
+        try {
+          raw = resolveProjectStackSpacing(
+            element.dataset.devSpacingValues
+              ? JSON.parse(element.dataset.devSpacingValues)
+              : element.dataset.devSpacingValue,
+          );
+        } catch {
+          raw = resolveProjectStackSpacing('section');
+        }
         if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return null;
         if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
 
         const pageTop = isPageTopSpacingBlock(element);
         const pageBottom = isPageBottomSpacingBlock(element);
-        const initial = raw;
+        const initial = cloneSpacing(raw);
         const docKey = element.dataset.devSpacingDocument || '';
         const supportsIntro = docKey === 'home' || docKey === 'work' || docKey === 'play' || docKey === 'about';
         const introMenuItem = supportsIntro
@@ -817,6 +865,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const spacingStates = spacingElements.flatMap<EditableSpacingState>((element) => {
       const state = mountSpacingControl(element);
       return state ? [state] : [];
+    });
+    window.addEventListener('resize', () => {
+      spacingStates.forEach(syncSpacingControl);
+      syncPageTopSpacingControls(false);
     });
     syncPageTopSpacingControls();
 
@@ -1441,7 +1493,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const dirtyTextStates = () =>
       textStates.filter((state) => !valuesMatch(readValue(state), state.savedValue));
     const dirtySpacingStates = () =>
-      spacingStates.filter((state) => state.currentValue !== state.savedValue);
+      spacingStates.filter((state) => !spacingEqual(state.currentValue, state.savedValue));
     const dirtyIntroHeightStates = () =>
       [...spacingStates.reduce((states, state) => {
         if (!state.introHeight || state.introHeight.currentValue === state.introHeight.savedValue) return states;
@@ -1735,8 +1787,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not save pending layout before inserting images.');
         dirtySpacing.forEach((state) => {
-          state.savedValue = state.currentValue;
-          state.visualSavedValue = state.currentValue;
+          state.savedValue = cloneSpacing(state.currentValue);
+          state.visualSavedValue = cloneSpacing(state.currentValue);
           syncSpacingControl(state);
         });
         dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
@@ -1869,8 +1921,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         renderValue(state, state.savedValue);
       });
       dirtySpacingStates().forEach((state) => {
-        state.currentValue = state.savedValue;
-        state.visualSavedValue = state.savedValue;
+        state.currentValue = cloneSpacing(state.savedValue);
+        state.visualSavedValue = cloneSpacing(state.savedValue);
         applySpacingClass(state.element, state.savedValue);
         syncSpacingControl(state);
       });
@@ -2024,11 +2076,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     restoreScrollAfterReload();
 
     const projectStackClassName = (spacing: SpacingValue, precedeRelated: boolean) => {
-      const classes: string[] = [];
-      const stack = STACK_CLASS[spacing];
-      if (stack) classes.push(stack);
+      const classes = [projectStackClass(spacing)];
       if (precedeRelated) classes.push('project-stack--precede-related');
-      return classes.join(' ');
+      return classes.filter(Boolean).join(' ');
     };
 
     const buildInsertedSection = (
@@ -2059,6 +2109,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         wrapper.dataset.devSpacingDocument = documentKey;
         wrapper.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
         wrapper.dataset.devSpacingValue = spacing;
+        wrapper.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
         wrapper.dataset.devSectionDeletable = 'sectionTitle';
 
         const title = document.createElement('h2');
@@ -2085,6 +2136,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       section.dataset.devSpacingDocument = documentKey;
       section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
       section.dataset.devSpacingValue = spacing;
+      section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
       section.dataset.devSectionDeletable = 'bodyText';
 
       const body = document.createElement('div');
@@ -2821,25 +2873,31 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
 
-      const visualSavedValues = reorderedStates.map((state) => state!.visualSavedValue);
-      const reorder = reorderProjectStackSpacingSeams(
-        reorderedStates.map((state) => state!.currentValue),
-        sourceIndex,
-        insertIndex,
-        destinationSide,
-        reorderedStates.map((state) => state!.currentValue !== state!.visualSavedValue),
-      );
+      const visualSavedValues = reorderedStates.map((state) => cloneSpacing(state!.visualSavedValue));
+      const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
+        reorderProjectStackSpacingSeams(
+          reorderedStates.map((state) => state!.currentValue[viewport]),
+          sourceIndex,
+          insertIndex,
+          destinationSide,
+          reorderedStates.map((state) => state!.currentValue[viewport] !== state!.visualSavedValue[viewport]),
+        )
+      ));
       reorderedStates.forEach((state, index) => {
         if (!state) return;
-        const nextValue = reorder.values[index];
-        const origin = reorder.origins[index];
-        const nextVisualSavedValue = origin === null
-          ? nextValue
-          : visualSavedValues[origin];
-        const valueChanged = state.currentValue !== nextValue;
-        state.currentValue = nextValue;
+        const currentValue = cloneSpacing(state.currentValue);
+        const nextVisualSavedValue = cloneSpacing(state.visualSavedValue);
+        (['desktop', 'tablet', 'mobile'] as const).forEach((viewport, viewportIndex) => {
+          const reorder = reorderedMaps[viewportIndex];
+          const origin = reorder.origins[index];
+          currentValue[viewport] = reorder.values[index];
+          nextVisualSavedValue[viewport] = origin === null
+            ? reorder.values[index]
+            : visualSavedValues[origin][viewport];
+        });
+        state.currentValue = currentValue;
         state.visualSavedValue = nextVisualSavedValue;
-        if (valueChanged) applySpacingClass(state.element, state.currentValue);
+        applySpacingClass(state.element, currentValue);
         syncSpacingControl(state);
       });
       syncPageTopSpacingControls();
@@ -3735,9 +3793,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const next = mountSpacingControl(newRoot);
       if (next) {
         if (previous) {
-          next.savedValue = previous.savedValue;
-          next.visualSavedValue = previous.visualSavedValue;
-          next.currentValue = previous.currentValue;
+          next.savedValue = cloneSpacing(previous.savedValue);
+          next.visualSavedValue = cloneSpacing(previous.visualSavedValue);
+          next.currentValue = cloneSpacing(previous.currentValue);
           applySpacingClass(newRoot, previous.currentValue);
           syncSpacingControl(next);
           if (next.introHeight && previous.introHeight) {
@@ -5397,8 +5455,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = readValue(state);
         });
         dirtySpacing.forEach((state) => {
-          state.savedValue = state.currentValue;
-          state.visualSavedValue = state.currentValue;
+          state.savedValue = cloneSpacing(state.currentValue);
+          state.visualSavedValue = cloneSpacing(state.currentValue);
           syncSpacingControl(state);
         });
         dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
@@ -5423,8 +5481,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const reorderedDocument = String(change.payload.document || '');
           spacingStates.forEach((state) => {
             if (state.document !== reorderedDocument) return;
-            state.savedValue = state.currentValue;
-            state.visualSavedValue = state.currentValue;
+            state.savedValue = cloneSpacing(state.currentValue);
+            state.visualSavedValue = cloneSpacing(state.currentValue);
             syncSpacingControl(state);
           });
         }

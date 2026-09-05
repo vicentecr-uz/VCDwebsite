@@ -1,10 +1,21 @@
 import assert from 'node:assert/strict';
 import { introLayout, introRun, normalizeIntroHeight, resolveIntroHeight } from '../../src/lib/projectIntro.ts';
 import {
+  canonicalizeProjectStackSpacing,
+  projectStackClass,
+  resolveProjectStackSpacing,
   reorderProjectStackSpacings,
   reorderProjectStackSpacingSeams,
   shouldKeepLeadingSpacingSeam,
 } from '../../src/lib/projectStack.ts';
+
+assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
+  desktop: 'section', tablet: 'section', mobile: 'none',
+});
+assert.deepEqual(canonicalizeProjectStackSpacing({ desktop: 'section', tablet: 'section', mobile: 'none' }), {
+  desktop: 'section', mobile: 'none',
+});
+assert.equal(projectStackClass({ desktop: 'section', mobile: 'none' }), 'project-stack--section project-stack--mobile-none');
 import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 
 assert.equal(normalizeIntroHeight(80.4), 80);

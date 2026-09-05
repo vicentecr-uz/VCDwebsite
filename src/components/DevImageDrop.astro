@@ -707,7 +707,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
       src: 'placeholder.svg',
       alt: img?.getAttribute('alt') || 'Placeholder',
       spacing: root instanceof HTMLElement
-        ? (root.dataset.devSpacingValue || 'section')
+        ? (() => {
+          try {
+            return root.dataset.devSpacingValues
+              ? JSON.parse(root.dataset.devSpacingValues)
+              : (root.dataset.devSpacingValue || 'section');
+          } catch {
+            return root.dataset.devSpacingValue || 'section';
+          }
+        })()
         : 'section',
       variants,
     };

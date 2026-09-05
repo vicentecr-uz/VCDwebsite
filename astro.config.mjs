@@ -44,6 +44,7 @@ import {
   generateTokenBlock,
   applyTokenBlock,
 } from './scripts/build-tokens.mjs';
+import { canonicalizeProjectStackSpacing } from './src/lib/projectStack.ts';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -567,7 +568,6 @@ function contentTextDevWriter() {
   };
 }
 
-const EDITABLE_SPACING_VALUES = new Set(['related', 'group', 'section', 'major', 'none']);
 
 /**
  * Resolve a JSON path against a document root. Returns null when missing.
@@ -1329,7 +1329,13 @@ function contentBatchDevWriter() {
             const value = change?.value;
             const resolved = resolveBatchChange(documentKey, fieldPath);
             const field = resolved?.path?.at(-1);
-            const validSpacing = field === 'spacing' && EDITABLE_SPACING_VALUES.has(value);
+            let canonicalSpacing;
+            try {
+              canonicalSpacing = field === 'spacing' ? canonicalizeProjectStackSpacing(value) : null;
+            } catch {
+              canonicalSpacing = null;
+            }
+            const validSpacing = field === 'spacing' && canonicalSpacing !== null;
             const validIntroHeight = field === 'introHeight'
               && Number.isInteger(value)
               && value >= 1
@@ -1345,7 +1351,11 @@ function contentBatchDevWriter() {
               send(400, { error: 'One or more layout fields are not editable.' });
               return;
             }
-            resolved.group.spacing.push({ ...change, path: resolved.path });
+            resolved.group.spacing.push({
+              ...change,
+              value: field === 'spacing' ? canonicalSpacing : value,
+              path: resolved.path,
+            });
           }
 
           for (const [relativeFile, group] of grouped) {
@@ -1435,6 +1445,9 @@ function contentBatchDevWriter() {
                   return;
                 }
                 target[field] = change.value;
+                if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
+                  delete target.tightTop;
+                }
               }
             }
 
@@ -1884,10 +1897,12 @@ function contentSectionDevWriter() {
           }
 
           let section;
-          const requestedSpacing = String(body.spacing || '');
-          const insertSpacing = EDITABLE_SPACING_VALUES.has(requestedSpacing)
-            ? requestedSpacing
-            : (index === 0 ? 'none' : 'section');
+          let insertSpacing;
+          try {
+            insertSpacing = canonicalizeProjectStackSpacing(body.spacing);
+          } catch {
+            insertSpacing = index === 0 ? 'none' : 'section';
+          }
           const intro = body.intro === true || body.intro === 'true';
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
@@ -2004,7 +2019,13 @@ function contentSpacingDevWriter() {
             const value = change.value;
             const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             const field = target?.path?.at(-1);
-            const validSpacing = field === 'spacing' && EDITABLE_SPACING_VALUES.has(value);
+            let canonicalSpacing;
+            try {
+              canonicalSpacing = field === 'spacing' ? canonicalizeProjectStackSpacing(value) : null;
+            } catch {
+              canonicalSpacing = null;
+            }
+            const validSpacing = field === 'spacing' && canonicalSpacing !== null;
             const validIntroHeight = field === 'introHeight'
               && Number.isInteger(value)
               && value >= 1
@@ -2021,7 +2042,10 @@ function contentSpacingDevWriter() {
               return;
             }
             const documentChanges = grouped.get(target.relativeFile) || [];
-            documentChanges.push({ path: target.path, value });
+            documentChanges.push({
+              path: target.path,
+              value: field === 'spacing' ? canonicalSpacing : value,
+            });
             grouped.set(target.relativeFile, documentChanges);
           }
 
@@ -2054,7 +2078,9 @@ function contentSpacingDevWriter() {
                   send(400, { error: 'Intro height is only editable on Intro blocks.' });
                   return;
                 }
-                target[field] = change.value;
+                target[field] = field === 'spacing'
+                  ? canonicalizeProjectStackSpacing(change.value)
+                  : change.value;
               }
               if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
                 delete target.tightTop;
