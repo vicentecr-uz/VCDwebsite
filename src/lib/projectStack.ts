@@ -1,7 +1,15 @@
 /** Vertical rhythm between project page sections (parent-owned stack). */
-export type ProjectStackSpacing = 'related' | 'group' | 'section' | 'major' | 'none';
+export type ProjectStackSpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
+export type ProjectStackSpacingViewport = 'desktop' | 'tablet' | 'mobile';
+export type ProjectStackSpacing =
+  | ProjectStackSpacingValue
+  | Partial<Record<ProjectStackSpacingViewport, ProjectStackSpacingValue>>;
+export type ProjectStackSpacingResolved = Record<
+  ProjectStackSpacingViewport,
+  ProjectStackSpacingValue
+>;
 
-const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacing, number> = {
+const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacingValue, number> = {
   none: 0,
   related: 1,
   group: 2,
@@ -21,7 +29,7 @@ export const shouldKeepLeadingSpacingSeam = (
 };
 
 export type ProjectStackSpacingReorder = {
-  values: ProjectStackSpacing[];
+  values: ProjectStackSpacingValue[];
   /** Original seam index supplying each value; null means a generated default seam. */
   origins: Array<number | null>;
 };
@@ -30,7 +38,7 @@ export type ProjectStackInsertionSide = 'before' | 'after';
 
 /** Values stay with block identities; `destinationSide` chooses which side keeps the authored seam. */
 export function reorderProjectStackSpacingSeams(
-  spacings: ProjectStackSpacing[],
+  spacings: ProjectStackSpacingValue[],
   sourceIndex: number,
   insertIndex: number,
   destinationSide?: ProjectStackInsertionSide,
@@ -98,10 +106,10 @@ export function reorderProjectStackSpacingSeams(
 }
 
 export function reorderProjectStackSpacings(
-  spacings: ProjectStackSpacing[],
+  spacings: ProjectStackSpacingValue[],
   sourceIndex: number,
   insertIndex: number,
-): ProjectStackSpacing[] {
+): ProjectStackSpacingValue[] {
   return reorderProjectStackSpacingSeams(spacings, sourceIndex, insertIndex).values;
 }
 
@@ -109,12 +117,11 @@ export function projectStackClass(
   spacing: ProjectStackSpacing = 'section',
   options?: { precedeRelated?: boolean; flush?: boolean },
 ): string {
+  const resolved = resolveProjectStackSpacing(spacing);
   const classes: string[] = [];
-  if (spacing === 'related') classes.push('project-stack--related');
-  else if (spacing === 'group') classes.push('project-stack--group');
-  else if (spacing === 'section') classes.push('project-stack--section');
-  else if (spacing === 'major') classes.push('project-stack--major');
-  else if (spacing === 'none') classes.push('project-stack--none');
+  classes.push(`project-stack--${resolved.desktop}`);
+  if (resolved.tablet !== resolved.desktop) classes.push(`project-stack--tablet-${resolved.tablet}`);
+  if (resolved.mobile !== resolved.tablet) classes.push(`project-stack--mobile-${resolved.mobile}`);
   if (options?.precedeRelated) classes.push('project-stack--precede-related');
   if (options?.flush) classes.push('project-stack--flush');
   return classes.join(' ');
@@ -129,6 +136,42 @@ export function resolveProjectSpacing(
   if (tightTop) return 'related';
   return 'section';
 }
+
+export const isProjectStackSpacingValue = (value: unknown): value is ProjectStackSpacingValue =>
+  typeof value === 'string' && value in PROJECT_STACK_SPACING_ORDER;
+
+export const resolveProjectStackSpacing = (
+  spacing?: ProjectStackSpacing,
+): ProjectStackSpacingResolved => {
+  const source = spacing && typeof spacing === 'object' ? spacing : {};
+  const desktop = isProjectStackSpacingValue(spacing) ? spacing : source.desktop ?? 'section';
+  const tablet = source.tablet ?? desktop;
+  const mobile = source.mobile ?? tablet;
+  return { desktop, tablet, mobile };
+};
+
+export const canonicalizeProjectStackSpacing = (value: unknown): ProjectStackSpacing => {
+  if (isProjectStackSpacingValue(value)) return value;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Invalid spacing value.');
+  }
+  const source = value as Record<string, unknown>;
+  const keys = Object.keys(source);
+  if (!keys.length || keys.some((key) => !['desktop', 'tablet', 'mobile'].includes(key))) {
+    throw new Error('Invalid spacing viewport.');
+  }
+  if (keys.some((key) => !isProjectStackSpacingValue(source[key]))) {
+    throw new Error('Invalid spacing value.');
+  }
+  const resolved = resolveProjectStackSpacing(source as ProjectStackSpacing);
+  if (resolved.desktop === resolved.tablet && resolved.tablet === resolved.mobile) return resolved.desktop;
+  const canonical: Partial<Record<ProjectStackSpacingViewport, ProjectStackSpacingValue>> = {
+    desktop: resolved.desktop,
+  };
+  if (resolved.tablet !== resolved.desktop) canonical.tablet = resolved.tablet;
+  if (resolved.mobile !== resolved.tablet) canonical.mobile = resolved.mobile;
+  return canonical;
+};
 
 /**
  * Page-top (index 0) default is flush (none). Missing/`section` default was the
@@ -158,9 +201,11 @@ export function spacingDevAttrs(
   spacing: ProjectStackSpacing,
 ): Record<string, string> | undefined {
   if (!import.meta.env.DEV || !documentKey || !sectionPath?.length) return undefined;
+  const resolved = resolveProjectStackSpacing(spacing);
   return {
     'data-dev-spacing-document': documentKey,
     'data-dev-spacing-path': JSON.stringify([...sectionPath, 'spacing']),
-    'data-dev-spacing-value': spacing,
+    'data-dev-spacing-value': resolved.desktop,
+    'data-dev-spacing-values': JSON.stringify(resolved),
   };
 }
