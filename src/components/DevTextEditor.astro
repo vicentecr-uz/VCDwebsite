@@ -117,6 +117,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     projectStackClass,
     resolveProjectStackSpacing,
     reorderProjectStackSpacingSeams,
+    setProjectStackSpacingAtViewport,
     type ProjectStackSpacingResolved,
     type ProjectStackSpacingValue,
     type ProjectStackSpacingViewport,
@@ -274,13 +275,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   };
 
   const applySpacingClass = (element: HTMLElement, spacing: SpacingMap) => {
+    const active = spacing[currentSpacingViewport()];
+    const desktopClasses = projectStackClass(spacing).split(/\s+/)
+      .filter((name) => name !== `project-stack--${spacing.desktop}`);
     element.className = element.className
       .split(/\s+/)
       .filter((name) => !/^project-stack--(?:related|group|section|major|none|tablet-|mobile-)/.test(name))
-      .concat(projectStackClass(spacing))
+      .concat(`project-stack--${active}`, desktopClasses)
       .filter(Boolean)
       .join(' ');
-    const active = spacing[currentSpacingViewport()];
     element.dataset.devSpacingValue = active;
     element.dataset.devSpacingValues = JSON.stringify(spacing);
   };
@@ -649,15 +652,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           // Pin before the margin changes — after applySpacingClass the
           // absolute midpoint has already moved.
           pinGapToolbarTop(state.control);
-          const current = cloneSpacing(state.currentValue);
-          if (viewport === 'desktop') {
-            current.desktop = next;
-            current.tablet = next;
-            current.mobile = next;
-          } else if (viewport === 'tablet') {
-            current.tablet = next;
-            current.mobile = next;
-          } else current.mobile = next;
+          const current = setProjectStackSpacingAtViewport(state.currentValue, viewport, next);
           state.currentValue = current;
           applySpacingClass(state.element, current);
           window.dispatchEvent(new Event('vcd:intro-layout-sync'));
@@ -715,10 +710,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const saved = cloneSpacing(state.savedValue);
           const visualSaved = cloneSpacing(state.visualSavedValue);
           (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
-            if (current[viewport] === 'none' && saved[viewport] === 'none') {
+            if (current[viewport] === 'none') {
               current[viewport] = 'section';
-              saved[viewport] = 'section';
-              visualSaved[viewport] = 'section';
+              if (saved[viewport] === 'none') {
+                saved[viewport] = 'section';
+                visualSaved[viewport] = 'section';
+              }
             }
           });
           state.currentValue = current;
@@ -848,9 +845,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           menu,
           document: element.dataset.devSpacingDocument,
           path,
-          savedValue: initial,
-          visualSavedValue: initial,
-          currentValue: initial,
+          savedValue: cloneSpacing(initial),
+          visualSavedValue: cloneSpacing(initial),
+          currentValue: cloneSpacing(initial),
           introHeight: introHeightState,
         };
         bindSpacingOptionClicks(state);
@@ -866,9 +863,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const state = mountSpacingControl(element);
       return state ? [state] : [];
     });
+    let lastSpacingViewport = currentSpacingViewport();
     window.addEventListener('resize', () => {
+      const viewport = currentSpacingViewport();
+      if (viewport === lastSpacingViewport) return;
+      lastSpacingViewport = viewport;
       spacingStates.forEach(syncSpacingControl);
-      syncPageTopSpacingControls(false);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     });
     syncPageTopSpacingControls();
 

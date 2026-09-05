@@ -4,6 +4,7 @@ import {
   canonicalizeProjectStackSpacing,
   projectStackClass,
   resolveProjectStackSpacing,
+  setProjectStackSpacingAtViewport,
   reorderProjectStackSpacings,
   reorderProjectStackSpacingSeams,
   shouldKeepLeadingSpacingSeam,
@@ -16,6 +17,21 @@ assert.deepEqual(canonicalizeProjectStackSpacing({ desktop: 'section', tablet: '
   desktop: 'section', mobile: 'none',
 });
 assert.equal(projectStackClass({ desktop: 'section', mobile: 'none' }), 'project-stack--section project-stack--mobile-none');
+assert.deepEqual(setProjectStackSpacingAtViewport(
+  { desktop: 'section', tablet: 'group', mobile: 'none' }, 'desktop', 'major',
+), { desktop: 'major', tablet: 'major', mobile: 'major' });
+assert.deepEqual(setProjectStackSpacingAtViewport(
+  { desktop: 'section', tablet: 'group', mobile: 'none' }, 'tablet', 'related',
+), { desktop: 'section', tablet: 'related', mobile: 'related' });
+assert.deepEqual(setProjectStackSpacingAtViewport(
+  { desktop: 'section', tablet: 'group', mobile: 'none' }, 'mobile', 'major',
+), { desktop: 'section', tablet: 'group', mobile: 'major' });
+assert.deepEqual(resolveProjectStackSpacing({ desktop: 'bad', tablet: 'group', mobile: 4 }), {
+  desktop: 'section', tablet: 'group', mobile: 'group',
+});
+assert.throws(() => canonicalizeProjectStackSpacing({ toString: 'none' }));
+assert.throws(() => canonicalizeProjectStackSpacing({ __proto__: 'none' }));
+assert.equal(canonicalizeProjectStackSpacing({ desktop: 'section', tablet: 'section', mobile: 'section' }), 'section');
 import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 
 assert.equal(normalizeIntroHeight(80.4), 80);
