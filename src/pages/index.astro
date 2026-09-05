@@ -8,7 +8,6 @@ import { pageColumnStyle } from '../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../lib/projectStack';
 
 const homePage = loadPageDocument('home');
-const editable = import.meta.env.DEV;
 ---
 
 <Layout title="Vicente Cruz — Industrial Designer" columnStyle={pageColumnStyle(homePage.sections)}>
@@ -16,12 +15,6 @@ const editable = import.meta.env.DEV;
     <Header navMenu wordmarkAsH1 />
 
     <main id="main-content" class="listing-main" style="flex: 1;">
-      <p
-        class="home-role"
-        data-dev-text-document={editable ? 'home' : undefined}
-        data-dev-text-path={editable ? JSON.stringify(['subtitle']) : undefined}
-        data-dev-text-kind={editable ? 'text' : undefined}
-      >{String(homePage.subtitle ?? 'Product Design Engineer')}</p>
       <div data-dev-project-drop-zone>
         <ProjectSections documentKey="home" sections={homePage.sections} introHeight={homePage.introHeight} />
         <div
@@ -38,25 +31,6 @@ const editable = import.meta.env.DEV;
 <style>
   .listing-main {
     padding: 0;
-  }
-
-  .home-role {
-    /* Tracks the header row, so it starts at the same x as the wordmark
-       instead of at the column edge. Same custom property the row reads. */
-    max-width: var(--page-header-width, 100%);
-    margin-inline: auto;
-    /* Cap line flush with the header's bottom edge. 0.1515em is the air above
-       the caps in a line-height:1 box for Hanken Grotesk (unitsPerEm 1000,
-       cap 697, ascender 1000, descender 303) — the same figure the header
-       carries as --wordmark-trim, which isn't inherited here because this
-       element is the header's sibling, not its descendant. line-height is
-       pinned to 1 so no half-leading adds to it; body inherits UA `normal`,
-       which is font-dependent and would make this drift. */
-    line-height: 1;
-    margin-block: -0.1515em 0;
-    font-size: var(--header-menu-link-size, 1.2em);
-    font-weight: var(--text-nav-weight);
-    color: var(--sys-color-on-srf-variant);
   }
 
   :global(.project-block--intro .project-body-text p:first-child strong) {
