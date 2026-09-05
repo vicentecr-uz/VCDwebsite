@@ -44,7 +44,7 @@ import {
   generateTokenBlock,
   applyTokenBlock,
 } from './scripts/build-tokens.mjs';
-import { canonicalizeProjectStackSpacing } from './src/lib/projectStack.ts';
+import { canonicalizeProjectStackSpacing } from './src/lib/projectStackSpacing.js';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&

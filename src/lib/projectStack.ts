@@ -1,5 +1,13 @@
+import {
+  PROJECT_STACK_SPACING_VALUES,
+  canonicalizeProjectStackSpacing,
+  isProjectStackSpacingValue,
+  resolveProjectStackSpacing,
+  setProjectStackSpacingAtViewport,
+} from './projectStackSpacing.js';
+
 /** Vertical rhythm between project page sections (parent-owned stack). */
-export type ProjectStackSpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
+export type ProjectStackSpacingValue = (typeof PROJECT_STACK_SPACING_VALUES)[number];
 export type ProjectStackSpacingViewport = 'desktop' | 'tablet' | 'mobile';
 export type ProjectStackSpacing =
   | ProjectStackSpacingValue
@@ -8,6 +16,13 @@ export type ProjectStackSpacingResolved = Record<
   ProjectStackSpacingViewport,
   ProjectStackSpacingValue
 >;
+
+export {
+  canonicalizeProjectStackSpacing,
+  isProjectStackSpacingValue,
+  resolveProjectStackSpacing,
+  setProjectStackSpacingAtViewport,
+};
 
 const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacingValue, number> = {
   none: 0,
@@ -136,63 +151,6 @@ export function resolveProjectSpacing(
   if (tightTop) return 'related';
   return 'section';
 }
-
-export const isProjectStackSpacingValue = (value: unknown): value is ProjectStackSpacingValue =>
-  typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROJECT_STACK_SPACING_ORDER, value);
-
-export const resolveProjectStackSpacing = (
-  spacing?: ProjectStackSpacing,
-): ProjectStackSpacingResolved => {
-  const source = spacing && typeof spacing === 'object' ? spacing : {};
-  const desktop = isProjectStackSpacingValue(spacing)
-    ? spacing
-    : isProjectStackSpacingValue(source.desktop) ? source.desktop : 'section';
-  const tablet = isProjectStackSpacingValue(source.tablet) ? source.tablet : desktop;
-  const mobile = isProjectStackSpacingValue(source.mobile) ? source.mobile : tablet;
-  return { desktop, tablet, mobile };
-};
-
-export const setProjectStackSpacingAtViewport = (
-  current: ProjectStackSpacingResolved,
-  viewport: ProjectStackSpacingViewport,
-  nextValue: ProjectStackSpacingValue,
-): ProjectStackSpacingResolved => {
-  const next = { ...current };
-  if (viewport === 'desktop') {
-    next.desktop = nextValue;
-    next.tablet = nextValue;
-    next.mobile = nextValue;
-  } else if (viewport === 'tablet') {
-    next.tablet = nextValue;
-    next.mobile = nextValue;
-  } else {
-    next.mobile = nextValue;
-  }
-  return next;
-};
-
-export const canonicalizeProjectStackSpacing = (value: unknown): ProjectStackSpacing => {
-  if (isProjectStackSpacingValue(value)) return value;
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error('Invalid spacing value.');
-  }
-  const source = value as Record<string, unknown>;
-  const keys = Object.keys(source);
-  if (!keys.length || keys.some((key) => !['desktop', 'tablet', 'mobile'].includes(key))) {
-    throw new Error('Invalid spacing viewport.');
-  }
-  if (keys.some((key) => !isProjectStackSpacingValue(source[key]))) {
-    throw new Error('Invalid spacing value.');
-  }
-  const resolved = resolveProjectStackSpacing(source as ProjectStackSpacing);
-  if (resolved.desktop === resolved.tablet && resolved.tablet === resolved.mobile) return resolved.desktop;
-  const canonical: Partial<Record<ProjectStackSpacingViewport, ProjectStackSpacingValue>> = {
-    desktop: resolved.desktop,
-  };
-  if (resolved.tablet !== resolved.desktop) canonical.tablet = resolved.tablet;
-  if (resolved.mobile !== resolved.tablet) canonical.mobile = resolved.mobile;
-  return canonical;
-};
 
 /**
  * Page-top (index 0) default is flush (none). Missing/`section` default was the
