@@ -120,6 +120,7 @@ import Button from '../ui/Button.astro';
     resolveImageGridConstrained,
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
+  import { createHistory, pageHistory, registerHistoryScope } from '../../lib/devHistory';
 
   type ImageViewport = 'desktop' | 'tablet' | 'mobile';
 
@@ -282,6 +283,11 @@ import Button from '../ui/Button.astro';
     let savedLayouts = readLayouts(editTarget);
     let draftLayouts = cloneLayouts(savedLayouts);
     let liveApply = false;
+    const localHistory = createHistory();
+    let unregisterHistoryScope: (() => void) | null = null;
+    let historyReady = false;
+    let lastHistorySnapshot: GridBaseline & { viewport: ImageViewport } | null = null;
+    let openingSnapshot: GridBaseline & { viewport: ImageViewport } | null = null;
     let dragItemId: string | null = null;
     type GridBaseline = {
       columns: Record<ImageViewport, number>;
@@ -436,6 +442,19 @@ import Button from '../ui/Button.astro';
           if (viewport === 'mobile') figure.dataset.gridHiddenMobile = hidden ? 'true' : 'false';
         });
       });
+    };
+
+    const snapshotDraft = () => ({
+      columns: { ...draftColumns }, constrained: { ...draftConstrained }, aspect: draftAspect,
+      matchHeight: draftMatchHeight, layouts: cloneLayouts(draftLayouts), viewport: selectedViewport,
+    });
+    const restoreDraftSnapshot = (snapshot: GridBaseline & { viewport: ImageViewport }) => {
+      selectedViewport = snapshot.viewport;
+      draftColumns = { ...snapshot.columns }; draftConstrained = { ...snapshot.constrained };
+      draftAspect = snapshot.aspect; draftMatchHeight = snapshot.matchHeight;
+      draftLayouts = cloneLayouts(snapshot.layouts);
+      lastHistorySnapshot = structuredClone(snapshot);
+      const wasLive = liveApply; liveApply = true; renderDraft(); liveApply = wasLive;
     };
 
     // Builds and dispatches the 'grid' pending upsert from the current saved*
@@ -750,6 +769,14 @@ import Button from '../ui/Button.astro';
       applyAspectLive();
       applyLayoutsLive();
       applyMatchHeightLive();
+      const snapshot = snapshotDraft();
+      if (historyReady && !localHistory.replaying && lastHistorySnapshot
+        && JSON.stringify(lastHistorySnapshot) !== JSON.stringify(snapshot)) {
+        const before = structuredClone(lastHistorySnapshot);
+        const after = structuredClone(snapshot);
+        localHistory.push({ label: 'Edit grid', mergeKey: 'grid-edit', undo: () => restoreDraftSnapshot(before), redo: () => restoreDraftSnapshot(after) });
+      }
+      lastHistorySnapshot = snapshot;
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
@@ -774,6 +801,13 @@ import Button from '../ui/Button.astro';
       savedLayouts = readLayouts(editTarget);
       draftLayouts = cloneLayouts(savedLayouts);
       renderDraft();
+      openingSnapshot = snapshotDraft();
+      lastHistorySnapshot = structuredClone(openingSnapshot);
+      historyReady = live;
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = live ? registerHistoryScope(tuner, localHistory.scope(), {
+        owns: (target) => Boolean(target && tuner.contains(target)),
+      }) : null;
       if (live) status.textContent = 'Editing this grid. Drag thumbnails to rearrange or park.';
     };
 
@@ -802,6 +836,7 @@ import Button from '../ui/Button.astro';
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
+      const beforePage = openingSnapshot ? structuredClone(openingSnapshot) : snapshotDraft();
 
       liveApply = true;
       applyColumnsLive();
@@ -815,6 +850,18 @@ import Button from '../ui/Button.astro';
       savedAspect = draftAspect;
       savedMatchHeight = draftMatchHeight;
       savedLayouts = cloneLayouts(draftLayouts);
+
+      const afterPage = snapshotDraft();
+      if (!pageHistory.replaying && JSON.stringify(beforePage) !== JSON.stringify(afterPage)) {
+        const restorePage = (snapshot: typeof beforePage) => {
+          restoreDraftSnapshot(snapshot);
+          savedColumns = { ...snapshot.columns }; savedConstrained = { ...snapshot.constrained };
+          savedAspect = snapshot.aspect; savedMatchHeight = snapshot.matchHeight;
+          savedLayouts = cloneLayouts(snapshot.layouts);
+          dispatchGridUpsert(target, documentKey, gridPath, pendingId, baseline);
+        };
+        pageHistory.push({ label: 'Edit image grid', undo: () => restorePage(beforePage), redo: () => restorePage(afterPage) });
+      }
 
       dispatchGridUpsert(target, documentKey, gridPath, pendingId, baseline);
 
@@ -843,6 +890,8 @@ import Button from '../ui/Button.astro';
       if (!panel || panel.dataset.devPanelKey !== 'grid') return;
       revertToSaved();
       liveApply = false;
+      historyReady = false;
+      unregisterHistoryScope?.(); unregisterHistoryScope = null;
     }) as EventListener);
 
     selectTarget(initialTarget, false);
@@ -913,8 +962,16 @@ import Button from '../ui/Button.astro';
       status.textContent = 'Reverted to the last saved grid settings.';
     });
 
-    window.addEventListener('vcd:dev-pending-committed', (() => {
-      diskBaselines.clear();
+    window.addEventListener('vcd:dev-before-save', () => {
+      if (liveApply && lastHistorySnapshot && JSON.stringify(lastHistorySnapshot) !== JSON.stringify(snapshotDraft())) saveDraft();
+    });
+    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
+      if (liveApply) event.detail.dirty = JSON.stringify(snapshotDraft()) !== JSON.stringify(openingSnapshot);
+    }) as EventListener);
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+      const ids = event.detail?.ids;
+      if (ids?.length) ids.forEach((id) => diskBaselines.delete(id));
+      else diskBaselines.clear();
       if (editTarget) {
         diskBaselines.set(pendingIdFor(editTarget), {
           columns: { ...savedColumns },
