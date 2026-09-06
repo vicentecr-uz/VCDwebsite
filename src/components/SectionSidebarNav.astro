@@ -2,12 +2,15 @@
 type SectionLink = {
   id: string;
   label: string;
+  outlineId?: string;
 };
 
 type SectionGroup = {
   label: string;
   children: SectionLink[];
   defaultOpen?: boolean;
+  id?: string;
+  anchor?: string;
 };
 
 interface Props {
@@ -53,7 +56,7 @@ const easingOptions = [
 ---
 
 <aside
-  class:list={['section-sidebar-nav', desktopOnly && 'section-sidebar-nav--desktop-only']}
+  class:list={['section-sidebar-nav', desktopOnly && 'section-sidebar-nav--desktop-only', sectionLinks.length === 0 && 'section-sidebar-nav--empty']}
   data-nav-id={navId}
   data-section-sidebar
   aria-label={ariaLabel}
@@ -69,7 +72,7 @@ const easingOptions = [
     <ul class="section-sidebar-nav__list" data-section-sidebar-list>
     {sectionLinks.map((item) => (
       'children' in item ? (
-        <li class="section-sidebar-nav__group-item" data-section-nav-group data-nav-label={item.label}>
+        <li class="section-sidebar-nav__group-item" data-section-nav-group data-outline-id={item.id} data-outline-kind="group" data-nav-anchor={item.anchor} data-nav-label={item.label}>
           <details class="section-sidebar-nav__group" open={item.defaultOpen}>
             <summary class="section-sidebar-nav__summary">
               <svg viewBox="0 0 8 12" aria-hidden="true">
@@ -80,7 +83,7 @@ const easingOptions = [
             <div class="section-sidebar-nav__group-content">
               <ul class="section-sidebar-nav__children">
                 {item.children.map((link) => (
-                  <li data-section-nav-link data-nav-id={link.id} data-nav-label={link.label}>
+                  <li data-section-nav-link data-nav-id={link.id} data-outline-id={link.outlineId || link.id} data-outline-kind="section" data-nav-label={link.label}>
                     <a href={`#${link.id}`} class="section-sidebar-nav__link">{link.label}</a>
                   </li>
                 ))}
@@ -89,7 +92,7 @@ const easingOptions = [
           </details>
         </li>
       ) : (
-        <li data-section-nav-link data-nav-id={item.id} data-nav-label={item.label}>
+        <li data-section-nav-link data-nav-id={item.id} data-outline-id={item.outlineId || item.id} data-outline-kind="section" data-nav-label={item.label}>
           <a href={`#${item.id}`} class="section-sidebar-nav__link section-sidebar-nav__root-link">
             {item.label}
           </a>
@@ -1498,6 +1501,10 @@ const easingOptions = [
     list-style: none;
   }
 
+  .section-sidebar-nav--empty {
+    display: none;
+  }
+
   .section-sidebar-nav__summary {
     position: relative;
     isolation: isolate;
@@ -1700,6 +1707,11 @@ const easingOptions = [
 
   .section-sidebar-nav__link.is-active {
     color: var(--sys-color-on-srf);
+  }
+
+  .is-section-nav-selected > .section-sidebar-nav__link::before,
+  .is-section-nav-selected .section-sidebar-nav__summary::before {
+    opacity: 1;
   }
 
   .section-sidebar-nav-devpanel {

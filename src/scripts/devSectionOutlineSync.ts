@@ -9,8 +9,8 @@ import {
   type SectionNavItem,
 } from '../lib/projectOutline';
 
-type NavLink = { id: string; label: string };
-type NavGroup = { label: string; children: NavLink[]; defaultOpen?: boolean };
+type NavLink = { id: string; label: string; outlineId?: string };
+type NavGroup = { label: string; children: NavLink[]; defaultOpen?: boolean; id?: string; anchor?: string };
 type NavItem = NavLink | NavGroup;
 
 type StructureChangeDetail = {
@@ -27,9 +27,8 @@ const mainScope = '[data-section-nav-main]';
 let root: HTMLElement | null = null;
 let documentKey = '';
 const outline: OutlineEntry[] = [];
-let preservedLinkTemplate: HTMLElement | null = null;
-let preservedGroupTemplate: HTMLElement | null = null;
 let outlineAbort: AbortController | null = null;
+let outlineInitialized = false;
 
 const parseJson = <T>(raw: string | undefined, fallback: T): T => {
   if (!raw) return fallback;
@@ -101,6 +100,7 @@ export function setDevSectionOutline(entries: OutlineEntry[]) {
   const next = entries === outline ? [...entries] : entries;
   outline.length = 0;
   outline.push(...next);
+  outlineInitialized = true;
   writeRootDatasets();
 }
 
@@ -109,13 +109,13 @@ export function remapDevSectionOutlineId(clientId: string, serverId: string) {
   for (let i = 0; i < outline.length; i += 1) {
     const entry = outline[i];
     if (entry.kind === 'group') {
-      if (entry.anchor !== clientId) continue;
+      if (outlineAnchorId(entry) !== clientId) continue;
       outline[i] = { ...entry, anchor: serverId };
       continue;
     }
     if (entry.kind !== 'section') continue;
     if (outlineAnchorId(entry) !== clientId && entry.id !== clientId) continue;
-    outline[i] = { ...entry, id: serverId, anchor: serverId };
+    outline[i] = { ...entry, anchor: serverId };
   }
   const block = document.getElementById(clientId);
   if (block instanceof HTMLElement) {
@@ -155,7 +155,7 @@ export function syncDevSectionOutlineSidebar() {
   }
   if (!list || !root) return;
 
-  if (!outline.length) {
+  if (!outlineInitialized) {
     loadOutlineFromRoot();
   }
 
@@ -163,52 +163,45 @@ export function syncDevSectionOutlineSidebar() {
   outline.length = 0;
   outline.push(...sorted);
   const nav = deriveNavFromOutline(outline) as NavItem[];
-
-  if (!nav.length) return;
+  list.closest<HTMLElement>('[data-section-sidebar]')?.classList.toggle(
+    'section-sidebar-nav--empty',
+    nav.length === 0,
+  );
 
   const editorMode = isSectionEditorActive();
-  const openStateByLabel = new Map<string, boolean>();
+  const openStateById = new Map<string, boolean>();
   if (!editorMode) {
-    list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el) => {
-      const label = el.dataset.navLabel;
+    list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el, index) => {
+      const id = el.dataset.outlineId || `legacy-group-${index}`;
       const details = el.querySelector('details');
-      if (label && details) openStateByLabel.set(label, details.open);
+      if (details) openStateById.set(id, details.open);
     });
   }
 
   writeRootDatasets();
 
-  const liveLinkTemplate = list.querySelector<HTMLElement>('[data-section-nav-link]');
-  const liveGroupTemplate = list.querySelector<HTMLElement>('[data-section-nav-group]');
-  if (liveLinkTemplate) {
-    preservedLinkTemplate = liveLinkTemplate.cloneNode(true) as HTMLElement;
-  }
-  if (liveGroupTemplate) {
-    preservedGroupTemplate = liveGroupTemplate.cloneNode(true) as HTMLElement;
-  }
-
-  const linkTemplate = liveLinkTemplate ?? preservedLinkTemplate;
-  const groupTemplate = liveGroupTemplate ?? preservedGroupTemplate;
-  if (!linkTemplate) return;
-
   const existingLinks = new Map<string, HTMLElement>();
-  list.querySelectorAll<HTMLElement>('[data-section-nav-link]').forEach((el) => {
-    const id = el.dataset.navId;
+  list.querySelectorAll<HTMLElement>('[data-section-nav-link]').forEach((el, index) => {
+    const id = el.dataset.outlineId || el.dataset.navId || `legacy-link-${index}`;
     if (id) existingLinks.set(id, el);
   });
   const existingGroups = new Map<string, HTMLElement>();
-  list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el) => {
-    const label =
-      el.dataset.navLabel ||
-      el.querySelector('[data-section-nav-label]')?.textContent?.trim() ||
-      '';
-    if (label) existingGroups.set(label, el);
+  list.querySelectorAll<HTMLElement>('[data-section-nav-group]').forEach((el, index) => {
+    const id = el.dataset.outlineId || `legacy-group-${index}`;
+    existingGroups.set(id, el);
   });
 
   const ensureLink = (link: NavLink, rootLink: boolean) => {
-    let el = existingLinks.get(link.id);
-    if (!el) el = (preservedLinkTemplate ?? linkTemplate).cloneNode(true) as HTMLElement;
+    const markerId = link.outlineId || link.id;
+    let el = existingLinks.get(markerId);
+    if (!el) {
+      el = document.createElement('li');
+      el.setAttribute('data-section-nav-link', '');
+      el.append(document.createElement('a'));
+    }
     el.dataset.navId = link.id;
+    el.dataset.outlineId = markerId;
+    el.dataset.outlineKind = 'section';
     el.dataset.navLabel = link.label;
     const anchor = el.querySelector('a');
     if (anchor) {
@@ -221,43 +214,72 @@ export function syncDevSectionOutlineSidebar() {
     return el;
   };
 
-  const ensureGroup = (label: string, defaultOpen: boolean) => {
-    const isNewGroup = !existingGroups.has(label);
-    let groupEl = existingGroups.get(label);
+  const ensureGroup = (group: SectionNavGroup, groupIndex: number) => {
+    const markerId = group.id || `legacy-group-${groupIndex}`;
+    const isNewGroup = !existingGroups.has(markerId);
+    let groupEl = existingGroups.get(markerId);
     if (!groupEl) {
-      if (!groupTemplate) return null;
-      groupEl = groupTemplate.cloneNode(true) as HTMLElement;
+      groupEl = document.createElement('li');
+      groupEl.className = 'section-sidebar-nav__group-item';
+      groupEl.setAttribute('data-section-nav-group', '');
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.className = 'section-sidebar-nav__summary';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 8 12');
+      svg.setAttribute('aria-hidden', 'true');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M1.5 1.5 6 6l-4.5 4.5');
+      svg.append(path);
+      const labelEl = document.createElement('span');
+      labelEl.setAttribute('data-section-nav-label', '');
+      summary.append(svg, labelEl);
+      const content = document.createElement('div');
+      content.className = 'section-sidebar-nav__group-content';
+      const children = document.createElement('ul');
+      children.className = 'section-sidebar-nav__children';
+      content.append(children);
+      details.append(summary, content);
+      groupEl.append(details);
     }
-    groupEl.dataset.navLabel = label;
+    groupEl.dataset.outlineId = markerId;
+    groupEl.dataset.outlineKind = 'group';
+    groupEl.dataset.navAnchor = group.anchor || '';
+    groupEl.dataset.navLabel = group.label;
     const labelEl = groupEl.querySelector<HTMLElement>('[data-section-nav-label]');
-    if (labelEl) labelEl.textContent = label;
+    if (labelEl) labelEl.textContent = group.label;
     const details = groupEl.querySelector('details');
     if (details) {
       clearGroupAnimState(groupEl);
-      if (openStateByLabel.has(label)) {
-        details.open = openStateByLabel.get(label) !== false;
+      if (openStateById.has(markerId)) {
+        details.open = openStateById.get(markerId) !== false;
       } else if (editorMode && isNewGroup) {
         // SectionSidebarNav openClosedGroups animates expand on level-2 entry.
         details.open = false;
       } else if (!editorMode) {
-        details.open = defaultOpen;
+        details.open = group.defaultOpen !== false;
       }
       // editorMode + reused group: keep details.open — openClosedGroups expands closed ones.
     }
-    groupEl.querySelector<HTMLElement>('.section-sidebar-nav__children')?.replaceChildren();
     return groupEl;
   };
 
   const kept = new Set<HTMLElement>();
-  for (const item of nav) {
+  nav.forEach((item, itemIndex) => {
     if ('children' in item) {
       const group = item as SectionNavGroup;
-      const groupEl = ensureGroup(group.label, group.defaultOpen !== false);
+      const groupEl = ensureGroup(group, itemIndex);
       const childList = groupEl?.querySelector<HTMLElement>('.section-sidebar-nav__children');
-      if (!groupEl || !childList) continue;
+      if (!groupEl || !childList) return;
+      const groupLinks = new Set<HTMLElement>();
       for (const child of group.children) {
-        childList.append(ensureLink(child, false));
+        const linkEl = ensureLink(child, false);
+        childList.append(linkEl);
+        groupLinks.add(linkEl);
       }
+      [...childList.children].forEach((child) => {
+        if (child instanceof HTMLElement && !groupLinks.has(child)) child.remove();
+      });
       list.append(groupEl);
       kept.add(groupEl);
     } else {
@@ -265,14 +287,12 @@ export function syncDevSectionOutlineSidebar() {
       list.append(linkEl);
       kept.add(linkEl);
     }
-  }
+  });
   [...list.children].forEach((child) => {
     if (child instanceof HTMLElement && !kept.has(child)) child.remove();
   });
 
-  if (editorMode) {
-    window.dispatchEvent(new CustomEvent('vcd:section-nav-sidebar-synced'));
-  }
+  window.dispatchEvent(new CustomEvent('vcd:section-nav-sidebar-synced'));
 }
 
 const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
@@ -336,8 +356,9 @@ const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
 
 const loadOutlineFromRoot = () => {
   if (!root) return;
+  const hasOutlineDataset = root.hasAttribute('data-section-outline');
   let next = normalizeOutline(parseJson(root.dataset.sectionOutline, []));
-  if (!next.length) {
+  if (!hasOutlineDataset) {
     const nav = parseJson<NavItem[]>(root.dataset.sectionNav, []);
     for (const item of nav) {
       if (item && typeof item === 'object' && 'children' in item) {
@@ -369,6 +390,7 @@ const loadOutlineFromRoot = () => {
   }
   outline.length = 0;
   outline.push(...next);
+  outlineInitialized = true;
   writeRootDatasets();
 };
 
@@ -390,8 +412,7 @@ export function disposeDevSectionOutlineSync() {
   root = null;
   documentKey = '';
   outline.length = 0;
-  preservedLinkTemplate = null;
-  preservedGroupTemplate = null;
+  outlineInitialized = false;
 }
 
 export function initDevSectionOutlineSync() {
