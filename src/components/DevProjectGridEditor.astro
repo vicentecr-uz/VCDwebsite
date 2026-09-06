@@ -116,9 +116,10 @@ const visibilityOptions = [
   import { cropHostFor, readCropVars } from '../scripts/adaptiveMediaInk';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import 'color-dialog-box';
-  import { pageHistory, registerHistoryScope } from '../lib/devHistory';
+  import { createHistory, pageHistory, registerHistoryScope } from '../lib/devHistory';
 
   window.__vcdPageHistory = pageHistory;
+  window.__vcdCreateHistory = createHistory;
   window.__vcdRegisterHistoryScope = registerHistoryScope;
 
   window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
@@ -239,15 +240,12 @@ const visibilityOptions = [
   const getPageHistory = () => window.__vcdPageHistory;
   const pageHistory = {
     get replaying() { return Boolean(getPageHistory()?.replaying); },
-    get canUndo() { return Boolean(getPageHistory()?.canUndo); },
-    get canRedo() { return Boolean(getPageHistory()?.canRedo); },
     push(command) { return getPageHistory()?.push(command); },
-    scope() { return getPageHistory()?.scope() ?? { undo() {}, redo() {} }; },
   };
   const registerHistoryScope = (...args) => getPageHistory() && window.__vcdRegisterHistoryScope(...args);
-  let historyScope = null;
   let unregisterHistoryScope = null;
-  const panelFieldBefore = new Map();
+  let settingsHistory = null;
+  let lastSettingsDraft = null;
   let settingsOpening = null;
   let settingsEntry = null;
 
@@ -269,9 +267,31 @@ const visibilityOptions = [
     if (bgSwatch instanceof HTMLButtonElement) bgSwatch.style.background = value;
   };
 
+  const settingsMatch = (a, b) => a.status === b.status && a.slug === b.slug && a.listing.bg === b.listing.bg;
+  const withSettings = (current, settings) => ({ ...structuredClone(current),
+    status: settings.status, slug: settings.slug,
+    listing: { ...structuredClone(current.listing), bg: settings.listing.bg },
+  });
+  const restoreSettings = (entry, snapshot) => applyHistorySnapshot(entry, withSettings(entry.draft, snapshot), false);
+
   const syncPanelActionButtons = () => {
     const entry = panelSlug ? caches.get(panelSlug) : null;
-    const dirty = Boolean(entry && !snapshotsMatch(entry.saved, entry.draft));
+    const dirty = Boolean(entry && !settingsMatch(settingsOpening || entry.saved, entry.draft));
+    if (entry && settingsHistory && settingsPanel instanceof HTMLElement && !settingsPanel.hidden) {
+      const before = lastSettingsDraft;
+      const after = structuredClone(entry.draft);
+      lastSettingsDraft = after;
+      if (before && !settingsMatch(before, after) && !settingsHistory.replaying && !pageHistory.replaying) {
+        const restore = (snapshot) => {
+          lastSettingsDraft = structuredClone(snapshot);
+          restoreSettings(entry, snapshot);
+        };
+        settingsHistory.push({ label: 'Edit project settings',
+          mergeKey: document.activeElement === slugInput ? 'slug' : document.activeElement === bgInput ? 'background' : undefined,
+          undo: () => restore(before), redo: () => restore(after),
+        });
+      }
+    }
     if (revertButton instanceof HTMLButtonElement) revertButton.disabled = !dirty;
     if (saveButton instanceof HTMLButtonElement) saveButton.disabled = !dirty;
   };
@@ -876,11 +896,19 @@ const visibilityOptions = [
 
   const pushEntryHistory = (entry, before, after, label, mergeKey) => {
     if (snapshotsMatch(before, after) || pageHistory.replaying) return;
-    pageHistory.push({
-      label,
-      ...(mergeKey ? { mergeKey } : {}),
-      undo: () => applyHistorySnapshot(entry, before),
-      redo: () => applyHistorySnapshot(entry, after),
+    const restore = (snapshot) => {
+      const next = structuredClone(entry.draft);
+      for (const key of Object.keys(after)) {
+        if (key === 'listing' || key === 'teaser') {
+          for (const field of new Set([...Object.keys(before[key]), ...Object.keys(after[key])])) {
+            if (JSON.stringify(before[key][field]) !== JSON.stringify(after[key][field])) next[key][field] = snapshot[key][field];
+          }
+        } else if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) next[key] = snapshot[key];
+      }
+      applyHistorySnapshot(entry, next);
+    };
+    pageHistory.push({ label, ...(mergeKey ? { mergeKey } : {}),
+      undo: () => restore(before), redo: () => restore(after),
     });
   };
 
@@ -897,12 +925,12 @@ const visibilityOptions = [
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || 'Could not load project settings.');
 
+    if (caches.has(slug)) return caches.get(slug);
     const listing = payload.listings?.[grid] ?? payload.listing ?? {};
-    const inline = readInlineText(item);
     const snapshot = {
-      title: inline.title || payload.title || '',
-      subtitle: inline.subtitle || (grid === 'play' ? listing.meta : listing.year) || '',
-      teaserLabel: inline.teaserLabel || payload.teaser?.label || '',
+      title: payload.title ?? '',
+      subtitle: (grid === 'play' ? listing.meta : listing.year) ?? '',
+      teaserLabel: payload.teaser?.label ?? '',
       description: payload.description ?? '',
       status: payload.status ?? item.dataset.devStatus ?? 'draft',
       slug,
@@ -913,10 +941,10 @@ const visibilityOptions = [
         bg: listing.bg ?? item.dataset.devBg ?? '#efefef',
         dark: listing.dark ?? item.dataset.devDark === 'true',
         full: listing.full ?? item.classList.contains('project-grid__item--full'),
-        subtitle: inline.subtitle || (grid === 'play' ? listing.meta : listing.year) || '',
+        subtitle: (grid === 'play' ? listing.meta : listing.year) ?? '',
       },
       teaser: {
-        label: inline.teaserLabel || payload.teaser?.label || '',
+        label: payload.teaser?.label ?? '',
         coverImage: payload.teaser?.coverImage ?? '',
       },
     };
@@ -956,9 +984,10 @@ const visibilityOptions = [
 
   const openSettingsPanel = (trigger) => {
     if (!(settingsPanel instanceof HTMLElement)) return;
-    historyScope = pageHistory.scope();
+    settingsHistory = window.__vcdCreateHistory();
+    lastSettingsDraft = settingsEntry ? structuredClone(settingsEntry.draft) : null;
     unregisterHistoryScope?.();
-    unregisterHistoryScope = registerHistoryScope(settingsPanel, historyScope, {
+    unregisterHistoryScope = registerHistoryScope(settingsPanel, settingsHistory, {
       owns: (target) => settingsPanel.contains(target),
     });
     settingsPanel.hidden = false;
@@ -973,11 +1002,13 @@ const visibilityOptions = [
 
   const closeSettingsPanel = () => {
     panelSlug = '';
+    if (settingsEntry && settingsOpening) restoreSettings(settingsEntry, settingsOpening);
     settingsEntry = null;
     settingsOpening = null;
+    settingsHistory = null;
+    lastSettingsDraft = null;
     unregisterHistoryScope?.();
     unregisterHistoryScope = null;
-    historyScope = null;
     if (settingsPanel instanceof HTMLElement && !settingsPanel.hidden) {
       settingsPanel.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel: settingsPanel } }));
@@ -1198,8 +1229,8 @@ const visibilityOptions = [
     if (!(item instanceof HTMLElement)) return;
     try {
       const entry = await ensureLoaded(slug, item);
-      const before = structuredClone(entry.draft);
       const url = await uploadCoverImage(slug, file);
+      const before = structuredClone(entry.draft);
       if (slot === 'hoverImage') {
         entry.draft.listing.hoverImage = url;
         // Re-measure on every drop (replace included) — never keep a stale
@@ -1262,6 +1293,11 @@ const visibilityOptions = [
     cover.append(overlay);
     await waitImageReady(overlay);
 
+    if (entry.draft?.listing?.image !== draftUrl || liveCoverBlobs.get(slug) !== blobUrl) {
+      overlay.remove();
+      delete cover.dataset.devCrossfadeActive;
+      return;
+    }
     liveCoverBlobs.delete(slug);
     baseImg.hidden = false;
     baseImg.src = draftUrl;
@@ -1290,7 +1326,7 @@ const visibilityOptions = [
 
     hoverImg.src = draftUrl;
     await waitImageReady(hoverImg);
-    revokeLiveHover(slug);
+    if (liveHoverBlobs.get(slug) === blobUrl) revokeLiveHover(slug);
   };
 
   /**
@@ -1655,16 +1691,13 @@ const visibilityOptions = [
     })();
   });
 
-  const inlineEditBefore = new Map();
   document.addEventListener('focusin', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
     const item = target.closest('[data-dev-project-slug]');
     const slug = item?.getAttribute('data-dev-project-slug');
     if (!(item instanceof HTMLElement) || !slug) return;
-    void ensureLoaded(slug, item).then((entry) => {
-      if (!inlineEditBefore.has(item)) inlineEditBefore.set(item, structuredClone(entry.draft));
-    });
+    void ensureLoaded(slug, item).catch(() => {});
   }, true);
 
   document.addEventListener('focusout', (event) => {
@@ -1672,9 +1705,6 @@ const visibilityOptions = [
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
     normalizeEmptyEditable(target);
-    const item = target.closest('[data-dev-project-slug]');
-    const slug = item?.getAttribute('data-dev-project-slug');
-    if (item instanceof HTMLElement) inlineEditBefore.delete(item);
   });
 
   // Drop image onto cover → replace listing cover (hover wash + crossfade).
@@ -1760,14 +1790,6 @@ const visibilityOptions = [
     previewCardBg(value);
   });
 
-  settingsRoot?.addEventListener('focusin', (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || !panelSlug) return;
-    const entry = caches.get(panelSlug);
-    if (!entry || !target.matches('[data-ps-bg], [data-ps-slug], select[data-ps-status]')) return;
-    panelFieldBefore.set(target, structuredClone(entry.draft));
-  });
-
   settingsRoot?.addEventListener('blur', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches('[data-ps-bg]')) return;
@@ -1823,6 +1845,13 @@ const visibilityOptions = [
     const panel = event.detail?.panel;
     if (panel?.dataset?.devPanelKey !== 'project-settings') return;
     if (bgPicker instanceof HTMLElement) bgPicker.removeAttribute('open');
+    if (settingsEntry && settingsOpening) restoreSettings(settingsEntry, settingsOpening);
+    settingsEntry = null;
+    settingsOpening = null;
+    settingsHistory = null;
+    lastSettingsDraft = null;
+    unregisterHistoryScope?.();
+    unregisterHistoryScope = null;
     panelSlug = '';
   });
 
@@ -1849,35 +1878,38 @@ const visibilityOptions = [
   };
 
   revertButton?.addEventListener('click', () => {
-    if (!panelSlug) return;
-    const entry = caches.get(panelSlug);
-    if (!entry) return;
-    revokeLiveCover(panelSlug);
-    revokeLiveHover(panelSlug);
-    entry.draft = structuredClone(settingsOpening || entry.saved);
-    applyListingPreview(entry.item, entry.draft, entry.grid);
-    renderPanelFromEntry(entry);
-    window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-      detail: { id: pendingId(panelSlug, entry.grid) },
-    }));
-    syncPanelActionButtons();
+    if (!settingsEntry || !settingsOpening) return;
+    lastSettingsDraft = structuredClone(settingsOpening);
+    settingsHistory?.clear();
+    restoreSettings(settingsEntry, settingsOpening);
   });
 
-  saveButton?.addEventListener('click', () => {
+  const saveSettings = () => {
     if (!panelSlug) return;
     const entry = caches.get(panelSlug);
     if (!entry) return;
     const nextSlug = String(entry.draft.slug || '').trim();
     if (entry.draft.status !== 'image' && !/^[a-z0-9-]+$/.test(nextSlug)) {
       shakeSlugError('Lowercase letters, numbers, hyphens.');
-      return;
+      return false;
     }
     clearSlugError();
-    const before = structuredClone(settingsOpening || entry.saved);
+    const before = withSettings(entry.draft, settingsOpening || entry.saved);
     const after = structuredClone(entry.draft);
     syncPendingFor(panelSlug);
     pushEntryHistory(entry, before, after, 'Save project settings');
     settingsOpening = after;
+    lastSettingsDraft = structuredClone(after);
+    settingsHistory?.clear();
+    syncPanelActionButtons();
+    return true;
+  };
+  saveButton?.addEventListener('click', saveSettings);
+  window.addEventListener('vcd:dev-before-save', (event) => {
+    if (settingsEntry && settingsOpening && !settingsMatch(settingsOpening, settingsEntry.draft) && saveSettings() === false) event.preventDefault();
+  });
+  window.addEventListener('vcd:dev-has-draft', (event) => {
+    if (settingsEntry && settingsOpening && !settingsMatch(settingsOpening, settingsEntry.draft)) event.detail.dirty = true;
   });
 
   deleteButton?.addEventListener('animationend', (event) => {
@@ -1955,11 +1987,10 @@ const visibilityOptions = [
   window.addEventListener('vcd:dev-pending-committed', (event) => {
     void (async () => {
       const ids = event.detail?.ids;
-      for (const [slug, entry] of [...caches.entries()]) {
-        if (Array.isArray(ids) && !ids.includes(pendingId(slug, entry.grid))) continue;
-        const savedSnapshot = structuredClone(entry.draft);
-        await promoteLiveCoverOnSave(slug, entry);
-        await promoteLiveHoverOnSave(slug, entry);
+      const submitted = [...caches.entries()]
+        .filter(([slug, entry]) => !Array.isArray(ids) || ids.includes(pendingId(slug, entry.grid)))
+        .map(([slug, entry]) => [slug, entry, structuredClone(entry.draft)]);
+      for (const [slug, entry, savedSnapshot] of submitted) {
         entry.saved = savedSnapshot;
         const nextSlug = savedSnapshot.status === 'image'
           ? slug
@@ -1980,6 +2011,8 @@ const visibilityOptions = [
             liveHoverBlobs.set(nextSlug, hoverUrl);
           }
         }
+        void Promise.all([promoteLiveCoverOnSave(nextSlug || slug, entry), promoteLiveHoverOnSave(nextSlug || slug, entry)])
+          .catch(() => {});
       }
       syncPanelActionButtons();
     })();
@@ -2005,7 +2038,7 @@ const visibilityOptions = [
         else hoverImg.removeAttribute('src');
         hoverImg.hidden = !src;
       }
-      if (cover instanceof HTMLElement) cover.classList.add('project-grid__cover--has-hover');
+      if (cover instanceof HTMLElement) cover.classList.toggle('project-grid__cover--has-hover', Boolean(src));
     } else if (cover instanceof HTMLElement) {
       delete cover.dataset.devCoverEmpty;
       const baseImg = item.querySelector('.project-grid__img--base');

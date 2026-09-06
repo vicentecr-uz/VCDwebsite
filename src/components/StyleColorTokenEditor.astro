@@ -177,14 +177,18 @@ import DevOverlay from './DevOverlay.astro';
       if (current !== savedValue) syncPending(token, current, savedValue);
     }) as EventListener);
 
-    window.addEventListener('vcd:dev-pending-committed', () => {
-      if (!activeToken || !activeTrigger) return;
-      const live = normalizeHex(getComputedStyle(root).getPropertyValue(activeToken));
-      if (!live) return;
-      savedValue = live;
-      activeTrigger.dataset.colorTokenSavedValue = live;
-      activeTrigger.dataset.colorTokenValue = live;
-    });
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+      const ids = event.detail?.ids;
+      document.querySelectorAll<HTMLElement>('[data-color-token-name]').forEach((trigger) => {
+        const token = trigger.dataset.colorTokenName || '';
+        if (!token || (ids && !ids.includes(pendingIdFor(token)))) return;
+        const live = normalizeHex(getComputedStyle(root).getPropertyValue(token));
+        if (!live) return;
+        trigger.dataset.colorTokenSavedValue = live;
+        trigger.dataset.colorTokenValue = live;
+        if (activeToken === token) savedValue = live;
+      });
+    }) as EventListener);
 
     hexInput.addEventListener('focus', () => hexInput.select());
 

@@ -746,9 +746,16 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       allConstrained: ConstrainedByViewport;
       allLocks: Record<ImageViewport, boolean>;
       maxVhValue: number | undefined;
+      cropped: boolean;
+      ownVariants: boolean;
+      hoverCropped: boolean;
+      coverSrc: string;
+      hoverSrc: string;
       src: string;
       srcWidth?: number;
       srcHeight?: number;
+      coverWidth?: number;
+      coverHeight?: number;
       /** Set only when this step changed max-vh. Use a wrapper so `undefined` (Off) is distinct from "not this step". */
       maxVh?: { value: number | undefined };
     }
@@ -757,6 +764,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let redoStack: CropUndoEntry[] = [];
     let unregisterHistoryScope: (() => void) | null = null;
     let openingSnapshot: CropUndoEntry | null = null;
+    const pageBaselines = new Map<HTMLElement, CropUndoEntry>();
+    const appliedSnapshots = new Map<HTMLElement, CropUndoEntry>();
+    const semanticCrop = (state: CropUndoEntry) => JSON.stringify({
+      variants: state.allCover, hover: state.allHover, constrained: state.allConstrained,
+      maxVh: state.maxVhValue, coverSrc: state.coverSrc, hoverSrc: state.hoverSrc,
+    });
     const GESTURE_UNDO_CAP = 20;
 
     const snapshotViewport = (): CropUndoEntry => {
@@ -778,15 +791,22 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         widthConstrain: draftConstrained[vp],
         selectedViewport: vp,
         activeSlot,
-        allCover: structuredClone(draftCoverVariants),
+        allCover: structuredClone(isListingCover(editTarget) ? draftCoverVariants : draftVariants),
         allHover: draftHoverVariants ? structuredClone(draftHoverVariants) : null,
         allDraft: structuredClone(draftVariants),
         allConstrained: structuredClone(draftConstrained),
         allLocks: structuredClone(constrainByViewport),
         maxVhValue: draftMaxVh,
+        cropped: editTarget.classList.contains('project-cropped') || isGridTarget(editTarget),
+        ownVariants: editTarget.dataset.devHasOwnVariants === 'true',
+        hoverCropped: editTarget.classList.contains('project-grid__cover--hover-cropped'),
+        coverSrc: activeSlot === 'cover' ? draftSrc : canonicalSrcFromUrl(editTarget.querySelector<HTMLImageElement>('.project-grid__img--base')?.src || ''),
+        hoverSrc: activeSlot === 'hover' ? draftSrc : canonicalSrcFromUrl(editTarget.querySelector<HTMLImageElement>('.project-grid__img--hover')?.getAttribute('src') || ''),
         src: draftSrc,
         srcWidth: draftSrcWidth,
         srcHeight: draftSrcHeight,
+        coverWidth: activeSlot === 'cover' ? draftSrcWidth : openingSnapshot?.coverWidth,
+        coverHeight: activeSlot === 'cover' ? draftSrcHeight : openingSnapshot?.coverHeight,
       };
     };
 
@@ -815,7 +835,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (activeImage) editedImage = activeImage;
       draftCoverVariants = structuredClone(entry.allCover);
       draftHoverVariants = entry.allHover ? structuredClone(entry.allHover) : null;
-      draftVariants = structuredClone(entry.allDraft);
+      draftVariants = isListingCover(editTarget) && activeSlot === 'hover' && draftHoverVariants
+        ? draftHoverVariants : draftCoverVariants;
       draftConstrained = structuredClone(entry.allConstrained);
       draftMaxVh = entry.maxVhValue;
       draftSrc = entry.src;
@@ -840,9 +861,27 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           maxVh: draftMaxVh,
         });
       }
+      if (entry.coverSrc) applySrcLive(editTarget, entry.coverSrc, { srcWidth: entry.coverWidth, srcHeight: entry.coverHeight }, 'cover');
+      if (isListingCover(editTarget) && entry.hoverSrc) applySrcLive(editTarget, entry.hoverSrc, undefined, 'hover');
+      if (entry.cropped) beginLiveEdits();
+      if (!entry.cropped && !isGridTarget(editTarget)) {
+        editTarget.classList.remove('project-cropped', 'project-responsive-image');
+        removeCropClipIfOwned(editedImage);
+        if (isListingCover(editTarget)) {
+          editTarget.classList.add('overflow-hidden');
+          editedImage.classList.add('w-full', 'h-full', 'object-cover');
+        }
+        liveApply = false;
+      }
       renderConstraint();
       syncWidthConstrainUi();
       renderDraft();
+      editTarget.dataset.devHasOwnVariants = String(entry.ownVariants);
+      if (!entry.cropped && !isGridTarget(editTarget)) delete editTarget.dataset.devImageVariants;
+      if (isListingCover(editTarget)) {
+        editTarget.classList.toggle('project-grid__cover--hover-cropped', entry.hoverCropped);
+        if (!entry.hoverCropped) delete editTarget.dataset.devHoverVariants;
+      }
     };
 
     const snapshotForRedo = (entry: CropUndoEntry): CropUndoEntry => {
@@ -901,7 +940,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const readTargetSrc = (image: HTMLImageElement) => (
-      canonicalSrcFromUrl(image.currentSrc || image.src)
+      canonicalSrcFromUrl(image.src || image.currentSrc)
     );
 
     const readTargetDims = (image: HTMLImageElement) => {
@@ -960,11 +999,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
     };
 
-    const pageImageFor = (target: HTMLElement) => {
+    const pageImageFor = (target: HTMLElement, slot?: 'cover' | 'hover') => {
       // While the on-page crop stage is mounted the ghost <img> is prepended
       // first — never treat that as the content bitmap.
-      if (target === editTarget && editedImage?.isConnected) return editedImage;
-      if (isListingCover(target) && activeSlot === 'hover') {
+      if (!slot && target === editTarget && editedImage?.isConnected) return editedImage;
+      if (isListingCover(target) && (slot ?? activeSlot) === 'hover') {
         return target.querySelector<HTMLImageElement>('.project-grid__img--hover');
       }
       return (
@@ -979,9 +1018,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       target: HTMLElement,
       src: string,
       dims?: { srcWidth?: number; srcHeight?: number },
+      slot: 'cover' | 'hover' = activeSlot,
     ) => {
       if (!src) return null;
-      const image = pageImageFor(target);
+      const image = pageImageFor(target, slot);
       if (!image) return null;
       image.src = projectImage(src);
       if (dims?.srcWidth && dims?.srcHeight) {
@@ -996,7 +1036,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
       if (isListingCover(target)) {
         const resolvedSrc = projectImage(src);
-        if (activeSlot === 'hover') {
+        if (slot === 'hover') {
           image.hidden = false;
           target.classList.add('project-grid__cover--has-hover');
         } else {
@@ -1008,7 +1048,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           window.dispatchEvent(new CustomEvent('vcd:dev-listing-src', {
             detail: {
               slug,
-              slot: activeSlot === 'hover' ? 'hoverImage' : 'image',
+              slot: slot === 'hover' ? 'hoverImage' : 'image',
               src: resolvedSrc,
             },
           }));
@@ -1244,7 +1284,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const syncDraftDirty = () => {
-      draftDirty = Boolean(openingSnapshot && JSON.stringify(openingSnapshot) !== JSON.stringify(snapshotViewport()));
+      draftDirty = Boolean(openingSnapshot && semanticCrop(openingSnapshot) !== semanticCrop(snapshotViewport()));
     };
     const renderDraft = () => {
       paintDraftCrop();
@@ -1252,13 +1292,111 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncDraftDirty();
     };
 
+    const applyPageCrop = (target: HTMLElement, state: CropUndoEntry) => {
+      if (!target.isConnected) throw new Error('Restore this image before restoring its crop.');
+      const listing = isListingCover(target);
+      applyVariantsToTarget(target, state.allCover, { clearOwn: !state.ownVariants, hoverVariants: state.allHover });
+      target.classList.toggle('project-cropped', state.cropped && !isGridTarget(target));
+      target.classList.toggle('project-responsive-image', state.cropped && !isGridTarget(target));
+      if (!state.cropped) delete target.dataset.devImageVariants;
+      if (listing) {
+        target.classList.toggle('overflow-hidden', !state.cropped);
+        target.classList.toggle('project-grid__cover--hover-cropped', state.hoverCropped);
+        if (!state.hoverCropped) delete target.dataset.devHoverVariants;
+      }
+      const image = pageImageFor(target, 'cover');
+      if (image && !isGridTarget(target)) {
+        if (state.cropped) {
+          if (listing) ensureListingCropClip(target);
+          else ensureCropClip(target, image);
+          image.classList.remove('w-full', 'h-full', 'object-cover');
+        } else {
+          removeCropClipIfOwned(image);
+          image.style.width = '';
+          image.style.height = '';
+          if (listing) image.classList.add('w-full', 'h-full', 'object-cover');
+        }
+      }
+      if (state.coverSrc) applySrcLive(target, state.coverSrc, { srcWidth: state.coverWidth, srcHeight: state.coverHeight }, 'cover');
+      if (listing) {
+        if (state.hoverSrc) applySrcLive(target, state.hoverSrc, undefined, 'hover');
+        else {
+          const hoverImage = pageImageFor(target, 'hover');
+          if (hoverImage) { hoverImage.removeAttribute('src'); hoverImage.hidden = true; }
+          target.classList.remove('project-grid__cover--has-hover');
+          const slug = target.closest<HTMLElement>('[data-dev-project-slug]')?.dataset.devProjectSlug;
+          if (slug) window.dispatchEvent(new CustomEvent('vcd:dev-listing-src', { detail: { slug, slot: 'hoverImage', src: '' } }));
+        }
+      }
+      if (isStandaloneMedia(target) || isCarouselItem(target)) applyFrameFlagsLive(target, { constrained: state.allConstrained, maxVh: state.maxVhValue });
+      appliedSnapshots.set(target, structuredClone(state));
+      for (const slot of listing ? ['cover', 'hover'] as const : ['cover'] as const) {
+        const src = slot === 'cover' ? state.coverSrc : state.hoverSrc;
+        stagedSources.set(pendingIdFor(target, slot), { src, srcWidth: state.srcWidth, srcHeight: state.srcHeight });
+      }
+      if (target === editTarget) {
+        savedCoverVariants = structuredClone(state.allCover);
+        savedHoverVariants = state.allHover ? structuredClone(state.allHover) : null;
+        draftCoverVariants = structuredClone(savedCoverVariants);
+        draftHoverVariants = savedHoverVariants ? structuredClone(savedHoverVariants) : null;
+        draftVariants = listing && activeSlot === 'hover' && draftHoverVariants ? draftHoverVariants : draftCoverVariants;
+        savedVariants = listing && activeSlot === 'hover' && savedHoverVariants ? savedHoverVariants : savedCoverVariants;
+        savedConstrained = { ...state.allConstrained };
+        draftConstrained = { ...state.allConstrained };
+        savedMaxVh = draftMaxVh = state.maxVhValue;
+        savedSrc = draftSrc = listing && activeSlot === 'hover' ? state.hoverSrc : state.coverSrc;
+        savedSrcWidth = draftSrcWidth = state.srcWidth;
+        savedSrcHeight = draftSrcHeight = state.srcHeight;
+        targetWasCropped = state.cropped;
+        targetHadOwnVariants = state.ownVariants;
+        targetVariantsAttr = state.cropped ? JSON.stringify(state.allCover) : null;
+        saved = { ...savedVariants[selectedViewport] };
+        draft = { ...draftVariants[selectedViewport] };
+        liveApply = false;
+        openingSnapshot = structuredClone(state);
+        clearAllStacks();
+        renderDraft();
+        syncWidthConstrainUi();
+      }
+      announceFrameChange(target);
+    };
+    const recordPageCrop = (target: HTMLElement, before: CropUndoEntry, after: CropUndoEntry) => {
+      if (pageHistory.replaying || (semanticCrop(before) === semanticCrop(after)
+        && before.ownVariants === after.ownVariants && before.cropped === after.cropped)) return;
+      const restore = (state: CropUndoEntry) => {
+        const disk = structuredClone(pageBaselines.get(target) ?? before);
+        applyPageCrop(target, state);
+        const slots = isListingCover(target) ? ['cover', 'hover'] as const : ['cover'] as const;
+        for (const slot of slots) {
+          const id = pendingIdFor(target, slot);
+          if (semanticCrop(state) === semanticCrop(disk) && state.cropped === disk.cropped && state.ownVariants === disk.ownVariants) {
+            window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id } }));
+            continue;
+          }
+          const clearVariants = !state.cropped || (isGridTarget(target) && !state.ownVariants);
+          window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', { detail: {
+            id, kind: 'crop', payload: {
+              document: target.dataset.devDocument, path: JSON.parse(target.dataset.devImagePath || '[]'),
+              ...(slot === 'cover' ? {
+                ...(clearVariants ? { clearVariants: true } : { variants: structuredClone(state.allCover) }),
+                ...(state.coverSrc ? { src: state.coverSrc, srcWidth: state.coverWidth, srcHeight: state.coverHeight } : {}),
+                ...(isStandaloneMedia(target) ? { constrained: { ...state.allConstrained }, centered: imageHasWidthConstraint(state.allConstrained) } : {}),
+                ...(supportsMaxVh(target) ? { maxVh: state.maxVhValue ?? 0 } : {}),
+              } : {
+                slot: 'hoverImage',
+                ...(state.hoverSrc ? { src: state.hoverSrc } : { clearHoverImage: true }),
+                ...(state.hoverCropped && state.allHover ? { hoverVariants: structuredClone(state.allHover) } : { clearHoverVariants: true }),
+              }),
+            }, revert: () => applyPageCrop(target, disk),
+          } }));
+        }
+      };
+      pageHistory.push({ label: 'Edit image', undo: () => restore(before), redo: () => restore(after) });
+    };
+
     const saveDraft = () => {
       const target = editTarget;
       const beforeState = openingSnapshot ? structuredClone(openingSnapshot) : snapshotViewport();
-      const semantic = (state: CropUndoEntry) => {
-        const { selectedViewport: _viewport, activeSlot: _slot, lock: _lock, widthConstrain: _width, maxVh: _legacyMax, ...rest } = state;
-        return rest;
-      };
       const documentKey = target.dataset.devDocument;
       let imagePath: Array<string | number> = [];
       try {
@@ -1381,119 +1519,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
               : {}),
             ...(carouselItem ? { maxVh: stagedMaxVh ?? 0 } : {}),
           },
-          revert: () => {
-            if (persistCrop) {
-              if (!baseline.cropped && !isGridTarget(target)) {
-                target.classList.remove('project-cropped', 'project-responsive-image');
-                delete target.dataset.devImageVariants;
-                const image = target.querySelector<HTMLImageElement>('img');
-                if (image) {
-                  image.style.width = '';
-                  image.style.height = '';
-                  removeCropClipIfOwned(image);
-                  if (isListingCover(target)) {
-                    target.classList.add('overflow-hidden');
-                    image.classList.add('w-full', 'h-full', 'object-cover');
-                  }
-                }
-              } else if (isGridTarget(target) && !hadOwnVariants) {
-                applyVariantsToTarget(target, baseline.variants, { clearOwn: true });
-              } else {
-                applyVariantsToTarget(target, baseline.variants);
-                if (isGridTarget(target) && hadOwnVariants) {
-                  target.dataset.devHasOwnVariants = 'true';
-                }
-              }
-            }
-            if (srcPending && baseline.src) {
-              applySrcLive(target, baseline.src, {
-                ...(baseline.srcWidth ? { srcWidth: baseline.srcWidth } : {}),
-                ...(baseline.srcHeight ? { srcHeight: baseline.srcHeight } : {}),
-              });
-            }
-            if (standalone || carouselItem) {
-              applyFrameFlagsLive(target, {
-                constrained: baseline.constrained,
-                maxVh: baseline.maxVh,
-              });
-            }
-            if (editTarget === target) {
-              if (persistCrop) {
-                savedVariants = structuredClone(baseline.variants);
-                draftVariants = structuredClone(baseline.variants);
-                saved = { ...baseline.variants[selectedViewport] };
-                draft = { ...saved };
-                targetWasCropped = baseline.cropped;
-                renderDraft();
-                syncUseGridDefaultButton();
-              }
-              if (srcPending) {
-                savedSrc = baseline.src;
-                draftSrc = baseline.src;
-                savedSrcWidth = baseline.srcWidth;
-                savedSrcHeight = baseline.srcHeight;
-                draftSrcWidth = baseline.srcWidth;
-                draftSrcHeight = baseline.srcHeight;
-                const url = projectImage(baseline.src);
-                previewImage.src = url;
-                if (pageStage) pageStage.ghostImg.src = url;
-              }
-              savedConstrained = { ...baseline.constrained };
-              draftConstrained = { ...baseline.constrained };
-              savedMaxVh = baseline.maxVh;
-              draftMaxVh = baseline.maxVh;
-              syncWidthConstrainUi();
-            }
-          },
+          revert: () => applyPageCrop(target, pageBaselines.get(target) ?? beforeState),
         },
       }));
 
       const afterState = snapshotViewport();
-      const payloadFor = (state: CropUndoEntry) => ({
-        document: documentKey,
-        path: imagePath,
-        ...(persistCrop ? { variants: structuredClone(isListingCover(target) ? state.allCover : state.allDraft) } : {}),
-        ...(persistCrop && state.allHover ? { hoverVariants: structuredClone(state.allHover) } : {}),
-        ...(isListingCover(target) ? { slot: state.activeSlot === 'hover' ? 'hoverImage' : 'image' } : {}),
-        ...(state.src ? { src: state.src, ...(state.activeSlot !== 'hover' && state.srcWidth ? { srcWidth: state.srcWidth } : {}), ...(state.activeSlot !== 'hover' && state.srcHeight ? { srcHeight: state.srcHeight } : {}) } : {}),
-        ...(standalone ? { constrained: structuredClone(state.allConstrained), centered: imageHasWidthConstraint(state.allConstrained), maxVh: state.maxVhValue ?? 0 } : {}),
-        ...(carouselItem ? { maxVh: state.maxVhValue ?? 0 } : {}),
-      });
-      const restorePageState = (state: CropUndoEntry) => {
-        const previousSlot = activeSlot;
-        activeSlot = state.activeSlot;
-        const coverVariants = structuredClone(state.allCover);
-        const hoverVariants = state.allHover ? structuredClone(state.allHover) : null;
-        applyVariantsToTarget(target, isListingCover(target) ? coverVariants : structuredClone(state.allDraft), {
-          hoverVariants,
-        });
-        if (state.src) applySrcLive(target, state.src, { srcWidth: state.srcWidth, srcHeight: state.srcHeight });
-        if (standalone || carouselItem) applyFrameFlagsLive(target, { constrained: state.allConstrained, maxVh: state.maxVhValue });
-        if (target === editTarget) {
-          draftCoverVariants = coverVariants;
-          draftHoverVariants = hoverVariants;
-          draftVariants = structuredClone(state.allDraft);
-          draftConstrained = structuredClone(state.allConstrained);
-          draftMaxVh = state.maxVhValue;
-          draftSrc = state.src;
-          draftSrcWidth = state.srcWidth;
-          draftSrcHeight = state.srcHeight;
-          selectedViewport = state.selectedViewport;
-          draft = { ...draftVariants[selectedViewport] };
-          renderDraft();
-        }
-        activeSlot = previousSlot;
-        window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-          detail: { id: pendingId, kind: 'crop', payload: payloadFor(state), revert: () => restorePageState(beforeState) },
-        }));
-      };
-      if (JSON.stringify(semantic(beforeState)) !== JSON.stringify(semantic(afterState))) {
-        pageHistory.push({
-          label: 'Edit image',
-          undo: () => restorePageState(beforeState),
-          redo: () => restorePageState(afterState),
-        });
-      }
+      if (!pageBaselines.has(target)) pageBaselines.set(target, structuredClone(beforeState));
+      appliedSnapshots.set(target, structuredClone(afterState));
+      recordPageCrop(target, beforeState, afterState);
+      openingSnapshot = structuredClone(afterState);
 
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
       clearAllStacks();
@@ -1538,6 +1572,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const revertToSaved = () => {
       const target = editTarget;
       if (!target) return;
+      if (openingSnapshot) {
+        applyPageCrop(target, openingSnapshot);
+        draftDirty = false;
+        return;
+      }
 
       draftCoverVariants = structuredClone(savedCoverVariants);
       if (savedHoverVariants) {
@@ -1702,7 +1741,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
-      savedSrc = stagedSource?.src || baseline.src || readTargetSrc(editedImage);
+      savedSrc = stagedSource?.src ?? readTargetSrc(editedImage) ?? baseline.src;
       draftSrc = savedSrc;
       savedSrcWidth = stagedSource?.srcWidth ?? baseline.srcWidth;
       savedSrcHeight = stagedSource?.srcHeight ?? baseline.srcHeight;
@@ -1716,7 +1755,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       } else {
         editedImage.addEventListener('load', refreshCover, { once: true });
       }
-      if (!preserveLocalHistory) openingSnapshot = snapshotViewport();
+      if (!preserveLocalHistory) {
+        openingSnapshot = snapshotViewport();
+        if (!pageBaselines.has(target)) pageBaselines.set(target, structuredClone(openingSnapshot));
+      }
       draftDirty = false;
       renderConstraint();
       renderDraft();
@@ -1729,7 +1771,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           undo: undoLocal,
           redo: redoLocal,
         }, {
-          owns: (target) => Boolean(target && (tuner.contains(target) || target.closest('[data-dev-image-target]') === editTarget)),
+          owns: (target) => Boolean(target && (tuner.contains(target) || pageStage?.stage.contains(target) || target.closest('[data-dev-image-target]') === editTarget)),
         });
         mountPageStage();
         status.textContent = viewportGateOk()
@@ -2494,12 +2536,17 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Aspect ratio changed — unsaved changes.';
     });
 
+    let zoomEditing = false;
     zoomInput.addEventListener('input', () => {
+      if (!zoomEditing) { pushUndo(); zoomEditing = true; }
       beginLiveEdits();
       draft.w = wForZoom(draft.aspect, clamp(Number(zoomInput.value), minZoom(), ZOOM_MAX));
       renderDraft();
       status.textContent = 'Unsaved changes.';
     });
+
+    zoomInput.addEventListener('change', () => { zoomEditing = false; });
+    zoomInput.addEventListener('blur', () => { zoomEditing = false; });
 
     let startX = 0;
     let startY = 0;
@@ -2723,7 +2770,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         src: draftSrc,
         srcWidth: draftSrcWidth,
         srcHeight: draftSrcHeight,
-        allCover: structuredClone(draftCoverVariants),
+        allCover: structuredClone(isListingCover(editTarget) ? draftCoverVariants : draftVariants),
         allHover: draftHoverVariants ? structuredClone(draftHoverVariants) : null,
         allDraft: structuredClone(draftVariants),
       });
@@ -2887,10 +2934,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     saveButton.addEventListener('click', saveDraft);
     window.addEventListener('vcd:dev-before-save', () => {
-      if (editingSession && draftDirty) saveDraft();
+      if (editingSession) { syncDraftDirty(); if (draftDirty) saveDraft(); }
     });
     window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
-      if (editingSession && draftDirty && event.detail) event.detail.dirty = true;
+      if (editingSession) { syncDraftDirty(); if (draftDirty && event.detail) event.detail.dirty = true; }
     }) as EventListener);
 
     const undoLocal = () => {
@@ -2934,6 +2981,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     useGridDefaultButton.addEventListener('click', () => {
       if (!isGridTarget(editTarget) || editTarget.dataset.devHasOwnVariants !== 'true') return;
       const target = editTarget;
+      const beforeDefault = snapshotViewport();
       const documentKey = target.dataset.devDocument;
       let imagePath: Array<string | number> = [];
       try {
@@ -2963,7 +3011,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       applyVariantsToTarget(target, defaultVariants, { clearOwn: true });
       savedVariants = structuredClone(defaultVariants);
-      draftVariants = structuredClone(defaultVariants);
+      savedCoverVariants = structuredClone(defaultVariants);
+      draftCoverVariants = structuredClone(defaultVariants);
+      draftVariants = draftCoverVariants;
       saved = { ...defaultVariants[selectedViewport] };
       draft = { ...saved };
       targetWasCropped = true;
@@ -2995,12 +3045,21 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         },
       }));
 
+      const afterDefault = snapshotViewport();
+      appliedSnapshots.set(target, structuredClone(afterDefault));
+      recordPageCrop(target, beforeDefault, afterDefault);
+      openingSnapshot = structuredClone(afterDefault);
       status.textContent = `Staged grid default (${gridDefaultAspectFor(target)}) — use Save in the page bar to write.`;
       closePanel();
     });
 
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
+      for (const [target, snapshot] of appliedSnapshots) {
+        if (!ids || ids.some((id) => id === pendingIdFor(target, 'cover') || id === pendingIdFor(target, 'hover'))) {
+          pageBaselines.set(target, structuredClone(snapshot));
+        }
+      }
       if (!ids) {
         stagedSources.clear();
         diskBaselines.clear();

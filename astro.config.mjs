@@ -654,7 +654,7 @@ const applyImageWidthFlags = (target, change) => {
  * Apply one image-crop mutation onto an in-memory document node.
  * @returns {{ ok: true } | { ok: false, error: string }}
  */
-const applyCropChange = (data, change) => {
+export const applyCropChange = (data, change) => {
   const fieldPath = change.path;
   if (!Array.isArray(fieldPath) || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
     return { ok: false, error: 'That image is not editable.' };
@@ -667,9 +667,9 @@ const applyCropChange = (data, change) => {
   if (change.clearVariants === true) {
     delete target.variants;
     delete target.crop;
-    applyImageWidthFlags(target, change);
-    return { ok: true };
   }
+  if (change.clearHoverVariants === true) delete target.hoverVariants;
+  if (change.clearHoverImage === true) delete target.hoverImage;
 
   const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
   const hoverSlot = change.slot === 'hoverImage';
@@ -790,7 +790,8 @@ const applyCropChange = (data, change) => {
       }
     }
     delete target.crop;
-  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc) {
+  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc
+    && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 

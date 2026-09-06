@@ -40,7 +40,7 @@ test('writeAtomicJson cleans up when replacement fails after creating the tempor
   assert.deepEqual((await readdir(directory)).sort(), ['document.json', 'target']);
 });
 
-test('authoring queue waits for response completion and releases on disconnect', async () => {
+test('authoring queue waits for the writer after a client disconnects', async () => {
   const enqueue = createSerializedRequestQueue();
   const firstResponse = response();
   const secondResponse = response();
@@ -92,4 +92,12 @@ test('only mutating authoring endpoints enter the queue', () => {
   assert.equal(isMutatingAuthoringRequest({ method: 'GET', url: '/api/content-text' }), false);
   assert.equal(isMutatingAuthoringRequest({ method: 'POST', url: '/api/dev-session-state' }), false);
   assert.equal(isMutatingAuthoringRequest({ method: 'POST', url: '/api/content-text/status' }), false);
+});
+
+
+test('settings undo can clear a hover image while omitted fields retain it', async () => {
+  const { listingCardForGrid } = await import('../dev-api-plugins.mjs');
+  const previous = { image: 'cover.jpg', hoverImage: 'hover.jpg' };
+  assert.equal(listingCardForGrid('work', { image: 'cover.jpg', hoverImage: '' }, previous).hoverImage, undefined);
+  assert.equal(listingCardForGrid('work', { image: 'cover.jpg' }, previous).hoverImage, 'hover.jpg');
 });

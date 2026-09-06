@@ -155,10 +155,10 @@ function invalidateAstroRouteCache(server) {
   }
 }
 
-function listingCardForGrid(grid, listing, previous = {}) {
+export function listingCardForGrid(grid, listing, previous = {}) {
   // Normalize here rather than trust the client: the settings panel sends a
   // ready-to-use URL (for live preview), but storage wants the bare token.
-  const hoverImage = normalizeAssetSrc(String(listing.hoverImage || previous.hoverImage || ''));
+  const hoverImage = normalizeAssetSrc(String(listing.hoverImage ?? previous.hoverImage ?? ''));
   const base = {
     order: previous.order ?? 999,
     image: normalizeAssetSrc(String(listing.image || '')),
