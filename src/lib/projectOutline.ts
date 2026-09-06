@@ -349,11 +349,20 @@ export function resolveProjectOutline(data: {
       ? normalizeOutline(data.outline)
       : outlineFromNav(data.nav);
 
-  if (!base.length || !Array.isArray(data.sections) || !data.sections.length) {
+  if (!Array.isArray(data.sections)) {
     return base;
   }
 
-  return reorderOutlinePreservingGroups(base, pageIndexFromSections(data.sections));
+  if (!data.sections.length) return [];
+  const sectionIds = new Set(
+    data.sections
+      .map((section) => (section && typeof section === 'object'
+        ? String(section.sectionId || section.id || '').trim()
+        : ''))
+      .filter(Boolean),
+  );
+  return reorderOutlinePreservingGroups(base, pageIndexFromSections(data.sections))
+    .filter((entry) => sectionIds.has(outlineAnchorId(entry)));
 }
 
 export function resolveProjectSectionLinks(data: {

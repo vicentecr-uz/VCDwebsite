@@ -159,6 +159,20 @@ export function resolveEditableDocument(documentKey) {
   return map.get(documentKey);
 }
 
+export function validateProjectOutlineTargets(outline, sections) {
+  if (!Array.isArray(outline) || !Array.isArray(sections)) return false;
+  const targets = new Set(
+    sections
+      .filter((section) => section && typeof section === 'object' && !Array.isArray(section))
+      .map((section) => String(section.sectionId || section.id || '').trim())
+      .filter(Boolean),
+  );
+  return outline.every((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+    return targets.has(String(entry.anchor || entry.id || '').trim());
+  });
+}
+
 export function sanitizeUploadFilename(filename) {
   const base = path.basename(String(filename || 'image.jpg'))
     .replace(/[^a-zA-Z0-9._ -]+/g, '')
@@ -798,6 +812,11 @@ export function sectionOrderDevWriter() {
           // Keep sidebar group membership in sync with the new page order.
           // Client sends the sticky-rebuilt outline (group anchors follow first child).
           if (Array.isArray(body.outline) && body.outline.length > 0) {
+            if (relativeFile.startsWith('src/content/projects/')
+              && !validateProjectOutlineTargets(body.outline, sections)) {
+              send(400, { error: 'The section outline contains an orphan target.' });
+              return;
+            }
             data.outline = body.outline;
             delete data.nav;
           }
@@ -1206,4 +1225,3 @@ export function projectRenameDevWriter() {
     },
   };
 }
-

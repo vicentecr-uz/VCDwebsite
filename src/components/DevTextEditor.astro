@@ -102,6 +102,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../scripts/devSectionMount';
   import {
     initDevSectionOutlineSync,
+    getDevSectionOutline,
     remapDevSectionOutlineId,
   } from '../scripts/devSectionOutlineSync';
   import {
@@ -415,6 +416,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const pendingSectionInserts: PendingSectionInsert[] = [];
     const persistedMediaInserts: PersistedMediaInsert[] = [];
     const pendingBlockConverts: PendingBlockConvert[] = [];
+    const serverSectionIds = new Map<string, Map<string, string>>();
     let devServerReloading = false;
 
     if (import.meta.hot) {
@@ -1908,6 +1910,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             serverId: serverSectionId,
             documentKey: entry.documentKey,
           });
+          let documentIds = serverSectionIds.get(entry.documentKey);
+          if (!documentIds) {
+            documentIds = new Map();
+            serverSectionIds.set(entry.documentKey, documentIds);
+          }
+          documentIds.set(clientId, serverSectionId);
         }
       }
       pendingSectionInserts.length = 0;
@@ -5347,6 +5355,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         // JSON must match before text/layout writes (otherwise Save hits
         // "editable text field no longer exists" after deleting a section).
         const insertedSections = await persistPendingSectionInserts();
+        insertedSections.forEach(({ clientId, serverId }) => {
+          remapDevSectionOutlineId(clientId, serverId);
+        });
         await persistPendingSectionDeletes();
         await persistPendingBlockConverts();
         if (placeholderFills.length) {
@@ -5413,13 +5424,23 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
 
         for (const change of sectionNavChanges) {
+          const payload = change.payload;
+          payload.outline = structuredClone(getDevSectionOutline());
+          const documentIds = serverSectionIds.get(String(payload.document || ''));
+          if (documentIds && payload.sectionIds && typeof payload.sectionIds === 'object') {
+            for (const [index, rawId] of Object.entries(payload.sectionIds as Record<string, unknown>)) {
+              if (typeof rawId !== 'string') continue;
+              const serverId = documentIds.get(rawId);
+              if (serverId) (payload.sectionIds as Record<string, unknown>)[index] = serverId;
+            }
+          }
           const response = await fetch('/api/content-nav', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(change.payload),
+            body: JSON.stringify(payload),
           });
-          const payload = await readApiJson(response);
-          if (!response.ok) throw new Error(String(payload.error || 'Could not save the section outline.'));
+          const responsePayload = await readApiJson(response);
+          if (!response.ok) throw new Error(String(responsePayload.error || 'Could not save the section outline.'));
         }
 
         for (const change of styleTokenChanges) {
@@ -5536,6 +5557,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.currentValue,
         ));
         for (const change of sectionOrderChanges) {
+          change.payload.outline = structuredClone(getDevSectionOutline());
           const response = await fetch('/api/content-section-order', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -5559,9 +5581,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
         }
         syncPageTopSpacingControls();
-        insertedSections.forEach(({ clientId, serverId }) => {
-          remapDevSectionOutlineId(clientId, serverId);
-        });
         syncSavedSectionTitleLabels(dirtyText);
 
         pendingMedia.clear();
