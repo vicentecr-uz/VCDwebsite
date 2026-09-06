@@ -21,9 +21,13 @@ const wordmark = title.replace(' ', '\u00a0');
 const showWordmarkSwap = title !== headerSettings.siteTitle;
 const pageChars = [...wordmark];
 const homeChars = [...homeWordmark];
-const isHome = Astro.url.pathname === '/';
+const currentPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const isHome = currentPath === '/';
 const brandHref = isHome ? null : '/';
-const menuLinks = headerSettings.menuLinks;
+const menuLinks = headerSettings.menuLinks.map((link) => ({
+  ...link,
+  isCurrent: (link.href.replace(/\/+$/, '') || '/') === currentPath,
+}));
 ---
 
 {navMenu ? (
@@ -50,6 +54,7 @@ const menuLinks = headerSettings.menuLinks;
               <a
                 href={brandHref}
                 class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
+                aria-label="Home"
               >
                 {showWordmarkSwap ? (
                   <span class="header-trigger__wordmark-stack">
@@ -74,8 +79,20 @@ const menuLinks = headerSettings.menuLinks;
           </div>
           <ul class="header-menu" role="list">
             {menuLinks.map((link) => (
-              <li>
-                <a href={link.href} class="header-menu__link">{link.label}</a>
+              <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
+                <a
+                  href={link.href}
+                  class="header-menu__link"
+                  aria-current={link.isCurrent ? 'page' : undefined}
+                  data-current-page={link.isCurrent ? '' : undefined}
+                >
+                  <span class="header-menu__link-label">{link.label}</span>
+                </a>
+                {link.isCurrent && (
+                  <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
+                    You are on this page
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -110,8 +127,20 @@ const menuLinks = headerSettings.menuLinks;
           </div>
           <ul class="header-menu" role="list">
             {menuLinks.map((link) => (
-              <li>
-                <a href={link.href} class="header-menu__link">{link.label}</a>
+              <li class:list={['header-menu__item', link.isCurrent && 'header-menu__item--current-page']}>
+                <a
+                  href={link.href}
+                  class="header-menu__link"
+                  aria-current={link.isCurrent ? 'page' : undefined}
+                  data-current-page={link.isCurrent ? '' : undefined}
+                >
+                  <span class="header-menu__link-label">{link.label}</span>
+                </a>
+                {link.isCurrent && (
+                  <span class="header-menu__current-note" data-current-page-note aria-hidden="true">
+                    You are on this page
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -158,6 +187,23 @@ const menuLinks = headerSettings.menuLinks;
 
   const header = document.querySelector('.site-header');
   const headerSlot = document.querySelector('.site-header-slot');
+  const menuSurfaceRoot = header?.closest<HTMLElement>('#site-wrapper') ?? document.documentElement;
+
+  const setMenuSurfaceTiming = (duration: number, delay = 0) => {
+    menuSurfaceRoot.style.setProperty('--header-menu-surface-duration', `${duration}s`);
+    menuSurfaceRoot.style.setProperty('--header-menu-surface-delay', `${delay}s`);
+  };
+
+  const syncMenuSurfaceInlineSize = (trigger: HTMLElement) => {
+    // The panel keeps the wider brand/menu hover corridor; only its painted
+    // background follows the menu's intrinsic width.
+    const menu = trigger.querySelector<HTMLElement>('.header-menu');
+    if (!menu) return;
+    trigger.style.setProperty(
+      '--header-menu-inline-size',
+      `${menu.getBoundingClientRect().width}px`,
+    );
+  };
 
   // Latched when a downward scroll closes the menu, and released once the
   // pointer is off the header. Two jobs: it stops the still-:hover-ing cursor
@@ -497,6 +543,9 @@ const menuLinks = headerSettings.menuLinks;
     window.addEventListener('resize', () => {
       syncHeaderWidth(headerHeight);
       syncSlot();
+      document
+        .querySelectorAll<HTMLElement>('.header-trigger')
+        .forEach(syncMenuSurfaceInlineSize);
       // Re-measure horizontal geometry from a clean flow layout. If the header
       // is out of flow, briefly restore it to flow to read the true values.
       if (mode === 'flow') {
@@ -513,21 +562,6 @@ const menuLinks = headerSettings.menuLinks;
     });
   }
 
-  const setMenuBackdropVisible = (visible: boolean) => {
-    // The backdrop lives OUTSIDE the header (a sibling), so its z-index sits
-    // between page content and the header bar instead of being trapped in the
-    // header's stacking context and painting over the bar.
-    const backdrop = document.querySelector('.header-menu-backdrop');
-    if (!backdrop) return;
-
-    if (visible) {
-      (backdrop as HTMLElement).style.removeProperty('--menu-backdrop-close-delay');
-      backdrop.classList.add('is-menu-backdrop-visible');
-    } else {
-      backdrop.classList.remove('is-menu-backdrop-visible');
-    }
-  };
-
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
   const forceCloseMenus = () => {
     menuScrollClosed = false;
@@ -536,9 +570,7 @@ const menuLinks = headerSettings.menuLinks;
       active.blur();
     }
 
-    const backdrop = document.querySelector('.header-menu-backdrop') as HTMLElement | null;
-    backdrop?.style.setProperty('--menu-backdrop-close-delay', '0s');
-    setMenuBackdropVisible(false);
+    setMenuSurfaceTiming(0);
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
       const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
@@ -548,9 +580,7 @@ const menuLinks = headerSettings.menuLinks;
       }
       trigger.classList.remove('is-menu-open');
       delete trigger.dataset.menuOpen;
-      trigger.style.setProperty('--panel-bg-duration', '0s');
-      trigger.style.setProperty('--panel-bg-delay', '0s');
-      trigger.style.setProperty('--menu-reveal', '0');
+      delete trigger.dataset.menuSurfaceOpen;
       links.forEach((link) => {
         link.style.setProperty('--menu-link-delay', '0s');
         link.style.setProperty('--menu-link-duration', '0s');
@@ -563,19 +593,25 @@ const menuLinks = headerSettings.menuLinks;
 
   document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
     const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
-    if (!links.length) return;
-
     const panelBg = trigger.querySelector('.header-trigger__panel-bg') as HTMLElement | null;
+    if (!links.length || !panelBg) return;
+
+    syncMenuSurfaceInlineSize(trigger);
+    void document.fonts?.ready.then(() => syncMenuSurfaceInlineSize(trigger));
+
     const MENU_LINK_CLOSE_STAGGER = 0.04;
     const MENU_LINK_CLOSE_DURATION = 0.15;
-    const PANEL_BG_CLOSE_DURATION = 0.38;
-    // Partial delay — panel overlaps link fade-out but starts after the harsh edge would show.
-    const PANEL_BG_CLOSE_DELAY_RATIO = 0.4;
+    const MENU_SURFACE_OPEN_DURATION = 0.48;
+    const MENU_SURFACE_CLOSE_DURATION = 0.38;
+    // Partial delay — both surfaces overlap the link fade-out but start after the harsh edge would show.
+    const MENU_SURFACE_CLOSE_DELAY_RATIO = 0.4;
     const textCloseEnd =
       (links.length - 1) * MENU_LINK_CLOSE_STAGGER + MENU_LINK_CLOSE_DURATION;
-    const panelBgCloseDelay = textCloseEnd * PANEL_BG_CLOSE_DELAY_RATIO;
+    const menuSurfaceCloseDelay = textCloseEnd * MENU_SURFACE_CLOSE_DELAY_RATIO;
     const closeLayoutMs =
-      Math.ceil(Math.max(textCloseEnd, panelBgCloseDelay + PANEL_BG_CLOSE_DURATION) * 1000) + 32;
+      Math.ceil(
+        Math.max(textCloseEnd, menuSurfaceCloseDelay + MENU_SURFACE_CLOSE_DURATION) * 1000,
+      ) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
     const clearCloseTimer = () => {
@@ -584,21 +620,15 @@ const menuLinks = headerSettings.menuLinks;
       delete trigger.dataset.menuCloseTimer;
     };
 
-    const setPanelReveal = (open: boolean) => {
-      if (!panelBg) return;
-
+    const setMenuSurface = (open: boolean) => {
       if (open) {
-        trigger.style.setProperty('--panel-bg-duration', '0.48s');
-        trigger.style.setProperty('--panel-bg-delay', '0s');
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            trigger.style.setProperty('--menu-reveal', '1');
-          });
-        });
+        setMenuSurfaceTiming(MENU_SURFACE_OPEN_DURATION);
+        delete trigger.dataset.menuSurfaceOpen;
+        void panelBg.offsetHeight;
+        trigger.dataset.menuSurfaceOpen = '';
       } else {
-        trigger.style.setProperty('--panel-bg-duration', `${PANEL_BG_CLOSE_DURATION}s`);
-        trigger.style.setProperty('--panel-bg-delay', `${panelBgCloseDelay}s`);
-        trigger.style.setProperty('--menu-reveal', '0');
+        setMenuSurfaceTiming(MENU_SURFACE_CLOSE_DURATION, menuSurfaceCloseDelay);
+        delete trigger.dataset.menuSurfaceOpen;
       }
     };
 
@@ -619,7 +649,11 @@ const menuLinks = headerSettings.menuLinks;
       });
     };
 
+    const isOpen = () => trigger.dataset.menuOpen === 'true';
+
     const openMenu = (event?: Event) => {
+      if (isOpen()) return;
+
       // If a higher layer (e.g. page-top gap chips) is under the pointer, don't expand.
       if (event instanceof MouseEvent) {
         document.dispatchEvent(
@@ -632,12 +666,11 @@ const menuLinks = headerSettings.menuLinks;
       }
 
       clearCloseTimer();
-      trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
       trigger.dataset.menuOpen = 'true';
-      setMenuBackdropVisible(true);
+      syncMenuSurfaceInlineSize(trigger);
       setOpenStagger();
-      setPanelReveal(true);
+      setMenuSurface(true);
       // Bubbles: the scroll state machine listens on .site-header to dock the
       // header when the menu opens. The per-trigger listeners are on the
       // target itself, so they're unaffected.
@@ -649,18 +682,13 @@ const menuLinks = headerSettings.menuLinks;
      *   scroll-close happens with the cursor still parked on the trigger, so
      *   the normal gate would leave the class on forever — the class then
      *   reads as "open" on later frames and flaps the header's mode. Focus is
-     *   still honoured: a focused menu link holds the panel open via
-     *   :focus-within regardless of the class, so removing it there would only
-     *   desync the two.
+     *   still honoured by the interaction-specific close guards below.
      */
     const closeMenu = (force = false) => {
+      if (!isOpen()) return;
       delete trigger.dataset.menuOpen;
-      document
-        .querySelector('.header-menu-backdrop')
-        ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
-      setMenuBackdropVisible(false);
       setCloseStagger();
-      setPanelReveal(false);
+      setMenuSurface(false);
       clearCloseTimer();
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
@@ -672,8 +700,6 @@ const menuLinks = headerSettings.menuLinks;
       trigger.dataset.menuCloseTimer = String(closeTimer);
       trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
     };
-
-    const isOpen = () => trigger.dataset.menuOpen === 'true';
 
     // Tapping a link focuses it in some mobile browsers; ignore that focus so it
     // doesn't open the menu before the click handler can toggle it.
@@ -692,6 +718,11 @@ const menuLinks = headerSettings.menuLinks;
     trigger.addEventListener('mouseleave', () => {
       if (isTapMode()) return;
       menuScrollClosed = false;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && trigger.contains(active)) {
+        if (active.matches(':focus-visible')) return;
+        active.blur();
+      }
       closeMenu();
     });
     // Scroll-driven close: run the normal animated close, not the instant
@@ -705,6 +736,7 @@ const menuLinks = headerSettings.menuLinks;
     });
     trigger.addEventListener('focusout', (event) => {
       if (!trigger.contains(event.relatedTarget as Node | null)) {
+        if (!isTapMode() && trigger.matches(':hover')) return;
         closeMenu();
       }
     });
@@ -882,7 +914,6 @@ const menuLinks = headerSettings.menuLinks;
     const homeChars = [
       ...wordmarkStack.querySelectorAll<HTMLElement>('.header-trigger__wordmark--home .header-trigger__char'),
     ];
-    const brandLink = startTrigger.querySelector('.header-trigger__brand-link');
 
     const FADE_OUT_STAGGER = 0.03;
     const FADE_OUT_DURATION = 0.15;
@@ -968,7 +999,6 @@ const menuLinks = headerSettings.menuLinks;
 
       pageWordmark?.setAttribute('aria-hidden', 'true');
       homeWordmarkEl?.setAttribute('aria-hidden', 'false');
-      brandLink?.setAttribute('aria-label', 'Vicente Cruz');
     };
 
     const applyWordmarkClose = () => {
@@ -977,7 +1007,6 @@ const menuLinks = headerSettings.menuLinks;
 
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
-      brandLink?.removeAttribute('aria-label');
     };
 
     const isWordmarkHoverActive = () =>
@@ -1077,9 +1106,108 @@ const menuLinks = headerSettings.menuLinks;
       });
       pageWordmark?.setAttribute('aria-hidden', 'false');
       homeWordmarkEl?.setAttribute('aria-hidden', 'true');
-      brandLink?.removeAttribute('aria-label');
     });
   }
+
+  const currentPageLinks = [
+    ...document.querySelectorAll<HTMLAnchorElement>('[data-current-page]'),
+  ];
+  const currentPageNotes = [
+    ...document.querySelectorAll<HTMLElement>('[data-current-page-note]'),
+  ];
+  const reduceMotionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let currentPageClickCount = 0;
+
+  const hideCurrentPageNote = (note: HTMLElement) => {
+    if (!note.classList.contains('is-visible')) return;
+    if (reduceMotionMq.matches || note.classList.contains('is-instant')) {
+      note.classList.remove('is-visible', 'is-hiding', 'is-instant');
+      const trigger = note.closest<HTMLElement>('.header-trigger');
+      if (trigger?.hasAttribute('data-menu-surface-open')) {
+        syncMenuSurfaceInlineSize(trigger);
+      }
+      return;
+    }
+    const link = note.closest('.header-menu__item')?.querySelector<HTMLElement>('.header-menu__link');
+    if (link) {
+      note.style.setProperty('--menu-link-delay', link.style.getPropertyValue('--menu-link-delay'));
+      note.style.setProperty('--menu-link-duration', link.style.getPropertyValue('--menu-link-duration'));
+    }
+    note.classList.add('is-hiding');
+    note.classList.remove('is-visible');
+    note.addEventListener(
+      'animationend',
+      () => {
+        note.classList.remove('is-hiding');
+        const trigger = note.closest<HTMLElement>('.header-trigger');
+        if (trigger?.hasAttribute('data-menu-surface-open')) {
+          syncMenuSurfaceInlineSize(trigger);
+        }
+      },
+      { once: true },
+    );
+  };
+
+  const showCurrentPageNote = (note: HTMLElement, animate: boolean) => {
+    if (note.classList.contains('is-visible')) return;
+    const trigger = note.closest<HTMLElement>('.header-trigger');
+    const panelBg = trigger?.querySelector<HTMLElement>('.header-trigger__panel-bg');
+    const previousWidth = panelBg?.getBoundingClientRect().width ?? 0;
+
+    note.classList.remove('is-hiding');
+    note.classList.toggle('is-instant', !animate);
+    note.classList.add('is-visible');
+    if (trigger) syncMenuSurfaceInlineSize(trigger);
+
+    if (!animate || !panelBg || previousWidth <= 0) return;
+    const nextWidth = panelBg.getBoundingClientRect().width;
+    if (nextWidth <= previousWidth) return;
+    panelBg.animate(
+      [
+        { transform: `scaleX(${previousWidth / nextWidth})` },
+        { transform: 'scaleX(1)' },
+      ],
+      {
+        duration: 280,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      },
+    );
+  };
+
+  currentPageNotes.forEach((note) => {
+    note.closest('.header-trigger')?.addEventListener(
+      'header:trigger-close',
+      () => hideCurrentPageNote(note),
+    );
+  });
+
+  currentPageLinks.forEach((link) => {
+    link.addEventListener(
+      'click',
+      (event) => {
+        event.preventDefault();
+        currentPageClickCount += 1;
+
+        const label = link.querySelector<HTMLElement>('.header-menu__link-label');
+        if (event.detail > 0 && !reduceMotionMq.matches && label) {
+          label.classList.remove('is-error-shaking');
+          void label.offsetWidth;
+          label.classList.add('is-error-shaking');
+          label.addEventListener(
+            'animationend',
+            () => label.classList.remove('is-error-shaking'),
+            { once: true },
+          );
+        }
+
+        if (currentPageClickCount >= 3) {
+          const note = link.closest('.header-menu__item')?.querySelector<HTMLElement>('[data-current-page-note]');
+          if (note) showCurrentPageNote(note, event.detail > 0 && !reduceMotionMq.matches);
+        }
+      },
+      true,
+    );
+  });
 
   // DEV-only: Section Editor is toggled via Alt+E (see DevModeController).
 </script>
@@ -1197,22 +1325,25 @@ const menuLinks = headerSettings.menuLinks;
     background-color: color-mix(in srgb, var(--sys-color-srf) 90%, transparent);
     opacity: 0;
     transition:
-      opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1)
-      var(--menu-backdrop-close-delay, 0.09s);
+      opacity var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
+      var(--header-menu-surface-delay, 0s);
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
     z-index: 40;
   }
 
-  .header-menu-backdrop.is-menu-backdrop-visible {
+  .header-menu-backdrop:has(
+      + .site-header-slot .header-trigger[data-menu-surface-open]
+    ) {
     opacity: 1;
-    transition-delay: 0s;
   }
 
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
      whatever sits under it. */
   @media (hover: none), (pointer: coarse) {
-    .header-menu-backdrop.is-menu-backdrop-visible {
+    .header-menu-backdrop:has(
+        + .site-header-slot .header-trigger[data-menu-surface-open]
+      ) {
       pointer-events: auto;
     }
   }
@@ -1220,11 +1351,8 @@ const menuLinks = headerSettings.menuLinks;
   .header-trigger {
     --hitbox-pad: var(--space-unit);
     --menu-gap: 0.7em;
-    --menu-reveal: 0;
     --menu-link-color-duration: 0.45s;
     --menu-link-color-hover-duration: 0.15s;
-    --panel-bg-duration: 0.48s;
-    --panel-bg-delay: 0s;
     position: relative;
     /* No z-index here either (see .site-header__row) — both triggers already
        stack in tree order, and a stacking context would trap the panel bg. */
@@ -1291,6 +1419,9 @@ const menuLinks = headerSettings.menuLinks;
     );
     --panel-bottom-radius: 7em;
     --panel-bottom-pad: var(--space-unit);
+    --panel-inline-size: calc(
+      var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) + 0.75 * var(--feather)
+    );
     position: absolute;
     /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
        header band or the opposite trigger's wordmark/logo. Only the part that
@@ -1298,7 +1429,11 @@ const menuLinks = headerSettings.menuLinks;
     z-index: -1;
     opacity: 0;
     pointer-events: none;
-    transition: height var(--panel-bg-duration) cubic-bezier(0.22, 1, 0.36, 1) var(--panel-bg-delay);
+    transition:
+      opacity var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
+        var(--header-menu-surface-delay, 0s),
+      height var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
+        var(--header-menu-surface-delay, 0s);
   }
 
   .header-trigger__panel-bg::before {
@@ -1322,8 +1457,7 @@ const menuLinks = headerSettings.menuLinks;
     mask-composite: intersect;
   }
 
-  .header-trigger.is-menu-open .header-trigger__panel-bg,
-  .header-trigger:focus-within .header-trigger__panel-bg {
+  .header-trigger[data-menu-surface-open] .header-trigger__panel-bg {
     opacity: 1;
   }
 
@@ -1343,9 +1477,15 @@ const menuLinks = headerSettings.menuLinks;
   .header-trigger--start .header-trigger__panel-bg {
     top: 0;
     left: 0;
-    right: calc(-0.75 * var(--feather));
+    right: auto;
     bottom: auto;
-    height: calc(var(--menu-reveal) * (100% + var(--panel-bottom-pad) + var(--feather)));
+    inline-size: var(--panel-inline-size);
+    height: 0;
+    transform-origin: left top;
+  }
+
+  .header-trigger--start[data-menu-surface-open] .header-trigger__panel-bg {
+    height: calc(100% + var(--panel-bottom-pad) + var(--feather));
   }
 
   .header-trigger--start .header-trigger__panel-bg::before {
@@ -1445,10 +1585,16 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger--end .header-trigger__panel-bg {
     top: 0;
-    left: calc(-0.75 * var(--feather));
+    left: auto;
     right: 0;
     bottom: auto;
-    height: calc(var(--menu-reveal) * (100% + var(--panel-bottom-pad) + var(--feather)));
+    inline-size: var(--panel-inline-size);
+    height: 0;
+    transform-origin: right top;
+  }
+
+  .header-trigger--end[data-menu-surface-open] .header-trigger__panel-bg {
+    height: calc(100% + var(--panel-bottom-pad) + var(--feather));
   }
 
   .header-trigger--end .header-trigger__panel-bg::before {
@@ -1576,8 +1722,8 @@ const menuLinks = headerSettings.menuLinks;
 
   .header-trigger__brand-link--swap,
   .header-trigger__brand-link--swap:hover {
-    opacity: 1;
     width: fit-content;
+    opacity: 1;
   }
 
   .header-trigger--end .header-trigger__brand-link {
@@ -1608,6 +1754,81 @@ const menuLinks = headerSettings.menuLinks;
     transition:
       opacity var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s),
       color var(--menu-link-color-duration, 0.45s) ease;
+  }
+
+  .header-menu__link[aria-current='page'] {
+    color: var(--sys-color-link-soft-hover);
+    font-weight: 600;
+  }
+
+  .header-menu__link-label {
+    display: inline-block;
+  }
+
+  .header-menu__link-label.is-error-shaking {
+    animation: header-current-page-error-shake 0.24s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+  }
+
+  .header-menu__item--current-page {
+    display: flex;
+    align-items: baseline;
+    gap: 1em;
+    white-space: nowrap;
+  }
+
+  .header-trigger--end .header-menu__item--current-page .header-menu__current-note {
+    order: -1;
+  }
+
+  .header-menu__current-note {
+    display: none;
+    color: var(--sys-color-link-soft);
+    font-family: var(--font-sans);
+    font-size: var(--header-menu-link-size, 1.2em);
+    font-weight: 400;
+    letter-spacing: -0.05ch;
+    line-height: 1;
+  }
+
+  .header-trigger.is-menu-open .header-menu__current-note.is-visible,
+  .header-trigger:focus-within .header-menu__current-note.is-visible {
+    display: inline-block;
+    animation: header-current-note-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .header-trigger.is-menu-open .header-menu__current-note.is-visible.is-instant,
+  .header-trigger:focus-within .header-menu__current-note.is-visible.is-instant {
+    opacity: 0.48;
+    animation: none;
+  }
+
+  .header-menu__current-note.is-hiding {
+    display: inline-block;
+    animation: header-current-note-fade-out var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s) both;
+  }
+
+  @keyframes header-current-page-error-shake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-0.14em); }
+    40% { transform: translateX(0.11em); }
+    60% { transform: translateX(-0.07em); }
+    80% { transform: translateX(0.035em); }
+  }
+
+  @keyframes header-current-note-in {
+    from {
+      opacity: 0;
+      transform: translateX(-0.2em);
+    }
+    to {
+      opacity: 0.48;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes header-current-note-fade-out {
+    from { opacity: 0.48; }
+    to { opacity: 0; }
   }
 
   .header-trigger__wordmark {
@@ -1758,6 +1979,17 @@ const menuLinks = headerSettings.menuLinks;
 
     .header-trigger__char {
       transition: none;
+    }
+
+    .header-menu__link-label.is-error-shaking {
+      animation: none;
+    }
+
+    .header-trigger.is-menu-open .header-menu__current-note.is-visible,
+    .header-trigger:focus-within .header-menu__current-note.is-visible,
+    .header-menu__current-note.is-hiding {
+      transform: none;
+      animation: none;
     }
 
     .header-trigger {

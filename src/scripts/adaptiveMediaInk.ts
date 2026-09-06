@@ -7,6 +7,7 @@
 import {
   coverBoxRegionToSourceRegion,
   isRegionDark,
+  measureRenderedRegionLuma,
   measureRegionLuma,
   type NormalizedRegion,
 } from './coverLuminance';
@@ -29,10 +30,15 @@ export function groundForBox(
   frame: { width: number; height: number },
   source: { width: number; height: number },
   crop: { w: number; cx: number; cy: number } | null,
+  background?: string,
 ): MediaGround | null {
   const coverRect = cover.getBoundingClientRect();
   const region = elementRegionInCover(el, coverRect);
   if (!region) return null;
+  if (background) {
+    const luma = measureRenderedRegionLuma(decoded, region, frame, source, crop, background);
+    return isRegionDark(luma) ? 'dark' : 'light';
+  }
   const sourceRegion = crop
     ? cropFrameRegionToSourceRegion(region, frame, source, crop)
     : coverBoxRegionToSourceRegion(region, frame, source);

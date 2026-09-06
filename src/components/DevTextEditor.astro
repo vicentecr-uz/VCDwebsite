@@ -53,6 +53,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ]}
       />
       <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
+      <SelectField
+        class="dev-text-format__emphasis-style"
+        hideLabel
+        label="Emphasis"
+        data-dev-emphasis-style
+        value="normal"
+        options={[
+          { value: 'normal', label: 'Normal' },
+          { value: 'emphasis', label: 'Emphasis' },
+        ]}
+      />
+      <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
       <div class="dev-text-format__inline" data-dev-format-inline>
         <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
           <span class="dev-text-format__icon" aria-hidden="true" set:html={formatBoldSvg} />
@@ -101,10 +113,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../lib/icons';
-  import { reorderProjectStackSpacingSeams } from '../lib/projectStack';
+  import {
+    projectStackClass,
+    resolveProjectStackSpacing,
+    reorderProjectStackSpacingSeams,
+    setProjectStackSpacingAtViewport,
+    type ProjectStackSpacingResolved,
+    type ProjectStackSpacingValue,
+    type ProjectStackSpacingViewport,
+  } from '../lib/projectStack';
   import { restoreCarouselActiveItem } from '../lib/projectImageCarousel';
   type EditableTextValue = string | string[];
-  type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
+  type SpacingValue = ProjectStackSpacingValue;
+  type SpacingMap = ProjectStackSpacingResolved;
 
   interface EditableTextState {
     element: HTMLElement;
@@ -122,9 +143,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     menu: HTMLElement;
     document: string;
     path: Array<string | number>;
-    savedValue: SpacingValue;
-    visualSavedValue: SpacingValue;
-    currentValue: SpacingValue;
+    savedValue: SpacingMap;
+    visualSavedValue: SpacingMap;
+    currentValue: SpacingMap;
     introHeight: EditableIntroHeightState | null;
   }
 
@@ -155,12 +176,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     title: 'None · 0',
   };
 
-  const STACK_CLASS: Record<SpacingValue, string | null> = {
-    related: 'project-stack--related',
-    group: 'project-stack--group',
-    section: 'project-stack--section',
-    major: 'project-stack--major',
-    none: 'project-stack--none',
+  const cloneSpacing = (value: SpacingMap): SpacingMap => ({ ...value });
+  const spacingEqual = (left: SpacingMap, right: SpacingMap) => (
+    left.desktop === right.desktop && left.tablet === right.tablet && left.mobile === right.mobile
+  );
+  const currentSpacingViewport = (): ProjectStackSpacingViewport => {
+    if (window.innerWidth <= 767) return 'mobile';
+    if (window.innerWidth <= 991) return 'tablet';
+    return 'desktop';
   };
 
   const spacingOptionsFor = (pageTop: boolean, pageBottom: boolean): SpacingOption[] =>
@@ -251,13 +274,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     return null;
   };
 
-  const applySpacingClass = (element: HTMLElement, spacing: SpacingValue) => {
-    Object.values(STACK_CLASS).forEach((className) => {
-      if (className) element.classList.remove(className);
-    });
-    const next = STACK_CLASS[spacing];
-    if (next) element.classList.add(next);
-    element.dataset.devSpacingValue = spacing;
+  const applySpacingClass = (element: HTMLElement, spacing: SpacingMap) => {
+    const active = spacing[currentSpacingViewport()];
+    const desktopClasses = projectStackClass(spacing).split(/\s+/)
+      .filter((name) => name !== `project-stack--${spacing.desktop}`);
+    element.className = element.className
+      .split(/\s+/)
+      .filter((name) => !/^project-stack--(?:related|group|section|major|none|tablet-|mobile-)/.test(name))
+      .concat(`project-stack--${active}`, desktopClasses)
+      .filter(Boolean)
+      .join(' ');
+    element.dataset.devSpacingValue = active;
+    element.dataset.devSpacingValues = JSON.stringify(spacing);
   };
 
   const followsHiddenSidebarTitle = (element: HTMLElement) => {
@@ -289,6 +317,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const linkInput = formatBar?.querySelector<HTMLInputElement>('[data-dev-text-link-input]');
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
     const blockStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-block-style]');
+    const emphasisStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-emphasis-style]');
+    const emphasisStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__emphasis-style');
     const formatInline = formatBar?.querySelector<HTMLElement>('[data-dev-format-inline]');
     const formatButtons = formatBar
       ? [...formatBar.querySelectorAll<HTMLButtonElement>('[data-dev-format]')]
@@ -300,7 +330,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
-    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !formatInline) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !emphasisStyleField || !formatInline) return;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -405,6 +435,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           return '<br>';
         }
         if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
+        if (tag === 'SPAN' && node.classList.contains('text-emphasis')) {
+          return inner ? `<span class="text-emphasis">${inner}</span>` : '';
+        }
         if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
         if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
         if (tag === 'A') {
@@ -494,10 +527,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingControl = (state: EditableSpacingState) => {
+      const active = state.currentValue[currentSpacingViewport()];
       state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
-        button.classList.toggle('is-active', button.dataset.devSpacingOption === state.currentValue);
+        button.classList.toggle('is-active', button.dataset.devSpacingOption === active);
       });
-      const dirty = state.currentValue !== state.visualSavedValue;
+      applySpacingClass(state.element, state.currentValue);
+      const dirty = !spacingEqual(state.currentValue, state.visualSavedValue);
       state.element.classList.toggle('is-dev-spacing-dirty', dirty);
       if (!dirty) cancelGapRelocation(state.control);
     };
@@ -612,12 +647,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           // until a click elsewhere, instead of releasing on pointer leave.
           button.blur();
           const next = button.dataset.devSpacingOption as SpacingValue;
-          if (!next || next === state.currentValue) return;
+          const viewport = currentSpacingViewport();
+          if (!next || next === state.currentValue[viewport]) return;
           // Pin before the margin changes — after applySpacingClass the
           // absolute midpoint has already moved.
           pinGapToolbarTop(state.control);
-          state.currentValue = next;
-          applySpacingClass(state.element, next);
+          const current = setProjectStackSpacingAtViewport(state.currentValue, viewport, next);
+          state.currentValue = current;
+          applySpacingClass(state.element, current);
           window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           syncSpacingControl(state);
           updateActions();
@@ -651,23 +688,39 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           suppressGalleryPageTopSpacing(state.element, pageTop),
         );
 
-        if (coerce && pageTop && !wasPageTop
-          && state.currentValue === 'section'
-          && state.savedValue === 'section') {
+        if (coerce && pageTop && !wasPageTop) {
           // Became page-top with between-sibling default — page top should be flush.
-          applySpacingClass(state.element, 'none');
-          state.currentValue = 'none';
-          state.savedValue = 'none';
-          state.visualSavedValue = 'none';
+          const current = cloneSpacing(state.currentValue);
+          const saved = cloneSpacing(state.savedValue);
+          const visualSaved = cloneSpacing(state.visualSavedValue);
+          (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
+            if (current[viewport] === 'section' && saved[viewport] === 'section') {
+              current[viewport] = 'none';
+              saved[viewport] = 'none';
+              visualSaved[viewport] = 'none';
+            }
+          });
+          state.currentValue = current;
+          state.savedValue = saved;
+          state.visualSavedValue = visualSaved;
         }
 
-        if (coerce && !pageTop && wasPageTop && state.currentValue === 'none') {
-          applySpacingClass(state.element, 'section');
-          state.currentValue = 'section';
-          if (state.savedValue === 'none') {
-            state.savedValue = 'section';
-            state.visualSavedValue = 'section';
-          }
+        if (coerce && !pageTop && wasPageTop) {
+          const current = cloneSpacing(state.currentValue);
+          const saved = cloneSpacing(state.savedValue);
+          const visualSaved = cloneSpacing(state.visualSavedValue);
+          (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
+            if (current[viewport] === 'none') {
+              current[viewport] = 'section';
+              if (saved[viewport] === 'none') {
+                saved[viewport] = 'section';
+                visualSaved[viewport] = 'section';
+              }
+            }
+          });
+          state.currentValue = current;
+          state.savedValue = saved;
+          state.visualSavedValue = visualSaved;
         }
 
         rebuildSpacingOptionButtons(state, pageTop, pageBottom);
@@ -677,13 +730,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const mountSpacingControl = (element: HTMLElement): EditableSpacingState | null => {
       try {
         const path = JSON.parse(element.dataset.devSpacingPath || '[]');
-        const raw = (element.dataset.devSpacingValue || 'section') as SpacingValue;
+        let raw: ProjectStackSpacingResolved;
+        try {
+          raw = resolveProjectStackSpacing(
+            element.dataset.devSpacingValues
+              ? JSON.parse(element.dataset.devSpacingValues)
+              : element.dataset.devSpacingValue,
+          );
+        } catch {
+          raw = resolveProjectStackSpacing('section');
+        }
         if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return null;
         if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
 
         const pageTop = isPageTopSpacingBlock(element);
         const pageBottom = isPageBottomSpacingBlock(element);
-        const initial = raw;
+        const initial = cloneSpacing(raw);
         const docKey = element.dataset.devSpacingDocument || '';
         const supportsIntro = docKey === 'home' || docKey === 'work' || docKey === 'play' || docKey === 'about';
         const introMenuItem = supportsIntro
@@ -783,9 +845,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           menu,
           document: element.dataset.devSpacingDocument,
           path,
-          savedValue: initial,
-          visualSavedValue: initial,
-          currentValue: initial,
+          savedValue: cloneSpacing(initial),
+          visualSavedValue: cloneSpacing(initial),
+          currentValue: cloneSpacing(initial),
           introHeight: introHeightState,
         };
         bindSpacingOptionClicks(state);
@@ -800,6 +862,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const spacingStates = spacingElements.flatMap<EditableSpacingState>((element) => {
       const state = mountSpacingControl(element);
       return state ? [state] : [];
+    });
+    let lastSpacingViewport = currentSpacingViewport();
+    window.addEventListener('resize', () => {
+      const viewport = currentSpacingViewport();
+      if (viewport === lastSpacingViewport) return;
+      lastSpacingViewport = viewport;
+      spacingStates.forEach(syncSpacingControl);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     });
     syncPageTopSpacingControls();
 
@@ -1424,7 +1494,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const dirtyTextStates = () =>
       textStates.filter((state) => !valuesMatch(readValue(state), state.savedValue));
     const dirtySpacingStates = () =>
-      spacingStates.filter((state) => state.currentValue !== state.savedValue);
+      spacingStates.filter((state) => !spacingEqual(state.currentValue, state.savedValue));
     const dirtyIntroHeightStates = () =>
       [...spacingStates.reduce((states, state) => {
         if (!state.introHeight || state.introHeight.currentValue === state.introHeight.savedValue) return states;
@@ -1718,8 +1788,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not save pending layout before inserting images.');
         dirtySpacing.forEach((state) => {
-          state.savedValue = state.currentValue;
-          state.visualSavedValue = state.currentValue;
+          state.savedValue = cloneSpacing(state.currentValue);
+          state.visualSavedValue = cloneSpacing(state.currentValue);
           syncSpacingControl(state);
         });
         dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
@@ -1852,8 +1922,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         renderValue(state, state.savedValue);
       });
       dirtySpacingStates().forEach((state) => {
-        state.currentValue = state.savedValue;
-        state.visualSavedValue = state.savedValue;
+        state.currentValue = cloneSpacing(state.savedValue);
+        state.visualSavedValue = cloneSpacing(state.savedValue);
         applySpacingClass(state.element, state.savedValue);
         syncSpacingControl(state);
       });
@@ -2007,11 +2077,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     restoreScrollAfterReload();
 
     const projectStackClassName = (spacing: SpacingValue, precedeRelated: boolean) => {
-      const classes: string[] = [];
-      const stack = STACK_CLASS[spacing];
-      if (stack) classes.push(stack);
+      const classes = [projectStackClass(spacing)];
       if (precedeRelated) classes.push('project-stack--precede-related');
-      return classes.join(' ');
+      return classes.filter(Boolean).join(' ');
     };
 
     const buildInsertedSection = (
@@ -2042,6 +2110,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         wrapper.dataset.devSpacingDocument = documentKey;
         wrapper.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
         wrapper.dataset.devSpacingValue = spacing;
+        wrapper.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
         wrapper.dataset.devSectionDeletable = 'sectionTitle';
 
         const title = document.createElement('h2');
@@ -2068,6 +2137,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       section.dataset.devSpacingDocument = documentKey;
       section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
       section.dataset.devSpacingValue = spacing;
+      section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
       section.dataset.devSectionDeletable = 'bodyText';
 
       const body = document.createElement('div');
@@ -2804,25 +2874,31 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
 
-      const visualSavedValues = reorderedStates.map((state) => state!.visualSavedValue);
-      const reorder = reorderProjectStackSpacingSeams(
-        reorderedStates.map((state) => state!.currentValue),
-        sourceIndex,
-        insertIndex,
-        destinationSide,
-        reorderedStates.map((state) => state!.currentValue !== state!.visualSavedValue),
-      );
+      const visualSavedValues = reorderedStates.map((state) => cloneSpacing(state!.visualSavedValue));
+      const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
+        reorderProjectStackSpacingSeams(
+          reorderedStates.map((state) => state!.currentValue[viewport]),
+          sourceIndex,
+          insertIndex,
+          destinationSide,
+          reorderedStates.map((state) => state!.currentValue[viewport] !== state!.visualSavedValue[viewport]),
+        )
+      ));
       reorderedStates.forEach((state, index) => {
         if (!state) return;
-        const nextValue = reorder.values[index];
-        const origin = reorder.origins[index];
-        const nextVisualSavedValue = origin === null
-          ? nextValue
-          : visualSavedValues[origin];
-        const valueChanged = state.currentValue !== nextValue;
-        state.currentValue = nextValue;
+        const currentValue = cloneSpacing(state.currentValue);
+        const nextVisualSavedValue = cloneSpacing(state.visualSavedValue);
+        (['desktop', 'tablet', 'mobile'] as const).forEach((viewport, viewportIndex) => {
+          const reorder = reorderedMaps[viewportIndex];
+          const origin = reorder.origins[index];
+          currentValue[viewport] = reorder.values[index];
+          nextVisualSavedValue[viewport] = origin === null
+            ? reorder.values[index]
+            : visualSavedValues[origin][viewport];
+        });
+        state.currentValue = currentValue;
         state.visualSavedValue = nextVisualSavedValue;
-        if (valueChanged) applySpacingClass(state.element, state.currentValue);
+        applySpacingClass(state.element, currentValue);
         syncSpacingControl(state);
       });
       syncPageTopSpacingControls();
@@ -3700,7 +3776,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncFormatInlineVisibility = (state: EditableTextState) => {
-      formatInline.hidden = state.kind !== 'paragraphs';
+      const hidden = state.kind !== 'paragraphs';
+      formatInline.hidden = hidden;
+      emphasisStyleField.hidden = hidden;
     };
 
     const enableConvertedText = (element: HTMLElement, kind: EditableTextState['kind']) => {
@@ -3716,9 +3794,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const next = mountSpacingControl(newRoot);
       if (next) {
         if (previous) {
-          next.savedValue = previous.savedValue;
-          next.visualSavedValue = previous.visualSavedValue;
-          next.currentValue = previous.currentValue;
+          next.savedValue = cloneSpacing(previous.savedValue);
+          next.visualSavedValue = cloneSpacing(previous.visualSavedValue);
+          next.currentValue = cloneSpacing(previous.currentValue);
           applySpacingClass(newRoot, previous.currentValue);
           syncSpacingControl(next);
           if (next.introHeight && previous.introHeight) {
@@ -4231,20 +4309,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const command = button.dataset.devFormat;
         let active = false;
         if (command === 'bold' || command === 'italic') {
-          try {
-            active = document.queryCommandState(command);
-          } catch {
-            active = false;
-          }
+          active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, command));
         } else if (command === 'underline') {
           if (hasSelectedLink) {
             active = false;
           } else {
-            try {
-              active = document.queryCommandState('underline');
-            } catch {
-              active = false;
-            }
+            active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'underline'));
           }
         } else if (command === 'link') {
           active = hasSelectedLink || linkPanelOpen;
@@ -4252,6 +4322,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
+      syncEmphasisStyle();
     };
 
     const positionFormatBar = (range: Range) => {
@@ -4485,6 +4556,206 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return found;
     };
 
+    const markSelector = {
+      emphasis: '.text-emphasis',
+      bold: 'strong, b',
+      italic: 'em, i',
+      underline: 'u',
+    } as const;
+
+    const markCoversRange = (range: Range, mark: keyof typeof markSelector) => {
+      const startElement = range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+      const endElement = range.endContainer instanceof Element
+        ? range.endContainer
+        : range.endContainer.parentElement;
+      const block = startElement?.closest<HTMLElement>('[data-dev-text-document]');
+      if (!block || !endElement || !block.contains(endElement)) return false;
+      const startMark = startElement.closest(markSelector[mark]);
+      const endMark = endElement.closest(markSelector[mark]);
+      if (startMark && startMark === endMark && block.contains(startMark)) return true;
+      const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+      const selectedTextNodes: Text[] = [];
+      let current = walker.nextNode();
+      while (current) {
+        const text = current as Text;
+        if (text.data) {
+          const textRange = document.createRange();
+          textRange.selectNodeContents(text);
+          const overlaps = range.compareBoundaryPoints(Range.START_TO_END, textRange) > 0
+            && range.compareBoundaryPoints(Range.END_TO_START, textRange) < 0;
+          if (overlaps) selectedTextNodes.push(text);
+        }
+        current = walker.nextNode();
+      }
+      return selectedTextNodes.length > 0 && selectedTextNodes.every((text) => {
+        const match = text.parentElement?.closest(markSelector[mark]);
+        return Boolean(match && block.contains(match));
+      });
+    };
+
+    const syncEmphasisStyle = () => {
+      const active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'emphasis'));
+      emphasisStyleSelect.value = active
+        ? 'emphasis'
+        : 'normal';
+    };
+
+    type InlineMarks = {
+      emphasis: boolean;
+      bold: boolean;
+      italic: boolean;
+      underline: boolean;
+      link: { href: string; underlineOff: boolean } | null;
+    };
+    type InlineAtom = {
+      kind: 'text' | 'break';
+      text: string;
+      marks: InlineMarks;
+      selected: boolean;
+    };
+
+    const applyEmphasisMark = (range: Range, emphasized: boolean) => {
+      const startElement = range.startContainer instanceof Element
+        ? range.startContainer
+        : range.startContainer.parentElement;
+      const endElement = range.endContainer instanceof Element
+        ? range.endContainer
+        : range.endContainer.parentElement;
+      const paragraph = startElement?.closest<HTMLParagraphElement>('p');
+      if (!paragraph || paragraph !== endElement?.closest('p')) return null;
+
+      const startBoundary = document.createElement('span');
+      const endBoundary = document.createElement('span');
+      startBoundary.hidden = true;
+      endBoundary.hidden = true;
+      const endRange = range.cloneRange();
+      endRange.collapse(false);
+      endRange.insertNode(endBoundary);
+      const startRange = range.cloneRange();
+      startRange.collapse(true);
+      startRange.insertNode(startBoundary);
+
+      const atoms: InlineAtom[] = [];
+      let selected = false;
+      const visit = (node: Node, inherited: InlineMarks) => {
+        if (node === startBoundary) {
+          selected = true;
+          return;
+        }
+        if (node === endBoundary) {
+          selected = false;
+          return;
+        }
+        if (node instanceof Text) {
+          if (node.data) atoms.push({ kind: 'text', text: node.data, marks: inherited, selected });
+          return;
+        }
+        if (!(node instanceof HTMLElement)) return;
+        const marks = { ...inherited };
+        if (node.matches(markSelector.emphasis)) marks.emphasis = true;
+        if (node.matches(markSelector.bold)) marks.bold = true;
+        if (node.matches(markSelector.italic)) marks.italic = true;
+        if (node.matches(markSelector.underline)) marks.underline = true;
+        if (node instanceof HTMLAnchorElement) {
+          marks.link = {
+            href: node.getAttribute('href') || '',
+            underlineOff: node.classList.contains('is-underline-off'),
+          };
+        }
+        if (node instanceof HTMLBRElement) {
+          atoms.push({ kind: 'break', text: '', marks, selected });
+          return;
+        }
+        [...node.childNodes].forEach((child) => visit(child, marks));
+      };
+      const emptyMarks: InlineMarks = {
+        emphasis: false,
+        bold: false,
+        italic: false,
+        underline: false,
+        link: null,
+      };
+      [...paragraph.childNodes].forEach((child) => visit(child, emptyMarks));
+      const selectedAtoms = atoms.filter((atom) => atom.selected);
+      if (!selectedAtoms.length) return null;
+      selectedAtoms.forEach((atom) => {
+        atom.marks = { ...atom.marks, emphasis: emphasized };
+      });
+
+      const keyFor = (atom: InlineAtom) => JSON.stringify({
+        selected: atom.selected,
+        marks: atom.marks,
+      });
+      const groups: InlineAtom[][] = [];
+      atoms.forEach((atom) => {
+        const previous = groups.at(-1);
+        if (previous && keyFor(previous[0]) === keyFor(atom)) previous.push(atom);
+        else groups.push([atom]);
+      });
+
+      const wrap = (content: Node, tag: keyof HTMLElementTagNameMap, className = '') => {
+        const element = document.createElement(tag);
+        if (className) element.className = className;
+        element.append(content);
+        return element;
+      };
+      const renderGroup = (group: InlineAtom[]) => {
+        const content = document.createDocumentFragment();
+        group.forEach((atom) => {
+          content.append(atom.kind === 'break' ? document.createElement('br') : atom.text);
+        });
+        const { marks } = group[0];
+        let rendered: Node = content;
+        if (marks.underline) rendered = wrap(rendered, 'u');
+        if (marks.italic) rendered = wrap(rendered, 'em');
+        if (marks.bold) rendered = wrap(rendered, 'strong');
+        if (marks.emphasis) rendered = wrap(rendered, 'span', 'text-emphasis');
+        if (marks.link?.href) {
+          const anchor = wrap(rendered, 'a', marks.link.underlineOff ? 'is-underline-off' : '');
+          anchor.setAttribute('href', marks.link.href);
+          rendered = anchor;
+        }
+        return rendered;
+      };
+
+      const fragment = document.createDocumentFragment();
+      const restoredStart = document.createElement('span');
+      const restoredEnd = document.createElement('span');
+      restoredStart.hidden = true;
+      restoredEnd.hidden = true;
+      const firstSelectedGroup = groups.findIndex((group) => group[0].selected);
+      const lastSelectedGroup = groups.findLastIndex((group) => group[0].selected);
+      groups.forEach((group, index) => {
+        if (index === firstSelectedGroup) fragment.append(restoredStart);
+        fragment.append(renderGroup(group));
+        if (index === lastSelectedGroup) fragment.append(restoredEnd);
+      });
+      paragraph.replaceChildren(fragment);
+      const restored = document.createRange();
+      restored.setStartAfter(restoredStart);
+      restored.setEndBefore(restoredEnd);
+      restoredStart.remove();
+      restoredEnd.remove();
+      return restored;
+    };
+
+    const applyEmphasisStyle = (value: string) => {
+      if (!restoreFormatRange() || !savedFormatRange || savedFormatRange.collapsed) return;
+      const block = findParagraphState(savedFormatRange.commonAncestorContainer)?.element;
+      if (!block) return;
+      const range = applyEmphasisMark(savedFormatRange, value === 'emphasis');
+      if (!range) return;
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      captureFormatRange();
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      refreshFormatBarAfterCommand();
+      updateActions();
+    };
+
     const runFormatCommand = (command: 'bold' | 'italic' | 'underline') => {
       if (!restoreFormatRange() || !savedFormatRange) return;
       if (command === 'underline') {
@@ -4548,7 +4819,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-select__listbox')) {
+      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-select__listbox')) {
         return;
       }
       event.preventDefault();
@@ -4557,6 +4828,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     blockStyleSelect.addEventListener('change', () => {
       if (syncingBlockStyle) return;
       convertCurrentBlock(blockStyleSelect.value);
+    });
+
+    emphasisStyleSelect.addEventListener('change', () => {
+      applyEmphasisStyle(emphasisStyleSelect.value);
     });
 
     formatButtons.forEach((button) => {
@@ -4754,16 +5029,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (formatCommand) {
         event.preventDefault();
         if (!savedFormatRange) captureFormatRange();
-        if (formatCommand === 'underline') {
-          runFormatCommand('underline');
-        } else {
-          document.execCommand(formatCommand);
-          window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-          // Re-read selection after execCommand — the pre-command Range can be
-          // detached, which left the format bar stuck on the previous state.
-          refreshFormatBarAfterCommand();
-        }
-        updateActions();
+        runFormatCommand(formatCommand);
         return;
       }
 
@@ -5190,8 +5456,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = readValue(state);
         });
         dirtySpacing.forEach((state) => {
-          state.savedValue = state.currentValue;
-          state.visualSavedValue = state.currentValue;
+          state.savedValue = cloneSpacing(state.currentValue);
+          state.visualSavedValue = cloneSpacing(state.currentValue);
           syncSpacingControl(state);
         });
         dirtyIntroHeights.forEach((state) => syncIntroHeightDocument(
@@ -5216,8 +5482,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const reorderedDocument = String(change.payload.document || '');
           spacingStates.forEach((state) => {
             if (state.document !== reorderedDocument) return;
-            state.savedValue = state.currentValue;
-            state.visualSavedValue = state.currentValue;
+            state.savedValue = cloneSpacing(state.currentValue);
+            state.visualSavedValue = cloneSpacing(state.currentValue);
             syncSpacingControl(state);
           });
         }
@@ -5815,22 +6081,29 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none;
   }
 
-  .dev-text-format .dev-text-format__block-style {
+  .dev-text-format .dev-text-format__block-style,
+  .dev-text-format .dev-text-format__emphasis-style {
     width: auto;
   }
 
-  .dev-text-format__block-style .dev-field__value {
+  .dev-text-format__block-style .dev-field__value,
+  .dev-text-format__emphasis-style .dev-field__value {
     width: auto;
     min-height: var(--dev-control-height);
   }
 
-  .dev-text-format__block-style .dev-field__input--select {
+  .dev-text-format__block-style .dev-field__input--select,
+  .dev-text-format__emphasis-style .dev-field__input--select {
     margin: 0;
     padding: 8px;
     padding-right: 28px;
     width: auto;
     min-height: var(--dev-control-height);
     min-width: 9.5em;
+  }
+
+  .dev-text-format__emphasis-style .dev-field__input--select {
+    min-width: 7.5em;
   }
 
   .dev-text-format__buttons button[data-dev-format] {

@@ -44,6 +44,7 @@ import {
   generateTokenBlock,
   applyTokenBlock,
 } from './scripts/build-tokens.mjs';
+import { canonicalizeProjectStackSpacing } from './src/lib/projectStackSpacing.js';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -567,7 +568,6 @@ function contentTextDevWriter() {
   };
 }
 
-const EDITABLE_SPACING_VALUES = new Set(['related', 'group', 'section', 'major', 'none']);
 
 /**
  * Resolve a JSON path against a document root. Returns null when missing.
@@ -712,9 +712,8 @@ const applyCropChange = (data, change) => {
       const cy = Number(requested?.cy);
       const w = Number(requested?.w);
       const aspect = String(requested?.aspect || '');
-      // Accept w slightly above 1 (float / linked-hover reshape) and clamp —
-      // rejecting broke Save after cover-handle resize while hover was still
-      // on an undercover seed (`w: 1` with zoom < 1 → write-back w > 1).
+      // Unlocked crops may zoom out until the image is 1% of cover-fit, so `w`
+      // can span up to 100 times the source-width fraction of the frame.
       if (
         !IMAGE_VIEWPORTS.has(viewport) ||
         !isAllowedAspectRatio(aspect) ||
@@ -725,9 +724,9 @@ const applyCropChange = (data, change) => {
       }
       variants[viewport] = {
         aspect,
-        cx: clampRound(cx, -1, 2, 6),
-        cy: clampRound(cy, -1, 2, 6),
-        w: clampRound(w, 0.01, 1, 6),
+        cx: clampRound(cx, -100, 100, 6),
+        cy: clampRound(cy, -100, 100, 6),
+        w: clampRound(w, 0.0001, 100, 6),
       };
     }
     if (!Object.keys(variants).length) {
@@ -1329,7 +1328,13 @@ function contentBatchDevWriter() {
             const value = change?.value;
             const resolved = resolveBatchChange(documentKey, fieldPath);
             const field = resolved?.path?.at(-1);
-            const validSpacing = field === 'spacing' && EDITABLE_SPACING_VALUES.has(value);
+            let canonicalSpacing;
+            try {
+              canonicalSpacing = field === 'spacing' ? canonicalizeProjectStackSpacing(value) : null;
+            } catch {
+              canonicalSpacing = null;
+            }
+            const validSpacing = field === 'spacing' && canonicalSpacing !== null;
             const validIntroHeight = field === 'introHeight'
               && Number.isInteger(value)
               && value >= 1
@@ -1345,7 +1350,11 @@ function contentBatchDevWriter() {
               send(400, { error: 'One or more layout fields are not editable.' });
               return;
             }
-            resolved.group.spacing.push({ ...change, path: resolved.path });
+            resolved.group.spacing.push({
+              ...change,
+              value: field === 'spacing' ? canonicalSpacing : value,
+              path: resolved.path,
+            });
           }
 
           for (const [relativeFile, group] of grouped) {
@@ -1435,6 +1444,9 @@ function contentBatchDevWriter() {
                   return;
                 }
                 target[field] = change.value;
+                if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
+                  delete target.tightTop;
+                }
               }
             }
 
@@ -1884,10 +1896,12 @@ function contentSectionDevWriter() {
           }
 
           let section;
-          const requestedSpacing = String(body.spacing || '');
-          const insertSpacing = EDITABLE_SPACING_VALUES.has(requestedSpacing)
-            ? requestedSpacing
-            : (index === 0 ? 'none' : 'section');
+          let insertSpacing;
+          try {
+            insertSpacing = canonicalizeProjectStackSpacing(body.spacing);
+          } catch {
+            insertSpacing = index === 0 ? 'none' : 'section';
+          }
           const intro = body.intro === true || body.intro === 'true';
           if (type === 'sectionTitle') {
             const id = `title-${Date.now().toString(36)}`;
@@ -2004,7 +2018,13 @@ function contentSpacingDevWriter() {
             const value = change.value;
             const target = resolveDevFieldTarget(documentKey, '', fieldPath);
             const field = target?.path?.at(-1);
-            const validSpacing = field === 'spacing' && EDITABLE_SPACING_VALUES.has(value);
+            let canonicalSpacing;
+            try {
+              canonicalSpacing = field === 'spacing' ? canonicalizeProjectStackSpacing(value) : null;
+            } catch {
+              canonicalSpacing = null;
+            }
+            const validSpacing = field === 'spacing' && canonicalSpacing !== null;
             const validIntroHeight = field === 'introHeight'
               && Number.isInteger(value)
               && value >= 1
@@ -2021,7 +2041,10 @@ function contentSpacingDevWriter() {
               return;
             }
             const documentChanges = grouped.get(target.relativeFile) || [];
-            documentChanges.push({ path: target.path, value });
+            documentChanges.push({
+              path: target.path,
+              value: field === 'spacing' ? canonicalSpacing : value,
+            });
             grouped.set(target.relativeFile, documentChanges);
           }
 
@@ -2054,7 +2077,9 @@ function contentSpacingDevWriter() {
                   send(400, { error: 'Intro height is only editable on Intro blocks.' });
                   return;
                 }
-                target[field] = change.value;
+                target[field] = field === 'spacing'
+                  ? canonicalizeProjectStackSpacing(change.value)
+                  : change.value;
               }
               if (field === 'spacing' && Object.prototype.hasOwnProperty.call(target, 'tightTop')) {
                 delete target.tightTop;

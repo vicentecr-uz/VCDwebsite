@@ -68,7 +68,7 @@ const normalizedHover = hasHoverCrop && item.hoverVariants
 const coverStyle = joinMediaStyles(
   normalizedCover ? responsiveImageStyle(normalizedCover, srcDims) : undefined,
   normalizedHover ? hoverCropStyle(normalizedHover) : undefined,
-  item.bg ? `background-color:${item.bg}` : undefined,
+  item.bg ? `--project-grid-background:${item.bg};background-color:${item.bg}` : undefined,
 );
 const projectEditable = isDev && Boolean(item.slug);
 const isPlaceholderCover = isPlaceholderCoverSrc(item.image);
@@ -120,6 +120,7 @@ const showHoverImg = item.hoverImage || projectEditable;
         {...(editAttrs ?? {})}
       >
         <div class="project-grid__stack">
+          <span class="project-grid__hover-background" aria-hidden="true"></span>
           {hasCrop ? (
             <div class="project-crop-clip">
               {isPlaceholderCover ? (
@@ -239,6 +240,7 @@ const showHoverImg = item.hoverImage || projectEditable;
         {...(editAttrs ?? {})}
       >
         <div class="project-grid__stack">
+          <span class="project-grid__hover-background" aria-hidden="true"></span>
           {hasCrop ? (
             <div class="project-crop-clip">
               {isPlaceholderCover ? (
@@ -416,7 +418,7 @@ const showHoverImg = item.hoverImage || projectEditable;
       </button>
     </div>
   )}
-  {projectEditable && !isImage && (
+  {projectEditable && (
     <div class="project-grid__chips project-grid__chips--end-bottom" data-dev-mode-only>
       <button
         type="button"
