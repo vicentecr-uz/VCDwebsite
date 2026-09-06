@@ -35,11 +35,19 @@ assert.equal(both['--header-surface-mobile-bottom-padding'], '1.5em');
 assert.equal(Object.keys(both).length, 10);
 
 const headerSource = await readFile(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
-const tunerSource = await readFile(new URL('../../src/components/DevHeaderSurfaceTuner.astro', import.meta.url), 'utf8');
+const tunerSource = await readFile(new URL('../../src/components/archive/DevHeaderSurfaceTuner.astro', import.meta.url), 'utf8');
+const archiveSource = await readFile(new URL('../../src/components/archive/ArchivedDevPanels.astro', import.meta.url), 'utf8');
 const layoutSource = await readFile(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
 assert.match(tunerSource, /document\.dispatchEvent\(new CustomEvent\('vcd:header-surface-preview'/);
 assert.doesNotMatch(tunerSource, /\.dev-header-surface-tuner\s*\{\s*width:/);
-assert.match(layoutSource, /showDevTools && <DevHeaderSurfaceTuner \/>/);
+assert.match(archiveSource, /import DevHeaderSurfaceTuner from '\.\/DevHeaderSurfaceTuner\.astro'/);
+assert.match(archiveSource, /data-archived-dev-panel="header-surface"/);
+assert.match(archiveSource, /new URL\(window\.location\.href\)\.searchParams\.getAll\('dev-panel'\)/);
+assert.match(archiveSource, /querySelectorAll\('template\[data-archived-dev-panel\]'/);
+assert.match(archiveSource, /template\.replaceWith\(template\.content\.cloneNode\(true\)\)/);
+assert.match(archiveSource, /template\.remove\(\)/);
+assert.match(layoutSource, /showDevTools && <ArchivedDevPanels \/>/);
+assert.doesNotMatch(layoutSource, /showDevTools && <DevHeaderSurfaceTuner \/>/);
 assert.match(headerSource, /header-surface-mobile-backdrop-opacity/);
 assert.match(headerSource, /--panel-corner-radius: min\([\s\S]*?calc\(var\(--panel-inline-size\) \/ 2\)/);
 

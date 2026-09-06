@@ -1,0 +1,20 @@
+---
+import DevHeaderSurfaceTuner from './DevHeaderSurfaceTuner.astro';
+---
+
+{/* Astro strips query strings while prerendering; future panels register a template and import here.
+    DevPageWidthToggle and project/archive/ProjectCaptionShadowTuner remain reference-only. */}
+<template data-archived-dev-panel="header-surface"><DevHeaderSurfaceTuner /></template>
+
+<script is:inline>
+  (() => {
+    const requested = new Set(new URL(window.location.href).searchParams.getAll('dev-panel'));
+    document.querySelectorAll('template[data-archived-dev-panel]').forEach((template) => {
+      if (requested.has(template.dataset.archivedDevPanel ?? '')) {
+        template.replaceWith(template.content.cloneNode(true));
+      } else {
+        template.remove();
+      }
+    });
+  })();
+</script>
