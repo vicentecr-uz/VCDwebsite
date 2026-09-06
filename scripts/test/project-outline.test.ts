@@ -41,6 +41,19 @@ describe('project outline', () => {
     })).toEqual([]);
   });
 
+  test('resolves an unanchored legacy group from its first section', () => {
+    expect(resolveProjectOutline({
+      outline: [
+        { kind: 'group', id: 'intro', label: 'Intro' },
+        { kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' },
+      ],
+      sections: [{ id: 'overview' }],
+    })).toEqual([
+      { kind: 'group', id: 'intro', label: 'Intro', defaultOpen: true, anchor: 'overview' },
+      { kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' },
+    ]);
+  });
+
   test('preserves nav ids and gives legacy duplicate groups deterministic ids', () => {
     const outline = outlineFromNav([
       { id: 'supplied', anchor: 'start', label: 'Research', children: [] },
