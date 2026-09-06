@@ -221,7 +221,11 @@ export function validateProjectOutline(outline) {
   if (!Array.isArray(outline) || outline.length > 120 || !outline.every(isValidOutlineEntry)) return false;
   const identities = new Set();
   for (const entry of outline) {
-    const identity = `${entry.kind === 'subsection' || (entry.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen')) ? 'group' : 'section'}:${entry.id}`;
+    const normalizedKind = entry.kind === 'group'
+      || (entry.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen'))
+      ? 'group'
+      : 'section';
+    const identity = `${normalizedKind}:${entry.id}`;
     if (identities.has(identity)) return false;
     identities.add(identity);
   }
