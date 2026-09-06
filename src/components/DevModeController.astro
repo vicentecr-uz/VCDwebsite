@@ -4,6 +4,29 @@
     const CHROME_FADE_MS = 280;
 
     const html = document.documentElement;
+    const leaseKey = '__vcdDevAuthoringLease';
+    const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; pagehideInstalled?: boolean } })[leaseKey]
+      ??= { id: `dev-${crypto.randomUUID()}`, timer: null });
+    const reportAuthoring = (active: boolean) => {
+      const body = JSON.stringify({ id: lease.id, active });
+      if (!active && document.visibilityState === 'hidden') {
+        navigator.sendBeacon('/api/dev-session-state', new Blob([body], { type: 'application/json' }));
+      } else {
+      void fetch('/api/dev-session-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
+      }
+      if (active && lease.timer === null) {
+        lease.timer = setInterval(() => {
+          void fetch('/api/dev-session-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
+        }, 15000);
+      } else if (!active && lease.timer !== null) {
+        clearInterval(lease.timer);
+        lease.timer = null;
+      }
+    };
+    if (!lease.pagehideInstalled) {
+      window.addEventListener('pagehide', () => reportAuthoring(false), { once: true });
+      lease.pagehideInstalled = true;
+    }
     let devMode = false;
     let enterEndTimer: ReturnType<typeof setTimeout> | null = null;
     let exitTimer: ReturnType<typeof setTimeout> | null = null;
@@ -166,6 +189,7 @@
     };
 
     const emitDevModeChange = (active: boolean) => {
+      reportAuthoring(active);
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-change', {
         detail: { active },
       }));

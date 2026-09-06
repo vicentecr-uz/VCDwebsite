@@ -102,6 +102,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../scripts/devSectionMount';
   import {
     initDevSectionOutlineSync,
+    disposeDevSectionOutlineSync,
     getDevSectionOutline,
     remapDevSectionOutlineId,
   } from '../scripts/devSectionOutlineSync';
@@ -313,6 +314,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   const initDevTextEditor = () => {
     if (document.documentElement.dataset.devTextEditorInit === '1') return;
+
 
     const actions = document.querySelector<HTMLElement>('[data-dev-text-actions]');
     const saveButton = actions?.querySelector<HTMLButtonElement>('[data-dev-text-save]');
@@ -5883,6 +5885,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
+      disposeDevSectionOutlineSync();
       delete document.documentElement.dataset.devTextEditorInit;
     });
   }

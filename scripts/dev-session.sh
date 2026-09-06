@@ -202,6 +202,27 @@ cmd_stop() {
   echo "Done."
 }
 
+cmd_stop_astro() {
+  stop_pid_file "Astro" "$ASTRO_LABEL" "$ASTRO_PID"
+}
+
+cmd_start_astro() {
+  if port_in_use "$ASTRO_PORT"; then
+    echo "  Astro: port $ASTRO_PORT is already in use"
+    return 1
+  fi
+  start_process "Astro" "$ASTRO_LABEL" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev -- --host
+}
+
+cmd_astro_running() {
+  if use_launchd; then
+    adopt_launchd_job "$ASTRO_LABEL" "$ASTRO_PID" || true
+  fi
+  local pid
+  pid="$(read_pid "$ASTRO_PID" || true)"
+  [[ -n "$pid" ]] && pid_alive "$pid"
+}
+
 start_process() {
   local name="$1"
   local label="$2"
@@ -324,7 +345,7 @@ cmd_start() {
   echo "Starting dev session..."
   # --host is also set in astro.config.mjs (server.host); keep the flag so a
   # bare restart still binds even if config is temporarily wrong.
-  start_process "Astro" "$ASTRO_LABEL" "$ASTRO_PID" "$ASTRO_LOG" "$BUN" run dev -- --host
+  cmd_start_astro
   bash "$ROOT/scripts/branch-sync.sh" start
 
   echo ""
@@ -354,5 +375,8 @@ case "${1:-}" in
   stop) cmd_stop ;;
   status) cmd_status ;;
   restart) cmd_restart ;;
+  start-astro) cmd_start_astro ;;
+  stop-astro) cmd_stop_astro ;;
+  astro-running) cmd_astro_running ;;
   *) usage; exit 1 ;;
 esac

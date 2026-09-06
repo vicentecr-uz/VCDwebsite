@@ -9,6 +9,9 @@ LOG_FILE="$SESSION_DIR/branch-sync.log"
 LAUNCHD_LABEL="com.vcruzdesigns.vcdwebsite.branch-sync"
 
 INTERVAL="${BRANCH_SYNC_INTERVAL:-60}"
+STATE_URL="${BRANCH_SYNC_STATE_URL:-http://127.0.0.1:4321/api/dev-session-state}"
+SESSION_SCRIPT="${BRANCH_SYNC_SESSION_SCRIPT:-$ROOT/scripts/dev-session.sh}"
+BUN="$HOME/.bun/bin/bun"
 
 pid_alive() {
   local pid="$1"
@@ -68,7 +71,7 @@ sync_once() {
     return 0
   fi
 
-  local behind ahead
+  local behind ahead merge_base incoming_paths requires_restart=0 dependencies_changed=0 astro_stopped=0
   behind="$(git -C "$ROOT" rev-list --count HEAD.."$upstream" 2>/dev/null || echo 0)"
   ahead="$(git -C "$ROOT" rev-list --count "$upstream"..HEAD 2>/dev/null || echo 0)"
 
@@ -77,11 +80,47 @@ sync_once() {
     return 0
   fi
 
+  merge_base="$(git -C "$ROOT" merge-base HEAD "$upstream")"
+  incoming_paths="$(git -C "$ROOT" diff --name-only "$merge_base" "$upstream")"
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    if [[ "$path" == package.json || "$path" == bun.lock || "$path" == bun.lockb ]]; then
+      dependencies_changed=1
+      requires_restart=1
+    elif [[ "$path" == src/content/* || "$path" == media/* || "$path" == docs/* || "$path" == *.md || "$path" == .github/* || "$path" == .codex/* || "$path" == .cursor/* || "$path" == .claude/* ]]; then
+      :
+    else
+      requires_restart=1
+    fi
+  done <<<"$incoming_paths"
+
+  if [[ "$requires_restart" -eq 1 ]] && astro_running; then
+    local state
+    if ! state="$(curl --silent --show-error --fail --max-time 2 "$STATE_URL" 2>/dev/null)" || ! grep -q '"editing":false' <<<"$state"; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') runtime update deferred (authoring session active or state unavailable)"
+      return 0
+    fi
+    # The state query is intentionally not a distributed lock; upgrade to an atomic lease if this race matters.
+    if ! bash "$SESSION_SCRIPT" stop-astro; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') could not stop Astro — deferring runtime update"
+      return 0
+    fi
+    astro_stopped=1
+  fi
+
   echo "$(date '+%Y-%m-%d %H:%M:%S') $branch behind $upstream by $behind (ahead $ahead) — pulling"
 
   if [[ "$ahead" -eq 0 ]]; then
     if git -C "$ROOT" merge --ff-only "$upstream" 2>&1; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forwarded $branch"
+      if [[ "$dependencies_changed" -eq 1 ]]; then
+        if ! "$BUN" install --frozen-lockfile 2>&1; then
+          echo "$(date '+%Y-%m-%d %H:%M:%S') dependency install failed"
+          [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+          return 1
+        fi
+      fi
+      [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
     else
       echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forward failed for $branch"
     fi
@@ -90,10 +129,22 @@ sync_once() {
 
   if git -C "$ROOT" pull --rebase --autostash origin "$branch" 2>&1; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') rebased $branch onto $upstream"
+    if [[ "$dependencies_changed" -eq 1 ]]; then
+      if ! "$BUN" install --frozen-lockfile 2>&1; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') dependency install failed"
+        [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+        return 1
+      fi
+    fi
   else
     echo "$(date '+%Y-%m-%d %H:%M:%S') pull --rebase failed for $branch (resolve manually)"
     git -C "$ROOT" rebase --abort 2>/dev/null || true
   fi
+  if [[ "$astro_stopped" -eq 1 ]]; then bash "$SESSION_SCRIPT" start-astro || true; fi
+}
+
+astro_running() {
+  bash "$SESSION_SCRIPT" astro-running >/dev/null 2>&1
 }
 
 daemon_loop() {
