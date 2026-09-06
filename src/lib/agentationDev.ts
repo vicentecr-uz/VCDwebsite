@@ -4,15 +4,53 @@ import { createRoot, type Root } from 'react-dom/client';
 
 const ROOT_ID = 'agentation-root';
 const TOOLBAR_SELECTOR = '[data-agentation-toolbar] > [role="button"]';
+const ENTER_MS = 150;
+const EXIT_MS = 120;
 
 let container: HTMLDivElement | null = null;
 let root: Root | null = null;
 let toolbarObserver: MutationObserver | null = null;
+let isClosing = false;
+
+const motionStyles = document.createElement('style');
+motionStyles.textContent = `
+  [data-agentation-toolbar] > * {
+    animation: none !important;
+  }
+
+  [data-agentation-root][data-vcd-opening] [data-agentation-toolbar] * {
+    animation: none !important;
+    transition: none !important;
+  }
+`;
+document.head.append(motionStyles);
+
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 const startCommenting = () => {
-  const toolbar = document.querySelector<HTMLElement>(TOOLBAR_SELECTOR);
-  if (!toolbar) return false;
-  toolbar.click();
+  const startButton = document.querySelector<HTMLElement>(TOOLBAR_SELECTOR);
+  const toolbar = startButton?.parentElement;
+  const portal = toolbar?.closest<HTMLElement>('[data-agentation-root]');
+  if (!startButton || !toolbar || !portal) return false;
+
+  portal.dataset.vcdOpening = '';
+  toolbar.style.opacity = '0';
+  startButton.click();
+
+  requestAnimationFrame(() => {
+    if (!portal.isConnected) return;
+    void toolbar.offsetWidth;
+    delete portal.dataset.vcdOpening;
+    toolbar.style.opacity = '1';
+
+    if (!reduceMotion.matches) {
+      toolbar.animate([{ opacity: 0 }, { opacity: 1 }], {
+        duration: ENTER_MS,
+        easing: 'ease-out',
+      });
+    }
+  });
+
   return true;
 };
 
@@ -34,13 +72,30 @@ const enableAgentation = () => {
   }));
 };
 
-const disableAgentation = () => {
+const unmountAgentation = () => {
   toolbarObserver?.disconnect();
   toolbarObserver = null;
   root?.unmount();
   container?.remove();
   root = null;
   container = null;
+  isClosing = false;
+};
+
+const disableAgentation = (immediate = false) => {
+  const toolbar = document.querySelector<HTMLElement>('[data-agentation-toolbar]');
+  if (immediate || !toolbar || reduceMotion.matches) {
+    unmountAgentation();
+    return;
+  }
+
+  isClosing = true;
+  toolbar.style.pointerEvents = 'none';
+  toolbar.animate([{ opacity: 1 }, { opacity: 0 }], {
+    duration: EXIT_MS,
+    easing: 'ease-in',
+    fill: 'forwards',
+  }).finished.then(unmountAgentation, unmountAgentation);
 };
 
 const isTypingTarget = (target: EventTarget | null) => {
@@ -55,6 +110,7 @@ const handleShortcut = (event: KeyboardEvent) => {
   event.preventDefault();
   event.stopImmediatePropagation();
 
+  if (isClosing) return;
   if (root) disableAgentation();
   else enableAgentation();
 };
@@ -64,6 +120,7 @@ window.addEventListener('keydown', handleShortcut, true);
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     window.removeEventListener('keydown', handleShortcut, true);
-    disableAgentation();
+    disableAgentation(true);
+    motionStyles.remove();
   });
 }
