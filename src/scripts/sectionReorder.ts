@@ -571,6 +571,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let flipMovingElements: HTMLElement[] = [];
   let activeFadeGhosts: HTMLElement[] = [];
+  const fadeGhostFrames = new Map<HTMLElement, number>();
+  const fadeGhostTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
   /**
@@ -586,6 +588,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let dropShadowAnimation: Animation | null = null;
   let dropIndicatorFadeAnimation: Animation | null = null;
   let dropPositionRaf = 0;
+  let dropPositionResolver: (() => void) | null = null;
+  let liftFrame = 0;
+  let liftGeneration = 0;
   /**
    * Bumped whenever a settle is superseded (re-lift, destroy). The drop's async
    * tails commit position and teardown, so they check this before touching an
@@ -605,7 +610,15 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   };
 
   const clearGhosts = () => {
-    activeFadeGhosts.forEach((ghost) => ghost.remove());
+    activeFadeGhosts.forEach((ghost) => {
+      const frame = fadeGhostFrames.get(ghost);
+      if (frame) cancelAnimationFrame(frame);
+      fadeGhostFrames.delete(ghost);
+      const timer = fadeGhostTimers.get(ghost);
+      if (timer) clearTimeout(timer);
+      fadeGhostTimers.delete(ghost);
+      ghost.remove();
+    });
     activeFadeGhosts = [];
   };
 
@@ -774,14 +787,18 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       return;
     }
 
-    requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(() => {
+      fadeGhostFrames.delete(ghost);
       ghost.style.transition = `opacity ${duration}ms ease-out`;
       ghost.style.opacity = '0';
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        fadeGhostTimers.delete(ghost);
         ghost.remove();
         activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
       }, duration + 50);
+      fadeGhostTimers.set(ghost, timer);
     });
+    fadeGhostFrames.set(ghost, frame);
   };
 
   const performFlipRelocate = (fromIndex: number, toIndex: number, toKey: string) => {
@@ -1062,6 +1079,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     motionMs: number,
     run: number,
   ) => new Promise<void>((resolve) => {
+    dropPositionResolver = resolve;
     const itemRect = item.getBoundingClientRect();
     const fromPageTop = (Number.parseFloat(item.style.top) || itemRect.top) + window.scrollY;
     const fromPageLeft = (Number.parseFloat(item.style.left) || itemRect.left) + window.scrollX;
@@ -1071,6 +1089,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const step = (now: number) => {
       dropPositionRaf = 0;
       if (run !== dropRun) {
+        if (dropPositionResolver === resolve) dropPositionResolver = null;
         resolve();
         return;
       }
@@ -1088,6 +1107,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       // during the slot's fade-out can't pull them apart before the commit.
       if (t >= 1 && !landed) {
         landed = true;
+        if (dropPositionResolver === resolve) dropPositionResolver = null;
         resolve();
       }
       dropPositionRaf = requestAnimationFrame(step);
@@ -1097,9 +1117,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   });
 
   const cancelDropPositionGlide = () => {
-    if (!dropPositionRaf) return;
-    cancelAnimationFrame(dropPositionRaf);
-    dropPositionRaf = 0;
+    if (dropPositionRaf) {
+      cancelAnimationFrame(dropPositionRaf);
+      dropPositionRaf = 0;
+    }
+    const resolve = dropPositionResolver;
+    dropPositionResolver = null;
+    resolve?.();
   };
 
   const animateDropToSlot = (item: HTMLElement, run: number) => {
@@ -1226,6 +1250,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const teardownChrome = () => {
     stopTick();
+    liftGeneration += 1;
+    if (liftFrame) {
+      cancelAnimationFrame(liftFrame);
+      liftFrame = 0;
+    }
     cancelDropPositionGlide();
     scrollDriver.reset();
     clearActiveFlip();
@@ -1342,7 +1371,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       if (prefersReducedMotion()) {
         item.classList.add('is-lifted-raised');
       } else {
-        requestAnimationFrame(() => {
+        const generation = liftGeneration;
+        liftFrame = requestAnimationFrame(() => {
+          liftFrame = 0;
+          if (generation !== liftGeneration) return;
           item.classList.add('is-lifted-raised');
         });
       }
@@ -1412,7 +1444,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       applyIndicatorOpacity(Number.isFinite(currentIndicatorOpacity) ? currentIndicatorOpacity : 1);
       indicatorAnim = { type: 'steady' };
 
-      requestAnimationFrame(() => {
+      if (liftFrame) cancelAnimationFrame(liftFrame);
+      const generation = liftGeneration;
+      liftFrame = requestAnimationFrame(() => {
+        liftFrame = 0;
+        if (generation !== liftGeneration) return;
         item.style.removeProperty('transform');
         backdrop?.style.removeProperty('box-shadow');
         applyIndicatorOpacity(1);
