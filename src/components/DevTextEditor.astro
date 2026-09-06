@@ -348,6 +348,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     editorAbortController?.abort();
     editorAbortController = new AbortController();
+    const editorSignal = editorAbortController.signal;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -576,7 +577,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const bindSpacingReset = (state: EditableSpacingState) => {
       state.resetButton.addEventListener('animationend', () => {
         state.resetButton.classList.remove('is-dev-spacing-reset-revealing');
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
       state.resetButton.addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -594,7 +595,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         syncSpacingControl(state);
         updateActions();
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
     };
 
     const syncIntroHeightControl = (state: EditableIntroHeightState) => {
@@ -628,7 +629,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
         stickyStatus = '';
         updateActions();
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
       const commit = () => {
         const raw = state.input.value.trim();
         const value = Number(state.input.value);
@@ -644,13 +645,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         syncIntroHeightControl(state);
         updateActions();
       };
-      state.input.addEventListener('change', commit, { signal: editorAbortController.signal });
-      state.input.addEventListener('blur', commit, { signal: editorAbortController.signal });
+      state.input.addEventListener('change', commit, { signal: editorSignal });
+      state.input.addEventListener('blur', commit, { signal: editorSignal });
       state.input.addEventListener('keydown', (event) => {
         if (event.key !== 'Enter') return;
         event.preventDefault();
         state.input.blur();
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
     };
 
     /**
@@ -718,7 +719,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           window.dispatchEvent(new Event('vcd:intro-layout-sync'));
           syncSpacingControl(state);
           updateActions();
-        }, { signal: editorAbortController.signal });
+        }, { signal: editorSignal });
       });
     };
 
@@ -949,7 +950,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       lastSpacingViewport = viewport;
       spacingStates.forEach(syncSpacingControl);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
     syncPageTopSpacingControls();
 
     /** Paths on media/text/layout editors — bumped when sections are inserted/deleted in-place. */
@@ -1174,7 +1175,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             control.classList.remove('is-gap-relocating', 'is-gap-relocating-in');
             unpinGapToolbarTop(control);
           };
-          ghost.addEventListener('transitionend', finish, { once: true, signal: editorAbortController.signal });
+          ghost.addEventListener('transitionend', finish, { once: true, signal: editorSignal });
           window.setTimeout(finish, 220);
         });
       });
@@ -1505,7 +1506,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     // registers unconditionally. Gallery pages carry no spacing elements, and
     // while these lived inside the `spacingStates.length` guard below they never
     // bound there at all — which is why a caret in a card title faded nothing.
-    document.addEventListener('focusin', syncSpacingCaretSuppression, { signal: editorAbortController.signal });
+    document.addEventListener('focusin', syncSpacingCaretSuppression, { signal: editorSignal });
     document.addEventListener('focusout', () => {
       // focusout fires before the next focus target is active
       requestAnimationFrame(() => {
@@ -1518,29 +1519,29 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
         }
       });
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     if (spacingStates.length) {
       document.addEventListener(
         'pointermove',
         (event) => {
           syncSpacingProximity(event.clientX, event.clientY);
-        }, { passive: true, signal: editorAbortController.signal });
+        }, { passive: true, signal: editorSignal });
       // While the pointer is on the pill/menu the page must not scroll — otherwise
       // the freeze and the gap diverge. Vicinity-only reveal still allows scroll.
-      document.addEventListener('wheel', preventScrollWhileGapToolbarHeld, { passive: false, signal: editorAbortController.signal });
-      document.addEventListener('touchmove', preventScrollWhileGapToolbarHeld, { passive: false, signal: editorAbortController.signal });
+      document.addEventListener('wheel', preventScrollWhileGapToolbarHeld, { passive: false, signal: editorSignal });
+      document.addEventListener('touchmove', preventScrollWhileGapToolbarHeld, { passive: false, signal: editorSignal });
       // Header mouseenter can beat the next pointermove — sync first so page-top
       // chips lift above the nav before openMenu hit-tests.
       document.addEventListener('dev:sync-gap-proximity', ((event: CustomEvent<{ clientX: number; clientY: number }>) => {
         syncSpacingProximity(event.detail.clientX, event.detail.clientY);
-      }) as EventListener, { signal: editorAbortController.signal });
+      }) as EventListener, { signal: editorSignal });
       document.addEventListener('dev:clear-gap-proximity', () => {
         if (document.documentElement.hasAttribute('data-dev-image-drop-choice-open')) {
           closeSectionMenus();
         }
         clearGapProximityAll();
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
       document.documentElement.addEventListener('pointerleave', () => {
         spacingStates.forEach(({ control }) => {
           if (control.classList.contains('is-menu-open')) {
@@ -1551,9 +1552,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           clearGapProximity(control);
         });
         document.documentElement.classList.remove('is-page-top-gap-above-header');
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
       // Tuner click doesn't move the pointer — drop near-gap classes immediately.
-      window.addEventListener('vcd:dev-edit-open', clearGapProximityAll, { signal: editorAbortController.signal });
+      window.addEventListener('vcd:dev-edit-open', clearGapProximityAll, { signal: editorSignal });
       document.addEventListener(
         'pointerdown',
         (event) => {
@@ -1563,7 +1564,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (!open) return;
           if (open.control.contains(target)) return;
           closeSectionMenus();
-        }, { capture: true, signal: editorAbortController.signal });
+        }, { capture: true, signal: editorSignal });
     }
 
     const dirtyTextStates = () =>
@@ -2044,7 +2045,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!window.confirm(message)) {
         event.preventDefault();
       }
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     /** Content files changed on disk but not yet committed to the publish branch. */
     let unpublishedCount = 0;
@@ -2523,12 +2524,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         stickyStatus = '';
         updateActions();
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
       if (state.kind === 'paragraphs') {
         element.addEventListener('focus', () => {
           // Defer so the browser finishes its own caret placement first.
           requestAnimationFrame(() => ensureParagraphSelection(element));
-        }, { signal: editorAbortController.signal });
+        }, { signal: editorSignal });
       }
       if (state.kind === 'paragraphs') {
         // Native Enter still fires insertParagraph after our keydown split on
@@ -2540,10 +2541,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           } else if (event.inputType.startsWith('delete')) {
             ensureParagraphSelection(element);
           }
-        }, { signal: editorAbortController.signal });
+        }, { signal: editorSignal });
         element.addEventListener('pointerup', () => {
           requestAnimationFrame(() => ensureParagraphSelection(element));
-        }, { signal: editorAbortController.signal });
+        }, { signal: editorSignal });
       }
       element.addEventListener('keydown', (event) => {
         if (event.key === 'Backspace' || event.key === 'Delete') {
@@ -2583,7 +2584,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           event.preventDefault();
           splitParagraphInsideBlock(state);
         }
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
     };
 
     const TRASH_ICON = sizeIcon(trashIcon);
@@ -2619,7 +2620,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         event.preventDefault();
         event.stopPropagation();
         void deleteSectionAt(element);
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
     };
 
     const clearBusyStatus = () => {
@@ -2901,7 +2902,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         state.control.classList.add('is-near-add', 'is-menu-open');
         pinGapToolbarTop(state.control);
         syncPageTopGapStacking();
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
 
       state.menu.querySelectorAll<HTMLButtonElement>('[data-dev-section-type]').forEach((button) => {
         button.addEventListener('click', (event) => {
@@ -2925,7 +2926,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
-        }, { signal: editorAbortController.signal });
+        }, { signal: editorSignal });
       });
     };
 
@@ -2986,22 +2987,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', () => {
       requestAnimationFrame(syncIntroRunControls);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-upsert', (event) => {
       const detail = (event as CustomEvent).detail;
       if (detail?.kind !== 'section-order') return;
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-reverted', () => {
       syncPageTopSpacingControls(false);
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     deleteSectionAt = async (element: HTMLElement) => {
       let path: Array<string | number> = [];
@@ -3592,7 +3593,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         .catch((error) => {
           reject?.(error instanceof Error ? error : new Error('Could not save pending edits.'));
         });
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-section-inserted', ((event: CustomEvent<{
       documentKey?: string;
@@ -3602,7 +3603,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { documentKey, index, section } = event.detail ?? {};
       if (!documentKey || typeof index !== 'number' || !section) return;
       mountMediaSectionInPlace(section, documentKey, index);
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-carousel-media-appended', ((event: CustomEvent<{
       documentKey?: string;
@@ -3614,7 +3615,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!documentKey || typeof index !== 'number' || !section) return;
       const root = replaceMediaSectionInPlace(section, documentKey, index);
       if (root && activeItemId) restoreCarouselActiveItem(root, activeItemId);
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-placeholder-fill-pending', ((event: CustomEvent<{
       documentKey?: string;
@@ -3680,7 +3681,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         },
       });
       updateActions();
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
 
     const syncDeleteButtons = (enabled: boolean) => {
       deletableSections.forEach((element) => {
@@ -3714,14 +3715,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       pendingMedia.set(detail.id, detail);
       if (detail.kind === 'section-order') syncPageTopSpacingControls();
       updateActions();
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-pending-remove', ((event: CustomEvent<{ id?: string }>) => {
       const id = event.detail?.id;
       if (!id || !pendingMedia.has(id)) return;
       pendingMedia.delete(id);
       updateActions();
-    }) as EventListener, { signal: editorAbortController.signal });
+    }) as EventListener, { signal: editorSignal });
 
     /* ── Selection formatting popup ───────────────────────── */
     let savedFormatRange: Range | null = null;
@@ -4904,16 +4905,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return;
       }
       event.preventDefault();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     blockStyleSelect.addEventListener('change', () => {
       if (syncingBlockStyle) return;
       convertCurrentBlock(blockStyleSelect.value);
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     emphasisStyleSelect.addEventListener('change', () => {
       applyEmphasisStyle(emphasisStyleSelect.value);
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     formatButtons.forEach((button) => {
       button.addEventListener('click', (event) => {
@@ -4944,41 +4945,41 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           positionFormatBar(savedFormatRange);
           syncFormatButtons();
         }
-      }, { signal: editorAbortController.signal });
+      }, { signal: editorSignal });
     });
 
     linkPanel.addEventListener('submit', (event) => {
       event.preventDefault();
       applyLink(linkInput.value);
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     unlinkButton.addEventListener('click', (event) => {
       event.preventDefault();
       removeLink();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     linkInput.addEventListener('input', () => {
       linkInput.setCustomValidity('');
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     linkInput.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       event.stopPropagation();
       hideFormatBar();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     document.addEventListener('selectionchange', () => {
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
       if (document.activeElement === linkInput) return;
       scheduleFormatBarUpdate();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
     window.addEventListener('scroll', (event) => {
       const target = event.target;
       if (target instanceof Node && formatBar.contains(target)) return;
       scheduleFormatBarUpdate();
-    }, { capture: true, signal: editorAbortController.signal });
-    window.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorAbortController.signal });
+    }, { capture: true, signal: editorSignal });
+    window.addEventListener('resize', scheduleFormatBarUpdate, { signal: editorSignal });
     // Dismiss even while the link URL field is focused / open.
     document.addEventListener(
       'pointerdown',
@@ -5001,15 +5002,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           active.blur();
         }
         hideFormatBar();
-      }, { capture: true, signal: editorAbortController.signal });
+      }, { capture: true, signal: editorSignal });
     const releaseFormatDismissPointer = (event: PointerEvent) => {
       const gesture = formatDismissPointer;
       if (!gesture || gesture.id !== event.pointerId) return;
       gesture.active = false;
       maybeScheduleFormatBarAfterDismiss(gesture.generation);
     };
-    document.addEventListener('pointerup', releaseFormatDismissPointer, { capture: true, signal: editorAbortController.signal });
-    document.addEventListener('pointercancel', releaseFormatDismissPointer, { capture: true, signal: editorAbortController.signal });
+    document.addEventListener('pointerup', releaseFormatDismissPointer, { capture: true, signal: editorSignal });
+    document.addEventListener('pointercancel', releaseFormatDismissPointer, { capture: true, signal: editorSignal });
 
     /**
      * Esc while editing body text — same outcome as click-away:
@@ -5073,7 +5074,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (!deselectDevTextCaret()) return;
         event.preventDefault();
         event.stopPropagation();
-      }, { capture: true, signal: editorAbortController.signal });
+      }, { capture: true, signal: editorSignal });
 
     // ⌘B / ⌘I / ⌘U / ⌘K (link)
     document.addEventListener('keydown', (event) => {
@@ -5138,7 +5139,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       setLinkPanelOpen(true);
       if (savedFormatRange) positionFormatBar(savedFormatRange);
       syncFormatButtons();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     const setEditingEnabled = (enabled: boolean) => {
       textStates.forEach(({ element, kind }) => {
@@ -5162,7 +5163,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
-    window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).addEventListener('change', syncSpacingControlVisibility, { signal: editorAbortController.signal });
+    window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).addEventListener('change', syncSpacingControlVisibility, { signal: editorSignal });
 
     textStates.forEach(bindTextState);
 
@@ -5223,7 +5224,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         hideFormatBar();
         updateActions();
       })();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     /**
      * What was in this save, described semantically. The JSON diff is mostly
@@ -5614,7 +5615,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           void refreshStyleEngineState();
         }
       })();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     // ⌥S Save / ⌥⇧S Save & Publish — work while editing (unlike other Alt chords).
     document.addEventListener('keydown', (event) => {
@@ -5628,7 +5629,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
       if (saveButton.disabled || actionsBusy) return;
       saveButton.click();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     const refreshStyleEngineState = async () => {
       try {
@@ -5688,7 +5689,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           void refreshStyleEngineState();
         }
       })();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     /** Rendering files on this branch, for the override confirm. Empty when safe. */
     let renderingFiles: string[] = [];
@@ -5837,7 +5838,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           void refreshPublishState();
         }
       })();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     void refreshPublishState();
     void refreshStyleEngineState();
@@ -5851,7 +5852,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      */
     window.addEventListener('vcd:dev-content-written', () => {
       void refreshPublishState();
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-mode-change', (event) => {
       const active = Boolean((event as CustomEvent<{ active: boolean }>).detail?.active);
@@ -5860,7 +5861,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         void refreshPublishState();
         void refreshStyleEngineState();
       }
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
     window.addEventListener('beforeunload', (event) => {
       if (document.documentElement.classList.contains('is-dev-crop-open')) return;
       if (devServerReloading) return;
@@ -5874,7 +5875,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!hasContentEdits) return;
       event.preventDefault();
       event.returnValue = '';
-    }, { signal: editorAbortController.signal });
+    }, { signal: editorSignal });
 
     setEditingEnabled(document.documentElement.classList.contains('is-dev-mode'));
   };
