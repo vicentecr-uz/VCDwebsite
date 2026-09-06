@@ -1023,8 +1023,12 @@ const gridCardTemplateSeed: ProjectGridItem = {
     }
   }
 
-  /* Layer 1: titles stay readable for inline edit without hovering the card. */
-  html.is-dev-mode .project-grid__meta {
+  /* Edit-mode titles follow the chip rail: reveal on card interaction and hold during active editing. */
+  html.is-dev-mode .project-grid__item:hover .project-grid__meta,
+  html.is-dev-mode .project-grid__item:focus-within .project-grid__meta,
+  html.is-dev-mode .project-grid__item:has([data-dev-status-menu]:not([hidden])) .project-grid__meta,
+  html.is-dev-crop-open .project-grid__item:has(.dev-crop-stage-host) .project-grid__meta,
+  html.is-dev-mode .project-grid__item.is-span-mode .project-grid__meta {
     opacity: 1;
   }
 
