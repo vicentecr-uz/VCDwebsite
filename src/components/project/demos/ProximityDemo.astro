@@ -4,11 +4,11 @@ import Button from '../../ui/Button.astro';
 
 <vcd-proximity-demo>
   <section class="demo-surface proximity-demo">
-    <h2 class="demo-title">Proximity reveal</h2>
+    <h1 class="demo-title">Proximity reveal</h1>
     <div class="proximity-demo__tiles" data-proximity-tiles>
       {['One', 'Two', 'Three'].map((label) => <div class="proximity-demo__tile" data-proximity-tile><Button label={label} type="button" aria-pressed="false" data-proximity-button /></div>)}
     </div>
-    <div class="demo-actions"><Button label="Start" type="button" data-proximity-start /></div>
+    <div class="demo-actions"><Button label="Start" type="button" aria-pressed="false" data-proximity-start /></div>
     <div class="demo-actions"><Button label="Reset" type="button" data-proximity-reset /></div>
   </section>
 </vcd-proximity-demo>
@@ -19,11 +19,11 @@ import Button from '../../ui/Button.astro';
   .demo-title { margin: 0; font: var(--dev-text-panel-title); }
   .proximity-demo__tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-unit); }
   .proximity-demo__tile { display: grid; place-items: center; min-height: 8em; background: var(--sys-color-srf-container-low); border-radius: var(--radius-control-smooth); }
-  .proximity-demo__tile :global(.dev-btn) { opacity: 0; transition: opacity var(--motion-press-duration) ease, transform var(--motion-press-duration) ease-out; }
-  .proximity-demo__tile[data-revealed] :global(.dev-btn), .proximity-demo__tile :global(.dev-btn:focus-visible), .proximity-demo__tile :global(.dev-btn[aria-pressed='true']) { opacity: 1; }
+  .proximity-demo__tile :global(.dev-btn) { opacity: 0; pointer-events: none; transform: none; transition: opacity var(--motion-press-duration) ease; }
+  .proximity-demo__tile[data-revealed] :global(.dev-btn), .proximity-demo__tile :global(.dev-btn:focus-visible), .proximity-demo__tile :global(.dev-btn[aria-pressed='true']) { opacity: 1; pointer-events: auto; }
   .demo-actions { display: flex; justify-content: flex-end; padding: 8px; margin: -8px; }
   .demo-actions :global(.dev-btn) { --dev-btn-hit-inset: 8px; }
-  @media (pointer: coarse) { .proximity-demo__tile :global(.dev-btn), .proximity-demo .demo-actions :global(.dev-btn) { opacity: 1; min-height: 44px; } }
+  @media (pointer: coarse) { .proximity-demo__tile :global(.dev-btn), .proximity-demo .demo-actions :global(.dev-btn) { opacity: 1; pointer-events: auto; min-height: 44px; } }
   @media (max-width: 40em) { .demo-surface { padding: var(--space-unit); } }
 </style>
 
@@ -35,22 +35,46 @@ import Button from '../../ui/Button.astro';
     private reveal?: ProximityReveal;
 
     connectedCallback() {
-      this.controller?.abort(); this.reveal?.destroy();
-      const controller = new AbortController(); this.controller = controller; const { signal } = controller;
+      this.controller?.abort();
+      this.reveal?.destroy();
+      const controller = new AbortController();
+      this.controller = controller;
+      const { signal } = controller;
       const tiles = [...this.querySelectorAll<HTMLElement>('[data-proximity-tile]')];
       const buttons = [...this.querySelectorAll<HTMLButtonElement>('[data-proximity-button]')];
       const start = this.querySelector<HTMLButtonElement>('[data-proximity-start]');
       const reset = this.querySelector<HTMLButtonElement>('[data-proximity-reset]');
       if (!start || !reset) return;
-      const clear = () => { this.reveal?.destroy(); this.reveal = undefined; tiles.forEach((tile) => tile.removeAttribute('data-revealed')); };
-      const arm = () => {
+      const clear = () => {
         this.reveal?.destroy();
-        this.reveal = createProximityReveal({ getTargets: () => tiles, isEnabled: () => this.dataset.started === 'true', setRevealed: (target) => { tiles.forEach((tile) => tile.removeAttribute('data-revealed')); target?.setAttribute('data-revealed', ''); } });
+        this.reveal = undefined;
+        tiles.forEach((tile) => tile.removeAttribute('data-revealed'));
+      };
+      const arm = () => {
+        this.reveal = createProximityReveal({
+          getTargets: () => tiles,
+          isEnabled: () => this.dataset.started === 'true',
+          setRevealed: (target) => {
+            tiles.forEach((tile) => tile.removeAttribute('data-revealed'));
+            target?.setAttribute('data-revealed', '');
+          },
+        });
         this.dataset.started = 'true';
       };
-      start.addEventListener('click', arm, { signal });
-      reset.addEventListener('click', () => { delete this.dataset.started; buttons.forEach((button) => button.setAttribute('aria-pressed', 'false')); clear(); }, { signal });
-      buttons.forEach((button) => button.addEventListener('click', () => button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') === 'true' ? 'false' : 'true'), { signal }));
+      start.addEventListener('click', () => {
+        if (this.reveal) return;
+        arm();
+        start.setAttribute('aria-pressed', 'true');
+      }, { signal });
+      reset.addEventListener('click', () => {
+        delete this.dataset.started;
+        start.setAttribute('aria-pressed', 'false');
+        buttons.forEach((button) => button.setAttribute('aria-pressed', 'false'));
+        clear();
+      }, { signal });
+      buttons.forEach((button) => button.addEventListener('click', () => {
+        button.setAttribute('aria-pressed', button.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      }, { signal }));
     }
     disconnectedCallback() { this.controller?.abort(); this.controller = undefined; this.reveal?.destroy(); this.reveal = undefined; }
   }

@@ -5,13 +5,13 @@ import Button from '../../ui/Button.astro';
 
 <vcd-adaptive-ink-demo>
   <section class="demo-surface adaptive-ink-demo">
-    <h2 class="demo-title">Adaptive ink</h2>
+    <h1 class="demo-title">Adaptive ink</h1>
     <div class="adaptive-ink-demo__cover" data-adaptive-cover>
       <img src="/demo-fixtures/studio.svg" width="1200" height="800" alt="" data-adaptive-image />
       <Button label="Aa" aria-label="Move label" data-adaptive-label />
     </div>
     <Field label="Position">
-      <input type="range" min="0" max="100" step="1" value="25" data-adaptive-position />
+      <input type="range" min="0" max="100" step="1" value="25" aria-label="Position" data-adaptive-position />
     </Field>
     <div class="adaptive-ink-demo__status" aria-hidden="true" data-adaptive-status>Light</div>
     <div class="demo-actions"><Button label="Reset" type="button" data-adaptive-reset /></div>
@@ -24,7 +24,8 @@ import Button from '../../ui/Button.astro';
   .demo-title { margin: 0; font: var(--dev-text-panel-title); }
   .adaptive-ink-demo__cover { position: relative; aspect-ratio: 3 / 2; overflow: hidden; border-radius: var(--radius-control-smooth); background: var(--sys-color-srf-container-low); }
   .adaptive-ink-demo__cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .adaptive-ink-demo__cover :global(.dev-btn) { position: absolute; left: 25%; top: 50%; transform: translate(-50%, -50%); color: var(--media-ink, var(--sys-color-on-light-media)); background: transparent; }
+  .adaptive-ink-demo__cover :global(.dev-btn) { position: absolute; left: 25%; top: 50%; translate: -50% -50%; color: var(--media-ink, var(--sys-color-on-light-media)); background: transparent; touch-action: none; }
+  .adaptive-ink-demo__cover :global(.dev-btn:active) { transform: none; }
   .adaptive-ink-demo__cover :global(.dev-btn:hover) { background: color-mix(in srgb, var(--media-ink, currentColor) 12%, transparent); }
   .adaptive-ink-demo__status { color: var(--sys-color-on-srf-variant); font: var(--dev-text-label); }
   .demo-actions { display: flex; justify-content: flex-end; padding: 8px; margin: -8px; }
@@ -41,6 +42,8 @@ import Button from '../../ui/Button.astro';
     private controller?: AbortController;
     private frame?: number;
     private resizeObserver?: ResizeObserver;
+    private pointerId?: number;
+    private activeLabel?: HTMLButtonElement;
     private x = 0.25;
     private y = 0.5;
 
@@ -56,35 +59,51 @@ import Button from '../../ui/Button.astro';
       const reset = this.querySelector<HTMLButtonElement>('[data-adaptive-reset]');
       const status = this.querySelector<HTMLElement>('[data-adaptive-status]');
       if (!cover || !image || !label || !position || !reset || !status) return;
+      this.activeLabel = label;
 
       const paint = () => {
         this.frame = undefined;
+        if (signal.aborted) return;
+        const coverRect = cover.getBoundingClientRect();
+        const halfWidth = label.offsetWidth / 2 / coverRect.width;
+        const halfHeight = label.offsetHeight / 2 / coverRect.height;
+        this.x = clamp(this.x, halfWidth, 1 - halfWidth);
+        this.y = clamp(this.y, halfHeight, 1 - halfHeight);
         label.style.left = `${this.x * 100}%`;
         label.style.top = `${this.y * 100}%`;
         position.value = String(Math.round(this.x * 100));
-        const ground = groundForBox(label, cover, image, { width: 1200, height: 800 }, { width: 1200, height: 800 }, null);
+        if (!image.naturalWidth || !image.naturalHeight) return;
+        const ground = groundForBox(label, cover, image, { width: coverRect.width, height: coverRect.height }, { width: image.naturalWidth, height: image.naturalHeight }, null);
         if (ground) {
           applyMediaGround(cover, ground);
           status.textContent = ground === 'dark' ? 'Dark' : 'Light';
         }
       };
-      const schedule = () => { if (this.frame === undefined) this.frame = requestAnimationFrame(paint); };
+      const schedule = () => {
+        if (this.frame === undefined) this.frame = requestAnimationFrame(paint);
+      };
       const clamp = (value: number) => Math.min(1, Math.max(0, value));
       const moveFromPointer = (event: PointerEvent) => {
+        if (event.pointerId !== this.pointerId) return;
         const rect = cover.getBoundingClientRect();
         this.x = clamp((event.clientX - rect.left) / rect.width);
         this.y = clamp((event.clientY - rect.top) / rect.height);
         schedule();
       };
       const endPointer = (event: PointerEvent) => {
+        if (event.pointerId !== this.pointerId) return;
         if (label.hasPointerCapture(event.pointerId)) label.releasePointerCapture(event.pointerId);
+        this.pointerId = undefined;
       };
       label.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0) return;
+        if (event.button !== 0 || this.pointerId !== undefined) return;
         event.preventDefault();
+        this.pointerId = event.pointerId;
         label.setPointerCapture(event.pointerId);
       }, { signal });
-      label.addEventListener('pointermove', (event) => { if (label.hasPointerCapture(event.pointerId)) moveFromPointer(event); }, { signal });
+      label.addEventListener('pointermove', (event) => {
+        if (label.hasPointerCapture(event.pointerId)) moveFromPointer(event);
+      }, { signal });
       label.addEventListener('pointerup', endPointer, { signal });
       label.addEventListener('pointercancel', endPointer, { signal });
       label.addEventListener('keydown', (event) => {
@@ -94,10 +113,22 @@ import Button from '../../ui/Button.astro';
         else if (event.key === 'ArrowUp') this.y = clamp(this.y - step);
         else if (event.key === 'ArrowDown') this.y = clamp(this.y + step);
         else return;
-        event.preventDefault(); schedule();
+        event.preventDefault();
+        schedule();
       }, { signal });
-      position.addEventListener('input', () => { this.x = Number(position.value) / 100; this.y = 0.5; schedule(); }, { signal });
-      reset.addEventListener('click', () => { this.x = 0.25; this.y = 0.5; position.value = '25'; schedule(); }, { signal });
+      position.addEventListener('input', () => {
+        this.x = Number(position.value) / 100;
+        this.y = 0.5;
+        schedule();
+      }, { signal });
+      reset.addEventListener('click', () => {
+        this.x = 0.25;
+        this.y = 0.5;
+        position.value = '25';
+        if (this.pointerId !== undefined && label.hasPointerCapture(this.pointerId)) label.releasePointerCapture(this.pointerId);
+        this.pointerId = undefined;
+        schedule();
+      }, { signal });
       image.addEventListener('load', () => { if (image.decode) void image.decode().catch(() => undefined); schedule(); }, { signal });
       this.resizeObserver = new ResizeObserver(schedule);
       this.resizeObserver.observe(cover);
@@ -109,6 +140,9 @@ import Button from '../../ui/Button.astro';
       this.controller = undefined;
       this.resizeObserver?.disconnect();
       this.resizeObserver = undefined;
+      if (this.pointerId !== undefined && this.activeLabel?.hasPointerCapture(this.pointerId)) this.activeLabel.releasePointerCapture(this.pointerId);
+      this.pointerId = undefined;
+      this.activeLabel = undefined;
       if (this.frame !== undefined) cancelAnimationFrame(this.frame);
       this.frame = undefined;
     }
