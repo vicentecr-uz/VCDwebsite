@@ -699,7 +699,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      *   still honoured by the interaction-specific close guards below.
      */
     const closeMenu = (force = false) => {
-      if (previewPinned && !force) return;
+      if (previewPinned) return;
       if (!isOpen()) return;
       delete trigger.dataset.menuOpen;
       setCloseStagger();
@@ -767,7 +767,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // Scroll-driven close: run the normal animated close, not the instant
     // force-close, so the menu fades/staggers out like a mouse-leave.
     trigger.addEventListener('header:request-close', () => {
-      if (previewPinned) return;
       closeMenu(true);
     });
     trigger.addEventListener('focusin', () => {
@@ -775,7 +774,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       openMenu();
     });
     trigger.addEventListener('focusout', (event) => {
-      if (previewPinned) return;
       if (!trigger.contains(event.relatedTarget as Node | null)) {
         if (!isTapMode() && trigger.matches(':hover')) return;
         closeMenu();
@@ -810,7 +808,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
 
     document.addEventListener('click', (event) => {
-      if (previewPinned) return;
       if (!isTapMode() || !isOpen()) return;
       if (trigger.contains(event.target as Node | null)) return;
 
@@ -820,7 +817,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     document.addEventListener('keydown', (event) => {
-      if (previewPinned) return;
       if (event.key !== 'Escape' || !isOpen()) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && trigger.contains(active)) active.blur();

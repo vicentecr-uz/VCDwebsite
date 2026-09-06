@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   HEADER_SURFACE_DEFAULTS,
   cssVariablesForProfile,
@@ -32,5 +33,17 @@ const both = cssVariablesForSettings(HEADER_SURFACE_DEFAULTS);
 assert.equal(both['--header-surface-mobile-feather'], '3em');
 assert.equal(both['--header-surface-mobile-bottom-padding'], '0.75em');
 assert.equal(Object.keys(both).length, 10);
+
+const headerSource = await readFile(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
+const tunerSource = await readFile(new URL('../../src/components/DevHeaderSurfaceTuner.astro', import.meta.url), 'utf8');
+const layoutSource = await readFile(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+assert.match(tunerSource, /document\.dispatchEvent\(new CustomEvent\('vcd:header-surface-preview'/);
+assert.doesNotMatch(tunerSource, /\.dev-header-surface-tuner\s*\{\s*width:/);
+assert.match(layoutSource, /showDevTools && <DevHeaderSurfaceTuner \/>/);
+assert.match(headerSource, /header-surface-mobile-backdrop-opacity/);
+assert.match(headerSource, /--panel-corner-radius: min\([\s\S]*?calc\(var\(--panel-inline-size\) \/ 2\)/);
+
+const builtHtml = await readFile(new URL('../../dist/index.html', import.meta.url), 'utf8');
+assert.doesNotMatch(builtHtml, /data-header-surface-form/);
 
 console.log('header-surface-settings: ok');
