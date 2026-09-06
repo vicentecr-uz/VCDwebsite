@@ -9,6 +9,7 @@ LOG_FILE="$SESSION_DIR/branch-sync.log"
 LAUNCHD_LABEL="com.vcruzdesigns.vcdwebsite.branch-sync"
 
 INTERVAL="${BRANCH_SYNC_INTERVAL:-60}"
+DAEMON_MODE="${BRANCH_SYNC_DAEMON:-0}"
 STATE_URL="${BRANCH_SYNC_STATE_URL:-http://127.0.0.1:4321/api/dev-session-state}"
 SESSION_SCRIPT="${BRANCH_SYNC_SESSION_SCRIPT:-$ROOT/scripts/dev-session.sh}"
 BUN="$HOME/.bun/bin/bun"
@@ -121,6 +122,7 @@ sync_once() {
         fi
       fi
       [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+      reload_if_changed "$incoming_paths"
     else
       echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forward failed for $branch"
       [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
@@ -142,13 +144,20 @@ sync_once() {
     git -C "$ROOT" rebase --abort 2>/dev/null || true
   fi
   if [[ "$astro_stopped" -eq 1 ]]; then bash "$SESSION_SCRIPT" start-astro || true; fi
+  reload_if_changed "$incoming_paths"
 }
 
 astro_running() {
   bash "$SESSION_SCRIPT" astro-running >/dev/null 2>&1
 }
 
+reload_if_changed() {
+  [[ "$DAEMON_MODE" == 1 ]] || return 0
+  grep -qx 'scripts/branch-sync.sh' <<<"$1" && exec env BRANCH_SYNC_DAEMON=1 BRANCH_SYNC_INTERVAL="$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon
+}
+
 daemon_loop() {
+  DAEMON_MODE=1
   mkdir -p "$SESSION_DIR"
   echo "$(date '+%Y-%m-%d %H:%M:%S') branch sync started (interval ${INTERVAL}s, pid $$)" >>"$LOG_FILE"
 
