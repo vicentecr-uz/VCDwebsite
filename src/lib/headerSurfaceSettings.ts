@@ -33,8 +33,6 @@ export const HEADER_SURFACE_FIELDS: Array<{
   { key: 'backdropOpacity', label: 'Backdrop opacity', min: 0, max: 100, step: 1, unit: '%' },
 ];
 
-const isProfile = (value: unknown): value is HeaderSurfaceProfile => value === 'desktop' || value === 'mobile';
-
 const fieldDefinition = (key: HeaderSurfaceField) => HEADER_SURFACE_FIELDS.find((field) => field.key === key)!;
 
 export const normalizeHeaderSurfaceValue = (key: HeaderSurfaceField, value: unknown, fallback: number) => {
@@ -83,5 +81,3 @@ export const cssVariablesForSettings = (settings: HeaderSurfaceSettings) => ({
   ...cssVariablesForProfile('desktop', settings.desktop),
   ...cssVariablesForProfile('mobile', settings.mobile),
 });
-
-export const isHeaderSurfaceProfile = isProfile;

@@ -13,9 +13,8 @@ import {
   panelKey="header-surface"
   storageKey="header-surface"
   defaultHidden={true}
-  class="dev-header-surface-tuner"
 >
-  <form data-header-surface-form>
+  <form class="dev-header-surface-tuner" data-header-surface-form>
     <SegmentedControl label="Profile" class="dev-header-surface-tuner__profile">
       <Button label="Desktop" width="fill" data-header-surface-profile="desktop" aria-pressed="true" />
       <Button label="Mobile" width="fill" data-header-surface-profile="mobile" aria-pressed="false" />
@@ -69,10 +68,6 @@ import {
 
 <style>
   .dev-header-surface-tuner {
-    width: 100%;
-  }
-
-  .dev-header-surface-tuner form {
     display: grid;
     gap: var(--space-unit);
   }
@@ -89,11 +84,15 @@ import {
     align-items: center;
     gap: 0.5em;
     min-height: 2.75em;
+    width: 100%;
+    font-size: 16px;
   }
 
   .dev-header-surface-tuner input[type='range'] {
     min-width: 0;
+    min-height: 44px;
     accent-color: var(--sys-color-on-srf);
+    font-size: 16px;
   }
 
   .dev-header-surface-tuner input[type='number'] {
@@ -158,7 +157,6 @@ import {
   const status = form.querySelector<HTMLElement>('[data-header-surface-status]');
   const media = window.matchMedia('(max-width: 40em)');
   let profile: HeaderSurfaceProfile = media.matches ? 'mobile' : 'desktop';
-  let preview: 'off' | 'start' | 'end' = 'off';
 
   const readSettings = (): HeaderSurfaceSettings => {
     try {
@@ -197,7 +195,6 @@ import {
   };
 
   const setPreview = (next: 'off' | 'start' | 'end') => {
-    preview = next;
     previewButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.headerSurfacePreview === next)));
     document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: next === 'off' ? null : next } }));
   };
@@ -207,7 +204,6 @@ import {
     ranges.forEach((range) => {
       const key = range.dataset.headerSurfaceField as HeaderSurfaceField;
       range.value = String(settings[profile][key]);
-      range.closest('.dev-field')?.toggleAttribute('hidden', false);
     });
     numbers.forEach((number) => {
       const key = number.dataset.headerSurfaceNumber as HeaderSurfaceField;
@@ -227,6 +223,7 @@ import {
     numbers.find((number) => number.dataset.headerSurfaceNumber === key)!.value = String(next);
     applySettings();
     persist();
+    if (status) status.textContent = '';
     return true;
   };
 
@@ -242,6 +239,12 @@ import {
   numbers.forEach((number) => number.addEventListener('change', () => {
     if (!setField(number.dataset.headerSurfaceNumber as HeaderSurfaceField, number.value)) syncProfile();
   }));
+  numbers.forEach((number) => number.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    if (!setField(number.dataset.headerSurfaceNumber as HeaderSurfaceField, number.value)) syncProfile();
+    number.blur();
+  }));
   previewButtons.forEach((button) => button.addEventListener('click', () => {
     const next = button.dataset.headerSurfacePreview;
     if (next === 'off' || next === 'start' || next === 'end') setPreview(next);
@@ -249,11 +252,10 @@ import {
 
   form.querySelector<HTMLButtonElement>('[data-header-surface-reset]')?.addEventListener('click', () => {
     settings[profile] = { ...HEADER_SURFACE_DEFAULTS[profile] };
-    const prefix = profile === 'mobile' ? '--header-surface-mobile-' : '--header-surface-';
-    HEADER_SURFACE_FIELDS.forEach((field) => root.style.removeProperty(`${prefix}${field.key.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`));
     syncProfile();
-    applyProfile(profile === 'desktop' ? 'mobile' : 'desktop');
+    applyProfile(profile);
     persist();
+    if (status) status.textContent = '';
   });
 
   form.addEventListener('submit', (event) => {
