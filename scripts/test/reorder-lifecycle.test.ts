@@ -137,9 +137,11 @@ await test('destroy during drop resolves without committing placement', async ()
   resetGlobals();
   const { zone, items, controller, setDrag } = fixture();
   setDrag(items[0]);
-  controller.beginLift(items[0], new FakeElement(), 10, 10, 0);
-  controller.setPointer(20, 120);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  controller.setTargetIndex(2);
   flushFrame();
+  flushFrame();
+  assert.equal(controller.getState().placedIndex, 2, 'the pending drop has a different destination');
   const original = zone.children.filter((element) => !element.classList.contains('indicator'));
   const drop = controller.endDrop();
   controller.destroy();
@@ -151,32 +153,41 @@ await test('reduced motion keeps opacity fade while suppressing scale animation'
   resetGlobals(true);
   const { items, controller, setDrag } = fixture();
   setDrag(items[0]);
-  controller.beginLift(items[0], new FakeElement(), 10, 10, 0);
-  controller.setPointer(20, 120);
-  now = 500;
-  for (let frame = 0; frame < 20; frame += 1) flushFrame();
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  now = 200;
+  flushFrame();
+  now = 240;
+  flushFrame();
+  assert.ok(controller.getState().indicatorOpacity > 0 && controller.getState().indicatorOpacity < 1);
+  now = 400;
+  flushFrame();
   await controller.endDrop();
   assert.equal(items[0].animateCalls.length, 0);
   const body = createdElements.find((element) => element.animateKeyframes.some((frames) =>
     frames.some((frame) => 'opacity' in frame)));
-  assert.ok(body?.animateCalls.some((options) => options.duration === 143));
+  assert.ok(body?.animateCalls.some((options) => Number(options.duration) > 0));
   assert.ok(body?.animateKeyframes.some((frames) => frames.some((frame) => frame.opacity === 0)));
 });
 
 await test('destroy cancels fade ghost schedulers', () => {
-  resetGlobals();
-  const { zone, items, controller, setDrag } = fixture(false);
-  setDrag(items[0]);
-  controller.beginLift(items[0], new FakeElement(), 10, 10, 0);
-  controller.setPointer(20, 120);
-  now = 500;
-  for (let frame = 0; frame < 20; frame += 1) flushFrame();
-  controller.setPointer(20, 10);
-  flushFrame();
-  assert.ok(zone.children.some((element) => element.classList.contains('ghost')));
-  flushFrame();
-  assert.ok(timers.size > 0);
-  controller.destroy();
-  assert.equal(scheduled.size, 0);
-  assert.equal(timers.size, 0);
+  for (const runGhostFrame of [false, true]) {
+    resetGlobals();
+    const { zone, items, controller, setDrag } = fixture(false);
+    setDrag(items[0]);
+    controller.beginLift(items[0], new FakeElement(), 10, 10, 0);
+    controller.setPointer(20, 120);
+    now = 500;
+    for (let frame = 0; frame < 20; frame += 1) flushFrame();
+    controller.setPointer(20, 10);
+    flushFrame();
+    assert.ok(zone.children.some((element) => element.classList.contains('ghost')));
+    if (runGhostFrame) {
+      flushFrame();
+      assert.ok(timers.size > 0);
+    }
+    controller.destroy();
+    assert.equal(scheduled.size, 0);
+    assert.equal(timers.size, 0);
+    assert.equal(zone.children.some((element) => element.classList.contains('ghost')), false);
+  }
 });

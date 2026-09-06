@@ -13,7 +13,7 @@ import Button from '../../ui/Button.astro';
     <Field label="Position">
       <input type="range" min="0" max="100" step="1" value="25" aria-label="Position" data-adaptive-position />
     </Field>
-    <div class="adaptive-ink-demo__status" aria-hidden="true" data-adaptive-status>Light</div>
+    <div class="adaptive-ink-demo__status" aria-live="polite" data-adaptive-status>Light</div>
     <div class="demo-actions"><Button label="Reset" type="button" data-adaptive-reset /></div>
   </section>
 </vcd-adaptive-ink-demo>
@@ -65,6 +65,7 @@ import Button from '../../ui/Button.astro';
         this.frame = undefined;
         if (signal.aborted) return;
         const coverRect = cover.getBoundingClientRect();
+        if (!coverRect.width || !coverRect.height) return;
         const halfWidth = label.offsetWidth / 2 / coverRect.width;
         const halfHeight = label.offsetHeight / 2 / coverRect.height;
         this.x = clamp(this.x, halfWidth, 1 - halfWidth);
@@ -76,13 +77,14 @@ import Button from '../../ui/Button.astro';
         const ground = groundForBox(label, cover, image, { width: coverRect.width, height: coverRect.height }, { width: image.naturalWidth, height: image.naturalHeight }, null);
         if (ground) {
           applyMediaGround(cover, ground);
-          status.textContent = ground === 'dark' ? 'Dark' : 'Light';
+          const value = ground === 'dark' ? 'Dark' : 'Light';
+          if (status.textContent !== value) status.textContent = value;
         }
       };
       const schedule = () => {
         if (this.frame === undefined) this.frame = requestAnimationFrame(paint);
       };
-      const clamp = (value: number) => Math.min(1, Math.max(0, value));
+      const clamp = (value: number, min = 0, max = 1) => Math.min(max, Math.max(min, value));
       const moveFromPointer = (event: PointerEvent) => {
         if (event.pointerId !== this.pointerId) return;
         const rect = cover.getBoundingClientRect();
