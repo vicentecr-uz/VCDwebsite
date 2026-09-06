@@ -12,7 +12,7 @@ INTERVAL="${BRANCH_SYNC_INTERVAL:-60}"
 DAEMON_MODE="${BRANCH_SYNC_DAEMON:-0}"
 STATE_URL="${BRANCH_SYNC_STATE_URL:-http://127.0.0.1:4321/api/dev-session-state}"
 SESSION_SCRIPT="${BRANCH_SYNC_SESSION_SCRIPT:-$ROOT/scripts/dev-session.sh}"
-BUN="$HOME/.bun/bin/bun"
+BUN="${BRANCH_SYNC_BUN:-$HOME/.bun/bin/bun}"
 
 pid_alive() {
   local pid="$1"
@@ -97,7 +97,7 @@ sync_once() {
 
   if [[ "$requires_restart" -eq 1 ]] && astro_running; then
     local state
-    if ! state="$(curl --silent --show-error --fail --max-time 2 "$STATE_URL" 2>/dev/null)" || ! grep -q '"editing":false' <<<"$state"; then
+    if ! state="$(curl --silent --show-error --fail --max-time 2 "$STATE_URL" 2>/dev/null)" || [[ "$state" != '{"editing":false,"clients":0}' ]]; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') runtime update deferred (authoring session active or state unavailable)"
       return 0
     fi
@@ -117,15 +117,15 @@ sync_once() {
       if [[ "$dependencies_changed" -eq 1 ]]; then
         if ! "$BUN" install --frozen-lockfile 2>&1; then
           echo "$(date '+%Y-%m-%d %H:%M:%S') dependency install failed"
-          [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+          if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
           return 1
         fi
       fi
-      [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+      if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
       reload_if_changed "$incoming_paths"
     else
       echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forward failed for $branch"
-      [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+      if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
     fi
     return 0
   fi
@@ -143,7 +143,7 @@ sync_once() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') pull --rebase failed for $branch (resolve manually)"
     git -C "$ROOT" rebase --abort 2>/dev/null || true
   fi
-  if [[ "$astro_stopped" -eq 1 ]]; then bash "$SESSION_SCRIPT" start-astro || true; fi
+  if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
   reload_if_changed "$incoming_paths"
 }
 
@@ -153,7 +153,10 @@ astro_running() {
 
 reload_if_changed() {
   [[ "$DAEMON_MODE" == 1 ]] || return 0
-  grep -qx 'scripts/branch-sync.sh' <<<"$1" && exec env BRANCH_SYNC_DAEMON=1 BRANCH_SYNC_INTERVAL="$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon
+  if grep -qx 'scripts/branch-sync.sh' <<<"$1"; then
+    exec env BRANCH_SYNC_DAEMON=1 BRANCH_SYNC_INTERVAL="$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon
+  fi
+  return 0
 }
 
 daemon_loop() {
