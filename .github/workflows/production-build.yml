@@ -22,8 +22,6 @@ jobs:
     env:
       CI: true
       ASTRO_TELEMETRY_DISABLED: 1
-      XDG_CONFIG_HOME: ${{ runner.temp }}/vcd-config
-      BUN_INSTALL_CACHE_DIR: ${{ runner.temp }}/vcd-bun-cache
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -41,7 +39,10 @@ jobs:
           bun-version-file: package.json
 
       - name: Create temporary config and cache paths
-        run: mkdir -p "$XDG_CONFIG_HOME" "$BUN_INSTALL_CACHE_DIR"
+        run: |
+          mkdir -p "$RUNNER_TEMP/vcd-config" "$RUNNER_TEMP/vcd-bun-cache"
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/vcd-config" >> "$GITHUB_ENV"
+          echo "BUN_INSTALL_CACHE_DIR=$RUNNER_TEMP/vcd-bun-cache" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: |
