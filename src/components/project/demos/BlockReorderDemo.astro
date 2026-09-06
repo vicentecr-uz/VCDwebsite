@@ -230,9 +230,10 @@ import Button from '../../ui/Button.astro';
       };
       const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
         if (this.controller?.isActive()) return;
+        const sourceIndex = items().indexOf(item);
         this.dragItem = item;
         this.dragHandle = handle;
-        this.controller?.beginLift(item, handle, x, y, items().indexOf(item), { followPointer });
+        this.controller?.beginLift(item, handle, x, y, sourceIndex, { followPointer });
         announce();
       };
       const dropOrPick = (item: HTMLElement, handle: HTMLButtonElement, event: KeyboardEvent) => {
