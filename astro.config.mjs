@@ -2107,7 +2107,7 @@ function contentSpacingDevWriter() {
  *
  * @returns {import('vite').Plugin}
  */
-function contentNavDevWriter() {
+export function contentNavDevWriter() {
 
   const isValidNavLink = (item) => (
     item &&
@@ -2180,12 +2180,15 @@ function contentNavDevWriter() {
           const nav = body.nav;
           const hasOutline = Object.prototype.hasOwnProperty.call(body, 'outline');
           const outlineInput = body.outline;
-          const sectionIds = body.sectionIds && typeof body.sectionIds === 'object'
-            ? body.sectionIds
-            : null;
-          const showTitles = body.showTitles && typeof body.showTitles === 'object'
-            ? body.showTitles
-            : null;
+          const hasSectionIds = Object.prototype.hasOwnProperty.call(body, 'sectionIds');
+          const hasShowTitles = Object.prototype.hasOwnProperty.call(body, 'showTitles');
+          if ((hasSectionIds && (!body.sectionIds || typeof body.sectionIds !== 'object' || Array.isArray(body.sectionIds)))
+            || (hasShowTitles && (!body.showTitles || typeof body.showTitles !== 'object' || Array.isArray(body.showTitles)))) {
+            send(400, { error: 'A section patch is invalid.' });
+            return;
+          }
+          const sectionIds = hasSectionIds ? body.sectionIds : null;
+          const showTitles = hasShowTitles ? body.showTitles : null;
 
           let outline = null;
           if (hasOutline && validateProjectOutline(outlineInput)) {
