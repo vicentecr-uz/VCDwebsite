@@ -645,7 +645,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       for (const [slug, item] of [...createdItems]) {
         if (selected.has(slug)) continue;
         item.remove();
-        createdItems.delete(slug);
       }
 
       for (const slug of [...selected]) {
@@ -657,7 +656,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           // Re-add lands at the end — expected; order dirtiness keeps Revert available.
           if (anchor) grid.insertBefore(detached, anchor);
           else grid.append(detached);
-          detachedItems.delete(slug);
           continue;
         }
 
@@ -675,7 +673,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         if (!slug || selected.has(slug)) continue;
         if (createdItems.has(slug)) {
           item.remove();
-          createdItems.delete(slug);
           continue;
         }
         detachedItems.set(slug, item);
@@ -721,8 +718,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         if (slug && !baseline.has(slug)) item.remove();
       }
 
-      detachedItems.clear();
-      createdItems.clear();
     };
 
     const syncPending = () => {
@@ -960,8 +955,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       baseline = new Set(selected);
       baselineOrder = captureGridOrder();
       baselinePagesOrder = pages.map((page) => page.slug);
-      detachedItems.clear();
-      createdItems.clear();
       for (const page of pages) {
         page.onGallery = selected.has(page.slug);
       }
