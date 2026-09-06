@@ -1,0 +1,179 @@
+---
+import alignCenterIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
+import alignLeftIcon from 'lucide-static/icons/align-left.svg?raw';
+import alignRightIcon from 'lucide-static/icons/align-right.svg?raw';
+import Button from '../../ui/Button.astro';
+import SelectField from '../../ui/SelectField.astro';
+---
+
+<vcd-select-demo>
+  <form class="select-demo" novalidate>
+    <div class="select-demo__surface">
+      <h1 class="select-demo__title">Select field</h1>
+
+      <SelectField
+        label="Alignment"
+        name="alignment"
+        value="center"
+        options={[
+          { value: 'left', label: 'Left', icon: alignLeftIcon },
+          { value: 'center', label: 'Centre', icon: alignCenterIcon },
+          { value: 'right', label: 'Right', icon: alignRightIcon },
+        ]}
+      />
+
+      <div class="select-demo__actions">
+        <Button label="Reset" type="button" data-select-demo-reset />
+      </div>
+
+      <div class="select-demo__specimen" role="img" aria-label="Centre alignment">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  </form>
+</vcd-select-demo>
+
+<style>
+  vcd-select-demo {
+    display: block;
+    width: min(100%, 28em);
+  }
+
+  .select-demo {
+    margin: 0;
+  }
+
+  .select-demo__surface {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-unit);
+    padding: calc(var(--space-unit) * 1.5);
+    overflow: visible;
+    color: var(--sys-color-on-srf);
+    background: var(--sys-color-srf);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--radius-card-smooth);
+    box-shadow: var(--dev-panel-shadow);
+  }
+
+  .select-demo__title {
+    margin: 0;
+    color: var(--sys-color-on-srf);
+    font: var(--dev-text-panel-title);
+  }
+
+  .select-demo__actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px;
+    margin: -8px;
+  }
+
+  .select-demo__actions :global(.dev-btn) {
+    --dev-btn-hit-inset: 8px;
+  }
+
+  .select-demo__specimen {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(var(--space-unit) * 0.5);
+    min-height: 5em;
+    padding: var(--space-unit);
+    background: var(--sys-color-srf-container-low);
+    border-radius: var(--radius-control-smooth);
+  }
+
+  .select-demo__specimen span {
+    display: block;
+    width: 58%;
+    height: 0.45em;
+    border-radius: 999px;
+    background: var(--sys-color-on-srf-variant);
+  }
+
+  .select-demo__specimen span:nth-child(2) {
+    width: 78%;
+  }
+
+  .select-demo__specimen span:nth-child(3) {
+    width: 45%;
+  }
+
+  vcd-select-demo[data-alignment='center'] .select-demo__specimen {
+    align-items: center;
+  }
+
+  vcd-select-demo[data-alignment='right'] .select-demo__specimen {
+    align-items: flex-end;
+  }
+
+  @media (max-width: 40em) {
+    .select-demo__surface {
+      padding: var(--space-unit);
+    }
+  }
+
+  @media (pointer: coarse) {
+    .select-demo :global(.dev-select__trigger),
+    .select-demo :global(.dev-select__option),
+    .select-demo :global(.dev-btn) {
+      min-height: 44px;
+    }
+  }
+</style>
+
+<script>
+  type DemoParts = {
+    root: HTMLElement;
+    form: HTMLFormElement;
+    select: HTMLSelectElement;
+    specimen: HTMLElement;
+    reset: HTMLButtonElement;
+  };
+
+  class SelectFieldDemo extends HTMLElement {
+    private controller?: AbortController;
+
+    connectedCallback() {
+      this.controller?.abort();
+      const controller = new AbortController();
+      this.controller = controller;
+      const { signal } = controller;
+      const form = this.querySelector<HTMLFormElement>('form');
+      const select = this.querySelector<HTMLSelectElement>('select.dev-select__native');
+      const specimen = this.querySelector<HTMLElement>('[role="img"]');
+      const reset = this.querySelector<HTMLButtonElement>('[data-select-demo-reset]');
+      if (!form || !select || !specimen || !reset) return;
+
+      const parts: DemoParts = { root: this, form, select, specimen, reset };
+      const sync = () => {
+        const alignment = parts.select.value || 'center';
+        parts.root.dataset.alignment = alignment;
+        const label = parts.select.options[parts.select.selectedIndex]?.textContent || 'Centre';
+        parts.specimen.setAttribute('aria-label', `${label} alignment`);
+      };
+
+      select.addEventListener('change', sync, { signal });
+      reset.addEventListener('click', () => form.reset(), { signal });
+      form.addEventListener('reset', () => {
+        queueMicrotask(() => {
+          if (!signal.aborted) sync();
+        });
+      }, { signal });
+      form.addEventListener('submit', (event) => event.preventDefault(), { signal });
+      sync();
+    }
+
+    disconnectedCallback() {
+      this.controller?.abort();
+      this.controller = undefined;
+    }
+  }
+
+  if (!customElements.get('vcd-select-demo')) {
+    customElements.define('vcd-select-demo', SelectFieldDemo);
+  }
+</script>
