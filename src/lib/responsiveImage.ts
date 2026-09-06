@@ -16,7 +16,7 @@ export interface ImageVariant {
   cx: number;
   /** Source point at the frame centre, 0–1 of natural height. */
   cy: number;
-  /** Fraction of the source WIDTH the frame spans. 1 = fit width, 0.5 = 2× zoom. */
+  /** Fraction of source width spanned by the frame. Values above 1 scale unlocked images below fit. */
   w: number;
 }
 

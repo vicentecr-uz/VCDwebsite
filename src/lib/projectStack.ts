@@ -1,7 +1,30 @@
-/** Vertical rhythm between project page sections (parent-owned stack). */
-export type ProjectStackSpacing = 'related' | 'group' | 'section' | 'major' | 'none';
+import {
+  PROJECT_STACK_SPACING_VALUES,
+  canonicalizeProjectStackSpacing,
+  isProjectStackSpacingValue,
+  resolveProjectStackSpacing,
+  setProjectStackSpacingAtViewport,
+} from './projectStackSpacing.js';
 
-const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacing, number> = {
+/** Vertical rhythm between project page sections (parent-owned stack). */
+export type ProjectStackSpacingValue = (typeof PROJECT_STACK_SPACING_VALUES)[number];
+export type ProjectStackSpacingViewport = 'desktop' | 'tablet' | 'mobile';
+export type ProjectStackSpacing =
+  | ProjectStackSpacingValue
+  | Partial<Record<ProjectStackSpacingViewport, ProjectStackSpacingValue>>;
+export type ProjectStackSpacingResolved = Record<
+  ProjectStackSpacingViewport,
+  ProjectStackSpacingValue
+>;
+
+export {
+  canonicalizeProjectStackSpacing,
+  isProjectStackSpacingValue,
+  resolveProjectStackSpacing,
+  setProjectStackSpacingAtViewport,
+};
+
+const PROJECT_STACK_SPACING_ORDER: Record<ProjectStackSpacingValue, number> = {
   none: 0,
   related: 1,
   group: 2,
@@ -21,7 +44,7 @@ export const shouldKeepLeadingSpacingSeam = (
 };
 
 export type ProjectStackSpacingReorder = {
-  values: ProjectStackSpacing[];
+  values: ProjectStackSpacingValue[];
   /** Original seam index supplying each value; null means a generated default seam. */
   origins: Array<number | null>;
 };
@@ -30,7 +53,7 @@ export type ProjectStackInsertionSide = 'before' | 'after';
 
 /** Values stay with block identities; `destinationSide` chooses which side keeps the authored seam. */
 export function reorderProjectStackSpacingSeams(
-  spacings: ProjectStackSpacing[],
+  spacings: ProjectStackSpacingValue[],
   sourceIndex: number,
   insertIndex: number,
   destinationSide?: ProjectStackInsertionSide,
@@ -98,10 +121,10 @@ export function reorderProjectStackSpacingSeams(
 }
 
 export function reorderProjectStackSpacings(
-  spacings: ProjectStackSpacing[],
+  spacings: ProjectStackSpacingValue[],
   sourceIndex: number,
   insertIndex: number,
-): ProjectStackSpacing[] {
+): ProjectStackSpacingValue[] {
   return reorderProjectStackSpacingSeams(spacings, sourceIndex, insertIndex).values;
 }
 
@@ -109,12 +132,11 @@ export function projectStackClass(
   spacing: ProjectStackSpacing = 'section',
   options?: { precedeRelated?: boolean; flush?: boolean },
 ): string {
+  const resolved = resolveProjectStackSpacing(spacing);
   const classes: string[] = [];
-  if (spacing === 'related') classes.push('project-stack--related');
-  else if (spacing === 'group') classes.push('project-stack--group');
-  else if (spacing === 'section') classes.push('project-stack--section');
-  else if (spacing === 'major') classes.push('project-stack--major');
-  else if (spacing === 'none') classes.push('project-stack--none');
+  classes.push(`project-stack--${resolved.desktop}`);
+  if (resolved.tablet !== resolved.desktop) classes.push(`project-stack--tablet-${resolved.tablet}`);
+  if (resolved.mobile !== resolved.tablet) classes.push(`project-stack--mobile-${resolved.mobile}`);
   if (options?.precedeRelated) classes.push('project-stack--precede-related');
   if (options?.flush) classes.push('project-stack--flush');
   return classes.join(' ');
@@ -158,9 +180,11 @@ export function spacingDevAttrs(
   spacing: ProjectStackSpacing,
 ): Record<string, string> | undefined {
   if (!import.meta.env.DEV || !documentKey || !sectionPath?.length) return undefined;
+  const resolved = resolveProjectStackSpacing(spacing);
   return {
     'data-dev-spacing-document': documentKey,
     'data-dev-spacing-path': JSON.stringify([...sectionPath, 'spacing']),
-    'data-dev-spacing-value': spacing,
+    'data-dev-spacing-value': resolved.desktop,
+    'data-dev-spacing-values': JSON.stringify(resolved),
   };
 }

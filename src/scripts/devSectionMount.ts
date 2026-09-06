@@ -35,23 +35,9 @@ import {
   serializeCarouselSettings,
   type CarouselSettingsSource,
 } from '../lib/projectImageCarouselSettings';
-
-type SpacingValue = 'related' | 'group' | 'section' | 'major' | 'none';
-
-const STACK_CLASS: Record<SpacingValue, string | null> = {
-  related: 'project-stack--related',
-  group: 'project-stack--group',
-  section: 'project-stack--section',
-  major: 'project-stack--major',
-  none: 'project-stack--none',
-};
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../lib/projectStack';
 
 export type MountedSection = Record<string, unknown>;
-
-const spacingClassName = (spacing: string) => {
-  const stack = STACK_CLASS[spacing as SpacingValue];
-  return stack ? `project-block ${stack}` : 'project-block';
-};
 
 const appendEditTriggers = (target: HTMLElement) => {
   const caption = document.createElement('button');
@@ -163,19 +149,18 @@ export function mountImageSection(
   documentKey: string,
   index: number,
 ): HTMLElement {
-  const spacing = String(section.spacing ?? 'section');
+  const spacing = (section.spacing ?? 'section') as ProjectStackSpacing;
   const sectionPath = ['sections', index];
   const resolvedConstrained = resolveImageGridConstrained(section.constrained as never);
   const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
   const maxVh = resolveMaxVh(section);
   const block = document.createElement('div');
   block.className = [
-    spacingClassName(spacing),
+    'project-block',
+    projectStackClass(spacing),
     (hasWidthConstraint || maxVh || section.centered === true) && 'project-block--centered',
   ].filter(Boolean).join(' ');
-  block.setAttribute('data-dev-spacing-document', documentKey);
-  block.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));
-  block.setAttribute('data-dev-spacing-value', spacing);
+  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing));
   block.setAttribute('data-dev-section-deletable', 'image');
   block.append(buildInlineImageFigure(section, documentKey, sectionPath));
   return block;
@@ -186,7 +171,7 @@ export function mountImageGridSection(
   documentKey: string,
   index: number,
 ): HTMLElement {
-  const spacing = String(section.spacing ?? 'section');
+  const spacing = (section.spacing ?? 'section') as ProjectStackSpacing;
   const sectionPath = ['sections', index];
   const items = Array.isArray(section.items) ? section.items as MountedSection[] : [];
   const columns = resolveImageGridColumns(section.columns as never);
@@ -208,7 +193,7 @@ export function mountImageGridSection(
   grid.className = [
     'project-image-grid',
     matchHeight && 'project-image-grid--match-height',
-    STACK_CLASS[spacing as SpacingValue] ?? null,
+    projectStackClass(spacing),
   ].filter(Boolean).join(' ');
   grid.style.cssText = `${imageGridColumnsStyle(columns)};${imageGridConstrainedStyle(constrained)};`;
   grid.setAttribute('data-match-height', matchHeight ? 'true' : 'false');
@@ -221,9 +206,7 @@ export function mountImageGridSection(
   grid.setAttribute('data-dev-grid-match-height', matchHeight ? 'true' : 'false');
   grid.setAttribute('data-dev-grid-layouts', JSON.stringify(layouts));
   grid.setAttribute('data-dev-grid-items', JSON.stringify(editorItems));
-  grid.setAttribute('data-dev-spacing-document', documentKey);
-  grid.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));
-  grid.setAttribute('data-dev-spacing-value', spacing);
+  applyDataAttrs(grid, spacingDevAttrs(documentKey, sectionPath, spacing));
   grid.setAttribute('data-dev-section-deletable', 'imageGrid');
 
   const gridEdit = document.createElement('button');
@@ -305,7 +288,7 @@ function mountImageCarouselSection(
   documentKey: string,
   index: number,
 ): HTMLElement {
-  const spacing = String(section.spacing ?? 'section');
+  const spacing = (section.spacing ?? 'section') as ProjectStackSpacing;
   const sectionPath = ['sections', index];
   const items = Array.isArray(section.items) ? section.items as MountedSection[] : [];
   const constrained = resolveImageGridConstrained(section.constrained as never);
@@ -354,7 +337,7 @@ function mountImageCarouselSection(
   const block = document.createElement('div');
   block.className = [
     'project-image-carousel',
-    STACK_CLASS[spacing as SpacingValue] ?? null,
+    projectStackClass(spacing),
     'dev-carousel-edit-target',
   ].filter(Boolean).join(' ');
   block.style.cssText = [
@@ -380,9 +363,7 @@ function mountImageCarouselSection(
   block.setAttribute('data-dev-carousel-items', JSON.stringify(editorItems));
   block.setAttribute('data-dev-carousel-visible', JSON.stringify(visibleIds));
   block.setAttribute('data-dev-carousel-settings', JSON.stringify(settingsJson));
-  block.setAttribute('data-dev-spacing-document', documentKey);
-  block.setAttribute('data-dev-spacing-path', JSON.stringify([...sectionPath, 'spacing']));
-  block.setAttribute('data-dev-spacing-value', spacing);
+  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing));
   block.setAttribute('data-dev-section-deletable', 'imageCarousel');
 
   const editTrigger = document.createElement('button');

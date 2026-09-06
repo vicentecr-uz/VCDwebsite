@@ -25,6 +25,7 @@ const statusIcons = {
 const openPageIconSvg = sizeIcon(squareArrowRightEnterIcon, 14);
 const visibilityOptions = [
   { value: 'published', label: 'Public', icon: globeIcon },
+  { value: 'image', label: 'Image', icon: imageIcon },
   { value: 'teaser', label: 'Teaser', icon: eyeOffIcon },
   { value: 'draft', label: 'Draft', icon: filePenIcon },
 ];
@@ -98,9 +99,9 @@ const visibilityOptions = [
 </DevOverlay>
 
 <script>
-  // #182 — measurement lives in its own module (coverLuminance.ts) so #172 can
-  // lift it verbatim for runtime sampling later. The rest of this file's
-  // script is `define:vars` (inline, no `import`), so this one hands the
+  // Measurement lives in coverLuminance.ts so authoring and runtime sampling
+  // share one threshold. The rest of this file's script is `define:vars`
+  // (inline, no `import`), so this one hands the
   // function across on `window` instead of sharing scope directly.
   //
   // Must stay a plain <script>: Astro only bundles and rewrites imports for
@@ -109,10 +110,10 @@ const visibilityOptions = [
   // (/work -> /scripts/coverLuminance, 404), so the module never ran and every
   // drop silently took the `dark` fallback.
   import {
-    coverBoxRegionToSourceRegion,
     isRegionDark,
-    measureRegionLuma,
+    measureRenderedRegionLuma,
   } from '../scripts/coverLuminance';
+  import { cropHostFor, readCropVars } from '../scripts/adaptiveMediaInk';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import 'color-dialog-box';
 
@@ -147,15 +148,18 @@ const visibilityOptions = [
         el.src = objectUrl;
       });
 
-      // The hover image always renders through plain `object-fit: cover`
-      // (ProjectGrid.astro never wraps it in `.project-crop-clip`, unlike the
-      // base cover) — so this projection is exact, not an approximation.
-      const sourceRegion = coverBoxRegionToSourceRegion(
+      const crop = cover.classList.contains('project-grid__cover--hover-cropped')
+        ? readCropVars(cropHostFor(cover) ?? cover, true)
+        : null;
+      const background = item.dataset.devBg || getComputedStyle(cover).backgroundColor;
+      const luma = measureRenderedRegionLuma(
+        img,
         region,
         { width: coverRect.width, height: coverRect.height },
         { width: img.naturalWidth, height: img.naturalHeight },
+        crop,
+        background,
       );
-      const luma = measureRegionLuma(img, sourceRegion);
       return isRegionDark(luma);
     } catch {
       return null;
@@ -474,7 +478,7 @@ const visibilityOptions = [
   const buildSavePayload = (slug, grid, draft) => {
     const listings = {};
     listings[grid] = buildListingPayload(grid, draft.listing, draft.status);
-    const nextSlug = String(draft.slug || slug).trim();
+    const nextSlug = draft.status === 'image' ? slug : String(draft.slug || slug).trim();
     return {
       slug,
       ...(nextSlug && nextSlug !== slug ? { newSlug: nextSlug } : {}),
@@ -541,7 +545,9 @@ const visibilityOptions = [
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
-      cover.style.backgroundColor = listing.bg || '#efefef';
+      const background = listing.bg || '#efefef';
+      cover.style.setProperty('--project-grid-background', background);
+      cover.style.backgroundColor = background;
       cover.classList.toggle('project-grid__cover--has-hover', Boolean(listing.hoverImage));
       // #176 — the empty state is server-rendered, so it has to be re-derived
       // here or the "Drop cover image" label and its wash sit on top of the
@@ -709,7 +715,6 @@ const visibilityOptions = [
         card.replaceWith(div);
         card = div;
       }
-      item.querySelector('.project-grid__chips--end-bottom')?.remove();
     } else if (card instanceof HTMLAnchorElement) {
       card.href = `/${slug}`;
       if (status === 'teaser') {
@@ -731,6 +736,7 @@ const visibilityOptions = [
       cover.dataset.devCoverDrop = slug;
       cover.dataset.devListingCover = grid;
       cover.dataset.devCoverEmpty = 'true';
+      cover.style.setProperty('--project-grid-background', emptyCoverFill);
       cover.style.backgroundColor = emptyCoverFill;
     }
 
@@ -883,6 +889,9 @@ const visibilityOptions = [
   const renderPanelFromEntry = (entry) => {
     if (statusSelect instanceof HTMLSelectElement) {
       statusSelect.value = entry.draft.status;
+    }
+    if (slugWrap instanceof HTMLElement) {
+      slugWrap.hidden = entry.draft.status === 'image';
     }
     if (slugInput instanceof HTMLInputElement) {
       slugInput.value = entry.draft.slug || panelSlug || '';
@@ -1405,6 +1414,7 @@ const visibilityOptions = [
     try {
       const entry = await ensureLoaded(slug, item);
       entry.draft.status = status;
+      if (status === 'image') entry.draft.slug = slug;
       closeAllStatusMenus();
       syncPendingFor(slug);
       if (panelSlug === slug) {
@@ -1690,6 +1700,9 @@ const visibilityOptions = [
       entry.draft.status = statusSelect instanceof HTMLSelectElement
         ? statusSelect.value
         : entry.draft.status;
+      if (entry.draft.status === 'image') entry.draft.slug = panelSlug;
+      if (slugWrap instanceof HTMLElement) slugWrap.hidden = entry.draft.status === 'image';
+      clearSlugError();
       applyListingPreview(entry.item, entry.draft, entry.grid);
       syncPanelActionButtons();
     }
@@ -1768,7 +1781,7 @@ const visibilityOptions = [
     const entry = caches.get(panelSlug);
     if (!entry) return;
     const nextSlug = String(entry.draft.slug || '').trim();
-    if (!/^[a-z0-9-]+$/.test(nextSlug)) {
+    if (entry.draft.status !== 'image' && !/^[a-z0-9-]+$/.test(nextSlug)) {
       shakeSlugError('Lowercase letters, numbers, hyphens.');
       return;
     }
@@ -1854,7 +1867,9 @@ const visibilityOptions = [
         await promoteLiveCoverOnSave(slug, entry);
         await promoteLiveHoverOnSave(slug, entry);
         entry.saved = structuredClone(entry.draft);
-        const nextSlug = String(entry.draft.slug || slug).trim();
+        const nextSlug = entry.draft.status === 'image'
+          ? slug
+          : String(entry.draft.slug || slug).trim();
         if (nextSlug && nextSlug !== slug) {
           rekeyProjectSlug(entry.item, slug, nextSlug);
           caches.delete(slug);
@@ -2018,6 +2033,10 @@ const visibilityOptions = [
     display: grid;
     gap: 4px;
     width: 100%;
+  }
+
+  .dev-project-settings__slug-wrap[hidden] {
+    display: none;
   }
 
   .dev-project-settings__slug-error {
