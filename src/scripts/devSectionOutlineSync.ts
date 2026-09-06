@@ -2,6 +2,7 @@ import {
   deriveNavFromOutline,
   normalizeOutline,
   outlineAnchorId,
+  outlineFromNav,
   insertOutlineEntriesAtPagePosition,
   reorderOutlinePreservingGroups,
   type OutlineEntry,
@@ -45,13 +46,6 @@ const sectionIndexFromPath = (pathRaw: string | undefined) => {
   return path[1];
 };
 
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'section';
-
 const isEditableBlock = (el: Element | null): el is HTMLElement => {
   if (!(el instanceof HTMLElement)) return false;
   if (!el.closest(mainScope)) return false;
@@ -61,9 +55,17 @@ const isEditableBlock = (el: Element | null): el is HTMLElement => {
 
 const editableBlocks = () =>
   [
+    ...document.querySelectorAll<HTMLElement>(`${mainScope} [data-dev-spacing-write-path]`),
     ...document.querySelectorAll<HTMLElement>(`${mainScope} [data-dev-spacing-path]`),
     ...document.querySelectorAll<HTMLElement>(`${mainScope} .section-block[id]`),
-  ].filter((el, index, all) => all.indexOf(el) === index && isEditableBlock(el));
+  ].filter((el, index, all) => {
+    if (all.indexOf(el) !== index || !isEditableBlock(el)) return false;
+    const writeRoot = el.closest('[data-dev-spacing-write-path]');
+    if (writeRoot && writeRoot !== el) return false;
+    const spacingRoot = el.closest('[data-dev-spacing-path]');
+    if (spacingRoot && spacingRoot !== el) return false;
+    return true;
+  });
 
 const pageIndexForId = (id: string) => {
   if (!id) return Number.POSITIVE_INFINITY;
@@ -114,7 +116,7 @@ export function remapDevSectionOutlineId(clientId: string, serverId: string) {
       continue;
     }
     if (entry.kind !== 'section') continue;
-    if (outlineAnchorId(entry) !== clientId && entry.id !== clientId) continue;
+    if (outlineAnchorId(entry) !== clientId) continue;
     outline[i] = { ...entry, anchor: serverId };
   }
   const block = document.getElementById(clientId);
@@ -205,11 +207,16 @@ export function syncDevSectionOutlineSidebar() {
     el.dataset.navLabel = link.label;
     const anchor = el.querySelector('a');
     if (anchor) {
-      anchor.href = `#${link.id}`;
-      anchor.textContent = link.label;
-      anchor.className = rootLink
+      const href = `#${link.id}`;
+      if (anchor.getAttribute('href') !== href) anchor.setAttribute('href', href);
+      if (anchor.textContent !== link.label) anchor.textContent = link.label;
+      const baseClass = rootLink
         ? 'section-sidebar-nav__link section-sidebar-nav__root-link'
         : 'section-sidebar-nav__link';
+      const activeClass = anchor.classList.contains('is-active') ? ' is-active' : '';
+      if (anchor.className !== `${baseClass}${activeClass}`) {
+        anchor.className = `${baseClass}${activeClass}`;
+      }
     }
     return el;
   };
@@ -223,6 +230,7 @@ export function syncDevSectionOutlineSidebar() {
       groupEl.className = 'section-sidebar-nav__group-item';
       groupEl.setAttribute('data-section-nav-group', '');
       const details = document.createElement('details');
+      details.className = 'section-sidebar-nav__group';
       const summary = document.createElement('summary');
       summary.className = 'section-sidebar-nav__summary';
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -250,7 +258,7 @@ export function syncDevSectionOutlineSidebar() {
     if (labelEl) labelEl.textContent = group.label;
     const details = groupEl.querySelector('details');
     if (details) {
-      clearGroupAnimState(groupEl);
+      if (isNewGroup) clearGroupAnimState(groupEl);
       if (openStateById.has(markerId)) {
         details.open = openStateById.get(markerId) !== false;
       } else if (editorMode && isNewGroup) {
@@ -274,17 +282,17 @@ export function syncDevSectionOutlineSidebar() {
       const groupLinks = new Set<HTMLElement>();
       for (const child of group.children) {
         const linkEl = ensureLink(child, false);
-        childList.append(linkEl);
+        if (childList.children[groupLinks.size] !== linkEl) childList.append(linkEl);
         groupLinks.add(linkEl);
       }
       [...childList.children].forEach((child) => {
         if (child instanceof HTMLElement && !groupLinks.has(child)) child.remove();
       });
-      list.append(groupEl);
+      if (list.children[itemIndex] !== groupEl) list.append(groupEl);
       kept.add(groupEl);
     } else {
       const linkEl = ensureLink(item as NavLink, true);
-      list.append(linkEl);
+      if (list.children[itemIndex] !== linkEl) list.append(linkEl);
       kept.add(linkEl);
     }
   });
@@ -342,7 +350,7 @@ const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
     const sectionId = String(detail.sectionId || '').trim();
     if (sectionId) {
       const kept = outline.filter(
-        (entry) => outlineAnchorId(entry) !== sectionId && entry.id !== sectionId,
+        (entry) => outlineAnchorId(entry) !== sectionId,
       );
       outline.length = 0;
       outline.push(...kept);
@@ -360,33 +368,7 @@ const loadOutlineFromRoot = () => {
   let next = normalizeOutline(parseJson(root.dataset.sectionOutline, []));
   if (!hasOutlineDataset) {
     const nav = parseJson<NavItem[]>(root.dataset.sectionNav, []);
-    for (const item of nav) {
-      if (item && typeof item === 'object' && 'children' in item) {
-        const group = item as NavGroup;
-        next.push({
-          kind: 'group',
-          id: slugify(group.label),
-          label: group.label,
-          defaultOpen: group.defaultOpen !== false,
-          anchor: group.children[0]?.id,
-        });
-        for (const child of group.children) {
-          next.push({
-            kind: 'section',
-            id: child.id,
-            label: child.label,
-            anchor: child.id,
-          });
-        }
-      } else if (item && 'id' in item) {
-        next.push({
-          kind: 'section',
-          id: item.id,
-          label: item.label,
-          anchor: item.id,
-        });
-      }
-    }
+    next = outlineFromNav(nav);
   }
   outline.length = 0;
   outline.push(...next);
@@ -430,21 +412,6 @@ export function initDevSectionOutlineSync() {
     syncOutlineForStructureChange(event.detail ?? { action: 'delete' });
   }) as EventListener, { signal });
 
-  window.addEventListener('vcd:dev-section-outline-label', ((event: CustomEvent<{
-    document?: string;
-    sectionId?: string;
-    label?: string;
-  }>) => {
-    const { document: doc, sectionId, label } = event.detail ?? {};
-    if ((doc && doc !== documentKey) || !sectionId || !label?.trim()) return;
-    for (let i = 0; i < outline.length; i += 1) {
-      const entry = outline[i];
-      if (entry.kind !== 'section') continue;
-      if (outlineAnchorId(entry) !== sectionId && entry.id !== sectionId) continue;
-      outline[i] = { ...entry, label: label.trim() };
-    }
-    syncDevSectionOutlineSidebar();
-  }) as EventListener, { signal });
 }
 
 if (import.meta.hot) {
