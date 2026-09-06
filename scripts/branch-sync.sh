@@ -123,6 +123,7 @@ sync_once() {
       [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
     else
       echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forward failed for $branch"
+      [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
     fi
     return 0
   fi
