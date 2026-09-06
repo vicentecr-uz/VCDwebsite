@@ -13,7 +13,6 @@ import squareArrowRightEnterIcon from 'lucide-static/icons/square-arrow-right-en
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
-import { pageHistory, registerHistoryScope } from '../lib/devHistory';
 
 const teaserPassword = getTeaserPassword();
 const statusIcons = {
@@ -117,6 +116,10 @@ const visibilityOptions = [
   import { cropHostFor, readCropVars } from '../scripts/adaptiveMediaInk';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import 'color-dialog-box';
+  import { pageHistory, registerHistoryScope } from '../lib/devHistory';
+
+  window.__vcdPageHistory = pageHistory;
+  window.__vcdRegisterHistoryScope = registerHistoryScope;
 
   window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
 
@@ -233,6 +236,8 @@ const visibilityOptions = [
   let panelSlug = '';
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
   const caches = new Map();
+  const pageHistory = window.__vcdPageHistory;
+  const registerHistoryScope = window.__vcdRegisterHistoryScope;
   let historyScope = null;
   let unregisterHistoryScope = null;
   const panelFieldBefore = new Map();
@@ -1627,8 +1632,10 @@ const visibilityOptions = [
     if (!(item instanceof HTMLElement) || !slug) return;
     void (async () => {
       try {
-        await ensureLoaded(slug, item);
+        const entry = await ensureLoaded(slug, item);
+        const before = structuredClone(entry.draft);
         syncPendingFor(slug);
+        pushEntryHistory(entry, before, structuredClone(entry.draft), 'Edit card text', `inline:${slug}:${target.dataset.devProjectTitle !== undefined ? 'title' : target.dataset.devProjectSubtitle !== undefined ? 'subtitle' : 'teaser'}`);
       } catch (error) {
         window.alert(error instanceof Error ? error.message : 'Could not stage that edit.');
       }
@@ -1654,9 +1661,6 @@ const visibilityOptions = [
     normalizeEmptyEditable(target);
     const item = target.closest('[data-dev-project-slug]');
     const slug = item?.getAttribute('data-dev-project-slug');
-    const before = item instanceof HTMLElement ? inlineEditBefore.get(item) : null;
-    const entry = slug ? caches.get(slug) : null;
-    if (entry && before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Edit card text', `inline:${slug}:${target.dataset.devProjectTitle !== undefined ? 'title' : target.dataset.devProjectSubtitle !== undefined ? 'subtitle' : 'teaser'}`);
     if (item instanceof HTMLElement) inlineEditBefore.delete(item);
   });
 
@@ -1947,17 +1951,18 @@ const visibilityOptions = [
     syncPanelActionButtons();
   });
 
-  window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+  window.addEventListener('vcd:dev-pending-committed', (event) => {
     void (async () => {
       const ids = event.detail?.ids;
       for (const [slug, entry] of [...caches.entries()]) {
         if (Array.isArray(ids) && !ids.includes(pendingId(slug, entry.grid))) continue;
+        const savedSnapshot = structuredClone(entry.draft);
         await promoteLiveCoverOnSave(slug, entry);
         await promoteLiveHoverOnSave(slug, entry);
-        entry.saved = structuredClone(entry.draft);
-        const nextSlug = entry.draft.status === 'image'
+        entry.saved = savedSnapshot;
+        const nextSlug = savedSnapshot.status === 'image'
           ? slug
-          : String(entry.draft.slug || slug).trim();
+          : String(savedSnapshot.slug || slug).trim();
         if (nextSlug && nextSlug !== slug) {
           rekeyProjectSlug(entry.item, slug, nextSlug);
           caches.delete(slug);
@@ -1977,7 +1982,7 @@ const visibilityOptions = [
       }
       syncPanelActionButtons();
     })();
-  }) as EventListener);
+  });
 
   window.addEventListener('vcd:dev-listing-src', (event) => {
     const { slug, slot, src } = event.detail ?? {};
