@@ -1,5 +1,8 @@
 import { resolveImageGridConstrained } from './responsiveImage';
 
+/** Applies both the server and dev/HMR adaptive column paths in Layout. */
+export const ADAPTIVE_PAGE_COLUMNS_ENABLED = false;
+
 /**
  * Section types that render a media block. Everything else is text and caps at
  * `--page-text-max-width`. Kept as an explicit list rather than "not text" so a
@@ -42,7 +45,7 @@ const blockWidth = (section: Record<string, unknown>, type: string): string | nu
 };
 
 /**
- * Inline style for `#site-wrapper`, carrying two things:
+ * Resolves the adaptive inline style for `#site-wrapper`, carrying two things:
  *
  * - `--page-max-width`: the column the page needs — the widest block on it,
  *   floored at the text column. A page with no media pulls its gutter (and the
