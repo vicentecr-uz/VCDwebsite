@@ -1,0 +1,30 @@
+import { mkdtempSync, writeFileSync, mkdirSync, copyFileSync, chmodSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+
+const root = mkdtempSync(path.join(tmpdir(), 'vcd-branch-sync-'));
+const bare = path.join(root, 'origin.git');
+const work = path.join(root, 'work');
+const run = (cwd, ...args) => {
+  const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+  return result.stdout.trim();
+};
+run(root, 'init', '--bare', bare);
+mkdirSync(work);
+run(work, 'init');
+run(work, 'config', 'user.email', 'test@example.com');
+run(work, 'config', 'user.name', 'Test');
+writeFileSync(path.join(work, 'README.md'), 'initial\n');
+run(work, 'add', '.'); run(work, 'commit', '-m', 'initial');
+run(work, 'branch', '-M', 'main'); run(work, 'remote', 'add', 'origin', bare); run(work, 'push', '-u', 'origin', 'main');
+const peer = path.join(root, 'peer'); run(root, 'clone', bare, peer); run(peer, 'config', 'user.email', 'test@example.com'); run(peer, 'config', 'user.name', 'Test');
+writeFileSync(path.join(peer, 'src-safe.txt'), 'content\n'); run(peer, 'add', '.'); run(peer, 'commit', '-m', 'content'); run(peer, 'push');
+mkdirSync(path.join(work, 'scripts'));
+const script = path.join(work, 'scripts/branch-sync.sh');
+copyFileSync(path.resolve('scripts/branch-sync.sh'), script); chmodSync(script, 0o755);
+const result = spawnSync(script, ['once'], { cwd: work, encoding: 'utf8', env: { ...process.env, BRANCH_SYNC_STATE_URL: 'http://127.0.0.1:1/unavailable', BRANCH_SYNC_SESSION_SCRIPT: path.join(work, 'session.sh') } });
+if (result.status !== 0) throw new Error(result.stderr || result.stdout);
+if (run(work, 'rev-parse', 'HEAD') !== run(peer, 'rev-parse', 'HEAD')) throw new Error('safe update did not advance');
+console.log('branch-sync fixture smoke test passed');
