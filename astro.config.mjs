@@ -1501,7 +1501,7 @@ const outlineAnchorId = (entry) => {
 };
 
 /** Keep project outline in sync with sectionTitle insert/delete in one write. */
-const syncOutlineForSectionMutation = (data, { action, section, index }) => {
+export const syncOutlineForSectionMutation = (data, { action, section, index }) => {
   if (!data || typeof data !== 'object') return;
   if (!Array.isArray(data.outline)) data.outline = [];
 
@@ -1510,9 +1510,11 @@ const syncOutlineForSectionMutation = (data, { action, section, index }) => {
     if (!anchor) return;
     section.sectionId = section.sectionId || anchor;
     const label = String(section.title || 'Section title').trim() || 'Section title';
-    data.outline = data.outline.filter(
-      (entry) => outlineAnchorId(entry) !== anchor && entry?.id !== anchor,
-    );
+    data.outline = data.outline.filter((entry) => {
+      const isLegacyGroup = entry?.kind === 'group'
+        || (entry?.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen'));
+      return isLegacyGroup || outlineAnchorId(entry) !== anchor;
+    });
 
     // Page order from sections[] (caller already spliced the new section in).
     const pageIndexForId = (id) => {
@@ -1549,9 +1551,7 @@ const syncOutlineForSectionMutation = (data, { action, section, index }) => {
         .filter(Boolean),
     );
     if (!anchors.size) return;
-    data.outline = data.outline.filter(
-      (entry) => !anchors.has(outlineAnchorId(entry)) && !anchors.has(String(entry?.id || '')),
-    );
+    data.outline = data.outline.filter((entry) => !anchors.has(outlineAnchorId(entry)));
   }
 };
 
