@@ -13,7 +13,7 @@ export type NormalizedRegion = { x: number; y: number; w: number; h: number };
  * stay on dark ink longer over mid-tones; lower = flip to light ink sooner.
  * Wired via `isRegionDark` → `adaptiveMediaInk` → `bindGalleryMediaInk`.
  */
-export const HOVER_LUMA_THRESHOLD = 0.7;
+export const HOVER_LUMA_THRESHOLD = 0.6;
 
 /** Long edge of the offscreen sample canvas, in px. Luminance only needs a
  * coarse read — this keeps the decode + pixel walk cheap. */
