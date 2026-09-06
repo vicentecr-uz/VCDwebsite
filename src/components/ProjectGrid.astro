@@ -139,10 +139,12 @@ const gridCardTemplateSeed: ProjectGridItem = {
     object-fit: cover;
   }
 
-  /* Hover fades in over the cover — cover stays opaque so the page ground
-     never flashes through. Distinct from the drop-replace crossfade further
+  /* Hover image and its project-colour backing fade as one event. The backing
+     sits above the cover so alpha in a PNG reveals the authored project colour,
+     never the cover bitmap. Distinct from the drop-replace crossfade further
      down (0.55s) — that one is a destructive edit and wants weight; this is
      a browsing gesture and reads sluggish at the same speed. */
+  .project-grid__cover--has-hover .project-grid__hover-background,
   .project-grid__cover--has-hover .project-grid__img--hover {
     transition:
       opacity 0.2s ease,
@@ -155,6 +157,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     way in and snaps back on the way out. Same 0.2s as the hover fade above —
     it is the same visual event, just driven by a chip instead of a pointer.
   */
+  html.is-dev-mode .project-grid__cover .project-grid__hover-background,
   html.is-dev-mode .project-grid__cover .project-grid__img--hover {
     transition:
       opacity 0.2s ease,
@@ -167,8 +170,21 @@ const gridCardTemplateSeed: ProjectGridItem = {
     transition: opacity 0.2s ease;
   }
 
-  .project-grid__img--hover {
+  .project-grid__hover-background {
+    position: absolute;
+    inset: 0;
     z-index: 1;
+    background-color: var(--project-grid-background);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity 0.2s ease,
+      visibility 0s linear 0.2s;
+  }
+
+  .project-grid__img--hover {
+    z-index: 2;
     opacity: 0;
     /* opacity:0 still composites; visibility:hidden stops a 1px Safari leak
        at the cover's bottom edge while the overlay is meant to be off. */
@@ -183,7 +199,10 @@ const gridCardTemplateSeed: ProjectGridItem = {
      Specificity must beat `html.is-dev-mode .project-grid__cover .project-grid__img--hover`
      above: that rule's delayed visibility (for fade-out) otherwise wins on the
      way in, so opacity animates while still hidden and the bitmap pops at 1. */
-  html.is-dev-mode .project-grid__cover.is-dev-hover-forced .project-grid__img--hover {
+  html.is-dev-mode .project-grid__cover.is-dev-hover-forced.project-grid__cover--has-hover
+    .project-grid__hover-background,
+  html.is-dev-mode .project-grid__cover.is-dev-hover-forced.project-grid__cover--has-hover
+    .project-grid__img--hover {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.2s ease, visibility 0s;
@@ -195,14 +214,20 @@ const gridCardTemplateSeed: ProjectGridItem = {
     the gap to the crop tuner must not swap the bitmap.
   */
   @media (hover: hover) and (pointer: fine) {
-    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover .project-grid__img--hover {
+    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover
+      .project-grid__hover-background,
+    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover
+      .project-grid__img--hover {
       opacity: 1;
       visibility: visible;
       transition: opacity 0.2s ease, visibility 0s;
     }
   }
 
-  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover .project-grid__img--hover {
+  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover
+    .project-grid__hover-background,
+  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover
+    .project-grid__img--hover {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.2s ease, visibility 0s;
@@ -478,7 +503,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   @media (prefers-reduced-motion: reduce) {
+    .project-grid__cover--has-hover .project-grid__hover-background,
     .project-grid__cover--has-hover .project-grid__img,
+    html.is-dev-mode .project-grid__cover .project-grid__hover-background,
     html.is-dev-mode .project-grid__cover .project-grid__img,
     .project-grid__meta,
     .project-grid__title,

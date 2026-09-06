@@ -127,8 +127,14 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
 
       const coverRect = cover.getBoundingClientRect();
       const cropHost = cropHostFor(cover);
-      const chipCrop = cropHost ? readCropVars(cropHost, hover) : null;
-      const metaCrop = cropHost ? readCropVars(cropHost, metaUsesHoverBitmap) : null;
+      const cropFor = (usesHoverBitmap: boolean) => (
+        cropHost && (!usesHoverBitmap || cover.classList.contains('project-grid__cover--hover-cropped'))
+          ? readCropVars(cropHost, usesHoverBitmap)
+          : null
+      );
+      const chipCrop = cropFor(hover);
+      const metaCrop = cropFor(metaUsesHoverBitmap);
+      const background = item.dataset.devBg || getComputedStyle(cover).backgroundColor;
 
       let metaGround = metaFallback;
       if (!metaPlaceholder && metaDecoded) {
@@ -137,7 +143,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
         const frame = { width: coverRect.width, height: coverRect.height };
         const source = { width: naturalWidth, height: naturalHeight };
         metaGround = meta
-          ? (groundForBox(meta, cover, metaDecoded, frame, source, metaCrop) ?? metaFallback)
+          ? (groundForBox(meta, cover, metaDecoded, frame, source, metaCrop, background) ?? metaFallback)
           : metaFallback;
       }
 
@@ -157,7 +163,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           for (const chip of chips) {
             applyMediaGround(
               chip,
-              groundForBox(chip, cover, chipDecoded, frame, source, chipCrop) ?? metaGround,
+              groundForBox(chip, cover, chipDecoded, frame, source, chipCrop, background) ?? metaGround,
             );
           }
         }
@@ -189,6 +195,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
     void refreshItem();
   });
   mutationObserver.observe(cover, { attributes: true, attributeFilter: ['class'] });
+  mutationObserver.observe(item, { attributes: true, attributeFilter: ['data-dev-bg'] });
 
   const hoverImg = cover.querySelector<HTMLImageElement>('.project-grid__img--hover');
   if (hoverImg) {
