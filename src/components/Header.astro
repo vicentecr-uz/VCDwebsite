@@ -1674,6 +1674,32 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger__brand {
     flex-shrink: 0;
+    /* The hidden trigger sizer owns the header footprint. Keep the visible
+       brand aligned and clickable, but take its width out of the panel's
+       intrinsic size so the soft background follows the menu instead. */
+    display: flex;
+    inline-size: 0;
+    min-inline-size: 0;
+    max-inline-size: 0;
+  }
+
+  .header-trigger--start .header-trigger__brand {
+    justify-content: flex-start;
+  }
+
+  .header-trigger--end .header-trigger__brand {
+    justify-content: flex-end;
+  }
+
+  .header-trigger__brand-link,
+  .header-trigger__brand > .header-trigger__wordmark,
+  .header-trigger__brand > .header-trigger__logo {
+    flex: none;
+  }
+
+  .header-trigger__brand-link,
+  .header-trigger__brand > .header-trigger__wordmark {
+    inline-size: max-content;
   }
 
   .header-trigger__brand-link {
