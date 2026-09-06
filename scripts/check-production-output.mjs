@@ -54,7 +54,7 @@ function checkText(text, file) {
     throw violation(file, 'authoring API endpoint', `remove emitted authoring route ${apiMatch[0]}`);
   }
 
-  if (file.endsWith('.html')) {
+  if (file.toLowerCase().endsWith('.html')) {
     const controls = new Set(AUTHORING_CONTROLS);
     const visit = (node) => {
       for (const attribute of node.attrs ?? []) {
