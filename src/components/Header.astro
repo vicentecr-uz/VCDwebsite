@@ -1453,16 +1453,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       calc(var(--panel-inline-size) / 2)
     );
     --panel-feather: var(--header-surface-feather, 4em);
-    --panel-feather-outer: clamp(
+    --panel-side-pad: var(--header-surface-side-padding, 3.5em);
+    --panel-outset-outer: clamp(
       0px,
       var(--header-menu-outer-space, 0px),
-      var(--panel-feather)
+      calc(var(--panel-side-pad) + var(--panel-feather))
     );
     --panel-corner-size: calc(var(--panel-corner-radius) + var(--panel-feather));
     --panel-bottom-pad: var(--header-surface-bottom-padding, var(--space-unit));
     --panel-inline-size: calc(
       var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) +
-        var(--header-surface-side-padding, 3.5em)
+        2 * var(--panel-side-pad)
     );
     --panel-edge-ramp: #000 0%, rgb(0 0 0 / 0.96) 15%, rgb(0 0 0 / 0.82) 30%,
       rgb(0 0 0 / 0.5) 50%, rgb(0 0 0 / 0.18) 70%, rgb(0 0 0 / 0.04) 85%, transparent 100%;
@@ -1477,7 +1478,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     overflow: hidden;
     max-inline-size: calc(
       var(--header-menu-viewport-size, 100vw) - var(--header-menu-outer-space, 0px) +
-        var(--panel-feather-outer)
+        var(--panel-outset-outer)
     );
     /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
        header band or the opposite trigger's wordmark/logo. Only the part that
@@ -1532,10 +1533,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger--start .header-trigger__panel-bg {
     top: 0;
-    left: calc(-1 * var(--panel-feather-outer));
+    left: calc(-1 * var(--panel-outset-outer));
     right: auto;
     bottom: auto;
-    inline-size: calc(var(--panel-inline-size) + var(--panel-feather) + var(--panel-feather-outer));
+    inline-size: calc(
+      var(--panel-inline-size) + var(--panel-feather) - var(--panel-side-pad) +
+        var(--panel-outset-outer)
+    );
     height: 0;
     transform-origin: left top;
   }
@@ -1545,16 +1549,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-trigger--start .header-trigger__panel-bg::before {
-    left: calc(var(--panel-feather-outer) - var(--panel-feather));
+    left: calc(var(--panel-outset-outer) - var(--panel-side-pad) - var(--panel-feather));
     right: auto;
   }
 
   .header-trigger--end .header-trigger__panel-bg {
     top: 0;
     left: auto;
-    right: calc(-1 * var(--panel-feather-outer));
+    right: calc(-1 * var(--panel-outset-outer));
     bottom: auto;
-    inline-size: calc(var(--panel-inline-size) + var(--panel-feather) + var(--panel-feather-outer));
+    inline-size: calc(
+      var(--panel-inline-size) + var(--panel-feather) - var(--panel-side-pad) +
+        var(--panel-outset-outer)
+    );
     height: 0;
     transform-origin: right top;
   }
@@ -1564,7 +1571,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-trigger--end .header-trigger__panel-bg::before {
-    right: calc(var(--panel-feather-outer) - var(--panel-feather));
+    right: calc(var(--panel-outset-outer) - var(--panel-side-pad) - var(--panel-feather));
     left: auto;
   }
 
@@ -1840,11 +1847,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         calc(var(--panel-inline-size) / 2)
       );
       --panel-feather: var(--header-surface-mobile-feather, 3em);
+      --panel-side-pad: var(--header-surface-mobile-side-padding, 2.5em);
       --panel-bottom-pad: var(--header-surface-mobile-bottom-padding, var(--space-unit));
-      --panel-inline-size: calc(
-        var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) +
-          var(--header-surface-mobile-side-padding, 2.5em)
-      );
     }
 
     .header-menu-backdrop {
