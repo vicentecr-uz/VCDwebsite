@@ -14,24 +14,24 @@ assert.deepEqual(
     mobile: ['bad'],
   }),
   {
-    desktop: { radius: 6, feather: 0.25, sidePadding: 3.5, bottomPadding: 1, backdropOpacity: 42 },
+    desktop: { radius: 6, feather: 0.25, sidePadding: 3, bottomPadding: 1, backdropOpacity: 42 },
     mobile: HEADER_SURFACE_DEFAULTS.mobile,
   },
 );
-assert.equal(normalizeHeaderSurfaceSettings({ desktop: { radius: '3.25', feather: null, sidePadding: 1.027 } }).desktop.radius, 3.5);
+assert.equal(normalizeHeaderSurfaceSettings({ desktop: { radius: '3.25', feather: null, sidePadding: 1.027 } }).desktop.radius, 4);
 assert.equal(normalizeHeaderSurfaceSettings({ desktop: { sidePadding: 1.027 } }).desktop.sidePadding, 1.05);
 
 assert.deepEqual(cssVariablesForProfile('desktop', HEADER_SURFACE_DEFAULTS.desktop), {
-  '--header-surface-radius': '3.5em',
-  '--header-surface-feather': '4em',
-  '--header-surface-side-padding': '3.5em',
+  '--header-surface-radius': '4em',
+  '--header-surface-feather': '10em',
+  '--header-surface-side-padding': '3em',
   '--header-surface-bottom-padding': '1em',
   '--header-surface-backdrop-opacity': '90%',
 });
 
 const both = cssVariablesForSettings(HEADER_SURFACE_DEFAULTS);
-assert.equal(both['--header-surface-mobile-feather'], '3em');
-assert.equal(both['--header-surface-mobile-bottom-padding'], '0.75em');
+assert.equal(both['--header-surface-mobile-feather'], '10em');
+assert.equal(both['--header-surface-mobile-bottom-padding'], '1.5em');
 assert.equal(Object.keys(both).length, 10);
 
 const headerSource = await readFile(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
@@ -43,7 +43,10 @@ assert.match(layoutSource, /showDevTools && <DevHeaderSurfaceTuner \/>/);
 assert.match(headerSource, /header-surface-mobile-backdrop-opacity/);
 assert.match(headerSource, /--panel-corner-radius: min\([\s\S]*?calc\(var\(--panel-inline-size\) \/ 2\)/);
 
-assert.match(headerSource, /--panel-side-pad: var\(--header-surface-side-padding, 3\.5em\)/);
+assert.match(headerSource, /--panel-side-pad: var\(--header-surface-side-padding, 3em\)/);
+assert.match(headerSource, /var\(--header-surface-mobile-radius, 4em\)/);
+assert.match(headerSource, /var\(--header-surface-mobile-feather, 10em\)/);
+assert.match(headerSource, /var\(--header-surface-mobile-bottom-padding, 1\.5em\)/);
 assert.match(headerSource, /2 \* var\(--panel-side-pad\)/);
 assert.match(headerSource, /--panel-outset-outer: clamp\([\s\S]*calc\(var\(--panel-side-pad\) \+ var\(--panel-feather\)\)/);
 assert.match(headerSource, /var\(--panel-inline-size\) \+ var\(--panel-feather\) - var\(--panel-side-pad\)/);
