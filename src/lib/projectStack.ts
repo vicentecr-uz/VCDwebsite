@@ -1,6 +1,7 @@
 import {
   PROJECT_STACK_SPACING_VALUES,
   canonicalizeProjectStackSpacing,
+  isProjectStackSpacingPath,
   isProjectStackSpacingValue,
   resolveProjectStackSpacing,
   setProjectStackSpacingAtViewport,
@@ -19,6 +20,7 @@ export type ProjectStackSpacingResolved = Record<
 
 export {
   canonicalizeProjectStackSpacing,
+  isProjectStackSpacingPath,
   isProjectStackSpacingValue,
   resolveProjectStackSpacing,
   setProjectStackSpacingAtViewport,
@@ -178,6 +180,7 @@ export function spacingDevAttrs(
   documentKey: string | undefined,
   sectionPath: Array<string | number> | undefined,
   spacing: ProjectStackSpacing,
+  options?: { writePath?: Array<string | number> },
 ): Record<string, string> | undefined {
   if (!import.meta.env.DEV || !documentKey || !sectionPath?.length) return undefined;
   const resolved = resolveProjectStackSpacing(spacing);
@@ -186,5 +189,6 @@ export function spacingDevAttrs(
     'data-dev-spacing-path': JSON.stringify([...sectionPath, 'spacing']),
     'data-dev-spacing-value': resolved.desktop,
     'data-dev-spacing-values': JSON.stringify(resolved),
+    ...(options?.writePath ? { 'data-dev-spacing-write-path': JSON.stringify(options.writePath) } : {}),
   };
 }
