@@ -60,11 +60,11 @@ export function devAuthoringState() {
 }
 
 export async function writeAtomicJson(file, data) {
+  suppressContentHmr();
   const temporaryFile = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
   try {
     await writeFile(temporaryFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
     await rename(temporaryFile, file);
-    suppressContentHmr();
   } finally {
     await rm(temporaryFile, { force: true }).catch(() => {});
   }
@@ -94,19 +94,25 @@ export function createSerializedRequestQueue() {
     const current = new Promise((resolve) => { release = resolve; });
     tail = tail.then(() => current);
     await previous;
+    if (req.aborted || req.destroyed) {
+      release();
+      return;
+    }
     let released = false;
-    const finish = () => {
+    const complete = () => {
       if (released) return;
       released = true;
       release();
     };
-    res.once('finish', finish);
-    res.once('close', finish);
-    res.once('error', finish);
+    const end = res.end;
+    res.end = function (...args) {
+      complete();
+      return end.apply(this, args);
+    };
     try {
       next();
     } catch (error) {
-      finish();
+      complete();
       throw error;
     }
   };
@@ -123,7 +129,11 @@ export function devAuthoringRequestQueue() {
           next();
           return;
         }
-        await enqueue(req, res, next);
+        try {
+          await enqueue(req, res, next);
+        } catch (error) {
+          next(error);
+        }
       });
     },
   };
