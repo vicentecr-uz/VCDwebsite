@@ -700,7 +700,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     trigger.addEventListener('mouseleave', () => {
       if (isTapMode()) return;
       menuScrollClosed = false;
-      if (trigger.contains(document.activeElement)) return;
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && trigger.contains(active)) {
+        if (active.matches(':focus-visible')) return;
+        active.blur();
+      }
       closeMenu();
     });
     // Scroll-driven close: run the normal animated close, not the instant
