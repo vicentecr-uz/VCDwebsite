@@ -23,7 +23,7 @@ const pageChars = [...wordmark];
 const homeChars = [...homeWordmark];
 const currentPath = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const isHome = currentPath === '/';
-const logoHref = isHome ? null : '/';
+const brandHref = isHome ? null : '/';
 const menuLinks = headerSettings.menuLinks.map((link) => ({
   ...link,
   isCurrent: (link.href.replace(/\/+$/, '') || '/') === currentPath,
@@ -51,19 +51,29 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         <div class="header-trigger__panel">
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand">
-            {showWordmarkSwap ? (
-              <span class="header-trigger__wordmark-stack">
-                <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
-                  {pageChars.map((char) => (
-                    <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                  ))}
-                </WordmarkTag>
-                <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
-                  {homeChars.map((char) => (
-                    <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
-                  ))}
-                </span>
-              </span>
+            {brandHref ? (
+              <a
+                href={brandHref}
+                class:list={['header-trigger__brand-link', showWordmarkSwap && 'header-trigger__brand-link--swap']}
+                aria-label="Home"
+              >
+                {showWordmarkSwap ? (
+                  <span class="header-trigger__wordmark-stack">
+                    <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--page" aria-hidden="false">
+                      {pageChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      ))}
+                    </WordmarkTag>
+                    <span class="header-trigger__wordmark header-trigger__wordmark--home" aria-hidden="true">
+                      {homeChars.map((char) => (
+                        <span class="header-trigger__char">{char === ' ' ? '\u00a0' : char}</span>
+                      ))}
+                    </span>
+                  </span>
+                ) : (
+                  <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
+                )}
+              </a>
             ) : (
               <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
             )}
@@ -99,8 +109,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         <div class="header-trigger__panel">
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand" data-dev-mode-trigger>
-            {logoHref ? (
-              <a href={logoHref} class="header-trigger__brand-link" aria-label="Home">
+            {brandHref ? (
+              <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
                 <span
                   class="header-trigger__logo"
                   style={`--logo-src: url("${headerSettings.logoPath}")`}
@@ -730,7 +740,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     // Tap mode: first tap opens, tap outside (or on the panel background) closes.
-    // While open, the logo works as the home link it looks like.
+    // While open, the wordmark / logo works as the home link it looks like.
     // Capture phase: the page-transition script listens on the anchor itself and
     // bails on defaultPrevented, so we have to get in before it.
     trigger.addEventListener(
@@ -1624,6 +1634,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     display: block;
     color: inherit;
     text-decoration: none;
+  }
+
+  .header-trigger__brand-link--swap,
+  .header-trigger__brand-link--swap:hover {
+    width: fit-content;
+    opacity: 1;
   }
 
   .header-trigger--end .header-trigger__brand-link {
