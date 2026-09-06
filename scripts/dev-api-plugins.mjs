@@ -5,6 +5,7 @@ import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
+import { normalizeOutline } from '../src/lib/projectOutline.ts';
 import {
   derivativeKind,
   findOriginal,
@@ -200,6 +201,31 @@ export function resolveEditableDocument(documentKey) {
     // pages dir may not exist yet during first scaffold
   }
   return map.get(documentKey);
+}
+
+function isValidOutlineEntry(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+  if (
+    typeof entry.id !== 'string' || entry.id.length === 0 || entry.id.length > 80
+    || typeof entry.label !== 'string' || entry.label.length === 0 || entry.label.length > 120
+    || (entry.anchor !== undefined && (typeof entry.anchor !== 'string' || entry.anchor.length === 0 || entry.anchor.length > 80))
+  ) return false;
+  if (entry.kind === 'group') return entry.defaultOpen === undefined || typeof entry.defaultOpen === 'boolean';
+  if (entry.kind === 'section') {
+    return entry.defaultOpen === undefined || typeof entry.defaultOpen === 'boolean';
+  }
+  return entry.kind === 'subsection' && entry.defaultOpen === undefined;
+}
+
+export function validateProjectOutline(outline) {
+  if (!Array.isArray(outline) || outline.length > 120 || !outline.every(isValidOutlineEntry)) return false;
+  const identities = new Set();
+  for (const entry of outline) {
+    const identity = `${entry.kind === 'subsection' || (entry.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen')) ? 'group' : 'section'}:${entry.id}`;
+    if (identities.has(identity)) return false;
+    identities.add(identity);
+  }
+  return true;
 }
 
 export function validateProjectOutlineTargets(outline, sections) {
@@ -854,17 +880,21 @@ export function sectionOrderDevWriter() {
           data.sections = reordered;
           // Keep sidebar group membership in sync with the new page order.
           // Client sends the sticky-rebuilt outline (group anchors follow first child).
-          if (Array.isArray(body.outline) && body.outline.length > 0) {
+          if (Object.prototype.hasOwnProperty.call(body, 'outline')) {
+            if (!validateProjectOutline(body.outline)) {
+              send(400, { error: 'The section outline is invalid.' });
+              return;
+            }
             if (relativeFile.startsWith('src/content/projects/')
               && !validateProjectOutlineTargets(body.outline, sections)) {
               send(400, { error: 'The section outline contains an orphan target.' });
               return;
             }
-            data.outline = body.outline;
+            data.outline = normalizeOutline(body.outline);
             delete data.nav;
           }
           await writeDevDocument(relativeFile, data);
-          send(200, { ok: true });
+          send(200, { ok: true, ...(Object.prototype.hasOwnProperty.call(body, 'outline') ? { outline: data.outline } : {}) });
         } catch {
           send(400, { error: 'Could not save section order.' });
         }

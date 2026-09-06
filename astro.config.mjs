@@ -25,12 +25,14 @@ import {
   readDevDocument,
   resolveDevFieldTarget,
   resolveEditableDocument,
+  validateProjectOutline,
   validateProjectOutlineTargets,
   uploadDevWriter,
   writeDevDocument,
   devAuthoringState,
   devAuthoringActive,
 } from './scripts/dev-api-plugins.mjs';
+import { normalizeOutline, outlineFromNav } from './src/lib/projectOutline.ts';
 import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
 import {
   assetsDevWriter,
@@ -2106,14 +2108,6 @@ function contentSpacingDevWriter() {
  * @returns {import('vite').Plugin}
  */
 function contentNavDevWriter() {
-  const slugify = (label) => {
-    const base = String(label)
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    return base || `section-${Date.now().toString(36)}`;
-  };
 
   const isValidNavLink = (item) => (
     item &&
@@ -2143,108 +2137,6 @@ function contentNavDevWriter() {
     nav.length <= 60 &&
     nav.every((item) => isValidNavLink(item) || isValidNavGroup(item))
   );
-
-  const isValidOutlineEntry = (entry) => {
-    if (!entry || typeof entry !== 'object') return false;
-    const base = (
-      typeof entry.id === 'string' &&
-      entry.id.length > 0 &&
-      entry.id.length <= 80 &&
-      typeof entry.label === 'string' &&
-      entry.label.length > 0 &&
-      entry.label.length <= 120 &&
-      (entry.anchor === undefined || (
-        typeof entry.anchor === 'string' &&
-        entry.anchor.length > 0 &&
-        entry.anchor.length <= 80
-      ))
-    );
-    if (!base) return false;
-    if (entry.kind === 'group') {
-      return entry.defaultOpen === undefined || typeof entry.defaultOpen === 'boolean';
-    }
-    if (entry.kind === 'section') {
-      // New: scroll-target section. Legacy group used kind:section + defaultOpen.
-      return true;
-    }
-    // Legacy kinds still accepted, normalized on write.
-    if (entry.kind === 'subsection') return true;
-    return false;
-  };
-
-  const isValidOutline = (outline) => (
-    Array.isArray(outline) &&
-    outline.length <= 120 &&
-    outline.every(isValidOutlineEntry)
-  );
-
-  const normalizeOutlineForWrite = (outline) => outline.map((entry) => {
-    if (entry.kind === 'group') {
-      return {
-        kind: 'group',
-        id: entry.id,
-        label: entry.label,
-        defaultOpen: entry.defaultOpen !== false,
-        ...(entry.anchor ? { anchor: entry.anchor } : {}),
-      };
-    }
-    if (entry.kind === 'subsection') {
-      return {
-        kind: 'section',
-        id: entry.id,
-        label: entry.label,
-        ...(entry.anchor ? { anchor: entry.anchor } : {}),
-      };
-    }
-    if (entry.kind === 'section' && Object.prototype.hasOwnProperty.call(entry, 'defaultOpen')) {
-      return {
-        kind: 'group',
-        id: entry.id,
-        label: entry.label,
-        defaultOpen: entry.defaultOpen !== false,
-        ...(entry.anchor ? { anchor: entry.anchor } : {}),
-      };
-    }
-    return {
-      kind: 'section',
-      id: entry.id,
-      label: entry.label,
-      ...(entry.anchor ? { anchor: entry.anchor } : {}),
-    };
-  });
-
-  /** Legacy nested nav → flat outline (group + section). */
-  const outlineFromNav = (nav) => {
-    const outline = [];
-    for (const item of nav) {
-      if (item && typeof item === 'object' && Array.isArray(item.children)) {
-        const first = item.children[0];
-        outline.push({
-          kind: 'group',
-          id: slugify(item.label),
-          label: item.label,
-          defaultOpen: item.defaultOpen !== false,
-          ...(first ? { anchor: first.id } : {}),
-        });
-        for (const child of item.children) {
-          outline.push({
-            kind: 'section',
-            id: child.id,
-            label: child.label,
-            anchor: child.id,
-          });
-        }
-        continue;
-      }
-      outline.push({
-        kind: 'section',
-        id: item.id,
-        label: item.label,
-        anchor: item.id,
-      });
-    }
-    return outline;
-  };
 
   const isValidShowTitle = (value) => (
     value &&
@@ -2286,6 +2178,7 @@ function contentNavDevWriter() {
           const documentKey = String(body.document || '');
           const relativeFile = resolveEditableDocument(documentKey);
           const nav = body.nav;
+          const hasOutline = Object.prototype.hasOwnProperty.call(body, 'outline');
           const outlineInput = body.outline;
           const sectionIds = body.sectionIds && typeof body.sectionIds === 'object'
             ? body.sectionIds
@@ -2295,9 +2188,9 @@ function contentNavDevWriter() {
             : null;
 
           let outline = null;
-          if (isValidOutline(outlineInput)) {
-            outline = normalizeOutlineForWrite(outlineInput);
-          } else if (isValidNav(nav)) {
+          if (hasOutline && validateProjectOutline(outlineInput)) {
+            outline = normalizeOutline(outlineInput);
+          } else if (!hasOutline && isValidNav(nav)) {
             outline = outlineFromNav(nav);
           }
 
@@ -2313,18 +2206,7 @@ function contentNavDevWriter() {
             return;
           }
 
-          const existingOutline = isValidOutline(data.outline)
-            ? normalizeOutlineForWrite(data.outline)
-            : [];
-          let outlinePreserved = false;
-          if (outline.length === 0 && existingOutline.length > 0) {
-            // Editor saves can ship an empty in-memory outline (e.g. after HMR). Never wipe a
-            // populated sidebar from disk — still apply sectionIds / showTitles below.
-            data.outline = existingOutline;
-            outlinePreserved = true;
-          } else {
-            data.outline = outline;
-          }
+          data.outline = outline;
           delete data.nav;
 
           if (sectionIds) {
@@ -2380,7 +2262,7 @@ function contentNavDevWriter() {
           }
 
           await writeContentJson(file, data);
-          send(200, { ok: true, ...(outlinePreserved ? { outlinePreserved: true } : {}) });
+          send(200, { ok: true, outline: data.outline });
         } catch {
           send(400, { error: 'Could not parse or write the nav update.' });
         }
