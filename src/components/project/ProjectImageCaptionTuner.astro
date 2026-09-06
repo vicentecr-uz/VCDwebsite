@@ -57,6 +57,7 @@ import {
 </DevOverlay>
 
 <script>
+  import { createHistory, pageHistory, registerHistoryScope } from '../../lib/devHistory';
   import {
     BELOW_IMAGE_CAPTION_REVEALS,
     DEFAULT_IMAGE_CAPTION_BELOW_ALIGN,
@@ -141,6 +142,40 @@ import {
     let savedReveals: ImageCaptionReveals = { ...DEFAULT_IMAGE_CAPTION_REVEALS };
     const diskBaselines = new Map<string, CaptionBaseline>();
     let syncingUi = false;
+    let openingCaption: CaptionBaseline | null = null;
+    let lastDraft: CaptionBaseline | null = null;
+    let captionSession = false;
+    const localHistory = createHistory();
+    const captureDraft = (): CaptionBaseline => ({
+      captions: structuredClone(draftCaptions), captionStyle: draftStyle,
+      captionPosition: activePosition(draftStyle), captionReveals: structuredClone(draftReveals),
+    });
+    const sameCaption = (left: CaptionBaseline, right: CaptionBaseline) => JSON.stringify(left) === JSON.stringify(right);
+    const restoreDraft = (value: CaptionBaseline) => {
+      const positions = resolveDraftsFromRaw(value.captionPosition);
+      draftCaptions = structuredClone(value.captions);
+      draftStyle = value.captionStyle;
+      draftOverlayPosition = positions.overlay;
+      draftBelowAlign = positions.below;
+      draftReveals = structuredClone(value.captionReveals);
+      lastDraft = captureDraft();
+      if (editTarget) applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, { retainEmptyHost: captionSession });
+      renderFields();
+    };
+    const recordDraftHistory = () => {
+      const after = captureDraft();
+      const before = lastDraft;
+      lastDraft = after;
+      if (!captionSession || !before || sameCaption(before, after) || localHistory.replaying) return;
+      localHistory.push({ label: 'Edit caption',
+        mergeKey: document.activeElement === textArea || document.activeElement?.hasAttribute('data-caption-bp') ? `caption-text:${selectedViewport}` : undefined,
+        undo: () => restoreDraft(before), redo: () => restoreDraft(after),
+      });
+    };
+    registerHistoryScope(tuner, localHistory, {
+      owns: (target) => Boolean(captionSession && target && editTarget && findCaptionHost(editTarget)?.contains(target)),
+    });
+
 
     const activePosition = (style: ImageCaptionStyleId): ImageCaptionPositionId =>
       isBelowImageCaptionStyle(style) ? draftBelowAlign : draftOverlayPosition;
@@ -544,6 +579,7 @@ import {
     };
 
     const renderFields = () => {
+      queueMicrotask(recordDraftHistory);
       syncingUi = true;
       styleButtons.forEach((button) => {
         const style = button.dataset.captionStyle ?? '';
@@ -626,7 +662,13 @@ import {
     };
 
     const selectTarget = (target: HTMLElement, options?: { seedEmpty?: boolean }) => {
-      const switching = editTarget !== target;
+      const switching = editTarget !== target || !captionSession;
+      if (switching) {
+        openingCaption = structuredClone(readTargetState(target));
+        localHistory.clear();
+        lastDraft = null;
+      }
+      captionSession = true;
       if (switching && editTarget) {
         finalizeEmptyCaption(editTarget);
       }
@@ -663,6 +705,7 @@ import {
       }
 
       selectedViewport = matchImageCaptionViewport();
+      if (switching) lastDraft = captureDraft();
       renderFields();
       openPanel();
       enableInlineEditing(target);
@@ -758,36 +801,9 @@ import {
     });
 
     const revertToSaved = () => {
-      if (!editTarget) return;
-      const pendingId = pendingIdFor(editTarget);
-      const fromDisk = diskBaselines.get(pendingId);
-      const baseline = fromDisk ?? {
-        captions: structuredClone(savedCaptions),
-        captionStyle: savedStyle,
-        captionPosition: activePosition(savedStyle),
-        captionReveals: structuredClone(savedReveals),
-      };
-      const drafts = fromDisk
-        ? resolveDraftsFromRaw(baseline.captionPosition)
-        : { overlay: savedOverlayPosition, below: savedBelowAlign };
-      draftCaptions = structuredClone(baseline.captions);
-      draftStyle = baseline.captionStyle;
-      draftOverlayPosition = drafts.overlay;
-      draftBelowAlign = drafts.below;
-      draftReveals = structuredClone(baseline.captionReveals);
-      savedCaptions = structuredClone(baseline.captions);
-      savedStyle = baseline.captionStyle;
-      savedOverlayPosition = drafts.overlay;
-      savedBelowAlign = drafts.below;
-      savedReveals = structuredClone(baseline.captionReveals);
-      applyCaptionsToTarget(
-        editTarget,
-        draftCaptions,
-        draftStyle,
-        activePosition(draftStyle),
-        draftReveals,
-      );
-      renderFields();
+      if (!editTarget || !openingCaption) return;
+      restoreDraft(openingCaption);
+      localHistory.clear();
     };
 
     cancelButton?.addEventListener('click', () => {
@@ -804,10 +820,12 @@ import {
       const panel = event.detail?.panel as HTMLElement | undefined;
       if (!panel || panel.dataset.devPanelKey !== 'caption') return;
       revertToSaved();
+      captionSession = false;
     }) as EventListener);
 
-    saveButton.addEventListener('click', () => {
+    const saveDraft = () => {
       if (!editTarget) return;
+      const before = structuredClone(openingCaption ?? readTargetState(editTarget));
       const documentKey = editTarget.dataset.devDocument || '';
       let imagePath: Array<string | number> = [];
       try {
@@ -888,12 +906,58 @@ import {
         },
       }));
 
+      const after = structuredClone(readTargetState(target));
+      openingCaption = after;
+      lastDraft = captureDraft();
+      localHistory.clear();
+      if (!pageHistory.replaying && !sameCaption(before, after)) {
+        const restore = (value: CaptionBaseline) => {
+          if (!target.isConnected) throw new Error('Restore this image before restoring its caption.');
+          const id = pendingIdFor(target);
+          if (!diskBaselines.has(id)) diskBaselines.set(id, structuredClone(readTargetState(target)));
+          const disk = structuredClone(diskBaselines.get(id)!);
+          const apply = (snapshot: CaptionBaseline) => {
+            applyCaptionsToTarget(target, snapshot.captions, snapshot.captionStyle, snapshot.captionPosition, snapshot.captionReveals);
+            if (editTarget === target) {
+              openingCaption = structuredClone(snapshot);
+              restoreDraft(snapshot);
+              savedCaptions = structuredClone(snapshot.captions);
+              savedStyle = snapshot.captionStyle;
+              savedOverlayPosition = draftOverlayPosition;
+              savedBelowAlign = draftBelowAlign;
+              savedReveals = structuredClone(snapshot.captionReveals);
+            }
+          };
+          apply(value);
+          if (sameCaption(disk, value)) {
+            window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id } }));
+          } else {
+            window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', { detail: {
+              id, kind: 'caption', payload: {
+                document: target.dataset.devDocument,
+                path: JSON.parse(target.dataset.devImagePath || '[]'),
+                captions: structuredClone(value.captions), captionStyle: value.captionStyle,
+                captionPosition: value.captionPosition, captionReveal: structuredClone(value.captionReveals),
+                clear: !imageCaptionsHaveText(value.captions),
+              }, revert: () => apply(disk),
+            } }));
+          }
+        };
+        pageHistory.push({ label: 'Edit caption', undo: () => restore(before), redo: () => restore(after) });
+      }
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
       closePanel();
       if (imageCaptionsHaveText(stagedCaptions)) {
         enableInlineEditing(target);
       }
+    };
+    saveButton.addEventListener('click', saveDraft);
+    window.addEventListener('vcd:dev-before-save', () => {
+      if (captionSession && openingCaption && !sameCaption(openingCaption, captureDraft())) saveDraft();
     });
+    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty: boolean }>) => {
+      if (captionSession && openingCaption && !sameCaption(openingCaption, captureDraft())) event.detail.dirty = true;
+    }) as EventListener);
 
     // Clicking away from the caption editor drops an empty shell → Add caption returns.
     document.addEventListener('focusin', (event) => {
@@ -973,8 +1037,9 @@ import {
       true,
     );
 
-    window.addEventListener('vcd:dev-pending-committed', (() => {
-      if (!editTarget) return;
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+      for (const id of event.detail?.ids ?? [...diskBaselines.keys()]) diskBaselines.delete(id);
+      if (!editTarget || (event.detail?.ids && !event.detail.ids.includes(pendingIdFor(editTarget)))) return;
       diskBaselines.set(pendingIdFor(editTarget), {
         captions: structuredClone(savedCaptions),
         captionStyle: savedStyle,
