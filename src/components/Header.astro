@@ -194,6 +194,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     menuSurfaceRoot.style.setProperty('--header-menu-surface-delay', `${delay}s`);
   };
 
+  const syncMenuSurfaceInlineSize = (trigger: HTMLElement) => {
+    // The panel keeps the wider brand/menu hover corridor; only its painted
+    // background follows the menu's intrinsic width.
+    const menu = trigger.querySelector<HTMLElement>('.header-menu');
+    if (!menu) return;
+    trigger.style.setProperty(
+      '--header-menu-inline-size',
+      `${menu.getBoundingClientRect().width}px`,
+    );
+  };
+
   // Latched when a downward scroll closes the menu, and released once the
   // pointer is off the header. Two jobs: it stops the still-:hover-ing cursor
   // from re-opening the menu it just closed, and it HOLDS the header in the
@@ -532,6 +543,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     window.addEventListener('resize', () => {
       syncHeaderWidth(headerHeight);
       syncSlot();
+      document
+        .querySelectorAll<HTMLElement>('.header-trigger')
+        .forEach(syncMenuSurfaceInlineSize);
       // Re-measure horizontal geometry from a clean flow layout. If the header
       // is out of flow, briefly restore it to flow to read the true values.
       if (mode === 'flow') {
@@ -581,6 +595,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
     const panelBg = trigger.querySelector('.header-trigger__panel-bg') as HTMLElement | null;
     if (!links.length || !panelBg) return;
+
+    syncMenuSurfaceInlineSize(trigger);
+    void document.fonts?.ready.then(() => syncMenuSurfaceInlineSize(trigger));
 
     const MENU_LINK_CLOSE_STAGGER = 0.04;
     const MENU_LINK_CLOSE_DURATION = 0.15;
@@ -651,6 +668,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       clearCloseTimer();
       trigger.classList.add('is-menu-open');
       trigger.dataset.menuOpen = 'true';
+      syncMenuSurfaceInlineSize(trigger);
       setOpenStagger();
       setMenuSurface(true);
       // Bubbles: the scroll state machine listens on .site-header to dock the
@@ -1104,6 +1122,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     if (!note.classList.contains('is-visible')) return;
     if (reduceMotionMq.matches || note.classList.contains('is-instant')) {
       note.classList.remove('is-visible', 'is-hiding', 'is-instant');
+      const trigger = note.closest<HTMLElement>('.header-trigger');
+      if (trigger?.hasAttribute('data-menu-surface-open')) {
+        syncMenuSurfaceInlineSize(trigger);
+      }
       return;
     }
     const link = note.closest('.header-menu__item')?.querySelector<HTMLElement>('.header-menu__link');
@@ -1115,7 +1137,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     note.classList.remove('is-visible');
     note.addEventListener(
       'animationend',
-      () => note.classList.remove('is-hiding'),
+      () => {
+        note.classList.remove('is-hiding');
+        const trigger = note.closest<HTMLElement>('.header-trigger');
+        if (trigger?.hasAttribute('data-menu-surface-open')) {
+          syncMenuSurfaceInlineSize(trigger);
+        }
+      },
       { once: true },
     );
   };
@@ -1129,6 +1157,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     note.classList.remove('is-hiding');
     note.classList.toggle('is-instant', !animate);
     note.classList.add('is-visible');
+    if (trigger) syncMenuSurfaceInlineSize(trigger);
 
     if (!animate || !panelBg || previousWidth <= 0) return;
     const nextWidth = panelBg.getBoundingClientRect().width;
@@ -1390,6 +1419,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     --panel-bottom-radius: 7em;
     --panel-bottom-pad: var(--space-unit);
+    --panel-inline-size: calc(
+      var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) + 0.75 * var(--feather)
+    );
     position: absolute;
     /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
        header band or the opposite trigger's wordmark/logo. Only the part that
@@ -1445,8 +1477,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-trigger--start .header-trigger__panel-bg {
     top: 0;
     left: 0;
-    right: calc(-0.75 * var(--feather));
+    right: auto;
     bottom: auto;
+    inline-size: var(--panel-inline-size);
     height: 0;
     transform-origin: left top;
   }
@@ -1552,9 +1585,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger--end .header-trigger__panel-bg {
     top: 0;
-    left: calc(-0.75 * var(--feather));
+    left: auto;
     right: 0;
     bottom: auto;
+    inline-size: var(--panel-inline-size);
     height: 0;
     transform-origin: right top;
   }
@@ -1678,32 +1712,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger__brand {
     flex-shrink: 0;
-    /* The hidden trigger sizer owns the header footprint. Keep the visible
-       brand aligned and clickable, but take its width out of the panel's
-       intrinsic size so the soft background follows the menu instead. */
-    display: flex;
-    inline-size: 0;
-    min-inline-size: 0;
-    max-inline-size: 0;
-  }
-
-  .header-trigger--start .header-trigger__brand {
-    justify-content: flex-start;
-  }
-
-  .header-trigger--end .header-trigger__brand {
-    justify-content: flex-end;
-  }
-
-  .header-trigger__brand-link,
-  .header-trigger__brand > .header-trigger__wordmark,
-  .header-trigger__brand > .header-trigger__logo {
-    flex: none;
-  }
-
-  .header-trigger__brand-link,
-  .header-trigger__brand > .header-trigger__wordmark {
-    inline-size: max-content;
   }
 
   .header-trigger__brand-link {
