@@ -236,11 +236,20 @@ const visibilityOptions = [
   let panelSlug = '';
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
   const caches = new Map();
-  const pageHistory = window.__vcdPageHistory;
-  const registerHistoryScope = window.__vcdRegisterHistoryScope;
+  const getPageHistory = () => window.__vcdPageHistory;
+  const pageHistory = {
+    get replaying() { return Boolean(getPageHistory()?.replaying); },
+    get canUndo() { return Boolean(getPageHistory()?.canUndo); },
+    get canRedo() { return Boolean(getPageHistory()?.canRedo); },
+    push(command) { return getPageHistory()?.push(command); },
+    scope() { return getPageHistory()?.scope() ?? { undo() {}, redo() {} }; },
+  };
+  const registerHistoryScope = (...args) => getPageHistory() && window.__vcdRegisterHistoryScope(...args);
   let historyScope = null;
   let unregisterHistoryScope = null;
   const panelFieldBefore = new Map();
+  let settingsOpening = null;
+  let settingsEntry = null;
 
   const normalizeHex = (raw) => {
     const value = String(raw || '').trim().startsWith('#') ? String(raw).trim() : `#${String(raw || '').trim()}`;
@@ -850,7 +859,7 @@ const visibilityOptions = [
     if (panelSlug === slug) syncPanelActionButtons();
   };
 
-  const applyHistorySnapshot = (entry, snapshot) => {
+  const applyHistorySnapshot = (entry, snapshot, stage = true) => {
     if (!entry) return;
     entry.draft = structuredClone(snapshot);
     const title = entry.item.querySelector('[data-dev-project-title]');
@@ -861,7 +870,7 @@ const visibilityOptions = [
     if (teaser instanceof HTMLElement) teaser.textContent = snapshot.teaserLabel || 'Coming soon';
     applyListingPreview(entry.item, entry.draft, entry.grid);
     const slug = [...caches.entries()].find(([, value]) => value === entry)?.[0];
-    if (slug) syncPendingFor(slug, false);
+    if (slug && stage) syncPendingFor(slug, false);
     if (panelSlug === slug) renderPanelFromEntry(entry);
   };
 
@@ -964,6 +973,8 @@ const visibilityOptions = [
 
   const closeSettingsPanel = () => {
     panelSlug = '';
+    settingsEntry = null;
+    settingsOpening = null;
     unregisterHistoryScope?.();
     unregisterHistoryScope = null;
     historyScope = null;
@@ -982,6 +993,8 @@ const visibilityOptions = [
     try {
       const entry = await ensureLoaded(slug, item);
       panelSlug = slug;
+      settingsEntry = entry;
+      settingsOpening = structuredClone(entry.draft);
       renderPanelFromEntry(entry);
       openSettingsPanel(trigger);
     } catch (error) {
@@ -1762,10 +1775,6 @@ const visibilityOptions = [
     if (!value) return;
     syncBgField(value);
     if (bgPicker instanceof HTMLElement) bgPicker.setAttribute('hex', toPickerHex(value));
-    const entry = panelSlug ? caches.get(panelSlug) : null;
-    const before = panelFieldBefore.get(target);
-    if (entry && before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change card background');
-    panelFieldBefore.delete(target);
   }, true);
 
   settingsRoot?.addEventListener('change', (event) => {
@@ -1783,9 +1792,6 @@ const visibilityOptions = [
       clearSlugError();
       applyListingPreview(entry.item, entry.draft, entry.grid);
       syncPanelActionButtons();
-      const before = panelFieldBefore.get(target);
-      if (before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change visibility');
-      panelFieldBefore.delete(target);
     }
   });
 
@@ -1798,15 +1804,6 @@ const visibilityOptions = [
     entry.draft.slug = target instanceof HTMLInputElement ? target.value.trim() : entry.draft.slug;
     clearSlugError();
     syncPanelActionButtons();
-  });
-
-  settingsRoot?.addEventListener('focusout', (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement) || !target.matches('[data-ps-slug]')) return;
-    const entry = panelSlug ? caches.get(panelSlug) : null;
-    const before = panelFieldBefore.get(target);
-    if (entry && before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change project slug');
-    panelFieldBefore.delete(target);
   });
 
   bgSwatch?.addEventListener('click', () => {
@@ -1857,7 +1854,7 @@ const visibilityOptions = [
     if (!entry) return;
     revokeLiveCover(panelSlug);
     revokeLiveHover(panelSlug);
-    entry.draft = structuredClone(entry.saved);
+    entry.draft = structuredClone(settingsOpening || entry.saved);
     applyListingPreview(entry.item, entry.draft, entry.grid);
     renderPanelFromEntry(entry);
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
@@ -1876,7 +1873,11 @@ const visibilityOptions = [
       return;
     }
     clearSlugError();
+    const before = structuredClone(settingsOpening || entry.saved);
+    const after = structuredClone(entry.draft);
     syncPendingFor(panelSlug);
+    pushEntryHistory(entry, before, after, 'Save project settings');
+    settingsOpening = after;
   });
 
   deleteButton?.addEventListener('animationend', (event) => {
@@ -1986,7 +1987,7 @@ const visibilityOptions = [
 
   window.addEventListener('vcd:dev-listing-src', (event) => {
     const { slug, slot, src } = event.detail ?? {};
-    if (!slug || !src || (slot !== 'image' && slot !== 'hoverImage')) return;
+    if (!slug || (slot !== 'image' && slot !== 'hoverImage')) return;
     const item = gridItemForSlug(slug);
     const entry = caches.get(slug);
     if (entry) {
@@ -2000,8 +2001,9 @@ const visibilityOptions = [
     const hoverImg = item.querySelector('.project-grid__img--hover');
     if (slot === 'hoverImage') {
       if (hoverImg instanceof HTMLImageElement) {
-        hoverImg.src = src;
-        hoverImg.hidden = false;
+        if (src) hoverImg.src = src;
+        else hoverImg.removeAttribute('src');
+        hoverImg.hidden = !src;
       }
       if (cover instanceof HTMLElement) cover.classList.add('project-grid__cover--has-hover');
     } else if (cover instanceof HTMLElement) {
