@@ -13,6 +13,8 @@ import {
 } from '../../src/lib/projectStack.ts';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../src/lib/pageColumn.ts';
 import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
+import { resolveProjectOutline } from '../../src/lib/projectOutline.ts';
+import { validateProjectOutlineTargets } from '../dev-api-plugins.mjs';
 
 const headerSource = readFileSync(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
 const layoutSource = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
@@ -20,6 +22,40 @@ const projectBodyText = readFileSync(new URL('../../src/components/project/Proje
 const projectSectionTitle = readFileSync(new URL('../../src/components/project/ProjectSectionTitle.astro', import.meta.url), 'utf8');
 const globalCss = readFileSync(new URL('../../src/styles/global.css', import.meta.url), 'utf8');
 const projectCss = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
+const devTextEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+
+const validSections = [{ id: 'overview' }, { id: 'details' }];
+assert.deepEqual(resolveProjectOutline({
+  outline: [
+    { kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' },
+    { kind: 'group', id: 'intro', label: 'Intro', anchor: 'orphan' },
+    { kind: 'section', id: 'orphan', label: 'Orphan', anchor: 'orphan' },
+  ],
+  sections: validSections,
+}), [{ kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' }]);
+assert.deepEqual(resolveProjectOutline({
+  outline: [
+    { kind: 'group', id: 'intro', label: 'Intro', anchor: 'overview' },
+    { kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' },
+  ],
+  sections: validSections,
+}), [
+  { kind: 'group', id: 'intro', label: 'Intro', defaultOpen: true, anchor: 'overview' },
+  { kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' },
+]);
+assert.deepEqual(resolveProjectOutline({ outline: [{ kind: 'section', id: 'overview', label: 'Overview' }], sections: [] }), []);
+assert.equal(validateProjectOutlineTargets([
+  { kind: 'group', id: 'intro', label: 'Intro', anchor: 'overview' },
+  { kind: 'section', id: 'overview', label: 'Overview', anchor: 'overview' },
+], validSections), true);
+assert.equal(validateProjectOutlineTargets([
+  { kind: 'group', id: 'intro', label: 'Intro', anchor: 'orphan' },
+], validSections), false);
+assert.match(devTextEditor, /getDevSectionOutline/);
+assert.match(devTextEditor, /payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
+assert.match(devTextEditor, /change\.payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
+const outlineSyncSource = readFileSync(new URL('../../src/scripts/devSectionOutlineSync.ts', import.meta.url), 'utf8');
+assert.match(outlineSyncSource, /entry\.kind === 'group'[\s\S]*entry\.anchor !== clientId[\s\S]*anchor: serverId/);
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',

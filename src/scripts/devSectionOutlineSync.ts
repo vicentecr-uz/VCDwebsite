@@ -107,6 +107,11 @@ export function remapDevSectionOutlineId(clientId: string, serverId: string) {
   if (!clientId || !serverId || clientId === serverId) return;
   for (let i = 0; i < outline.length; i += 1) {
     const entry = outline[i];
+    if (entry.kind === 'group') {
+      if (entry.anchor !== clientId) continue;
+      outline[i] = { ...entry, anchor: serverId };
+      continue;
+    }
     if (entry.kind !== 'section') continue;
     if (outlineAnchorId(entry) !== clientId && entry.id !== clientId) continue;
     outline[i] = { ...entry, id: serverId, anchor: serverId };
