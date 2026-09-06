@@ -438,6 +438,9 @@ import ToggleRow from '../ui/ToggleRow.astro';
       lastHistorySnapshot = structuredClone(snapshot);
       const wasLive = liveApply; liveApply = true; renderDraft(); liveApply = wasLive;
     };
+    const contentSnapshot = (snapshot: NonNullable<typeof lastHistorySnapshot>) => ({
+      draft: snapshot.draft, constrained: snapshot.constrained,
+    });
 
     const clearTunerPreview = (target: HTMLElement) => {
       delete target.dataset.carouselTunerPreview;
@@ -886,6 +889,8 @@ import ToggleRow from '../ui/ToggleRow.astro';
       if (editTarget && editTarget !== target) clearTunerPreview(editTarget);
       editTarget = target;
       liveApply = live;
+      localHistory.clear();
+      historyReady = false;
       catalog = readCatalog(target);
       itemIds = catalog.map((item) => item.id);
       selectedViewport = matchCarouselViewport();
@@ -914,14 +919,36 @@ import ToggleRow from '../ui/ToggleRow.astro';
     };
 
     const saveDraft = () => {
+      const target = editTarget;
       const beforePage = openingSnapshot ? structuredClone(openingSnapshot) : snapshotDraft();
       if (stageDraft('Staged — use Save in the page bar to write to disk.')) {
         const afterPage = snapshotDraft();
         if (!pageHistory.replaying && JSON.stringify(beforePage) !== JSON.stringify(afterPage)) {
+          const restorePage = (snapshot: typeof beforePage) => {
+            const previousTarget = editTarget;
+            const previousDraft = draft;
+            const previousConstrained = draftConstrained;
+            const previousViewport = selectedViewport;
+            const previousCatalog = catalog;
+            const previousItemIds = itemIds;
+            editTarget = target;
+            catalog = readCatalog(target);
+            itemIds = catalog.map((item) => item.id);
+            draft = cloneDraft(snapshot.draft);
+            draftConstrained = { ...snapshot.constrained };
+            selectedViewport = snapshot.viewport;
+            stageDraft('Restored carousel edit.');
+            editTarget = previousTarget;
+            draft = previousDraft;
+            draftConstrained = previousConstrained;
+            selectedViewport = previousViewport;
+            catalog = previousCatalog;
+            itemIds = previousItemIds;
+          };
           pageHistory.push({
             label: 'Edit image carousel',
-            undo: () => { restoreDraftSnapshot(beforePage); stageDraft('Restored carousel edit.'); },
-            redo: () => { restoreDraftSnapshot(afterPage); stageDraft('Restaged carousel edit.'); },
+            undo: () => restorePage(beforePage),
+            redo: () => restorePage(afterPage),
           });
         }
         saved = cloneDraft(draft);
@@ -941,6 +968,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       if (!editTarget) return;
       draft = cloneDraft(saved);
       draftConstrained = { ...savedConstrained };
+      localHistory.clear();
       const wasLive = liveApply;
       liveApply = true;
       renderDraft();
@@ -986,6 +1014,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
         const viewport = button.dataset.carouselViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
         selectedViewport = viewport;
+        lastHistorySnapshot = snapshotDraft();
         renderDraft();
         status.textContent = `Editing ${viewport} settings.`;
       });
@@ -1070,10 +1099,10 @@ import ToggleRow from '../ui/ToggleRow.astro';
     });
 
     window.addEventListener('vcd:dev-before-save', () => {
-      if (liveApply && lastHistorySnapshot && JSON.stringify(lastHistorySnapshot) !== JSON.stringify(snapshotDraft())) saveDraft();
+      if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(openingSnapshot)) !== JSON.stringify(contentSnapshot(snapshotDraft()))) saveDraft();
     });
     window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
-      if (liveApply) event.detail.dirty = JSON.stringify(snapshotDraft()) !== JSON.stringify(openingSnapshot);
+      if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(snapshotDraft())) !== JSON.stringify(contentSnapshot(openingSnapshot))) event.detail.dirty = true;
     }) as EventListener);
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
