@@ -2109,6 +2109,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         textHistoryValues.set(state, after);
         if (before === undefined || valuesMatch(before, after)) return;
         const restore = (value: EditableTextValue) => {
+          if (!state.element.isConnected) throw new Error('Restore this section before restoring its text.');
           renderValue(state, value);
           textHistoryValues.set(state, structuredClone(value));
           if (state.element.isConnected) {
@@ -5419,7 +5420,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const performSave = async (): Promise<PublishManifest | null> => {
       if (actionsBusy || pageHistory.busy) return null;
       // Let open tuners finish their draft before collecting pending changes.
-      window.dispatchEvent(new Event('vcd:dev-before-save'));
+      if (!window.dispatchEvent(new Event('vcd:dev-before-save', { cancelable: true }))) return null;
       captureFieldHistory();
       pageHistory.breakGroup();
 
@@ -5430,9 +5431,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const submittedSpacing = new Map(dirtySpacing.map((state) => [state, cloneSpacing(state.currentValue)]));
       const submittedHeights = new Map(dirtyIntroHeights.map((state) => [state, state.currentValue]));
       const pendingChanges = [...pendingMedia.values()];
+      const acknowledge = (changes: PendingMediaChange[]) => {
+        const ids: string[] = [];
+        for (const change of changes) {
+          if (pendingMedia.get(change.id) !== change) continue;
+          pendingMedia.delete(change.id);
+          ids.push(change.id);
+        }
+        if (ids.length) window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids } }));
+      };
       const structuralPending = pendingSectionInserts.length + pendingSectionDeletes.length
         + pendingBlockConverts.length;
-      const mediaInsertPending = persistedMediaInserts.length;
+      const submittedMediaInserts = [...persistedMediaInserts];
+      const mediaInsertPending = submittedMediaInserts.length;
       const listingChanges = pendingChanges.filter((change) => change.kind === 'listing-order');
       const galleryMembershipChanges = pendingChanges.filter((change) => change.kind === 'gallery-membership');
       const projectSettingsChanges = pendingChanges.filter((change) => change.kind === 'project-settings');
@@ -5542,6 +5553,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const payload = await readApiJson(response);
           if (!response.ok) throw new Error(String(payload.error || 'Could not remove that image.'));
           persistedChanges.add(change);
+          acknowledge([change]);
         }
         // Membership before order — listing-order skips slugs that lack listings[grid].
         for (const change of galleryMembershipChanges) {
@@ -5552,6 +5564,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save gallery pages.');
+          acknowledge([change]);
         }
 
         for (const change of listingChanges) {
@@ -5562,6 +5575,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save grid order.');
+          acknowledge([change]);
         }
 
         for (const change of projectSettingsChanges) {
@@ -5592,6 +5606,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (!response.ok) {
             throw new Error(String(payload.error || 'Could not save project settings.'));
           }
+          acknowledge([change]);
         }
 
         for (const change of sectionNavChanges) {
@@ -5615,6 +5630,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (!Array.isArray(responsePayload.outline)) throw new Error('The saved outline could not be confirmed. Refresh before editing again.');
           setDevSectionOutline(normalizeOutline(responsePayload.outline));
           syncDevSectionOutlineSidebar();
+          acknowledge([change]);
         }
 
         for (const change of styleTokenChanges) {
@@ -5639,6 +5655,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const payload = await readApiJson(response);
           if (!response.ok) throw new Error(String(payload.error || 'Could not commit style changes.'));
+          acknowledge(styleTokenChanges);
         }
 
         if (imageChanges.length > 0) {
@@ -5676,6 +5693,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save changes.');
+          acknowledge(imageChanges);
         } else {
           if (dirtyText.length) {
             const response = await fetch('/api/content-text', {
@@ -5691,6 +5709,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || 'Could not save the text.');
+            dirtyText.forEach((state) => { state.savedValue = structuredClone(submittedText.get(state)!); });
           }
 
           const dirtyLayout = [
@@ -5754,17 +5773,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             state.visualSavedValue = cloneSpacing(state.savedValue);
             syncSpacingControl(state);
           });
+          acknowledge([change]);
         }
         syncPageTopSpacingControls();
 
-        const committedIds: string[] = [];
-        pendingChanges.forEach((change) => {
-          if (pendingMedia.get(change.id) !== change) return;
-          pendingMedia.delete(change.id);
-          committedIds.push(change.id);
-        });
-        persistedMediaInserts.length = 0;
-        window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids: committedIds } }));
+        acknowledge(pendingChanges);
+        for (const entry of submittedMediaInserts) {
+          const index = persistedMediaInserts.indexOf(entry);
+          if (index >= 0) persistedMediaInserts.splice(index, 1);
+        }
         // Optimistic: keep the bar up until refreshPublishState confirms counts.
         // Without this, dirtyCount is 0 and unpublishedCount is still stale, so
         // the bar flickers hidden between Save and the /api/publish GET.

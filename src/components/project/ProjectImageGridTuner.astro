@@ -812,7 +812,7 @@ import Button from '../ui/Button.astro';
       lastHistorySnapshot = structuredClone(openingSnapshot);
       historyReady = live;
       unregisterHistoryScope?.();
-      unregisterHistoryScope = live ? registerHistoryScope(tuner, localHistory.scope(), {
+      unregisterHistoryScope = live ? registerHistoryScope(tuner, localHistory, {
         owns: (target) => Boolean(target && tuner.contains(target)),
       }) : null;
       if (live) status.textContent = 'Editing this grid. Drag thumbnails to rearrange or park.';
@@ -859,8 +859,13 @@ import Button from '../ui/Button.astro';
       savedLayouts = cloneLayouts(draftLayouts);
 
       const afterPage = snapshotDraft();
-      if (!pageHistory.replaying && JSON.stringify(beforePage) !== JSON.stringify(afterPage)) {
+      if (!pageHistory.replaying && JSON.stringify(contentSnapshot(beforePage)) !== JSON.stringify(contentSnapshot(afterPage))) {
         const restorePage = (snapshot: typeof beforePage) => {
+          let currentPath: Array<string | number> = [];
+          try { currentPath = JSON.parse(target.dataset.devGridPath || '[]'); } catch { currentPath = []; }
+          const currentDocument = target.dataset.devDocument || documentKey;
+          const currentId = pendingIdFor(target);
+          if (!diskBaselines.has(currentId)) diskBaselines.set(currentId, snapshotBaseline(target));
           applyBaselineToTarget(target, snapshot);
           if (editTarget === target) {
             restoreDraftSnapshot(snapshot);
@@ -868,12 +873,13 @@ import Button from '../ui/Button.astro';
             savedAspect = snapshot.aspect; savedMatchHeight = snapshot.matchHeight;
             savedLayouts = cloneLayouts(snapshot.layouts);
           }
+          const currentPendingId = pendingIdFor(target);
           dispatchGridUpsert(
             target,
-            documentKey,
-            gridPath,
-            pendingId,
-            structuredClone(diskBaselines.get(pendingId) || baseline),
+            currentDocument,
+            currentPath,
+            currentPendingId,
+            structuredClone(diskBaselines.get(currentPendingId) || baseline),
             snapshot,
           );
         };
@@ -900,6 +906,7 @@ import Button from '../ui/Button.astro';
       draftMatchHeight = savedMatchHeight;
       draftLayouts = cloneLayouts(savedLayouts);
       localHistory.clear();
+      lastHistorySnapshot = snapshotDraft();
       renderDraft();
     };
 
@@ -991,15 +998,10 @@ import Button from '../ui/Button.astro';
     }) as EventListener);
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
-      if (ids?.length) ids.forEach((id) => diskBaselines.delete(id));
-      else diskBaselines.clear();
-      if (editTarget) {
-        diskBaselines.set(pendingIdFor(editTarget), {
-          columns: { ...savedColumns },
-          constrained: { ...savedConstrained },
-          aspect: savedAspect,
-          matchHeight: savedMatchHeight,
-          layouts: cloneLayouts(savedLayouts),
+      if (ids?.length) {
+        document.querySelectorAll<HTMLElement>('[data-dev-grid-target]').forEach((target) => {
+          const id = pendingIdFor(target);
+          if (ids.includes(id)) diskBaselines.set(id, snapshotBaseline(target));
         });
       }
     }) as EventListener);

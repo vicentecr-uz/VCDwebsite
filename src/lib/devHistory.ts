@@ -12,22 +12,22 @@ const changed = () => {
 };
 
 export function createHistory() {
-  const past: Array<HistoryCommand & { id: number; time: number }> = [];
+  const past: Array<HistoryCommand & { id: number; time: number; owner?: symbol }> = [];
   const future: typeof past = [];
   let sequence = 0;
   let grouping = false;
   let replaying = false;
   let busy = false;
-  const move = async (from: typeof past, to: typeof past, direction: 'undo' | 'redo') => {
-    if (busy || !from.length) return;
-    const command = from.at(-1)!;
+  const move = async (from: typeof past, to: typeof past, direction: 'undo' | 'redo', index = from.length - 1) => {
+    if (busy || index < 0) return;
+    const command = from[index];
     busy = true;
     replaying = true;
     grouping = false;
     changed();
     try {
       await command[direction]();
-      from.pop();
+      from.splice(index, 1);
       to.push(command);
     } finally {
       replaying = false;
@@ -40,16 +40,16 @@ export function createHistory() {
     get busy() { return busy; },
     get canUndo() { return past.length > 0; },
     get canRedo() { return future.length > 0; },
-    push(command: HistoryCommand) {
+    push(command: HistoryCommand, owner?: symbol) {
       if (replaying) return;
       const previous = past.at(-1);
       const now = Date.now();
-      if (grouping && command.mergeKey && command.mergeKey === previous?.mergeKey
+      if (grouping && command.mergeKey && command.mergeKey === previous?.mergeKey && previous.owner === owner
         && !future.length && now - previous.time < 750) {
         previous.redo = command.redo;
         previous.time = now;
       } else {
-        past.push({ ...command, id: ++sequence, time: now });
+        past.push({ ...command, id: ++sequence, time: now, owner });
       }
       future.length = 0;
       grouping = true;
@@ -65,12 +65,17 @@ export function createHistory() {
       grouping = false;
       changed();
     },
-    scope(): HistoryController {
+    scope() {
       const boundary = sequence;
+      const owner = Symbol('panel');
       grouping = false;
+      const indexIn = (entries: typeof past) => entries.findLastIndex((entry) => entry.owner === owner && entry.id > boundary);
       return {
-        undo: () => past.at(-1)?.id! > boundary ? history.undo() : undefined,
-        redo: () => future.at(-1)?.id! > boundary ? history.redo() : undefined,
+        get canUndo() { return indexIn(past) >= 0; },
+        get canRedo() { return indexIn(future) >= 0; },
+        push: (command: HistoryCommand) => history.push(command, owner),
+        undo: () => move(past, future, 'undo', indexIn(past)),
+        redo: () => move(future, past, 'redo', indexIn(future)),
       };
     },
   };
@@ -107,18 +112,15 @@ export function installHistoryShortcuts(signal: AbortSignal) {
     saving = event.detail.saving;
     pageHistory.breakGroup();
   }) as EventListener, { signal });
-  document.addEventListener('keydown', (event) => {
-    if (!document.documentElement.classList.contains('is-dev-mode') || event.isComposing) return;
-    if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
-    const key = event.key.toLowerCase();
-    if (key !== 'z' && !(key === 'y' && !event.shiftKey)) return;
+  const route = (event: Event, redo: boolean) => {
+    if (!document.documentElement.classList.contains('is-dev-mode')) return;
     const target = event.target instanceof Element ? event.target : null;
     const scope = [...scopes].reverse().find(({ element, owns }) =>
       element.isConnected && !element.closest('[hidden], [aria-hidden="true"]')
       && (element.contains(target) || owns?.(target)
-        || ((target === document.body || target === document.documentElement) && element.contains(lastTarget))),
+        || ((target === document.body || target === document.documentElement) && (element.contains(lastTarget) || owns?.(lastTarget)))),
     );
-    const nativeField = target?.closest('input, textarea, [contenteditable="true"]');
+    const nativeField = target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
     // Unregistered text controls keep native undo; authored page text belongs to the page stack.
     if (!scope && nativeField && !nativeField.hasAttribute('data-dev-text-document')
       && !nativeField.hasAttribute('data-dev-history-text')) return;
@@ -126,10 +128,19 @@ export function installHistoryShortcuts(signal: AbortSignal) {
     event.stopImmediatePropagation();
     if (saving || pageHistory.busy) return;
     const controller = scope?.controller ?? pageHistory;
-    Promise.resolve((event.shiftKey || key === 'y') ? controller.redo() : controller.undo()).catch((error) => {
+    Promise.resolve(redo ? controller.redo() : controller.undo()).catch((error) => {
       window.dispatchEvent(new CustomEvent('vcd:dev-history-error', {
         detail: { message: error instanceof Error ? error.message : 'Could not restore that edit.' },
       }));
     });
+  };
+  document.addEventListener('keydown', (event) => {
+    if (event.isComposing || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+    const key = event.key.toLowerCase();
+    if (key !== 'z' && !(key === 'y' && !event.shiftKey)) return;
+    route(event, event.shiftKey || key === 'y');
+  }, { capture: true, signal });
+  document.addEventListener('beforeinput', (event) => {
+    if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') route(event, event.inputType === 'historyRedo');
   }, { capture: true, signal });
 }

@@ -1,5 +1,70 @@
 import { describe, expect, test } from 'bun:test';
-import { createHistory } from '../../src/lib/devHistory';
+import { createHistory, installHistoryShortcuts, pageHistory, registerHistoryScope } from '../../src/lib/devHistory';
+
+class FakeTarget {
+  listeners = new Map<string, Set<(event: any) => void>>();
+  isConnected = true;
+  parent: FakeTarget | null = null;
+  addEventListener(type: string, listener: (event: any) => void, options?: { signal?: AbortSignal }) {
+    const entries = this.listeners.get(type) || new Set();
+    entries.add(listener);
+    this.listeners.set(type, entries);
+    options?.signal?.addEventListener('abort', () => entries.delete(listener), { once: true });
+  }
+  removeEventListener(type: string, listener: (event: any) => void) { this.listeners.get(type)?.delete(listener); }
+  dispatchEvent(event: any) {
+    if (!event.target) {
+      try { event.target = this; } catch { /* Native Event targets are readonly. */ }
+    }
+    for (const listener of this.listeners.get(event.type) || []) listener(event);
+    return true;
+  }
+}
+
+class FakeElement extends FakeTarget {
+  constructor(public name: string, public field = '') { super(); }
+  contains(target: any) { return target === this || target?.parent === this; }
+  closest(selector: string) {
+    if (selector.includes('input') && this.field === 'input') return this;
+    if (selector.includes('[hidden') && this.field === 'hidden') return this;
+    return null;
+  }
+  hasAttribute(attribute: string) { return this.field === attribute; }
+}
+
+const makeEvent = (type: string, target: FakeTarget, detail: Record<string, any> = {}) => ({
+  type, target, ...detail, defaultPrevented: false,
+  preventDefault() { this.defaultPrevented = true; },
+  stopImmediatePropagation() { this.stopped = true; },
+});
+
+const withShortcuts = (callback: (doc: FakeTarget, win: FakeTarget, panel: FakeElement, signal: AbortSignal) => Promise<void> | void) => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousElement = globalThis.Element;
+  const doc = new FakeTarget() as any;
+  const win = new FakeTarget() as any;
+  const root = new FakeElement('root');
+  const body = new FakeElement('body');
+  root.classList = { contains: () => true };
+  doc.documentElement = root;
+  doc.body = body;
+  globalThis.document = doc;
+  globalThis.window = win;
+  globalThis.Element = FakeElement as any;
+  pageHistory.clear();
+  const abort = new AbortController();
+  installHistoryShortcuts(abort.signal);
+  const panel = new FakeElement('panel');
+  panel.parent = body;
+  return Promise.resolve(callback(doc, win, panel, abort.signal)).finally(() => {
+    abort.abort();
+    pageHistory.clear();
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.Element = previousElement;
+  });
+};
 
 describe('editor history', () => {
   test('undo and redo span action types and survive a save boundary', async () => {
@@ -39,7 +104,7 @@ describe('editor history', () => {
     await scope.undo();
     expect(value).toBe(1);
     value = 2;
-    history.push({ label: 'Panel', undo: () => { value = 1; }, redo: () => { value = 2; } });
+    scope.push({ label: 'Panel', undo: () => { value = 1; }, redo: () => { value = 2; } });
     await scope.undo();
     await scope.undo();
     expect(value).toBe(1);
@@ -71,4 +136,63 @@ describe('editor history', () => {
     expect(history.canUndo).toBe(false);
     expect(history.canRedo).toBe(true);
   });
+  test('panel undo leaves later unrelated page text alone', async () => {
+    const history = createHistory();
+    const panel = history.scope();
+    let visible = false, text = 'New title';
+    panel.push({ label: 'Hide project', undo: () => { visible = true; }, redo: () => { visible = false; } });
+    history.push({ label: 'Page text', undo: () => { text = 'Old title'; }, redo: () => { text = 'New title'; } });
+    await panel.undo();
+    expect(visible).toBe(true);
+    expect(text).toBe('New title');
+    await panel.undo();
+    expect(text).toBe('New title');
+    await history.undo();
+    expect(text).toBe('Old title');
+  });
+
+  test('a visible panel consumes Cmd-Z without spilling to page history', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const panelHistory = createHistory();
+    let panelValue = 1, pageValue = 1;
+    panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => { panelValue = 1; } });
+    pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => { pageValue = 1; } });
+    registerHistoryScope(panel as any, panelHistory, { signal });
+    const event = makeEvent('keydown', panel, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(event);
+    await Promise.resolve();
+    expect(panelValue).toBe(0);
+    expect(pageValue).toBe(1);
+    expect(event.defaultPrevented).toBe(true);
+  }));
+
+  test('authored text uses page history while an ordinary input keeps native undo', async () => withShortcuts(async (doc) => {
+    let value = 1;
+    pageHistory.push({ label: 'Text', undo: () => { value = 0; }, redo: () => { value = 1; } });
+    const authored = new FakeElement('textarea', 'data-dev-text-document');
+    const authoredEvent = makeEvent('keydown', authored, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(authoredEvent);
+    await Promise.resolve();
+    expect(value).toBe(0);
+    expect(authoredEvent.defaultPrevented).toBe(true);
+    const ordinary = new FakeElement('input', 'input');
+    const ordinaryEvent = makeEvent('keydown', ordinary, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(ordinaryEvent);
+    expect(ordinaryEvent.defaultPrevented).toBe(false);
+  }));
+
+  test('saving blocks keyboard undo and beforeinput routes history undo', async () => withShortcuts(async (doc, win) => {
+    let value = 1;
+    pageHistory.push({ label: 'Edit', undo: () => { value = 0; }, redo: () => { value = 1; } });
+    win.dispatchEvent({ type: 'vcd:dev-save-state', detail: { saving: true } });
+    const blocked = makeEvent('keydown', doc.body, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(blocked);
+    await Promise.resolve();
+    expect(value).toBe(1);
+    win.dispatchEvent({ type: 'vcd:dev-save-state', detail: { saving: false } });
+    const input = makeEvent('beforeinput', doc.body, { inputType: 'historyUndo' });
+    doc.dispatchEvent(input);
+    await Promise.resolve();
+    expect(value).toBe(0);
+    expect(input.defaultPrevented).toBe(true);
+  }));
 });

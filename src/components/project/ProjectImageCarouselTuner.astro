@@ -910,7 +910,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       lastHistorySnapshot = structuredClone(openingSnapshot);
       historyReady = live;
       unregisterHistoryScope?.();
-      unregisterHistoryScope = live ? registerHistoryScope(tuner, localHistory.scope(), {
+      unregisterHistoryScope = live ? registerHistoryScope(tuner, localHistory, {
         owns: (target) => Boolean(target && tuner.contains(target)),
       }) : null;
       if (live) {
@@ -923,27 +923,53 @@ import ToggleRow from '../ui/ToggleRow.astro';
       const beforePage = openingSnapshot ? structuredClone(openingSnapshot) : snapshotDraft();
       if (stageDraft('Staged — use Save in the page bar to write to disk.')) {
         const afterPage = snapshotDraft();
-        if (!pageHistory.replaying && JSON.stringify(beforePage) !== JSON.stringify(afterPage)) {
+        if (!pageHistory.replaying && JSON.stringify(contentSnapshot(beforePage)) !== JSON.stringify(contentSnapshot(afterPage))) {
           const restorePage = (snapshot: typeof beforePage) => {
-            const previousTarget = editTarget;
-            const previousDraft = draft;
-            const previousConstrained = draftConstrained;
-            const previousViewport = selectedViewport;
-            const previousCatalog = catalog;
-            const previousItemIds = itemIds;
-            editTarget = target;
-            catalog = readCatalog(target);
-            itemIds = catalog.map((item) => item.id);
-            draft = cloneDraft(snapshot.draft);
-            draftConstrained = { ...snapshot.constrained };
-            selectedViewport = snapshot.viewport;
-            stageDraft('Restored carousel edit.');
-            editTarget = previousTarget;
-            draft = previousDraft;
-            draftConstrained = previousConstrained;
-            selectedViewport = previousViewport;
-            catalog = previousCatalog;
-            itemIds = previousItemIds;
+            const ids = readCatalog(target).map((item) => item.id);
+            const source = serializeCarouselSettings(snapshot.draft.orientation, snapshot.draft.byViewport, ids);
+            const pendingId = pendingIdFor(target);
+            if (!diskBaselines.has(pendingId)) diskBaselines.set(pendingId, draftFromSource(readSource(target), ids));
+            if (!constrainedBaselines.has(pendingId)) constrainedBaselines.set(pendingId, resolveImageGridConstrained(readConstrainedSource(target)));
+            const baseline = diskBaselines.get(pendingId)!;
+            const constrainedBaseline = constrainedBaselines.get(pendingId)!;
+            applyToTarget(target, snapshot.draft, snapshot.viewport);
+            applyConstrainedStyleTo(target, snapshot.constrained);
+            if (target === editTarget) {
+              saved = cloneDraft(snapshot.draft);
+              draft = cloneDraft(snapshot.draft);
+              savedConstrained = { ...snapshot.constrained };
+              draftConstrained = { ...snapshot.constrained };
+              selectedViewport = snapshot.viewport;
+              openingSnapshot = structuredClone(snapshot);
+              lastHistorySnapshot = structuredClone(snapshot);
+              localHistory.clear();
+              renderDraft();
+            }
+            if (baseline && draftsEqual(snapshot.draft, baseline)
+              && (!constrainedBaseline || JSON.stringify(snapshot.constrained) === JSON.stringify(constrainedBaseline))) {
+              window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+              return;
+            }
+            window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', { detail: {
+              id: pendingId, kind: 'carousel', payload: {
+                document: target.dataset.devDocument,
+                path: JSON.parse(target.dataset.devCarouselPath || '[]'),
+                orientation: source.orientation, heightMode: source.heightMode ?? 'dynamic',
+                maxHeightVh: source.maxHeightVh ?? 0, scrollPinned: source.scrollPinned === true,
+                dotsPlacement: source.dotsPlacement ?? 'outside', visible: source.visible ?? ids,
+                breakpoints: source.breakpoints ?? null, constrained: snapshot.constrained,
+              }, revert: () => {
+                if (!baseline) return;
+                applyToTarget(target, baseline, snapshot.viewport);
+                applyConstrainedStyleTo(target, constrainedBaseline);
+                if (editTarget === target) {
+                  saved = cloneDraft(baseline); draft = cloneDraft(baseline);
+                  savedConstrained = { ...constrainedBaseline }; draftConstrained = { ...constrainedBaseline };
+                  openingSnapshot = snapshotDraft(); lastHistorySnapshot = snapshotDraft();
+                  localHistory.clear(); renderDraft();
+                }
+              },
+            } }));
           };
           pageHistory.push({
             label: 'Edit image carousel',
@@ -969,6 +995,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
       draft = cloneDraft(saved);
       draftConstrained = { ...savedConstrained };
       localHistory.clear();
+      lastHistorySnapshot = snapshotDraft();
       const wasLive = liveApply;
       liveApply = true;
       renderDraft();
@@ -1081,7 +1108,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
     clearOverrideButton.addEventListener('click', () => {
       clearOverride();
       renderDraft();
-      stageDraft(`Cleared ${selectedViewport} override — use Save in the page bar to write to disk.`);
+      status.textContent = `Cleared ${selectedViewport} override — unsaved changes.`;
     });
 
     saveButton.addEventListener('click', saveDraft);
@@ -1095,7 +1122,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
     revertButton.addEventListener('click', () => {
       revertToSaved();
-      stageDraft('Reverted to the last saved carousel settings.');
+      status.textContent = 'Reverted to the last saved carousel settings.';
     });
 
     window.addEventListener('vcd:dev-before-save', () => {
@@ -1106,11 +1133,14 @@ import ToggleRow from '../ui/ToggleRow.astro';
     }) as EventListener);
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
-      if (ids?.length) ids.forEach((id) => { diskBaselines.delete(id); constrainedBaselines.delete(id); });
-      else { diskBaselines.clear(); constrainedBaselines.clear(); }
-      if (editTarget) {
-        diskBaselines.set(pendingIdFor(editTarget), cloneDraft(saved));
-        constrainedBaselines.set(pendingIdFor(editTarget), { ...savedConstrained });
+      if (ids?.length) {
+        document.querySelectorAll<HTMLElement>('[data-dev-carousel-target]').forEach((target) => {
+          const id = pendingIdFor(target);
+          if (!ids.includes(id)) return;
+          const targetItems = readCatalog(target).map((item) => item.id);
+          diskBaselines.set(id, draftFromSource(readSource(target), targetItems));
+          constrainedBaselines.set(id, resolveImageGridConstrained(readConstrainedSource(target)));
+        });
       }
     }) as EventListener);
 
