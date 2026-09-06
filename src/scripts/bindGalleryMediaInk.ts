@@ -80,11 +80,14 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       const meta = cover.querySelector<HTMLElement>('.project-grid__meta');
       const chips = [...item.querySelectorAll<HTMLElement>('.project-grid__chip')];
 
-      if (!hover && meta) {
+      if (document.documentElement.classList.contains('is-dev-mode')) {
+        // Pointer hover never swaps bitmaps in Edit. Hidden meta still belongs
+        // to the visible base image; only the forced-hover control overrides it.
+        metaPinnedToHover = false;
+      } else if (!hover && meta) {
         // Pin only on a *settled* opacity: pointerleave fires while the 0.3s
         // meta fade-out is still running, and a mid-fade value must not clear
         // the pin — that would swap the colour during the fade-out (#325 T3).
-        // Edit mode needs no guard: meta is opacity 1 there, so it unpins.
         const restOpacity = parseFloat(getComputedStyle(meta).opacity);
         if (restOpacity === 0 || restOpacity === 1) {
           const hoverSrc = hoverImg?.currentSrc || hoverImg?.src;
