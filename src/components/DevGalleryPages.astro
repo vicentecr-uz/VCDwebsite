@@ -101,6 +101,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     let filter = 'all';
     /** @type {'home' | 'work' | 'play' | ''} */
     let activeGrid = '';
+    let loadedGrid = '';
+    let loadPromise: Promise<void> | null = null;
     /** @type {Map<string, HTMLElement>} */
     const detachedItems = new Map();
     /** @type {Map<string, HTMLElement>} */
@@ -111,7 +113,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const GRID_GAP = 8;
     const GRID_COLUMNS = 3;
     let layoutCapsRaf = 0;
-    let historyScope: { undo: () => void | Promise<void>; redo: () => void | Promise<void> } | null = null;
+    let historyScope: ReturnType<typeof pageHistory.scope> | null = null;
     let unregisterHistoryScope: (() => void) | null = null;
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -765,7 +767,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const pushGalleryChange = (before, after, label) => {
       if (snapshotsMatch(before, after) || pageHistory.replaying) return;
-      pageHistory.push({
+      (historyScope ?? pageHistory).push({
         label,
         undo: () => applyGallerySnapshot(before),
         redo: () => applyGallerySnapshot(after),
@@ -872,20 +874,33 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const loadPages = async () => {
       if (!activeGrid) return;
+      if (loadedGrid === activeGrid) {
+        renderGrid();
+        return;
+      }
+      if (loadPromise) return loadPromise;
       setStatus('Loading…');
-      const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(activeGrid)}`);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Could not load gallery pages.');
-      pages = Array.isArray(payload.pages) ? payload.pages : [];
-      selected = new Set(
-        pages.filter((page) => page.onGallery).map((page) => page.slug),
-      );
-      baseline = new Set(selected);
-      detachedItems.clear();
-      createdItems.clear();
-      baselineOrder = captureGridOrder();
-      baselinePagesOrder = pages.map((page) => page.slug);
-      renderGrid();
+      const requestedGrid = activeGrid;
+      loadPromise = (async () => {
+        const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(requestedGrid)}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not load gallery pages.');
+        if (activeGrid !== requestedGrid) return;
+        pages = Array.isArray(payload.pages) ? payload.pages : [];
+        selected = new Set(pages.filter((page) => page.onGallery).map((page) => page.slug));
+        baseline = new Set(selected);
+        detachedItems.clear();
+        createdItems.clear();
+        baselineOrder = captureGridOrder();
+        baselinePagesOrder = pages.map((page) => page.slug);
+        loadedGrid = requestedGrid;
+        renderGrid();
+      })();
+      try {
+        await loadPromise;
+      } finally {
+        loadPromise = null;
+      }
     };
 
     const openPanel = () => {
