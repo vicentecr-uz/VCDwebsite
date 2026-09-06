@@ -112,6 +112,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   } from '../scripts/devSectionPaths';
   import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
+  import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
   import { sizeIcon } from '../lib/icons';
   import {
     projectStackClass,
@@ -140,6 +141,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     control: HTMLElement;
     addButton: HTMLButtonElement;
     spacingGroup: HTMLElement;
+    resetButton: HTMLButtonElement;
     menu: HTMLElement;
     document: string;
     path: Array<string | number>;
@@ -147,6 +149,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     visualSavedValue: SpacingMap;
     currentValue: SpacingMap;
     introHeight: EditableIntroHeightState | null;
+    resetVisibilitySynced: boolean;
   }
 
   interface EditableIntroHeightState {
@@ -184,6 +187,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (window.innerWidth <= 767) return 'mobile';
     if (window.innerWidth <= 991) return 'tablet';
     return 'desktop';
+  };
+
+  const spacingParentViewport = (viewport: ProjectStackSpacingViewport): ProjectStackSpacingViewport | null => {
+    if (viewport === 'tablet') return 'desktop';
+    if (viewport === 'mobile') return 'tablet';
+    return null;
   };
 
   const spacingOptionsFor = (pageTop: boolean, pageBottom: boolean): SpacingOption[] =>
@@ -527,14 +536,56 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingControl = (state: EditableSpacingState) => {
-      const active = state.currentValue[currentSpacingViewport()];
+      const viewport = currentSpacingViewport();
+      const active = state.currentValue[viewport];
       state.control.querySelectorAll<HTMLButtonElement>('[data-dev-spacing-option]').forEach((button) => {
         button.classList.toggle('is-active', button.dataset.devSpacingOption === active);
       });
+      const parentViewport = spacingParentViewport(viewport);
+      const shouldShowReset = Boolean(
+        parentViewport && state.currentValue[viewport] !== state.currentValue[parentViewport],
+      );
+      const wasShowingReset = !state.resetButton.hidden;
+      state.resetButton.hidden = !shouldShowReset;
+      if (parentViewport) {
+        const parentLabel = parentViewport === 'desktop' ? 'desktop' : 'tablet';
+        state.resetButton.title = `Reset to ${parentLabel}`;
+        state.resetButton.setAttribute('aria-label', `Reset to ${parentLabel}`);
+      }
+      if (shouldShowReset && state.resetVisibilitySynced && !wasShowingReset) {
+        state.resetButton.classList.remove('is-dev-spacing-reset-revealing');
+        void state.resetButton.offsetWidth;
+        state.resetButton.classList.add('is-dev-spacing-reset-revealing');
+      }
+      state.resetVisibilitySynced = true;
       applySpacingClass(state.element, state.currentValue);
       const dirty = !spacingEqual(state.currentValue, state.visualSavedValue);
       state.element.classList.toggle('is-dev-spacing-dirty', dirty);
       if (!dirty) cancelGapRelocation(state.control);
+    };
+
+    const bindSpacingReset = (state: EditableSpacingState) => {
+      state.resetButton.addEventListener('animationend', () => {
+        state.resetButton.classList.remove('is-dev-spacing-reset-revealing');
+      });
+      state.resetButton.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        state.resetButton.blur();
+        const viewport = currentSpacingViewport();
+        const parentViewport = spacingParentViewport(viewport);
+        if (!parentViewport || state.currentValue[viewport] === state.currentValue[parentViewport]) return;
+        pinGapToolbarTop(state.control);
+        state.currentValue = setProjectStackSpacingAtViewport(
+          state.currentValue,
+          viewport,
+          state.currentValue[parentViewport],
+        );
+        applySpacingClass(state.element, state.currentValue);
+        window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+        syncSpacingControl(state);
+        updateActions();
+      });
     };
 
     const syncIntroHeightControl = (state: EditableIntroHeightState) => {
@@ -789,6 +840,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             <div class="dev-gap-toolbar__spacing">
               ${spacingButtonsHtml(pageTop, pageBottom)}
             </div>
+            <span class="dev-hairline dev-hairline--vertical dev-spacing-control__reset-separator" role="presentation"></span>
+            <button
+              type="button"
+              class="dev-btn dev-btn--page dev-spacing-control__reset"
+              data-dev-spacing-reset
+              title="Reset to parent breakpoint"
+              aria-label="Reset to parent breakpoint"
+              hidden
+            >
+              <span class="dev-btn__icon" aria-hidden="true">${sizeIcon(rotateIcon, 16)}</span>
+            </button>
             ${isIntro ? '<span class="dev-hairline dev-hairline--vertical dev-intro-height-separator" role="presentation"></span>' : ''}
             ${introHeightControl}
           </div>
@@ -806,7 +868,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const addButton = control.querySelector<HTMLButtonElement>('[data-dev-section-add]');
         const menu = control.querySelector<HTMLElement>('[data-dev-section-menu]');
         const spacingGroup = control.querySelector<HTMLElement>('.dev-gap-toolbar__spacing');
-        if (!addButton || !menu || !spacingGroup) return null;
+        const resetButton = control.querySelector<HTMLButtonElement>('[data-dev-spacing-reset]');
+        if (!addButton || !menu || !spacingGroup || !resetButton) return null;
 
         const computed = getComputedStyle(element);
         if (computed.position === 'static') {
@@ -842,6 +905,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           control,
           addButton,
           spacingGroup,
+          resetButton,
           menu,
           document: element.dataset.devSpacingDocument,
           path,
@@ -849,8 +913,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           visualSavedValue: cloneSpacing(initial),
           currentValue: cloneSpacing(initial),
           introHeight: introHeightState,
+          resetVisibilitySynced: false,
         };
         bindSpacingOptionClicks(state);
+        bindSpacingReset(state);
         syncSpacingControl(state);
 
         return state;
@@ -6255,13 +6321,28 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none !important;
   }
 
+  .dev-gap-toolbar[data-dev-suppress-gallery-page-top]:not(:has(.dev-intro-height-control))
+    :is(.dev-spacing-control__reset, .dev-spacing-control__reset-separator) {
+    display: none;
+  }
+
   .dev-gap-toolbar[data-dev-suppress-gallery-page-top]:has(.dev-intro-height-control)
-    :is(.dev-gap-toolbar__spacing, .dev-hairline:has(+ .dev-gap-toolbar__spacing)) {
+    :is(
+      .dev-gap-toolbar__spacing,
+      .dev-hairline:has(+ .dev-gap-toolbar__spacing),
+      .dev-spacing-control__reset,
+      .dev-spacing-control__reset-separator
+    ) {
     display: none;
   }
 
   .dev-gap-toolbar.is-intro-outer-gap
-    :is(.dev-gap-toolbar__spacing, .dev-hairline:has(+ .dev-gap-toolbar__spacing)) {
+    :is(
+      .dev-gap-toolbar__spacing,
+      .dev-hairline:has(+ .dev-gap-toolbar__spacing),
+      .dev-spacing-control__reset,
+      .dev-spacing-control__reset-separator
+    ) {
     display: none;
   }
 
@@ -6577,6 +6658,41 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: flex;
     align-items: center;
     gap: 4px;
+  }
+
+  .dev-spacing-control__reset-separator:has(+ .dev-spacing-control__reset[hidden]) {
+    display: none;
+  }
+
+  .dev-spacing-control__reset {
+    width: var(--dev-control-height);
+    min-width: var(--dev-control-height);
+  }
+
+  .dev-spacing-control__reset.is-dev-spacing-reset-revealing {
+    animation: dev-spacing-reset-reveal 0.16s ease-out both;
+  }
+
+  @keyframes dev-spacing-reset-reveal {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes dev-spacing-reset-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-spacing-control__reset.is-dev-spacing-reset-revealing {
+      animation-name: dev-spacing-reset-fade;
+    }
   }
 
   /* Ghost Button Base at 72px. */
