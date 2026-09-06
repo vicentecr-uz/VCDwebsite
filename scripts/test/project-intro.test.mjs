@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { introLayout, introRun, normalizeIntroHeight, resolveIntroHeight } from '../../src/lib/projectIntro.ts';
 import {
   canonicalizeProjectStackSpacing,
@@ -9,6 +10,15 @@ import {
   reorderProjectStackSpacingSeams,
   shouldKeepLeadingSpacingSeam,
 } from '../../src/lib/projectStack.ts';
+import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../src/lib/pageColumn.ts';
+import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
+
+const headerSource = readFileSync(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
+const layoutSource = readFileSync(new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+const projectBodyText = readFileSync(new URL('../../src/components/project/ProjectBodyText.astro', import.meta.url), 'utf8');
+const projectSectionTitle = readFileSync(new URL('../../src/components/project/ProjectSectionTitle.astro', import.meta.url), 'utf8');
+const globalCss = readFileSync(new URL('../../src/styles/global.css', import.meta.url), 'utf8');
+const projectCss = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',
@@ -32,7 +42,6 @@ assert.deepEqual(resolveProjectStackSpacing({ desktop: 'bad', tablet: 'group', m
 assert.throws(() => canonicalizeProjectStackSpacing({ toString: 'none' }));
 assert.throws(() => canonicalizeProjectStackSpacing({ __proto__: 'none' }));
 assert.equal(canonicalizeProjectStackSpacing({ desktop: 'section', tablet: 'section', mobile: 'section' }), 'section');
-import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 
 assert.equal(normalizeIntroHeight(80.4), 80);
 assert.equal(normalizeIntroHeight('bad'), 75);
@@ -52,6 +61,24 @@ assert.equal(layout.flexibleAirPx, 400);
 assert.equal(layout.outerGapPx, 200);
 assert.equal(introLayout(100, 1000, 1000).flexibleAirPx, 0);
 assert.equal(introLayout(80, 1000, 100).outerGapPx, 350);
+
+assert.equal(ADAPTIVE_PAGE_COLUMNS_ENABLED, false);
+assert.match(layoutSource, /style=\{ADAPTIVE_PAGE_COLUMNS_ENABLED \? columnStyle : undefined\}/);
+assert.match(layoutSource, /showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn \/>/);
+assert.match(headerSource, /if \(!adaptivePageColumnsEnabled \|\| !siteWrapper\) return;/);
+assert.match(globalCss, /--page-text-max-width: 37\.5em;[\s\S]*?--page-media-max-width: 50em;/);
+assert.match(projectCss, /\.project-block--text\s*\{[\s\S]*?max-width: var\(--page-text-max-width\);[\s\S]*?margin-inline: 0 auto;/);
+assert.match(projectBodyText, /'project-block--text'/);
+assert.match(projectSectionTitle, /'project-block--text'/);
+assert.equal(
+  pageColumnStyle([{ type: 'bodyText' }]),
+  '--page-max-width: var(--page-text-max-width); --page-header-width: var(--page-text-max-width)',
+);
+assert.equal(pageColumnStyle([{ type: 'projectGrid' }]), undefined);
+assert.equal(
+  pageColumnStyle([{ type: 'imageGrid', constrained: { desktop: 50, tablet: 50, mobile: 50 } }]),
+  '--page-max-width: max(var(--page-text-max-width), calc(var(--page-media-max-width) * 0.5)); --page-header-width: calc(var(--page-media-max-width) * 0.5)',
+);
 
 assert.equal(resolveGapLaneSide(100, 200, 124, 1, 'before'), 'before');
 assert.equal(resolveGapLaneSide(100, 200, 125, 1, 'before'), 'after');

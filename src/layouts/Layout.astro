@@ -19,6 +19,7 @@ import DevShortcutsHelp from '../components/DevShortcutsHelp.astro';
 import DevAssetManager from '../components/DevAssetManager.astro';
 import DevPageColumn from '../components/DevPageColumn.astro';
 import GalleryMediaInk from '../components/GalleryMediaInk.astro';
+import { ADAPTIVE_PAGE_COLUMNS_ENABLED } from '../lib/pageColumn';
 
 if (import.meta.env.DEV) {
   await import('../styles/dev-token-alarms.css');
@@ -42,9 +43,8 @@ interface Props {
    */
   ogImage?: string;
   /**
-   * Inline style for #site-wrapper, used to narrow the page column to what the
-   * page's own content needs. Build it with `pageColumnStyle()` from
-   * src/lib/pageColumn.ts; omit it to keep the default column.
+   * Candidate inline style for #site-wrapper. ADAPTIVE_PAGE_COLUMNS_ENABLED
+   * controls whether Layout applies it and mounts the dev/HMR synchronizer.
    */
   columnStyle?: string;
 }
@@ -68,7 +68,11 @@ const showDevTools = import.meta.env.DEV;
 ---
 
 <!doctype html>
-<html lang="en" data-theme={showDevTools ? undefined : 'light'}>
+<html
+  lang="en"
+  data-theme={showDevTools ? undefined : 'light'}
+  data-adaptive-page-columns={ADAPTIVE_PAGE_COLUMNS_ENABLED ? '' : undefined}
+>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -117,7 +121,7 @@ const showDevTools = import.meta.env.DEV;
     <!-- Page transition overlay (GSAP fades this in/out) -->
     <div id="transition-overlay"></div>
 
-    <div id="site-wrapper" style={columnStyle}>
+    <div id="site-wrapper" style={ADAPTIVE_PAGE_COLUMNS_ENABLED ? columnStyle : undefined}>
       <slot />
     </div>
 
@@ -132,7 +136,7 @@ const showDevTools = import.meta.env.DEV;
     {showDevTools && <DevGalleryPages />}
     {showDevTools && <DevShortcutsHelp />}
     {showDevTools && <DevAssetManager />}
-    {showDevTools && <DevPageColumn />}
+    {showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn />}
     <GalleryMediaInk />
 
     {showDevTools && (
