@@ -386,7 +386,7 @@ export function restoreDevSectionOutlineFromRoot() {
 export function disposeDevSectionOutlineSync() {
   outlineAbort?.abort();
   outlineAbort = null;
-  document.documentElement.dataset.devSectionOutlineSync = '';
+  delete document.documentElement.dataset.devSectionOutlineSync;
   root = null;
   documentKey = '';
   outline.length = 0;

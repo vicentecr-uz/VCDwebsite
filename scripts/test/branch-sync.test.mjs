@@ -20,7 +20,7 @@ function makeFixture() {
   const seed = path.join(root, 'seed');
   const work = path.join(root, 'work');
   const peer = path.join(root, 'peer');
-  git(root, 'init', '--bare', bare);
+  git(root, 'init', '--bare', '--initial-branch=main', bare);
   mkdirSync(seed);
   git(seed, 'init', '-b', 'main');
   git(seed, 'config', 'user.email', 'test@example.com');

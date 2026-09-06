@@ -121,7 +121,7 @@ sync_once() {
           return 1
         fi
       fi
-      if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
+      if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
       reload_if_changed "$incoming_paths"
     else
       echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forward failed for $branch"
@@ -145,7 +145,7 @@ sync_once() {
     if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
     return 1
   fi
-  if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
+  if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
   reload_if_changed "$incoming_paths"
 }
 
