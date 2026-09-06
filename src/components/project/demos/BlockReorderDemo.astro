@@ -188,9 +188,9 @@ import Button from '../../ui/Button.astro';
       this.lifecycle = lifecycle;
       const { signal } = lifecycle;
       const list = this.querySelector<HTMLElement>('[data-reorder-demo-list]');
-      const reset = this.querySelector<HTMLButtonElement>('[data-reorder-demo-reset]');
+      const resetButton = this.querySelector<HTMLButtonElement>('[data-reorder-demo-reset]');
       const status = this.querySelector<HTMLElement>('.reorder-demo__status');
-      if (!list || !reset || !status) return;
+      if (!list || !resetButton || !status) return;
       this.originalNodes = [...list.childNodes];
 
       const items = () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')]
@@ -363,7 +363,7 @@ import Button from '../../ui/Button.astro';
           reset(this.liftNodes ?? this.originalNodes);
         }, { signal });
       }
-      reset.addEventListener('click', () => reset(), { signal });
+      resetButton.addEventListener('click', () => reset(), { signal });
     }
 
     disconnectedCallback() {
