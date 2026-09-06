@@ -210,6 +210,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       ? document.documentElement.clientWidth - panelRect.right
       : panelRect.left;
     trigger.style.setProperty('--header-menu-outer-space', `${Math.max(0, outerSpace)}px`);
+    trigger.style.setProperty('--header-menu-viewport-size', `${document.documentElement.clientWidth}px`);
   };
 
   // Latched when a downward scroll closes the menu, and released once the
@@ -657,9 +658,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const isOpen = () => trigger.dataset.menuOpen === 'true';
+    const previewSide = trigger.classList.contains('header-trigger--end') ? 'end' : 'start';
+    let previewPinned = false;
 
     const openMenu = (event?: Event) => {
       if (isOpen()) return;
+      if (import.meta.env.DEV) {
+        const pinnedSide = document.documentElement.dataset.headerSurfacePreview;
+        if (pinnedSide && pinnedSide !== previewSide) return;
+      }
 
       // If a higher layer (e.g. page-top gap chips) is under the pointer, don't expand.
       if (event instanceof MouseEvent) {
@@ -692,6 +699,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      *   still honoured by the interaction-specific close guards below.
      */
     const closeMenu = (force = false) => {
+      if (previewPinned && !force) return;
       if (!isOpen()) return;
       delete trigger.dataset.menuOpen;
       setCloseStagger();
@@ -708,6 +716,29 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
     };
 
+    if (import.meta.env.DEV) {
+      document.addEventListener('vcd:header-surface-preview', ((event: CustomEvent<{ side?: 'start' | 'end' | null }>) => {
+        const side = event.detail?.side ?? null;
+        if (side === previewSide) {
+          previewPinned = true;
+          document.documentElement.dataset.headerSurfacePreview = side;
+          openMenu();
+        } else if (previewPinned || document.documentElement.dataset.headerSurfacePreview === previewSide) {
+          previewPinned = false;
+          if (document.documentElement.dataset.headerSurfacePreview === previewSide) {
+            delete document.documentElement.dataset.headerSurfacePreview;
+          }
+          closeMenu(true);
+        }
+      }) as EventListener);
+      document.addEventListener('header:force-close', () => {
+        previewPinned = false;
+        if (document.documentElement.dataset.headerSurfacePreview === previewSide) {
+          delete document.documentElement.dataset.headerSurfacePreview;
+        }
+      });
+    }
+
     // Tapping a link focuses it in some mobile browsers; ignore that focus so it
     // doesn't open the menu before the click handler can toggle it.
     let lastPointerDownAt = -Infinity;
@@ -723,6 +754,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       openMenu(event);
     });
     trigger.addEventListener('mouseleave', () => {
+      if (previewPinned) return;
       if (isTapMode()) return;
       menuScrollClosed = false;
       const active = document.activeElement;
@@ -735,6 +767,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // Scroll-driven close: run the normal animated close, not the instant
     // force-close, so the menu fades/staggers out like a mouse-leave.
     trigger.addEventListener('header:request-close', () => {
+      if (previewPinned) return;
       closeMenu(true);
     });
     trigger.addEventListener('focusin', () => {
@@ -742,6 +775,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       openMenu();
     });
     trigger.addEventListener('focusout', (event) => {
+      if (previewPinned) return;
       if (!trigger.contains(event.relatedTarget as Node | null)) {
         if (!isTapMode() && trigger.matches(':hover')) return;
         closeMenu();
@@ -776,6 +810,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
 
     document.addEventListener('click', (event) => {
+      if (previewPinned) return;
       if (!isTapMode() || !isOpen()) return;
       if (trigger.contains(event.target as Node | null)) return;
 
@@ -785,6 +820,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     document.addEventListener('keydown', (event) => {
+      if (previewPinned) return;
       if (event.key !== 'Escape' || !isOpen()) return;
       const active = document.activeElement;
       if (active instanceof HTMLElement && trigger.contains(active)) active.blur();
@@ -1329,7 +1365,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-menu-backdrop {
     position: fixed;
     inset: 0;
-    background-color: color-mix(in srgb, var(--sys-color-srf) 90%, transparent);
+    background-color: color-mix(
+      in srgb,
+      var(--sys-color-srf) var(--header-surface-backdrop-opacity, 90%),
+      transparent
+    );
     opacity: 0;
     transition:
       opacity var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
@@ -1412,17 +1452,21 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-trigger__panel-bg {
     /* Joined straight and circular tiles preserve one opaque plateau without
        intersecting the rounded corners. */
-    --panel-corner-radius: 3.5em;
-    --panel-feather: 4em;
+    --panel-corner-radius: min(
+      var(--header-surface-radius, 3.5em),
+      calc(var(--panel-inline-size) / 2)
+    );
+    --panel-feather: var(--header-surface-feather, 4em);
     --panel-feather-outer: clamp(
       0px,
       var(--header-menu-outer-space, 0px),
       var(--panel-feather)
     );
     --panel-corner-size: calc(var(--panel-corner-radius) + var(--panel-feather));
-    --panel-bottom-pad: var(--space-unit);
+    --panel-bottom-pad: var(--header-surface-bottom-padding, var(--space-unit));
     --panel-inline-size: calc(
-      var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) + var(--panel-corner-radius)
+      var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) +
+        var(--header-surface-side-padding, 3.5em)
     );
     --panel-edge-ramp: #000 0%, rgb(0 0 0 / 0.96) 15%, rgb(0 0 0 / 0.82) 30%,
       rgb(0 0 0 / 0.5) 50%, rgb(0 0 0 / 0.18) 70%, rgb(0 0 0 / 0.04) 85%, transparent 100%;
@@ -1435,6 +1479,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       transparent var(--panel-corner-size);
     position: absolute;
     overflow: hidden;
+    max-inline-size: calc(
+      var(--header-menu-viewport-size, 100vw) - var(--header-menu-outer-space, 0px) +
+        var(--panel-feather-outer)
+    );
     /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
        header band or the opposite trigger's wordmark/logo. Only the part that
        hangs below the header is actually seen. */
@@ -1452,6 +1500,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     content: '';
     position: absolute;
     inset: 0;
+    inline-size: calc(var(--panel-inline-size) + 2 * var(--panel-feather));
     background: var(--sys-color-srf);
     mask:
       linear-gradient(#000 0 0) top center /
@@ -1501,6 +1550,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger--start .header-trigger__panel-bg::before {
     left: calc(var(--panel-feather-outer) - var(--panel-feather));
+    right: auto;
   }
 
   .header-trigger--end .header-trigger__panel-bg {
@@ -1519,6 +1569,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger--end .header-trigger__panel-bg::before {
     right: calc(var(--panel-feather-outer) - var(--panel-feather));
+    left: auto;
   }
 
   .header-trigger__brand,
@@ -1788,8 +1839,24 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     /* Tighten the panel radius and feather on narrow screens. */
     .header-trigger__panel-bg {
-      --panel-corner-radius: 2.5em;
-      --panel-feather: 3em;
+      --panel-corner-radius: min(
+        var(--header-surface-mobile-radius, 2.5em),
+        calc(var(--panel-inline-size) / 2)
+      );
+      --panel-feather: var(--header-surface-mobile-feather, 3em);
+      --panel-bottom-pad: var(--header-surface-mobile-bottom-padding, var(--space-unit));
+      --panel-inline-size: calc(
+        var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) +
+          var(--header-surface-mobile-side-padding, 2.5em)
+      );
+    }
+
+    .header-menu-backdrop {
+      background-color: color-mix(
+        in srgb,
+        var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%),
+        transparent
+      );
     }
   }
 
