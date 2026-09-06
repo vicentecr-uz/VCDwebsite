@@ -880,6 +880,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let savedSrcHeight: number | undefined;
     let draftSrcWidth: number | undefined;
     let draftSrcHeight: number | undefined;
+    const stagedSources = new Map<string, {
+      src: string;
+      srcWidth?: number;
+      srcHeight?: number;
+    }>();
     const pendingIdFor = (target: HTMLElement, slot: 'cover' | 'hover' = activeSlot) => {
       const documentKey = target.dataset.devDocument || '';
       const imagePath = target.dataset.devImagePath || '[]';
@@ -1291,7 +1296,18 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         });
       }
       const baseline = structuredClone(diskBaselines.get(pendingId)!);
+      const srcPending = Boolean(draftSrc) && draftSrc !== baseline.src;
       const hadOwnVariants = target.dataset.devHasOwnVariants === 'true';
+
+      if (srcPending) {
+        stagedSources.set(pendingId, {
+          src: draftSrc,
+          ...(draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
+          ...(draftSrcHeight ? { srcHeight: draftSrcHeight } : {}),
+        });
+      } else {
+        stagedSources.delete(pendingId);
+      }
 
       if (persistCrop) {
         applyVariantsToTarget(target, stagedVariants, {
@@ -1342,7 +1358,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             ...(isListingCover(target)
               ? { slot: activeSlot === 'hover' ? 'hoverImage' : 'image' }
               : {}),
-            ...(srcChanged
+            ...(srcPending
               ? {
                 src: draftSrc,
                 ...(activeSlot !== 'hover' && draftSrcWidth ? { srcWidth: draftSrcWidth } : {}),
@@ -1382,7 +1398,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
                 }
               }
             }
-            if (srcChanged && baseline.src) {
+            if (srcPending && baseline.src) {
               applySrcLive(target, baseline.src, {
                 ...(baseline.srcWidth ? { srcWidth: baseline.srcWidth } : {}),
                 ...(baseline.srcHeight ? { srcHeight: baseline.srcHeight } : {}),
@@ -1404,7 +1420,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
                 renderDraft();
                 syncUseGridDefaultButton();
               }
-              if (srcChanged) {
+              if (srcPending) {
                 savedSrc = baseline.src;
                 draftSrc = baseline.src;
                 savedSrcWidth = baseline.srcWidth;
@@ -1605,6 +1621,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         diskBaselines.set(pendingId, snapshotBaseline(editTarget));
       }
       const baseline = diskBaselines.get(pendingId)!;
+      const stagedSource = stagedSources.get(pendingId);
       savedCoverVariants = readAppliedVariants(editTarget);
       draftCoverVariants = structuredClone(savedCoverVariants);
       if (isListingCover(target) && listingHasHoverImage(target)) {
@@ -1628,10 +1645,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftMaxVh = savedMaxVh;
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
-      savedSrc = baseline.src || readTargetSrc(editedImage);
+      savedSrc = stagedSource?.src || baseline.src || readTargetSrc(editedImage);
       draftSrc = savedSrc;
-      savedSrcWidth = baseline.srcWidth;
-      savedSrcHeight = baseline.srcHeight;
+      savedSrcWidth = stagedSource?.srcWidth ?? baseline.srcWidth;
+      savedSrcHeight = stagedSource?.srcHeight ?? baseline.srcHeight;
       draftSrcWidth = savedSrcWidth;
       draftSrcHeight = savedSrcHeight;
       previewImage.src = editedImage.currentSrc || editedImage.src;
@@ -2928,6 +2945,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     window.addEventListener('vcd:dev-pending-committed', (() => {
+      stagedSources.clear();
       diskBaselines.clear();
       if (editTarget) {
         diskBaselines.set(pendingIdFor(editTarget), {
@@ -2943,6 +2961,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     }) as EventListener);
 
     window.addEventListener('vcd:dev-pending-reverted', (() => {
+      stagedSources.clear();
       diskBaselines.clear();
     }) as EventListener);
   };
