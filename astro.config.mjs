@@ -29,7 +29,9 @@ import {
   uploadDevWriter,
   writeDevDocument,
   devAuthoringState,
+  devAuthoringActive,
 } from './scripts/dev-api-plugins.mjs';
+import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
 import {
   assetsDevWriter,
   normalizeAssetSrc,
@@ -2462,6 +2464,7 @@ export default defineConfig({
     plugins: [
       tailwindcss(),
       devAuthoringState(),
+      branchUpdateDevWriter({ authoringActive: devAuthoringActive }),
       stubLapseWhenUnavailable(),
       contentHmrGate(),
       mediaDevServer(),

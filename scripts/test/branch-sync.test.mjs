@@ -121,6 +121,14 @@ async function scenario(name, fn) {
   }
 }
 
+async function waitFor(predicate, message) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (predicate()) return;
+    await Bun.sleep(50);
+  }
+  throw new Error(message);
+}
+
 await scenario('1. content update while editing advances HEAD without stop/start', async () => {
   const fixture = makeFixture();
   try {
@@ -185,6 +193,44 @@ await scenario('6. safe update without script change exits cleanly', async () =>
     assert.equal(result.code, 0);
     assert.notEqual(git(fixture.work, 'rev-parse', 'HEAD'), fixture.oldHead);
   } finally { fixture.close(); }
+});
+
+await scenario('7. manual request wakes the daemon before its interval', async () => {
+  const fixture = makeFixture();
+  const sessionDir = path.join(fixture.work, '.dev-session');
+  mkdirSync(sessionDir);
+  const daemon = Bun.spawn([fixture.script, '_daemon'], {
+    cwd: fixture.work,
+    env: {
+      ...process.env,
+      ASTRO_RUNNING: 'off',
+      BRANCH_SYNC_BUN: bun,
+      BRANCH_SYNC_INTERVAL: '60',
+      BRANCH_SYNC_SESSION_SCRIPT: fixture.session,
+      BRANCH_SYNC_SESSION_LOG: fixture.log,
+      BRANCH_SYNC_REPO: fixture.work,
+    },
+    stdin: 'ignore',
+    stdout: 'ignore',
+    stderr: 'ignore',
+  });
+  try {
+    const syncLog = path.join(sessionDir, 'branch-sync.log');
+    await waitFor(
+      () => existsSync(syncLog) && readFileSync(syncLog, 'utf8').includes('main up to date'),
+      'daemon did not reach its wait interval',
+    );
+    addIncoming(fixture, 'src/content/requested.json');
+    writeFileSync(path.join(sessionDir, 'branch-sync.request'), 'now\n');
+    await waitFor(
+      () => git(fixture.work, 'rev-parse', 'HEAD') !== fixture.oldHead,
+      'manual request did not wake the daemon',
+    );
+    assert.match(readFileSync(syncLog, 'utf8'), /manual sync requested/);
+  } finally {
+    daemon.kill();
+    fixture.close();
+  }
 });
 
 if (failures.length > 0) throw new Error(`${failures.length} branch-sync scenario(s) failed`);
