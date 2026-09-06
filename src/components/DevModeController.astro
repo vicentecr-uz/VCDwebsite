@@ -5,27 +5,45 @@
 
     const html = document.documentElement;
     const leaseKey = '__vcdDevAuthoringLease';
-    const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; pagehideInstalled?: boolean } })[leaseKey]
-      ??= { id: `dev-${crypto.randomUUID()}`, timer: null });
-    const reportAuthoring = (active: boolean, beacon = false) => {
+    const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; active: boolean; pageLifecycleInstalled?: boolean } })[leaseKey]
+      ??= { id: `dev-${crypto.randomUUID()}`, timer: null, active: false });
+    const sendAuthoring = (active: boolean, beacon = false) => {
       const body = JSON.stringify({ id: lease.id, active });
       if (!active && beacon) {
         navigator.sendBeacon('/api/dev-session-state', new Blob([body], { type: 'application/json' }));
       } else {
-      void fetch('/api/dev-session-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
-      }
-      if (active && lease.timer === null) {
-        lease.timer = setInterval(() => {
-          void fetch('/api/dev-session-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
-        }, 15000);
-      } else if (!active && lease.timer !== null) {
-        clearInterval(lease.timer);
-        lease.timer = null;
+        void fetch('/api/dev-session-state', { method: 'POST', headers: { 'content-type': 'application/json' }, body, keepalive: true }).catch(() => {});
       }
     };
-    if (!lease.pagehideInstalled) {
-      window.addEventListener('pagehide', () => reportAuthoring(false, true), { once: true });
-      lease.pagehideInstalled = true;
+    const stopHeartbeat = () => {
+      if (lease.timer === null) return;
+      clearInterval(lease.timer);
+      lease.timer = null;
+    };
+    const startHeartbeat = () => {
+      if (lease.active && lease.timer === null) {
+        lease.timer = setInterval(() => {
+          sendAuthoring(true);
+        }, 15000);
+      }
+    };
+    const reportAuthoring = (active: boolean, beacon = false) => {
+      lease.active = active;
+      sendAuthoring(active, beacon);
+      if (active) startHeartbeat();
+      else stopHeartbeat();
+    };
+    if (!lease.pageLifecycleInstalled) {
+      window.addEventListener('pagehide', () => {
+        sendAuthoring(false, true);
+        stopHeartbeat();
+      });
+      window.addEventListener('pageshow', () => {
+        if (!lease.active) return;
+        sendAuthoring(true);
+        startHeartbeat();
+      });
+      lease.pageLifecycleInstalled = true;
     }
     let devMode = false;
     let enterEndTimer: ReturnType<typeof setTimeout> | null = null;
