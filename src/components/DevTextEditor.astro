@@ -37,6 +37,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   </div>
 </div>
 
+<div class="dev-text-actions" data-dev-branch-update-actions hidden>
+  <div class="dev-text-actions__surface">
+    <span class="dev-text-actions__status" data-dev-branch-update-status aria-live="polite">Update available</span>
+    <button type="button" class="dev-text-actions__save" data-dev-branch-update>Update</button>
+  </div>
+</div>
+
 <div class="dev-text-format" data-dev-text-format hidden>
   <div class="dev-text-format__surface">
     <div class="dev-text-format__buttons">
@@ -273,6 +280,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   // Mirrors the sidebar gutter breakpoint — see docs/page-width.md.
   const SIDEBAR_TITLE_HIDDEN_MQ = '(min-width: 78.5em)';
   let editorAbortController: AbortController | null = null;
+  let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
 
   /** http(s), in-page path, hash, mailto — also the shape we persist. */
   const SAFE_HREF = /^(https?:\/\/|\/|#|mailto:)/i;
@@ -325,6 +333,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const status = actions?.querySelector<HTMLElement>('[data-dev-text-status]');
     const branchLabel = actions?.querySelector<HTMLElement>('[data-dev-text-branch]');
     const warnLabel = actions?.querySelector<HTMLElement>('[data-dev-text-warn]');
+    const branchUpdateActions = document.querySelector<HTMLElement>('[data-dev-branch-update-actions]');
+    const branchUpdateButton = branchUpdateActions?.querySelector<HTMLButtonElement>('[data-dev-branch-update]');
+    const branchUpdateStatus = branchUpdateActions?.querySelector<HTMLElement>('[data-dev-branch-update-status]');
     const formatBar = document.querySelector<HTMLElement>('[data-dev-text-format]');
     const formatSel = document.querySelector<HTMLElement>('[data-dev-text-format-sel]');
     const linkPanel = formatBar?.querySelector<HTMLFormElement>('[data-dev-text-link-panel]');
@@ -344,11 +355,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       ...document.querySelectorAll<HTMLElement>('[data-dev-spacing-document][data-dev-spacing-path]'),
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
+    if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
     if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !emphasisStyleField || !formatInline) return;
 
     editorAbortController?.abort();
     editorAbortController = new AbortController();
     const editorSignal = editorAbortController.signal;
+    if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
+    branchUpdatePollTimer = null;
 
     document.documentElement.dataset.devTextEditorInit = '1';
     initDevSectionOutlineSync();
@@ -2066,6 +2080,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     /** Save or publish in flight — keeps buttons disabled with a wait cursor. */
     let actionsBusy = false;
 
+    let branchUpdateAvailable = false;
+    let branchUpdateBusy = false;
+    let branchUpdateMessage = '';
+
+    const syncBranchUpdateBar = () => {
+      const editing = document.documentElement.classList.contains('is-dev-mode');
+      branchUpdateActions.hidden = !branchUpdateBusy
+        && (!branchUpdateAvailable || !actions.hidden || !editing);
+      branchUpdateStatus.textContent = branchUpdateMessage
+        || (branchUpdateBusy ? 'Updating…' : 'Update available');
+      branchUpdateButton.disabled = branchUpdateBusy;
+      branchUpdateButton.classList.toggle('is-dev-actions-busy', branchUpdateBusy);
+    };
+
     /** Anything in the DOM not yet written to disk. */
     const hasPendingEdits = () => Boolean(
       dirtyTextStates().length
@@ -2143,6 +2171,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       publishButton.classList.toggle('is-dev-actions-busy', actionsBusy);
       revertButton.classList.toggle('is-dev-actions-busy', actionsBusy);
       commitStylesButton.classList.toggle('is-dev-actions-busy', actionsBusy);
+      syncBranchUpdateBar();
     };
 
     const SCROLL_RESTORE_KEY = 'vcd-dev-scroll-y';
@@ -5255,6 +5284,79 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
     };
 
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const refreshBranchUpdateState = async () => {
+      try {
+        const response = await fetch('/api/dev-branch-update', { cache: 'no-store' });
+        if (!response.ok) throw new Error('unavailable');
+        const state = await readApiJson(response);
+        branchUpdateAvailable = state.available === true;
+        if (!branchUpdateBusy) branchUpdateMessage = '';
+      } catch {
+        if (!branchUpdateBusy) branchUpdateAvailable = false;
+      }
+      syncBranchUpdateBar();
+    };
+
+    const waitForAuthoringIdle = async () => {
+      for (let attempt = 0; attempt < 25; attempt += 1) {
+        try {
+          const response = await fetch('/api/dev-session-state', { cache: 'no-store' });
+          const state = await readApiJson(response);
+          if (response.ok && state.editing === false) return;
+        } catch {
+          // The dev server is still present here; retry a delayed lease release.
+        }
+        await sleep(100);
+      }
+      throw new Error('Another Edit tab is active.');
+    };
+
+    const waitForBranchUpdate = async () => {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await sleep(500);
+        try {
+          const response = await fetch('/api/dev-branch-update', { cache: 'no-store' });
+          if (!response.ok) continue;
+          const state = await readApiJson(response);
+          if (state.branch === 'main' && state.behind === 0) return;
+        } catch {
+          // Astro is expected to disappear while the sync service restarts it.
+        }
+      }
+      throw new Error('Update timed out.');
+    };
+
+    branchUpdateButton.addEventListener('click', () => {
+      if (!branchUpdateAvailable || branchUpdateBusy || !actions.hidden) return;
+      void (async () => {
+        branchUpdateBusy = true;
+        branchUpdateMessage = '';
+        syncBranchUpdateBar();
+        sessionStorage.setItem(SCROLL_RESTORE_KEY, String(window.scrollY));
+
+        try {
+          window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: false } }));
+          await waitForAuthoringIdle();
+
+          const response = await fetch('/api/dev-branch-update', { method: 'POST' });
+          const payload = await readApiJson(response);
+          if (!response.ok || payload.ok !== true) {
+            throw new Error(String(payload.error || 'Could not request the update.'));
+          }
+
+          await waitForBranchUpdate();
+          window.location.reload();
+        } catch (error) {
+          branchUpdateBusy = false;
+          branchUpdateMessage = error instanceof Error ? error.message : 'Could not update.';
+          window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+          syncBranchUpdateBar();
+        }
+      })();
+    }, { signal: editorSignal });
+
     const performSave = async (): Promise<PublishManifest | null> => {
       // Editors with an explicit Apply step stage nothing until it is pressed —
       // the section nav marker popover is one. Give them the chance to land an
@@ -5842,6 +5944,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     void refreshPublishState();
     void refreshStyleEngineState();
+    void refreshBranchUpdateState();
+    branchUpdatePollTimer = setInterval(() => {
+      void refreshBranchUpdateState();
+    }, 15_000);
 
     /**
      * For writers that legitimately go straight to disk — an asset deleted
@@ -5860,6 +5966,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (active) {
         void refreshPublishState();
         void refreshStyleEngineState();
+        void refreshBranchUpdateState();
       }
     }, { signal: editorSignal });
     window.addEventListener('beforeunload', (event) => {
@@ -5884,6 +5991,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     import.meta.hot.dispose(() => {
       editorAbortController?.abort();
       editorAbortController = null;
+      if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
+      branchUpdatePollTimer = null;
       disposeDevSectionOutlineSync();
       delete document.documentElement.dataset.devTextEditorInit;
     });

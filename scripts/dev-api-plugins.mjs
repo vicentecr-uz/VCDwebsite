@@ -16,6 +16,8 @@ export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
 
 const devAuthoringClients = new Set();
 
+export const devAuthoringActive = () => devAuthoringClients.size > 0;
+
 export function devAuthoringState() {
   return {
     name: 'vcd-dev-authoring-state',
