@@ -1,0 +1,305 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import Field from './ui/Field.astro';
+import Button from './ui/Button.astro';
+import SegmentedControl from './ui/SegmentedControl.astro';
+import {
+  HEADER_SURFACE_DEFAULTS,
+  HEADER_SURFACE_FIELDS,
+} from '../lib/headerSurfaceSettings';
+---
+
+<DevOverlay
+  panelKey="header-surface"
+  storageKey="header-surface"
+  defaultHidden={true}
+  class="dev-header-surface-tuner"
+>
+  <form data-header-surface-form>
+    <SegmentedControl label="Profile" class="dev-header-surface-tuner__profile">
+      <Button label="Desktop" width="fill" data-header-surface-profile="desktop" aria-pressed="true" />
+      <Button label="Mobile" width="fill" data-header-surface-profile="mobile" aria-pressed="false" />
+    </SegmentedControl>
+
+    <div class="dev-header-surface-tuner__fields">
+      {
+        HEADER_SURFACE_FIELDS.map((field) => (
+          <Field label={field.label} labelFor={`header-surface-${field.key}-number`}>
+            <div class="dev-header-surface-tuner__field-control">
+              <input
+                type="range"
+                min={field.min}
+                max={field.max}
+                step={field.step}
+                value={HEADER_SURFACE_DEFAULTS.desktop[field.key]}
+                data-header-surface-field={field.key}
+                aria-label={field.label}
+              />
+              <input
+                id={`header-surface-${field.key}-number`}
+                type="number"
+                min={field.min}
+                max={field.max}
+                step={field.step}
+                value={HEADER_SURFACE_DEFAULTS.desktop[field.key]}
+                class="dev-field__input"
+                data-header-surface-number={field.key}
+                aria-label={`${field.label} ${field.unit}`}
+              />
+              <span aria-hidden="true">{field.unit}</span>
+            </div>
+          </Field>
+        ))
+      }
+    </div>
+
+    <SegmentedControl label="Preview" class="dev-header-surface-tuner__preview">
+      <Button label="Off" width="fill" data-header-surface-preview="off" aria-pressed="true" />
+      <Button label="Left" width="fill" data-header-surface-preview="start" aria-pressed="false" />
+      <Button label="Right" width="fill" data-header-surface-preview="end" aria-pressed="false" />
+    </SegmentedControl>
+
+    <div class="dev-header-surface-tuner__actions">
+      <Button label="Reset current profile" emphasis="ghost" data-header-surface-reset />
+      <Button label="Copy CSS" emphasis="ghost" data-header-surface-copy />
+      <span class="dev-header-surface-tuner__status" data-header-surface-status aria-live="polite"></span>
+    </div>
+  </form>
+</DevOverlay>
+
+<style>
+  .dev-header-surface-tuner {
+    width: 100%;
+  }
+
+  .dev-header-surface-tuner form {
+    display: grid;
+    gap: var(--space-unit);
+  }
+
+  .dev-header-surface-tuner__fields {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--space-unit);
+  }
+
+  .dev-header-surface-tuner__field-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 5em auto;
+    align-items: center;
+    gap: 0.5em;
+    min-height: 2.75em;
+  }
+
+  .dev-header-surface-tuner input[type='range'] {
+    min-width: 0;
+    accent-color: var(--sys-color-on-srf);
+  }
+
+  .dev-header-surface-tuner input[type='number'] {
+    box-sizing: border-box;
+    width: 5em;
+    min-height: 2.75em;
+    flex: 0 0 5em;
+    margin: -8px 0;
+    padding: 8px;
+    font-size: 16px;
+  }
+
+  .dev-header-surface-tuner input:focus-visible,
+  .dev-header-surface-tuner button:focus-visible {
+    outline: 2px solid var(--sys-color-focus, currentColor);
+    outline-offset: 2px;
+  }
+
+  .dev-header-surface-tuner__field-control > span {
+    font: var(--dev-text-label);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+  .dev-header-surface-tuner__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75em;
+  }
+
+  .dev-header-surface-tuner__status {
+    min-height: 1.25em;
+    font: var(--dev-text-label);
+    color: var(--sys-color-on-srf-variant);
+  }
+
+</style>
+
+<script>
+  import {
+    HEADER_SURFACE_DEFAULTS,
+    HEADER_SURFACE_FIELDS,
+    HEADER_SURFACE_STORAGE_KEY,
+    cssVariablesForProfile,
+    cssVariablesForSettings,
+    normalizeHeaderSurfaceSettings,
+    normalizeHeaderSurfaceValue,
+    type HeaderSurfaceField,
+    type HeaderSurfaceProfile,
+    type HeaderSurfaceSettings,
+  } from '../lib/headerSurfaceSettings';
+
+  const overlay = document.querySelector<HTMLElement>('[data-dev-panel-key="header-surface"]');
+  const form = overlay?.querySelector<HTMLFormElement>('[data-header-surface-form]');
+  if (overlay && form) {
+
+  const root = document.documentElement;
+  const profileButtons = [...form.querySelectorAll<HTMLButtonElement>('[data-header-surface-profile]')];
+  const previewButtons = [...form.querySelectorAll<HTMLButtonElement>('[data-header-surface-preview]')];
+  const ranges = [...form.querySelectorAll<HTMLInputElement>('[data-header-surface-field]')];
+  const numbers = [...form.querySelectorAll<HTMLInputElement>('[data-header-surface-number]')];
+  const status = form.querySelector<HTMLElement>('[data-header-surface-status]');
+  const media = window.matchMedia('(max-width: 40em)');
+  let profile: HeaderSurfaceProfile = media.matches ? 'mobile' : 'desktop';
+  let preview: 'off' | 'start' | 'end' = 'off';
+
+  const readSettings = (): HeaderSurfaceSettings => {
+    try {
+      const raw = localStorage.getItem(HEADER_SURFACE_STORAGE_KEY);
+      return raw ? normalizeHeaderSurfaceSettings(JSON.parse(raw)) : structuredClone(HEADER_SURFACE_DEFAULTS);
+    } catch {
+      return structuredClone(HEADER_SURFACE_DEFAULTS);
+    }
+  };
+
+  let settings = readSettings();
+
+  const persist = () => {
+    try {
+      localStorage.setItem(HEADER_SURFACE_STORAGE_KEY, JSON.stringify(settings));
+    } catch {
+      // Private mode and disabled storage still keep the live controls working.
+    }
+  };
+
+  const applyProfile = (target: HeaderSurfaceProfile) => {
+    const profileSettings = target === 'desktop' ? settings.desktop : settings.mobile;
+    const defaults = HEADER_SURFACE_DEFAULTS[target];
+    const prefix = target === 'mobile' ? '--header-surface-mobile-' : '--header-surface-';
+    const css = cssVariablesForProfile(target, profileSettings);
+    HEADER_SURFACE_FIELDS.forEach((field) => {
+      const name = `${prefix}${field.key.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`;
+      if (profileSettings[field.key] === defaults[field.key]) root.style.removeProperty(name);
+      else root.style.setProperty(name, css[name]);
+    });
+  };
+
+  const applySettings = () => {
+    applyProfile('desktop');
+    applyProfile('mobile');
+  };
+
+  const setPreview = (next: 'off' | 'start' | 'end') => {
+    preview = next;
+    previewButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.headerSurfacePreview === next)));
+    document.dispatchEvent(new CustomEvent('vcd:header-surface-preview', { detail: { side: next === 'off' ? null : next } }));
+  };
+
+  const syncProfile = () => {
+    profileButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.headerSurfaceProfile === profile)));
+    ranges.forEach((range) => {
+      const key = range.dataset.headerSurfaceField as HeaderSurfaceField;
+      range.value = String(settings[profile][key]);
+      range.closest('.dev-field')?.toggleAttribute('hidden', false);
+    });
+    numbers.forEach((number) => {
+      const key = number.dataset.headerSurfaceNumber as HeaderSurfaceField;
+      number.value = String(settings[profile][key]);
+    });
+  };
+
+  const setField = (key: HeaderSurfaceField, raw: string) => {
+    const field = HEADER_SURFACE_FIELDS.find((candidate) => candidate.key === key);
+    if (!field) return;
+    if (!raw.trim()) return false;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return false;
+    const next = normalizeHeaderSurfaceValue(key, value, settings[profile][key]);
+    settings[profile][key] = next;
+    ranges.find((range) => range.dataset.headerSurfaceField === key)!.value = String(next);
+    numbers.find((number) => number.dataset.headerSurfaceNumber === key)!.value = String(next);
+    applySettings();
+    persist();
+    return true;
+  };
+
+  profileButtons.forEach((button) => button.addEventListener('click', () => {
+    const next = button.dataset.headerSurfaceProfile;
+    if (next === 'desktop' || next === 'mobile') {
+      profile = next;
+      syncProfile();
+    }
+  }));
+
+  ranges.forEach((range) => range.addEventListener('input', () => setField(range.dataset.headerSurfaceField as HeaderSurfaceField, range.value)));
+  numbers.forEach((number) => number.addEventListener('change', () => {
+    if (!setField(number.dataset.headerSurfaceNumber as HeaderSurfaceField, number.value)) syncProfile();
+  }));
+  previewButtons.forEach((button) => button.addEventListener('click', () => {
+    const next = button.dataset.headerSurfacePreview;
+    if (next === 'off' || next === 'start' || next === 'end') setPreview(next);
+  }));
+
+  form.querySelector<HTMLButtonElement>('[data-header-surface-reset]')?.addEventListener('click', () => {
+    settings[profile] = { ...HEADER_SURFACE_DEFAULTS[profile] };
+    const prefix = profile === 'mobile' ? '--header-surface-mobile-' : '--header-surface-';
+    HEADER_SURFACE_FIELDS.forEach((field) => root.style.removeProperty(`${prefix}${field.key.replace(/[A-Z]/g, (match) => `-${match.toLowerCase()}`)}`));
+    syncProfile();
+    applyProfile(profile === 'desktop' ? 'mobile' : 'desktop');
+    persist();
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    syncProfile();
+    persist();
+  });
+
+  const copyButton = form.querySelector<HTMLButtonElement>('[data-header-surface-copy]');
+  copyButton?.addEventListener('click', async () => {
+    const css = Object.entries(cssVariablesForSettings(settings)).map(([name, value]) => `  ${name}: ${value};`).join('\n');
+    if (copyButton) copyButton.disabled = true;
+    try {
+      await navigator.clipboard.writeText(`:root {\n${css}\n}`);
+      if (status) status.textContent = 'Copied';
+    } catch {
+      if (status) status.textContent = 'Copy failed — try again';
+    } finally {
+      if (copyButton) copyButton.disabled = false;
+    }
+  });
+
+  const onProfileViewportChange = () => {
+    profile = media.matches ? 'mobile' : 'desktop';
+    syncProfile();
+  };
+  media.addEventListener('change', onProfileViewportChange);
+
+  window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+    if (event.detail?.panel !== overlay) return;
+    setPreview('start');
+  }) as EventListener);
+  window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+    if (event.detail?.panel !== overlay) return;
+    setPreview('off');
+  }) as EventListener);
+  window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+    if (event.detail?.active === false) setPreview('off');
+  }) as EventListener);
+  document.addEventListener('header:force-close', () => setPreview('off'));
+
+  new MutationObserver(() => {
+    if (overlay.hidden) setPreview('off');
+  }).observe(overlay, { attributes: true, attributeFilter: ['hidden', 'class'] });
+
+  applySettings();
+  syncProfile();
+  }
+</script>
