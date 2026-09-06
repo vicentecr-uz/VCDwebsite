@@ -199,11 +199,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // The panel keeps the wider brand/menu hover corridor; only its painted
     // background follows the menu's intrinsic width.
     const menu = trigger.querySelector<HTMLElement>('.header-menu');
-    if (!menu) return;
+    const panel = trigger.querySelector<HTMLElement>('.header-trigger__panel');
+    if (!menu || !panel) return;
     trigger.style.setProperty(
       '--header-menu-inline-size',
       `${menu.getBoundingClientRect().width}px`,
     );
+    const panelRect = panel.getBoundingClientRect();
+    const outerSpace = trigger.classList.contains('header-trigger--end')
+      ? document.documentElement.clientWidth - panelRect.right
+      : panelRect.left;
+    trigger.style.setProperty('--header-menu-outer-space', `${Math.max(0, outerSpace)}px`);
   };
 
   // Latched when a downward scroll closes the menu, and released once the
@@ -1404,19 +1410,31 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-trigger__panel-bg {
-    /* Opaque core preserves 100% page-surface coverage; the zero-offset shadow
-       carries the feather around both conventional corner radii. */
+    /* Joined straight and circular tiles preserve one opaque plateau without
+       intersecting the rounded corners. */
     --panel-corner-radius: 3.5em;
-    --panel-shadow-blur: 4em;
-    --panel-shadow-spread: 1em;
+    --panel-feather: 4em;
+    --panel-feather-outer: clamp(
+      0px,
+      var(--header-menu-outer-space, 0px),
+      var(--panel-feather)
+    );
+    --panel-corner-size: calc(var(--panel-corner-radius) + var(--panel-feather));
     --panel-bottom-pad: var(--space-unit);
     --panel-inline-size: calc(
       var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) + var(--panel-corner-radius)
     );
+    --panel-edge-ramp: #000 0%, rgb(0 0 0 / 0.96) 15%, rgb(0 0 0 / 0.82) 30%,
+      rgb(0 0 0 / 0.5) 50%, rgb(0 0 0 / 0.18) 70%, rgb(0 0 0 / 0.04) 85%, transparent 100%;
+    --panel-corner-ramp: #000 0, #000 var(--panel-corner-radius),
+      rgb(0 0 0 / 0.96) calc(var(--panel-corner-radius) + var(--panel-feather) * 0.15),
+      rgb(0 0 0 / 0.82) calc(var(--panel-corner-radius) + var(--panel-feather) * 0.3),
+      rgb(0 0 0 / 0.5) calc(var(--panel-corner-radius) + var(--panel-feather) * 0.5),
+      rgb(0 0 0 / 0.18) calc(var(--panel-corner-radius) + var(--panel-feather) * 0.7),
+      rgb(0 0 0 / 0.04) calc(var(--panel-corner-radius) + var(--panel-feather) * 0.85),
+      transparent var(--panel-corner-size);
     position: absolute;
-    background: var(--sys-color-srf);
-    border-radius: 0 0 var(--panel-corner-radius) var(--panel-corner-radius);
-    box-shadow: 0 0 var(--panel-shadow-blur) var(--panel-shadow-spread) var(--sys-color-srf);
+    overflow: hidden;
     /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
        header band or the opposite trigger's wordmark/logo. Only the part that
        hangs below the header is actually seen. */
@@ -1428,6 +1446,26 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         var(--header-menu-surface-delay, 0s),
       height var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
         var(--header-menu-surface-delay, 0s);
+  }
+
+  .header-trigger__panel-bg::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--sys-color-srf);
+    mask:
+      linear-gradient(#000 0 0) top center /
+        calc(100% - 2 * var(--panel-feather)) max(0px, calc(100% - var(--panel-corner-size))) no-repeat,
+      linear-gradient(to left, var(--panel-edge-ramp)) top left /
+        var(--panel-feather) max(0px, calc(100% - var(--panel-corner-size))) no-repeat,
+      linear-gradient(to right, var(--panel-edge-ramp)) top right /
+        var(--panel-feather) max(0px, calc(100% - var(--panel-corner-size))) no-repeat,
+      linear-gradient(to bottom, var(--panel-corner-ramp)) bottom center /
+        calc(100% - 2 * var(--panel-corner-size)) var(--panel-corner-size) no-repeat,
+      radial-gradient(circle at top right, var(--panel-corner-ramp)) bottom left /
+        var(--panel-corner-size) var(--panel-corner-size) no-repeat,
+      radial-gradient(circle at top left, var(--panel-corner-ramp)) bottom right /
+        var(--panel-corner-size) var(--panel-corner-size) no-repeat;
   }
 
   .header-trigger[data-menu-surface-open] .header-trigger__panel-bg {
@@ -1449,30 +1487,38 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-trigger--start .header-trigger__panel-bg {
     top: 0;
-    left: 0;
+    left: calc(-1 * var(--panel-feather-outer));
     right: auto;
     bottom: auto;
-    inline-size: var(--panel-inline-size);
+    inline-size: calc(var(--panel-inline-size) + var(--panel-feather) + var(--panel-feather-outer));
     height: 0;
     transform-origin: left top;
   }
 
   .header-trigger--start[data-menu-surface-open] .header-trigger__panel-bg {
-    height: calc(100% + var(--panel-bottom-pad));
+    height: calc(100% + var(--panel-bottom-pad) + var(--panel-feather));
+  }
+
+  .header-trigger--start .header-trigger__panel-bg::before {
+    left: calc(var(--panel-feather-outer) - var(--panel-feather));
   }
 
   .header-trigger--end .header-trigger__panel-bg {
     top: 0;
     left: auto;
-    right: 0;
+    right: calc(-1 * var(--panel-feather-outer));
     bottom: auto;
-    inline-size: var(--panel-inline-size);
+    inline-size: calc(var(--panel-inline-size) + var(--panel-feather) + var(--panel-feather-outer));
     height: 0;
     transform-origin: right top;
   }
 
   .header-trigger--end[data-menu-surface-open] .header-trigger__panel-bg {
-    height: calc(100% + var(--panel-bottom-pad));
+    height: calc(100% + var(--panel-bottom-pad) + var(--panel-feather));
+  }
+
+  .header-trigger--end .header-trigger__panel-bg::before {
+    right: calc(var(--panel-feather-outer) - var(--panel-feather));
   }
 
   .header-trigger__brand,
@@ -1740,11 +1786,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       --menu-gap: 0.55em;
     }
 
-    /* Tighten the panel radius and shadow on narrow screens. */
+    /* Tighten the panel radius and feather on narrow screens. */
     .header-trigger__panel-bg {
       --panel-corner-radius: 2.5em;
-      --panel-shadow-blur: 3em;
-      --panel-shadow-spread: 0.75em;
+      --panel-feather: 3em;
     }
   }
 
