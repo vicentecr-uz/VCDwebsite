@@ -1,4 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { parse } from 'parse5';
 import { extname, relative, resolve } from 'node:path';
 
 const TEXT_EXTENSIONS = new Set(['.html', '.js', '.mjs', '.css', '.map']);
@@ -53,20 +55,34 @@ function checkText(text, file) {
   }
 
   if (file.endsWith('.html')) {
-    const tags = text.match(/<[A-Za-z][^<>]*>/g) ?? [];
-    for (const tag of tags) {
-      for (const control of AUTHORING_CONTROLS) {
-        if (new RegExp(`\\b${control}(?=\\s|=|/?>)`, 'i').test(tag)) {
-          throw violation(file, 'authoring control attribute', `remove ${control} from emitted HTML`);
+    const controls = new Set(AUTHORING_CONTROLS);
+    const visit = (node) => {
+      for (const attribute of node.attrs ?? []) {
+        if (controls.has(attribute.name.toLowerCase())) {
+          throw violation(file, 'authoring control attribute', `remove ${attribute.name} from emitted HTML`);
         }
       }
+      for (const child of node.childNodes ?? []) visit(child);
+      for (const child of node.content?.childNodes ?? []) visit(child);
+    };
+    visit(parse(text));
+  }
+}
+
+async function collectProductionFiles(root) {
+  try {
+    return await collectFiles(root);
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      throw new Error(`${root}: missing production output directory; build the site before checking output`);
     }
+    throw error;
   }
 }
 
 export async function checkProductionOutput(distDir = 'dist') {
   const root = resolve(distDir);
-  const files = await collectFiles(root);
+  const files = await collectProductionFiles(root);
   const htmlFiles = files.filter(({ relative: file }) => file.toLowerCase().endsWith('.html'));
   const index = htmlFiles.find(({ relative: file }) => file === 'index.html');
 
@@ -78,14 +94,12 @@ export async function checkProductionOutput(distDir = 'dist') {
   if (!contents.get(index.path)?.trim()) {
     throw new Error('dist/index.html: empty production entry HTML; build the site before checking output');
   }
-  if (htmlFiles.length === 0) throw new Error('dist: no HTML files found; build the site before checking output');
-
   for (const file of files) checkText(contents.get(file.path), file.relative);
 
   return { htmlFiles: htmlFiles.length, textFiles: files.length };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (fileURLToPath(import.meta.url) === resolve(process.argv[1] ?? '')) {
   const distDir = process.argv[2] ?? 'dist';
   try {
     const counts = await checkProductionOutput(distDir);
