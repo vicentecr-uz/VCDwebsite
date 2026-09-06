@@ -14,6 +14,47 @@ import {
 
 export { suppressContentHmr, contentHmrGate } from './content-hmr-gate.mjs';
 
+const devAuthoringClients = new Set();
+
+export function devAuthoringState() {
+  return {
+    name: 'vcd-dev-authoring-state',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use('/api/dev-session-state', async (req, res, next) => {
+        const send = (status, payload) => {
+          res.statusCode = status;
+          res.setHeader('content-type', 'application/json');
+          res.end(JSON.stringify(payload));
+        };
+        if (req.method === 'GET') {
+          send(200, { editing: devAuthoringClients.size > 0, clients: devAuthoringClients.size });
+          return;
+        }
+        if (req.method !== 'POST') {
+          next();
+          return;
+        }
+        try {
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
+          const id = String(body.id || '').trim();
+          if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || typeof body.active !== 'boolean') {
+            send(400, { error: 'Invalid authoring state.' });
+            return;
+          }
+          if (body.active) devAuthoringClients.add(id);
+          else devAuthoringClients.delete(id);
+          send(200, { editing: devAuthoringClients.size > 0, clients: devAuthoringClients.size });
+        } catch {
+          send(400, { error: 'Invalid JSON.' });
+        }
+      });
+    },
+  };
+}
+
 async function writeProjectJson(file, data) {
   suppressContentHmr();
   await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');

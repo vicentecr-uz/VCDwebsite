@@ -28,6 +28,7 @@ import {
   validateProjectOutlineTargets,
   uploadDevWriter,
   writeDevDocument,
+  devAuthoringState,
 } from './scripts/dev-api-plugins.mjs';
 import {
   assetsDevWriter,
@@ -2460,6 +2461,7 @@ export default defineConfig({
     },
     plugins: [
       tailwindcss(),
+      devAuthoringState(),
       stubLapseWhenUnavailable(),
       contentHmrGate(),
       mediaDevServer(),

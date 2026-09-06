@@ -29,6 +29,7 @@ let documentKey = '';
 const outline: OutlineEntry[] = [];
 let preservedLinkTemplate: HTMLElement | null = null;
 let preservedGroupTemplate: HTMLElement | null = null;
+let outlineAbort: AbortController | null = null;
 
 const parseJson = <T>(raw: string | undefined, fallback: T): T => {
   if (!raw) return fallback;
@@ -382,6 +383,17 @@ export function restoreDevSectionOutlineFromRoot() {
   syncDevSectionOutlineSidebar();
 }
 
+export function disposeDevSectionOutlineSync() {
+  outlineAbort?.abort();
+  outlineAbort = null;
+  document.documentElement.dataset.devSectionOutlineSync = '';
+  root = null;
+  documentKey = '';
+  outline.length = 0;
+  preservedLinkTemplate = null;
+  preservedGroupTemplate = null;
+}
+
 export function initDevSectionOutlineSync() {
   if (document.documentElement.dataset.devSectionOutlineSync === '1') return;
   root = document.querySelector<HTMLElement>('[data-section-nav-root]');
@@ -389,11 +401,13 @@ export function initDevSectionOutlineSync() {
   if (!root || !documentKey) return;
 
   document.documentElement.dataset.devSectionOutlineSync = '1';
+  outlineAbort = new AbortController();
+  const { signal } = outlineAbort;
   loadOutlineFromRoot();
 
   window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<StructureChangeDetail>) => {
     syncOutlineForStructureChange(event.detail ?? { action: 'delete' });
-  }) as EventListener);
+  }) as EventListener, { signal });
 
   window.addEventListener('vcd:dev-section-outline-label', ((event: CustomEvent<{
     document?: string;
@@ -409,5 +423,9 @@ export function initDevSectionOutlineSync() {
       outline[i] = { ...entry, label: label.trim() };
     }
     syncDevSectionOutlineSidebar();
-  }) as EventListener);
+  }) as EventListener, { signal });
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => disposeDevSectionOutlineSync());
 }
