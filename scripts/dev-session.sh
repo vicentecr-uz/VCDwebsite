@@ -210,6 +210,10 @@ cmd_stop_astro() {
     fi
   fi
   stop_pid_file "Astro" "$ASTRO_LABEL" "$ASTRO_PID"
+  if port_in_use "$ASTRO_PORT"; then
+    echo "  Astro: still listening on port $ASTRO_PORT" >&2
+    return 1
+  fi
 }
 
 cmd_start_astro() {
