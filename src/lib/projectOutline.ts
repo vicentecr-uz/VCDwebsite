@@ -296,12 +296,13 @@ export function outlineFromNav(nav: SectionNavItem[] | undefined | null): Outlin
     if (isSectionNavGroup(item)) {
       const groupId = uniqueGroupId(item.label, item.id);
       const firstChild = item.children[0];
+      const firstChildAnchor = firstChild?.id || (firstChild ? slugifyOutlineId(firstChild.label) : undefined);
       outline.push({
         kind: 'group',
         id: groupId,
         label: item.label,
         defaultOpen: item.defaultOpen !== false,
-        ...(item.anchor || firstChild ? { anchor: item.anchor || firstChild?.id } : {}),
+        ...(item.anchor || firstChildAnchor ? { anchor: item.anchor || firstChildAnchor } : {}),
       });
       for (const child of item.children) {
         outline.push({
@@ -316,9 +317,9 @@ export function outlineFromNav(nav: SectionNavItem[] | undefined | null): Outlin
 
     outline.push({
       kind: 'section',
-      id: item.id,
+      id: item.outlineId?.trim() || item.id || slugifyOutlineId(item.label),
       label: item.label,
-      anchor: item.id,
+      anchor: item.id || slugifyOutlineId(item.label),
     });
   }
 

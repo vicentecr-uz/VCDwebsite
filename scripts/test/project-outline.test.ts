@@ -67,6 +67,17 @@ describe('project outline', () => {
     expect(outlineFromNav([{ label: 'Research', children: [] }])[0]).toMatchObject({ id: 'research' });
   });
 
+  test('preserves top-level link identity and anchors groups to fallback child anchors', () => {
+    expect(outlineFromNav([
+      { label: 'Group', children: [{ label: 'Overview', id: '', outlineId: 'stable' }] },
+      { label: 'Standalone', id: 'standalone-dom', outlineId: 'standalone-stable' },
+    ])).toEqual([
+      { kind: 'group', id: 'group', label: 'Group', defaultOpen: true, anchor: 'overview' },
+      { kind: 'section', id: 'stable', label: 'Overview', anchor: 'overview' },
+      { kind: 'section', id: 'standalone-stable', label: 'Standalone', anchor: 'standalone-dom' },
+    ]);
+  });
+
   test('propagates marker ids and anchors into derived nav', () => {
     expect(deriveNavFromOutline([
       { kind: 'group', id: 'g', label: 'Group', anchor: 'a' },
