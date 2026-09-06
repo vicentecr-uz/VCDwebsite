@@ -61,6 +61,7 @@ import SelectField from '../ui/SelectField.astro';
 
       <div class="section-nav-editor__actions dev-panel-actions">
         <button type="button" class="dev-btn dev-btn--ghost" data-nav-undo disabled>Undo</button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-nav-redo disabled>Redo</button>
         <button type="button" class="section-nav-editor__save dev-btn dev-btn--filled" data-nav-done>Done</button>
       </div>
 
@@ -93,6 +94,7 @@ import SelectField from '../ui/SelectField.astro';
   import blockIcon from 'lucide-static/icons/square.svg?raw';
   import { sizeIcon } from '../../lib/icons';
   import { getSectionRootsInDomOrder, sectionIndexFromElement } from '../../scripts/devSectionPaths';
+  import { pageHistory, registerHistoryScope } from '../../lib/devHistory';
 
   type ShowTitle = { desktop: boolean; tablet: boolean; mobile: boolean };
   type BlockState = {
@@ -121,12 +123,15 @@ import SelectField from '../ui/SelectField.astro';
     const sectionLabel = shell.querySelector<HTMLInputElement>('[data-nav-section-label]')!;
     const titleVis = shell.querySelector<HTMLElement>('[data-nav-title-vis]')!;
     const undoButton = shell.querySelector<HTMLButtonElement>('[data-nav-undo]')!;
+    const redoButton = shell.querySelector<HTMLButtonElement>('[data-nav-redo]')!;
     const sidebar = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
     const main = document.querySelector<HTMLElement>('[data-section-nav-main]');
     const pendingId = `section-nav:${documentKey}`;
     const touched = new Map<HTMLElement, BlockState>();
-    const history: BlockState[] = [];
     const selectable = new Map<HTMLElement, { attributes: Array<[string, string | null]>; children: Map<HTMLElement, boolean>; ring: HTMLElement }>();
+    let historyScope = null;
+    let unregisterHistoryScope = null;
+    let pendingBefore: { block: HTMLElement; state: BlockState; input?: EventTarget | null } | null = null;
     let activeBlock: HTMLElement | null = null;
     let inputSession: EventTarget | null = null;
     let syncing = false;
@@ -256,7 +261,8 @@ import SelectField from '../ui/SelectField.astro';
         const block = liveBlock(initial);
         return block && !sameState(initial, capture(block));
       });
-      undoButton.disabled = history.length === 0;
+      undoButton.disabled = !pageHistory.canUndo;
+      redoButton.disabled = !pageHistory.canRedo;
       if (!dirty) {
         window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
         return;
@@ -266,7 +272,10 @@ import SelectField from '../ui/SelectField.astro';
       }));
     };
     const restore = (state: BlockState) => {
-      const block = liveBlock(state) || state.block;
+      const block = liveBlock(state);
+      if (!block) {
+        throw new Error('Could not restore outline edit because its block is no longer on the page.');
+      }
       const next = getDevSectionOutline().filter((entry) => outlineAnchorId(entry) !== block.id);
       next.push(...structuredClone(state.entries));
       block.id = state.anchor;
@@ -278,7 +287,6 @@ import SelectField from '../ui/SelectField.astro';
     const revert = () => {
       for (const initial of touched.values()) restore(initial);
       touched.clear();
-      history.length = 0;
       inputSession = null;
       syncDevSectionOutlineSidebar();
       renderSelection();
@@ -287,7 +295,7 @@ import SelectField from '../ui/SelectField.astro';
     const remember = (block: HTMLElement, input?: EventTarget | null) => {
       const before = capture(block);
       if (![...touched.values()].some((initial) => liveBlock(initial) === block)) touched.set(block, before);
-      if (!input || inputSession !== input) history.push(before);
+      if (!input || inputSession !== input) pendingBefore = { block, state: before, input };
       inputSession = input || null;
     };
     const syncBlockOptions = () => {
@@ -344,7 +352,23 @@ import SelectField from '../ui/SelectField.astro';
       if (visibility) titleVis.querySelectorAll<HTMLButtonElement>('[data-title-bp]').forEach((button) => {
         button.setAttribute('aria-pressed', String(visibility[button.dataset.titleBp as keyof ShowTitle]));
       });
-      undoButton.disabled = !history.length;
+      if (pendingBefore && !pageHistory.replaying) {
+        const current = capture(pendingBefore.block);
+        if (!sameState(pendingBefore.state, current)) {
+          const before = pendingBefore.state;
+          const block = pendingBefore.block;
+          const mergeKey = pendingBefore.input ? `section:${blockKey(block)}:${pendingBefore.input === groupLabel ? 'group' : 'section'}` : undefined;
+          pageHistory.push({ label: 'Edit section outline', mergeKey, undo: () => {
+            if (!touched.has(block)) touched.set(block, capture(block));
+            restore(before); syncDevSectionOutlineSidebar(); renderSelection(); stage();
+          }, redo: () => {
+            restore(current); syncDevSectionOutlineSidebar(); renderSelection(); stage();
+          } });
+        }
+        pendingBefore = null;
+      }
+      undoButton.disabled = !pageHistory.canUndo;
+      redoButton.disabled = !pageHistory.canRedo;
       syncBlockOptions();
       syncing = false;
     };
@@ -386,22 +410,22 @@ import SelectField from '../ui/SelectField.astro';
     };
     const undo = () => {
       if (saving) return;
-      const previous = history.pop();
-      if (!previous) return;
-      restore(previous);
-      inputSession = null;
-      activeBlock = liveBlock(previous);
-      syncDevSectionOutlineSidebar();
-      renderSelection();
-      stage();
+      void historyScope?.undo();
     };
     const syncMode = () => {
       if (isActive()) shell.hidden = false;
       document.documentElement.classList.toggle('is-section-nav-editing', isActive());
       if (isActive()) {
+        if (!historyScope) {
+          historyScope = pageHistory.scope();
+          unregisterHistoryScope = registerHistoryScope(panel, historyScope, { owns: (target) => panel.contains(target) });
+        }
         syncDevSectionOutlineSidebar();
         panel.hidden = false;
       } else {
+        unregisterHistoryScope?.();
+        unregisterHistoryScope = null;
+        historyScope = null;
         panel.hidden = true;
         main?.querySelectorAll('.is-section-nav-hover').forEach((block) => block.classList.remove('is-section-nav-hover'));
       }
@@ -437,6 +461,7 @@ import SelectField from '../ui/SelectField.astro';
       stage();
     }, { signal });
     undoButton.addEventListener('click', undo, { signal });
+    redoButton.addEventListener('click', () => { void historyScope?.redo(); }, { signal });
     shell.querySelector('[data-nav-done]')!.addEventListener('click', closePanel, { signal });
     sidebar?.addEventListener('click', (event) => {
       if (!isActive()) return;
@@ -484,10 +509,6 @@ import SelectField from '../ui/SelectField.astro';
         return;
       }
       if (target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.shiftKey
-        && !target.closest('input, textarea, [contenteditable="true"]')) {
-        event.preventDefault(); event.stopImmediatePropagation(); undo();
-      }
       if (event.key === 'Escape' && !panel.hidden) {
         event.preventDefault(); event.stopImmediatePropagation(); closePanel();
       }
@@ -503,15 +524,18 @@ import SelectField from '../ui/SelectField.astro';
       saving = event.detail.saving;
       panel.inert = saving;
     }) as EventListener, { signal });
-    window.addEventListener('vcd:dev-pending-committed', () => {
-      touched.clear(); history.length = 0; dirty = false; inputSession = null; renderSelection();
+    window.addEventListener('vcd:dev-pending-committed', (event) => {
+      const ids = event.detail?.ids;
+      if (Array.isArray(ids) && !ids.includes(pendingId)) return;
+      touched.clear(); dirty = false; inputSession = null; renderSelection();
     }, { signal });
     window.addEventListener('vcd:dev-pending-reverted', () => { syncDevSectionOutlineSidebar(); renderSelection(); }, { signal });
     window.addEventListener('vcd:dev-section-structure-changed', () => {
-      history.length = 0; inputSession = null; renderSelection(); if (dirty) stage();
+      inputSession = null; renderSelection(); if (dirty) stage();
     }, { signal });
     dispose = () => {
       controller.abort();
+      unregisterHistoryScope();
       panel.inert = false;
       if (dirty) revert();
       syncSelectableBlocks(false);
