@@ -3,22 +3,23 @@ import '../../../styles/project.css';
 import Button from '../../ui/Button.astro';
 import Field from '../../ui/Field.astro';
 import SelectField from '../../ui/SelectField.astro';
-import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from '../../../lib/responsiveImage';
+const initialVariants = normalizeImageVariants({ desktop: { aspect: '4:3' }, tablet: { aspect: '4:3' }, mobile: { aspect: '4:3' } }, '4:3', { width: 1200, height: 800 });
+const initialStyle = responsiveImageStyle(initialVariants, { width: 1200, height: 800 });
 ---
 
 <vcd-crop-frame-demo>
   <section class="demo-surface crop-frame-demo">
-    <h2 class="demo-title">Image framing</h2>
+    <h1 class="demo-title">Image framing</h1>
     <div class="crop-frame-demo__controls">
       <SelectField label="Frame" name="frame" value="4:3" options={[{ value: '1:1', label: '1:1' }, { value: '4:3', label: '4:3' }, { value: '16:9', label: '16:9' }]} />
-      <Field label="Zoom"><input type="range" min="100" max="250" step="1" value="100" data-crop-zoom /></Field>
+      <Field label="Zoom"><input type="range" min="100" max="250" step="1" value="100" aria-label="Zoom" data-crop-zoom /></Field>
     </div>
-    <div class="crop-frame-demo__frame project-cropped project-responsive-image" tabindex="0" role="img" aria-label="Image framing" data-crop-frame>
+    <div class="crop-frame-demo__frame project-cropped project-responsive-image" style={initialStyle} role="img" aria-label="Image framing" data-crop-frame>
       <div class="project-crop-clip"><img src="/demo-fixtures/studio.svg" width="1200" height="800" alt="" draggable="false" data-crop-image /></div>
     </div>
     <div class="crop-frame-demo__ranges">
-      <Field label="X"><input type="range" min="0" max="100" step="1" value="50" data-crop-x /></Field>
-      <Field label="Y"><input type="range" min="0" max="100" step="1" value="50" data-crop-y /></Field>
+      <Field label="X"><input type="range" min="0" max="100" step="1" value="50" aria-label="X position" data-crop-x /></Field>
+      <Field label="Y"><input type="range" min="0" max="100" step="1" value="50" aria-label="Y position" data-crop-y /></Field>
     </div>
     <div class="demo-actions"><Button label="Reset" type="button" data-crop-reset /></div>
   </section>
@@ -29,8 +30,8 @@ import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from
   .demo-surface { display: flex; flex-direction: column; gap: var(--space-unit); padding: calc(var(--space-unit) * 1.5); color: var(--sys-color-on-srf); background: var(--sys-color-srf); border: 1px solid var(--sys-color-srf-container-low); border-radius: var(--radius-card-smooth); box-shadow: var(--dev-panel-shadow); }
   .demo-title { margin: 0; font: var(--dev-text-panel-title); }
   .crop-frame-demo__controls, .crop-frame-demo__ranges { display: grid; gap: var(--space-unit); }
-  .crop-frame-demo__frame { width: 100%; aspect-ratio: 4 / 3; overflow: visible; border-radius: var(--radius-control-smooth); outline: none; }
-  .crop-frame-demo__frame:focus-visible { box-shadow: 0 0 0 2px var(--sys-color-on-srf); }
+  .crop-frame-demo__frame { width: 100%; overflow: visible; border-radius: var(--radius-control-smooth); outline: none; touch-action: none; cursor: grab; }
+  .crop-frame-demo__frame:active { cursor: grabbing; }
   .crop-frame-demo__frame .project-crop-clip { border-radius: inherit; }
   .crop-frame-demo__frame img { user-select: none; -webkit-user-drag: none; }
   .demo-actions { display: flex; justify-content: flex-end; padding: 8px; margin: -8px; }
@@ -41,12 +42,16 @@ import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from
 </style>
 
 <script>
+  import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from '../../../lib/responsiveImage';
+
   class CropFrameDemo extends HTMLElement {
     private controller?: AbortController;
     private frame = '4:3';
     private zoom = 100;
     private cx = 0.5;
     private cy = 0.5;
+    private pointerId?: number;
+    private activeHost?: HTMLElement;
 
     connectedCallback() {
       this.controller?.abort();
@@ -59,6 +64,7 @@ import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from
       const y = this.querySelector<HTMLInputElement>('[data-crop-y]');
       const reset = this.querySelector<HTMLButtonElement>('[data-crop-reset]');
       if (!host || !image || !select || !zoom || !x || !y || !reset) return;
+      this.activeHost = host;
       // One local frame adapter; the full crop tuner and its history stay elsewhere.
       const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
       const render = () => {
@@ -72,21 +78,60 @@ import { coverWidthFraction, normalizeImageVariants, responsiveImageStyle } from
         const variants = normalizeImageVariants({ desktop: { aspect: this.frame, cx: this.cx, cy: this.cy, w }, tablet: { aspect: this.frame, cx: this.cx, cy: this.cy, w }, mobile: { aspect: this.frame, cx: this.cx, cy: this.cy, w } }, this.frame, { width: 1200, height: 800 });
         host.style.cssText = responsiveImageStyle(variants, { width: 1200, height: 800 });
         host.setAttribute('aria-label', `Image framing ${this.frame}`);
-        x.value = String(Math.round(this.cx * 100)); y.value = String(Math.round(this.cy * 100)); zoom.value = String(this.zoom);
+        x.value = String(Math.round(this.cx * 100));
+        y.value = String(Math.round(this.cy * 100));
+        zoom.value = String(this.zoom);
+        zoom.setAttribute('aria-valuetext', `${this.zoom}%`);
       };
       select.addEventListener('change', () => { this.frame = select.value; render(); }, { signal });
       zoom.addEventListener('input', () => { this.zoom = Number(zoom.value); render(); }, { signal });
       x.addEventListener('input', () => { this.cx = Number(x.value) / 100; render(); }, { signal });
       y.addEventListener('input', () => { this.cy = Number(y.value) / 100; render(); }, { signal });
       let pointerX = 0; let pointerY = 0;
-      host.addEventListener('pointerdown', (event) => { if (event.button !== 0) return; event.preventDefault(); pointerX = event.clientX; pointerY = event.clientY; host.setPointerCapture(event.pointerId); }, { signal });
-      host.addEventListener('pointermove', (event) => { if (!host.hasPointerCapture(event.pointerId)) return; const rect = host.getBoundingClientRect(); const w = coverWidthFraction(this.frame, 1.5) / (this.zoom / 100); this.cx -= (event.clientX - pointerX) / rect.width * w; this.cy -= (event.clientY - pointerY) / rect.width * w * 1.5; pointerX = event.clientX; pointerY = event.clientY; render(); }, { signal });
-      const release = (event: PointerEvent) => { if (host.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId); };
-      host.addEventListener('pointerup', release, { signal }); host.addEventListener('pointercancel', release, { signal });
-      reset.addEventListener('click', () => { this.frame = '4:3'; this.zoom = 100; this.cx = 0.5; this.cy = 0.5; select.value = this.frame; render(); }, { signal });
+      host.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || this.pointerId !== undefined) return;
+        event.preventDefault();
+        this.pointerId = event.pointerId;
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        host.setPointerCapture(event.pointerId);
+      }, { signal });
+      host.addEventListener('pointermove', (event) => {
+        if (event.pointerId !== this.pointerId || !host.hasPointerCapture(event.pointerId)) return;
+        const rect = host.getBoundingClientRect();
+        const w = coverWidthFraction(this.frame, 1.5) / (this.zoom / 100);
+        this.cx -= (event.clientX - pointerX) / rect.width * w;
+        this.cy -= (event.clientY - pointerY) / rect.width * w * 1.5;
+        pointerX = event.clientX;
+        pointerY = event.clientY;
+        render();
+      }, { signal });
+      const release = (event: PointerEvent) => {
+        if (event.pointerId !== this.pointerId) return;
+        if (host.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId);
+        this.pointerId = undefined;
+      };
+      host.addEventListener('pointerup', release, { signal });
+      host.addEventListener('pointercancel', release, { signal });
+      reset.addEventListener('click', () => {
+        this.frame = '4:3';
+        this.zoom = 100;
+        this.cx = 0.5;
+        this.cy = 0.5;
+        select.value = this.frame;
+        if (this.pointerId !== undefined && host.hasPointerCapture(this.pointerId)) host.releasePointerCapture(this.pointerId);
+        this.pointerId = undefined;
+        render();
+      }, { signal });
       render();
     }
-    disconnectedCallback() { this.controller?.abort(); this.controller = undefined; }
+    disconnectedCallback() {
+      this.controller?.abort();
+      this.controller = undefined;
+      if (this.pointerId !== undefined && this.activeHost?.hasPointerCapture(this.pointerId)) this.activeHost.releasePointerCapture(this.pointerId);
+      this.pointerId = undefined;
+      this.activeHost = undefined;
+    }
   }
   if (!customElements.get('vcd-crop-frame-demo')) customElements.define('vcd-crop-frame-demo', CropFrameDemo);
 </script>
