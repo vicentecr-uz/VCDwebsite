@@ -16,6 +16,17 @@ export const PROJECT_STACK_SPACING_VALUES = /** @type {const} */ ([
 const PROJECT_STACK_SPACING_SET = new Set(PROJECT_STACK_SPACING_VALUES);
 
 /**
+ * @param {unknown} path
+ * @returns {path is Array<string | number>}
+ */
+export const isProjectStackSpacingPath = (path) => (
+  Array.isArray(path) && (
+    (path.length === 1 && path[0] === 'trailingSpacing')
+    || (path.length >= 2 && path.at(-1) === 'spacing')
+  )
+);
+
+/**
  * @param {unknown} value
  * @returns {value is ProjectStackSpacingValue}
  */

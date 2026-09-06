@@ -145,6 +145,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     menu: HTMLElement;
     document: string;
     path: Array<string | number>;
+    writePath: Array<string | number>;
     savedValue: SpacingMap;
     visualSavedValue: SpacingMap;
     currentValue: SpacingMap;
@@ -781,6 +782,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const mountSpacingControl = (element: HTMLElement): EditableSpacingState | null => {
       try {
         const path = JSON.parse(element.dataset.devSpacingPath || '[]');
+        const writePath = element.dataset.devSpacingWritePath
+          ? JSON.parse(element.dataset.devSpacingWritePath)
+          : path;
         let raw: ProjectStackSpacingResolved;
         try {
           raw = resolveProjectStackSpacing(
@@ -791,7 +795,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         } catch {
           raw = resolveProjectStackSpacing('section');
         }
-        if (!Array.isArray(path) || !element.dataset.devSpacingDocument) return null;
+        if (!Array.isArray(path) || !Array.isArray(writePath) || !element.dataset.devSpacingDocument) return null;
         if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
 
         const pageTop = isPageTopSpacingBlock(element);
@@ -909,6 +913,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           menu,
           document: element.dataset.devSpacingDocument,
           path,
+          writePath,
           savedValue: cloneSpacing(initial),
           visualSavedValue: cloneSpacing(initial),
           currentValue: cloneSpacing(initial),
@@ -1834,7 +1839,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const dirtyLayout = [
         ...dirtySpacing.map((state) => ({
           document: state.document,
-          path: state.path,
+          path: state.writePath,
           value: state.currentValue,
         })),
         ...dirtyIntroHeights.map((state) => ({
@@ -5465,7 +5470,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               })),
               spacing: dirtySpacing.map((state) => ({
                 document: state.document,
-                path: state.path,
+                path: state.writePath,
                 value: state.currentValue,
               })).concat(dirtyIntroHeights.map((state) => ({
                 document: state.document,
@@ -5496,7 +5501,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const dirtyLayout = [
             ...dirtySpacing.map((state) => ({
               document: state.document,
-              path: state.path,
+              path: state.writePath,
               value: state.currentValue,
             })),
             ...dirtyIntroHeights.map((state) => ({

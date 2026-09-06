@@ -44,7 +44,7 @@ import {
   generateTokenBlock,
   applyTokenBlock,
 } from './scripts/build-tokens.mjs';
-import { canonicalizeProjectStackSpacing } from './src/lib/projectStackSpacing.js';
+import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './src/lib/projectStackSpacing.js';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -1330,11 +1330,11 @@ function contentBatchDevWriter() {
             const field = resolved?.path?.at(-1);
             let canonicalSpacing;
             try {
-              canonicalSpacing = field === 'spacing' ? canonicalizeProjectStackSpacing(value) : null;
+              canonicalSpacing = isProjectStackSpacingPath(fieldPath) ? canonicalizeProjectStackSpacing(value) : null;
             } catch {
               canonicalSpacing = null;
             }
-            const validSpacing = field === 'spacing' && canonicalSpacing !== null;
+            const validSpacing = isProjectStackSpacingPath(resolved?.path) && canonicalSpacing !== null;
             const validIntroHeight = field === 'introHeight'
               && Number.isInteger(value)
               && value >= 1
@@ -1342,7 +1342,6 @@ function contentBatchDevWriter() {
             if (
               !resolved ||
               !Array.isArray(resolved.path) ||
-              (resolved.path.length < 2 && !(validIntroHeight && resolved.path.length === 1)) ||
               resolved.path.length > 8 ||
               (!validSpacing && !validIntroHeight) ||
               resolved.path.some((part) => !isSafePathPart(part))
@@ -1352,7 +1351,7 @@ function contentBatchDevWriter() {
             }
             resolved.group.spacing.push({
               ...change,
-              value: field === 'spacing' ? canonicalSpacing : value,
+              value: validSpacing ? canonicalSpacing : value,
               path: resolved.path,
             });
           }
@@ -2020,11 +2019,11 @@ function contentSpacingDevWriter() {
             const field = target?.path?.at(-1);
             let canonicalSpacing;
             try {
-              canonicalSpacing = field === 'spacing' ? canonicalizeProjectStackSpacing(value) : null;
+              canonicalSpacing = isProjectStackSpacingPath(fieldPath) ? canonicalizeProjectStackSpacing(value) : null;
             } catch {
               canonicalSpacing = null;
             }
-            const validSpacing = field === 'spacing' && canonicalSpacing !== null;
+            const validSpacing = isProjectStackSpacingPath(target?.path) && canonicalSpacing !== null;
             const validIntroHeight = field === 'introHeight'
               && Number.isInteger(value)
               && value >= 1
@@ -2032,7 +2031,6 @@ function contentSpacingDevWriter() {
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||
-              (target.path.length < 2 && !(validIntroHeight && target.path.length === 1)) ||
               target.path.length > 8 ||
               (!validSpacing && !validIntroHeight) ||
               target.path.some((part) => !isSafePathPart(part))
@@ -2043,7 +2041,7 @@ function contentSpacingDevWriter() {
             const documentChanges = grouped.get(target.relativeFile) || [];
             documentChanges.push({
               path: target.path,
-              value: field === 'spacing' ? canonicalSpacing : value,
+              value: validSpacing ? canonicalSpacing : value,
             });
             grouped.set(target.relativeFile, documentChanges);
           }
@@ -2077,7 +2075,7 @@ function contentSpacingDevWriter() {
                   send(400, { error: 'Intro height is only editable on Intro blocks.' });
                   return;
                 }
-                target[field] = field === 'spacing'
+                target[field] = isProjectStackSpacingPath(change.path)
                   ? canonicalizeProjectStackSpacing(change.value)
                   : change.value;
               }
