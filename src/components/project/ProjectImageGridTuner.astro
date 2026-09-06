@@ -456,6 +456,10 @@ import Button from '../ui/Button.astro';
       lastHistorySnapshot = structuredClone(snapshot);
       const wasLive = liveApply; liveApply = true; renderDraft(); liveApply = wasLive;
     };
+    const contentSnapshot = (snapshot: GridBaseline & { viewport: ImageViewport }) => {
+      const { viewport: _viewport, ...content } = snapshot;
+      return content;
+    };
 
     // Builds and dispatches the 'grid' pending upsert from the current saved*
     // state, shared between the tuner's own Save changes and the
@@ -467,6 +471,7 @@ import Button from '../ui/Button.astro';
       gridPath: Array<string | number>,
       pendingId: string,
       baseline: GridBaseline,
+      state: GridBaseline = { columns: savedColumns, constrained: savedConstrained, aspect: savedAspect, matchHeight: savedMatchHeight, layouts: savedLayouts },
     ) => {
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
         detail: {
@@ -475,11 +480,11 @@ import Button from '../ui/Button.astro';
           payload: {
             document: documentKey,
             path: gridPath,
-            columns: { ...savedColumns },
-            constrained: { ...savedConstrained },
-            defaultAspectRatio: savedAspect,
-            matchHeight: savedMatchHeight,
-            layouts: cloneLayouts(savedLayouts),
+            columns: { ...state.columns },
+            constrained: { ...state.constrained },
+            defaultAspectRatio: state.aspect,
+            matchHeight: state.matchHeight,
+            layouts: cloneLayouts(state.layouts),
           },
           revert: () => {
             applyBaselineToTarget(target, baseline);
@@ -782,6 +787,8 @@ import Button from '../ui/Button.astro';
     const selectTarget = (target: HTMLElement, live: boolean) => {
       editTarget = target;
       liveApply = live;
+      localHistory.clear();
+      historyReady = false;
       catalog = readItems(editTarget);
       itemIds = catalog.map((item) => item.id);
       selectedViewport = viewportForWidth();
@@ -854,16 +861,20 @@ import Button from '../ui/Button.astro';
       const afterPage = snapshotDraft();
       if (!pageHistory.replaying && JSON.stringify(beforePage) !== JSON.stringify(afterPage)) {
         const restorePage = (snapshot: typeof beforePage) => {
-          restoreDraftSnapshot(snapshot);
-          savedColumns = { ...snapshot.columns }; savedConstrained = { ...snapshot.constrained };
-          savedAspect = snapshot.aspect; savedMatchHeight = snapshot.matchHeight;
-          savedLayouts = cloneLayouts(snapshot.layouts);
+          applyBaselineToTarget(target, snapshot);
+          if (editTarget === target) {
+            restoreDraftSnapshot(snapshot);
+            savedColumns = { ...snapshot.columns }; savedConstrained = { ...snapshot.constrained };
+            savedAspect = snapshot.aspect; savedMatchHeight = snapshot.matchHeight;
+            savedLayouts = cloneLayouts(snapshot.layouts);
+          }
           dispatchGridUpsert(
             target,
             documentKey,
             gridPath,
             pendingId,
             structuredClone(diskBaselines.get(pendingId) || baseline),
+            snapshot,
           );
         };
         pageHistory.push({ label: 'Edit image grid', undo: () => restorePage(beforePage), redo: () => restorePage(afterPage) });
@@ -888,6 +899,7 @@ import Button from '../ui/Button.astro';
       draftAspect = savedAspect;
       draftMatchHeight = savedMatchHeight;
       draftLayouts = cloneLayouts(savedLayouts);
+      localHistory.clear();
       renderDraft();
     };
 
@@ -907,6 +919,7 @@ import Button from '../ui/Button.astro';
         const viewport = button.dataset.gridViewport as ImageViewport | undefined;
         if (!viewport || viewport === selectedViewport) return;
         selectedViewport = viewport;
+        lastHistorySnapshot = snapshotDraft();
         renderDraft();
         const resolved = resolveVisible(itemIds, draftLayouts, selectedViewport);
         status.textContent = resolved.overridden
@@ -969,10 +982,12 @@ import Button from '../ui/Button.astro';
     });
 
     window.addEventListener('vcd:dev-before-save', () => {
-      if (liveApply && lastHistorySnapshot && JSON.stringify(lastHistorySnapshot) !== JSON.stringify(snapshotDraft())) saveDraft();
+      if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(openingSnapshot)) !== JSON.stringify(contentSnapshot(snapshotDraft()))) saveDraft();
     });
     window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
-      if (liveApply) event.detail.dirty = JSON.stringify(snapshotDraft()) !== JSON.stringify(openingSnapshot);
+      if (liveApply && openingSnapshot && JSON.stringify(contentSnapshot(snapshotDraft())) !== JSON.stringify(contentSnapshot(openingSnapshot))) {
+        event.detail.dirty = true;
+      }
     }) as EventListener);
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
