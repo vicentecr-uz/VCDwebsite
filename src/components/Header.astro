@@ -649,7 +649,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       });
     };
 
+    const isOpen = () => trigger.dataset.menuOpen === 'true';
+
     const openMenu = (event?: Event) => {
+      if (isOpen()) return;
+
       // If a higher layer (e.g. page-top gap chips) is under the pointer, don't expand.
       if (event instanceof MouseEvent) {
         document.dispatchEvent(
@@ -702,8 +706,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       trigger.dataset.menuCloseTimer = String(closeTimer);
       trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
     };
-
-    const isOpen = () => trigger.dataset.menuOpen === 'true';
 
     // Tapping a link focuses it in some mobile browsers; ignore that focus so it
     // doesn't open the menu before the click handler can toggle it.
