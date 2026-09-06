@@ -160,7 +160,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
          and writes zoomInput.value directly. -->
     <label class="tapico-crop-tuner__control" hidden>
       <span>Zoom</span>
-      <input data-crop-zoom type="range" min="1" max="100" step="0.005" value="1" />
+      <input data-crop-zoom type="range" min="0.01" max="100" step="0.005" value="1" />
       <output data-crop-zoom-output>100%</output>
     </label>
 
@@ -369,10 +369,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     /** Visible source HEIGHT fraction implied by `w` and the frame aspect. */
     const contentH = (state: CropState) => (state.w * srcAspect()) / frameAspectOf(state.aspect);
 
-    /** 1 = fits the frame exactly; >1 = zoomed in. Drives the zoom slider. */
+    /** 1 = fits the frame exactly; unlocked crops may zoom below 1. */
     const zoomOf = (state: CropState) => coverW(state.aspect) / (state.w || 1);
     const wForZoom = (aspect: string, zoom: number) => coverW(aspect) / Math.max(zoom, 0.0001);
+    const ZOOM_MIN = 0.01; // 1% — no practical zoom-out cap while unlocked.
     const ZOOM_MAX = 100; // 10000% — no practical cap (was 1.5)
+    const minZoom = () => (constrainToFrame() ? 1 : ZOOM_MIN);
 
     const hoverImgSrcAspect = (target: HTMLElement) => {
       const hoverImg = target.querySelector<HTMLImageElement>('.project-grid__img--hover');
@@ -1027,10 +1029,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
      * to 0.5: a frame showing the full width simply cannot pan horizontally.
      */
     const constrainDraft = () => {
-      draft.w = clamp(draft.w, 0.01, 1);
+      draft.w = clamp(draft.w, coverW(draft.aspect) / ZOOM_MAX, coverW(draft.aspect) / minZoom());
       if (!constrainToFrame()) {
-        draft.cx = clamp(draft.cx, -1, 2);
-        draft.cy = clamp(draft.cy, -1, 2);
+        const h = contentH(draft);
+        const xReach = Math.max(1.5, draft.w / 2);
+        const yReach = Math.max(1.5, h / 2);
+        draft.cx = clamp(draft.cx, 0.5 - xReach, 0.5 + xReach);
+        draft.cy = clamp(draft.cy, 0.5 - yReach, 0.5 + yReach);
         return;
       }
       const h = contentH(draft);
@@ -1040,6 +1045,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     const renderConstraint = () => {
       const locked = constrainToFrame();
+      zoomInput.min = String(minZoom());
       constraintButton.setAttribute('aria-pressed', locked ? 'true' : 'false');
       constraintButton.classList.toggle('is-locked', locked);
       constraintIcon.innerHTML = locked ? LOCK_ICON : LOCK_OPEN_ICON;
@@ -1102,10 +1108,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         const hoverSrcAspect = hoverImgSrcAspect(editTarget);
         if (hoverSrcAspect) {
           const zoom = hoverZoomOf({ ...hoverState, aspect: zoomAspect }, hoverSrcAspect);
-          // Linked hover fills the frame (zoom ≥ 1). Undercover seeds (`w: 1`
-          // before src aspect was known) report zoom < 1 — floor so reshape
-          // cannot write w > 1 and fail Save validation.
-          hoverState.w = hoverWForZoom(aspect, Math.max(1, zoom), hoverSrcAspect);
+          hoverState.w = hoverWForZoom(aspect, Math.max(minZoom(), zoom), hoverSrcAspect);
         } else {
           bindHoverSrcAspect(editTarget, zoomAspect);
         }
@@ -1838,9 +1841,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const fy = (clientY - bounds.top) / bounds.height;
       const sourceX = draft.cx + (fx - 0.5) * draft.w;
       const sourceY = draft.cy + (fy - 0.5) * contentH(draft);
-      const maxW = coverW(draft.aspect);
+      const coverWidth = coverW(draft.aspect);
       beginLiveEdits();
-      draft.w = clamp(draft.w / factor, maxW / ZOOM_MAX, maxW);
+      draft.w = clamp(draft.w / factor, coverWidth / ZOOM_MAX, coverWidth / minZoom());
       draft.cx = sourceX - (fx - 0.5) * draft.w;
       draft.cy = sourceY - (fy - 0.5) * contentH(draft);
     };
@@ -1962,10 +1965,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (dist < 8) return;
         const midX = (a.x + b.x) / 2;
         const midY = (a.y + b.y) / 2;
-        const maxW = coverW(draft.aspect);
+        const coverWidth = coverW(draft.aspect);
         // Fingers apart → zoom in (smaller w); midpoint tracks with the gesture.
         const scale = Math.pow(pinch.startDist / dist, PINCH_ZOOM_EXPONENT);
-        const newW = clamp(pinch.startW * scale, maxW / ZOOM_MAX, maxW);
+        const newW = clamp(pinch.startW * scale, coverWidth / ZOOM_MAX, coverWidth / minZoom());
         const fx = (midX - bounds.left) / bounds.width;
         const fy = (midY - bounds.top) / bounds.height;
         pushUndoIfNeeded(gestureUndoCaptured);
@@ -2428,7 +2431,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     zoomInput.addEventListener('input', () => {
       beginLiveEdits();
-      draft.w = wForZoom(draft.aspect, clamp(Number(zoomInput.value), 1, ZOOM_MAX));
+      draft.w = wForZoom(draft.aspect, clamp(Number(zoomInput.value), minZoom(), ZOOM_MAX));
       renderDraft();
       status.textContent = 'Unsaved changes.';
     });
