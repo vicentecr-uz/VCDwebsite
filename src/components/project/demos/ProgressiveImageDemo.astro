@@ -1,5 +1,7 @@
+---
 import Button from '../../ui/Button.astro';
 import SelectField from '../../ui/SelectField.astro';
+import '../../../styles/project.css';
 ---
 
 <vcd-progressive-image-demo>
@@ -100,7 +102,7 @@ import SelectField from '../../ui/SelectField.astro';
   .progressive-image-demo__actions {
     display: flex;
     justify-content: flex-end;
-    gap: calc(var(--space-unit) * 0.5);
+    gap: calc(var(--space-unit) * 2);
     padding: 8px;
     margin: -8px;
   }
@@ -178,13 +180,12 @@ import SelectField from '../../ui/SelectField.astro';
         this.factory = undefined;
         setBusy(true);
         setStatus(Number(select.value) > 0 ? 'Waiting' : 'Loading');
-        const modulePromise = import('../../../lib/imagePreviewUpgrade');
         this.timer = window.setTimeout(async () => {
           this.timer = undefined;
           if (signal.aborted || run !== this.generation || !this.image) return;
           setStatus('Loading');
           try {
-            const { createImagePreviewUpgrade } = await modulePromise;
+            const { createImagePreviewUpgrade } = await import('../../../lib/imagePreviewUpgrade');
             if (signal.aborted || run !== this.generation || !this.image) return;
             this.image.dataset.imagePreview = '/demo-fixtures/studio.preview.webp';
             this.factory = createImagePreviewUpgrade({ onError: () => {
@@ -198,6 +199,8 @@ import SelectField from '../../ui/SelectField.astro';
             this.factory.open();
           } catch {
             if (signal.aborted || run !== this.generation) return;
+            this.factory?.destroy();
+            this.factory = undefined;
             setBusy(false);
             setStatus('Image unavailable');
           }
