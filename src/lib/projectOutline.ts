@@ -38,12 +38,17 @@ export type OutlineSubsection = OutlineSection;
 export type SectionNavLink = {
   id: string;
   label: string;
+  /** Stable outline marker id; `id` remains the DOM / scroll target. */
+  outlineId?: string;
 };
 
 export type SectionNavGroup = {
   label: string;
   children: SectionNavLink[];
   defaultOpen?: boolean;
+  /** Stable outline marker id and optional page-boundary anchor. */
+  id?: string;
+  anchor?: string;
 };
 
 export type SectionNavItem = SectionNavLink | SectionNavGroup;
@@ -149,61 +154,29 @@ export function reorderOutlinePreservingGroups(
   const normalized = normalizeOutline(outline);
   if (!normalized.length) return [];
 
-  const groupsById = new Map<string, OutlineGroup>();
-  const groupOrder: string[] = [];
-  const sectionToGroupId = new Map<string, string | null>();
-  const sections: OutlineSection[] = [];
-  let currentGroupId: string | null = null;
-
-  for (const entry of normalized) {
-    if (entry.kind === 'group') {
-      currentGroupId = entry.id;
-      if (!groupsById.has(entry.id)) {
-        groupsById.set(entry.id, entry);
-        groupOrder.push(entry.id);
-      }
-      continue;
-    }
-    sections.push(entry);
-    sectionToGroupId.set(entry.id, currentGroupId);
-  }
-
-  const sortedSections = [...sections].sort((a, b) => {
-    const diff =
-      pageIndexForId(outlineAnchorId(a)) - pageIndexForId(outlineAnchorId(b));
-    if (diff !== 0) return diff;
-    return sections.indexOf(a) - sections.indexOf(b);
+  const seen = new Set<string>();
+  const entries = normalized.filter((entry) => {
+    const key = `${entry.kind}:${entry.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
-
-  const result: OutlineEntry[] = [];
-  let lastGroupId: string | null | undefined;
-  const emittedGroups = new Set<string>();
-
-  for (const section of sortedSections) {
-    const groupId = sectionToGroupId.get(section.id) ?? null;
-    if (groupId !== lastGroupId) {
-      if (groupId !== null) {
-        const group = groupsById.get(groupId);
-        if (group) {
-          result.push({
-            ...group,
-            anchor: outlineAnchorId(section),
-          });
-          emittedGroups.add(groupId);
-        }
-      }
-      lastGroupId = groupId;
-    }
-    result.push(section);
-  }
-
-  for (const groupId of groupOrder) {
-    if (emittedGroups.has(groupId)) continue;
-    const group = groupsById.get(groupId);
-    if (group) result.push(group);
-  }
-
-  return result;
+  return entries
+    .map((entry, outlineIndex) => ({
+      entry,
+      outlineIndex,
+      pageIndex: pageIndexForId(
+        entry.kind === 'group' && !entry.anchor
+          ? outlineSortAnchor(entry, normalized) || outlineAnchorId(entry)
+          : outlineAnchorId(entry),
+      ),
+    }))
+    .sort((a, b) => {
+      if (a.pageIndex !== b.pageIndex) return a.pageIndex - b.pageIndex;
+      if (a.entry.kind !== b.entry.kind) return a.entry.kind === 'group' ? -1 : 1;
+      return a.outlineIndex - b.outlineIndex;
+    })
+    .map(({ entry }) => entry);
 }
 
 /**
@@ -270,9 +243,11 @@ export function deriveNavFromOutline(outline: OutlineEntry[] | undefined | null)
   for (const entry of normalized) {
     if (entry.kind === 'group') {
       currentGroup = {
+        id: entry.id,
         label: entry.label,
         children: [],
         defaultOpen: entry.defaultOpen !== false,
+        ...(entry.anchor ? { anchor: entry.anchor } : {}),
       };
       nav.push(currentGroup);
       continue;
@@ -282,6 +257,7 @@ export function deriveNavFromOutline(outline: OutlineEntry[] | undefined | null)
       const link: SectionNavLink = {
         id: outlineAnchorId(entry),
         label: entry.label,
+        outlineId: entry.id,
       };
       if (currentGroup) {
         currentGroup.children.push(link);
@@ -301,24 +277,39 @@ export function outlineFromNav(nav: SectionNavItem[] | undefined | null): Outlin
   if (!Array.isArray(nav) || nav.length === 0) return [];
 
   const outline: OutlineEntry[] = [];
+  const usedGroupIds = new Set<string>();
+  for (const item of nav) {
+    if (isSectionNavGroup(item) && item.id?.trim()) usedGroupIds.add(item.id.trim());
+  }
+
+  const uniqueGroupId = (label: string, suppliedId?: string) => {
+    const supplied = suppliedId?.trim();
+    if (supplied) return supplied;
+    const base = slugifyOutlineId(label);
+    let id = base;
+    let suffix = 2;
+    while (usedGroupIds.has(id)) id = `${base}-${suffix++}`;
+    usedGroupIds.add(id);
+    return id;
+  };
 
   for (const item of nav) {
     if (isSectionNavGroup(item)) {
-      const groupId = slugifyOutlineId(item.label);
+      const groupId = uniqueGroupId(item.label, item.id);
       const firstChild = item.children[0];
       outline.push({
         kind: 'group',
         id: groupId,
         label: item.label,
         defaultOpen: item.defaultOpen !== false,
-        ...(firstChild ? { anchor: firstChild.id } : {}),
+        ...(item.anchor || firstChild ? { anchor: item.anchor || firstChild?.id } : {}),
       });
       for (const child of item.children) {
         outline.push({
           kind: 'section',
-          id: child.id,
+          id: child.outlineId?.trim() || child.id || slugifyOutlineId(child.label),
           label: child.label,
-          anchor: child.id,
+          anchor: child.id || slugifyOutlineId(child.label),
         });
       }
       continue;
@@ -345,7 +336,7 @@ export function resolveProjectOutline(data: {
   sections?: Array<{ sectionId?: string; id?: string } | null | undefined> | null;
 }): OutlineEntry[] {
   const base =
-    Array.isArray(data.outline) && data.outline.length > 0
+    Array.isArray(data.outline)
       ? normalizeOutline(data.outline)
       : outlineFromNav(data.nav);
 
@@ -379,7 +370,7 @@ export function slugifyOutlineId(label: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return base || `section-${Date.now().toString(36)}`;
+  return base || 'section';
 }
 
 export function outlineEntriesForAnchor(
@@ -451,21 +442,34 @@ export function blockIdsInSectionRange(
   const startIndex = orderedBlockIds.indexOf(startAnchor);
   if (startIndex < 0) return [];
 
-  const sectionOutlineIndex = normalized.findIndex(
-    (entry) => entry.kind === 'section' && entry.id === sectionEntry.id,
+  const markers = normalized
+    .map((entry, outlineIndex) => ({
+      entry,
+      outlineIndex,
+      pageIndex: orderedBlockIds.indexOf(
+        entry.kind === 'group' && !entry.anchor
+          ? outlineSortAnchor(entry, normalized) || outlineAnchorId(entry)
+          : outlineAnchorId(entry),
+      ),
+    }))
+    .filter((marker) => marker.pageIndex >= 0)
+    .sort((a, b) => {
+      if (a.pageIndex !== b.pageIndex) return a.pageIndex - b.pageIndex;
+      if (a.entry.kind !== b.entry.kind) return a.entry.kind === 'group' ? -1 : 1;
+      return a.outlineIndex - b.outlineIndex;
+    });
+  const markerIndex = markers.findIndex(
+    ({ entry }) => entry.kind === 'section' && entry.id === sectionEntry.id,
   );
 
   let endIndex = orderedBlockIds.length;
-  for (let i = sectionOutlineIndex + 1; i < normalized.length; i += 1) {
-    const next = normalized[i];
-    const anchor = outlineSortAnchor(next, normalized) || outlineAnchorId(next);
-    const pageIndex = orderedBlockIds.indexOf(anchor);
-    if (pageIndex >= 0 && pageIndex > startIndex) {
-      endIndex = pageIndex;
+  for (let i = markerIndex + 1; i < markers.length; i += 1) {
+    const next = markers[i];
+    if (next.pageIndex > startIndex) {
+      endIndex = next.pageIndex;
       break;
     }
-    if (pageIndex === startIndex && next.kind === 'group') {
-      // group on same block after section — range empty after start
+    if (next.pageIndex === startIndex) {
       endIndex = startIndex + 1;
       break;
     }
