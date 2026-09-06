@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { introLayout, introRun, normalizeIntroHeight, resolveIntroHeight } from '../../src/lib/projectIntro.ts';
 import {
   canonicalizeProjectStackSpacing,
+  isProjectStackSpacingPath,
   projectStackClass,
   resolveProjectStackSpacing,
   setProjectStackSpacingAtViewport,
@@ -42,6 +43,10 @@ assert.deepEqual(resolveProjectStackSpacing({ desktop: 'bad', tablet: 'group', m
 assert.throws(() => canonicalizeProjectStackSpacing({ toString: 'none' }));
 assert.throws(() => canonicalizeProjectStackSpacing({ __proto__: 'none' }));
 assert.equal(canonicalizeProjectStackSpacing({ desktop: 'section', tablet: 'section', mobile: 'section' }), 'section');
+assert.equal(isProjectStackSpacingPath(['trailingSpacing']), true);
+assert.equal(isProjectStackSpacingPath(['sections', 1, 'spacing']), true);
+assert.equal(isProjectStackSpacingPath(['spacing']), false);
+assert.equal(isProjectStackSpacingPath(['sections', 1, 'trailingSpacing']), false);
 
 assert.equal(normalizeIntroHeight(80.4), 80);
 assert.equal(normalizeIntroHeight('bad'), 75);

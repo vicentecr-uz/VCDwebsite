@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ImageVariants } from './responsiveImage';
 import { EMPTY_COVER_FILL } from './placeholderCover.mjs';
+import type { ProjectStackSpacing } from './projectStack';
 
 export type ProjectStatus = 'published' | 'draft' | 'teaser' | 'image';
 export type ProjectStack = 'modern' | 'legacy';
@@ -41,6 +42,7 @@ export type ProjectDocument = {
   stack?: ProjectStack;
   listings?: Partial<Record<'home' | 'work' | 'play', ProjectListingCard>>;
   teaser?: ProjectTeaserConfig;
+  trailingSpacing?: ProjectStackSpacing;
   outline?: Array<Record<string, unknown>>;
   sections: Array<Record<string, unknown>>;
 };
@@ -76,6 +78,7 @@ export type PageDocumentKey = 'home' | 'work' | 'play' | 'about';
 export type PageDocument = {
   subtitle?: string;
   introHeight?: number;
+  trailingSpacing?: ProjectStackSpacing;
   sections: Array<Record<string, unknown>>;
   outline?: Array<Record<string, unknown>>;
 };
