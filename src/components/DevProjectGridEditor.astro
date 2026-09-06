@@ -99,9 +99,9 @@ const visibilityOptions = [
 </DevOverlay>
 
 <script>
-  // #182 — measurement lives in its own module (coverLuminance.ts) so #172 can
-  // lift it verbatim for runtime sampling later. The rest of this file's
-  // script is `define:vars` (inline, no `import`), so this one hands the
+  // Measurement lives in coverLuminance.ts so authoring and runtime sampling
+  // share one threshold. The rest of this file's script is `define:vars`
+  // (inline, no `import`), so this one hands the
   // function across on `window` instead of sharing scope directly.
   //
   // Must stay a plain <script>: Astro only bundles and rewrites imports for
@@ -110,10 +110,10 @@ const visibilityOptions = [
   // (/work -> /scripts/coverLuminance, 404), so the module never ran and every
   // drop silently took the `dark` fallback.
   import {
-    coverBoxRegionToSourceRegion,
     isRegionDark,
-    measureRegionLuma,
+    measureRenderedRegionLuma,
   } from '../scripts/coverLuminance';
+  import { cropHostFor, readCropVars } from '../scripts/adaptiveMediaInk';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
   import 'color-dialog-box';
 
@@ -148,15 +148,18 @@ const visibilityOptions = [
         el.src = objectUrl;
       });
 
-      // The hover image always renders through plain `object-fit: cover`
-      // (ProjectGrid.astro never wraps it in `.project-crop-clip`, unlike the
-      // base cover) — so this projection is exact, not an approximation.
-      const sourceRegion = coverBoxRegionToSourceRegion(
+      const crop = cover.classList.contains('project-grid__cover--hover-cropped')
+        ? readCropVars(cropHostFor(cover) ?? cover, true)
+        : null;
+      const background = item.dataset.devBg || getComputedStyle(cover).backgroundColor;
+      const luma = measureRenderedRegionLuma(
+        img,
         region,
         { width: coverRect.width, height: coverRect.height },
         { width: img.naturalWidth, height: img.naturalHeight },
+        crop,
+        background,
       );
-      const luma = measureRegionLuma(img, sourceRegion);
       return isRegionDark(luma);
     } catch {
       return null;
@@ -542,7 +545,9 @@ const visibilityOptions = [
 
     item.classList.toggle('project-grid__item--full', Boolean(listing.full));
     if (cover instanceof HTMLElement) {
-      cover.style.backgroundColor = listing.bg || '#efefef';
+      const background = listing.bg || '#efefef';
+      cover.style.setProperty('--project-grid-background', background);
+      cover.style.backgroundColor = background;
       cover.classList.toggle('project-grid__cover--has-hover', Boolean(listing.hoverImage));
       // #176 — the empty state is server-rendered, so it has to be re-derived
       // here or the "Drop cover image" label and its wash sit on top of the
@@ -731,6 +736,7 @@ const visibilityOptions = [
       cover.dataset.devCoverDrop = slug;
       cover.dataset.devListingCover = grid;
       cover.dataset.devCoverEmpty = 'true';
+      cover.style.setProperty('--project-grid-background', emptyCoverFill);
       cover.style.backgroundColor = emptyCoverFill;
     }
 

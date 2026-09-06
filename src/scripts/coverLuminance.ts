@@ -1,10 +1,8 @@
 /**
  * Measure whether a region of an image reads as visually dark or light.
  *
- * Built for #182 — measuring a dropped hover-cover image at authoring time so
- * a card's title can pick a readable colour without any canvas work in the
- * visitor's browser. #172 (deferred, v2) will want the same primitive at
- * runtime; keep it decode-source-agnostic so it can be lifted as-is.
+ * Shared by dropped-image authoring and runtime gallery sampling. Keep the
+ * measurement decode-source-agnostic so both paths use the same threshold.
  */
 
 export type NormalizedRegion = { x: number; y: number; w: number; h: number };
@@ -27,6 +25,28 @@ const toLinear = (channel: number) => {
   const s = channel / 255;
   return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 };
+
+function canvasRegionLuma(
+  ctx: CanvasRenderingContext2D,
+  canvasWidth: number,
+  canvasHeight: number,
+  region: NormalizedRegion,
+): number {
+  const x = Math.round(clamp01(region.x) * canvasWidth);
+  const y = Math.round(clamp01(region.y) * canvasHeight);
+  const w = Math.min(Math.max(1, Math.round(clamp01(region.w) * canvasWidth)), canvasWidth - x);
+  const h = Math.min(Math.max(1, Math.round(clamp01(region.h) * canvasHeight)), canvasHeight - y);
+  if (w <= 0 || h <= 0) return 0;
+
+  const { data } = ctx.getImageData(x, y, w, h);
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    sum += 0.2126 * toLinear(data[i]) + 0.7152 * toLinear(data[i + 1]) + 0.0722 * toLinear(data[i + 2]);
+    count += 1;
+  }
+  return count > 0 ? sum / count : 0;
+}
 
 /**
  * Mean relative luminance (0..1) of a normalised region of `source`.
@@ -57,20 +77,64 @@ export function measureRegionLuma(
   if (!ctx) return 0;
   ctx.drawImage(source, 0, 0, canvasWidth, canvasHeight);
 
-  const x = Math.round(clamp01(region.x) * canvasWidth);
-  const y = Math.round(clamp01(region.y) * canvasHeight);
-  const w = Math.min(Math.max(1, Math.round(clamp01(region.w) * canvasWidth)), canvasWidth - x);
-  const h = Math.min(Math.max(1, Math.round(clamp01(region.h) * canvasHeight)), canvasHeight - y);
-  if (w <= 0 || h <= 0) return 0;
+  return canvasRegionLuma(ctx, canvasWidth, canvasHeight, region);
+}
 
-  const { data } = ctx.getImageData(x, y, w, h);
-  let sum = 0;
-  let count = 0;
-  for (let i = 0; i < data.length; i += 4) {
-    sum += 0.2126 * toLinear(data[i]) + 0.7152 * toLinear(data[i + 1]) + 0.0722 * toLinear(data[i + 2]);
-    count += 1;
+/**
+ * Mean luminance of a region after the image is laid out in its visible frame
+ * and composited over a background colour. Unlike source-only sampling, this
+ * includes transparent pixels and any frame area exposed by an unlocked crop.
+ */
+export function measureRenderedRegionLuma(
+  source: CanvasImageSource,
+  region: NormalizedRegion,
+  box: { width: number; height: number },
+  sourceSize: { width: number; height: number },
+  crop: { w: number; cx: number; cy: number } | null,
+  background: string,
+): number {
+  if (!box.width || !box.height || !sourceSize.width || !sourceSize.height) return 0;
+
+  const sampleScale = SAMPLE_LONG_EDGE / Math.max(box.width, box.height);
+  const canvasWidth = Math.max(1, Math.round(box.width * sampleScale));
+  const canvasHeight = Math.max(1, Math.round(box.height * sampleScale));
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 0;
+
+  ctx.fillStyle = background;
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  let displayedWidth: number;
+  let displayedHeight: number;
+  let left: number;
+  let top: number;
+  if (crop && Number.isFinite(crop.w) && Number.isFinite(crop.cx) && Number.isFinite(crop.cy) && crop.w > 0) {
+    displayedWidth = box.width / crop.w;
+    displayedHeight = displayedWidth * sourceSize.height / sourceSize.width;
+    left = box.width / 2 - crop.cx * displayedWidth;
+    top = box.height / 2 - crop.cy * displayedHeight;
+  } else {
+    const coverScale = Math.max(box.width / sourceSize.width, box.height / sourceSize.height);
+    displayedWidth = sourceSize.width * coverScale;
+    displayedHeight = sourceSize.height * coverScale;
+    left = (box.width - displayedWidth) / 2;
+    top = (box.height - displayedHeight) / 2;
   }
-  return count > 0 ? sum / count : 0;
+
+  const scaleX = canvasWidth / box.width;
+  const scaleY = canvasHeight / box.height;
+  ctx.drawImage(
+    source,
+    left * scaleX,
+    top * scaleY,
+    displayedWidth * scaleX,
+    displayedHeight * scaleY,
+  );
+
+  return canvasRegionLuma(ctx, canvasWidth, canvasHeight, region);
 }
 
 /**
