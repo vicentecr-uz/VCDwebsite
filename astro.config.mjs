@@ -712,9 +712,8 @@ const applyCropChange = (data, change) => {
       const cy = Number(requested?.cy);
       const w = Number(requested?.w);
       const aspect = String(requested?.aspect || '');
-      // Accept w slightly above 1 (float / linked-hover reshape) and clamp —
-      // rejecting broke Save after cover-handle resize while hover was still
-      // on an undercover seed (`w: 1` with zoom < 1 → write-back w > 1).
+      // Unlocked crops may zoom out until the image is 1% of cover-fit, so `w`
+      // can span up to 100 times the source-width fraction of the frame.
       if (
         !IMAGE_VIEWPORTS.has(viewport) ||
         !isAllowedAspectRatio(aspect) ||
@@ -725,9 +724,9 @@ const applyCropChange = (data, change) => {
       }
       variants[viewport] = {
         aspect,
-        cx: clampRound(cx, -1, 2, 6),
-        cy: clampRound(cy, -1, 2, 6),
-        w: clampRound(w, 0.01, 1, 6),
+        cx: clampRound(cx, -100, 100, 6),
+        cy: clampRound(cy, -100, 100, 6),
+        w: clampRound(w, 0.0001, 100, 6),
       };
     }
     if (!Object.keys(variants).length) {
