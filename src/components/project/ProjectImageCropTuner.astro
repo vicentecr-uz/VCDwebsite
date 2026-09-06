@@ -215,7 +215,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import { projectImage } from '../../lib/images';
   import { isPlaceholderSrc } from '../../lib/projectImageFrame';
   import { bindFitPlaceholderLabel } from '../../lib/placeholderLabel';
-  import { registerHistoryScope } from '../../lib/devHistory';
+  import { pageHistory, registerHistoryScope } from '../../lib/devHistory';
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
@@ -743,8 +743,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       allCover: Record<ImageViewport, CropState>;
       allHover: Record<ImageViewport, CropState> | null;
       allDraft: Record<ImageViewport, CropState>;
-      /** Set only when this step changed src (replace). */
-      src?: string;
+      allConstrained: ConstrainedByViewport;
+      maxVhValue: number | undefined;
+      src: string;
       srcWidth?: number;
       srcHeight?: number;
       /** Set only when this step changed max-vh. Use a wrapper so `undefined` (Off) is distinct from "not this step". */
@@ -754,6 +755,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let undoStack: CropUndoEntry[] = [];
     let redoStack: CropUndoEntry[] = [];
     let unregisterHistoryScope: (() => void) | null = null;
+    let openingSnapshot: CropUndoEntry | null = null;
     const GESTURE_UNDO_CAP = 20;
 
     const snapshotViewport = (): CropUndoEntry => {
@@ -778,6 +780,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         allCover: structuredClone(draftCoverVariants),
         allHover: draftHoverVariants ? structuredClone(draftHoverVariants) : null,
         allDraft: structuredClone(draftVariants),
+        allConstrained: structuredClone(draftConstrained),
+        maxVhValue: draftMaxVh,
+        src: draftSrc,
+        srcWidth: draftSrcWidth,
+        srcHeight: draftSrcHeight,
       };
     };
 
@@ -787,8 +794,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       // Keep the opening baseline as the oldest entry when the local ceiling is hit.
       if (undoStack.length > GESTURE_UNDO_CAP) undoStack.splice(1, 1);
       redoStack = [];
-      draftDirty = true;
-      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: { dirty: true } }));
     };
 
     const pushUndoIfNeeded = (captured: { value: boolean }, extra?: Pick<CropUndoEntry, 'src' | 'srcWidth' | 'srcHeight' | 'maxVh' | 'allCover' | 'allHover' | 'allDraft'>) => {
@@ -809,14 +814,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftCoverVariants = structuredClone(entry.allCover);
       draftHoverVariants = entry.allHover ? structuredClone(entry.allHover) : null;
       draftVariants = structuredClone(entry.allDraft);
+      draftConstrained = structuredClone(entry.allConstrained);
+      draftMaxVh = entry.maxVhValue;
+      draftSrc = entry.src;
+      draftSrcWidth = entry.srcWidth;
+      draftSrcHeight = entry.srcHeight;
       draft = { ...draftVariants[vp] };
-      constrainByViewport = { ...constrainByViewport, [vp]: entry.lock };
+      constrainByViewport = structuredClone(entry.allConstrained);
       writeConstraints(constrainByViewport);
-      draftConstrained = { ...draftConstrained, [vp]: entry.widthConstrain };
-      if (entry.src !== undefined) {
-        draftSrc = entry.src;
-        draftSrcWidth = entry.srcWidth;
-        draftSrcHeight = entry.srcHeight;
+      {
         applySrcLive(editTarget, entry.src, {
           ...(entry.srcWidth ? { srcWidth: entry.srcWidth } : {}),
           ...(entry.srcHeight ? { srcHeight: entry.srcHeight } : {}),
@@ -825,11 +831,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         previewImage.src = url;
         if (pageStage) pageStage.ghostImg.src = url;
       }
-      if (entry.maxVh) {
-        draftMaxVh = entry.maxVh.value;
-        maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
-      }
-      if (isStandaloneMedia(editTarget) && (entry.maxVh || entry.widthConstrain !== undefined)) {
+      maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
+      if (isStandaloneMedia(editTarget)) {
         applyFrameFlagsLive(editTarget, {
           constrained: draftConstrained,
           maxVh: draftMaxVh,
@@ -842,12 +845,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     const snapshotForRedo = (entry: CropUndoEntry): CropUndoEntry => {
       const now = snapshotViewport();
-      if (entry.src !== undefined) {
-        now.src = draftSrc;
-        now.srcWidth = draftSrcWidth;
-        now.srcHeight = draftSrcHeight;
-      }
-      if (entry.maxVh) now.maxVh = { value: draftMaxVh };
+      now.src = draftSrc;
+      now.srcWidth = draftSrcWidth;
+      now.srcHeight = draftSrcHeight;
+      now.maxVhValue = draftMaxVh;
       return now;
     };
 
@@ -1240,13 +1241,18 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncPageStageBox();
     };
 
+    const syncDraftDirty = () => {
+      draftDirty = Boolean(openingSnapshot && JSON.stringify(openingSnapshot) !== JSON.stringify(snapshotViewport()));
+    };
     const renderDraft = () => {
       paintDraftCrop();
       flushDraftChrome();
+      syncDraftDirty();
     };
 
     const saveDraft = () => {
       const target = editTarget;
+      const beforeState = openingSnapshot ? structuredClone(openingSnapshot) : snapshotViewport();
       const documentKey = target.dataset.devDocument;
       let imagePath: Array<string | number> = [];
       try {
@@ -1436,10 +1442,45 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         },
       }));
 
+      const afterState = snapshotViewport();
+      const payloadFor = (state: CropUndoEntry) => ({
+        document: documentKey,
+        path: imagePath,
+        ...(persistCrop ? { variants: structuredClone(state.allCover) } : {}),
+        ...(persistCrop && state.allHover ? { hoverVariants: structuredClone(state.allHover) } : {}),
+        ...(isListingCover(target) ? { slot: state.activeSlot === 'hover' ? 'hoverImage' : 'image' } : {}),
+        ...(state.src ? { src: state.src, ...(state.activeSlot !== 'hover' && state.srcWidth ? { srcWidth: state.srcWidth } : {}), ...(state.activeSlot !== 'hover' && state.srcHeight ? { srcHeight: state.srcHeight } : {}) } : {}),
+        ...(standalone ? { constrained: structuredClone(state.allConstrained), centered: imageHasWidthConstraint(state.allConstrained), maxVh: state.maxVhValue ?? 0 } : {}),
+        ...(carouselItem ? { maxVh: state.maxVhValue ?? 0 } : {}),
+      });
+      const restorePageState = (state: CropUndoEntry) => {
+        draftCoverVariants = structuredClone(state.allCover);
+        draftHoverVariants = state.allHover ? structuredClone(state.allHover) : null;
+        draftVariants = structuredClone(state.allDraft);
+        draftConstrained = structuredClone(state.allConstrained);
+        draftMaxVh = state.maxVhValue;
+        draftSrc = state.src;
+        draftSrcWidth = state.srcWidth;
+        draftSrcHeight = state.srcHeight;
+        applyVariantsToTarget(target, isListingCover(target) ? draftCoverVariants : draftVariants, {
+          hoverVariants: draftHoverVariants,
+        });
+        if (state.src) applySrcLive(target, state.src, { srcWidth: state.srcWidth, srcHeight: state.srcHeight });
+        if (standalone || carouselItem) applyFrameFlagsLive(target, { constrained: draftConstrained, maxVh: draftMaxVh });
+        renderDraft();
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+          detail: { id: pendingId, kind: 'crop', payload: payloadFor(state), revert: () => undefined },
+        }));
+      };
+      pageHistory.push({
+        label: 'Edit image',
+        undo: () => restorePageState(beforeState),
+        redo: () => restorePageState(afterState),
+      });
+
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
       clearAllStacks();
       draftDirty = false;
-      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: { dirty: false } }));
       closePanel();
     };
 
@@ -1540,7 +1581,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       liveApply = false;
       clearAllStacks();
       draftDirty = false;
-      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: { dirty: false } }));
     };
 
     let previewLabelObserver: MutationObserver | null = null;
@@ -1659,6 +1699,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       } else {
         editedImage.addEventListener('load', refreshCover, { once: true });
       }
+      openingSnapshot = snapshotViewport();
+      draftDirty = false;
       renderConstraint();
       renderDraft();
       syncUseGridDefaultButton();
@@ -2592,6 +2634,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : percent === 'text'
           ? `Width matched to text on ${selectedViewport} — unsaved changes.`
           : `Width constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
+      syncDraftDirty();
     });
 
     maxVhSelect.addEventListener('change', () => {
@@ -2608,6 +2651,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = draftMaxVh
         ? `Height constrained to ${draftMaxVh}% view height — unsaved changes.`
         : 'Full height — unsaved changes.';
+      syncDraftDirty();
     });
 
     const readFileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
@@ -2828,6 +2872,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     window.addEventListener('vcd:dev-before-save', () => {
       if (editingSession && draftDirty) saveDraft();
     });
+    window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
+      if (editingSession && event.detail) event.detail.dirty = draftDirty;
+    }) as EventListener);
 
     const undoLocal = () => {
       const previous = undoStack.pop();
@@ -2860,6 +2907,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     resetButton.addEventListener('click', () => {
+      pushUndo();
       beginLiveEdits();
       draft = { aspect: draft.aspect, cx: 0.5, cy: 0.5, w: coverW(draft.aspect) };
       renderDraft();
@@ -2934,11 +2982,20 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       closePanel();
     });
 
-    window.addEventListener('vcd:dev-pending-committed', (() => {
-      stagedSources.clear();
-      diskBaselines.clear();
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+      const ids = event.detail?.ids;
+      if (!ids?.length) {
+        stagedSources.clear();
+        diskBaselines.clear();
+      } else {
+        ids.forEach((id) => {
+          stagedSources.delete(id);
+          diskBaselines.delete(id);
+        });
+      }
       if (editTarget) {
-        diskBaselines.set(pendingIdFor(editTarget), {
+        const currentId = pendingIdFor(editTarget);
+        if (!ids?.length || ids.includes(currentId)) diskBaselines.set(currentId, {
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
           maxVh: savedMaxVh,
