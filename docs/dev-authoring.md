@@ -29,6 +29,8 @@ Image uploads and inserted media sections are the important exception: the uploa
 
 Because full reloads are blocked, Vite can keep a stale transform after a Git pull, branch switch, or same-branch merge. A hard browser reload may still serve old component CSS. The tell is a partial update, such as new markup with one old `<style>` block.
 
+On the primary `main` checkout, the branch-sync service fetches `origin/main` every minute. Runtime updates remain deferred while any browser is in Edit mode. When local `main` is clean and behind its remote, and the Save bar has no work left, Edit mode shows an **Update available** bar. **Update** leaves Edit mode, releases the authoring lease, wakes the existing sync service immediately, and reloads at the preserved scroll position after its pull, dependency install, and required Astro restart complete. It is deliberately unavailable on feature branches, with local commits, or while unpublished/local files remain; publish or revert those files first.
+
 For Anto's primary session, its operator must restart after the Git ref moves; agents never restart that session. Before blaming source CSS, inspect the served transform:
 
 ```sh

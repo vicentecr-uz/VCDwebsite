@@ -6,6 +6,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SESSION_DIR="$ROOT/.dev-session"
 PID_FILE="$SESSION_DIR/branch-sync.pid"
 LOG_FILE="$SESSION_DIR/branch-sync.log"
+REQUEST_FILE="$SESSION_DIR/branch-sync.request"
 LAUNCHD_LABEL="com.vcruzdesigns.vcdwebsite.branch-sync"
 
 INTERVAL="${BRANCH_SYNC_INTERVAL:-60}"
@@ -167,10 +168,19 @@ daemon_loop() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') branch sync started (interval ${INTERVAL}s, pid $$)" >>"$LOG_FILE"
 
   while true; do
+    rm -f "$REQUEST_FILE"
     {
       sync_once
     } >>"$LOG_FILE" 2>&1 || true
-    sleep "$INTERVAL"
+    local elapsed=0
+    while [[ "$elapsed" -lt "$INTERVAL" ]]; do
+      if [[ -f "$REQUEST_FILE" ]]; then
+        echo "$(date '+%Y-%m-%d %H:%M:%S') manual sync requested" >>"$LOG_FILE"
+        break
+      fi
+      sleep 1
+      elapsed=$((elapsed + 1))
+    done
   done
 }
 
