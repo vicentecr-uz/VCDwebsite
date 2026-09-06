@@ -1404,26 +1404,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-trigger__panel-bg {
-    --feather: 7em;
-    /* Outward (away-from-centre) feather. Sized to the room the wrapper gutter
-       leaves outside the panel, so the soft edge never reaches past the
-       viewport — an overhang on the right-hand trigger would add horizontal
-       scroll. Mirrors the #site-wrapper gutter formula, less the --space-unit
-       the panel already sticks out by (--hitbox-pad) and 1em of slack, since
-       100vw counts a classic scrollbar that the wrapper's width does not.
-       Until the gutter opens past --space-unit the panel edge sits on the
-       viewport edge, there is no line to hide, and this collapses to 0. */
-    --feather-outer: clamp(
-      0px,
-      calc((100vw - var(--page-max-width)) / 2 - var(--space-unit) - 1em),
-      var(--feather)
-    );
-    --panel-bottom-radius: 7em;
+    /* Opaque core preserves 100% page-surface coverage; the zero-offset shadow
+       carries the feather around both conventional corner radii. */
+    --panel-corner-radius: 3.5em;
+    --panel-shadow-blur: 4em;
+    --panel-shadow-spread: 1em;
     --panel-bottom-pad: var(--space-unit);
     --panel-inline-size: calc(
-      var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) + 0.75 * var(--feather)
+      var(--header-menu-inline-size, 0px) + 2 * var(--hitbox-pad) + var(--panel-corner-radius)
     );
     position: absolute;
+    background: var(--sys-color-srf);
+    border-radius: 0 0 var(--panel-corner-radius) var(--panel-corner-radius);
+    box-shadow: 0 0 var(--panel-shadow-blur) var(--panel-shadow-spread) var(--sys-color-srf);
     /* Behind .site-header__bg (z-index: 0) so the panel never washes over the
        header band or the opposite trigger's wordmark/logo. Only the part that
        hangs below the header is actually seen. */
@@ -1435,27 +1428,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         var(--header-menu-surface-delay, 0s),
       height var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
         var(--header-menu-surface-delay, 0s);
-  }
-
-  .header-trigger__panel-bg::before {
-    content: '';
-    position: absolute;
-    background: var(--sys-color-srf);
-    -webkit-mask-composite: source-in;
-    mask-composite: intersect;
-  }
-
-  /* Outer skirt: sits flush outside ::before and fades the hard outer edge out.
-     Same bottom feather as ::before so the two read as one shape. */
-  .header-trigger__panel-bg::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: var(--feather-outer);
-    background: var(--sys-color-srf);
-    -webkit-mask-composite: source-in;
-    mask-composite: intersect;
   }
 
   .header-trigger[data-menu-surface-open] .header-trigger__panel-bg {
@@ -1486,102 +1458,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-trigger--start[data-menu-surface-open] .header-trigger__panel-bg {
-    height: calc(100% + var(--panel-bottom-pad) + var(--feather));
-  }
-
-  .header-trigger--start .header-trigger__panel-bg::before {
-    inset: 0;
-    right: calc(-0.75 * var(--feather));
-    -webkit-mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to right,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      radial-gradient(
-        130% 130% at 100% 100%,
-        transparent 0,
-        transparent calc(var(--panel-bottom-radius) * 0.68),
-        #000 calc(var(--panel-bottom-radius) * 0.98)
-      );
-    mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to right,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      radial-gradient(
-        130% 130% at 100% 100%,
-        transparent 0,
-        transparent calc(var(--panel-bottom-radius) * 0.68),
-        #000 calc(var(--panel-bottom-radius) * 0.98)
-      );
-  }
-
-  .header-trigger--start .header-trigger__panel-bg::after {
-    right: 100%;
-    -webkit-mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to left,
-        #000 0%,
-        rgb(0 0 0 / 0.82) 28%,
-        rgb(0 0 0 / 0.48) 56%,
-        rgb(0 0 0 / 0.18) 82%,
-        transparent 100%
-      );
-    mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to left,
-        #000 0%,
-        rgb(0 0 0 / 0.82) 28%,
-        rgb(0 0 0 / 0.48) 56%,
-        rgb(0 0 0 / 0.18) 82%,
-        transparent 100%
-      );
+    height: calc(100% + var(--panel-bottom-pad));
   }
 
   .header-trigger--end .header-trigger__panel-bg {
@@ -1595,102 +1472,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-trigger--end[data-menu-surface-open] .header-trigger__panel-bg {
-    height: calc(100% + var(--panel-bottom-pad) + var(--feather));
-  }
-
-  .header-trigger--end .header-trigger__panel-bg::before {
-    inset: 0;
-    left: calc(-0.75 * var(--feather));
-    -webkit-mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to left,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      radial-gradient(
-        130% 130% at 0 100%,
-        transparent 0,
-        transparent calc(var(--panel-bottom-radius) * 0.68),
-        #000 calc(var(--panel-bottom-radius) * 0.98)
-      );
-    mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to left,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      radial-gradient(
-        130% 130% at 0 100%,
-        transparent 0,
-        transparent calc(var(--panel-bottom-radius) * 0.68),
-        #000 calc(var(--panel-bottom-radius) * 0.98)
-      );
-  }
-
-  .header-trigger--end .header-trigger__panel-bg::after {
-    left: 100%;
-    -webkit-mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to right,
-        #000 0%,
-        rgb(0 0 0 / 0.82) 28%,
-        rgb(0 0 0 / 0.48) 56%,
-        rgb(0 0 0 / 0.18) 82%,
-        transparent 100%
-      );
-    mask-image:
-      linear-gradient(
-        to bottom,
-        #000 0%,
-        #000 calc(100% - var(--feather)),
-        rgb(0 0 0 / 0.82) calc(100% - var(--feather) * 0.72),
-        rgb(0 0 0 / 0.48) calc(100% - var(--feather) * 0.44),
-        rgb(0 0 0 / 0.18) calc(100% - var(--feather) * 0.18),
-        transparent 100%
-      ),
-      linear-gradient(
-        to right,
-        #000 0%,
-        rgb(0 0 0 / 0.82) 28%,
-        rgb(0 0 0 / 0.48) 56%,
-        rgb(0 0 0 / 0.18) 82%,
-        transparent 100%
-      );
+    height: calc(100% + var(--panel-bottom-pad));
   }
 
   .header-trigger__brand,
@@ -1958,10 +1740,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       --menu-gap: 0.55em;
     }
 
-    /* Panel is shorter now — scale the fade so it stays proportional. */
+    /* Tighten the panel radius and shadow on narrow screens. */
     .header-trigger__panel-bg {
-      --feather: 5em;
-      --panel-bottom-radius: 5em;
+      --panel-corner-radius: 2.5em;
+      --panel-shadow-blur: 3em;
+      --panel-shadow-spread: 0.75em;
     }
   }
 
