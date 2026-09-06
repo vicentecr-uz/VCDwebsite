@@ -47,6 +47,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     responsiveImageStyle,
     type ImageVariants,
   } from '../lib/responsiveImage';
+  import { pageHistory, registerHistoryScope } from '../lib/devHistory';
 
   /** @typedef {{
    *   slug: string,
@@ -110,6 +111,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const GRID_GAP = 8;
     const GRID_COLUMNS = 3;
     let layoutCapsRaf = 0;
+    let historyScope: { undo: () => void | Promise<void>; redo: () => void | Promise<void> } | null = null;
+    let unregisterHistoryScope: (() => void) | null = null;
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const readLandscapeDefaultInnerWidth = () => {
@@ -314,6 +317,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         const startX = event.clientX;
         const startY = event.clientY;
         const preDragOrder = draggableCardOrder();
+        const preDragSnapshot = gallerySnapshot();
         let active = false;
         let baseX = startX;
         let baseY = startY;
@@ -439,6 +443,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           applyOrderToLiveGrid(finalOrder);
           syncPending();
           syncCount();
+          pushGalleryChange(preDragSnapshot, gallerySnapshot(), 'Reorder gallery');
         };
 
         const onCancel = (cancelEvent: PointerEvent) => {
@@ -745,6 +750,33 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       }));
     };
 
+    const gallerySnapshot = () => ({
+      selected: [...selected],
+      order: captureGridOrder(),
+      pagesOrder: pages.map((page) => page.slug),
+    });
+
+    const snapshotsMatch = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+    const applyGallerySnapshot = (snapshot) => {
+      selected = new Set(snapshot.selected);
+      applyPagesOrder(snapshot.pagesOrder);
+      applyMembershipPreview();
+      applyOrderToLiveGrid(snapshot.order.map((entry) => entry.slug));
+      renderGrid();
+      syncPending();
+      syncCount();
+    };
+
+    const pushGalleryChange = (before, after, label) => {
+      if (snapshotsMatch(before, after) || pageHistory.replaying) return;
+      pageHistory.push({
+        label,
+        undo: () => applyGallerySnapshot(before),
+        redo: () => applyGallerySnapshot(after),
+      });
+    };
+
     const visiblePages = () => pages.filter((page) => {
       const on = selected.has(page.slug);
       if (filter === 'on') return on;
@@ -823,6 +855,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         badge.addEventListener('dragstart', (event) => event.preventDefault());
 
         badge.addEventListener('click', () => {
+          const before = gallerySnapshot();
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
           sortPagesByMembership();
@@ -830,6 +863,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           renderGrid();
           syncCount();
           syncPending();
+          pushGalleryChange(before, gallerySnapshot(), `${selected.has(page.slug) ? 'Show' : 'Hide'} ${page.title}`);
         });
         attachCardDrag(card, thumb, page, isOn);
 
@@ -863,6 +897,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       const grid = currentGrid();
       if (!grid) return;
       activeGrid = grid;
+      historyScope = pageHistory.scope();
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = registerHistoryScope(panel, historyScope, { owns: (target) => panel.contains(target) });
       if (overlayTitle) overlayTitle.textContent = resolveDevPanelTitle('gallery-pages', { suffix: gridLabel(grid) });
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       panel.hidden = false;
@@ -875,6 +912,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const closePanel = () => {
       if (drag) drag.cancel();
       panel.hidden = true;
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = null;
+      historyScope = null;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
 
@@ -913,8 +953,10 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       closePanel();
     }, true);
 
-    window.addEventListener('vcd:dev-pending-committed', () => {
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       if (!activeGrid) return;
+      const ids = event.detail?.ids;
+      if (Array.isArray(ids) && !ids.includes(`gallery-membership:${activeGrid}`)) return;
       baseline = new Set(selected);
       baselineOrder = captureGridOrder();
       baselinePagesOrder = pages.map((page) => page.slug);
@@ -925,7 +967,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       }
       syncCount();
       renderGrid();
-    });
+    }) as EventListener);
 
     window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active) return;

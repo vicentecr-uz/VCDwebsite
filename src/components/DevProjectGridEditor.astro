@@ -13,6 +13,7 @@ import squareArrowRightEnterIcon from 'lucide-static/icons/square-arrow-right-en
 import { sizeIcon } from '../lib/icons';
 import { getTeaserPassword } from '../lib/teaserAuth';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL } from '../lib/placeholderCover.mjs';
+import { pageHistory, registerHistoryScope } from '../lib/devHistory';
 
 const teaserPassword = getTeaserPassword();
 const statusIcons = {
@@ -232,6 +233,9 @@ const visibilityOptions = [
   let panelSlug = '';
   /** @type {Map<string, { grid: string, item: HTMLElement, saved: any, draft: any }>} */
   const caches = new Map();
+  let historyScope = null;
+  let unregisterHistoryScope = null;
+  const panelFieldBefore = new Map();
 
   const normalizeHex = (raw) => {
     const value = String(raw || '').trim().startsWith('#') ? String(raw).trim() : `#${String(raw || '').trim()}`;
@@ -371,6 +375,7 @@ const visibilityOptions = [
       node.contentEditable = 'true';
     }
     node.setAttribute('spellcheck', 'true');
+    node.setAttribute('data-dev-history-text', '');
   };
 
   /** Browsers often leave a lone <br> after clearing — normalize so :empty / placeholder work. */
@@ -809,10 +814,10 @@ const visibilityOptions = [
     entry.draft.teaser.label = inline.teaserLabel;
   };
 
-  const syncPendingFor = (slug) => {
+  const syncPendingFor = (slug, readInline = true) => {
     const entry = caches.get(slug);
     if (!entry) return;
-    readInlineIntoDraft(entry);
+    if (readInline) readInlineIntoDraft(entry);
     applyListingPreview(entry.item, entry.draft, entry.grid);
     const id = pendingId(slug, entry.grid);
     if (snapshotsMatch(entry.saved, entry.draft)) {
@@ -838,6 +843,31 @@ const visibilityOptions = [
       },
     }));
     if (panelSlug === slug) syncPanelActionButtons();
+  };
+
+  const applyHistorySnapshot = (entry, snapshot) => {
+    if (!entry) return;
+    entry.draft = structuredClone(snapshot);
+    const title = entry.item.querySelector('[data-dev-project-title]');
+    const subtitle = entry.item.querySelector('[data-dev-project-subtitle]');
+    const teaser = entry.item.querySelector('[data-dev-project-teaser-label]');
+    if (title instanceof HTMLElement) title.textContent = snapshot.title;
+    if (subtitle instanceof HTMLElement) subtitle.textContent = snapshot.listing.subtitle ?? snapshot.subtitle ?? '';
+    if (teaser instanceof HTMLElement) teaser.textContent = snapshot.teaserLabel || 'Coming soon';
+    applyListingPreview(entry.item, entry.draft, entry.grid);
+    const slug = [...caches.entries()].find(([, value]) => value === entry)?.[0];
+    if (slug) syncPendingFor(slug, false);
+    if (panelSlug === slug) renderPanelFromEntry(entry);
+  };
+
+  const pushEntryHistory = (entry, before, after, label, mergeKey) => {
+    if (snapshotsMatch(before, after) || pageHistory.replaying) return;
+    pageHistory.push({
+      label,
+      ...(mergeKey ? { mergeKey } : {}),
+      undo: () => applyHistorySnapshot(entry, before),
+      redo: () => applyHistorySnapshot(entry, after),
+    });
   };
 
   const ensureLoaded = async (slug, item) => {
@@ -912,6 +942,11 @@ const visibilityOptions = [
 
   const openSettingsPanel = (trigger) => {
     if (!(settingsPanel instanceof HTMLElement)) return;
+    historyScope = pageHistory.scope();
+    unregisterHistoryScope?.();
+    unregisterHistoryScope = registerHistoryScope(settingsPanel, historyScope, {
+      owns: (target) => settingsPanel.contains(target),
+    });
     settingsPanel.hidden = false;
     window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
       detail: {
@@ -924,6 +959,9 @@ const visibilityOptions = [
 
   const closeSettingsPanel = () => {
     panelSlug = '';
+    unregisterHistoryScope?.();
+    unregisterHistoryScope = null;
+    historyScope = null;
     if (settingsPanel instanceof HTMLElement && !settingsPanel.hidden) {
       settingsPanel.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel: settingsPanel } }));
@@ -999,8 +1037,10 @@ const visibilityOptions = [
     const grid = gridForItem(item);
     try {
       const entry = await ensureLoaded(slug, item);
+      const before = structuredClone(entry.draft);
       entry.draft.listing.full = Boolean(full);
       syncPendingFor(slug);
+      pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change card span');
       if (spanHandle) syncSpanHandleSide(item, spanHandle);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not update span.');
@@ -1140,6 +1180,7 @@ const visibilityOptions = [
     if (!(item instanceof HTMLElement)) return;
     try {
       const entry = await ensureLoaded(slug, item);
+      const before = structuredClone(entry.draft);
       const url = await uploadCoverImage(slug, file);
       if (slot === 'hoverImage') {
         entry.draft.listing.hoverImage = url;
@@ -1171,6 +1212,7 @@ const visibilityOptions = [
         blobs.set(slug, blobUrl);
       }
       syncPendingFor(slug);
+      pushEntryHistory(entry, before, structuredClone(entry.draft), `Replace ${slot === 'hoverImage' ? 'hover' : 'cover'} image`);
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not upload the cover image.');
       throw error;
@@ -1413,6 +1455,7 @@ const visibilityOptions = [
     if (!(item instanceof HTMLElement)) return;
     try {
       const entry = await ensureLoaded(slug, item);
+      const before = structuredClone(entry.draft);
       entry.draft.status = status;
       if (status === 'image') entry.draft.slug = slug;
       closeAllStatusMenus();
@@ -1421,6 +1464,7 @@ const visibilityOptions = [
         const openEntry = caches.get(slug);
         if (openEntry) renderPanelFromEntry(openEntry);
       }
+      pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change visibility');
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not update visibility.');
     }
@@ -1591,11 +1635,29 @@ const visibilityOptions = [
     })();
   });
 
+  const inlineEditBefore = new Map();
+  document.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
+    const item = target.closest('[data-dev-project-slug]');
+    const slug = item?.getAttribute('data-dev-project-slug');
+    if (!(item instanceof HTMLElement) || !slug) return;
+    void ensureLoaded(slug, item).then((entry) => {
+      if (!inlineEditBefore.has(item)) inlineEditBefore.set(item, structuredClone(entry.draft));
+    });
+  }, true);
+
   document.addEventListener('focusout', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) return;
     if (!target.matches('[data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label]')) return;
     normalizeEmptyEditable(target);
+    const item = target.closest('[data-dev-project-slug]');
+    const slug = item?.getAttribute('data-dev-project-slug');
+    const before = item instanceof HTMLElement ? inlineEditBefore.get(item) : null;
+    const entry = slug ? caches.get(slug) : null;
+    if (entry && before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Edit card text', `inline:${slug}:${target.dataset.devProjectTitle !== undefined ? 'title' : target.dataset.devProjectSubtitle !== undefined ? 'subtitle' : 'teaser'}`);
+    if (item instanceof HTMLElement) inlineEditBefore.delete(item);
   });
 
   // Drop image onto cover → replace listing cover (hover wash + crossfade).
@@ -1681,6 +1743,14 @@ const visibilityOptions = [
     previewCardBg(value);
   });
 
+  settingsRoot?.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !panelSlug) return;
+    const entry = caches.get(panelSlug);
+    if (!entry || !target.matches('[data-ps-bg], [data-ps-slug], select[data-ps-status]')) return;
+    panelFieldBefore.set(target, structuredClone(entry.draft));
+  });
+
   settingsRoot?.addEventListener('blur', (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement) || !target.matches('[data-ps-bg]')) return;
@@ -1688,6 +1758,10 @@ const visibilityOptions = [
     if (!value) return;
     syncBgField(value);
     if (bgPicker instanceof HTMLElement) bgPicker.setAttribute('hex', toPickerHex(value));
+    const entry = panelSlug ? caches.get(panelSlug) : null;
+    const before = panelFieldBefore.get(target);
+    if (entry && before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change card background');
+    panelFieldBefore.delete(target);
   }, true);
 
   settingsRoot?.addEventListener('change', (event) => {
@@ -1705,6 +1779,9 @@ const visibilityOptions = [
       clearSlugError();
       applyListingPreview(entry.item, entry.draft, entry.grid);
       syncPanelActionButtons();
+      const before = panelFieldBefore.get(target);
+      if (before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change visibility');
+      panelFieldBefore.delete(target);
     }
   });
 
@@ -1717,6 +1794,15 @@ const visibilityOptions = [
     entry.draft.slug = target instanceof HTMLInputElement ? target.value.trim() : entry.draft.slug;
     clearSlugError();
     syncPanelActionButtons();
+  });
+
+  settingsRoot?.addEventListener('focusout', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || !target.matches('[data-ps-slug]')) return;
+    const entry = panelSlug ? caches.get(panelSlug) : null;
+    const before = panelFieldBefore.get(target);
+    if (entry && before) pushEntryHistory(entry, before, structuredClone(entry.draft), 'Change project slug');
+    panelFieldBefore.delete(target);
   });
 
   bgSwatch?.addEventListener('click', () => {
@@ -1861,9 +1947,11 @@ const visibilityOptions = [
     syncPanelActionButtons();
   });
 
-  window.addEventListener('vcd:dev-pending-committed', () => {
+  window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
     void (async () => {
+      const ids = event.detail?.ids;
       for (const [slug, entry] of [...caches.entries()]) {
+        if (Array.isArray(ids) && !ids.includes(pendingId(slug, entry.grid))) continue;
         await promoteLiveCoverOnSave(slug, entry);
         await promoteLiveHoverOnSave(slug, entry);
         entry.saved = structuredClone(entry.draft);
@@ -1889,7 +1977,7 @@ const visibilityOptions = [
       }
       syncPanelActionButtons();
     })();
-  });
+  }) as EventListener);
 
   window.addEventListener('vcd:dev-listing-src', (event) => {
     const { slug, slot, src } = event.detail ?? {};
