@@ -1,0 +1,241 @@
+import Button from '../../ui/Button.astro';
+import SelectField from '../../ui/SelectField.astro';
+---
+
+<vcd-progressive-image-demo>
+  <form class="progressive-image-demo" novalidate>
+    <div class="progressive-image-demo__surface">
+      <h1 class="progressive-image-demo__title">Progressive image loading</h1>
+
+      <div class="progressive-image-demo__frame" data-image-root>
+        <img
+          data-progressive-image
+          width="1200"
+          height="800"
+          src="/demo-fixtures/studio.thumb.webp"
+          alt="Geometric studio study"
+        />
+        <template data-image-template>
+          <img
+            data-progressive-image
+            width="1200"
+            height="800"
+            src="/demo-fixtures/studio.thumb.webp"
+            alt="Geometric studio study"
+          />
+        </template>
+      </div>
+
+      <div class="progressive-image-demo__status" aria-live="polite" data-status>Thumbnail</div>
+
+      <SelectField
+        label="Delay"
+        name="delay"
+        value="1500"
+        options={[
+          { value: '0', label: '0 s' },
+          { value: '500', label: '0.5 s' },
+          { value: '1500', label: '1.5 s' },
+        ]}
+      />
+
+      <div class="progressive-image-demo__actions">
+        <Button label="Load" type="submit" data-load />
+        <Button label="Reset" type="button" data-reset />
+      </div>
+    </div>
+  </form>
+</vcd-progressive-image-demo>
+
+<style>
+  vcd-progressive-image-demo {
+    display: block;
+    width: min(100%, 28em);
+  }
+
+  .progressive-image-demo {
+    margin: 0;
+  }
+
+  .progressive-image-demo__surface {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-unit);
+    padding: calc(var(--space-unit) * 1.5);
+    overflow: visible;
+    color: var(--sys-color-on-srf);
+    background: var(--sys-color-srf);
+    border: 1px solid var(--sys-color-srf-container-low);
+    border-radius: var(--radius-card-smooth);
+    box-shadow: var(--dev-panel-shadow);
+  }
+
+  .progressive-image-demo__title {
+    margin: 0;
+    color: var(--sys-color-on-srf);
+    font: var(--dev-text-panel-title);
+  }
+
+  .progressive-image-demo__frame {
+    position: relative;
+    aspect-ratio: 3 / 2;
+    overflow: hidden;
+    background: var(--sys-color-srf-container-low);
+    border-radius: var(--radius-control-smooth);
+  }
+
+  .progressive-image-demo__frame img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .progressive-image-demo__status {
+    min-height: 1.25em;
+    color: var(--sys-color-on-srf-variant);
+    font: var(--dev-text-label);
+  }
+
+  .progressive-image-demo__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: calc(var(--space-unit) * 0.5);
+    padding: 8px;
+    margin: -8px;
+  }
+
+  .progressive-image-demo__actions :global(.dev-btn) {
+    --dev-btn-hit-inset: 8px;
+  }
+
+  @media (max-width: 40em) {
+    .progressive-image-demo__surface {
+      padding: var(--space-unit);
+    }
+  }
+
+  @media (pointer: coarse) {
+    .progressive-image-demo :global(.dev-select__trigger),
+    .progressive-image-demo :global(.dev-select__option),
+    .progressive-image-demo :global(.dev-btn) {
+      min-height: 44px;
+    }
+  }
+</style>
+
+<script>
+  type PreviewUpgrade = {
+    bind(root: ParentNode): void;
+    open(): void;
+    destroy(): void;
+  };
+
+  class ProgressiveImageDemo extends HTMLElement {
+    private controller?: AbortController;
+    private timer?: number;
+    private factory?: PreviewUpgrade;
+    private observer?: MutationObserver;
+    private generation = 0;
+    private image?: HTMLImageElement;
+
+    connectedCallback() {
+      this.controller?.abort();
+      this.factory?.destroy();
+      this.clearTimer();
+      this.controller = new AbortController();
+      const { signal } = this.controller;
+      const form = this.querySelector<HTMLFormElement>('form');
+      const root = this.querySelector<HTMLElement>('[data-image-root]');
+      const template = this.querySelector<HTMLTemplateElement>('[data-image-template]');
+      const select = this.querySelector<HTMLSelectElement>('select.dev-select__native');
+      const load = this.querySelector<HTMLButtonElement>('[data-load]');
+      const reset = this.querySelector<HTMLButtonElement>('[data-reset]');
+      const status = this.querySelector<HTMLElement>('[data-status]');
+      if (!form || !root || !template || !select || !load || !reset || !status) return;
+
+      this.factory = undefined;
+      this.image = root.querySelector<HTMLImageElement>('[data-progressive-image]') ?? undefined;
+      const setStatus = (value: string) => { status.textContent = value; };
+      const setBusy = (busy: boolean) => { load.disabled = busy; };
+      const observeImage = () => {
+        this.observer?.disconnect();
+        this.image = root.querySelector<HTMLImageElement>('[data-progressive-image]') ?? undefined;
+        if (!this.image) return;
+        this.observer = new MutationObserver(() => {
+          if (this.image?.dataset.imageUpgraded === 'true') setStatus('Preview');
+        });
+        this.observer.observe(this.image, { attributes: true, attributeFilter: ['data-image-upgraded'] });
+      };
+
+      observeImage();
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (load.disabled || !this.image) return;
+        const run = ++this.generation;
+        this.clearTimer();
+        setBusy(true);
+        setStatus(Number(select.value) > 0 ? 'Waiting' : 'Loading');
+        const modulePromise = import('../../../lib/imagePreviewUpgrade');
+        this.timer = window.setTimeout(async () => {
+          this.timer = undefined;
+          if (signal.aborted || run !== this.generation || !this.image) return;
+          setStatus('Loading');
+          try {
+            const { createImagePreviewUpgrade } = await modulePromise;
+            if (signal.aborted || run !== this.generation || !this.image) return;
+            this.image.dataset.imagePreview = '/demo-fixtures/studio.preview.webp';
+            this.factory = createImagePreviewUpgrade({ onError: () => {
+              if (signal.aborted || run !== this.generation) return;
+              setBusy(false);
+              setStatus('Image unavailable');
+            } });
+            this.factory.bind(root);
+            this.factory.open();
+          } catch {
+            if (signal.aborted || run !== this.generation) return;
+            setBusy(false);
+            setStatus('Image unavailable');
+          }
+        }, Number(select.value) || 0);
+      }, { signal });
+
+      reset.addEventListener('click', () => {
+        this.generation += 1;
+        this.clearTimer();
+        this.factory?.destroy();
+        this.factory = undefined;
+        this.observer?.disconnect();
+        root.querySelector('[data-progressive-image]')?.remove();
+        root.insertBefore(template.content.cloneNode(true), root.firstChild);
+        form.reset();
+        observeImage();
+        setBusy(false);
+        setStatus('Thumbnail');
+      }, { signal });
+      form.addEventListener('reset', () => {
+        queueMicrotask(() => { if (!signal.aborted) setStatus('Thumbnail'); });
+      }, { signal });
+    }
+
+    private clearTimer() {
+      if (this.timer !== undefined) window.clearTimeout(this.timer);
+      this.timer = undefined;
+    }
+
+    disconnectedCallback() {
+      this.generation += 1;
+      this.clearTimer();
+      this.observer?.disconnect();
+      this.factory?.destroy();
+      this.controller?.abort();
+      this.observer = undefined;
+      this.factory = undefined;
+      this.controller = undefined;
+    }
+  }
+
+  if (!customElements.get('vcd-progressive-image-demo')) {
+    customElements.define('vcd-progressive-image-demo', ProgressiveImageDemo);
+  }
+</script>
