@@ -858,7 +858,13 @@ import Button from '../ui/Button.astro';
           savedColumns = { ...snapshot.columns }; savedConstrained = { ...snapshot.constrained };
           savedAspect = snapshot.aspect; savedMatchHeight = snapshot.matchHeight;
           savedLayouts = cloneLayouts(snapshot.layouts);
-          dispatchGridUpsert(target, documentKey, gridPath, pendingId, baseline);
+          dispatchGridUpsert(
+            target,
+            documentKey,
+            gridPath,
+            pendingId,
+            structuredClone(diskBaselines.get(pendingId) || baseline),
+          );
         };
         pageHistory.push({ label: 'Edit image grid', undo: () => restorePage(beforePage), redo: () => restorePage(afterPage) });
       }
