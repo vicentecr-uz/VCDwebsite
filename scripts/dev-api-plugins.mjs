@@ -1,6 +1,7 @@
 // @ts-check
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
@@ -58,9 +59,74 @@ export function devAuthoringState() {
   };
 }
 
+export async function writeAtomicJson(file, data) {
+  const temporaryFile = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temporaryFile, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    await rename(temporaryFile, file);
+    suppressContentHmr();
+  } finally {
+    await rm(temporaryFile, { force: true }).catch(() => {});
+  }
+}
+
 async function writeProjectJson(file, data) {
-  suppressContentHmr();
-  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  await writeAtomicJson(file, data);
+}
+
+const MUTATING_AUTHORING_PATHS = new Set([
+  '/api/image-crop', '/api/image-grid', '/api/style-token', '/api/content-text',
+  '/api/content-batch', '/api/content-section', '/api/content-spacing', '/api/content-nav',
+  '/api/project-create', '/api/project-settings', '/api/content-section-order',
+  '/api/gallery-membership', '/api/listing-order', '/api/project-delete', '/api/project-rename',
+]);
+
+export function isMutatingAuthoringRequest(req) {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(req.method || '').toUpperCase())) return false;
+  return MUTATING_AUTHORING_PATHS.has(String(req.url || '').split('?', 1)[0]);
+}
+
+export function createSerializedRequestQueue() {
+  let tail = Promise.resolve();
+  return async function enqueue(req, res, next) {
+    const previous = tail;
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    tail = tail.then(() => current);
+    await previous;
+    let released = false;
+    const finish = () => {
+      if (released) return;
+      released = true;
+      release();
+    };
+    res.once('finish', finish);
+    res.once('close', finish);
+    res.once('error', finish);
+    try {
+      next();
+    } catch (error) {
+      finish();
+      throw error;
+    }
+  };
+}
+
+export function devAuthoringRequestQueue() {
+  return {
+    name: 'vcd-dev-authoring-request-queue',
+    apply: 'serve',
+    configureServer(server) {
+      const enqueue = createSerializedRequestQueue();
+      server.middlewares.use(async (req, res, next) => {
+        if (!isMutatingAuthoringRequest(req)) {
+          next();
+          return;
+        }
+        await enqueue(req, res, next);
+      });
+    },
+  };
 }
 
 const VALID_STATUSES = new Set(['published', 'draft', 'teaser', 'image']);

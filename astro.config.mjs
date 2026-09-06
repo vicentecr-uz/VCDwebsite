@@ -31,6 +31,8 @@ import {
   writeDevDocument,
   devAuthoringState,
   devAuthoringActive,
+  devAuthoringRequestQueue,
+  writeAtomicJson,
 } from './scripts/dev-api-plugins.mjs';
 import { normalizeOutline, outlineFromNav } from './src/lib/projectOutline.ts';
 import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
@@ -443,7 +445,7 @@ function styleTokenDevWriter() {
           // Live preview already applied the colour — skip CSS HMR invalidation
           // so is-dev-mode and the save bar stay up (full-reload is always blocked).
           suppressContentHmr();
-          await writeFile(tokensFile, `${JSON.stringify(tokensJson, null, 2)}\n`, 'utf8');
+          await writeAtomicJson(tokensFile, tokensJson);
           await writeFile(cssFile, nextCss, 'utf8');
           send(200, { ok: true, token, value });
         } catch {
@@ -1557,8 +1559,7 @@ export const syncOutlineForSectionMutation = (data, { action, section, index }) 
 };
 
 const writeContentJson = async (file, data) => {
-  suppressContentHmr();
-  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  await writeAtomicJson(file, data);
 };
 
 /**
@@ -2353,6 +2354,7 @@ export default defineConfig({
       tailwindcss(),
       productionBoundary(),
       devAuthoringState(),
+      devAuthoringRequestQueue(),
       branchUpdateDevWriter({ authoringActive: devAuthoringActive }),
       stubLapseWhenUnavailable(),
       contentHmrGate(),
