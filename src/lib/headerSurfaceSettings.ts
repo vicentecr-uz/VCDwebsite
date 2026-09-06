@@ -14,8 +14,8 @@ export type HeaderSurfaceSettings = Record<HeaderSurfaceProfile, HeaderSurfacePr
 export const HEADER_SURFACE_STORAGE_KEY = 'vcd:header-surface:v1';
 
 export const HEADER_SURFACE_DEFAULTS: HeaderSurfaceSettings = {
-  desktop: { radius: 3.5, feather: 4, sidePadding: 3.5, bottomPadding: 1, backdropOpacity: 90 },
-  mobile: { radius: 2.5, feather: 3, sidePadding: 2.5, bottomPadding: 0.75, backdropOpacity: 90 },
+  desktop: { radius: 4, feather: 10, sidePadding: 3, bottomPadding: 1, backdropOpacity: 90 },
+  mobile: { radius: 4, feather: 10, sidePadding: 3, bottomPadding: 1.5, backdropOpacity: 90 },
 };
 
 export const HEADER_SURFACE_FIELDS: Array<{
