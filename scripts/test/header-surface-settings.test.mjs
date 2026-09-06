@@ -43,7 +43,10 @@ assert.match(layoutSource, /showDevTools && <DevHeaderSurfaceTuner \/>/);
 assert.match(headerSource, /header-surface-mobile-backdrop-opacity/);
 assert.match(headerSource, /--panel-corner-radius: min\([\s\S]*?calc\(var\(--panel-inline-size\) \/ 2\)/);
 
-const builtHtml = await readFile(new URL('../../dist/index.html', import.meta.url), 'utf8');
-assert.doesNotMatch(builtHtml, /data-header-surface-form/);
+assert.match(headerSource, /--panel-side-pad: var\(--header-surface-side-padding, 3\.5em\)/);
+assert.match(headerSource, /2 \* var\(--panel-side-pad\)/);
+assert.match(headerSource, /--panel-outset-outer: clamp\([\s\S]*calc\(var\(--panel-side-pad\) \+ var\(--panel-feather\)\)/);
+assert.match(headerSource, /var\(--panel-inline-size\) \+ var\(--panel-feather\) - var\(--panel-side-pad\)/);
+assert.match(headerSource, /var\(--panel-outset-outer\) - var\(--panel-side-pad\) - var\(--panel-feather\)/);
 
 console.log('header-surface-settings: ok');
