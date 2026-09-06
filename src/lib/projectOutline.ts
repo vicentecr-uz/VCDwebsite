@@ -142,10 +142,9 @@ export function outlineSortAnchor(
 }
 
 /**
- * Re-order outline entries to match page block order while keeping each
- * section in its current group. Group markers move with their first child
- * on the page (anchor updated), so dragging a later section above a group's
- * former first section keeps it in that group instead of the previous one.
+ * Re-order outline markers to match page block order. Groups are page
+ * boundaries, so they sort by their explicit anchor or their legacy inferred
+ * position without changing explicit anchors or section identity.
  */
 export function reorderOutlinePreservingGroups(
   outline: OutlineEntry[],
@@ -335,10 +334,15 @@ export function resolveProjectOutline(data: {
   nav?: SectionNavItem[] | null;
   sections?: Array<{ sectionId?: string; id?: string } | null | undefined> | null;
 }): OutlineEntry[] {
-  const base =
+  const resolvedBase =
     Array.isArray(data.outline)
       ? normalizeOutline(data.outline)
       : outlineFromNav(data.nav);
+  const base = resolvedBase.map((entry, _, outline) => {
+    if (entry.kind !== 'group' || entry.anchor?.trim()) return entry;
+    const anchor = outlineSortAnchor(entry, outline);
+    return anchor ? { ...entry, anchor } : entry;
+  });
 
   if (!Array.isArray(data.sections)) {
     return base;
