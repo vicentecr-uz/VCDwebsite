@@ -25,6 +25,7 @@ import {
   readDevDocument,
   resolveDevFieldTarget,
   resolveEditableDocument,
+  validateProjectOutlineTargets,
   uploadDevWriter,
   writeDevDocument,
 } from './scripts/dev-api-plugins.mjs';
@@ -2367,6 +2368,12 @@ function contentNavDevWriter() {
               section.showTitle = value;
               delete section.hideWhenSidebarVisible;
             }
+          }
+
+          if (relativeFile.startsWith('src/content/projects/')
+            && !validateProjectOutlineTargets(data.outline, data.sections)) {
+            send(400, { error: 'The section outline contains an orphan target.' });
+            return;
           }
 
           await writeContentJson(file, data);
