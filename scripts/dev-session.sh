@@ -203,6 +203,12 @@ cmd_stop() {
 }
 
 cmd_stop_astro() {
+  if ! [[ -f "$ASTRO_PID" ]] && ! (use_launchd && launchd_loaded "$ASTRO_LABEL"); then
+    if port_in_use "$ASTRO_PORT"; then
+      echo "  Astro: refusing to stop untracked process on port $ASTRO_PORT" >&2
+      return 1
+    fi
+  fi
   stop_pid_file "Astro" "$ASTRO_LABEL" "$ASTRO_PID"
 }
 
@@ -216,11 +222,14 @@ cmd_start_astro() {
 
 cmd_astro_running() {
   if use_launchd; then
-    adopt_launchd_job "$ASTRO_LABEL" "$ASTRO_PID" || true
+    if launchd_loaded "$ASTRO_LABEL"; then
+      adopt_launchd_job "$ASTRO_LABEL" "$ASTRO_PID" || true
+      return 0
+    fi
   fi
   local pid
   pid="$(read_pid "$ASTRO_PID" || true)"
-  [[ -n "$pid" ]] && pid_alive "$pid"
+  [[ -n "$pid" ]] && pid_alive "$pid" || port_in_use "$ASTRO_PORT"
 }
 
 start_process() {
