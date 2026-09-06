@@ -187,6 +187,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   const header = document.querySelector('.site-header');
   const headerSlot = document.querySelector('.site-header-slot');
+  const menuSurfaceRoot = header?.closest<HTMLElement>('#site-wrapper') ?? document.documentElement;
+
+  const setMenuSurfaceTiming = (duration: number, delay = 0) => {
+    menuSurfaceRoot.style.setProperty('--header-menu-surface-duration', `${duration}s`);
+    menuSurfaceRoot.style.setProperty('--header-menu-surface-delay', `${delay}s`);
+  };
 
   // Latched when a downward scroll closes the menu, and released once the
   // pointer is off the header. Two jobs: it stops the still-:hover-ing cursor
@@ -542,21 +548,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
   }
 
-  const setMenuBackdropVisible = (visible: boolean) => {
-    // The backdrop lives OUTSIDE the header (a sibling), so its z-index sits
-    // between page content and the header bar instead of being trapped in the
-    // header's stacking context and painting over the bar.
-    const backdrop = document.querySelector('.header-menu-backdrop');
-    if (!backdrop) return;
-
-    if (visible) {
-      (backdrop as HTMLElement).style.removeProperty('--menu-backdrop-close-delay');
-      backdrop.classList.add('is-menu-backdrop-visible');
-    } else {
-      backdrop.classList.remove('is-menu-backdrop-visible');
-    }
-  };
-
   /** Instant reset — used on pagehide / bfcache restore so open menu state isn't frozen. */
   const forceCloseMenus = () => {
     menuScrollClosed = false;
@@ -565,9 +556,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       active.blur();
     }
 
-    const backdrop = document.querySelector('.header-menu-backdrop') as HTMLElement | null;
-    backdrop?.style.setProperty('--menu-backdrop-close-delay', '0s');
-    setMenuBackdropVisible(false);
+    setMenuSurfaceTiming(0);
 
     document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
       const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
@@ -577,9 +566,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       trigger.classList.remove('is-menu-open');
       delete trigger.dataset.menuOpen;
-      trigger.style.setProperty('--panel-bg-duration', '0s');
-      trigger.style.setProperty('--panel-bg-delay', '0s');
-      trigger.style.setProperty('--menu-reveal', '0');
+      delete trigger.dataset.menuSurfaceOpen;
       links.forEach((link) => {
         link.style.setProperty('--menu-link-delay', '0s');
         link.style.setProperty('--menu-link-duration', '0s');
@@ -592,19 +579,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   document.querySelectorAll<HTMLElement>('.header-trigger').forEach((trigger) => {
     const links = [...trigger.querySelectorAll<HTMLElement>('.header-menu__link')];
-    if (!links.length) return;
-
     const panelBg = trigger.querySelector('.header-trigger__panel-bg') as HTMLElement | null;
+    if (!links.length || !panelBg) return;
+
     const MENU_LINK_CLOSE_STAGGER = 0.04;
     const MENU_LINK_CLOSE_DURATION = 0.15;
-    const PANEL_BG_CLOSE_DURATION = 0.38;
-    // Partial delay — panel overlaps link fade-out but starts after the harsh edge would show.
-    const PANEL_BG_CLOSE_DELAY_RATIO = 0.4;
+    const MENU_SURFACE_OPEN_DURATION = 0.48;
+    const MENU_SURFACE_CLOSE_DURATION = 0.38;
+    // Partial delay — both surfaces overlap the link fade-out but start after the harsh edge would show.
+    const MENU_SURFACE_CLOSE_DELAY_RATIO = 0.4;
     const textCloseEnd =
       (links.length - 1) * MENU_LINK_CLOSE_STAGGER + MENU_LINK_CLOSE_DURATION;
-    const panelBgCloseDelay = textCloseEnd * PANEL_BG_CLOSE_DELAY_RATIO;
+    const menuSurfaceCloseDelay = textCloseEnd * MENU_SURFACE_CLOSE_DELAY_RATIO;
     const closeLayoutMs =
-      Math.ceil(Math.max(textCloseEnd, panelBgCloseDelay + PANEL_BG_CLOSE_DURATION) * 1000) + 32;
+      Math.ceil(
+        Math.max(textCloseEnd, menuSurfaceCloseDelay + MENU_SURFACE_CLOSE_DURATION) * 1000,
+      ) + 32;
     let closeTimer: ReturnType<typeof setTimeout> | undefined;
 
     const clearCloseTimer = () => {
@@ -613,21 +603,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       delete trigger.dataset.menuCloseTimer;
     };
 
-    const setPanelReveal = (open: boolean) => {
-      if (!panelBg) return;
-
+    const setMenuSurface = (open: boolean) => {
       if (open) {
-        trigger.style.setProperty('--panel-bg-duration', '0.48s');
-        trigger.style.setProperty('--panel-bg-delay', '0s');
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            trigger.style.setProperty('--menu-reveal', '1');
-          });
-        });
+        setMenuSurfaceTiming(MENU_SURFACE_OPEN_DURATION);
+        delete trigger.dataset.menuSurfaceOpen;
+        void panelBg.offsetHeight;
+        trigger.dataset.menuSurfaceOpen = '';
       } else {
-        trigger.style.setProperty('--panel-bg-duration', `${PANEL_BG_CLOSE_DURATION}s`);
-        trigger.style.setProperty('--panel-bg-delay', `${panelBgCloseDelay}s`);
-        trigger.style.setProperty('--menu-reveal', '0');
+        setMenuSurfaceTiming(MENU_SURFACE_CLOSE_DURATION, menuSurfaceCloseDelay);
+        delete trigger.dataset.menuSurfaceOpen;
       }
     };
 
@@ -665,12 +649,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
 
       clearCloseTimer();
-      trigger.style.setProperty('--menu-reveal', '0');
       trigger.classList.add('is-menu-open');
       trigger.dataset.menuOpen = 'true';
-      setMenuBackdropVisible(true);
       setOpenStagger();
-      setPanelReveal(true);
+      setMenuSurface(true);
       // Bubbles: the scroll state machine listens on .site-header to dock the
       // header when the menu opens. The per-trigger listeners are on the
       // target itself, so they're unaffected.
@@ -682,18 +664,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      *   scroll-close happens with the cursor still parked on the trigger, so
      *   the normal gate would leave the class on forever — the class then
      *   reads as "open" on later frames and flaps the header's mode. Focus is
-     *   still honoured: a focused menu link holds the panel open via
-     *   :focus-within regardless of the class, so removing it there would only
-     *   desync the two.
+     *   still honoured by the interaction-specific close guards below.
      */
     const closeMenu = (force = false) => {
+      if (!isOpen()) return;
       delete trigger.dataset.menuOpen;
-      document
-        .querySelector('.header-menu-backdrop')
-        ?.style.setProperty('--menu-backdrop-close-delay', `${panelBgCloseDelay}s`);
-      setMenuBackdropVisible(false);
       setCloseStagger();
-      setPanelReveal(false);
+      setMenuSurface(false);
       clearCloseTimer();
       closeTimer = setTimeout(() => {
         closeTimer = undefined;
@@ -723,6 +700,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     trigger.addEventListener('mouseleave', () => {
       if (isTapMode()) return;
       menuScrollClosed = false;
+      if (trigger.contains(document.activeElement)) return;
       closeMenu();
     });
     // Scroll-driven close: run the normal animated close, not the instant
@@ -736,6 +714,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     trigger.addEventListener('focusout', (event) => {
       if (!trigger.contains(event.relatedTarget as Node | null)) {
+        if (!isTapMode() && trigger.matches(':hover')) return;
         closeMenu();
       }
     });
@@ -1313,22 +1292,25 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     background-color: color-mix(in srgb, var(--sys-color-srf) 90%, transparent);
     opacity: 0;
     transition:
-      opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1)
-      var(--menu-backdrop-close-delay, 0.09s);
+      opacity var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
+      var(--header-menu-surface-delay, 0s);
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
     z-index: 40;
   }
 
-  .header-menu-backdrop.is-menu-backdrop-visible {
+  .header-menu-backdrop:has(
+      + .site-header-slot .header-trigger[data-menu-surface-open]
+    ) {
     opacity: 1;
-    transition-delay: 0s;
   }
 
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
      whatever sits under it. */
   @media (hover: none), (pointer: coarse) {
-    .header-menu-backdrop.is-menu-backdrop-visible {
+    .header-menu-backdrop:has(
+        + .site-header-slot .header-trigger[data-menu-surface-open]
+      ) {
       pointer-events: auto;
     }
   }
@@ -1336,11 +1318,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-trigger {
     --hitbox-pad: var(--space-unit);
     --menu-gap: 0.7em;
-    --menu-reveal: 0;
     --menu-link-color-duration: 0.45s;
     --menu-link-color-hover-duration: 0.15s;
-    --panel-bg-duration: 0.48s;
-    --panel-bg-delay: 0s;
     position: relative;
     /* No z-index here either (see .site-header__row) — both triggers already
        stack in tree order, and a stacking context would trap the panel bg. */
@@ -1414,7 +1393,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     z-index: -1;
     opacity: 0;
     pointer-events: none;
-    transition: height var(--panel-bg-duration) cubic-bezier(0.22, 1, 0.36, 1) var(--panel-bg-delay);
+    transition:
+      opacity var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
+        var(--header-menu-surface-delay, 0s),
+      height var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
+        var(--header-menu-surface-delay, 0s);
   }
 
   .header-trigger__panel-bg::before {
@@ -1438,8 +1421,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     mask-composite: intersect;
   }
 
-  .header-trigger.is-menu-open .header-trigger__panel-bg,
-  .header-trigger:focus-within .header-trigger__panel-bg {
+  .header-trigger[data-menu-surface-open] .header-trigger__panel-bg {
     opacity: 1;
   }
 
@@ -1461,8 +1443,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     left: 0;
     right: calc(-0.75 * var(--feather));
     bottom: auto;
-    height: calc(var(--menu-reveal) * (100% + var(--panel-bottom-pad) + var(--feather)));
+    height: 0;
     transform-origin: left top;
+  }
+
+  .header-trigger--start[data-menu-surface-open] .header-trigger__panel-bg {
+    height: calc(100% + var(--panel-bottom-pad) + var(--feather));
   }
 
   .header-trigger--start .header-trigger__panel-bg::before {
@@ -1565,8 +1551,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     left: calc(-0.75 * var(--feather));
     right: 0;
     bottom: auto;
-    height: calc(var(--menu-reveal) * (100% + var(--panel-bottom-pad) + var(--feather)));
+    height: 0;
     transform-origin: right top;
+  }
+
+  .header-trigger--end[data-menu-surface-open] .header-trigger__panel-bg {
+    height: calc(100% + var(--panel-bottom-pad) + var(--feather));
   }
 
   .header-trigger--end .header-trigger__panel-bg::before {
