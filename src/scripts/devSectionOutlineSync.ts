@@ -10,6 +10,8 @@ import {
   type SectionNavItem,
 } from '../lib/projectOutline';
 
+import { getSectionRootsInDomOrder, sectionIndexFromElement } from './devSectionPaths';
+
 type NavLink = { id: string; label: string; outlineId?: string };
 type NavGroup = { label: string; children: NavLink[]; defaultOpen?: boolean; id?: string; anchor?: string };
 type NavItem = NavLink | NavGroup;
@@ -21,6 +23,7 @@ type StructureChangeDetail = {
   type?: string;
   section?: Record<string, unknown>;
   sectionId?: string;
+  outlineEntries?: OutlineEntry[];
 };
 
 const mainScope = '[data-section-nav-main]';
@@ -40,32 +43,12 @@ const parseJson = <T>(raw: string | undefined, fallback: T): T => {
   }
 };
 
-const sectionIndexFromPath = (pathRaw: string | undefined) => {
-  const path = parseJson<Array<string | number>>(pathRaw, []);
-  if (path[0] !== 'sections' || typeof path[1] !== 'number') return null;
-  return path[1];
+const editableBlocks = () => {
+  const main = document.querySelector<HTMLElement>(mainScope);
+  if (!main) return [];
+  if (root?.dataset.sectionNavOutlineOnly === 'true') return [...main.querySelectorAll<HTMLElement>('.section-block[id]')];
+  return getSectionRootsInDomOrder(main).filter((block) => !block.hasAttribute('data-dev-spacing-write-path'));
 };
-
-const isEditableBlock = (el: Element | null): el is HTMLElement => {
-  if (!(el instanceof HTMLElement)) return false;
-  if (!el.closest(mainScope)) return false;
-  if (el.classList.contains('section-block') && el.id) return true;
-  return sectionIndexFromPath(el.dataset.devSpacingPath) !== null;
-};
-
-const editableBlocks = () =>
-  [
-    ...document.querySelectorAll<HTMLElement>(`${mainScope} [data-dev-spacing-write-path]`),
-    ...document.querySelectorAll<HTMLElement>(`${mainScope} [data-dev-spacing-path]`),
-    ...document.querySelectorAll<HTMLElement>(`${mainScope} .section-block[id]`),
-  ].filter((el, index, all) => {
-    if (all.indexOf(el) !== index || !isEditableBlock(el)) return false;
-    const writeRoot = el.closest('[data-dev-spacing-write-path]');
-    if (writeRoot && writeRoot !== el) return false;
-    const spacingRoot = el.closest('[data-dev-spacing-path]');
-    if (spacingRoot && spacingRoot !== el) return false;
-    return true;
-  });
 
 const pageIndexForId = (id: string) => {
   if (!id) return Number.POSITIVE_INFINITY;
@@ -255,7 +238,7 @@ export function syncDevSectionOutlineSidebar() {
     groupEl.dataset.navAnchor = group.anchor || '';
     groupEl.dataset.navLabel = group.label;
     const labelEl = groupEl.querySelector<HTMLElement>('[data-section-nav-label]');
-    if (labelEl) labelEl.textContent = group.label;
+    if (labelEl && labelEl.textContent !== group.label) labelEl.textContent = group.label;
     const details = groupEl.querySelector('details');
     if (details) {
       if (isNewGroup) clearGroupAnimState(groupEl);
@@ -282,17 +265,17 @@ export function syncDevSectionOutlineSidebar() {
       const groupLinks = new Set<HTMLElement>();
       for (const child of group.children) {
         const linkEl = ensureLink(child, false);
-        if (childList.children[groupLinks.size] !== linkEl) childList.append(linkEl);
+        if (childList.children[groupLinks.size] !== linkEl) childList.insertBefore(linkEl, childList.children[groupLinks.size] ?? null);
         groupLinks.add(linkEl);
       }
       [...childList.children].forEach((child) => {
         if (child instanceof HTMLElement && !groupLinks.has(child)) child.remove();
       });
-      if (list.children[itemIndex] !== groupEl) list.append(groupEl);
+      if (list.children[itemIndex] !== groupEl) list.insertBefore(groupEl, list.children[itemIndex] ?? null);
       kept.add(groupEl);
     } else {
       const linkEl = ensureLink(item as NavLink, true);
-      if (list.children[itemIndex] !== linkEl) list.append(linkEl);
+      if (list.children[itemIndex] !== linkEl) list.insertBefore(linkEl, list.children[itemIndex] ?? null);
       kept.add(linkEl);
     }
   });
@@ -308,7 +291,14 @@ const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
 
   let changed = false;
 
-  if (detail.action === 'insert' && detail.type === 'sectionTitle' && typeof detail.index === 'number') {
+  if (detail.action === 'insert' && Array.isArray(detail.outlineEntries)) {
+    const restored = normalizeOutline(detail.outlineEntries);
+    const keys = new Set(restored.map((entry) => `${entry.kind}:${entry.id}`));
+    const kept = outline.filter((entry) => !keys.has(`${entry.kind}:${entry.id}`));
+    outline.length = 0;
+    outline.push(...kept, ...restored);
+    changed = true;
+  } else if (detail.action === 'insert' && detail.type === 'sectionTitle' && typeof detail.index === 'number') {
     const section = detail.section;
     const sectionId = String(
       detail.sectionId || section?.sectionId || section?.id || '',
@@ -316,7 +306,7 @@ const syncOutlineForStructureChange = (detail: StructureChangeDetail) => {
     if (!sectionId) return;
 
     const block = editableBlocks().find(
-      (el) => sectionIndexFromPath(el.dataset.devSpacingPath) === detail.index,
+      (el) => sectionIndexFromElement(el) === detail.index,
     );
     if (block) applyBlockSectionId(block, sectionId);
 

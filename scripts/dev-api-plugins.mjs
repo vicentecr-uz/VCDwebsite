@@ -882,8 +882,7 @@ export function sectionOrderDevWriter() {
             reordered.push(sections[index]);
           }
           data.sections = reordered;
-          // Keep sidebar group membership in sync with the new page order.
-          // Client sends the sticky-rebuilt outline (group anchors follow first child).
+          // Persist the outline from the same draft as the reordered page blocks.
           if (Object.prototype.hasOwnProperty.call(body, 'outline')) {
             if (!validateProjectOutline(body.outline)) {
               send(400, { error: 'The section outline is invalid.' });

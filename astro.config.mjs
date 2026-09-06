@@ -2210,6 +2210,8 @@ export function contentNavDevWriter() {
           }
 
           data.outline = outline;
+          // Styles starts from a generated catalog; distinguish an authored empty override.
+          if (documentKey === 'styles') data.outlineConfigured = true;
           delete data.nav;
 
           if (sectionIds) {

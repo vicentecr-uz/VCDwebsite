@@ -111,8 +111,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     initDevSectionOutlineSync,
     disposeDevSectionOutlineSync,
     getDevSectionOutline,
+    setDevSectionOutline,
+    syncDevSectionOutlineSidebar,
     remapDevSectionOutlineId,
   } from '../scripts/devSectionOutlineSync';
+  import { normalizeOutline, outlineAnchorId, type OutlineEntry } from '../lib/projectOutline';
   import {
     buildIndexMapFromOrder,
     remapSectionPaths,
@@ -372,6 +375,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership';
       payload: Record<string, unknown>;
       revert: () => void;
+      prepare?: () => Record<string, unknown>;
       /** Live section root for placeholder fills — index is read from it at Save. */
       root?: HTMLElement;
     };
@@ -385,6 +389,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       spacingState: EditableSpacingState | null;
       outlineRevert: {
         action: 'insert';
+        outlineEntries: OutlineEntry[];
         index: number;
         type?: string;
         section: Record<string, unknown>;
@@ -1852,7 +1857,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         dirtyText.forEach((state) => {
           state.savedValue = readValue(state);
         });
-        syncSavedSectionTitleLabels(dirtyText);
       }
 
       const dirtyLayout = [
@@ -1993,24 +1997,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (!response.ok) throw new Error(payload.error || 'Could not convert the section.');
       }
       pendingBlockConverts.length = 0;
-    };
-
-    const syncSavedSectionTitleLabels = (states: EditableTextState[]) => {
-      states.forEach((state) => {
-        if (state.kind !== 'text') return;
-        const block = state.element.closest<HTMLElement>('.section-block[id], [data-dev-section-title]');
-        const sectionId = block?.id;
-        if (!sectionId) return;
-        const label = readValue(state);
-        if (typeof label !== 'string' || !label.trim()) return;
-        window.dispatchEvent(new CustomEvent('vcd:dev-section-outline-label', {
-          detail: {
-            document: state.document,
-            sectionId,
-            label: label.trim(),
-          },
-        }));
-      });
     };
 
     const revertDirtyEdits = () => {
@@ -3107,6 +3093,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacingState: spacing,
         outlineRevert: {
           action: 'insert',
+          outlineEntries: structuredClone(getDevSectionOutline().filter((entry) => outlineAnchorId(entry) === sectionId)),
           index: sectionIndex,
           type: sectionType,
           section: {
@@ -5358,9 +5345,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
 
     const performSave = async (): Promise<PublishManifest | null> => {
-      // Editors with an explicit Apply step stage nothing until it is pressed —
-      // the section nav marker popover is one. Give them the chance to land an
-      // open draft before we read the pending map, or Save drops what is on screen.
+      // Let open tuners finish their draft before collecting pending changes.
       window.dispatchEvent(new Event('vcd:dev-before-save'));
 
       const dirtyText = dirtyTextStates();
@@ -5446,6 +5431,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       publishButton.disabled = true;
       revertButton.disabled = true;
       actionsBusy = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-save-state', { detail: { saving: true } }));
       saveButton.classList.add('is-dev-actions-busy');
       publishButton.classList.add('is-dev-actions-busy');
       revertButton.classList.add('is-dev-actions-busy');
@@ -5525,7 +5511,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
 
         for (const change of sectionNavChanges) {
-          const payload = change.payload;
+          const payload = change.prepare?.() ?? change.payload;
           payload.outline = structuredClone(getDevSectionOutline());
           const documentIds = serverSectionIds.get(String(payload.document || ''));
           if (documentIds && payload.sectionIds && typeof payload.sectionIds === 'object') {
@@ -5542,6 +5528,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const responsePayload = await readApiJson(response);
           if (!response.ok) throw new Error(String(responsePayload.error || 'Could not save the section outline.'));
+          if (!Array.isArray(responsePayload.outline)) throw new Error('The saved outline could not be confirmed. Refresh before editing again.');
+          setDevSectionOutline(normalizeOutline(responsePayload.outline));
+          syncDevSectionOutlineSidebar();
         }
 
         for (const change of styleTokenChanges) {
@@ -5682,7 +5671,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
         }
         syncPageTopSpacingControls();
-        syncSavedSectionTitleLabels(dirtyText);
 
         pendingMedia.clear();
         persistedMediaInserts.length = 0;
@@ -5703,6 +5691,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return null;
       } finally {
         actionsBusy = false;
+        window.dispatchEvent(new CustomEvent('vcd:dev-save-state', { detail: { saving: false } }));
         publishButton.disabled = false;
         updateActions();
       }

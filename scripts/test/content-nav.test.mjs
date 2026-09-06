@@ -120,3 +120,16 @@ test('section mutations match anchors without deleting stable ids', () => {
   syncOutlineForSectionMutation(data, { action: 'delete', section: { id: 'block-a' } });
   assert.deepEqual(data.outline.map((entry) => entry.id), ['stable-b']);
 });
+
+
+test('styles can save an intentionally empty override of its generated catalog', async () => withFixture(async (root) => {
+  await mkdir(path.join(root, 'src/content/pages'), { recursive: true });
+  await writeFile(path.join(root, 'src/content/pages/styles.json'), JSON.stringify({ sections: [], outline: [] }));
+  const handler = middlewareFor(contentNavDevWriter);
+  const res = response();
+  await handler(request({ document: 'styles', outline: [] }), res, () => {});
+  assert.equal((await res.done).status, 200);
+  const saved = JSON.parse(await readFile(path.join(root, 'src/content/pages/styles.json')));
+  assert.deepEqual(saved.outline, []);
+  assert.equal(saved.outlineConfigured, true);
+}));
