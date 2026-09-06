@@ -181,6 +181,8 @@ import Button from '../../ui/Button.astro';
     private generation = 0;
     private syncFrame = 0;
     private announceFrame = 0;
+    private syncResolve?: () => void;
+    private dropping = false;
 
     connectedCallback() {
       this.lifecycle?.abort();
@@ -233,6 +235,8 @@ import Button from '../../ui/Button.astro';
         if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
         this.syncFrame = 0;
         this.announceFrame = 0;
+        this.syncResolve?.();
+        this.syncResolve = undefined;
       };
       const setPressed = (pressed: boolean) => {
         allItems().forEach((item) => item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]')
@@ -243,6 +247,7 @@ import Button from '../../ui/Button.astro';
       };
       const reset = (nodes = this.originalNodes) => {
         this.generation += 1;
+        this.dropping = false;
         cancelFrames();
         releaseCapture();
         this.controller?.destroy();
@@ -258,16 +263,20 @@ import Button from '../../ui/Button.astro';
         const controller = this.controller;
         const generation = this.generation;
         const handle = this.dragHandle;
-        if (!controller || !this.dragItem || controller.getState().phase !== 'lifted') return;
+        if (this.dropping || !controller || !this.dragItem || controller.getState().phase !== 'lifted') return;
+        this.dropping = true;
         await new Promise<void>((resolve) => {
+          this.syncResolve = resolve;
           this.syncFrame = requestAnimationFrame(() => {
             this.syncFrame = 0;
             if (generation !== this.generation || controller !== this.controller || signal.aborted) {
               resolve();
+              this.syncResolve = undefined;
               return;
             }
             this.syncFrame = requestAnimationFrame(() => {
               this.syncFrame = 0;
+              this.syncResolve = undefined;
               resolve();
             });
           });
@@ -278,11 +287,12 @@ import Button from '../../ui/Button.astro';
         const committedItem = this.dragItem;
         const position = committedItem ? allItems().indexOf(committedItem) : -1;
         if (committedItem && position >= 0) status.textContent = `${committedItem.dataset.title} · ${position + 1}`;
+        releaseCapture();
+        this.dropping = false;
         this.dragItem = null;
         this.dragHandle = null;
         this.liftNodes = null;
         setPressed(false);
-        releaseCapture();
         if (generation === this.generation && !signal.aborted) handle?.focus();
       };
       const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
@@ -368,8 +378,13 @@ import Button from '../../ui/Button.astro';
 
     disconnectedCallback() {
       this.generation += 1;
+      this.dropping = false;
       if (this.syncFrame) cancelAnimationFrame(this.syncFrame);
       if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
+      this.syncResolve?.();
+      this.syncResolve = undefined;
+      this.syncFrame = 0;
+      this.announceFrame = 0;
       const handle = this.dragHandle;
       const pointerId = this.pointerId;
       this.pointerId = null;

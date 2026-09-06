@@ -780,12 +780,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     (host.getDropZone() ?? document.body).appendChild(ghost);
     activeFadeGhosts.push(ghost);
 
-    const duration = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS;
-    if (duration <= 0) {
-      ghost.remove();
-      activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
-      return;
-    }
+    const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
 
     const frame = requestAnimationFrame(() => {
       fadeGhostFrames.delete(ghost);
@@ -920,7 +915,6 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (
       !host.moveIndicatorWithFlip
       && state.indicatorOpacity > 0.05
-      && !prefersReducedMotion()
     ) {
       spawnFadeGhost();
     }
@@ -943,12 +937,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         indicatorAnim = { type: 'steady' };
         return;
       }
-      const duration = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS;
-      if (duration <= 0) {
-        applyIndicatorOpacity(1);
-        indicatorAnim = { type: 'steady' };
-        return;
-      }
+      const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
       indicatorAnim = {
         type: 'fadeIn',
         from: state.indicatorOpacity,
@@ -1228,11 +1217,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const body = getIndicatorBody();
     if (!body || state.indicatorOpacity <= 0.01) return Promise.resolve();
 
-    const duration = prefersReducedMotion() ? 0 : REORDER_TIMING.DROP_INDICATOR_FADE_MS;
-    if (duration <= 0) {
-      applyIndicatorOpacity(0);
-      return Promise.resolve();
-    }
+    const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
 
     const fadeAnim = body.animate(
       [{ opacity: state.indicatorOpacity }, { opacity: 0 }],
