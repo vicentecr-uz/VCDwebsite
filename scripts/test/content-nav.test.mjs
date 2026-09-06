@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { normalizeOutline } from '../../src/lib/projectOutline.ts';
 import { validateProjectOutline } from '../dev-api-plugins.mjs';
-import { contentNavDevWriter } from '../../astro.config.mjs';
+import { contentNavDevWriter, syncOutlineForSectionMutation } from '../../astro.config.mjs';
 import { sectionOrderDevWriter } from '../dev-api-plugins.mjs';
 
 test('outline validation accepts an explicit empty outline', () => {
@@ -100,3 +100,23 @@ test('section order persists an explicitly empty outline', async () => withFixtu
   assert.deepEqual(saved.outline, []);
   assert.equal(saved.sections[0].id, 'second');
 }));
+
+test('section mutations match anchors without deleting stable ids', () => {
+  const data = {
+    sections: [{ id: 'block-a' }, { id: 'block-b' }],
+    outline: [
+      { kind: 'group', id: 'block-a', label: 'Group', anchor: 'block-a' },
+      { kind: 'section', id: 'stable-a', label: 'A', anchor: 'block-a' },
+      { kind: 'section', id: 'stable-b', label: 'B', anchor: 'block-b' },
+    ],
+  };
+  syncOutlineForSectionMutation(data, { action: 'insert', section: { type: 'sectionTitle', id: 'block-a', title: 'New' }, index: 0 });
+  assert.deepEqual(data.outline.map(({ kind, id, anchor }) => ({ kind, id, anchor })), [
+    { kind: 'group', id: 'block-a', anchor: 'block-a' },
+    { kind: 'section', id: 'block-a', anchor: 'block-a' },
+    { kind: 'section', id: 'stable-b', anchor: 'block-b' },
+  ]);
+
+  syncOutlineForSectionMutation(data, { action: 'delete', section: { id: 'block-a' } });
+  assert.deepEqual(data.outline.map((entry) => entry.id), ['stable-b']);
+});
