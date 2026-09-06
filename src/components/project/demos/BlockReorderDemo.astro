@@ -1,3 +1,4 @@
+---
 import Button from '../../ui/Button.astro';
 ---
 
@@ -11,7 +12,7 @@ import Button from '../../ui/Button.astro';
     <div class="reorder-demo__list" data-reorder-demo-list>
       {['Research', 'Sketch', 'Prototype', 'Refine'].map((title) => (
         <article class="reorder-demo__block" data-reorder-demo-block data-title={title}>
-          <button class="reorder-demo__handle" type="button" data-reorder-demo-handle aria-label={`Move ${title}`}>
+          <button class="reorder-demo__handle" type="button" data-reorder-demo-handle aria-label={`Move ${title}`} aria-pressed="false">
             <span aria-hidden="true">{title}</span>
             <span aria-hidden="true" class="reorder-demo__grip">↕</span>
           </button>
@@ -48,6 +49,10 @@ import Button from '../../ui/Button.astro';
   .reorder-demo h1 {
     margin: 0;
     font: var(--dev-text-panel-title);
+  }
+
+  .reorder-demo__header :global(.dev-btn) {
+    --dev-btn-hit-inset: 8px;
   }
 
   .reorder-demo__list {
@@ -108,13 +113,13 @@ import Button from '../../ui/Button.astro';
     white-space: nowrap;
   }
 
-  :global(vcd-reorder-demo .vcd-reorder-demo__block.vcd-reorder-demo__lifted) {
+  :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted) {
     position: fixed;
     z-index: 100;
     margin: 0;
   }
 
-  :global(vcd-reorder-demo .vcd-reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
+  :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
     transform: scale(1.02);
     box-shadow: 0 0.85em 2.4em rgb(0 0 0 / 18%);
   }
@@ -132,7 +137,8 @@ import Button from '../../ui/Button.astro';
     grid-row: 2;
     height: var(--gap-height, 0px);
     box-sizing: border-box;
-    border: 2px dashed currentColor;
+    border: 1px solid var(--sys-color-srf-container);
+    background: var(--sys-color-srf-container-low);
     border-radius: var(--radius-control-smooth);
     opacity: 0;
   }
@@ -149,7 +155,7 @@ import Button from '../../ui/Button.astro';
   }
 
   @media (prefers-reduced-motion: reduce) {
-    :global(vcd-reorder-demo .vcd-reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
+    :global(vcd-reorder-demo .reorder-demo__block.vcd-reorder-demo__lifted.is-lifted-raised) {
       transform: none;
     }
   }
@@ -171,6 +177,10 @@ import Button from '../../ui/Button.astro';
     private dragHandle: HTMLButtonElement | null = null;
     private pointerId: number | null = null;
     private originalNodes: ChildNode[] = [];
+    private liftNodes: ChildNode[] | null = null;
+    private generation = 0;
+    private syncFrame = 0;
+    private announceFrame = 0;
 
     connectedCallback() {
       this.lifecycle?.abort();
@@ -185,10 +195,11 @@ import Button from '../../ui/Button.astro';
 
       const items = () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')]
         .filter((item) => item !== this.dragItem);
+      const allItems = () => [...list.querySelectorAll<HTMLElement>('[data-reorder-demo-block]')];
       const announce = () => {
         if (!this.dragItem) return;
         const state = this.controller?.getState();
-        const position = state?.phase === 'lifted' ? state.targetIndex : items().indexOf(this.dragItem);
+        const position = state?.phase === 'lifted' ? state.targetIndex : allItems().indexOf(this.dragItem);
         if (position >= 0) status.textContent = `${this.dragItem.dataset.title} · ${position + 1}`;
       };
       const makeController = () => createReorderController({
@@ -209,32 +220,82 @@ import Button from '../../ui/Button.astro';
       });
       this.controller = makeController();
 
-      const restore = () => {
+      const releaseCapture = () => {
+        const handle = this.dragHandle;
+        const pointerId = this.pointerId;
+        this.pointerId = null;
+        if (handle && pointerId !== null && handle.hasPointerCapture(pointerId)) {
+          handle.releasePointerCapture(pointerId);
+        }
+      };
+      const cancelFrames = () => {
+        if (this.syncFrame) cancelAnimationFrame(this.syncFrame);
+        if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
+        this.syncFrame = 0;
+        this.announceFrame = 0;
+      };
+      const setPressed = (pressed: boolean) => {
+        allItems().forEach((item) => item.querySelector<HTMLButtonElement>('[data-reorder-demo-handle]')
+          ?.setAttribute('aria-pressed', String(pressed && item === this.dragItem)));
+      };
+      const restoreNodes = (nodes: ChildNode[]) => {
+        for (const node of nodes) list.append(node);
+      };
+      const reset = (nodes = this.originalNodes) => {
+        this.generation += 1;
+        cancelFrames();
+        releaseCapture();
         this.controller?.destroy();
         this.controller = makeController();
-        for (const node of this.originalNodes) list.append(node);
+        restoreNodes(nodes);
         this.dragItem = null;
         this.dragHandle = null;
-        this.pointerId = null;
+        this.liftNodes = null;
+        setPressed(false);
         status.textContent = '';
       };
       const finishDrop = async () => {
         const controller = this.controller;
-        if (!controller) return;
+        const generation = this.generation;
+        const handle = this.dragHandle;
+        if (!controller || !this.dragItem || controller.getState().phase !== 'lifted') return;
+        await new Promise<void>((resolve) => {
+          this.syncFrame = requestAnimationFrame(() => {
+            this.syncFrame = 0;
+            if (generation !== this.generation || controller !== this.controller || signal.aborted) {
+              resolve();
+              return;
+            }
+            this.syncFrame = requestAnimationFrame(() => {
+              this.syncFrame = 0;
+              resolve();
+            });
+          });
+        });
+        if (generation !== this.generation || controller !== this.controller || signal.aborted) return;
         await controller.endDrop();
-        if (controller !== this.controller || signal.aborted) return;
+        if (generation !== this.generation || controller !== this.controller || signal.aborted) return;
+        const committedItem = this.dragItem;
+        const position = committedItem ? allItems().indexOf(committedItem) : -1;
+        if (committedItem && position >= 0) status.textContent = `${committedItem.dataset.title} · ${position + 1}`;
         this.dragItem = null;
         this.dragHandle = null;
-        this.pointerId = null;
-        status.textContent = '';
+        this.liftNodes = null;
+        setPressed(false);
+        releaseCapture();
+        if (generation === this.generation && !signal.aborted) handle?.focus();
       };
       const pickUp = (item: HTMLElement, handle: HTMLButtonElement, x: number, y: number, followPointer = true) => {
-        if (this.controller?.isActive()) return;
+        if (this.controller?.isActive() || this.dragItem) return false;
         const sourceIndex = items().indexOf(item);
+        this.liftNodes = [...list.childNodes];
         this.dragItem = item;
         this.dragHandle = handle;
+        this.generation += 1;
+        setPressed(true);
         this.controller?.beginLift(item, handle, x, y, sourceIndex, { followPointer });
         announce();
+        return true;
       };
       const dropOrPick = (item: HTMLElement, handle: HTMLButtonElement, event: KeyboardEvent) => {
         event.preventDefault();
@@ -251,7 +312,7 @@ import Button from '../../ui/Button.astro';
         handle.addEventListener('pointerdown', (event) => {
           if (event.button !== 0) return;
           event.preventDefault();
-          pickUp(item, handle, event.clientX, event.clientY);
+          if (!pickUp(item, handle, event.clientX, event.clientY)) return;
           this.pointerId = event.pointerId;
           handle.setPointerCapture(event.pointerId);
         }, { signal });
@@ -261,17 +322,18 @@ import Button from '../../ui/Button.astro';
         }, { signal });
         handle.addEventListener('pointerup', (event) => {
           if (event.pointerId !== this.pointerId || this.dragItem !== item) return;
-          this.pointerId = null;
+          releaseCapture();
           void finishDrop();
         }, { signal });
         handle.addEventListener('pointercancel', (event) => {
           if (event.pointerId !== this.pointerId) return;
-          restore();
+          reset(this.liftNodes ?? this.originalNodes);
         }, { signal });
         handle.addEventListener('keydown', (event) => {
           if (event.key === 'Escape') {
+            if (this.dragItem !== item || !this.controller?.isActive()) return;
             event.preventDefault();
-            restore();
+            reset(this.liftNodes ?? this.originalNodes);
             handle.focus();
             return;
           }
@@ -288,13 +350,30 @@ import Button from '../../ui/Button.astro';
           if (next === null) return;
           event.preventDefault();
           this.controller.setTargetIndex(next);
-          requestAnimationFrame(announce);
+          if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
+          const generation = this.generation;
+          this.announceFrame = requestAnimationFrame(() => {
+            this.announceFrame = 0;
+            if (generation === this.generation && this.controller?.isActive()) announce();
+          });
+        }, { signal });
+        handle.addEventListener('lostpointercapture', (event) => {
+          if (this.pointerId !== event.pointerId || !this.controller?.isActive()) return;
+          this.pointerId = null;
+          reset(this.liftNodes ?? this.originalNodes);
         }, { signal });
       }
-      reset.addEventListener('click', restore, { signal });
+      reset.addEventListener('click', () => reset(), { signal });
     }
 
     disconnectedCallback() {
+      this.generation += 1;
+      if (this.syncFrame) cancelAnimationFrame(this.syncFrame);
+      if (this.announceFrame) cancelAnimationFrame(this.announceFrame);
+      const handle = this.dragHandle;
+      const pointerId = this.pointerId;
+      this.pointerId = null;
+      if (handle && pointerId !== null && handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
       this.lifecycle?.abort();
       this.controller?.destroy();
       this.controller = undefined;
