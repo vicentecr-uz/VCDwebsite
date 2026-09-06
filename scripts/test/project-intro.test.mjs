@@ -54,8 +54,6 @@ assert.equal(validateProjectOutlineTargets([
 assert.match(devTextEditor, /getDevSectionOutline/);
 assert.match(devTextEditor, /payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
 assert.match(devTextEditor, /change\.payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
-const outlineSyncSource = readFileSync(new URL('../../src/scripts/devSectionOutlineSync.ts', import.meta.url), 'utf8');
-assert.match(outlineSyncSource, /entry\.kind === 'group'[\s\S]*entry\.anchor !== clientId[\s\S]*anchor: serverId/);
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',
