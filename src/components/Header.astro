@@ -1116,6 +1116,29 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   const reduceMotionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
   let currentWorkClickCount = 0;
 
+  const hideCurrentWorkNote = (note: HTMLElement) => {
+    if (!note.classList.contains('is-visible')) return;
+    const link = note.closest('.header-menu__item')?.querySelector<HTMLElement>('.header-menu__link');
+    if (link) {
+      note.style.setProperty('--menu-link-delay', link.style.getPropertyValue('--menu-link-delay'));
+      note.style.setProperty('--menu-link-duration', link.style.getPropertyValue('--menu-link-duration'));
+    }
+    note.classList.add('is-hiding');
+    note.classList.remove('is-visible');
+    note.addEventListener(
+      'animationend',
+      () => note.classList.remove('is-hiding'),
+      { once: true },
+    );
+  };
+
+  currentWorkNotes.forEach((note) => {
+    note.closest('.header-trigger')?.addEventListener(
+      'header:trigger-close',
+      () => hideCurrentWorkNote(note),
+    );
+  });
+
   currentWorkLinks.forEach((link) => {
     link.addEventListener(
       'click',
@@ -1136,7 +1159,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         }
 
         if (currentWorkClickCount >= 3) {
-          currentWorkNotes.forEach((note) => note.classList.add('is-visible'));
+          const note = link.closest('.header-menu__item')?.querySelector<HTMLElement>('[data-current-work-note]');
+          note?.classList.remove('is-hiding');
+          note?.classList.add('is-visible');
         }
       },
       true,
@@ -1688,17 +1713,21 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-menu__item--current-work {
     display: flex;
     align-items: baseline;
-    gap: 0.5em;
+    gap: 1em;
     white-space: nowrap;
+  }
+
+  .header-trigger--end .header-menu__item--current-work .header-menu__current-note {
+    order: -1;
   }
 
   .header-menu__current-note {
     display: none;
     color: var(--sys-color-link-soft);
     font-family: var(--font-sans);
-    font-size: 0.72em;
+    font-size: var(--header-menu-link-size, 1.2em);
     font-weight: 400;
-    letter-spacing: -0.02ch;
+    letter-spacing: -0.05ch;
     line-height: 1;
   }
 
@@ -1706,6 +1735,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-trigger:focus-within .header-menu__current-note.is-visible {
     display: inline-block;
     animation: header-current-note-in 0.28s ease-out both;
+  }
+
+  .header-menu__current-note.is-hiding {
+    display: inline-block;
+    animation: header-current-note-fade-out var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s) both;
   }
 
   @keyframes header-work-error-shake {
@@ -1730,6 +1764,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   @keyframes header-current-note-fade-in {
     from { opacity: 0; }
     to { opacity: 0.48; }
+  }
+
+  @keyframes header-current-note-fade-out {
+    from { opacity: 0.48; }
+    to { opacity: 0; }
   }
 
   .header-trigger__wordmark {
