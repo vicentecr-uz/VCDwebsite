@@ -135,13 +135,15 @@ sync_once() {
     if [[ "$dependencies_changed" -eq 1 ]]; then
       if ! "$BUN" install --frozen-lockfile 2>&1; then
         echo "$(date '+%Y-%m-%d %H:%M:%S') dependency install failed"
-        [[ "$astro_stopped" -eq 1 ]] && bash "$SESSION_SCRIPT" start-astro || true
+        if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
         return 1
       fi
     fi
   else
     echo "$(date '+%Y-%m-%d %H:%M:%S') pull --rebase failed for $branch (resolve manually)"
     git -C "$ROOT" rebase --abort 2>/dev/null || true
+    if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
+    return 1
   fi
   if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
   reload_if_changed "$incoming_paths"
