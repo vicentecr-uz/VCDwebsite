@@ -215,6 +215,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   import { projectImage } from '../../lib/images';
   import { isPlaceholderSrc } from '../../lib/projectImageFrame';
   import { bindFitPlaceholderLabel } from '../../lib/placeholderLabel';
+  import { registerHistoryScope } from '../../lib/devHistory';
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
   import lockOpenIcon from 'lucide-static/icons/lock-open.svg?raw';
   import { sizeIcon } from '../../lib/icons';
@@ -450,6 +451,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let selectedViewport = viewportForWidth();
     // Panel is open for this image (preview mirrors it; page stays untouched until an edit).
     let editingSession = false;
+    let draftDirty = false;
     // Write draft → live page. Stays false on open; flips on the first real crop edit.
     let liveApply = false;
     let targetWasCropped = false;
@@ -736,25 +738,23 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       hover: CropState | null;
       lock: boolean;
       widthConstrain: ImageGridConstrainPercent;
+      selectedViewport: ImageViewport;
+      activeSlot: 'cover' | 'hover';
+      allCover: Record<ImageViewport, CropState>;
+      allHover: Record<ImageViewport, CropState> | null;
+      allDraft: Record<ImageViewport, CropState>;
       /** Set only when this step changed src (replace). */
       src?: string;
       srcWidth?: number;
       srcHeight?: number;
       /** Set only when this step changed max-vh. Use a wrapper so `undefined` (Off) is distinct from "not this step". */
       maxVh?: { value: number | undefined };
-      allCover?: Record<ImageViewport, CropState>;
-      allHover?: Record<ImageViewport, CropState> | null;
-      allDraft?: Record<ImageViewport, CropState>;
     }
 
-    const emptyStacks = (): Record<ImageViewport, CropUndoEntry[]> => ({
-      desktop: [],
-      tablet: [],
-      mobile: [],
-    });
-    let undoByViewport = emptyStacks();
-    let redoByViewport = emptyStacks();
-    const GESTURE_UNDO_CAP = 20; // ceiling per viewport; drop oldest. Redo lives beside undo.
+    let undoStack: CropUndoEntry[] = [];
+    let redoStack: CropUndoEntry[] = [];
+    let unregisterHistoryScope: (() => void) | null = null;
+    const GESTURE_UNDO_CAP = 20;
 
     const snapshotViewport = (): CropUndoEntry => {
       const vp = selectedViewport;
@@ -773,15 +773,22 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         hover,
         lock: constrainByViewport[vp],
         widthConstrain: draftConstrained[vp],
+        selectedViewport: vp,
+        activeSlot,
+        allCover: structuredClone(draftCoverVariants),
+        allHover: draftHoverVariants ? structuredClone(draftHoverVariants) : null,
+        allDraft: structuredClone(draftVariants),
       };
     };
 
     const pushUndo = (extra?: Pick<CropUndoEntry, 'src' | 'srcWidth' | 'srcHeight' | 'maxVh' | 'allCover' | 'allHover' | 'allDraft'>) => {
-      const vp = selectedViewport;
       const entry: CropUndoEntry = { ...snapshotViewport(), ...extra };
-      undoByViewport[vp].push(entry);
-      if (undoByViewport[vp].length > GESTURE_UNDO_CAP) undoByViewport[vp].shift();
-      redoByViewport[vp] = [];
+      undoStack.push(entry);
+      // Keep the opening baseline as the oldest entry when the local ceiling is hit.
+      if (undoStack.length > GESTURE_UNDO_CAP) undoStack.splice(1, 1);
+      redoStack = [];
+      draftDirty = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: { dirty: true } }));
     };
 
     const pushUndoIfNeeded = (captured: { value: boolean }, extra?: Pick<CropUndoEntry, 'src' | 'srcWidth' | 'srcHeight' | 'maxVh' | 'allCover' | 'allHover' | 'allDraft'>) => {
@@ -791,27 +798,17 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const applyUndoEntry = (entry: CropUndoEntry) => {
-      const vp = selectedViewport;
-      if (entry.allCover) {
-        draftCoverVariants = structuredClone(entry.allCover);
-        if (entry.allHover) draftHoverVariants = structuredClone(entry.allHover);
-        draftVariants = entry.allDraft
-          ? structuredClone(entry.allDraft)
-          : isListingCover(editTarget) && activeSlot === 'hover' && draftHoverVariants
-            ? draftHoverVariants
-            : draftCoverVariants;
-      } else {
-        const cover = structuredClone(entry.cover);
-        if (isListingCover(editTarget)) {
-          draftCoverVariants[vp] = cover;
-          if (draftHoverVariants && entry.hover) draftHoverVariants[vp] = structuredClone(entry.hover);
-          draftVariants = activeSlot === 'hover' && draftHoverVariants
-            ? draftHoverVariants
-            : draftCoverVariants;
-        } else {
-          draftVariants[vp] = cover;
-        }
-      }
+      const vp = entry.selectedViewport;
+      selectedViewport = vp;
+      activeSlot = entry.activeSlot;
+      const activeImage = activeSlot === 'hover'
+        ? editTarget.querySelector<HTMLImageElement>('.project-grid__img--hover')
+        : (editTarget.querySelector<HTMLImageElement>('.project-grid__img--base')
+          ?? editTarget.querySelector<HTMLImageElement>('img'));
+      if (activeImage) editedImage = activeImage;
+      draftCoverVariants = structuredClone(entry.allCover);
+      draftHoverVariants = entry.allHover ? structuredClone(entry.allHover) : null;
+      draftVariants = structuredClone(entry.allDraft);
       draft = { ...draftVariants[vp] };
       constrainByViewport = { ...constrainByViewport, [vp]: entry.lock };
       writeConstraints(constrainByViewport);
@@ -851,17 +848,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         now.srcHeight = draftSrcHeight;
       }
       if (entry.maxVh) now.maxVh = { value: draftMaxVh };
-      if (entry.allCover) {
-        now.allCover = structuredClone(draftCoverVariants);
-        now.allHover = draftHoverVariants ? structuredClone(draftHoverVariants) : null;
-        now.allDraft = structuredClone(draftVariants);
-      }
       return now;
     };
 
     const clearAllStacks = () => {
-      undoByViewport = emptyStacks();
-      redoByViewport = emptyStacks();
+      undoStack = [];
+      redoStack = [];
     };
     let constrainByViewport = readConstraints();
     const constrainToFrame = () => constrainByViewport[selectedViewport];
@@ -1446,6 +1438,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
       status.textContent = 'Staged — use Save in the page bar to write to disk.';
       clearAllStacks();
+      draftDirty = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: { dirty: false } }));
       closePanel();
     };
 
@@ -1545,6 +1539,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncWidthConstrainUi();
       liveApply = false;
       clearAllStacks();
+      draftDirty = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-has-draft', { detail: { dirty: false } }));
     };
 
     let previewLabelObserver: MutationObserver | null = null;
@@ -1595,8 +1591,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
-      clearAllStacks();
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
+      const preserveLocalHistory = editingSession && live && target === editTarget;
+      if (!preserveLocalHistory) clearAllStacks();
       activeSlot = listingEditSlot(target);
       const image = activeSlot === 'hover'
         ? target.querySelector<HTMLImageElement>('.project-grid__img--hover')
@@ -1668,6 +1665,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncWidthConstrainUi();
       syncLinkedAspectHint();
       if (live) {
+        unregisterHistoryScope?.();
+        unregisterHistoryScope = registerHistoryScope(tuner, {
+          undo: undoLocal,
+          redo: redoLocal,
+        }, {
+          owns: (target) => Boolean(target && (tuner.contains(target) || target.closest('[data-dev-image-target]') === editTarget)),
+        });
         mountPageStage();
         status.textContent = viewportGateOk()
           ? 'Editing this image — drag or two-finger swipe to pan, pinch/scroll to zoom, pull the handles to reshape.'
@@ -2371,6 +2375,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     }) as EventListener);
 
     const teardownEditSession = () => {
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = null;
       unmountPageStage();
       // Closing is a cancel: unsaved crop edits never survive the panel.
       revertToSaved();
@@ -2660,10 +2666,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         allHover: draftHoverVariants ? structuredClone(draftHoverVariants) : null,
         allDraft: structuredClone(draftVariants),
       });
-      VIEWPORTS.filter((v) => v !== selectedViewport).forEach((v) => {
-        undoByViewport[v] = [];
-        redoByViewport[v] = [];
-      });
       draftSrc = src;
       draftSrcWidth = dims?.srcWidth;
       draftSrcHeight = dims?.srcHeight;
@@ -2823,40 +2825,25 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     saveButton.addEventListener('click', saveDraft);
-
-    document.addEventListener('keydown', (event) => {
-      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
-      if (!panel || panel.dataset.devPanelKey !== 'image' || panel.hidden) return;
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
-      const key = event.key.toLowerCase();
-      const isRedo = (key === 'z' && event.shiftKey) || (key === 'y' && !event.shiftKey);
-      const isUndo = key === 'z' && !event.shiftKey;
-      if (!isUndo && !isRedo) return;
-      const t = event.target as HTMLElement | null;
-      if (t && (t.isContentEditable || t.closest('input, textarea'))) return;
-      const vp = selectedViewport;
-      if (isUndo) {
-        const stack = undoByViewport[vp];
-        if (stack.length === 0) return;
-        event.preventDefault();
-        event.stopPropagation();
-        const popped = stack.pop()!;
-        redoByViewport[vp].push(snapshotForRedo(popped));
-        if (redoByViewport[vp].length > GESTURE_UNDO_CAP) redoByViewport[vp].shift();
-        applyUndoEntry(popped);
-        status.textContent = 'Undid last edit.';
-        return;
-      }
-      const stack = redoByViewport[vp];
-      if (stack.length === 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const popped = stack.pop()!;
-      undoByViewport[vp].push(snapshotForRedo(popped));
-      if (undoByViewport[vp].length > GESTURE_UNDO_CAP) undoByViewport[vp].shift();
-      applyUndoEntry(popped);
-      status.textContent = 'Redid last edit.';
+    window.addEventListener('vcd:dev-before-save', () => {
+      if (editingSession && draftDirty) saveDraft();
     });
+
+    const undoLocal = () => {
+      const previous = undoStack.pop();
+      if (!previous) return;
+      redoStack.push(snapshotForRedo(previous));
+      applyUndoEntry(previous);
+      status.textContent = 'Undid last edit.';
+    };
+
+    const redoLocal = () => {
+      const next = redoStack.pop();
+      if (!next) return;
+      undoStack.push(snapshotForRedo(next));
+      applyUndoEntry(next);
+      status.textContent = 'Redid last edit.';
+    };
 
     cancelButton?.addEventListener('click', () => {
       revertToSaved();
