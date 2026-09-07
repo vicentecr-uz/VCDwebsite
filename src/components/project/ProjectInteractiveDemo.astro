@@ -1,18 +1,21 @@
 ---
 import { craftDemo } from '../../lib/craftDemos';
-import { projectStackClass, type ProjectStackSpacing } from '../../lib/projectStack';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 
 interface Props {
   demo: unknown;
   spacing?: ProjectStackSpacing;
   sectionId?: string;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
 }
-const { demo: id, spacing = 'section', sectionId } = Astro.props;
+const { demo: id, spacing = 'section', sectionId, documentKey, sectionPath } = Astro.props;
 const demo = craftDemo(id);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing)]} id={sectionId}>
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} {...(spacingAttrs ?? {})}>
     <iframe
       src={`/preview/${demo.id}`}
       title={demo.title}
@@ -21,12 +24,9 @@ const demo = craftDemo(id);
       referrerpolicy="no-referrer"
       style={`height:${demo.height}rem`}
     />
-    <a href={`/preview/${demo.id}`} target="_blank" rel="noopener" aria-label={`Open ${demo.title}`}>Open demo</a>
   </div>
 )}
 
 <style>
   .project-interactive-demo iframe { display: block; width: 100%; border: 1px solid var(--sys-color-outline-variant); border-radius: var(--radius-control-smooth); }
-  .project-interactive-demo a { display: inline-flex; align-items: center; min-height: 44px; margin-top: var(--space-unit); text-decoration: underline; text-underline-offset: 0.2em; }
-  .project-interactive-demo a:focus-visible { outline: 2px solid currentColor; outline-offset: 4px; }
 </style>
