@@ -1,0 +1,78 @@
+name: Production build
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CI: true
+      ASTRO_TELEMETRY_DISABLED: 1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+
+      - name: Create temporary config and cache paths
+        run: |
+          mkdir -p "$RUNNER_TEMP/vcd-config" "$RUNNER_TEMP/vcd-bun-cache"
+          echo "XDG_CONFIG_HOME=$RUNNER_TEMP/vcd-config" >> "$GITHUB_ENV"
+          echo "BUN_INSTALL_CACHE_DIR=$RUNNER_TEMP/vcd-bun-cache" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: |
+          bun install --frozen-lockfile || {
+            install_status=$?
+            echo "::error::Locked unauthenticated install must succeed; private development tools must be optional."
+            exit "$install_status"
+          }
+
+      - name: Enforce Lapse absence
+        run: |
+          rm -rf node_modules/@aiforui/lapse
+          node --input-type=module <<'EOF'
+          import { createRequire } from 'node:module';
+
+          const require = createRequire(import.meta.url);
+          try {
+            require.resolve('@aiforui/lapse/panel');
+            console.error('::error::@aiforui/lapse/panel remains resolvable after removal.');
+            process.exit(1);
+          } catch (error) {
+            if (error?.code !== 'MODULE_NOT_FOUND') throw error;
+          }
+          EOF
+
+      - name: Build production site
+        run: bun run build
+
+      - name: Check production output
+        run: bun scripts/check-production-output.mjs
+
+      - name: Test production boundary
+        run: bun test scripts/test/production-boundary.test.mjs
