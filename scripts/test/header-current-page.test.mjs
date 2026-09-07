@@ -115,7 +115,9 @@ function flush(harness) {
   assert.equal(messageForClick(6), 'You are on this page');
   assert.equal(messageForClick(9), 'You are on this page');
   assert.equal(messageForClick(10), 'chill out');
-  assert.equal(messageForClick(19), 'go on, click it again, see what happens');
+  assert.equal(messageForClick(19), 'are you dumb?');
+  assert.equal(messageForClick(22), "ahh, i see, you're curious");
+  assert.equal(messageForClick(28), 'go on, click it again, see what happens');
   click(harness.links[0]);
   click(harness.links[0]);
   click(harness.links[0]);
@@ -141,10 +143,10 @@ function flush(harness) {
   assert.equal(harness.notes[0].style.fontWeight, '400');
   assert.equal(harness.notes[0].textContent, 'chill out');
   assert.equal(harness.notes[0].style.color, '');
-  click(harness.links[0]);
-  click(harness.links[0]);
-  click(harness.links[0]);
+  for (let index = 0; index < 12; index += 1) click(harness.links[0]);
+  flush(harness);
   assert.equal(harness.links[0].label.classList.contains('is-error-shaking'), false);
+  assert.equal(harness.notes[0].textContent, "ahh, i see, you're curious");
   click(harness.links[0]);
   assert.equal(harness.links[0].label.classList.contains('is-error-shaking'), false);
 }
@@ -173,7 +175,7 @@ function flush(harness) {
 
 {
   const harness = createHarness({ storageThrows: true });
-  for (let index = 0; index < 19; index += 1) click(harness.links[0]);
+  for (let index = 0; index < 28; index += 1) click(harness.links[0]);
   harness.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
   assert.equal(harness.items[0].classList.contains('is-removing'), true);
   flush(harness);
@@ -198,7 +200,7 @@ function flush(harness) {
   harness.triggers[0].dispatch('header:trigger-close');
   harness.triggers[0].dispatch('header:trigger-open');
   flush(harness);
-  assert.equal(harness.notes[0].classList.contains('is-visible'), false);
+  assert.equal(harness.notes[0].classList.contains('is-visible'), true);
 }
 
 console.log('header-current-page: ok');

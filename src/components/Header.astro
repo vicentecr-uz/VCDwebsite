@@ -1173,14 +1173,17 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       count === 5 ? 'ah, you again' : count === 6 ? 'welcome back' : null;
     if (count <= 9 && count >= 3) return 'You are on this page';
     return ({
-      10: 'chill out', 11: 'bro can you read', 12: 'are you dumb?',
-      13: "ahh, i see, you're curious", 14: 'how long this will go, right?',
-      15: 'well just stop', 16: "i'm not playing", 17: 'seriously',
-      18: "alright, that's it", 19: 'go on, click it again, see what happens',
-    } as Record<number, string>)[count] ?? null;
+      10: 'chill out', 11: 'bro can you read',
+      22: "ahh, i see, you're curious", 23: 'how long this will go, right?',
+      24: 'well just stop', 25: "i'm not playing", 26: 'seriously',
+      27: "alright, that's it", 28: 'go on, click it again, see what happens',
+    } as Record<number, string>)[count] ?? (count >= 12 && count <= 21 ? 'are you dumb?' : null);
   };
 
   let currentPageRemoved = false;
+  let idleTimer: number | null = null;
+  let idlePhase: 'none' | 'good-boy' | 'hey' = 'none';
+  let needsResume = false;
   const noteTimers = new Map<HTMLElement, number>();
   const cancelAnimations = (element: HTMLElement) => element.getAnimations().forEach((animation) => animation.cancel());
   const animatePanelWidth = (trigger: HTMLElement, update: () => void, animate = true) => {
@@ -1200,6 +1203,31 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     clearTimeout(noteTimers.get(note));
     noteTimers.delete(note);
     cancelAnimations(note);
+  };
+  const cancelIdle = () => {
+    if (idleTimer !== null) window.clearTimeout(idleTimer);
+    idleTimer = null;
+  };
+  const menuIsOpen = () => currentPageNotes.some((note) => note.closest<HTMLElement>('.header-trigger')?.dataset.menuOpen === 'true');
+  const showMessage = (text: string, weight = 400, animate = true) => currentPageNotes.forEach((note) => {
+    note.setAttribute('aria-live', note.closest<HTMLElement>('.header-trigger')?.dataset.menuOpen === 'true' ? 'polite' : 'off');
+    setNote(note, text, weight, animate);
+  });
+  const scheduleIdle = () => {
+    cancelIdle();
+    idleTimer = window.setTimeout(() => {
+      idleTimer = null;
+      if (!menuIsOpen() || currentPageRemoved) return;
+      idlePhase = 'good-boy';
+      showMessage("who's a good boy?", 400, true);
+      idleTimer = window.setTimeout(() => {
+        idleTimer = null;
+        if (!menuIsOpen() || currentPageRemoved || idlePhase !== 'good-boy') return;
+        hideCurrentPageNote(currentPageNotes[0]);
+        currentPageNotes.slice(1).forEach(hideCurrentPageNote);
+        idleTimer = window.setTimeout(() => { idleTimer = null; idlePhase = 'none'; }, 100);
+      }, 3100);
+    }, 3100);
   };
   const setNote = (note: HTMLElement, text: string, weight: number, animate: boolean) => {
     const animateText = animate && !(note.classList.contains('is-visible') && note.textContent === text);
@@ -1247,6 +1275,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }, 100));
   };
   const removeCurrentPage = (focusFallback = false) => {
+    cancelIdle();
     if (currentPageRemoved) return;
     currentPageRemoved = true;
     const active = document.activeElement;
@@ -1284,14 +1313,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   currentPageNotes.forEach((note) => {
     const trigger = note.closest<HTMLElement>('.header-trigger');
-    trigger?.addEventListener('header:trigger-close', () => hideCurrentPageNote(note));
+    trigger?.addEventListener('header:trigger-close', () => {
+      cancelIdle();
+      if (idlePhase !== 'none') { idlePhase = 'none'; currentPageClickCount = 25; }
+      needsResume = currentPageClickCount >= 3;
+      hideCurrentPageNote(note);
+    });
     trigger?.addEventListener('header:trigger-open', () => {
       cancelNote(note);
-      note.classList.remove('is-visible');
-      syncMenuSurfaceInlineSize(trigger);
+      if (needsResume && !currentPageRemoved) showMessage('You are on this page', 400, false);
+      else { note.classList.remove('is-visible'); syncMenuSurfaceInlineSize(trigger); }
     });
   });
   document.addEventListener('header:force-close', () => currentPageNotes.forEach((note) => {
+    cancelIdle();
+    if (idlePhase !== 'none') { idlePhase = 'none'; currentPageClickCount = 25; }
+    needsResume = currentPageClickCount >= 3;
     cancelNote(note);
     note.classList.remove('is-visible');
     note.setAttribute('aria-hidden', 'true');
@@ -1306,10 +1343,20 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           suppressNextCurrentPageClick = false;
           return;
         }
+        cancelIdle();
+        if (needsResume) {
+          needsResume = false;
+          if (idlePhase === 'good-boy' || idlePhase === 'hey') { idlePhase = 'none'; currentPageClickCount = 25; showMessage("i'm not playing", 400, true); }
+          else showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', 400, false);
+          if (currentPageClickCount === 24) scheduleIdle();
+          return;
+        }
+        if (idlePhase === 'good-boy') { idlePhase = 'hey'; currentPageClickCount = 25; showMessage('HEY', 400, true); idleTimer = window.setTimeout(() => { idlePhase = 'none'; showMessage("i'm not playing", 400, true); }, 700); return; }
+        if (idlePhase === 'hey') { idlePhase = 'none'; currentPageClickCount = 25; showMessage("i'm not playing", 400, true); return; }
         currentPageClickCount += 1;
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
-        const shakeCutoff = completionStored ? 5 : 13;
+        const shakeCutoff = completionStored ? 5 : 22;
         if (label && currentPageClickCount >= shakeCutoff) {
           cancelAnimations(label);
           label.classList.remove('is-error-shaking');
@@ -1325,7 +1372,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           label.classList.add('is-error-shaking');
         }
         if (completionStored && currentPageClickCount >= 7) return removeCurrentPage(event.detail === 0);
-        if (!completionStored && currentPageClickCount >= 20) return removeCurrentPage(event.detail === 0);
+        if (!completionStored && currentPageClickCount >= 29) return removeCurrentPage(event.detail === 0);
         const message = messageForClick(currentPageClickCount);
         if (!message) return;
         const weight = !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
@@ -1334,12 +1381,13 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           note.setAttribute('aria-live', note.closest('.header-trigger') === link.closest('.header-trigger') ? 'polite' : 'off');
           setNote(note, message, weight, event.detail > 0);
         });
+        if (!completionStored && currentPageClickCount === 24) scheduleIdle();
       },
       true,
     );
     link.addEventListener('pointerdown', (event) => {
       if (event.pointerType === 'mouse' && event.button === 0 &&
-        ((completionStored && currentPageClickCount === 6) || (!completionStored && currentPageClickCount === 19))) {
+        ((completionStored && currentPageClickCount === 6) || (!completionStored && currentPageClickCount === 28)) && !needsResume) {
         event.preventDefault();
         suppressNextCurrentPageClick = true;
         removeCurrentPage(false);
