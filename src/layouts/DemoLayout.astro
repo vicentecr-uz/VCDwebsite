@@ -1,0 +1,76 @@
+---
+import '../styles/global.css';
+
+interface Props { title: string }
+const { title } = Astro.props;
+const policy = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  `connect-src ${import.meta.env.DEV ? 'ws:' : "'none'"}`,
+  "form-action 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+].join('; ');
+---
+
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content={policy} />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <main class="demo-page"><slot /></main>
+  </body>
+</html>
+
+<style>
+  html, body {
+    height: 100%;
+    min-height: 100%;
+    background: var(--comp-demo-frame-container);
+  }
+
+  .demo-page {
+    position: relative;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-height: 100%;
+    padding: calc(var(--space-unit) * 4) calc(var(--space-unit) * 2);
+  }
+
+  .demo-page :global(.dev-panel) {
+    width: 100%;
+  }
+
+  .demo-page :global(.demo-controls) {
+    position: absolute;
+    right: var(--space-unit);
+    bottom: var(--space-unit);
+    display: flex;
+    gap: calc(var(--space-unit) * 2);
+  }
+
+  .demo-page :global(.demo-controls .dev-btn) {
+    --dev-btn-hit-inset: 8px;
+  }
+
+  @media (pointer: coarse) {
+    .demo-page :global(.demo-controls .dev-btn) { min-height: 44px; }
+  }
+
+  @media (max-width: 40em) {
+    .demo-page { padding-inline: var(--space-unit); }
+  }
+</style>
