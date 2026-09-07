@@ -54,6 +54,7 @@ globalThis.HTMLElement = FakeElement;
 function createHarness({ stored = false, storageThrows = false } = {}) {
   const timers = new Map();
   let nextTimer = 0;
+  let now = 0;
   const triggers = [new FakeElement('trigger'), new FakeElement('trigger')];
   triggers[0].dataset.menuOpen = 'true';
   const links = triggers.map((trigger) => {
@@ -73,13 +74,15 @@ function createHarness({ stored = false, storageThrows = false } = {}) {
   const notes = triggers.map((trigger) => trigger.note);
   const items = triggers.map((trigger) => trigger.item);
   const values = stored ? { 'vcd:header-current-page-message-complete': 'true' } : {};
+  const documentListeners = {};
   globalThis.document = {
+    hidden: false,
     activeElement: null,
     querySelectorAll: (selector) => selector.includes('[data-current-page]') ? links : notes,
     querySelector: () => triggers[0].fallback,
     documentElement: { clientWidth: 1200 },
     fonts: { ready: Promise.resolve() },
-    addEventListener: () => {},
+    addEventListener: (type, callback) => { (documentListeners[type] ??= []).push(callback); },
   };
   globalThis.window = {
     matchMedia: () => ({ matches: false }),
@@ -87,7 +90,7 @@ function createHarness({ stored = false, storageThrows = false } = {}) {
       getItem: () => storageThrows ? (() => { throw new Error('denied'); })() : values['vcd:header-current-page-message-complete'],
       setItem: (key, value) => { if (storageThrows) throw new Error('denied'); values[key] = value; },
     },
-    setTimeout: (callback) => { const id = ++nextTimer; timers.set(id, { callback, active: true }); return id; },
+    setTimeout: (callback, delay = 0) => { const id = ++nextTimer; timers.set(id, { callback, active: true, due: now + delay }); return id; },
     clearTimeout: (id) => { if (timers.get(id)) timers.get(id).active = false; },
   };
   globalThis.CSSTransition = class {};
@@ -98,13 +101,25 @@ function createHarness({ stored = false, storageThrows = false } = {}) {
   );
   // eslint-disable-next-line no-new-func
   new Function(transformed)(/* no args */);
-  return { links, notes, items, triggers, timers, values };
+  const advance = (milliseconds) => {
+    const target = now + milliseconds;
+    while (true) {
+      const next = [...timers.entries()].filter(([, timer]) => timer.active && timer.due <= target)
+        .sort((a, b) => a[1].due - b[1].due)[0];
+      if (!next) break;
+      const [id, timer] = next;
+      timers.delete(id);
+      now = timer.due;
+      timer.callback();
+    }
+    now = target;
+  };
+  return { links, notes, items, triggers, timers, values, advance, documentListeners };
 }
 
 function click(link, detail = 1) { link.dispatch('click', { detail }); }
 function flush(harness) {
-  const pending = [...harness.timers.entries()];
-  pending.forEach(([id, timer]) => { harness.timers.delete(id); if (timer.active) timer.callback(); });
+  harness.advance(100);
 }
 
 {
@@ -201,6 +216,24 @@ function flush(harness) {
   harness.triggers[0].dispatch('header:trigger-open');
   flush(harness);
   assert.equal(harness.notes[0].classList.contains('is-visible'), true);
+}
+
+{
+  const harness = createHarness();
+  for (let index = 0; index < 24; index += 1) click(harness.links[0]);
+  flush(harness);
+  assert.equal(harness.notes[0].textContent, 'well just stop');
+  harness.advance(3099);
+  assert.equal(harness.notes[0].textContent, 'well just stop');
+  harness.advance(1);
+  harness.advance(100);
+  assert.equal(harness.notes[0].textContent, "who's a good boy?");
+  click(harness.links[0]);
+  flush(harness);
+  assert.equal(harness.notes[0].textContent, 'HEY');
+  harness.advance(800);
+  harness.advance(100);
+  assert.equal(harness.notes[0].textContent, "i'm not playing");
 }
 
 console.log('header-current-page: ok');
