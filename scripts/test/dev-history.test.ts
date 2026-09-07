@@ -314,4 +314,55 @@ describe('editor history', () => {
     }));
   }
 
+
+  test('dragged thumbnail replacement retains panel undo ownership without another click', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const thumbnail = new FakeElement('thumbnail');
+    thumbnail.parent = panel;
+    const local = createHistory();
+    let parked = true, text = 'edited';
+    local.push({ label: 'Park image', undo: () => { parked = false; }, redo: () => { parked = true; } });
+    pageHistory.push({ label: 'Text', undo: () => { text = 'original'; }, redo: () => { text = 'edited'; } });
+    registerHistoryScope(panel as any, local, { signal });
+    doc.dispatchEvent(makeEvent('pointerdown', thumbnail));
+    // renderBoard replaces the thumbnail after a native drop.
+    thumbnail.parent = null;
+    thumbnail.isConnected = false;
+    const shortcut = async (redo = false) => {
+      doc.dispatchEvent(makeEvent('keydown', doc.body, { metaKey: true, shiftKey: redo, key: 'z' }));
+      await Promise.resolve();
+    };
+    await shortcut();
+    expect(parked).toBe(false);
+    expect(text).toBe('edited');
+    await shortcut();
+    expect(text).toBe('edited');
+    await shortcut(true);
+    expect(parked).toBe(true);
+    doc.dispatchEvent(makeEvent('pointerdown', doc.body));
+    await shortcut();
+    expect(text).toBe('original');
+    expect(parked).toBe(true);
+  }));
+
+  for (const closing of ['hidden', 'disposed'] as const) {
+    test(`a ${closing} panel releases history ownership after its thumbnail was replaced`, async () => withShortcuts(async (doc, _win, panel, signal) => {
+      const thumbnail = new FakeElement('thumbnail');
+      thumbnail.parent = panel;
+      const local = createHistory();
+      let panelValue = 1, pageValue = 1;
+      local.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => {} });
+      pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => {} });
+      const dispose = registerHistoryScope(panel as any, local, { signal });
+      doc.dispatchEvent(makeEvent('pointerdown', thumbnail));
+      thumbnail.parent = null;
+      thumbnail.isConnected = false;
+      if (closing === 'hidden') panel.field = 'hidden';
+      else dispose();
+      doc.dispatchEvent(makeEvent('keydown', doc.body, { metaKey: true, key: 'z' }));
+      await Promise.resolve();
+      expect(pageValue).toBe(0);
+      expect(panelValue).toBe(1);
+    }));
+  }
+
 });
