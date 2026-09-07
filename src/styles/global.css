@@ -233,6 +233,12 @@
   --sys-color-link-soft: var(--sys-color-on-srf-variant);
   --sys-color-link-soft-hover: var(--sys-color-on-srf);
   --sys-color-srf-container-low: var(--ref-palette-grey-950);
+  --sys-color-surface-edge: rgba(0, 0, 0, 0.08);
+  --sys-color-surface-outline: var(--sys-color-srf-container-low);
+  --sys-color-surface-shadow: rgba(0, 0, 0, 0.08);
+  --sys-surface-edge-y: -1;
+  --sys-surface-shadow-y: 7;
+  --sys-surface-shadow-blur: 19;
   --comp-button-ghost-container: transparent;
   --comp-button-ghost-container-hover: var(--sys-color-srf-container-low);
   --comp-button-ghost-container-pressed: var(--sys-color-srf-container);
@@ -300,6 +306,12 @@
   --sys-color-link-soft: var(--sys-color-on-srf-variant);
   --sys-color-link-soft-hover: var(--sys-color-on-srf);
   --sys-color-srf-container-low: var(--ref-palette-grey-150);
+  --sys-color-surface-edge: rgba(255, 255, 255, 0.06);
+  --sys-color-surface-outline: rgba(255, 255, 255, 0.04);
+  --sys-color-surface-shadow: rgba(0, 0, 0, 0.24);
+  --sys-surface-edge-y: 1;
+  --sys-surface-shadow-y: 1;
+  --sys-surface-shadow-blur: 2;
 }
 /* @tokens:end */
 
@@ -324,6 +336,7 @@
     0 calc(var(--sys-surface-shadow-y) * 1px)
       calc(var(--sys-surface-shadow-blur) * var(--dev-surface-blur-scale) * 1px)
       var(--sys-color-surface-shadow);
+  /* Preserve the existing light-mode Figma 19px → CSS 9.5px blur calibration. */
   --dev-surface-blur-scale: 0.5;
   --radius-card: 1em;
   --radius-control: 0.7em;
@@ -449,12 +462,6 @@
 }
 
 :root[data-theme="dark"] {
-  --dev-surface-shadow:
-    inset 0 calc(var(--sys-surface-edge-y) * 1px) 0 var(--sys-color-surface-edge),
-    inset 0 0 0 1px var(--sys-color-surface-outline),
-    0 calc(var(--sys-surface-shadow-y) * 1px)
-      calc(var(--sys-surface-shadow-blur) * var(--dev-surface-blur-scale) * 1px)
-      var(--sys-color-surface-shadow);
   --dev-surface-blur-scale: 1;
 }
 
