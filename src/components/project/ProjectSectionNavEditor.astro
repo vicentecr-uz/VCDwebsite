@@ -347,7 +347,7 @@ import SelectField from '../ui/SelectField.astro';
       panel.hidden = false;
       if (focusKind) {
         const input = focusKind === 'group' ? groupLabel : sectionLabel;
-        input.focus();
+        input.focus({ preventScroll: true });
         input.select();
       }
     };
@@ -439,7 +439,6 @@ import SelectField from '../ui/SelectField.astro';
       const block = blocks().find((block) => block.id === outlineAnchorId(entry));
       if (!block) return;
       event.preventDefault();
-      event.stopImmediatePropagation();
       selectBlock(block, entry.kind);
     }, { capture: true, signal });
     document.addEventListener('pointerdown', (event) => {

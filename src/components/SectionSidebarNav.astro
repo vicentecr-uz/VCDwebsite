@@ -1251,36 +1251,34 @@ const easingOptions = [
       if (summary instanceof HTMLElement && nav.contains(summary)) {
         const group = summary.closest('.section-sidebar-nav__group');
         if (!(group instanceof HTMLDetailsElement)) return;
-        event.preventDefault();
-        const willBeOpen = !groupIsVisuallyOpen(group);
-        if (willBeOpen) {
-          pinnedOpenGroups.add(group);
-          pinnedClosedGroups.delete(group);
+        if (document.documentElement.classList.contains('show-section-nav-editor')) {
+          event.preventDefault();
         } else {
-          pinnedOpenGroups.delete(group);
-          pinnedClosedGroups.add(group);
+          event.preventDefault();
+          const willBeOpen = !groupIsVisuallyOpen(group);
+          if (willBeOpen) {
+            pinnedOpenGroups.add(group);
+            pinnedClosedGroups.delete(group);
+          } else {
+            pinnedOpenGroups.delete(group);
+            pinnedClosedGroups.add(group);
+          }
+          animateGroup(group, willBeOpen);
+          const activeLink = nav.querySelector('.section-sidebar-nav__link.is-active');
+          const activeGroup = activeLink?.closest('.section-sidebar-nav__group') ?? null;
+          syncActiveGroupHighlight(
+            activeGroup instanceof HTMLDetailsElement ? activeGroup : null,
+          );
+          return;
         }
-        animateGroup(group, willBeOpen);
-        const activeLink = nav.querySelector('.section-sidebar-nav__link.is-active');
-        const activeGroup = activeLink?.closest('.section-sidebar-nav__group') ?? null;
-        syncActiveGroupHighlight(
-          activeGroup instanceof HTMLDetailsElement ? activeGroup : null,
-        );
-        return;
-      }
-
-      // Section Editor owns sidebar link clicks while active.
-      if (
-        document.documentElement.classList.contains('show-section-nav-editor') &&
-        document.documentElement.classList.contains('is-dev-mode')
-      ) {
-        return;
       }
 
       const link = target.closest('.section-sidebar-nav__link');
-      if (!(link instanceof HTMLAnchorElement) || !nav.contains(link)) return;
-
-      const href = link.getAttribute('href');
+      const sectionEditorActive = document.documentElement.classList.contains('show-section-nav-editor');
+      const group = summary?.closest('.section-sidebar-nav__group');
+      const href = sectionEditorActive && group instanceof HTMLElement
+        ? `#${group.dataset.navAnchor || ''}`
+        : link instanceof HTMLAnchorElement ? link.getAttribute('href') : null;
       if (!href || !href.startsWith('#')) return;
 
       const id = href.slice(1);
