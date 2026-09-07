@@ -1,13 +1,13 @@
 ---
 import Button from '../../ui/Button.astro';
+import DevPanel from '../../ui/DevPanel.astro';
 import SelectField from '../../ui/SelectField.astro';
 import '../../../styles/project.css';
 ---
 
 <vcd-progressive-image-demo>
   <form class="progressive-image-demo" novalidate>
-    <div class="progressive-image-demo__surface">
-      <h1 class="progressive-image-demo__title">Progressive image loading</h1>
+    <DevPanel title="Progressive image loading" titleTag="h1" showLights={false} class="progressive-image-demo__surface">
 
       <div class="progressive-image-demo__frame" data-image-root>
         <img
@@ -41,41 +41,18 @@ import '../../../styles/project.css';
         ]}
       />
 
-      <div class="progressive-image-demo__actions">
-        <Button label="Load" type="submit" data-load />
-        <Button label="Reset" type="button" data-reset />
-      </div>
-    </div>
+      <Button label="Load" type="submit" class="progressive-image-demo__load" data-load />
+    </DevPanel>
   </form>
+  <div class="demo-controls">
+    <Button label="Reset" type="button" data-reset />
+  </div>
 </vcd-progressive-image-demo>
 
 <style>
   vcd-progressive-image-demo {
     display: block;
-    width: min(100%, 28em);
-  }
-
-  .progressive-image-demo {
-    margin: 0;
-  }
-
-  .progressive-image-demo__surface {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-unit);
-    padding: calc(var(--space-unit) * 1.5);
-    overflow: visible;
-    color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf);
-    border: 1px solid var(--sys-color-srf-container-low);
-    border-radius: var(--radius-card-smooth);
-    box-shadow: var(--dev-panel-shadow);
-  }
-
-  .progressive-image-demo__title {
-    margin: 0;
-    color: var(--sys-color-on-srf);
-    font: var(--dev-text-panel-title);
+    width: 100%;
   }
 
   .progressive-image-demo__frame {
@@ -99,22 +76,12 @@ import '../../../styles/project.css';
     font: var(--dev-text-label);
   }
 
-  .progressive-image-demo__actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: calc(var(--space-unit) * 2);
-    padding: 8px;
-    margin: -8px;
-  }
-
-  .progressive-image-demo__actions :global(.dev-btn) {
-    --dev-btn-hit-inset: 8px;
+  .progressive-image-demo__load {
+    align-self: flex-start;
   }
 
   @media (max-width: 40em) {
-    .progressive-image-demo__surface {
-      padding: var(--space-unit);
-    }
+    .progressive-image-demo__surface { width: 100%; }
   }
 
   @media (pointer: coarse) {
