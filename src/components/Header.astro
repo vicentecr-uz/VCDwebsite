@@ -1154,70 +1154,202 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   const currentPageNotes = [
     ...document.querySelectorAll<HTMLElement>('[data-current-page-note]'),
   ];
+  const currentPageItems = currentPageLinks
+    .map((link) => link.closest<HTMLElement>('.header-menu__item'))
+    .filter((item): item is HTMLElement => Boolean(item));
   const reduceMotionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const currentPageStorageKey = 'vcd:header-current-page-message-complete';
   let currentPageClickCount = 0;
+  let suppressNextCurrentPageClick = false;
+  let completionStored = false;
+  try {
+    completionStored = window.localStorage.getItem(currentPageStorageKey) === 'true';
+  } catch {
+    completionStored = false;
+  }
 
+  const messageForClick = (count: number) => {
+    if (completionStored) return count <= 4 && count >= 3 ? 'You are on this page' :
+      count === 5 ? 'ah, you again' : count === 6 ? 'welcome back' : null;
+    if (count <= 9 && count >= 3) return 'You are on this page';
+    return ({
+      10: 'chill out', 11: 'bro can you read',
+      22: "ahh, i see, you're curious", 23: 'how long this will go, right?',
+      24: 'well just stop', 25: "i'm not playing", 26: 'seriously',
+      27: "alright, that's it", 28: 'go on, click it again, see what happens',
+    } as Record<number, string>)[count] ?? (count >= 12 && count <= 21 ? 'are you dumb?' : null);
+  };
+
+  let currentPageRemoved = false;
+  let idleTimer: number | null = null;
+  let idlePhase: 'none' | 'good-boy' | 'hey' = 'none';
+  let needsResume = false;
+  const noteTimers = new Map<HTMLElement, number>();
+  const cancelAnimations = (element: HTMLElement) => element.getAnimations().forEach((animation) => animation.cancel());
+  const animatePanelWidth = (trigger: HTMLElement, update: () => void, animate = true) => {
+    const panelBg = trigger.querySelector<HTMLElement>('.header-trigger__panel-bg');
+    const before = panelBg?.getBoundingClientRect().width ?? 0;
+    // Only cancel the width FLIP; menu open/close owns the CSS surface transitions.
+    panelBg?.getAnimations().filter((animation) => !(animation instanceof CSSTransition)).forEach((animation) => animation.cancel());
+    update();
+    if (!animate || !panelBg || reduceMotionMq.matches || before <= 0) return;
+    const after = panelBg.getBoundingClientRect().width;
+    if (after <= 0 || Math.abs(after - before) < 0.5) return;
+    panelBg.animate([{ transform: `scaleX(${before / after})` }, { transform: 'scaleX(1)' }], {
+      duration: 180, easing: 'cubic-bezier(0.65, 0, 0.35, 1)',
+    });
+  };
+  const cancelNote = (note: HTMLElement) => {
+    clearTimeout(noteTimers.get(note));
+    noteTimers.delete(note);
+    cancelAnimations(note);
+  };
+  const cancelIdle = () => {
+    if (idleTimer !== null) window.clearTimeout(idleTimer);
+    idleTimer = null;
+  };
+  const menuIsOpen = () => currentPageNotes.some((note) => note.closest<HTMLElement>('.header-trigger')?.dataset.menuOpen === 'true');
+  const showMessage = (text: string, weight = 400, animate = true) => currentPageNotes.forEach((note) => {
+    note.setAttribute('aria-live', note.closest<HTMLElement>('.header-trigger')?.dataset.menuOpen === 'true' ? 'polite' : 'off');
+    setNote(note, text, weight, animate);
+  });
+  const scheduleIdle = () => {
+    cancelIdle();
+    idleTimer = window.setTimeout(() => {
+      idleTimer = null;
+      if (!menuIsOpen() || currentPageRemoved) return;
+      idlePhase = 'good-boy';
+      showMessage("who's a good boy?", 400, true);
+      idleTimer = window.setTimeout(() => {
+        idleTimer = null;
+        if (!menuIsOpen() || currentPageRemoved || idlePhase !== 'good-boy') return;
+        currentPageNotes.forEach(hideCurrentPageNote);
+        idleTimer = window.setTimeout(() => { idleTimer = null; idlePhase = 'none'; }, 100);
+      }, 3100);
+    }, 3100);
+  };
+  const setNote = (note: HTMLElement, text: string, weight: number, animate: boolean) => {
+    const animateText = animate && !(note.classList.contains('is-visible') && note.textContent === text);
+    cancelNote(note);
+    const trigger = note.closest<HTMLElement>('.header-trigger');
+    if (!trigger) return;
+    const open = trigger.dataset.menuOpen === 'true';
+    const reveal = () => {
+      noteTimers.delete(note);
+      animatePanelWidth(trigger, () => {
+        note.textContent = text;
+        note.style.fontWeight = String(weight);
+        note.style.color = weight >= 900 ? 'var(--sys-color-link-soft-hover)' :
+          weight >= 700 ? 'color-mix(in srgb, var(--sys-color-link-soft), var(--sys-color-link-soft-hover) 50%)' : '';
+        note.classList.toggle('is-visible', open);
+        note.setAttribute('aria-hidden', String(!open));
+        syncMenuSurfaceInlineSize(trigger);
+      }, animate);
+      if (animateText && open) note.animate([
+        { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+        { opacity: 0.48, filter: 'blur(0px)' },
+      ], { duration: 150, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+    };
+    if (animateText && open && note.classList.contains('is-visible')) {
+      note.animate([
+        { opacity: 0.48, filter: 'blur(0px)' },
+        { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+      ], { duration: 100, easing: 'ease-out', fill: 'forwards' });
+      noteTimers.set(note, window.setTimeout(() => { cancelAnimations(note); reveal(); }, 100));
+    } else reveal();
+  };
   const hideCurrentPageNote = (note: HTMLElement) => {
-    if (!note.classList.contains('is-visible')) return;
-    if (reduceMotionMq.matches || note.classList.contains('is-instant')) {
-      note.classList.remove('is-visible', 'is-hiding', 'is-instant');
+    cancelNote(note);
+    note.setAttribute('aria-hidden', 'true');
+    if (currentPageRemoved || !note.classList.contains('is-visible')) return;
+    note.animate([
+      { opacity: 0.48, filter: 'blur(0px)' },
+      { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+    ], { duration: 100, easing: 'ease-out', fill: 'forwards' });
+    noteTimers.set(note, window.setTimeout(() => {
+      cancelNote(note);
       const trigger = note.closest<HTMLElement>('.header-trigger');
-      if (trigger?.hasAttribute('data-menu-surface-open')) {
+      if (trigger) animatePanelWidth(trigger, () => {
+        note.classList.remove('is-visible');
+        syncMenuSurfaceInlineSize(trigger);
+      });
+      else note.classList.remove('is-visible');
+    }, 100));
+  };
+  const removeCurrentPage = (focusFallback = false) => {
+    cancelIdle();
+    if (currentPageRemoved) return;
+    currentPageRemoved = true;
+    const active = document.activeElement;
+    const focused = active instanceof HTMLElement && currentPageLinks.includes(active as HTMLAnchorElement);
+    const activeTrigger = active instanceof HTMLElement ? active.closest<HTMLElement>('.header-trigger') : null;
+    const fallback = activeTrigger?.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])');
+    currentPageNotes.forEach(cancelNote);
+    currentPageItems.forEach((item) => {
+      item.style.setProperty('--current-page-row-height', `${item.getBoundingClientRect().height}px`);
+      item.classList.add('is-removing');
+      item.setAttribute('inert', '');
+      item.setAttribute('aria-hidden', 'true');
+      item.animate([
+        { opacity: 1, filter: 'blur(0px)' },
+        { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+      ], { duration: focusFallback ? 0 : 100, easing: 'ease-out', fill: 'forwards' });
+    });
+    if (focused && focusFallback) fallback?.focus();
+    else if (focused && active instanceof HTMLElement) active.blur();
+    try { window.localStorage.setItem(currentPageStorageKey, 'true'); } catch { /* Storage is optional; this visit still completes. */ }
+    window.setTimeout(() => {
+      currentPageItems.forEach((item) => {
+        const trigger = item.closest<HTMLElement>('.header-trigger');
+        const finish = () => {
+          item.classList.remove('is-removing');
+          item.classList.add('is-removed');
+          cancelAnimations(item);
+          if (trigger) syncMenuSurfaceInlineSize(trigger);
+        };
+        if (trigger) animatePanelWidth(trigger, finish, !focusFallback);
+        else finish();
+      });
+    }, focusFallback ? 0 : 100);
+  };
+
+  const messageWeight = () => !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
+    !completionStored && currentPageClickCount >= 5 && currentPageClickCount <= 6 ? 700 : 400;
+  const pauseMessages = () => {
+    cancelIdle();
+    if (idlePhase !== 'none') {
+      idlePhase = 'none';
+      currentPageClickCount = 25;
+    }
+    needsResume = currentPageClickCount >= 3;
+  };
+  currentPageNotes.forEach((note) => {
+    const trigger = note.closest<HTMLElement>('.header-trigger');
+    trigger?.addEventListener('header:trigger-close', () => {
+      pauseMessages();
+      hideCurrentPageNote(note);
+    });
+    trigger?.addEventListener('header:trigger-open', () => {
+      cancelNote(note);
+      if (needsResume && !currentPageRemoved) showMessage('You are on this page', 400, false);
+      else {
+        note.classList.remove('is-visible');
         syncMenuSurfaceInlineSize(trigger);
       }
-      return;
-    }
-    const link = note.closest('.header-menu__item')?.querySelector<HTMLElement>('.header-menu__link');
-    if (link) {
-      note.style.setProperty('--menu-link-delay', link.style.getPropertyValue('--menu-link-delay'));
-      note.style.setProperty('--menu-link-duration', link.style.getPropertyValue('--menu-link-duration'));
-    }
-    note.classList.add('is-hiding');
-    note.classList.remove('is-visible');
-    note.addEventListener(
-      'animationend',
-      () => {
-        note.classList.remove('is-hiding');
-        const trigger = note.closest<HTMLElement>('.header-trigger');
-        if (trigger?.hasAttribute('data-menu-surface-open')) {
-          syncMenuSurfaceInlineSize(trigger);
-        }
-      },
-      { once: true },
-    );
-  };
-
-  const showCurrentPageNote = (note: HTMLElement, animate: boolean) => {
-    if (note.classList.contains('is-visible')) return;
-    const trigger = note.closest<HTMLElement>('.header-trigger');
-    const panelBg = trigger?.querySelector<HTMLElement>('.header-trigger__panel-bg');
-    const previousWidth = panelBg?.getBoundingClientRect().width ?? 0;
-
-    note.classList.remove('is-hiding');
-    note.classList.toggle('is-instant', !animate);
-    note.classList.add('is-visible');
-    if (trigger) syncMenuSurfaceInlineSize(trigger);
-
-    if (!animate || !panelBg || previousWidth <= 0) return;
-    const nextWidth = panelBg.getBoundingClientRect().width;
-    if (nextWidth <= previousWidth) return;
-    panelBg.animate(
-      [
-        { transform: `scaleX(${previousWidth / nextWidth})` },
-        { transform: 'scaleX(1)' },
-      ],
-      {
-        duration: 280,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-      },
-    );
-  };
-
-  currentPageNotes.forEach((note) => {
-    note.closest('.header-trigger')?.addEventListener(
-      'header:trigger-close',
-      () => hideCurrentPageNote(note),
-    );
+    });
+  });
+  document.addEventListener('header:force-close', () => {
+    pauseMessages();
+    currentPageNotes.forEach((note) => {
+      cancelNote(note);
+      note.classList.remove('is-visible');
+      note.setAttribute('aria-hidden', 'true');
+    });
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    pauseMessages();
+    currentPageNotes.forEach(hideCurrentPageNote);
   });
 
   currentPageLinks.forEach((link) => {
@@ -1225,27 +1357,72 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       'click',
       (event) => {
         event.preventDefault();
+        if (currentPageRemoved || suppressNextCurrentPageClick) {
+          suppressNextCurrentPageClick = false;
+          return;
+        }
+        cancelIdle();
+        if (needsResume) {
+          needsResume = false;
+          showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', messageWeight(), event.detail > 0);
+          if (!completionStored && currentPageClickCount === 24) scheduleIdle();
+          return;
+        }
+        if (idlePhase === 'good-boy') {
+          idlePhase = 'hey';
+          currentPageClickCount = 25;
+          showMessage('HEY', 400, event.detail > 0);
+          idleTimer = window.setTimeout(() => {
+            idleTimer = null;
+            idlePhase = 'none';
+            showMessage("i'm not playing", 400, true);
+          }, 800);
+          return;
+        }
+        if (idlePhase === 'hey') {
+          idlePhase = 'none';
+          showMessage("i'm not playing", 400, event.detail > 0);
+          return;
+        }
         currentPageClickCount += 1;
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
-        if (event.detail > 0 && !reduceMotionMq.matches && label) {
+        const shakeCutoff = completionStored ? 5 : 22;
+        if (label && currentPageClickCount >= shakeCutoff) {
+          cancelAnimations(label);
           label.classList.remove('is-error-shaking');
+        }
+        if (event.detail > 0 && !reduceMotionMq.matches && label && currentPageClickCount < shakeCutoff) {
+          cancelAnimations(label);
+          label.classList.remove('is-error-shaking');
+          const strength = completionStored ? 0.45 : currentPageClickCount <= 9
+            ? 0.5 + (currentPageClickCount - 1) * 0.125 : 0.4;
+          label.style.setProperty('--current-shake-strength', String(strength));
+          label.style.setProperty('--current-shake-duration', completionStored || currentPageClickCount >= 10 ? '0.15s' : '0.24s');
           void label.offsetWidth;
           label.classList.add('is-error-shaking');
-          label.addEventListener(
-            'animationend',
-            () => label.classList.remove('is-error-shaking'),
-            { once: true },
-          );
         }
-
-        if (currentPageClickCount >= 3) {
-          const note = link.closest('.header-menu__item')?.querySelector<HTMLElement>('[data-current-page-note]');
-          if (note) showCurrentPageNote(note, event.detail > 0 && !reduceMotionMq.matches);
-        }
+        if (completionStored && currentPageClickCount >= 7) return removeCurrentPage(event.detail === 0);
+        if (!completionStored && currentPageClickCount >= 29) return removeCurrentPage(event.detail === 0);
+        const message = messageForClick(currentPageClickCount);
+        if (!message) return;
+        const weight = messageWeight();
+        currentPageNotes.forEach((note) => {
+          note.setAttribute('aria-live', note.closest('.header-trigger') === link.closest('.header-trigger') ? 'polite' : 'off');
+          setNote(note, message, weight, event.detail > 0);
+        });
+        if (!completionStored && currentPageClickCount === 24) scheduleIdle();
       },
       true,
     );
+    link.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' && event.button === 0 &&
+        ((completionStored && currentPageClickCount === 6) || (!completionStored && currentPageClickCount === 28)) && !needsResume) {
+        event.preventDefault();
+        suppressNextCurrentPageClick = true;
+        removeCurrentPage(false);
+      }
+    }, true);
   });
 
   // DEV-only: Section Editor is toggled via Alt+E (see DevModeController).
@@ -1649,14 +1826,32 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-menu__link-label.is-error-shaking {
-    animation: header-current-page-error-shake 0.24s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    animation: header-current-page-error-shake var(--current-shake-duration, 0.24s) cubic-bezier(0.36, 0.07, 0.19, 0.97);
   }
 
   .header-menu__item--current-page {
     display: flex;
     align-items: baseline;
     gap: 1em;
+    max-width: calc(var(--header-menu-viewport-size, 100vw) - var(--header-menu-outer-space, 0px) - 2 * var(--hitbox-pad));
     white-space: nowrap;
+  }
+
+  .header-menu__item--current-page.is-removed {
+    display: block;
+    width: 0;
+    height: var(--current-page-row-height, 1em);
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .header-menu__item--current-page.is-removing {
+    pointer-events: none;
+    height: var(--current-page-row-height);
+  }
+
+  .header-menu__item--current-page.is-removed > * {
+    display: none !important;
   }
 
   .header-trigger--end .header-menu__item--current-page .header-menu__current-note {
@@ -1671,47 +1866,24 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     font-weight: 400;
     letter-spacing: -0.05ch;
     line-height: 1;
+    max-width: min(28em, calc(100vw - 2 * var(--space-unit)));
+    min-width: 0;
+    flex: 1 1 auto;
+    white-space: normal;
   }
 
   .header-trigger.is-menu-open .header-menu__current-note.is-visible,
   .header-trigger:focus-within .header-menu__current-note.is-visible {
     display: inline-block;
-    animation: header-current-note-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .header-trigger.is-menu-open .header-menu__current-note.is-visible.is-instant,
-  .header-trigger:focus-within .header-menu__current-note.is-visible.is-instant {
     opacity: 0.48;
-    animation: none;
-  }
-
-  .header-menu__current-note.is-hiding {
-    display: inline-block;
-    animation: header-current-note-fade-out var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s) both;
   }
 
   @keyframes header-current-page-error-shake {
     0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-0.14em); }
-    40% { transform: translateX(0.11em); }
-    60% { transform: translateX(-0.07em); }
-    80% { transform: translateX(0.035em); }
-  }
-
-  @keyframes header-current-note-in {
-    from {
-      opacity: 0;
-      transform: translateX(-0.2em);
-    }
-    to {
-      opacity: 0.48;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes header-current-note-fade-out {
-    from { opacity: 0.48; }
-    to { opacity: 0; }
+    20% { transform: translateX(calc(-0.14em * var(--current-shake-strength, 1))); }
+    40% { transform: translateX(calc(0.11em * var(--current-shake-strength, 1))); }
+    60% { transform: translateX(calc(-0.07em * var(--current-shake-strength, 1))); }
+    80% { transform: translateX(calc(0.035em * var(--current-shake-strength, 1))); }
   }
 
   .header-trigger__wordmark {
@@ -1883,9 +2055,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     .header-trigger.is-menu-open .header-menu__current-note.is-visible,
     .header-trigger:focus-within .header-menu__current-note.is-visible,
-    .header-menu__current-note.is-hiding {
+    .header-menu__current-note {
       transform: none;
-      animation: none;
     }
 
     .header-trigger {
