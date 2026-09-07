@@ -1202,6 +1202,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     cancelAnimations(note);
   };
   const setNote = (note: HTMLElement, text: string, weight: number, animate: boolean) => {
+    const animateText = animate && !(note.classList.contains('is-visible') && note.textContent === text);
     cancelNote(note);
     const trigger = note.closest<HTMLElement>('.header-trigger');
     if (!trigger) return;
@@ -1211,16 +1212,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       animatePanelWidth(trigger, () => {
         note.textContent = text;
         note.style.fontWeight = String(weight);
+        note.style.color = weight >= 900 ? 'var(--sys-color-link-soft-hover)' :
+          weight >= 700 ? 'color-mix(in srgb, var(--sys-color-link-soft), var(--sys-color-link-soft-hover) 50%)' : '';
         note.classList.toggle('is-visible', open);
         note.setAttribute('aria-hidden', String(!open));
         syncMenuSurfaceInlineSize(trigger);
       }, animate);
-      if (animate && open) note.animate([
+      if (animateText && open) note.animate([
         { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
         { opacity: 0.48, filter: 'blur(0px)' },
       ], { duration: 150, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
     };
-    if (animate && open && note.classList.contains('is-visible')) {
+    if (animateText && open && note.classList.contains('is-visible')) {
       note.animate([
         { opacity: 0.48, filter: 'blur(0px)' },
         { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
