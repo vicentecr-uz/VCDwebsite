@@ -1,15 +1,24 @@
-import { describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
+  SECTION_ORDER_ID_ATTR,
   captureSectionOrder,
   getSectionRoots,
   sectionIndexFromElement,
 } from '../../src/scripts/devSectionPaths';
 
-if (!globalThis.Node) {
-  Object.defineProperty(globalThis, 'Node', {
-    value: { DOCUMENT_POSITION_FOLLOWING: 4, DOCUMENT_POSITION_PRECEDING: 2 },
-  });
-}
+const originalNode = Object.getOwnPropertyDescriptor(globalThis, 'Node');
+beforeAll(() => {
+  if (!globalThis.Node) {
+    Object.defineProperty(globalThis, 'Node', {
+      value: { DOCUMENT_POSITION_FOLLOWING: 4, DOCUMENT_POSITION_PRECEDING: 2 },
+      configurable: true,
+    });
+  }
+});
+afterAll(() => {
+  if (originalNode) Object.defineProperty(globalThis, 'Node', originalNode);
+  else Reflect.deleteProperty(globalThis, 'Node');
+});
 
 type FakeElement = {
   dataset: Record<string, string>;
@@ -31,7 +40,7 @@ const element = (dataset: Record<string, string>, order: number): FakeElement =>
     hasAttribute: (name) => attributes.has(name),
     getAttribute: (name) => attributes.get(name) ?? null,
     setAttribute: (name, value) => attributes.set(name, value),
-    compareDocumentPosition: (other) => other.order > order ? 4 : 2,
+    compareDocumentPosition(other) { return other.order > this.order ? 4 : 2; },
   };
 };
 
@@ -54,5 +63,10 @@ describe('dev section path helpers', () => {
 
     expect(getSectionRoots(zone)).toEqual([first, second]);
     expect(captureSectionOrder(zone)).toEqual([0, 1]);
+    expect(trailing.hasAttribute(SECTION_ORDER_ID_ATTR)).toBe(false);
+
+    first.order = 1;
+    second.order = 0;
+    expect(captureSectionOrder(zone)).toEqual([1, 0]);
   });
 });
