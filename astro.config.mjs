@@ -1,4 +1,5 @@
 // @ts-check
+import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -31,6 +32,8 @@ import {
   writeDevDocument,
   devAuthoringState,
   devAuthoringActive,
+  devAuthoringRequestQueue,
+  writeAtomicJson,
 } from './scripts/dev-api-plugins.mjs';
 import { normalizeOutline, outlineFromNav } from './src/lib/projectOutline.ts';
 import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
@@ -443,7 +446,7 @@ function styleTokenDevWriter() {
           // Live preview already applied the colour — skip CSS HMR invalidation
           // so is-dev-mode and the save bar stay up (full-reload is always blocked).
           suppressContentHmr();
-          await writeFile(tokensFile, `${JSON.stringify(tokensJson, null, 2)}\n`, 'utf8');
+          await writeAtomicJson(tokensFile, tokensJson);
           await writeFile(cssFile, nextCss, 'utf8');
           send(200, { ok: true, token, value });
         } catch {
@@ -652,7 +655,7 @@ const applyImageWidthFlags = (target, change) => {
  * Apply one image-crop mutation onto an in-memory document node.
  * @returns {{ ok: true } | { ok: false, error: string }}
  */
-const applyCropChange = (data, change) => {
+export const applyCropChange = (data, change) => {
   const fieldPath = change.path;
   if (!Array.isArray(fieldPath) || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
     return { ok: false, error: 'That image is not editable.' };
@@ -662,14 +665,16 @@ const applyCropChange = (data, change) => {
     return { ok: false, error: 'That image path no longer exists.' };
   }
 
+  const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
+  if (isDerivativeToken(requestedSrc)) return { ok: false, error: 'Reload this editor before saving the image: its original file reference is missing.' };
+
   if (change.clearVariants === true) {
     delete target.variants;
     delete target.crop;
-    applyImageWidthFlags(target, change);
-    return { ok: true };
   }
+  if (change.clearHoverVariants === true) delete target.hoverVariants;
+  if (change.clearHoverImage === true) delete target.hoverImage;
 
-  const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
   const hoverSlot = change.slot === 'hoverImage';
   if (typeof change.src === 'string' && !requestedSrc) {
     return { ok: false, error: 'That image file is not valid.' };
@@ -788,7 +793,8 @@ const applyCropChange = (data, change) => {
       }
     }
     delete target.crop;
-  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc) {
+  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc
+    && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 
@@ -1557,8 +1563,7 @@ export const syncOutlineForSectionMutation = (data, { action, section, index }) 
 };
 
 const writeContentJson = async (file, data) => {
-  suppressContentHmr();
-  await writeFile(file, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+  await writeAtomicJson(file, data);
 };
 
 /**
@@ -2353,6 +2358,7 @@ export default defineConfig({
       tailwindcss(),
       productionBoundary(),
       devAuthoringState(),
+      devAuthoringRequestQueue(),
       branchUpdateDevWriter({ authoringActive: devAuthoringActive }),
       stubLapseWhenUnavailable(),
       contentHmrGate(),

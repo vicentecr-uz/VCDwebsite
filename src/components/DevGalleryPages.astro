@@ -47,6 +47,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     responsiveImageStyle,
     type ImageVariants,
   } from '../lib/responsiveImage';
+  import { pageHistory, registerHistoryScope } from '../lib/devHistory';
 
   /** @typedef {{
    *   slug: string,
@@ -100,6 +101,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     let filter = 'all';
     /** @type {'home' | 'work' | 'play' | ''} */
     let activeGrid = '';
+    let loadedGrid = '';
+    let loadPromise: Promise<void> | null = null;
     /** @type {Map<string, HTMLElement>} */
     const detachedItems = new Map();
     /** @type {Map<string, HTMLElement>} */
@@ -110,6 +113,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const GRID_GAP = 8;
     const GRID_COLUMNS = 3;
     let layoutCapsRaf = 0;
+    let historyScope: ReturnType<typeof pageHistory.scope> | null = null;
+    let unregisterHistoryScope: (() => void) | null = null;
     const prefersReducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const readLandscapeDefaultInnerWidth = () => {
@@ -314,6 +319,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         const startX = event.clientX;
         const startY = event.clientY;
         const preDragOrder = draggableCardOrder();
+        const preDragSnapshot = gallerySnapshot();
         let active = false;
         let baseX = startX;
         let baseY = startY;
@@ -439,6 +445,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           applyOrderToLiveGrid(finalOrder);
           syncPending();
           syncCount();
+          pushGalleryChange(preDragSnapshot, gallerySnapshot(), 'Reorder gallery');
         };
 
         const onCancel = (cancelEvent: PointerEvent) => {
@@ -564,6 +571,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         }
 
         const editAttrs = listingCoverDevEditAttrs(page.slug, grid, {
+          image: page.image,
+          hoverImage: page.hoverImage,
           variants,
           hoverVariants,
           srcWidth: page.srcWidth,
@@ -640,19 +649,17 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       for (const [slug, item] of [...createdItems]) {
         if (selected.has(slug)) continue;
         item.remove();
-        createdItems.delete(slug);
       }
 
       for (const slug of [...selected]) {
         const existing = grid.querySelector<HTMLElement>(`[data-dev-project-slug="${slug}"]`);
         if (existing) continue;
 
-        const detached = detachedItems.get(slug);
+        const detached = detachedItems.get(slug) ?? createdItems.get(slug);
         if (detached) {
           // Re-add lands at the end — expected; order dirtiness keeps Revert available.
           if (anchor) grid.insertBefore(detached, anchor);
           else grid.append(detached);
-          detachedItems.delete(slug);
           continue;
         }
 
@@ -670,7 +677,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         if (!slug || selected.has(slug)) continue;
         if (createdItems.has(slug)) {
           item.remove();
-          createdItems.delete(slug);
           continue;
         }
         detachedItems.set(slug, item);
@@ -716,8 +722,6 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         if (slug && !baseline.has(slug)) item.remove();
       }
 
-      detachedItems.clear();
-      createdItems.clear();
     };
 
     const syncPending = () => {
@@ -743,6 +747,33 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           },
         },
       }));
+    };
+
+    const gallerySnapshot = () => ({
+      selected: [...selected],
+      order: captureGridOrder(),
+      pagesOrder: pages.map((page) => page.slug),
+    });
+
+    const snapshotsMatch = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+    const applyGallerySnapshot = (snapshot) => {
+      selected = new Set(snapshot.selected);
+      applyPagesOrder(snapshot.pagesOrder);
+      applyMembershipPreview();
+      applyOrderToLiveGrid(snapshot.order.map((entry) => entry.slug));
+      renderGrid();
+      syncPending();
+      syncCount();
+    };
+
+    const pushGalleryChange = (before, after, label) => {
+      if (snapshotsMatch(before, after) || pageHistory.replaying) return;
+      (historyScope ?? pageHistory).push({
+        label,
+        undo: () => applyGallerySnapshot(before),
+        redo: () => applyGallerySnapshot(after),
+      });
     };
 
     const visiblePages = () => pages.filter((page) => {
@@ -823,6 +854,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
         badge.addEventListener('dragstart', (event) => event.preventDefault());
 
         badge.addEventListener('click', () => {
+          const before = gallerySnapshot();
           if (selected.has(page.slug)) selected.delete(page.slug);
           else selected.add(page.slug);
           sortPagesByMembership();
@@ -830,6 +862,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           renderGrid();
           syncCount();
           syncPending();
+          pushGalleryChange(before, gallerySnapshot(), `${selected.has(page.slug) ? 'Show' : 'Hide'} ${page.title}`);
         });
         attachCardDrag(card, thumb, page, isOn);
 
@@ -843,26 +876,42 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
 
     const loadPages = async () => {
       if (!activeGrid) return;
+      if (loadedGrid === activeGrid) {
+        renderGrid();
+        return;
+      }
+      if (loadPromise) return loadPromise;
       setStatus('Loading…');
-      const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(activeGrid)}`);
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'Could not load gallery pages.');
-      pages = Array.isArray(payload.pages) ? payload.pages : [];
-      selected = new Set(
-        pages.filter((page) => page.onGallery).map((page) => page.slug),
-      );
-      baseline = new Set(selected);
-      detachedItems.clear();
-      createdItems.clear();
-      baselineOrder = captureGridOrder();
-      baselinePagesOrder = pages.map((page) => page.slug);
-      renderGrid();
+      const requestedGrid = activeGrid;
+      loadPromise = (async () => {
+        const response = await fetch(`/api/gallery-membership?grid=${encodeURIComponent(requestedGrid)}`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not load gallery pages.');
+        if (activeGrid !== requestedGrid) return;
+        pages = Array.isArray(payload.pages) ? payload.pages : [];
+        selected = new Set(pages.filter((page) => page.onGallery).map((page) => page.slug));
+        baseline = new Set(selected);
+        detachedItems.clear();
+        createdItems.clear();
+        baselineOrder = captureGridOrder();
+        baselinePagesOrder = pages.map((page) => page.slug);
+        loadedGrid = requestedGrid;
+        renderGrid();
+      })();
+      try {
+        await loadPromise;
+      } finally {
+        loadPromise = null;
+      }
     };
 
     const openPanel = () => {
       const grid = currentGrid();
       if (!grid) return;
       activeGrid = grid;
+      historyScope = pageHistory.scope();
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = registerHistoryScope(panel, historyScope, { owns: (target) => panel.contains(target) });
       if (overlayTitle) overlayTitle.textContent = resolveDevPanelTitle('gallery-pages', { suffix: gridLabel(grid) });
       window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
       panel.hidden = false;
@@ -875,6 +924,9 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
     const closePanel = () => {
       if (drag) drag.cancel();
       panel.hidden = true;
+      unregisterHistoryScope?.();
+      unregisterHistoryScope = null;
+      historyScope = null;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
 
@@ -913,19 +965,19 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       closePanel();
     }, true);
 
-    window.addEventListener('vcd:dev-pending-committed', () => {
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       if (!activeGrid) return;
+      const ids = event.detail?.ids;
+      if (Array.isArray(ids) && !ids.includes(`gallery-membership:${activeGrid}`)) return;
       baseline = new Set(selected);
       baselineOrder = captureGridOrder();
       baselinePagesOrder = pages.map((page) => page.slug);
-      detachedItems.clear();
-      createdItems.clear();
       for (const page of pages) {
         page.onGallery = selected.has(page.slug);
       }
       syncCount();
       renderGrid();
-    });
+    }) as EventListener);
 
     window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
       if (event.detail?.active) return;

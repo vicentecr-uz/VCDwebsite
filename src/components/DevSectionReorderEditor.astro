@@ -1135,12 +1135,14 @@
     });
   });
 
-  window.addEventListener('vcd:dev-pending-committed', () => {
+  window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
     const zone = dropZone();
     if (!zone) return;
+    const ids = event.detail?.ids;
+    if (ids && !ids.includes(`section-order:${documentKey}`)) return;
     baselineOrder = captureSectionOrder(zone);
     zone.classList.remove('is-section-order-dirty');
-  });
+  }) as EventListener);
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
     dropZone()?.classList.remove('is-section-order-dirty');
