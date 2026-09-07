@@ -124,7 +124,7 @@ export function installHistoryShortcuts(signal: AbortSignal) {
     const target = lastInteractionTarget ?? keyboardTarget;
     const scope = [...scopes].reverse().find(({ element, owns }) =>
       element.isConnected && !element.closest('[hidden], [aria-hidden="true"]')
-      && (element.contains(target) || owns?.(target)),
+      && (element.contains(target) || element.closest('[data-dev-overlay]')?.contains(target) || owns?.(target)),
     );
     const nativeField = target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
     // Unregistered text controls keep native undo; authored page text belongs to the page stack.
