@@ -25,6 +25,7 @@ class FakeElement extends FakeTarget {
   constructor(public name: string, public field = '') { super(); }
   contains(target: any) { return target === this || target?.parent === this; }
   closest(selector: string) {
+    if (selector === '[data-dev-overlay]') return this.field === 'overlay' ? this : (this.parent as FakeElement | null)?.closest(selector) ?? null;
     if (selector.includes('input') && this.field === 'input') return this;
     if (selector.includes('[hidden') && this.field === 'hidden') return this;
     return null;
@@ -265,4 +266,38 @@ describe('editor history', () => {
     expect(panelValue).toBe(0);
     expect(pageValue).toBe(1);
   }));
+
+  for (const surface of ['header', 'padding', 'frame']) {
+    test(`panel ${surface} selects its inner history despite stale text focus`, async () => withShortcuts(async (doc, _win, panel, signal) => {
+      const overlay = new FakeElement('overlay', 'overlay');
+      panel.parent = overlay;
+      const clicked = surface === 'frame' ? overlay : new FakeElement(surface);
+      if (clicked !== overlay) clicked.parent = overlay;
+      const text = new FakeElement('text', 'data-dev-text-document');
+      const panelHistory = createHistory();
+      let crop = 1, page = 1;
+      panelHistory.push({ label: 'Crop', undo: () => { crop = 0; }, redo: () => { crop = 1; } });
+      pageHistory.push({ label: 'Text', undo: () => { page = 0; }, redo: () => { page = 1; } });
+      registerHistoryScope(panel as any, panelHistory, { signal });
+      doc.dispatchEvent(makeEvent('focusin', text));
+      doc.dispatchEvent(makeEvent('pointerdown', clicked));
+      const shortcut = async (redo = false) => {
+        doc.dispatchEvent(makeEvent('keydown', text, { metaKey: true, shiftKey: redo, key: 'z' }));
+        await Promise.resolve();
+      };
+      await shortcut();
+      expect(crop).toBe(0);
+      expect(page).toBe(1);
+      await shortcut();
+      expect(page).toBe(1);
+      await shortcut(true);
+      expect(crop).toBe(1);
+      expect(page).toBe(1);
+      doc.dispatchEvent(makeEvent('pointerdown', doc.body));
+      await shortcut();
+      expect(page).toBe(0);
+      expect(crop).toBe(1);
+    }));
+  }
+
 });
