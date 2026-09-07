@@ -800,8 +800,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         cropped: editTarget.classList.contains('project-cropped') || isGridTarget(editTarget),
         ownVariants: editTarget.dataset.devHasOwnVariants === 'true',
         hoverCropped: editTarget.classList.contains('project-grid__cover--hover-cropped'),
-        coverSrc: activeSlot === 'cover' ? draftSrc : canonicalSrcFromUrl(editTarget.querySelector<HTMLImageElement>('.project-grid__img--base')?.src || ''),
-        hoverSrc: activeSlot === 'hover' ? draftSrc : canonicalSrcFromUrl(editTarget.querySelector<HTMLImageElement>('.project-grid__img--hover')?.getAttribute('src') || ''),
+        coverSrc: activeSlot === 'cover' ? draftSrc : canonicalSrcFromUrl(editTarget.dataset.devImageSrc ? projectImage(editTarget.dataset.devImageSrc) : editTarget.querySelector<HTMLImageElement>('.project-grid__img--base')?.src || ''),
+        hoverSrc: activeSlot === 'hover' ? draftSrc : canonicalSrcFromUrl(editTarget.dataset.devHoverImageSrc ? projectImage(editTarget.dataset.devHoverImageSrc) : editTarget.querySelector<HTMLImageElement>('.project-grid__img--hover')?.getAttribute('src') || ''),
         src: draftSrc,
         srcWidth: draftSrcWidth,
         srcHeight: draftSrcHeight,
@@ -939,13 +939,17 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       return '';
     };
 
-    const readTargetSrc = (image: HTMLImageElement) => (
-      canonicalSrcFromUrl(image.src || image.currentSrc)
-    );
+    const readTargetSrc = (image: HTMLImageElement) => {
+      const target = image.closest<HTMLElement>('[data-dev-image-target]');
+      const original = image.classList.contains('project-grid__img--hover')
+        ? target?.dataset.devHoverImageSrc : target?.dataset.devImageSrc;
+      return canonicalSrcFromUrl(original ? projectImage(original) : image.src || image.currentSrc);
+    };
 
     const readTargetDims = (image: HTMLImageElement) => {
-      const srcWidth = image.naturalWidth || undefined;
-      const srcHeight = image.naturalHeight || undefined;
+      const target = image.classList.contains('project-grid__img--hover') ? null : image.closest<HTMLElement>('[data-dev-image-target]');
+      const srcWidth = Number(target?.dataset.devImageSrcWidth) || image.naturalWidth || undefined;
+      const srcHeight = Number(target?.dataset.devImageSrcHeight) || image.naturalHeight || undefined;
       return {
         ...(srcWidth ? { srcWidth } : {}),
         ...(srcHeight ? { srcHeight } : {}),
@@ -1024,6 +1028,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const image = pageImageFor(target, slot);
       if (!image) return null;
       image.src = projectImage(src);
+      if (slot === 'hover') target.dataset.devHoverImageSrc = src;
+      else {
+        target.dataset.devImageSrc = src;
+        if (dims?.srcWidth) target.dataset.devImageSrcWidth = String(dims.srcWidth);
+        if (dims?.srcHeight) target.dataset.devImageSrcHeight = String(dims.srcHeight);
+      }
       if (dims?.srcWidth && dims?.srcHeight) {
         target.style.setProperty(
           '--project-image-original-ratio',
@@ -1297,7 +1307,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const listing = isListingCover(target);
       applyVariantsToTarget(target, state.allCover, { clearOwn: !state.ownVariants, hoverVariants: state.allHover });
       target.classList.toggle('project-cropped', state.cropped && !isGridTarget(target));
-      target.classList.toggle('project-responsive-image', state.cropped && !isGridTarget(target));
+      target.classList.toggle('project-responsive-image', state.cropped || isGridTarget(target));
       if (!state.cropped) delete target.dataset.devImageVariants;
       if (listing) {
         target.classList.toggle('overflow-hidden', !state.cropped);
@@ -1323,6 +1333,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         else {
           const hoverImage = pageImageFor(target, 'hover');
           if (hoverImage) { hoverImage.removeAttribute('src'); hoverImage.hidden = true; }
+          target.dataset.devHoverImageSrc = '';
           target.classList.remove('project-grid__cover--has-hover');
           const slug = target.closest<HTMLElement>('[data-dev-project-slug]')?.dataset.devProjectSlug;
           if (slug) window.dispatchEvent(new CustomEvent('vcd:dev-listing-src', { detail: { slug, slot: 'hoverImage', src: '' } }));

@@ -557,6 +557,10 @@ const visibilityOptions = [
   const applyListingPreview = (item, snapshot, grid) => {
     if (!item || !snapshot) return;
     const cover = item.querySelector('.project-grid__cover');
+    if (cover instanceof HTMLElement) {
+      cover.dataset.devImageSrc = snapshot.listing.image || '';
+      cover.dataset.devHoverImageSrc = snapshot.listing.hoverImage || '';
+    }
     const baseImg = item.querySelector('.project-grid__img--base');
     const hoverImg = item.querySelector('.project-grid__img--hover');
     const titleNode = item.querySelector('[data-dev-project-title]');
