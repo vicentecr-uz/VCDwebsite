@@ -1,6 +1,7 @@
 // @ts-check
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
+import sharp from 'sharp';
 
 export const THUMB_SIZE = 640;
 export const PREVIEW_SIZE = 2560;
@@ -65,7 +66,6 @@ export async function findOriginal(mediaDir, token) {
  */
 export async function generateDerivativeBuffer(originalPath, kind) {
   const size = kind === 'thumb' ? THUMB_SIZE : PREVIEW_SIZE;
-  const { default: sharp } = await import('sharp');
   // `inside` = long edge, matching Immich `size` (width-only would oversize portraits).
   return sharp(originalPath)
     .rotate()
