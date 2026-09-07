@@ -274,15 +274,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   /** Cursor must be within this distance of the control centre to reveal it. */
   const SPACING_ACTIVATION_RADIUS_PX = 96;
 
-  /**
-   * Match project.css / SectionSidebarNav: in-page section titles with
-   * `.project-section-title--hide-when-sidebar` drop their heading when the
-   * gutter nav is shown. The empty title wrapper still owns the section gap,
-   * so the next block's gap control is a duplicate that loses to margin-collapse
-   * (only 12em appears to work). Suppress that following control while hidden.
-   */
-  // Mirrors the sidebar gutter breakpoint — see docs/page-width.md.
-  const SIDEBAR_TITLE_HIDDEN_MQ = '(min-width: 78.5em)';
   let editorAbortController: AbortController | null = null;
   let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -313,16 +304,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     element.dataset.devSpacingValues = JSON.stringify(spacing);
   };
 
-  const followsHiddenSidebarTitle = (element: HTMLElement) => {
-    if (!window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).matches) return false;
+  const followsHiddenTitle = (element: HTMLElement) => {
     const prev = element.previousElementSibling;
-    return (
-      prev instanceof HTMLElement &&
-      (
-        prev.classList.contains('project-section-title--hide-when-sidebar') ||
-        prev.classList.contains('project-section-title--hide-desktop')
-      )
-    );
+    if (!(prev instanceof HTMLElement)) return false;
+    const title = prev.querySelector<HTMLElement>(':scope > .project-section-title');
+    return Boolean(title && getComputedStyle(title).display === 'none');
   };
 
   const initDevTextEditor = () => {
@@ -855,7 +841,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           suppressGalleryPageTopSpacing(element, pageTop),
         );
         const devEnabled = isDevContentEditing();
-        control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
+        control.hidden = !devEnabled || followsHiddenTitle(element);
         control.innerHTML = `
           <div class="dev-gap-toolbar__pill">
             <button
@@ -1276,7 +1262,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const syncSpacingControlVisibility = () => {
       const devEnabled = isDevContentEditing();
       spacingStates.forEach(({ control, element }) => {
-        const suppressed = followsHiddenSidebarTitle(element);
+        const suppressed = followsHiddenTitle(element);
         control.hidden = !devEnabled || suppressed;
         if (suppressed) clearGapProximity(control);
       });
@@ -5180,7 +5166,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
-    window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).addEventListener('change', syncSpacingControlVisibility, { signal: editorSignal });
+    window.addEventListener('resize', syncSpacingControlVisibility, { signal: editorSignal });
 
     textStates.forEach(bindTextState);
 
