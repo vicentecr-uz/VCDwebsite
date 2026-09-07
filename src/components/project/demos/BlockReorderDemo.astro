@@ -1,14 +1,10 @@
 ---
 import Button from '../../ui/Button.astro';
+import DevPanel from '../../ui/DevPanel.astro';
 ---
 
 <vcd-reorder-demo>
-  <section class="reorder-demo" aria-labelledby="reorder-demo-title">
-    <div class="reorder-demo__header">
-      <h1 id="reorder-demo-title">Block reorder</h1>
-      <Button label="Reset" type="button" data-reorder-demo-reset />
-    </div>
-
+  <DevPanel title="Block reorder" titleTag="h1" showLights={false} class="reorder-demo">
     <div class="reorder-demo__list" data-reorder-demo-list>
       {['Research', 'Sketch', 'Prototype', 'Refine'].map((title) => (
         <article class="reorder-demo__block" data-reorder-demo-block data-title={title}>
@@ -20,39 +16,16 @@ import Button from '../../ui/Button.astro';
       ))}
     </div>
     <div class="reorder-demo__status" aria-live="polite" aria-atomic="true"></div>
-  </section>
+  </DevPanel>
+  <div class="demo-controls">
+    <Button label="Reset" type="button" data-reorder-demo-reset />
+  </div>
 </vcd-reorder-demo>
 
 <style>
   vcd-reorder-demo {
     display: block;
     width: min(100%, 32em);
-  }
-
-  .reorder-demo {
-    padding: calc(var(--space-unit) * 1.5);
-    color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf);
-    border: 1px solid var(--sys-color-srf-container-low);
-    border-radius: var(--radius-card-smooth);
-    box-shadow: var(--dev-panel-shadow);
-  }
-
-  .reorder-demo__header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-unit);
-    margin-bottom: var(--space-unit);
-  }
-
-  .reorder-demo h1 {
-    margin: 0;
-    font: var(--dev-text-panel-title);
-  }
-
-  .reorder-demo__header :global(.dev-btn) {
-    --dev-btn-hit-inset: 8px;
   }
 
   .reorder-demo__list {
@@ -160,11 +133,6 @@ import Button from '../../ui/Button.astro';
     }
   }
 
-  @media (max-width: 40em) {
-    .reorder-demo {
-      padding: var(--space-unit);
-    }
-  }
 </style>
 
 <script>
