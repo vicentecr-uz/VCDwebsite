@@ -33,6 +33,7 @@ const shortcuts = [
           </li>
         ))}
       </ul>
+      <p class="dev-shortcuts-help__version" data-dev-shortcuts-version aria-live="polite" hidden>Version…</p>
     </div>
   </div>
 </div>
@@ -42,10 +43,12 @@ const shortcuts = [
     const root = document.querySelector('[data-dev-shortcuts-help]');
     const veil = document.querySelector('[data-dev-shortcuts-veil]');
     const card = document.querySelector('[data-dev-shortcuts-card]');
-    if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
+    const version = document.querySelector('[data-dev-shortcuts-version]');
+    if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement) || !(version instanceof HTMLElement)) return;
 
     const VEIL_MS = 180;
     let closeTimer = null;
+    let versionRequestId = 0;
 
     const isOpen = () => root.classList.contains('is-dev-shortcuts-open');
 
@@ -54,12 +57,40 @@ const shortcuts = [
       return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
     };
 
-    const open = () => {
+    const open = (showVersion = false) => {
       if (closeTimer) {
         clearTimeout(closeTimer);
         closeTimer = null;
       }
       root.hidden = false;
+      version.hidden = !showVersion;
+      const requestId = ++versionRequestId;
+      if (showVersion) {
+        version.textContent = 'Version…';
+        fetch('/api/dev-branch-update', { cache: 'no-store' })
+          .then((response) => {
+            if (!response.ok) throw new Error('Version unavailable');
+            return response.json();
+          })
+          .then((state) => {
+            if (requestId !== versionRequestId) return;
+            if (!state || typeof state.branch !== 'string' || typeof state.revision !== 'string') throw new Error('Version unavailable');
+            const identity = `${state.branch} · ${state.revision.slice(0, 7)}${state.clean ? '' : ' · Local changes'}`;
+            let comparison;
+            if (typeof state.mainRevision !== 'string') comparison = 'Main unavailable';
+            else if (state.revision === state.mainRevision) comparison = 'Matches fetched main';
+            else {
+              comparison = [
+                state.behind > 0 ? `${state.behind} behind fetched main` : '',
+                state.ahead > 0 ? `${state.ahead} ahead of fetched main` : '',
+              ].filter(Boolean).join(' · ');
+            }
+            version.textContent = `${comparison}\n${identity}`;
+          })
+          .catch(() => {
+            if (requestId === versionRequestId) version.textContent = 'Version unavailable';
+          });
+      }
       requestAnimationFrame(() => {
         root.classList.add('is-dev-shortcuts-open');
       });
@@ -77,9 +108,9 @@ const shortcuts = [
       }, VEIL_MS);
     };
 
-    const toggle = () => {
-      if (!root.hidden || isOpen()) close();
-      else open();
+    const toggle = (showVersion = false) => {
+      if ((!root.hidden || isOpen()) && version.hidden === !showVersion) close();
+      else open(showVersion);
     };
 
     veil.addEventListener('click', (event) => {
@@ -92,10 +123,10 @@ const shortcuts = [
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyH') {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyH') {
         if (isTypingTarget(event.target)) return;
         event.preventDefault();
-        toggle();
+        toggle(event.shiftKey);
         return;
       }
 
@@ -185,5 +216,18 @@ const shortcuts = [
 
   .dev-shortcuts-help__name {
     font-weight: var(--text-body-weight);
+  }
+
+  .dev-shortcuts-help__version {
+    margin: var(--space-unit) 0 0;
+    max-inline-size: 100%;
+    inline-size: 0;
+    min-inline-size: 100%;
+    overflow-wrap: anywhere;
+    white-space: pre-line;
+    color: var(--sys-color-on-srf-variant);
+    font-size: 0.75em;
+    line-height: 1.25;
+    letter-spacing: var(--text-body-tracking);
   }
 </style>

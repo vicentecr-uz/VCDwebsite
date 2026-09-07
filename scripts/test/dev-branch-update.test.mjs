@@ -32,7 +32,8 @@ try {
   git(peer, 'config', 'user.name', 'Branch Update Test');
 
   assert.deepEqual(await branchUpdateState(work), {
-    branch: 'main', behind: 0, ahead: 0, clean: true, available: false,
+    branch: 'main', revision: git(work, 'rev-parse', 'HEAD'), mainRevision: git(work, 'rev-parse', 'origin/main'),
+    behind: 0, ahead: 0, clean: true, available: false,
   });
 
   writeFileSync(path.join(peer, 'remote.txt'), 'incoming\n');
@@ -42,8 +43,20 @@ try {
   git(work, 'fetch', 'origin', 'main');
 
   assert.deepEqual(await branchUpdateState(work), {
-    branch: 'main', behind: 1, ahead: 0, clean: true, available: true,
+    branch: 'main', revision: git(work, 'rev-parse', 'HEAD'), mainRevision: git(work, 'rev-parse', 'origin/main'),
+    behind: 1, ahead: 0, clean: true, available: true,
   });
+
+  const localRevision = git(work, 'rev-parse', 'HEAD');
+  writeFileSync(path.join(peer, 'remote-again.txt'), 'incoming again\n');
+  git(peer, 'add', 'remote-again.txt');
+  git(peer, 'commit', '-m', 'incoming again');
+  git(peer, 'push', 'origin', 'main');
+  git(work, 'fetch', 'origin', 'main');
+  const advancedRemote = await branchUpdateState(work);
+  assert.equal(advancedRemote.revision, localRevision);
+  assert.notEqual(advancedRemote.mainRevision, localRevision);
+  assert.equal(advancedRemote.behind, 2);
 
   await assert.rejects(() => requestBranchUpdate(work, true), /Another Edit tab is active/);
   assert.equal(existsSync(path.join(work, '.dev-session/branch-sync.request')), false);
@@ -56,6 +69,12 @@ try {
   assert.equal(dirty.clean, false);
   assert.equal(dirty.available, false);
   await assert.rejects(() => requestBranchUpdate(work), /Publish or revert local files/);
+
+  git(work, 'remote', 'remove', 'origin');
+  const missingMain = await branchUpdateState(work);
+  assert.equal(missingMain.revision, localRevision);
+  assert.equal(missingMain.mainRevision, null);
+  assert.equal(missingMain.available, false);
 
   console.log('PASS: branch update state and request gate');
 } finally {

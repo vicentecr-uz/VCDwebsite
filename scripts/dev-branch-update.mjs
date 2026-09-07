@@ -13,20 +13,36 @@ const git = async (cwd, ...args) => {
 
 export async function branchUpdateState(cwd = process.cwd()) {
   const branch = await git(cwd, 'branch', '--show-current') || 'detached HEAD';
+  const clean = !(await git(cwd, 'status', '--porcelain'));
+  let revision;
+  try {
+    revision = await git(cwd, 'rev-parse', 'HEAD');
+  } catch {
+    return { branch, revision: null, mainRevision: null, behind: 0, ahead: 0, clean, available: false };
+  }
+
+  let mainRevision;
+  try {
+    mainRevision = await git(cwd, 'rev-parse', 'origin/main');
+  } catch {
+    return { branch, revision, mainRevision: null, behind: 0, ahead: 0, clean, available: false };
+  }
+
   let behind = 0;
   let ahead = 0;
   try {
-    const counts = (await git(cwd, 'rev-list', '--left-right', '--count', 'HEAD...origin/main'))
+    const counts = (await git(cwd, 'rev-list', '--left-right', '--count', `${revision}...${mainRevision}`))
       .split(/\s+/)
       .map(Number);
     [ahead, behind] = counts;
   } catch {
-    return { branch, behind, ahead, clean: false, available: false };
+    return { branch, revision, mainRevision: null, behind, ahead, clean: false, available: false };
   }
 
-  const clean = !(await git(cwd, 'status', '--porcelain'));
   return {
     branch,
+    revision,
+    mainRevision,
     behind,
     ahead,
     clean,
@@ -57,6 +73,7 @@ export function branchUpdateDevWriter({ authoringActive = () => false } = {}) {
       server.middlewares.use('/api/dev-branch-update', async (req, res, next) => {
         const send = (status, payload) => {
           res.statusCode = status;
+          res.setHeader('cache-control', 'no-store');
           res.setHeader('content-type', 'application/json');
           res.end(JSON.stringify(payload));
         };
