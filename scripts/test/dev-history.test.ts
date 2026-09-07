@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { createHistory, installHistoryShortcuts, pageHistory, registerHistoryScope } from '../../src/lib/devHistory';
 
 class FakeTarget {
@@ -366,3 +367,42 @@ describe('editor history', () => {
   }
 
 });
+
+for (const surface of ['block', 'sidebar'] as const) {
+  test(`section ${surface} selection owns shortcuts until the mode closes`, async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const source = readFileSync(new URL('../../src/components/project/ProjectSectionNavEditor.astro', import.meta.url), 'utf8');
+    const helper = source.match(/const ownsHistoryTarget = \(target: Element \| null\) =>[\s\S]*?;\n/)?.[0];
+    if (!helper) throw new Error('Missing section ownership helper');
+    let active = true, text = 'edited', outline = 'changed';
+    const block = new FakeElement('block');
+    const child = new FakeElement('child');
+    if (surface === 'block') child.closest = (selector) => selector === '[data-section-nav-block]' ? block : null;
+    const sidebar = new FakeElement('sidebar');
+    if (surface === 'sidebar') child.parent = sidebar;
+    const owns = new Function('isActive', 'sidebar', `${new Bun.Transpiler({ loader: 'ts' }).transformSync(helper)}; return ownsHistoryTarget;`)(() => active, sidebar);
+    expect(owns(child)).toBe(true);
+    expect(owns(doc.body)).toBe(false);
+    expect(owns(null)).toBe(false);
+    pageHistory.push({ label: 'Text', undo: () => { text = 'original'; }, redo: () => { text = 'edited'; } });
+    const scope = pageHistory.scope();
+    scope.push({ label: 'Outline', undo: () => { outline = 'original'; }, redo: () => { outline = 'changed'; } });
+    const dispose = registerHistoryScope(panel as any, scope, { owns, signal });
+    doc.dispatchEvent(makeEvent('pointerdown', child));
+    const shortcut = async (redo = false) => {
+      doc.dispatchEvent(makeEvent('keydown', doc.body, { metaKey: true, shiftKey: redo, key: 'z' }));
+      await Promise.resolve();
+    };
+    await shortcut();
+    expect(outline).toBe('original');
+    await shortcut();
+    expect(text).toBe('edited');
+    await shortcut(true);
+    expect(outline).toBe('changed');
+    active = false;
+    expect(owns(child)).toBe(false);
+    dispose();
+    await shortcut();
+    await shortcut();
+    expect(text).toBe('original');
+  }));
+}
