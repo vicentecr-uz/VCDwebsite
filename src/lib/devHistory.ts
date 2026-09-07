@@ -103,14 +103,23 @@ export function registerHistoryScope(
 
 export function installHistoryShortcuts(signal: AbortSignal) {
   let lastInteractionTarget: Element | null = null;
+  const activeScopes = () => [...scopes].reverse().filter(({ element }) =>
+    element.isConnected && !element.closest('[hidden], [aria-hidden="true"]'),
+  );
+  const scopeFor = (target: Element | null) => activeScopes().find(({ element, owns }) =>
+    element.contains(target) || element.closest('[data-dev-overlay]')?.contains(target) || owns?.(target),
+  );
+  let selectedScope: ReturnType<typeof scopeFor>;
+  const selectHistory = (event: Event) => {
+    lastInteractionTarget = event.target instanceof Element ? event.target : null;
+    selectedScope = scopeFor(lastInteractionTarget);
+  };
   let saving = false;
   document.addEventListener('pointerdown', (event) => {
-    lastInteractionTarget = event.target instanceof Element ? event.target : null;
+    selectHistory(event);
     pageHistory.breakGroup();
   }, { capture: true, signal });
-  document.addEventListener('focusin', (event) => {
-    lastInteractionTarget = event.target instanceof Element ? event.target : null;
-  }, { capture: true, signal });
+  document.addEventListener('focusin', selectHistory, { capture: true, signal });
   window.addEventListener('vcd:dev-save-state', ((event: CustomEvent<{ saving: boolean }>) => {
     saving = event.detail.saving;
     pageHistory.breakGroup();
@@ -119,10 +128,7 @@ export function installHistoryShortcuts(signal: AbortSignal) {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     const keyboardTarget = event.target instanceof Element ? event.target : null;
     const target = lastInteractionTarget ?? keyboardTarget;
-    const scope = [...scopes].reverse().find(({ element, owns }) =>
-      element.isConnected && !element.closest('[hidden], [aria-hidden="true"]')
-      && (element.contains(target) || element.closest('[data-dev-overlay]')?.contains(target) || owns?.(target)),
-    );
+    const scope = activeScopes().find((entry) => entry === selectedScope) ?? scopeFor(target);
     const nativeField = target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
     // Unregistered text controls keep native undo; authored page text belongs to the page stack.
     if (!scope && nativeField && !nativeField.hasAttribute('data-dev-text-document')
