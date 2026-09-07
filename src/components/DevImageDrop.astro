@@ -829,7 +829,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
   };
 
-  const isValidImageDrag = (transfer) => {
+  const isValidImageDrag = (event) => {
+    // Gallery cover drops belong to DevProjectGridEditor.
+    if (event.target instanceof Element && event.target.closest('[data-dev-cover-drop]')) return false;
+    const transfer = event.dataTransfer;
     if (!transfer) return false;
     if (Array.from(transfer.types || []).includes(ASSET_DRAG_TYPE)) return true;
     if (!Array.from(transfer.types || []).includes('Files')) return false;
@@ -839,7 +842,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const onDragEnter = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    if (!isValidImageDrag(event.dataTransfer)) return;
+    if (!isValidImageDrag(event)) return;
     if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) {
       prevent(event);
       return;
@@ -851,7 +854,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const onDragOver = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    if (!isValidImageDrag(event.dataTransfer)) return;
+    if (!isValidImageDrag(event)) {
+      dragDepth = 0;
+      clearDragState();
+      return;
+    }
     prevent(event);
     const carousel = carouselAtPoint(event.clientX, event.clientY);
     setCarouselDropTarget(carousel);
@@ -871,16 +878,16 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const onDrop = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    event.preventDefault();
     const { clientX, clientY } = event;
     const transfer = event.dataTransfer;
     closeMultiDropChoice();
-    if (!isValidImageDrag(transfer)) return;
+    dragDepth = 0;
+    clearDragState();
+    if (!isValidImageDrag(event)) return;
+    event.preventDefault();
     const carousel = carouselAtPoint(clientX, clientY);
     const carouselTarget = carouselTargetFromElement(carousel);
     const assetSrc = transfer?.getData(ASSET_DRAG_TYPE) || '';
-    dragDepth = 0;
-    clearDragState();
     if (carouselTarget && (assetSrc || transfer?.files?.length)) {
       void (async () => {
         try {
