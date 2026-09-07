@@ -1169,7 +1169,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   const messageForClick = (count: number) => {
-    if (completionStored) return count === 3 ? 'ah, you again' : count === 4 ? 'welcome back' : null;
+    if (completionStored) return count <= 4 && count >= 3 ? 'You are on this page' :
+      count === 5 ? 'ah, you again' : count === 6 ? 'welcome back' : null;
     if (count <= 9 && count >= 3) return 'You are on this page';
     return ({
       10: 'chill out', 11: 'bro can you read', 12: 'are you dumb?',
@@ -1315,7 +1316,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           void label.offsetWidth;
           label.classList.add('is-error-shaking');
         }
-        if (completionStored && currentPageClickCount >= 5) return removeCurrentPage(event.detail === 0);
+        if (completionStored && currentPageClickCount >= 7) return removeCurrentPage(event.detail === 0);
         if (!completionStored && currentPageClickCount >= 20) return removeCurrentPage(event.detail === 0);
         const message = messageForClick(currentPageClickCount);
         if (!message) return;
@@ -1330,7 +1331,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     );
     link.addEventListener('pointerdown', (event) => {
       if (event.pointerType === 'mouse' && event.button === 0 &&
-        ((completionStored && currentPageClickCount === 4) || (!completionStored && currentPageClickCount === 19))) {
+        ((completionStored && currentPageClickCount === 6) || (!completionStored && currentPageClickCount === 19))) {
         event.preventDefault();
         suppressNextCurrentPageClick = true;
         removeCurrentPage(false);
