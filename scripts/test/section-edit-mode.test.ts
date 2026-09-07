@@ -1,8 +1,19 @@
 import { afterEach, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { isDevContentEditing, syncDevModeOnSection } from '../../src/scripts/devSectionMount';
+import { DEV_PATH_ATTRS, remapSectionPaths } from '../../src/scripts/devSectionPaths';
 
 const originalDocument = globalThis.document;
 afterEach(() => { globalThis.document = originalDocument; });
+
+class MockElement {
+  private attributes = new Map<string, string>();
+  constructor(attributes: Record<string, string>) {
+    Object.entries(attributes).forEach(([name, value]) => this.attributes.set(name, value));
+  }
+  getAttribute(name: string) { return this.attributes.get(name) ?? null; }
+  setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+}
 
 test('section mode suspends mounted content controls and restores them on return to Edit', () => {
   const classes = new Set(['is-dev-mode']);
@@ -29,4 +40,44 @@ test('section mode suspends mounted content controls and restores them on return
   expect(isDevContentEditing()).toBe(false);
   expect(control.hidden).toBe(true);
   expect(trigger.disabled).toBe(true);
+});
+
+test('section reorder remaps carousel paths with the shared path list', () => {
+  const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 0, 'spacing']) });
+  const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1, 'images']) });
+  const unrelated = new MockElement({ 'data-dev-other-path': JSON.stringify(['sections', 1, 'other']) });
+  globalThis.document = { querySelectorAll: () => [spacing, carousel, unrelated] } as unknown as Document;
+
+  remapSectionPaths({ 0: 2, 1: 0 });
+
+  expect(JSON.parse(spacing.getAttribute(DEV_PATH_ATTRS[0])!)).toEqual(['sections', 2, 'spacing']);
+  expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)).toEqual(['sections', 0, 'images']);
+  expect(JSON.parse(unrelated.getAttribute('data-dev-other-path')!)).toEqual(['sections', 1, 'other']);
+});
+
+const editorSource = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+const bumpStart = editorSource.indexOf('    const bumpSectionPath = (');
+const bumpEnd = editorSource.indexOf('    const bumpPathAttrsOnElement =', bumpStart);
+if (bumpStart < 0 || bumpEnd < 0) throw new Error('Could not extract section path reindexing helpers');
+const reindexSource = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorSource.slice(bumpStart, bumpEnd));
+
+test('section insertion and deletion keep carousel paths aligned with other section paths', () => {
+  const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 1, 'spacing']) });
+  const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1, 'images']) });
+  const env = {
+    DEV_PATH_ATTRS,
+    document: { querySelectorAll: () => [spacing, carousel] },
+    shiftSectionOrderIds: () => {},
+    textStates: [],
+    spacingStates: [],
+    pendingBlockConverts: [],
+  };
+  new Function('env', `with (env) { ${reindexSource}; env.reindexDevPaths = reindexDevPaths; }`)(env);
+
+  env.reindexDevPaths(1, 1);
+  expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(2);
+  expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(2);
+  env.reindexDevPaths(1, -1);
+  expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(1);
+  expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(1);
 });
