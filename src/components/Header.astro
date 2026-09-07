@@ -1179,95 +1179,126 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     } as Record<number, string>)[count] ?? null;
   };
 
+  let currentPageRemoved = false;
+  const noteTimers = new Map<HTMLElement, number>();
   const cancelAnimations = (element: HTMLElement) => element.getAnimations().forEach((animation) => animation.cancel());
-  const animatePanelWidth = (trigger: HTMLElement, update: () => void) => {
+  const animatePanelWidth = (trigger: HTMLElement, update: () => void, animate = true) => {
     const panelBg = trigger.querySelector<HTMLElement>('.header-trigger__panel-bg');
     const before = panelBg?.getBoundingClientRect().width ?? 0;
-    if (panelBg) cancelAnimations(panelBg);
+    // Only cancel the width FLIP; menu open/close owns the CSS surface transitions.
+    panelBg?.getAnimations().filter((animation) => !(animation instanceof CSSTransition)).forEach((animation) => animation.cancel());
     update();
-    if (!panelBg || reduceMotionMq.matches || before <= 0) return;
+    if (!animate || !panelBg || reduceMotionMq.matches || before <= 0) return;
     const after = panelBg.getBoundingClientRect().width;
     if (after <= 0 || Math.abs(after - before) < 0.5) return;
     panelBg.animate([{ transform: `scaleX(${before / after})` }, { transform: 'scaleX(1)' }], {
-      duration: 180, easing: 'ease-in-out',
+      duration: 180, easing: 'cubic-bezier(0.65, 0, 0.35, 1)',
     });
   };
-  const setNote = (note: HTMLElement, text: string | null, animate: boolean) => {
+  const cancelNote = (note: HTMLElement) => {
+    clearTimeout(noteTimers.get(note));
+    noteTimers.delete(note);
     cancelAnimations(note);
-    note.classList.remove('is-hiding', 'is-instant');
-    if (!text) {
-      note.classList.remove('is-visible');
-      note.setAttribute('aria-hidden', 'true');
-      return;
-    }
-    note.textContent = text;
-    const activeNote = currentPageNotes.find((candidate) => {
-      const candidateTrigger = candidate.closest<HTMLElement>('.header-trigger');
-      return candidateTrigger?.matches('.is-menu-open, :focus-within');
-    }) ?? currentPageNotes[0];
-    currentPageNotes.forEach((candidate) => candidate.setAttribute('aria-live', candidate === activeNote ? 'polite' : 'off'));
-    note.setAttribute('aria-hidden', 'false');
-    note.classList.toggle('is-instant', !animate);
-    note.classList.add('is-visible');
+  };
+  const setNote = (note: HTMLElement, text: string, weight: number, animate: boolean) => {
+    cancelNote(note);
     const trigger = note.closest<HTMLElement>('.header-trigger');
-    if (trigger) animatePanelWidth(trigger, () => syncMenuSurfaceInlineSize(trigger));
+    if (!trigger) return;
+    const open = trigger.dataset.menuOpen === 'true';
+    const reveal = () => {
+      noteTimers.delete(note);
+      animatePanelWidth(trigger, () => {
+        note.textContent = text;
+        note.style.fontWeight = String(weight);
+        note.classList.toggle('is-visible', open);
+        note.setAttribute('aria-hidden', String(!open));
+        syncMenuSurfaceInlineSize(trigger);
+      }, animate);
+      if (animate && open) note.animate([
+        { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+        { opacity: 0.48, filter: 'blur(0px)' },
+      ], { duration: 150, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+    };
+    if (animate && open && note.classList.contains('is-visible')) {
+      note.animate([
+        { opacity: 0.48, filter: 'blur(0px)' },
+        { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+      ], { duration: 100, easing: 'ease-out', fill: 'forwards' });
+      noteTimers.set(note, window.setTimeout(() => { cancelAnimations(note); reveal(); }, 100));
+    } else reveal();
   };
   const hideCurrentPageNote = (note: HTMLElement) => {
-    cancelAnimations(note);
-    const generation = String(Number(note.dataset.noteGeneration ?? 0) + 1);
-    note.dataset.noteGeneration = generation;
-    note.classList.remove('is-visible', 'is-instant');
-    note.classList.add('is-hiding');
-    note.addEventListener('animationend', () => {
-      if (note.dataset.noteGeneration === generation) note.classList.remove('is-hiding');
-    }, { once: true });
+    cancelNote(note);
+    note.setAttribute('aria-hidden', 'true');
+    if (currentPageRemoved || !note.classList.contains('is-visible')) return;
+    note.animate([
+      { opacity: 0.48, filter: 'blur(0px)' },
+      { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+    ], { duration: 100, easing: 'ease-out', fill: 'forwards' });
+    noteTimers.set(note, window.setTimeout(() => {
+      cancelNote(note);
+      const trigger = note.closest<HTMLElement>('.header-trigger');
+      note.classList.remove('is-visible');
+      if (trigger) syncMenuSurfaceInlineSize(trigger);
+    }, 100));
   };
   const removeCurrentPage = (focusFallback = false) => {
-    if (currentPageItems.every((item) => item.classList.contains('is-removed'))) return;
+    if (currentPageRemoved) return;
+    currentPageRemoved = true;
     const active = document.activeElement;
     const focused = active instanceof HTMLElement && currentPageLinks.includes(active as HTMLAnchorElement);
     const activeTrigger = active instanceof HTMLElement ? active.closest<HTMLElement>('.header-trigger') : null;
-    const fallback = activeTrigger?.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])') ??
-      document.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])');
-    currentPageNotes.forEach(hideCurrentPageNote);
+    const fallback = activeTrigger?.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])');
+    currentPageNotes.forEach(cancelNote);
     currentPageItems.forEach((item) => {
       item.style.setProperty('--current-page-row-height', `${item.getBoundingClientRect().height}px`);
       item.classList.add('is-removing');
-      item.querySelectorAll<HTMLElement>('.header-menu__link, .header-menu__current-note').forEach((element) => {
-        element.setAttribute('aria-hidden', 'true');
-        element.setAttribute('inert', '');
-      });
+      item.setAttribute('inert', '');
+      item.setAttribute('aria-hidden', 'true');
+      item.animate([
+        { opacity: 1, filter: 'blur(0px)' },
+        { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
+      ], { duration: focusFallback ? 0 : 100, easing: 'ease-out', fill: 'forwards' });
     });
     if (focused && focusFallback) fallback?.focus();
     else if (focused && active instanceof HTMLElement) active.blur();
+    try { window.localStorage.setItem(currentPageStorageKey, 'true'); } catch { /* Storage is optional; this visit still completes. */ }
     window.setTimeout(() => {
       currentPageItems.forEach((item) => {
-        item.classList.remove('is-removing');
-        item.classList.add('is-removed');
+        const trigger = item.closest<HTMLElement>('.header-trigger');
+        const finish = () => {
+          item.classList.remove('is-removing');
+          item.classList.add('is-removed');
+          cancelAnimations(item);
+          if (trigger) syncMenuSurfaceInlineSize(trigger);
+        };
+        if (trigger) animatePanelWidth(trigger, finish, !focusFallback);
+        else finish();
       });
-      try {
-        window.localStorage.setItem(currentPageStorageKey, 'true');
-        completionStored = true;
-      } catch {
-        completionStored = false;
-      }
-    }, 100);
+    }, focusFallback ? 0 : 100);
   };
 
   currentPageNotes.forEach((note) => {
-    note.closest('.header-trigger')?.addEventListener(
-      'header:trigger-close',
-      () => hideCurrentPageNote(note),
-    );
+    const trigger = note.closest<HTMLElement>('.header-trigger');
+    trigger?.addEventListener('header:trigger-close', () => hideCurrentPageNote(note));
+    trigger?.addEventListener('header:trigger-open', () => {
+      cancelNote(note);
+      note.classList.remove('is-visible');
+      syncMenuSurfaceInlineSize(trigger);
+    });
   });
-  currentPageNotes.forEach((note, index) => note.setAttribute('aria-live', index === 0 ? 'polite' : 'off'));
+  document.addEventListener('header:force-close', () => currentPageNotes.forEach((note) => {
+    cancelNote(note);
+    note.classList.remove('is-visible');
+    note.setAttribute('aria-hidden', 'true');
+  }));
 
   currentPageLinks.forEach((link) => {
     link.addEventListener(
       'click',
       (event) => {
         event.preventDefault();
-        if (suppressNextCurrentPageClick) {
+        if (currentPageRemoved || suppressNextCurrentPageClick) {
           suppressNextCurrentPageClick = false;
           return;
         }
@@ -1280,19 +1311,19 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           const strength = completionStored ? 0.45 : currentPageClickCount <= 9
             ? 0.5 + (currentPageClickCount - 1) * 0.125 : 0.4;
           label.style.setProperty('--current-shake-strength', String(strength));
-          label.style.setProperty('--current-shake-duration', currentPageClickCount >= 10 ? '0.15s' : '0.24s');
+          label.style.setProperty('--current-shake-duration', completionStored || currentPageClickCount >= 10 ? '0.15s' : '0.24s');
           void label.offsetWidth;
           label.classList.add('is-error-shaking');
         }
-        if (completionStored && currentPageClickCount >= 5) return removeCurrentPage(true);
-        if (!completionStored && currentPageClickCount >= 20) return removeCurrentPage(true);
+        if (completionStored && currentPageClickCount >= 5) return removeCurrentPage(event.detail === 0);
+        if (!completionStored && currentPageClickCount >= 20) return removeCurrentPage(event.detail === 0);
         const message = messageForClick(currentPageClickCount);
         if (!message) return;
         const weight = !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
           !completionStored && currentPageClickCount >= 5 && currentPageClickCount <= 6 ? 700 : 400;
         currentPageNotes.forEach((note) => {
-          note.style.fontWeight = String(weight);
-          setNote(note, message, event.detail > 0);
+          note.setAttribute('aria-live', note.closest('.header-trigger') === link.closest('.header-trigger') ? 'polite' : 'off');
+          setNote(note, message, weight, event.detail > 0);
         });
       },
       true,
@@ -1300,6 +1331,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     link.addEventListener('pointerdown', (event) => {
       if (event.pointerType === 'mouse' && event.button === 0 &&
         ((completionStored && currentPageClickCount === 4) || (!completionStored && currentPageClickCount === 19))) {
+        event.preventDefault();
         suppressNextCurrentPageClick = true;
         removeCurrentPage(false);
       }
@@ -1714,7 +1746,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     display: flex;
     align-items: baseline;
     gap: 1em;
-    max-width: calc(100vw - 2 * var(--space-unit));
+    max-width: calc(var(--header-menu-viewport-size, 100vw) - var(--header-menu-outer-space, 0px) - 2 * var(--hitbox-pad));
     white-space: nowrap;
   }
 
@@ -1727,21 +1759,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-menu__item--current-page.is-removing {
-    display: block;
-    width: 0;
-    overflow: hidden;
     pointer-events: none;
+    height: var(--current-page-row-height);
   }
 
-  .header-menu__item--current-page.is-removed .header-menu__link,
-  .header-menu__item--current-page.is-removed .header-menu__current-note,
-  .header-menu__item--current-page.is-removing .header-menu__link,
-  .header-menu__item--current-page.is-removing .header-menu__current-note {
-    display: block;
-    width: 0;
-    min-width: 0;
-    visibility: hidden;
-    overflow: hidden;
+  .header-menu__item--current-page.is-removed > * {
+    display: none !important;
   }
 
   .header-trigger--end .header-menu__item--current-page .header-menu__current-note {
@@ -1765,18 +1788,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-trigger.is-menu-open .header-menu__current-note.is-visible,
   .header-trigger:focus-within .header-menu__current-note.is-visible {
     display: inline-block;
-    animation: header-current-note-in 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-
-  .header-trigger.is-menu-open .header-menu__current-note.is-visible.is-instant,
-  .header-trigger:focus-within .header-menu__current-note.is-visible.is-instant {
     opacity: 0.48;
-    animation: none;
-  }
-
-  .header-menu__current-note.is-hiding {
-    display: inline-block;
-    animation: header-current-note-fade-out 0.1s ease both;
   }
 
   @keyframes header-current-page-error-shake {
@@ -1785,22 +1797,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     40% { transform: translateX(calc(0.11em * var(--current-shake-strength, 1))); }
     60% { transform: translateX(calc(-0.07em * var(--current-shake-strength, 1))); }
     80% { transform: translateX(calc(0.035em * var(--current-shake-strength, 1))); }
-  }
-
-  @keyframes header-current-note-in {
-    from {
-      opacity: 0;
-      transform: translateX(-0.2em);
-    }
-    to {
-      opacity: 0.48;
-      transform: translateX(0);
-    }
-  }
-
-  @keyframes header-current-note-fade-out {
-    from { opacity: 0.48; filter: blur(0); }
-    to { opacity: 0; filter: blur(0.35em); }
   }
 
   .header-trigger__wordmark {
@@ -1972,7 +1968,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     .header-trigger.is-menu-open .header-menu__current-note.is-visible,
     .header-trigger:focus-within .header-menu__current-note.is-visible,
-    .header-menu__current-note.is-hiding {
+    .header-menu__current-note {
       transform: none;
     }
 
