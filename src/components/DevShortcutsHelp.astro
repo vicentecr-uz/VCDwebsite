@@ -75,15 +75,17 @@ const shortcuts = [
           .then((state) => {
             if (requestId !== versionRequestId) return;
             if (!state || typeof state.branch !== 'string' || typeof state.revision !== 'string') throw new Error('Version unavailable');
-            let text = `${state.branch} · ${state.revision.slice(0, 7)}`;
-            if (!state.clean) text += ' · Local changes';
-            if (typeof state.mainRevision !== 'string') text += ' · Main unavailable';
-            else if (state.revision === state.mainRevision) text += ' · Matches fetched main';
+            const identity = `${state.branch} · ${state.revision.slice(0, 7)}${state.clean ? '' : ' · Local changes'}`;
+            let comparison;
+            if (typeof state.mainRevision !== 'string') comparison = 'Main unavailable';
+            else if (state.revision === state.mainRevision) comparison = 'Matches fetched main';
             else {
-              if (state.behind > 0) text += ` · ${state.behind} behind fetched main`;
-              if (state.ahead > 0) text += ` · ${state.ahead} ahead of fetched main`;
+              comparison = [
+                state.behind > 0 ? `${state.behind} behind fetched main` : '',
+                state.ahead > 0 ? `${state.ahead} ahead of fetched main` : '',
+              ].filter(Boolean).join(' · ');
             }
-            version.textContent = text;
+            version.textContent = `${comparison}\n${identity}`;
           })
           .catch(() => {
             if (requestId === versionRequestId) version.textContent = 'Version unavailable';
@@ -222,6 +224,7 @@ const shortcuts = [
     inline-size: 0;
     min-inline-size: 100%;
     overflow-wrap: anywhere;
+    white-space: pre-line;
     color: var(--sys-color-on-srf-variant);
     font-size: 0.75em;
     line-height: 1.25;
