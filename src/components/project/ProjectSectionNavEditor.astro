@@ -140,6 +140,8 @@ import SelectField from '../ui/SelectField.astro';
 
     const isActive = () => document.documentElement.classList.contains('show-section-nav-editor')
       && document.documentElement.classList.contains('is-dev-mode');
+    const ownsHistoryTarget = (target: Element | null) => isActive()
+      && Boolean(target?.closest('[data-section-nav-block]') || sidebar?.contains(target));
     const closePanel = () => {
       panel.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
@@ -360,10 +362,10 @@ import SelectField from '../ui/SelectField.astro';
           const mergeKey = pendingBefore.input ? `section:${blockKey(block)}:${pendingBefore.input === groupLabel ? 'group' : 'section'}` : undefined;
           (historyScope ?? pageHistory).push({ label: 'Edit section outline', mergeKey, undo: () => {
             if (!touched.has(block)) touched.set(block, capture(block));
-            restore(before); syncDevSectionOutlineSidebar(); renderSelection(); stage();
+            restore(before); if (isActive()) activeBlock = liveBlock(before); syncDevSectionOutlineSidebar(); renderSelection(); stage();
           }, redo: () => {
             if (!touched.has(block)) touched.set(block, capture(block));
-            restore(current); syncDevSectionOutlineSidebar(); renderSelection(); stage();
+            restore(current); if (isActive()) activeBlock = liveBlock(current); syncDevSectionOutlineSidebar(); renderSelection(); stage();
           } });
         }
         pendingBefore = null;
@@ -377,7 +379,7 @@ import SelectField from '../ui/SelectField.astro';
       if (panel.hidden) {
         unregisterHistoryScope?.();
         historyScope = pageHistory.scope();
-        unregisterHistoryScope = registerHistoryScope(panel, historyScope, { signal });
+        unregisterHistoryScope = registerHistoryScope(panel, historyScope, { owns: ownsHistoryTarget, signal });
       }
       activeBlock?.classList.remove('is-section-nav-active');
       activeBlock = block;
@@ -425,7 +427,7 @@ import SelectField from '../ui/SelectField.astro';
       if (isActive()) {
         if (!historyScope) {
           historyScope = pageHistory.scope();
-          unregisterHistoryScope = registerHistoryScope(panel, historyScope, { owns: (target) => panel.contains(target) });
+          unregisterHistoryScope = registerHistoryScope(panel, historyScope, { owns: ownsHistoryTarget, signal });
         }
         syncDevSectionOutlineSidebar();
         panel.hidden = false;
