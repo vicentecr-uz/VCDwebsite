@@ -104,6 +104,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <script>
   import {
     initMountedSectionCovers,
+    isDevContentEditing,
     mountInsertedSection,
     syncDevModeOnSection,
   } from '../scripts/devSectionMount';
@@ -853,7 +854,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           'data-dev-suppress-gallery-page-top',
           suppressGalleryPageTopSpacing(element, pageTop),
         );
-        const devEnabled = document.documentElement.classList.contains('is-dev-mode');
+        const devEnabled = isDevContentEditing();
         control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
         control.innerHTML = `
           <div class="dev-gap-toolbar__pill">
@@ -1273,7 +1274,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingControlVisibility = () => {
-      const devEnabled = document.documentElement.classList.contains('is-dev-mode');
+      const devEnabled = isDevContentEditing();
       spacingStates.forEach(({ control, element }) => {
         const suppressed = followsHiddenSidebarTitle(element);
         control.hidden = !devEnabled || suppressed;
@@ -1432,7 +1433,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (
-        !document.documentElement.classList.contains('is-dev-mode')
+        !isDevContentEditing()
         || gapsSuppressed()
       ) {
         spacingStates.forEach(({ control }) => {
@@ -1741,7 +1742,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         entry.textState.element = entry.previousTextElement;
         entry.textState.path = entry.previousPath;
         entry.textState.kind = entry.previousKind;
-        if (document.documentElement.classList.contains('is-dev-mode')) {
+        if (isDevContentEditing()) {
           entry.previousTextElement.setAttribute(
             'contenteditable',
             entry.previousKind === 'paragraphs' ? 'true' : 'plaintext-only',
@@ -2623,7 +2624,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       button.title = 'Delete section';
       button.setAttribute('aria-label', 'Delete section');
       button.innerHTML = TRASH_ICON;
-      button.hidden = !document.documentElement.classList.contains('is-dev-mode');
+      button.hidden = !isDevContentEditing();
 
       const computed = getComputedStyle(element);
       if (computed.position === 'static') {
@@ -2703,7 +2704,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       textStates.push(textState);
       bindTextState(textState);
-      if (document.documentElement.classList.contains('is-dev-mode')) {
+      if (isDevContentEditing()) {
         built.textElement.setAttribute(
           'contenteditable',
           built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
@@ -3880,7 +3881,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const enableConvertedText = (element: HTMLElement, kind: EditableTextState['kind']) => {
-      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (!isDevContentEditing()) return;
       element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
       element.setAttribute('spellcheck', 'true');
     };
@@ -4528,7 +4529,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const updateFormatBar = () => {
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
-      if (!document.documentElement.classList.contains('is-dev-mode')) {
+      if (!isDevContentEditing()) {
         hideFormatBar();
         return;
       }
@@ -5062,7 +5063,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       'keydown',
       (event) => {
         if (event.key !== 'Escape') return;
-        if (!document.documentElement.classList.contains('is-dev-mode')) return;
+        if (!isDevContentEditing()) return;
 
         if (!formatBar.hidden) {
           event.preventDefault();
@@ -5094,7 +5095,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     // ⌘B / ⌘I / ⌘U / ⌘K (link)
     document.addEventListener('keydown', (event) => {
-      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (!isDevContentEditing()) return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
 
       const key = event.key.toLowerCase();
@@ -5951,12 +5952,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     window.addEventListener('vcd:dev-mode-change', (event) => {
       const active = Boolean((event as CustomEvent<{ active: boolean }>).detail?.active);
-      setEditingEnabled(active);
+      setEditingEnabled(active && isDevContentEditing());
       if (active) {
         void refreshPublishState();
         void refreshStyleEngineState();
         void refreshBranchUpdateState();
       }
+    }, { signal: editorSignal });
+    window.addEventListener('vcd:section-nav-editor-change', () => {
+      setEditingEnabled(isDevContentEditing());
     }, { signal: editorSignal });
     window.addEventListener('beforeunload', (event) => {
       if (document.documentElement.classList.contains('is-dev-crop-open')) return;
@@ -5973,7 +5977,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       event.returnValue = '';
     }, { signal: editorSignal });
 
-    setEditingEnabled(document.documentElement.classList.contains('is-dev-mode'));
+    setEditingEnabled(isDevContentEditing());
   };
 
   if (import.meta.hot) {
