@@ -236,4 +236,80 @@ function flush(harness) {
   assert.equal(harness.notes[0].textContent, "i'm not playing");
 }
 
+{
+  const h = createHarness();
+  for (let i = 0; i < 12; i++) click(h.links[0]);
+  flush(h);
+  for (let i = 0; i < 9; i++) { click(h.links[0]); flush(h); assert.equal(h.notes[0].textContent, 'are you dumb?'); }
+  click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, "ahh, i see, you're curious");
+}
+
+{
+  const h = createHarness();
+  for (let i = 0; i < 24; i++) click(h.links[0]);
+  h.advance(3200);
+  assert.equal(h.notes[0].textContent, "who's a good boy?");
+  h.advance(2999);
+  assert.equal(h.notes[0].classList.contains('is-visible'), true);
+  h.advance(101);
+  assert.equal(h.notes[0].classList.contains('is-visible'), false);
+  click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, "i'm not playing");
+}
+
+{
+  const h = createHarness();
+  for (let i = 0; i < 24; i++) click(h.links[0]);
+  h.advance(3200);
+  click(h.links[0]); flush(h);
+  click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, "i'm not playing");
+  click(h.links[0]); flush(h);
+  h.advance(1000);
+  assert.equal(h.notes[0].textContent, 'seriously');
+}
+
+{
+  const h = createHarness();
+  for (let i = 0; i < 24; i++) click(h.links[0]);
+  flush(h);
+  delete h.triggers[0].dataset.menuOpen;
+  h.triggers[0].dispatch('header:trigger-close');
+  h.advance(10000);
+  h.triggers[0].dataset.menuOpen = 'true';
+  h.triggers[0].dispatch('header:trigger-open');
+  assert.equal(h.notes[0].textContent, 'You are on this page');
+  assert.equal(h.notes[0].style.fontWeight, '400');
+  click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, 'well just stop');
+  h.advance(3100);
+  assert.equal(h.notes[0].textContent, "who's a good boy?");
+}
+
+{
+  const h = createHarness();
+  for (let i = 0; i < 28; i++) click(h.links[0]);
+  flush(h);
+  h.triggers[0].dispatch('header:trigger-close');
+  h.triggers[0].dispatch('header:trigger-open');
+  h.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
+  assert.equal(h.items[0].classList.contains('is-removing'), false);
+  click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, 'go on, click it again, see what happens');
+  h.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
+  assert.equal(h.items[0].classList.contains('is-removing'), true);
+}
+
+{
+  const h = createHarness();
+  for (let i = 0; i < 24; i++) click(h.links[0]);
+  flush(h);
+  document.hidden = true;
+  h.documentListeners.visibilitychange.forEach((callback) => callback());
+  h.advance(10000);
+  assert.equal(h.notes[0].classList.contains('is-visible'), false);
+  assert.notEqual(h.notes[0].textContent, "who's a good boy?");
+}
+
 console.log('header-current-page: ok');
