@@ -159,16 +159,16 @@ import {
       draftBelowAlign = positions.below;
       draftReveals = structuredClone(value.captionReveals);
       lastDraft = captureDraft();
-      if (editTarget) applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, { retainEmptyHost: captionSession });
+      if (editTarget) applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, { retainEmptyHost: captionSession, restoreFocusedText: true });
       renderFields();
     };
-    const recordDraftHistory = () => {
+    const recordDraftHistory = (mergeKey?: string) => {
       const after = captureDraft();
       const before = lastDraft;
       lastDraft = after;
       if (!captionSession || !before || sameCaption(before, after) || localHistory.replaying) return;
       localHistory.push({ label: 'Edit caption',
-        mergeKey: document.activeElement === textArea || document.activeElement?.hasAttribute('data-caption-bp') ? `caption-text:${selectedViewport}` : undefined,
+        mergeKey,
         undo: () => restoreDraft(before), redo: () => restoreDraft(after),
       });
     };
@@ -429,7 +429,7 @@ import {
       captionStyle: ImageCaptionStyleId,
       captionPosition: ImageCaptionPositionId,
       captionReveals: ImageCaptionReveals,
-      options?: { retainEmptyHost?: boolean },
+      options?: { retainEmptyHost?: boolean; restoreFocusedText?: boolean },
     ) => {
       const effectiveReveals = isBelowImageCaptionStyle(captionStyle)
         ? BELOW_IMAGE_CAPTION_REVEALS
@@ -472,7 +472,7 @@ import {
 
       IMAGE_VIEWPORTS.forEach((viewport) => {
         const node = host.querySelector<HTMLElement>(`[data-caption-bp="${viewport}"]`);
-        if (!node || document.activeElement === node) return;
+        if (!node || (!options?.restoreFocusedText && document.activeElement === node)) return;
         if (node.textContent !== captions[viewport]) {
           node.textContent = captions[viewport];
         }
@@ -579,7 +579,6 @@ import {
     };
 
     const renderFields = () => {
-      queueMicrotask(recordDraftHistory);
       syncingUi = true;
       styleButtons.forEach((button) => {
         const style = button.dataset.captionStyle ?? '';
@@ -612,6 +611,7 @@ import {
       if (!syncingUi && document.activeElement !== textArea) {
         textArea.value = draftCaptions[selectedViewport];
       }
+      if (!syncingUi) recordDraftHistory(`caption-text:${viewport}`);
     };
 
     const notifyCarouselCaptions = (target: HTMLElement | null) => {
@@ -742,6 +742,7 @@ import {
             retainEmptyHost: true,
           });
         }
+        recordDraftHistory();
         renderFields();
       });
     });
@@ -759,6 +760,8 @@ import {
           retainEmptyHost: true,
         });
       }
+      recordDraftHistory();
+      renderFields();
     });
 
     revealSelect.addEventListener('change', () => {
@@ -771,6 +774,7 @@ import {
           retainEmptyHost: true,
         });
       }
+      recordDraftHistory();
       renderFields();
     });
 
@@ -795,6 +799,7 @@ import {
           retainEmptyHost: true,
         });
       }
+      recordDraftHistory();
       renderFields();
       textArea.focus();
       status.textContent = 'Caption cleared — keep typing, or click away to show Add caption.';
@@ -991,7 +996,7 @@ import {
       if (!(node instanceof HTMLElement)) return;
       if (!node.matches('[data-caption-bp][contenteditable]')) return;
       if (document.activeElement !== node) return;
-      const target = node.closest<HTMLElement>('[data-dev-image-target]');
+      const target = resolveCaptionEditTarget(node.closest<HTMLElement>('[data-project-image-caption]') ?? node);
       if (!target || target !== editTarget) return;
       const bp = (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport;
       setDraftText(node.textContent ?? '', bp);
