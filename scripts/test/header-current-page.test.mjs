@@ -41,7 +41,7 @@ class FakeElement {
     return [];
   }
   getAnimations() { return this.animations ?? []; }
-  animate() { const animation = { cancel() {} }; (this.animations ??= []).push(animation); return animation; }
+  animate() { this.animateCalls = (this.animateCalls ?? 0) + 1; const animation = { cancel() {} }; (this.animations ??= []).push(animation); return animation; }
   getBoundingClientRect() { return { width: this.width ?? 100, height: this.height }; }
   setAttribute(name, value) { this.attributes[name] = String(value); }
   hasAttribute(name) { return Object.hasOwn(this.attributes, name); }
@@ -120,21 +120,27 @@ function flush(harness) {
   click(harness.links[0]);
   click(harness.links[0]);
   flush(harness);
+  const noteAnimations = harness.notes[0].animateCalls;
   assert.equal(harness.notes[0].style.fontWeight, '400');
   click(harness.links[0]);
   click(harness.links[0]);
   flush(harness);
   assert.equal(harness.notes[0].style.fontWeight, '700');
+  assert.equal(harness.notes[0].animateCalls, noteAnimations);
+  assert.match(harness.notes[0].style.color, /color-mix/);
   click(harness.links[0]);
   click(harness.links[0]);
   flush(harness);
   assert.equal(harness.notes[0].style.fontWeight, '900');
+  assert.equal(harness.notes[0].animateCalls, noteAnimations);
+  assert.equal(harness.notes[0].style.color, 'var(--sys-color-link-soft-hover)');
   click(harness.links[0]);
   click(harness.links[0]);
   click(harness.links[0]);
   flush(harness);
   assert.equal(harness.notes[0].style.fontWeight, '400');
   assert.equal(harness.notes[0].textContent, 'chill out');
+  assert.equal(harness.notes[0].style.color, '');
   click(harness.links[0]);
   click(harness.links[0]);
   click(harness.links[0]);
