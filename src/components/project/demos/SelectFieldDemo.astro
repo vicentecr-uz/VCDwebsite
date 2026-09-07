@@ -3,13 +3,13 @@ import alignCenterIcon from 'lucide-static/icons/align-center.svg?raw';
 import alignLeftIcon from 'lucide-static/icons/align-left.svg?raw';
 import alignRightIcon from 'lucide-static/icons/align-right.svg?raw';
 import Button from '../../ui/Button.astro';
+import DevPanel from '../../ui/DevPanel.astro';
 import SelectField from '../../ui/SelectField.astro';
 ---
 
 <vcd-select-demo data-alignment="center">
-  <form class="select-demo" novalidate>
-    <div class="select-demo__surface">
-      <h1 class="select-demo__title">Select field</h1>
+  <DevPanel title="Select field" titleTag="h1" showLights={false} class="select-demo">
+    <form novalidate>
 
       <SelectField
         label="Alignment"
@@ -22,17 +22,14 @@ import SelectField from '../../ui/SelectField.astro';
         ]}
       />
 
-      <div class="select-demo__actions">
-        <Button label="Reset" type="button" data-select-demo-reset />
-      </div>
-
       <div class="select-demo__specimen" role="img" aria-label="Centre alignment">
         <span></span>
         <span></span>
         <span></span>
       </div>
-    </div>
-  </form>
+    </form>
+  </DevPanel>
+  <div class="demo-controls"><Button label="Reset" type="button" data-select-demo-reset /></div>
 </vcd-select-demo>
 
 <style>
@@ -43,36 +40,6 @@ import SelectField from '../../ui/SelectField.astro';
 
   .select-demo {
     margin: 0;
-  }
-
-  .select-demo__surface {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-unit);
-    padding: calc(var(--space-unit) * 1.5);
-    overflow: visible;
-    color: var(--sys-color-on-srf);
-    background: var(--sys-color-srf);
-    border: 1px solid var(--sys-color-srf-container-low);
-    border-radius: var(--radius-card-smooth);
-    box-shadow: var(--dev-panel-shadow);
-  }
-
-  .select-demo__title {
-    margin: 0;
-    color: var(--sys-color-on-srf);
-    font: var(--dev-text-panel-title);
-  }
-
-  .select-demo__actions {
-    display: flex;
-    justify-content: flex-end;
-    padding: 8px;
-    margin: -8px;
-  }
-
-  .select-demo__actions :global(.dev-btn) {
-    --dev-btn-hit-inset: 8px;
   }
 
   .select-demo__specimen {
@@ -108,12 +75,6 @@ import SelectField from '../../ui/SelectField.astro';
 
   vcd-select-demo[data-alignment='right'] .select-demo__specimen {
     align-items: flex-end;
-  }
-
-  @media (max-width: 40em) {
-    .select-demo__surface {
-      padding: var(--space-unit);
-    }
   }
 
   @media (pointer: coarse) {

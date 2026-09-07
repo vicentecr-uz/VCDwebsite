@@ -1,6 +1,7 @@
 ---
 import '../../../styles/project.css';
 import Button from '../../ui/Button.astro';
+import DevPanel from '../../ui/DevPanel.astro';
 import Field from '../../ui/Field.astro';
 import SelectField from '../../ui/SelectField.astro';
 import { normalizeImageVariants, responsiveImageStyle } from '../../../lib/responsiveImage';
@@ -9,8 +10,7 @@ const initialStyle = responsiveImageStyle(initialVariants, { width: 1200, height
 ---
 
 <vcd-crop-frame-demo>
-  <section class="demo-surface crop-frame-demo">
-    <h1 class="demo-title">Image framing</h1>
+  <DevPanel title="Image framing" titleTag="h1" showLights={false} class="crop-frame-demo">
     <div class="crop-frame-demo__controls">
       <SelectField label="Frame" name="frame" value="4:3" options={[{ value: '1:1', label: '1:1' }, { value: '4:3', label: '4:3' }, { value: '16:9', label: '16:9' }]} />
       <Field label="Zoom"><input type="range" min="100" max="250" step="1" value="100" aria-label="Zoom" data-crop-zoom /></Field>
@@ -22,23 +22,18 @@ const initialStyle = responsiveImageStyle(initialVariants, { width: 1200, height
       <Field label="X"><input type="range" min="0" max="100" step="1" value="50" aria-label="X position" data-crop-x /></Field>
       <Field label="Y"><input type="range" min="0" max="100" step="1" value="50" aria-label="Y position" data-crop-y /></Field>
     </div>
-    <div class="demo-actions"><Button label="Reset" type="button" data-crop-reset /></div>
-  </section>
+  </DevPanel>
+  <div class="demo-controls"><Button label="Reset" type="button" data-crop-reset /></div>
 </vcd-crop-frame-demo>
 
 <style>
   vcd-crop-frame-demo { display: block; width: min(100%, 28em); }
-  .demo-surface { display: flex; flex-direction: column; gap: var(--space-unit); padding: calc(var(--space-unit) * 1.5); color: var(--sys-color-on-srf); background: var(--sys-color-srf); border: 1px solid var(--sys-color-srf-container-low); border-radius: var(--radius-card-smooth); box-shadow: var(--dev-panel-shadow); }
-  .demo-title { margin: 0; font: var(--dev-text-panel-title); }
   .crop-frame-demo__controls, .crop-frame-demo__ranges { display: grid; gap: var(--space-unit); }
   .crop-frame-demo__frame { width: 100%; overflow: visible; border-radius: var(--radius-control-smooth); outline: none; touch-action: none; cursor: grab; }
   .crop-frame-demo__frame:active { cursor: grabbing; }
   .crop-frame-demo__frame .project-crop-clip { border-radius: inherit; }
   .crop-frame-demo__frame img { user-select: none; -webkit-user-drag: none; }
-  .demo-actions { display: flex; justify-content: flex-end; padding: 8px; margin: -8px; }
-  .demo-actions :global(.dev-btn) { --dev-btn-hit-inset: 8px; }
   .crop-frame-demo input[type='range'] { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
-  @media (max-width: 40em) { .demo-surface { padding: var(--space-unit); } }
   @media (pointer: coarse) { .crop-frame-demo :global(.dev-btn), .crop-frame-demo :global(.dev-select__trigger), .crop-frame-demo :global(.dev-select__option), .crop-frame-demo input[type='range'] { min-height: 44px; } }
 </style>
 
