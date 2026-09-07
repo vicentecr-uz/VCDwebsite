@@ -251,20 +251,34 @@ describe('editor history', () => {
     expect(panelValue).toBe(1);
   }));
 
-  test('wheel interaction selects the panel for a following shortcut', async () => withShortcuts(async (doc, _win, panel, signal) => {
-    const wheelTarget = new FakeElement('wheel-target');
+  test('scrolling the page leaves the last clicked panel history selected', async () => withShortcuts(async (doc, _win, panel, signal) => {
     const panelHistory = createHistory();
     let panelValue = 1, pageValue = 1;
     panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => { panelValue = 1; } });
     pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => { pageValue = 1; } });
-    registerHistoryScope(panel as any, panelHistory, { owns: (target) => target === wheelTarget, signal });
-    doc.dispatchEvent(makeEvent('wheel', wheelTarget));
+    registerHistoryScope(panel as any, panelHistory, { signal });
+    doc.dispatchEvent(makeEvent('pointerdown', panel));
+    doc.dispatchEvent(makeEvent('wheel', doc.body));
     doc.dispatchEvent(makeEvent('keydown', new FakeElement('stale-text', 'data-dev-text-document'), {
       metaKey: true, key: 'z', isComposing: false,
     }));
     await Promise.resolve();
     expect(panelValue).toBe(0);
     expect(pageValue).toBe(1);
+  }));
+
+  test('scrolling over a panel leaves the last clicked page history selected', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const local = createHistory();
+    let crop = 1, text = 1;
+    local.push({ label: 'Crop', undo: () => { crop = 0; }, redo: () => { crop = 1; } });
+    pageHistory.push({ label: 'Text', undo: () => { text = 0; }, redo: () => { text = 1; } });
+    registerHistoryScope(panel as any, local, { signal });
+    doc.dispatchEvent(makeEvent('pointerdown', doc.body));
+    doc.dispatchEvent(makeEvent('wheel', panel));
+    doc.dispatchEvent(makeEvent('keydown', panel, { metaKey: true, key: 'z' }));
+    await Promise.resolve();
+    expect(text).toBe(0);
+    expect(crop).toBe(1);
   }));
 
   for (const surface of ['header', 'padding', 'frame']) {
