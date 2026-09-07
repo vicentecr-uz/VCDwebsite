@@ -25,7 +25,7 @@ const formatHeading1Svg = sizeIcon(heading1Icon, 16);
 const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 ---
 
-<div class="dev-text-actions" data-dev-text-actions hidden>
+<div class="dev-text-actions dev-surface" data-dev-text-actions hidden>
   <div class="dev-text-actions__surface">
     <span class="dev-text-actions__warn" data-dev-text-warn hidden set:html={publishWarnSvg} />
     <span class="dev-text-actions__status" data-dev-text-status aria-live="polite"></span>
@@ -37,14 +37,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   </div>
 </div>
 
-<div class="dev-text-actions" data-dev-branch-update-actions hidden>
+<div class="dev-text-actions dev-surface" data-dev-branch-update-actions hidden>
   <div class="dev-text-actions__surface">
     <span class="dev-text-actions__status" data-dev-branch-update-status aria-live="polite">Update available</span>
     <button type="button" class="dev-text-actions__save" data-dev-branch-update>Update</button>
   </div>
 </div>
 
-<div class="dev-text-format" data-dev-text-format hidden>
+<div class="dev-text-format dev-surface" data-dev-text-format hidden>
   <div class="dev-text-format__surface">
     <div class="dev-text-format__buttons">
       <SelectField
@@ -843,7 +843,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const devEnabled = isDevContentEditing();
         control.hidden = !devEnabled || followsHiddenTitle(element);
         control.innerHTML = `
-          <div class="dev-gap-toolbar__pill">
+          <div class="dev-gap-toolbar__pill dev-surface">
             <button
               type="button"
               class="dev-gap-toolbar__add"
@@ -6047,20 +6047,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     background: color-mix(in srgb, currentColor 10%, var(--sys-color-srf-container-low));
   }
 
-  /*
-    Outer keeps the box-shadow; the split exists only so the shadow isn't
-    clipped by the bar's own overflow: hidden. The signed bar is a flat solid
-    surface, not a blurred one — no backdrop-filter, no squircle.
-  */
+  /* Positioning wrapper for the fixed save bar; the inner row owns its layout. */
   .dev-text-actions {
     position: fixed;
     right: max(1em, env(safe-area-inset-right));
     bottom: max(1em, env(safe-area-inset-bottom));
     z-index: 90;
     border-radius: 12px;
-    background: transparent;
     padding: 0;
-    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
     transition: opacity 0.28s ease;
   }
 
@@ -6071,8 +6065,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     padding: 6px;
     overflow: hidden;
     border-radius: 12px; /* literal in Figma; no radius token covers 12px */
-    border: 1px solid var(--sys-color-srf-container-low); /* Figma button/toolbars/save-bar-outline #f5f5f7 — no source token */
-    background: var(--sys-color-srf);
   }
 
   .dev-text-actions[hidden] {
@@ -6215,9 +6207,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     position: fixed;
     z-index: 95;
     border-radius: 12px;
-    background: transparent;
     padding: 0;
-    box-shadow: 0 7px 9.5px rgb(0 0 0 / 0.08);
     transition: opacity 0.15s ease;
   }
 
@@ -6239,8 +6229,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     padding: 6px;
     box-sizing: border-box;
     border-radius: 12px;
-    border: 1px solid var(--sys-color-srf-container-low);
-    background: var(--sys-color-srf);
     width: fit-content;
     max-width: calc(100vw - 16px);
   }
@@ -6603,10 +6591,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     align-items: center;
     gap: 4px;
     padding: 6px;
-    border: 1px solid var(--sys-color-srf-container-low);
     border-radius: 12px;
-    background: var(--sys-color-srf);
-    box-shadow: 0 7px 19px rgb(0 0 0 / 0.08);
   }
 
   .dev-gap-toolbar__pill > .dev-hairline--vertical {
