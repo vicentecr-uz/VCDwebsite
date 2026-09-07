@@ -142,8 +142,14 @@ function flush(harness) {
   click(harness.links[0]); flush(harness);
   click(harness.links[0]); flush(harness);
   click(harness.links[0]); flush(harness);
-  assert.equal(harness.notes[0].textContent, 'ah, you again');
+  assert.equal(harness.notes[0].textContent, 'You are on this page');
   click(harness.links[0]); flush(harness);
+  assert.equal(harness.notes[0].textContent, 'You are on this page');
+  click(harness.links[0]);
+  flush(harness);
+  assert.equal(harness.notes[0].textContent, 'ah, you again');
+  click(harness.links[0]);
+  flush(harness);
   assert.equal(harness.notes[0].textContent, 'welcome back');
   click(harness.links[0]);
   flush(harness);
@@ -154,6 +160,15 @@ function flush(harness) {
 {
   const harness = createHarness({ storageThrows: true });
   for (let index = 0; index < 19; index += 1) click(harness.links[0]);
+  harness.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
+  assert.equal(harness.items[0].classList.contains('is-removing'), true);
+  flush(harness);
+  assert.equal(harness.items[0].classList.contains('is-removed'), true);
+}
+
+{
+  const harness = createHarness({ stored: true });
+  for (let index = 0; index < 6; index += 1) click(harness.links[0]);
   harness.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
   assert.equal(harness.items[0].classList.contains('is-removing'), true);
   flush(harness);
