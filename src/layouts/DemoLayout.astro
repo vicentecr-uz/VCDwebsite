@@ -35,16 +35,42 @@ const policy = [
 </html>
 
 <style>
+  html, body {
+    height: 100%;
+    min-height: 100%;
+    background: var(--comp-demo-frame-container);
+  }
+
   .demo-page {
+    position: relative;
     display: grid;
-    justify-items: center;
-    align-content: start;
+    place-items: center;
     box-sizing: border-box;
     min-height: 100%;
-    padding: calc(var(--space-unit) * 2);
+    padding: calc(var(--space-unit) * 4) calc(var(--space-unit) * 2);
+  }
+
+  .demo-page :global(.dev-panel) {
+    width: 100%;
+  }
+
+  .demo-page :global(.demo-controls) {
+    position: absolute;
+    right: var(--space-unit);
+    bottom: var(--space-unit);
+    display: flex;
+    gap: calc(var(--space-unit) * 2);
+  }
+
+  .demo-page :global(.demo-controls .dev-btn) {
+    --dev-btn-hit-inset: 8px;
+  }
+
+  @media (pointer: coarse) {
+    .demo-page :global(.demo-controls .dev-btn) { min-height: 44px; }
   }
 
   @media (max-width: 40em) {
-    .demo-page { padding: var(--space-unit); }
+    .demo-page { padding-inline: var(--space-unit); }
   }
 </style>

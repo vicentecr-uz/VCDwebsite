@@ -21,7 +21,7 @@ const scriptGraph = async (source, seen = new Set()) => {
     if (seen.has(file)) continue;
     seen.add(file);
     const child = await readFile(file, 'utf8');
-    assert.doesNotMatch(child, /\/api\/|localStorage|sessionStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay/, file);
+    assert.doesNotMatch(child, /\/api\/|localStorage|sessionStorage|vcd:dev-|DevTextEditor|DevModeController|data-dev-overlay|data-dev-panel-draggable/, file);
     await scriptGraph(child, seen);
   }
   return seen;
@@ -31,7 +31,21 @@ for (const demo of CRAFT_DEMOS) {
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
   assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 1, `${demo.id}: one visible demo title`);
-  assert.ok(nodes.some((node) => node.tagName === 'button' && text(node).trim() === 'Reset'), `${demo.id}: Reset`);
+  const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes('dev-panel'));
+  assert.equal(panels.length, 1, `${demo.id}: one shared DevPanel`);
+  assert.ok(attr(panels[0], 'class').split(/\s+/).includes('dev-surface'), `${demo.id}: the shared base surface`);
+  const panelNodes = allNodes(panels[0]);
+  const header = panelNodes.find((node) => node.tagName === 'header');
+  const headerElements = header?.childNodes.filter((node) => node.tagName);
+  assert.equal(headerElements?.length, 1, `${demo.id}: title-only header`);
+  assert.equal(headerElements[0].tagName, 'h1');
+  assert.equal(text(headerElements[0]).trim(), demo.title);
+  const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
+  assert.ok(reset, `${demo.id}: Reset`);
+  assert.equal(panelNodes.includes(reset), false, `${demo.id}: Reset sits outside the panel`);
+  const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
+  assert.ok(instance && allNodes(instance).includes(reset), `${demo.id}: Reset stays within its demo lifecycle`);
+  assert.equal(nodes.some((node) => /\b(dev-panel__lights|dev-panel-actions)\b/.test(attr(node, 'class') ?? '') || attr(node, 'data-dev-panel-draggable') !== undefined), false, `${demo.id}: no panel chrome or dragging`);
   assert.ok(nodes.some((node) => node.tagName === 'meta' && attr(node, 'name') === 'robots' && attr(node, 'content') === 'noindex,nofollow'));
   const policy = nodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
   assert.match(attr(policy, 'content'), /connect-src 'none'/, `${demo.id}: no production fetch/WebSocket access`);
