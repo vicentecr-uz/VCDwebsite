@@ -8,6 +8,7 @@ import ProjectPressQuoteTicker from './ProjectPressQuoteTicker.astro';
 import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
 import ProjectSectionTitle from './ProjectSectionTitle.astro';
 import ProjectVideo from './ProjectVideo.astro';
+import ProjectInteractiveDemo from './ProjectInteractiveDemo.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
@@ -57,6 +58,10 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
   const type = String(section.type ?? '');
   const intro = introMembers.get(sectionIndex);
   const introHeight = intro?.introHeight as number | undefined;
+
+  if (type === 'interactiveDemo') {
+    return <ProjectInteractiveDemo demo={section.demo} spacing={spacing} sectionId={section.sectionId as string | undefined} documentKey={documentKey} sectionPath={path} />;
+  }
 
   if (type === 'heroImage') {
     return (

@@ -1,0 +1,61 @@
+---
+import { craftDemo } from '../../lib/craftDemos';
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+
+interface Props {
+  demo: unknown;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+}
+const { demo: id, spacing = 'section', sectionId, documentKey, sectionPath } = Astro.props;
+const demo = craftDemo(id);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+---
+
+{demo && (
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} {...(spacingAttrs ?? {})}>
+    <iframe
+      src={`/preview/${demo.id}`}
+      title={demo.title}
+      loading="lazy"
+      sandbox="allow-scripts allow-same-origin"
+      referrerpolicy="no-referrer"
+      style={`height:${demo.height}rem`}
+    />
+  </div>
+)}
+
+<style>
+  .project-interactive-demo {
+    position: relative;
+    border-radius: var(--radius-control-smooth);
+    background: var(--comp-demo-frame-container);
+  }
+
+  .project-interactive-demo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow:
+      inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
+      inset 0 1px 3px color-mix(in srgb, var(--sys-color-surface-shadow) 35%, transparent),
+      inset 0 0 0 1px var(--sys-color-surface-outline);
+  }
+
+  :global(:root[data-theme='dark']) .project-interactive-demo::after {
+    box-shadow:
+      inset 0 calc(var(--sys-surface-edge-y) * -1px) 0 color-mix(in srgb, var(--sys-color-surface-edge) 50%, transparent),
+      inset 0 0 0 1px var(--sys-color-surface-outline);
+  }
+
+  .project-interactive-demo iframe {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: inherit;
+  }
+</style>
