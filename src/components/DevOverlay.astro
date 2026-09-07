@@ -43,6 +43,7 @@ const hideSvg = trafficLightIcon(xIcon);
 <aside
   class:list={[
     'dev-overlay',
+    'dev-surface',
     `dev-overlay--${layout}`,
     embedded && 'dev-overlay--embedded',
     embedded && !defaultHidden && 'is-dev-overlay-open',
@@ -912,13 +913,7 @@ const hideSvg = trafficLightIcon(xIcon);
     z-index: 60;
     width: min(var(--dev-panel-width), calc(100vw - 2em));
     max-height: calc(100dvh - 2em);
-    /* Border, not outline: an outline paints outside the border box in its own
-       pass, so on a curve its antialiased inner edge met the fill's outer edge
-       and the page bled through the join. A border sits on top of the fill —
-       background-clip is border-box — so there is no join to bleed through. */
-    border: 1px solid var(--sys-color-srf-container-low);
     border-radius: var(--dev-radius-panel);
-    background: var(--sys-color-srf);
     padding: var(--dev-panel-pad);
     display: flex;
     flex-direction: column;
@@ -926,7 +921,6 @@ const hideSvg = trafficLightIcon(xIcon);
     overflow: hidden;
     font-family: var(--font-sans);
     color: var(--sys-color-on-srf);
-    box-shadow: var(--dev-panel-shadow);
     opacity: 0;
     transform: translateY(var(--dev-overlay-rise));
     transition:
