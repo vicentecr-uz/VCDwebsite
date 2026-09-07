@@ -22,7 +22,7 @@ export function sectionIndexFromPath(raw: string | undefined | null): number | n
 }
 
 export function sectionIndexFromElement(el: HTMLElement): number | null {
-  return sectionIndexFromPath(el.dataset.devSpacingPath);
+  return sectionIndexFromPath(el.dataset.devSpacingWritePath ?? el.dataset.devSpacingPath);
 }
 
 export function getDropZone(): HTMLElement | null {
