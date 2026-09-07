@@ -135,6 +135,12 @@ function flush(harness) {
   flush(harness);
   assert.equal(harness.notes[0].style.fontWeight, '400');
   assert.equal(harness.notes[0].textContent, 'chill out');
+  click(harness.links[0]);
+  click(harness.links[0]);
+  click(harness.links[0]);
+  assert.equal(harness.links[0].label.classList.contains('is-error-shaking'), false);
+  click(harness.links[0]);
+  assert.equal(harness.links[0].label.classList.contains('is-error-shaking'), false);
 }
 
 {
@@ -148,9 +154,11 @@ function flush(harness) {
   click(harness.links[0]);
   flush(harness);
   assert.equal(harness.notes[0].textContent, 'ah, you again');
+  assert.equal(harness.links[0].label.classList.contains('is-error-shaking'), false);
   click(harness.links[0]);
   flush(harness);
   assert.equal(harness.notes[0].textContent, 'welcome back');
+  assert.equal(harness.links[0].label.classList.contains('is-error-shaking'), false);
   click(harness.links[0]);
   flush(harness);
   assert.ok(harness.items.every((item) => item.classList.contains('is-removed')));
