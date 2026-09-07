@@ -1306,7 +1306,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         currentPageClickCount += 1;
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
-        if (event.detail > 0 && !reduceMotionMq.matches && label) {
+        const shakeCutoff = completionStored ? 5 : 13;
+        if (label && currentPageClickCount >= shakeCutoff) {
+          cancelAnimations(label);
+          label.classList.remove('is-error-shaking');
+        }
+        if (event.detail > 0 && !reduceMotionMq.matches && label && currentPageClickCount < shakeCutoff) {
           cancelAnimations(label);
           label.classList.remove('is-error-shaking');
           const strength = completionStored ? 0.45 : currentPageClickCount <= 9
