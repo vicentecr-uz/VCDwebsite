@@ -84,6 +84,8 @@ import SelectField from '../ui/SelectField.astro';
   } from '../../lib/projectOutline';
 
   import textIcon from 'lucide-static/icons/type.svg?raw';
+  import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
+  import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
   import imageIcon from 'lucide-static/icons/image.svg?raw';
   import galleryIcon from 'lucide-static/icons/images.svg?raw';
   import quoteIcon from 'lucide-static/icons/quote.svg?raw';
@@ -156,10 +158,11 @@ import SelectField from '../ui/SelectField.astro';
     };
     const blockIconSvg = (block: HTMLElement) => {
       const kind = block.dataset.devSectionDeletable;
-      return sizeIcon(kind === 'bodyText' || kind === 'sectionTitle' ? textIcon
+      return sizeIcon(kind === 'sectionTitle' ? (block.querySelector('h3.project-section-title') ? heading2Icon : heading1Icon)
+        : kind === 'bodyText' ? textIcon
         : kind === 'imageGrid' || kind === 'imageCarousel' ? galleryIcon
         : block.hasAttribute('data-press-quote-ticker') ? quoteIcon
-          : block.hasAttribute('data-reddit-comment-board') ? commentsIcon
+        : block.hasAttribute('data-reddit-comment-board') ? commentsIcon
         : block.querySelector('img') ? imageIcon : blockIcon, 16);
     };
     const syncSelectableBlocks = (enabled = isActive()) => {
