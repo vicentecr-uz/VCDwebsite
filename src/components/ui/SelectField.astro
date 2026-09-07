@@ -79,10 +79,10 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
     {options.map((item) =>
       isGroup(item) ? (
         <optgroup label={item.label}>
-          {item.options.map((opt) => <option value={opt.value}>{opt.label}</option>)}
+          {item.options.map((opt) => <option value={opt.value} data-icon-svg={opt.icon ? sizeIcon(opt.icon, 16) : undefined}>{opt.label}</option>)}
         </optgroup>
       ) : (
-        <option value={item.value}>{item.label}</option>
+        <option value={item.value} data-icon-svg={item.icon ? sizeIcon(item.icon, 16) : undefined}>{item.label}</option>
       ),
     )}
   </select>
@@ -191,9 +191,8 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
   /**
    * Rebuilds the popup's <li>s from the select's live <option>s. Consumers
    * like DevLogIssue populate options asynchronously after fetch via
-   * replaceChildren — the popup has to follow along. Icons only exist on the
-   * options passed to the Astro props at render time, so rebuilt options
-   * never carry one.
+   * replaceChildren — the popup has to follow along. Trusted icon SVG travels
+   * with each native option so dynamic and static lists retain their icons.
    */
   const rebuildListboxFromSelect = (parts: Parts) => {
     const { select, trigger, listbox } = parts;
@@ -206,6 +205,13 @@ const selectedOption = flatOptions.find((opt) => opt.value === value) ?? flatOpt
         li.className = 'dev-btn dev-btn--ghost dev-btn--align-start dev-btn--fill dev-select__option';
         li.dataset.value = optionEl.value;
         li.setAttribute('aria-selected', optionEl.selected ? 'true' : 'false');
+        if (optionEl.dataset.iconSvg) {
+          const iconSpan = document.createElement('span');
+          iconSpan.className = 'dev-select__option-icon';
+          iconSpan.setAttribute('aria-hidden', 'true');
+          iconSpan.innerHTML = optionEl.dataset.iconSvg;
+          li.append(iconSpan);
+        }
         const labelSpan = document.createElement('span');
         labelSpan.className = 'dev-select__option-label';
         labelSpan.textContent = optionEl.textContent || '';
