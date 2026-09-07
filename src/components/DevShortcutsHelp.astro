@@ -33,7 +33,7 @@ const shortcuts = [
           </li>
         ))}
       </ul>
-      <p class="dev-shortcuts-help__version" data-dev-shortcuts-version aria-live="polite">Version…</p>
+      <p class="dev-shortcuts-help__version" data-dev-shortcuts-version aria-live="polite" hidden>Version…</p>
     </div>
   </div>
 </div>
@@ -57,35 +57,38 @@ const shortcuts = [
       return Boolean(el && (el.isContentEditable || el.closest('input, textarea, select')));
     };
 
-    const open = () => {
+    const open = (showVersion = false) => {
       if (closeTimer) {
         clearTimeout(closeTimer);
         closeTimer = null;
       }
       root.hidden = false;
+      version.hidden = !showVersion;
       const requestId = ++versionRequestId;
-      version.textContent = 'Version…';
-      fetch('/api/dev-branch-update', { cache: 'no-store' })
-        .then((response) => {
-          if (!response.ok) throw new Error('Version unavailable');
-          return response.json();
-        })
-        .then((state) => {
-          if (requestId !== versionRequestId) return;
-          if (!state || typeof state.branch !== 'string' || typeof state.revision !== 'string') throw new Error('Version unavailable');
-          let text = `${state.branch} · ${state.revision.slice(0, 7)}`;
-          if (!state.clean) text += ' · Local changes';
-          if (typeof state.mainRevision !== 'string') text += ' · Main unavailable';
-          else if (state.revision === state.mainRevision) text += ' · Matches fetched main';
-          else {
-            if (state.behind > 0) text += ` · ${state.behind} behind fetched main`;
-            if (state.ahead > 0) text += ` · ${state.ahead} ahead of fetched main`;
-          }
-          version.textContent = text;
-        })
-        .catch(() => {
-          if (requestId === versionRequestId) version.textContent = 'Version unavailable';
-        });
+      if (showVersion) {
+        version.textContent = 'Version…';
+        fetch('/api/dev-branch-update', { cache: 'no-store' })
+          .then((response) => {
+            if (!response.ok) throw new Error('Version unavailable');
+            return response.json();
+          })
+          .then((state) => {
+            if (requestId !== versionRequestId) return;
+            if (!state || typeof state.branch !== 'string' || typeof state.revision !== 'string') throw new Error('Version unavailable');
+            let text = `${state.branch} · ${state.revision.slice(0, 7)}`;
+            if (!state.clean) text += ' · Local changes';
+            if (typeof state.mainRevision !== 'string') text += ' · Main unavailable';
+            else if (state.revision === state.mainRevision) text += ' · Matches fetched main';
+            else {
+              if (state.behind > 0) text += ` · ${state.behind} behind fetched main`;
+              if (state.ahead > 0) text += ` · ${state.ahead} ahead of fetched main`;
+            }
+            version.textContent = text;
+          })
+          .catch(() => {
+            if (requestId === versionRequestId) version.textContent = 'Version unavailable';
+          });
+      }
       requestAnimationFrame(() => {
         root.classList.add('is-dev-shortcuts-open');
       });
@@ -103,9 +106,9 @@ const shortcuts = [
       }, VEIL_MS);
     };
 
-    const toggle = () => {
-      if (!root.hidden || isOpen()) close();
-      else open();
+    const toggle = (showVersion = false) => {
+      if ((!root.hidden || isOpen()) && version.hidden === !showVersion) close();
+      else open(showVersion);
     };
 
     veil.addEventListener('click', (event) => {
@@ -118,10 +121,10 @@ const shortcuts = [
     });
 
     document.addEventListener('keydown', (event) => {
-      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyH') {
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.code === 'KeyH') {
         if (isTypingTarget(event.target)) return;
         event.preventDefault();
-        toggle();
+        toggle(event.shiftKey);
         return;
       }
 
