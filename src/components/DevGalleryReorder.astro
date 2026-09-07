@@ -7,6 +7,7 @@
   import { createProximityReveal } from '../scripts/proximityReveal';
   import moveIcon from 'lucide-static/icons/move.svg?raw';
   import { sizeIcon } from '../lib/icons';
+  import { pageHistory } from '../lib/devHistory';
 
   const GRID_SELECTOR = '[data-dev-project-grid]';
   const HANDLE_ATTR = 'data-dev-grid-drag-handle';
@@ -101,6 +102,15 @@
         },
       },
     }));
+  };
+
+  const recordReorder = (grid: HTMLElement, before: ListingOrderEntry[], after: ListingOrderEntry[]) => {
+    if (pageHistory.replaying || ordersMatch(before, after)) return;
+    pageHistory.push({
+      label: 'Reorder gallery',
+      undo: () => { restoreOrder(grid, structuredClone(before)); syncPending(grid); },
+      redo: () => { restoreOrder(grid, structuredClone(after)); syncPending(grid); },
+    });
   };
 
   const captureBaselines = () => {
@@ -335,7 +345,11 @@
     droppingSessionId = sessionId;
     try {
       await controller.endDrop();
-      if (sessionId === activeSessionId && grid) syncPending(grid);
+      if (sessionId === activeSessionId && grid) {
+        const after = captureOrder(grid);
+        syncPending(grid);
+        if (grabOrderSnapshot) recordReorder(grid, grabOrderSnapshot, after);
+      }
     } finally {
       if (droppingSessionId === sessionId) droppingSessionId = 0;
       if (sessionId === activeSessionId) {
@@ -432,6 +446,7 @@
 
     if (revert && grid && snapshot) restoreOrder(grid, snapshot);
     if (grid) syncPending(grid);
+    if (!revert && grid && snapshot) recordReorder(grid, snapshot, captureOrder(grid));
   };
 
   const moveKeyboardGrab = (delta: number) => {
@@ -524,14 +539,16 @@
 
   window.addEventListener('vcd:dev-mode-change', onDevModeChange);
 
-  window.addEventListener('vcd:dev-pending-committed', () => {
+  window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+    const ids = event.detail?.ids;
     grids().forEach((grid) => {
       const gridId = grid.dataset.devProjectGrid;
       if (!gridId) return;
+      if (Array.isArray(ids) && !ids.includes(`listing-order:${gridId}`)) return;
       baselines.set(gridId, captureOrder(grid));
       grid.classList.remove('is-grid-order-dirty');
     });
-  });
+  }) as EventListener);
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
     grids().forEach((grid) => grid.classList.remove('is-grid-order-dirty'));

@@ -142,6 +142,9 @@ export interface ImageDevEditContext {
   path: Array<string | number>;
   cropId: string;
   variants: ImageVariants | undefined;
+  src?: string;
+  srcWidth?: number;
+  srcHeight?: number;
   captions?: Partial<ImageCaptions> | string;
   caption?: string;
   captionStyle?: ImageCaptionStyleId;
@@ -204,6 +207,8 @@ export function listingCoverDevEditAttrs(
   slug: string,
   grid: 'home' | 'work' | 'play',
   item: {
+    image?: string;
+    hoverImage?: string;
     variants?: ImageVariants;
     hoverVariants?: ImageVariants;
     srcWidth?: unknown;
@@ -220,8 +225,12 @@ export function listingCoverDevEditAttrs(
     path: ['listings', grid],
     cropId: `listing-${grid}`,
     variants: seedCoverVariants,
+    src: item.image,
+    srcWidth: Number(item.srcWidth),
+    srcHeight: Number(item.srcHeight),
     hasOwnVariants: hasCropVariants(item.variants),
   }) ?? {};
+  if (item.hoverImage) attrs['data-dev-hover-image-src'] = item.hoverImage;
   attrs['data-dev-listing-default-aspects'] = JSON.stringify(defaultAspects);
   attrs['data-dev-hover-variants'] = JSON.stringify(seededHoverVariants);
   return attrs;
@@ -252,6 +261,9 @@ export function imageDevEditAttrs(
     'data-dev-caption-position': captionPosition,
     'data-dev-caption-reveals': JSON.stringify(captionReveals),
   };
+  if (context.src) attrs['data-dev-image-src'] = context.src;
+  if (context.srcWidth) attrs['data-dev-image-src-width'] = String(context.srcWidth);
+  if (context.srcHeight) attrs['data-dev-image-src-height'] = String(context.srcHeight);
 
   if (context.gridDefaultAspect) {
     attrs['data-dev-grid-default-aspect'] = context.gridDefaultAspect;
