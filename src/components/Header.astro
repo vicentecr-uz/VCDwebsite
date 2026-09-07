@@ -1154,63 +1154,104 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   const currentPageNotes = [
     ...document.querySelectorAll<HTMLElement>('[data-current-page-note]'),
   ];
+  const currentPageItems = currentPageLinks
+    .map((link) => link.closest<HTMLElement>('.header-menu__item'))
+    .filter((item): item is HTMLElement => Boolean(item));
   const reduceMotionMq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const currentPageStorageKey = 'vcd:header-current-page-message-complete';
   let currentPageClickCount = 0;
+  let suppressNextCurrentPageClick = false;
+  let completionStored = false;
+  try {
+    completionStored = window.localStorage.getItem(currentPageStorageKey) === 'true';
+  } catch {
+    completionStored = false;
+  }
 
-  const hideCurrentPageNote = (note: HTMLElement) => {
-    if (!note.classList.contains('is-visible')) return;
-    if (reduceMotionMq.matches || note.classList.contains('is-instant')) {
-      note.classList.remove('is-visible', 'is-hiding', 'is-instant');
-      const trigger = note.closest<HTMLElement>('.header-trigger');
-      if (trigger?.hasAttribute('data-menu-surface-open')) {
-        syncMenuSurfaceInlineSize(trigger);
-      }
-      return;
-    }
-    const link = note.closest('.header-menu__item')?.querySelector<HTMLElement>('.header-menu__link');
-    if (link) {
-      note.style.setProperty('--menu-link-delay', link.style.getPropertyValue('--menu-link-delay'));
-      note.style.setProperty('--menu-link-duration', link.style.getPropertyValue('--menu-link-duration'));
-    }
-    note.classList.add('is-hiding');
-    note.classList.remove('is-visible');
-    note.addEventListener(
-      'animationend',
-      () => {
-        note.classList.remove('is-hiding');
-        const trigger = note.closest<HTMLElement>('.header-trigger');
-        if (trigger?.hasAttribute('data-menu-surface-open')) {
-          syncMenuSurfaceInlineSize(trigger);
-        }
-      },
-      { once: true },
-    );
+  const messageForClick = (count: number) => {
+    if (completionStored) return count === 3 ? 'ah, you again' : count === 4 ? 'welcome back' : null;
+    if (count <= 9 && count >= 3) return 'You are on this page';
+    return ({
+      10: 'chill out', 11: 'bro can you read', 12: 'are you dumb?',
+      13: "ahh, i see, you're curious", 14: 'how long this will go, right?',
+      15: 'well just stop', 16: "i'm not playing", 17: 'seriously',
+      18: "alright, that's it", 19: 'go on, click it again, see what happens',
+    } as Record<number, string>)[count] ?? null;
   };
 
-  const showCurrentPageNote = (note: HTMLElement, animate: boolean) => {
-    if (note.classList.contains('is-visible')) return;
-    const trigger = note.closest<HTMLElement>('.header-trigger');
-    const panelBg = trigger?.querySelector<HTMLElement>('.header-trigger__panel-bg');
-    const previousWidth = panelBg?.getBoundingClientRect().width ?? 0;
-
-    note.classList.remove('is-hiding');
+  const cancelAnimations = (element: HTMLElement) => element.getAnimations().forEach((animation) => animation.cancel());
+  const animatePanelWidth = (trigger: HTMLElement, update: () => void) => {
+    const panelBg = trigger.querySelector<HTMLElement>('.header-trigger__panel-bg');
+    const before = panelBg?.getBoundingClientRect().width ?? 0;
+    if (panelBg) cancelAnimations(panelBg);
+    update();
+    if (!panelBg || reduceMotionMq.matches || before <= 0) return;
+    const after = panelBg.getBoundingClientRect().width;
+    if (after <= 0 || Math.abs(after - before) < 0.5) return;
+    panelBg.animate([{ transform: `scaleX(${before / after})` }, { transform: 'scaleX(1)' }], {
+      duration: 180, easing: 'ease-in-out',
+    });
+  };
+  const setNote = (note: HTMLElement, text: string | null, animate: boolean) => {
+    cancelAnimations(note);
+    note.classList.remove('is-hiding', 'is-instant');
+    if (!text) {
+      note.classList.remove('is-visible');
+      note.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    note.textContent = text;
+    const activeNote = currentPageNotes.find((candidate) => {
+      const candidateTrigger = candidate.closest<HTMLElement>('.header-trigger');
+      return candidateTrigger?.matches('.is-menu-open, :focus-within');
+    }) ?? currentPageNotes[0];
+    currentPageNotes.forEach((candidate) => candidate.setAttribute('aria-live', candidate === activeNote ? 'polite' : 'off'));
+    note.setAttribute('aria-hidden', 'false');
     note.classList.toggle('is-instant', !animate);
     note.classList.add('is-visible');
-    if (trigger) syncMenuSurfaceInlineSize(trigger);
-
-    if (!animate || !panelBg || previousWidth <= 0) return;
-    const nextWidth = panelBg.getBoundingClientRect().width;
-    if (nextWidth <= previousWidth) return;
-    panelBg.animate(
-      [
-        { transform: `scaleX(${previousWidth / nextWidth})` },
-        { transform: 'scaleX(1)' },
-      ],
-      {
-        duration: 280,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-      },
-    );
+    const trigger = note.closest<HTMLElement>('.header-trigger');
+    if (trigger) animatePanelWidth(trigger, () => syncMenuSurfaceInlineSize(trigger));
+  };
+  const hideCurrentPageNote = (note: HTMLElement) => {
+    cancelAnimations(note);
+    const generation = String(Number(note.dataset.noteGeneration ?? 0) + 1);
+    note.dataset.noteGeneration = generation;
+    note.classList.remove('is-visible', 'is-instant');
+    note.classList.add('is-hiding');
+    note.addEventListener('animationend', () => {
+      if (note.dataset.noteGeneration === generation) note.classList.remove('is-hiding');
+    }, { once: true });
+  };
+  const removeCurrentPage = (focusFallback = false) => {
+    if (currentPageItems.every((item) => item.classList.contains('is-removed'))) return;
+    const active = document.activeElement;
+    const focused = active instanceof HTMLElement && currentPageLinks.includes(active as HTMLAnchorElement);
+    const activeTrigger = active instanceof HTMLElement ? active.closest<HTMLElement>('.header-trigger') : null;
+    const fallback = activeTrigger?.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])') ??
+      document.querySelector<HTMLAnchorElement>('.header-menu__link:not([data-current-page])');
+    currentPageNotes.forEach(hideCurrentPageNote);
+    currentPageItems.forEach((item) => {
+      item.style.setProperty('--current-page-row-height', `${item.getBoundingClientRect().height}px`);
+      item.classList.add('is-removing');
+      item.querySelectorAll<HTMLElement>('.header-menu__link, .header-menu__current-note').forEach((element) => {
+        element.setAttribute('aria-hidden', 'true');
+        element.setAttribute('inert', '');
+      });
+    });
+    if (focused && focusFallback) fallback?.focus();
+    else if (focused && active instanceof HTMLElement) active.blur();
+    window.setTimeout(() => {
+      currentPageItems.forEach((item) => {
+        item.classList.remove('is-removing');
+        item.classList.add('is-removed');
+      });
+      try {
+        window.localStorage.setItem(currentPageStorageKey, 'true');
+        completionStored = true;
+      } catch {
+        completionStored = false;
+      }
+    }, 100);
   };
 
   currentPageNotes.forEach((note) => {
@@ -1219,33 +1260,50 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       () => hideCurrentPageNote(note),
     );
   });
+  currentPageNotes.forEach((note, index) => note.setAttribute('aria-live', index === 0 ? 'polite' : 'off'));
 
   currentPageLinks.forEach((link) => {
     link.addEventListener(
       'click',
       (event) => {
         event.preventDefault();
+        if (suppressNextCurrentPageClick) {
+          suppressNextCurrentPageClick = false;
+          return;
+        }
         currentPageClickCount += 1;
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
         if (event.detail > 0 && !reduceMotionMq.matches && label) {
+          cancelAnimations(label);
           label.classList.remove('is-error-shaking');
+          const strength = completionStored ? 0.45 : currentPageClickCount <= 9
+            ? 0.5 + (currentPageClickCount - 1) * 0.125 : 0.4;
+          label.style.setProperty('--current-shake-strength', String(strength));
+          label.style.setProperty('--current-shake-duration', currentPageClickCount >= 10 ? '0.15s' : '0.24s');
           void label.offsetWidth;
           label.classList.add('is-error-shaking');
-          label.addEventListener(
-            'animationend',
-            () => label.classList.remove('is-error-shaking'),
-            { once: true },
-          );
         }
-
-        if (currentPageClickCount >= 3) {
-          const note = link.closest('.header-menu__item')?.querySelector<HTMLElement>('[data-current-page-note]');
-          if (note) showCurrentPageNote(note, event.detail > 0 && !reduceMotionMq.matches);
-        }
+        if (completionStored && currentPageClickCount >= 5) return removeCurrentPage(true);
+        if (!completionStored && currentPageClickCount >= 20) return removeCurrentPage(true);
+        const message = messageForClick(currentPageClickCount);
+        if (!message) return;
+        const weight = !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
+          !completionStored && currentPageClickCount >= 5 && currentPageClickCount <= 6 ? 700 : 400;
+        currentPageNotes.forEach((note) => {
+          note.style.fontWeight = String(weight);
+          setNote(note, message, event.detail > 0);
+        });
       },
       true,
     );
+    link.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' && event.button === 0 &&
+        ((completionStored && currentPageClickCount === 4) || (!completionStored && currentPageClickCount === 19))) {
+        suppressNextCurrentPageClick = true;
+        removeCurrentPage(false);
+      }
+    }, true);
   });
 
   // DEV-only: Section Editor is toggled via Alt+E (see DevModeController).
@@ -1649,14 +1707,41 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   .header-menu__link-label.is-error-shaking {
-    animation: header-current-page-error-shake 0.24s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+    animation: header-current-page-error-shake var(--current-shake-duration, 0.24s) cubic-bezier(0.36, 0.07, 0.19, 0.97);
   }
 
   .header-menu__item--current-page {
     display: flex;
     align-items: baseline;
     gap: 1em;
+    max-width: calc(100vw - 2 * var(--space-unit));
     white-space: nowrap;
+  }
+
+  .header-menu__item--current-page.is-removed {
+    display: block;
+    width: 0;
+    height: var(--current-page-row-height, 1em);
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .header-menu__item--current-page.is-removing {
+    display: block;
+    width: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .header-menu__item--current-page.is-removed .header-menu__link,
+  .header-menu__item--current-page.is-removed .header-menu__current-note,
+  .header-menu__item--current-page.is-removing .header-menu__link,
+  .header-menu__item--current-page.is-removing .header-menu__current-note {
+    display: block;
+    width: 0;
+    min-width: 0;
+    visibility: hidden;
+    overflow: hidden;
   }
 
   .header-trigger--end .header-menu__item--current-page .header-menu__current-note {
@@ -1671,12 +1756,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     font-weight: 400;
     letter-spacing: -0.05ch;
     line-height: 1;
+    max-width: min(28em, calc(100vw - 2 * var(--space-unit)));
+    min-width: 0;
+    flex: 1 1 auto;
+    white-space: normal;
   }
 
   .header-trigger.is-menu-open .header-menu__current-note.is-visible,
   .header-trigger:focus-within .header-menu__current-note.is-visible {
     display: inline-block;
-    animation: header-current-note-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: header-current-note-in 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
   }
 
   .header-trigger.is-menu-open .header-menu__current-note.is-visible.is-instant,
@@ -1687,15 +1776,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .header-menu__current-note.is-hiding {
     display: inline-block;
-    animation: header-current-note-fade-out var(--menu-link-duration, 0.15s) ease var(--menu-link-delay, 0s) both;
+    animation: header-current-note-fade-out 0.1s ease both;
   }
 
   @keyframes header-current-page-error-shake {
     0%, 100% { transform: translateX(0); }
-    20% { transform: translateX(-0.14em); }
-    40% { transform: translateX(0.11em); }
-    60% { transform: translateX(-0.07em); }
-    80% { transform: translateX(0.035em); }
+    20% { transform: translateX(calc(-0.14em * var(--current-shake-strength, 1))); }
+    40% { transform: translateX(calc(0.11em * var(--current-shake-strength, 1))); }
+    60% { transform: translateX(calc(-0.07em * var(--current-shake-strength, 1))); }
+    80% { transform: translateX(calc(0.035em * var(--current-shake-strength, 1))); }
   }
 
   @keyframes header-current-note-in {
@@ -1710,8 +1799,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   }
 
   @keyframes header-current-note-fade-out {
-    from { opacity: 0.48; }
-    to { opacity: 0; }
+    from { opacity: 0.48; filter: blur(0); }
+    to { opacity: 0; filter: blur(0.35em); }
   }
 
   .header-trigger__wordmark {
@@ -1885,7 +1974,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     .header-trigger:focus-within .header-menu__current-note.is-visible,
     .header-menu__current-note.is-hiding {
       transform: none;
-      animation: none;
     }
 
     .header-trigger {
