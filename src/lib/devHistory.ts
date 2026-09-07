@@ -111,9 +111,6 @@ export function installHistoryShortcuts(signal: AbortSignal) {
   document.addEventListener('focusin', (event) => {
     lastInteractionTarget = event.target instanceof Element ? event.target : null;
   }, { capture: true, signal });
-  document.addEventListener('wheel', (event) => {
-    lastInteractionTarget = event.target instanceof Element ? event.target : null;
-  }, { capture: true, passive: true, signal });
   window.addEventListener('vcd:dev-save-state', ((event: CustomEvent<{ saving: boolean }>) => {
     saving = event.detail.saving;
     pageHistory.breakGroup();

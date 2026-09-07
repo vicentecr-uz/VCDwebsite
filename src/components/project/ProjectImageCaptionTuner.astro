@@ -95,6 +95,13 @@ import {
     captionPosition: ImageCaptionPositionId;
     captionReveals: ImageCaptionReveals;
   };
+  type CaptionSelection = {
+    surface: 'panel' | 'page';
+    viewport: ImageViewport;
+    anchor: number;
+    focus: number;
+    direction?: 'forward' | 'backward' | 'none';
+  };
 
   const initProjectImageCaptionTuner = (tuner: HTMLElement) => {
     if (tuner.dataset.initialized === 'true') return;
@@ -145,13 +152,64 @@ import {
     let openingCaption: CaptionBaseline | null = null;
     let lastDraft: CaptionBaseline | null = null;
     let captionSession = false;
+    let pendingSelection: CaptionSelection | null = null;
+    let lastTextSelection: CaptionSelection | null = null;
     const localHistory = createHistory();
     const captureDraft = (): CaptionBaseline => ({
       captions: structuredClone(draftCaptions), captionStyle: draftStyle,
       captionPosition: activePosition(draftStyle), captionReveals: structuredClone(draftReveals),
     });
     const sameCaption = (left: CaptionBaseline, right: CaptionBaseline) => JSON.stringify(left) === JSON.stringify(right);
-    const restoreDraft = (value: CaptionBaseline) => {
+    const textOffset = (root: HTMLElement, node: Node, offset: number) => {
+      const range = document.createRange();
+      range.selectNodeContents(root);
+      range.setEnd(node, offset);
+      return range.toString().length;
+    };
+    const capturePageSelection = (node: HTMLElement, viewport: ImageViewport): CaptionSelection | null => {
+      const selection = window.getSelection();
+      if (!selection || !selection.anchorNode || !selection.focusNode || !node.contains(selection.anchorNode) || !node.contains(selection.focusNode)) return null;
+      return {
+        surface: 'page', viewport,
+        anchor: textOffset(node, selection.anchorNode, selection.anchorOffset),
+        focus: textOffset(node, selection.focusNode, selection.focusOffset),
+      };
+    };
+    const capturePanelSelection = (viewport: ImageViewport): CaptionSelection => ({
+      surface: 'panel', viewport,
+      anchor: textArea.selectionStart ?? 0,
+      focus: textArea.selectionEnd ?? 0,
+      direction: textArea.selectionDirection ?? 'none',
+    });
+    const restoreSelection = (selection: CaptionSelection | undefined) => {
+      if (!selection || !editTarget) return;
+      if (selection.surface === 'panel') {
+        textArea.focus({ preventScroll: true });
+        textArea.setSelectionRange(selection.anchor, selection.focus, selection.direction);
+        return;
+      }
+      const host = findCaptionHost(editTarget);
+      const node = host?.querySelector<HTMLElement>(`[data-caption-bp="${selection.viewport}"]`);
+      if (!node) return;
+      const locate = (offset: number) => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        let remaining = offset;
+        let current: Node | null = walker.nextNode();
+        while (current) {
+          const length = current.textContent?.length ?? 0;
+          if (remaining <= length) return { node: current, offset: remaining };
+          remaining -= length;
+          current = walker.nextNode();
+        }
+        return { node, offset: node.childNodes.length };
+      };
+      const anchor = locate(selection.anchor);
+      const focus = locate(selection.focus);
+      node.focus({ preventScroll: true });
+      const range = window.getSelection();
+      range?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
+    };
+    const restoreDraft = (value: CaptionBaseline, selection?: CaptionSelection) => {
       const positions = resolveDraftsFromRaw(value.captionPosition);
       draftCaptions = structuredClone(value.captions);
       draftStyle = value.captionStyle;
@@ -159,18 +217,25 @@ import {
       draftBelowAlign = positions.below;
       draftReveals = structuredClone(value.captionReveals);
       lastDraft = captureDraft();
+      if (selection) selectedViewport = selection.viewport;
       if (editTarget) applyCaptionsToTarget(editTarget, draftCaptions, draftStyle, activePosition(draftStyle), draftReveals, { retainEmptyHost: captionSession, restoreFocusedText: true });
       renderFields();
+      restoreSelection(selection);
+      lastTextSelection = selection ?? null;
+      pendingSelection = null;
     };
-    const recordDraftHistory = (mergeKey?: string) => {
+    const recordDraftHistory = (mergeKey?: string, beforeSelection?: CaptionSelection, afterSelection?: CaptionSelection) => {
       const after = captureDraft();
       const before = lastDraft;
       lastDraft = after;
       if (!captionSession || !before || sameCaption(before, after) || localHistory.replaying) return;
+      if (mergeKey && lastTextSelection && beforeSelection
+        && JSON.stringify(lastTextSelection) !== JSON.stringify(beforeSelection)) localHistory.breakGroup();
       localHistory.push({ label: 'Edit caption',
         mergeKey,
-        undo: () => restoreDraft(before), redo: () => restoreDraft(after),
+        undo: () => restoreDraft(before, beforeSelection), redo: () => restoreDraft(after, afterSelection),
       });
+      lastTextSelection = afterSelection ?? null;
     };
     registerHistoryScope(tuner, localHistory, {
       owns: (target) => Boolean(captionSession && target && editTarget && findCaptionHost(editTarget)?.contains(target)),
@@ -601,6 +666,11 @@ import {
     };
 
     const setDraftText = (text: string, viewport: ImageViewport = selectedViewport) => {
+      const beforeSelection = pendingSelection;
+      const pageNode = editTarget && findCaptionHost(editTarget)?.querySelector<HTMLElement>(`[data-caption-bp="${viewport}"]`);
+      const afterSelection = !beforeSelection ? undefined : beforeSelection.surface === 'panel'
+        ? capturePanelSelection(viewport)
+        : pageNode ? capturePageSelection(pageNode, viewport) : beforeSelection;
       draftCaptions = setImageCaptionAtViewport(draftCaptions, viewport, text);
       if (editTarget) {
         // Keep an empty host while editing so clearing the field doesn’t eject focus.
@@ -611,7 +681,10 @@ import {
       if (!syncingUi && document.activeElement !== textArea) {
         textArea.value = draftCaptions[selectedViewport];
       }
-      if (!syncingUi) recordDraftHistory(`caption-text:${viewport}`);
+      if (!syncingUi) {
+        recordDraftHistory(`caption-text:${viewport}`, beforeSelection ?? undefined, afterSelection ?? undefined);
+        pendingSelection = null;
+      }
     };
 
     const notifyCarouselCaptions = (target: HTMLElement | null) => {
@@ -667,6 +740,8 @@ import {
         openingCaption = structuredClone(readTargetState(target));
         localHistory.clear();
         lastDraft = null;
+        pendingSelection = null;
+        lastTextSelection = null;
       }
       captionSession = true;
       if (switching && editTarget) {
@@ -781,6 +856,11 @@ import {
     textArea.addEventListener('input', () => {
       if (syncingUi) return;
       setDraftText(textArea.value, selectedViewport);
+    });
+    textArea.addEventListener('beforeinput', (event) => {
+      if (!captionSession || document.activeElement !== textArea) return;
+      if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') return;
+      pendingSelection = capturePanelSelection(selectedViewport);
     });
 
     viewportButtons.forEach((button) => {
@@ -1001,6 +1081,16 @@ import {
       const bp = (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport;
       setDraftText(node.textContent ?? '', bp);
     });
+    document.addEventListener('beforeinput', (event) => {
+      if (!captionSession) return;
+      if (!(event.target instanceof HTMLElement) || !event.target.matches('[data-caption-bp][contenteditable]')) return;
+      if (event.inputType === 'historyUndo' || event.inputType === 'historyRedo') return;
+      const node = event.target;
+      if (document.activeElement !== node) return;
+      const target = resolveCaptionEditTarget(node.closest<HTMLElement>('[data-project-image-caption]') ?? node);
+      if (!target || target !== editTarget) return;
+      pendingSelection = capturePageSelection(node, (node.dataset.captionBp || matchImageCaptionViewport()) as ImageViewport);
+    }, true);
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent) => {
       const panel = event.detail?.panel as HTMLElement | undefined;

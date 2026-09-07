@@ -10,11 +10,32 @@ const functions = [
   between('    const applyCaptionsToTarget =', '    /** Drop an empty caption'),
   between('    const renderFields =', '    const notifyCarouselCaptions ='),
   between("    positionSelect.addEventListener('change'", "    revealSelect.addEventListener('change'"),
+  between("    textArea.addEventListener('input'", "    viewportButtons.forEach((button) => {"),
+  between("    document.addEventListener('input'", "    window.addEventListener('vcd:dev-edit-open'"),
 ].join('\n');
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(functions);
 
 function setup(surface: 'panel' | 'page', initial = 'before') {
-  const nodes = Object.fromEntries(['desktop', 'tablet', 'mobile'].map(bp => [bp, { textContent: initial }]));
+  class CaptionNode {
+    childNodes: Array<{ textContent: string }> = [];
+    dataset: { captionBp: string };
+    constructor(bp: string) { this.dataset = { captionBp: bp }; this.textContent = initial; }
+    get textContent() { return this.childNodes.map(node => node.textContent).join(''); }
+    set textContent(value: string) { this.childNodes = value ? [{ textContent: value }] : []; }
+    contains(node: unknown) { return node === this || this.childNodes.includes(node as any); }
+    matches() { return true; }
+    closest() { return host; }
+    focus() { env.document.activeElement = this; }
+  }
+  const nodes = Object.fromEntries(['desktop', 'tablet', 'mobile'].map(bp => [bp, new CaptionNode(bp)]));
+  const inputHandlers: Record<string, (event: any) => void> = {};
+  const documentHandlers: Record<string, (event: any) => void> = {};
+  const selection = {
+    anchorNode: null as any, focusNode: null as any, anchorOffset: 0, focusOffset: 0,
+    setBaseAndExtent(anchor: any, a: number, focus: any, f: number) {
+      this.anchorNode = anchor; this.anchorOffset = a; this.focusNode = focus; this.focusOffset = f;
+    },
+  };
   let removed = false;
   const host = {
     dataset: {}, className: '', classList: { contains: () => false }, hasAttribute: () => false,
@@ -22,7 +43,15 @@ function setup(surface: 'panel' | 'page', initial = 'before') {
     remove: () => { removed = true; },
   };
   const target = { dataset: {}, closest: () => null };
-  const textArea = { value: initial };
+  let areaValue = initial;
+  const textArea = {
+    get value() { return areaValue; },
+    set value(value: string) { areaValue = value; this.selectionStart = this.selectionEnd = value.length; },
+    selectionStart: 0, selectionEnd: 0, selectionDirection: 'none',
+    setSelectionRange(start: number, end: number, direction = 'none') { this.selectionStart = start; this.selectionEnd = end; this.selectionDirection = direction; },
+    focus() { env.document.activeElement = this; },
+    addEventListener(event: string, handler: (event: any) => void) { inputHandlers[event] = handler; },
+  };
   const positionHandlers: Record<string, () => void> = {};
   const history = createHistory();
   const env = {
@@ -31,10 +60,33 @@ function setup(surface: 'panel' | 'page', initial = 'before') {
     draftStyle: 'white', draftOverlayPosition: 'bottom-left', draftBelowAlign: 'left',
     draftReveals: { desktop: 'always', tablet: 'always', mobile: 'always' },
     selectedViewport: 'desktop', captionSession: true, lastDraft: null,
+    pendingSelection: null, lastTextSelection: null,
     syncingUi: false, editTarget: target, localHistory: history,
     activePosition: (style: string) => style === 'below' ? env.draftBelowAlign : env.draftOverlayPosition,
     resolveDraftsFromRaw: (position: string) => ({ overlay: captions.resolveImageCaptionPosition(position, 'white'), below: captions.resolveImageCaptionPosition(position, 'below') }),
-    document: { activeElement: surface === 'panel' ? textArea : nodes.desktop },
+    HTMLElement: CaptionNode, NodeFilter: { SHOW_TEXT: 4 },
+    window: { getSelection: () => selection },
+    document: {
+      activeElement: (surface === 'panel' ? textArea : nodes.desktop) as any,
+      addEventListener: (event: string, handler: (event: any) => void) => { documentHandlers[event] = handler; },
+      createRange: () => {
+        let root: CaptionNode, endpoint: any, offset = 0;
+        return {
+          selectNodeContents(node: CaptionNode) { root = node; },
+          setEnd(node: any, value: number) { endpoint = node; offset = value; },
+          toString() {
+            const prefix = endpoint === root ? root.childNodes.slice(0, offset) : root.childNodes.slice(0, root.childNodes.indexOf(endpoint));
+            return prefix.map(node => node.textContent).join('') + (endpoint === root ? '' : endpoint.textContent.slice(0, offset));
+          },
+        };
+      },
+      createTreeWalker: (node: CaptionNode) => {
+        let index = 0;
+        return { nextNode: () => node.childNodes[index++] ?? null };
+      },
+    },
+    resolveCaptionEditTarget: () => target,
+    matchImageCaptionViewport: () => 'desktop',
     textArea, styleButtons: [], revealSelect: { value: 'always' },
     positionSelect: { value: 'bottom-left', addEventListener: (event: string, fn: () => void) => { positionHandlers[event] = fn; } },
     tuner: { querySelectorAll: () => [] }, status: { textContent: '' },
@@ -43,13 +95,34 @@ function setup(surface: 'panel' | 'page', initial = 'before') {
     ensureCaptionHost: () => host, findCaptionHost: () => host,
     syncCaptionChromeButton: () => {}, refreshProjectCropCovers: () => {},
   };
-  const api = new Function('env', `with (env) { ${script}; lastDraft = captureDraft(); return { setDraftText, renderFields, captureDraft, applyCaptionsToTarget }; }`)(env);
+  const api = new Function('env', `with (env) { ${script}; lastDraft = captureDraft(); return { setDraftText, renderFields, captureDraft, applyCaptionsToTarget, capturePanelSelection, capturePageSelection }; }`)(env);
   const type = (text: string) => {
     if (surface === 'panel') textArea.value = text;
     else nodes.desktop.textContent = text;
     api.setDraftText(text, 'desktop');
   };
-  return { env, api, history, nodes, type, positionHandlers, removed: () => removed };
+  const select = (anchor: number, focus = anchor, editor = surface) => {
+    if (editor === 'panel') {
+      textArea.focus();
+      textArea.setSelectionRange(Math.min(anchor, focus), Math.max(anchor, focus), anchor > focus ? 'backward' : anchor === focus ? 'none' : 'forward');
+    } else {
+      nodes.desktop.focus();
+      const node = nodes.desktop.childNodes[0] ?? nodes.desktop;
+      selection.setBaseAndExtent(node, anchor, node, focus);
+    }
+  };
+  const edit = (text: string, after: number, editor = surface) => {
+    const element = editor === 'panel' ? textArea : nodes.desktop;
+    const handlers = editor === 'panel' ? inputHandlers : documentHandlers;
+    handlers.beforeinput({ target: element, inputType: 'insertText' });
+    if (editor === 'panel') textArea.value = text;
+    else nodes.desktop.textContent = text;
+    select(after, after, editor);
+    handlers.input({ target: element });
+  };
+  const caret = (editor = surface) => editor === 'panel'
+    ? api.capturePanelSelection('desktop') : api.capturePageSelection(nodes.desktop, 'desktop');
+  return { env, api, history, nodes, type, positionHandlers, select, edit, caret, removed: () => removed };
 }
 
 for (const surface of ['panel', 'page'] as const) {
@@ -99,4 +172,62 @@ test('position control records separately from text, while rendering adds no his
   api.renderFields();
   await Promise.resolve();
   expect(history.canUndo).toBe(false);
+});
+
+
+for (const surface of ['panel', 'page'] as const) {
+  test(`${surface} undo restores the pre-edit caret and redo restores the post-edit caret`, async () => {
+    const { select, edit, caret, history } = setup(surface, 'abcdef');
+    select(3);
+    edit('abcXdef', 4);
+    edit('abcXYdef', 5);
+    await history.undo();
+    expect(caret()).toMatchObject({ anchor: 3, focus: 3 });
+    expect(history.canUndo).toBe(false);
+    await history.redo();
+    expect(caret()).toMatchObject({ anchor: 5, focus: 5 });
+  });
+
+  test(`${surface} undo restores a backwards replacement range`, async () => {
+    const { select, edit, caret, history } = setup(surface, 'abcdef');
+    select(5, 2);
+    edit('abXf', 3);
+    await history.undo();
+    expect(caret()).toMatchObject(surface === 'panel'
+      ? { anchor: 2, focus: 5, direction: 'backward' } : { anchor: 5, focus: 2 });
+    await history.redo();
+    expect(caret()).toMatchObject({ anchor: 3, focus: 3 });
+  });
+
+  test(`${surface} moving the caret starts a separate undo step`, async () => {
+    const { select, edit, caret, history, nodes } = setup(surface, 'abcdef');
+    select(3); edit('abcXdef', 4);
+    select(1); edit('aYbcXdef', 2);
+    await history.undo();
+    expect(nodes.desktop.textContent).toBe('abcXdef');
+    expect(caret()).toMatchObject({ anchor: 1, focus: 1 });
+    await history.undo();
+    expect(nodes.desktop.textContent).toBe('abcdef');
+    expect(caret()).toMatchObject({ anchor: 3, focus: 3 });
+  });
+}
+
+test('switching between caption surfaces separates undo steps and restores focus', async () => {
+  const { select, edit, caret, history, env, nodes } = setup('panel', 'abcdef');
+  select(3); edit('abcXdef', 4);
+  select(4, 4, 'page'); edit('abcXYdef', 5, 'page');
+  await history.undo();
+  expect(env.document.activeElement).toBe(nodes.desktop);
+  expect(caret('page')).toMatchObject({ anchor: 4, focus: 4 });
+  await history.undo();
+  expect(env.document.activeElement).toBe(env.textArea);
+  expect(caret('panel')).toMatchObject({ anchor: 3, focus: 3 });
+});
+
+test('undoing the first character restores the empty caption caret', async () => {
+  const { select, edit, caret, history, removed } = setup('page', '');
+  select(0); edit('X', 1);
+  await history.undo();
+  expect(caret()).toMatchObject({ anchor: 0, focus: 0 });
+  expect(removed()).toBe(false);
 });
