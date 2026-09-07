@@ -9,18 +9,13 @@
  */
 import DevOverlay from '../DevOverlay.astro';
 import TextField from '../ui/TextField.astro';
+import SelectField from '../ui/SelectField.astro';
 ---
 
 <div class="section-nav-editor" data-section-nav-editor hidden>
-  <div class="section-nav-editor__hint" data-nav-hint hidden>
-    <span data-nav-hint-text>
-      Click a block → section group and/or section · Esc closes marker · Esc again → Dev Mode
-    </span>
-  </div>
-
-  <DevOverlay storageKey="section-nav-marker" panelKey="section-nav" defaultHidden>
+  <DevOverlay storageKey="section-nav-marker" panelKey="section-nav" title="Sections" defaultHidden>
     <div class="section-nav-editor__popover" data-nav-popover>
-      <p class="section-nav-editor__belongs" data-nav-belongs hidden></p>
+      <SelectField label="Block" options={[]} data-nav-block />
 
       <div class="section-nav-editor__group">
         <label class="dev-toggle">
@@ -32,9 +27,9 @@ import TextField from '../ui/TextField.astro';
               <path d="M3.5 8.5l3 3 6-6" />
             </svg>
           </span>
-          <span class="dev-toggle__label">Section group</span>
+          <span class="dev-toggle__label">Start group</span>
         </label>
-        <TextField class="section-nav-editor__field" label="Group name" hideLabel data-nav-group-label maxlength="120" autocomplete="off" placeholder="Group name" />
+        <TextField class="section-nav-editor__field" label="Group name" data-nav-group-label maxlength="120" autocomplete="off" placeholder="Group name" />
       </div>
 
       <div class="section-nav-editor__group">
@@ -47,9 +42,9 @@ import TextField from '../ui/TextField.astro';
               <path d="M3.5 8.5l3 3 6-6" />
             </svg>
           </span>
-          <span class="dev-toggle__label">Section</span>
+          <span class="dev-toggle__label">Start section</span>
         </label>
-        <TextField class="section-nav-editor__field" label="Section name" hideLabel data-nav-section-label maxlength="120" autocomplete="off" placeholder="Section name" />
+        <TextField class="section-nav-editor__field" label="Section name" data-nav-section-label maxlength="120" autocomplete="off" placeholder="Section name" />
       </div>
 
       <div class="section-nav-editor__title-vis" data-nav-title-vis hidden>
@@ -65,10 +60,10 @@ import TextField from '../ui/TextField.astro';
       </div>
 
       <div class="section-nav-editor__actions dev-panel-actions">
-        <button type="button" class="dev-btn dev-btn--ghost" data-nav-cancel>Cancel</button>
-        <button type="button" class="section-nav-editor__save dev-btn dev-btn--filled" data-nav-apply>Apply</button>
+        <button type="button" class="dev-btn dev-btn--ghost" data-nav-undo disabled>Undo</button>
+        <button type="button" class="section-nav-editor__save dev-btn dev-btn--filled" data-nav-done>Done</button>
       </div>
-      <p class="section-nav-editor__status" data-nav-status hidden></p>
+
     </div>
   </DevOverlay>
 </div>
@@ -81,1115 +76,507 @@ import TextField from '../ui/TextField.astro';
     syncDevSectionOutlineSidebar,
   } from '../../scripts/devSectionOutlineSync';
   import {
-    outlineAnchorId as sharedOutlineAnchorId,
-    insertOutlineEntriesAtPagePosition,
+    outlineAnchorId,
+    outlineEntriesForAnchor,
+    owningOutlineSection,
     reorderOutlinePreservingGroups,
-    type OutlineEntry as SharedOutlineEntry,
+    type OutlineEntry,
   } from '../../lib/projectOutline';
-  type OutlineGroup = {
-    kind: 'group';
-    id: string;
-    label: string;
-    defaultOpen?: boolean;
-    anchor?: string;
-  };
-  type OutlineSection = {
-    kind: 'section';
-    id: string;
-    label: string;
-    anchor?: string;
-  };
-  type OutlineEntry = OutlineGroup | OutlineSection;
-  type NavLink = { id: string; label: string };
-  type NavGroup = { label: string; children: NavLink[]; defaultOpen?: boolean };
-  type NavItem = NavLink | NavGroup;
+
+  import textIcon from 'lucide-static/icons/type.svg?raw';
+  import heading1Icon from 'lucide-static/icons/heading-1.svg?raw';
+  import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
+  import imageIcon from 'lucide-static/icons/image.svg?raw';
+  import galleryIcon from 'lucide-static/icons/images.svg?raw';
+  import quoteIcon from 'lucide-static/icons/quote.svg?raw';
+  import commentsIcon from 'lucide-static/icons/messages-square.svg?raw';
+  import blockIcon from 'lucide-static/icons/square.svg?raw';
+  import { sizeIcon } from '../../lib/icons';
+  import { getSectionRootsInDomOrder, sectionIndexFromElement } from '../../scripts/devSectionPaths';
+
   type ShowTitle = { desktop: boolean; tablet: boolean; mobile: boolean };
-
-  const EDITOR_CLASS = 'show-section-nav-editor';
-
-  const slugify = (label: string) => {
-    const base = label
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-    return base || `section-${Date.now().toString(36)}`;
+  type BlockState = {
+    block: HTMLElement;
+    anchor: string;
+    entries: OutlineEntry[];
+    showTitle: ShowTitle | null;
   };
 
-  const parseJson = <T,>(raw: string | undefined, fallback: T): T => {
-    if (!raw) return fallback;
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return fallback;
-    }
-  };
-
-  const sectionIndexFromPath = (pathRaw: string | undefined) => {
-    const path = parseJson<Array<string | number>>(pathRaw, []);
-    if (path[0] !== 'sections' || typeof path[1] !== 'number') return null;
-    return path[1];
-  };
-
-  const outlineAnchorId = (entry: OutlineEntry) =>
-    sharedOutlineAnchorId(entry as SharedOutlineEntry);
-
-  const deriveNavFromOutline = (outline: OutlineEntry[]): NavItem[] => {
-    const nav: NavItem[] = [];
-    let current: NavGroup | null = null;
-    for (const entry of outline) {
-      if (entry.kind === 'group') {
-        current = {
-          label: entry.label,
-          children: [],
-          defaultOpen: entry.defaultOpen !== false,
-        };
-        nav.push(current);
-        continue;
-      }
-      const link = { id: outlineAnchorId(entry), label: entry.label };
-      if (current) current.children.push(link);
-      else nav.push(link);
-    }
-    return nav;
-  };
+  let dispose: (() => void) | undefined;
 
   const initSectionNavEditor = () => {
+    dispose?.();
     const root = document.querySelector<HTMLElement>('[data-section-nav-root]');
     const shell = document.querySelector<HTMLElement>('[data-section-nav-editor]');
-    if (!root || !shell) return;
-
-    const documentKey = root.dataset.sectionNavDocument?.trim();
-    if (!documentKey) return;
-
+    const documentKey = root?.dataset.sectionNavDocument;
+    if (!root || !shell || !documentKey) return;
     initDevSectionOutlineSync();
+    const controller = new AbortController();
+    const { signal } = controller;
+    const panel = shell.querySelector<HTMLElement>('[data-dev-panel-key="section-nav"]')!;
+    const blockSelect = shell.querySelector<HTMLSelectElement>('[data-nav-block]')!;
+    const groupToggle = shell.querySelector<HTMLInputElement>('[data-nav-as-group]')!;
+    const sectionToggle = shell.querySelector<HTMLInputElement>('[data-nav-as-section]')!;
+    const groupLabel = shell.querySelector<HTMLInputElement>('[data-nav-group-label]')!;
+    const sectionLabel = shell.querySelector<HTMLInputElement>('[data-nav-section-label]')!;
+    const titleVis = shell.querySelector<HTMLElement>('[data-nav-title-vis]')!;
+    const undoButton = shell.querySelector<HTMLButtonElement>('[data-nav-undo]')!;
+    const sidebar = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
+    const main = document.querySelector<HTMLElement>('[data-section-nav-main]');
+    const pendingId = `section-nav:${documentKey}`;
+    const touched = new Map<HTMLElement, BlockState>();
+    const history: BlockState[] = [];
+    const selectable = new Map<HTMLElement, { attributes: Array<[string, string | null]>; children: Map<HTMLElement, boolean>; ring: HTMLElement }>();
+    let activeBlock: HTMLElement | null = null;
+    let inputSession: EventTarget | null = null;
+    let syncing = false;
+    let dirty = false;
+    let saving = false;
 
-    const mainScope = '[data-section-nav-main]';
-    const outlineOnly = root.dataset.sectionNavOutlineOnly === 'true';
-
-    const isEditableBlock = (el: Element | null): el is HTMLElement => {
-      if (!(el instanceof HTMLElement)) return false;
-      if (!el.closest(mainScope)) return false;
-      if (el.classList.contains('section-block') && el.id) return true;
-      return sectionIndexFromPath(el.dataset.devSpacingPath) !== null;
+    const isActive = () => document.documentElement.classList.contains('show-section-nav-editor')
+      && document.documentElement.classList.contains('is-dev-mode');
+    const closePanel = () => {
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
     };
-
-    const popover = shell.querySelector<HTMLElement>('[data-nav-popover]');
-    const popoverPanel = shell.querySelector<HTMLElement>('[data-dev-panel-key="section-nav"]');
-    const hint = shell.querySelector<HTMLElement>('[data-nav-hint]');
-    const asGroupInput = shell.querySelector<HTMLInputElement>('[data-nav-as-group]');
-    const asSectionInput = shell.querySelector<HTMLInputElement>('[data-nav-as-section]');
-    const groupLabelInput = shell.querySelector<HTMLInputElement>('[data-nav-group-label]');
-    const sectionLabelInput = shell.querySelector<HTMLInputElement>('[data-nav-section-label]');
-    const groupLabelWrap = shell.querySelector<HTMLInputElement>('[data-nav-group-label]')?.closest<HTMLElement>('.section-nav-editor__field') ?? null;
-    const sectionLabelWrap = shell.querySelector<HTMLInputElement>('[data-nav-section-label]')?.closest<HTMLElement>('.section-nav-editor__field') ?? null;
-    const belongsEl = shell.querySelector<HTMLElement>('[data-nav-belongs]');
-    const titleVis = shell.querySelector<HTMLElement>('[data-nav-title-vis]');
-    const statusEl = shell.querySelector<HTMLElement>('[data-nav-status]');
-    const applyBtn = shell.querySelector<HTMLButtonElement>('[data-nav-apply]');
-    const cancelBtn = shell.querySelector<HTMLButtonElement>('[data-nav-cancel]');
-    const hideSidebarBtn = shell.querySelector<HTMLButtonElement>('[data-nav-hide-sidebar]');
-
-    if (
-      !popover ||
-      !popoverPanel ||
-      !hint ||
-      !asGroupInput ||
-      !asSectionInput ||
-      !groupLabelInput ||
-      !sectionLabelInput ||
-      !groupLabelWrap ||
-      !sectionLabelWrap ||
-      !belongsEl ||
-      !titleVis ||
-      !statusEl ||
-      !applyBtn ||
-      !cancelBtn ||
-      !hideSidebarBtn
-    ) {
-      return;
-    }
-
-    /**
-     * DevOverlay persists its own dragged position under this key (see
-     * DevOverlay.astro's `positionStorageKey`) — absence means "never dragged",
-     * which is when we anchor near the clicked block instead of reusing the panel's
-     * last spot.
-     */
-    const OVERLAY_POSITION_KEY = 'devOverlay:section-nav-marker:position';
-    const hasStoredPopoverPosition = () => {
-      try {
-        return Boolean(window.localStorage.getItem(OVERLAY_POSITION_KEY));
-      } catch {
-        return false;
+    const contentIndex = (block: HTMLElement) => root.dataset.sectionNavOutlineOnly === 'true' ? null : sectionIndexFromElement(block);
+    const blocks = () => {
+      if (!main) return [];
+      if (root.dataset.sectionNavOutlineOnly === 'true') return [...main.querySelectorAll<HTMLElement>('.section-block[id]')];
+      return getSectionRootsInDomOrder(main).filter((block) => !block.hasAttribute('data-dev-spacing-write-path'));
+    };
+    const newId = () => crypto.randomUUID?.()
+      ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const blockKey = (block: HTMLElement) => block.dataset.devOutlineKey ||= newId();
+    const blockLabel = (block: HTMLElement) => {
+      const text = block.querySelector('.project-section-title, [data-dev-text-document]')?.textContent?.trim()
+        || (block.matches('[data-dev-text-document]') ? block.textContent?.trim() : '')
+        || block.querySelector('img')?.alt?.trim()
+        || block.dataset.devSectionDeletable || 'Block';
+      const words = text.split(/\s+/);
+      return words.slice(0, 4).join(' ') + (words.length > 4 ? '…' : '');
+    };
+    const blockIconSvg = (block: HTMLElement) => {
+      const kind = block.dataset.devSectionDeletable;
+      return sizeIcon(kind === 'sectionTitle' ? (block.querySelector('h3.project-section-title') ? heading2Icon : heading1Icon)
+        : kind === 'bodyText' ? textIcon
+        : kind === 'imageGrid' || kind === 'imageCarousel' ? galleryIcon
+        : block.hasAttribute('data-press-quote-ticker') ? quoteIcon
+        : block.hasAttribute('data-reddit-comment-board') ? commentsIcon
+        : block.querySelector('img') ? imageIcon : blockIcon, 16);
+    };
+    const syncSelectableBlocks = (enabled = isActive()) => {
+      if (!enabled) {
+        for (const [block, state] of selectable) {
+          for (const [name, value] of state.attributes) {
+            if (value === null) block.removeAttribute(name);
+            else block.setAttribute(name, value);
+          }
+          for (const [child, inert] of state.children) child.inert = inert;
+          state.ring.remove();
+        }
+        selectable.clear();
+        return;
+      }
+      for (const block of blocks()) {
+        if (!selectable.has(block)) {
+          const ring = document.createElement('span');
+          ring.className = 'section-nav-block-ring';
+          ring.setAttribute('aria-hidden', 'true');
+          const attributes = ['role', 'tabindex', 'aria-label', 'data-section-nav-block'].map((name) => [name, block.getAttribute(name)] as [string, string | null]);
+          selectable.set(block, { attributes, children: new Map(), ring });
+          block.append(ring);
+          block.setAttribute('data-section-nav-block', '');
+          block.setAttribute('role', 'button');
+          block.tabIndex = 0;
+        }
+        const state = selectable.get(block)!;
+        block.setAttribute('aria-label', blockLabel(block));
+        for (const child of block.children) {
+          if (!(child instanceof HTMLElement) || child === state.ring) continue;
+          if (!state.children.has(child)) state.children.set(child, child.inert);
+          child.inert = true;
+        }
       }
     };
-
-    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-    const headerClearance = () => {
-      const header = document.querySelector<HTMLElement>('.site-header');
-      const bottom = header?.getBoundingClientRect().bottom ?? 0;
-      return Math.max(12, bottom + 8);
+    const readVisibility = (block: HTMLElement): ShowTitle | null => {
+      if (root.dataset.sectionNavOutlineOnly === 'true' || block.dataset.devSectionTitle !== 'true') return null;
+      return {
+        desktop: !block.classList.contains('project-section-title--hide-desktop'),
+        tablet: !block.classList.contains('project-section-title--hide-tablet'),
+        mobile: !block.classList.contains('project-section-title--hide-mobile'),
+      };
     };
-
-    const setPopoverPosition = (left: number, top: number) => {
-      const pad = 12;
-      const width = popoverPanel.offsetWidth || Math.min(300, window.innerWidth - pad * 2);
-      const height = popoverPanel.offsetHeight || 0;
-      const maxLeft = Math.max(pad, window.innerWidth - width - pad);
-      const maxTop = Math.max(headerClearance(), window.innerHeight - height - pad);
-      const nextLeft = clamp(left, pad, maxLeft);
-      const nextTop = clamp(top, headerClearance(), maxTop);
-      popoverPanel.style.left = `${nextLeft}px`;
-      popoverPanel.style.top = `${nextTop}px`;
-      popoverPanel.style.right = 'auto';
-      popoverPanel.style.bottom = 'auto';
+    const applyVisibility = (block: HTMLElement, value: ShowTitle) => {
+      for (const bp of ['desktop', 'tablet', 'mobile'] as const) {
+        block.classList.toggle(`project-section-title--hide-${bp}`, !value[bp]);
+      }
+      block.classList.toggle('project-section-title--hide-when-sidebar', !value.desktop);
+      block.dataset.devShowTitle = JSON.stringify(value);
     };
-
-    let outline = getDevSectionOutline();
-
-    const replaceOutline = (next: OutlineEntry[]) => {
-      outline.length = 0;
-      outline.push(...next);
+    const capture = (block: HTMLElement): BlockState => ({
+      block,
+      anchor: block.id,
+      entries: structuredClone(outlineEntriesForAnchor(getDevSectionOutline(), block.id)),
+      showTitle: readVisibility(block),
+    });
+    const sameState = (a: BlockState, b: BlockState) => a.anchor === b.anchor
+      && JSON.stringify(a.entries) === JSON.stringify(b.entries)
+      && JSON.stringify(a.showTitle) === JSON.stringify(b.showTitle);
+    const liveBlock = (state: BlockState) => state.block.isConnected ? state.block
+      : state.block.id ? document.getElementById(state.block.id) : null;
+    const orderedOutline = (entries: OutlineEntry[]) => {
+      const order = blocks();
+      return reorderOutlinePreservingGroups(entries, (id) => {
+        const index = order.findIndex((block) => block.id === id);
+        return index < 0 ? Infinity : index;
+      });
     };
-
-    let activeBlock: HTMLElement | null = null;
-    let hoverBlock: HTMLElement | null = null;
-    let dirty = false;
-    let pendingSectionIds: Record<string, string | null> = {};
-    let pendingShowTitles: Record<string, ShowTitle> = {};
-    /** Last saved (or session-start) outline — the save bar's Revert goes here. */
-    let baselineOutline: OutlineEntry[] = [];
-    let baselineBlockIds: Array<{ pageIndex: number; id: string | null }> = [];
-    let baselineShowTitles: Record<string, ShowTitle> = {};
-
-    const isActive = () =>
-      document.documentElement.classList.contains(EDITOR_CLASS) &&
-      document.documentElement.classList.contains('is-dev-mode');
-
-    const cloneOutline = (entries: OutlineEntry[]) =>
-      JSON.parse(JSON.stringify(entries)) as OutlineEntry[];
-
-    /**
-     * One entry per document, so a session of marker edits coalesces into a single
-     * pending change rather than one per Apply. The payload is re-snapshotted on
-     * every edit, which is what keeps it current — `outline` is mutated in place.
-     */
-    const pendingId = `section-nav:${documentKey}`;
-
-    const setDirty = (next: boolean) => {
-      dirty = next;
-      if (!next) {
-        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
-          detail: { id: pendingId },
-        }));
+    const preparePayload = () => {
+      const sectionIds: Record<string, string | null> = {};
+      const showTitles: Record<string, ShowTitle> = {};
+      for (const initial of touched.values()) {
+        const block = liveBlock(initial);
+        if (!block) continue;
+        const index = contentIndex(block);
+        if (index === null) continue;
+        if (block.id !== initial.anchor) sectionIds[index] = block.id || null;
+        const current = readVisibility(block);
+        if (current && JSON.stringify(current) !== JSON.stringify(initial.showTitle)) showTitles[index] = current;
+      }
+      return {
+        document: documentKey,
+        outline: structuredClone(getDevSectionOutline()),
+        sectionIds,
+        showTitles,
+      };
+    };
+    const stage = () => {
+      dirty = [...touched.values()].some((initial) => {
+        const block = liveBlock(initial);
+        return block && !sameState(initial, capture(block));
+      });
+      undoButton.disabled = history.length === 0;
+      if (!dirty) {
+        window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
         return;
       }
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-        detail: {
-          id: pendingId,
-          kind: 'section-nav',
-          payload: {
-            document: documentKey,
-            outline: cloneOutline(outline),
-            ...(Object.keys(pendingSectionIds).length
-              ? { sectionIds: { ...pendingSectionIds } }
-              : {}),
-            ...(Object.keys(pendingShowTitles).length
-              ? { showTitles: { ...pendingShowTitles } }
-              : {}),
-          },
-          revert: () => discardToBaseline(),
-        },
+        detail: { id: pendingId, kind: 'section-nav', payload: preparePayload(), prepare: preparePayload, revert },
       }));
     };
-
-    const captureBaseline = () => {
-      baselineOutline = cloneOutline(outline);
-      baselineBlockIds = editableBlocks().map((block, pageIndex) => ({
-        pageIndex,
-        id: block.id || null,
-      }));
-      baselineShowTitles = {};
-      editableBlocks().forEach((block) => {
-        const index = blockContentIndex(block);
-        if (index === null || block.dataset.devSectionTitle !== 'true') return;
-        baselineShowTitles[String(index)] = readShowTitle(block);
-      });
+    const restore = (state: BlockState) => {
+      const block = liveBlock(state) || state.block;
+      const next = getDevSectionOutline().filter((entry) => outlineAnchorId(entry) !== block.id);
+      next.push(...structuredClone(state.entries));
+      block.id = state.anchor;
+      if (!state.anchor) block.removeAttribute('id');
+      block.classList.toggle('section-block', Boolean(state.anchor));
+      if (state.showTitle) applyVisibility(block, state.showTitle);
+      setDevSectionOutline(orderedOutline(next));
     };
-
-    const discardToBaseline = () => {
-      replaceOutline(cloneOutline(baselineOutline));
-      setDevSectionOutline(outline);
-
-      const blocks = editableBlocks();
-      baselineBlockIds.forEach(({ pageIndex, id }) => {
-        const block = blocks[pageIndex];
-        if (!block) return;
-        if (id) {
-          block.id = id;
-          block.classList.add('section-block');
-        } else {
-          block.removeAttribute('id');
-          block.classList.remove('section-block');
+    const revert = () => {
+      for (const initial of touched.values()) restore(initial);
+      touched.clear();
+      history.length = 0;
+      inputSession = null;
+      syncDevSectionOutlineSidebar();
+      renderSelection();
+      stage();
+    };
+    const remember = (block: HTMLElement, input?: EventTarget | null) => {
+      const before = capture(block);
+      if (![...touched.values()].some((initial) => liveBlock(initial) === block)) touched.set(block, before);
+      if (!input || inputSession !== input) history.push(before);
+      inputSession = input || null;
+    };
+    const syncBlockOptions = () => {
+      const all = blocks();
+      const options = all.map((block) => ({ value: blockKey(block), label: blockLabel(block), icon: blockIconSvg(block) }));
+      const signature = JSON.stringify(options);
+      if (blockSelect.dataset.options !== signature) {
+        blockSelect.replaceChildren(new Option('Select block', ''), ...options.map((option) => {
+          const node = new Option(option.label, option.value);
+          node.dataset.iconSvg = option.icon;
+          return node;
+        }));
+        blockSelect.dataset.options = signature;
+      }
+      blockSelect.value = activeBlock ? blockKey(activeBlock) : '';
+      blockSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const renderSelection = (fillFields = true) => {
+      syncing = true;
+      syncSelectableBlocks();
+      if (activeBlock && !activeBlock.isConnected) activeBlock = null;
+      const entries = activeBlock ? outlineEntriesForAnchor(getDevSectionOutline(), activeBlock.id) : [];
+      const group = entries.find((entry) => entry.kind === 'group');
+      const section = entries.find((entry) => entry.kind === 'section');
+      const order = blocks();
+      const owned = activeBlock ? owningOutlineSection(
+        getDevSectionOutline(), activeBlock.id || blockKey(activeBlock), order.map((block) => block.id || blockKey(block)),
+      ) : null;
+      sidebar?.querySelectorAll<HTMLElement>('[data-outline-id]').forEach((row) => {
+        const selected = isActive() && (row.dataset.outlineKind === 'group'
+          ? row.dataset.outlineId === (group || owned?.group)?.id
+          : row.dataset.outlineId === (section || owned?.section)?.id);
+        row.classList.toggle('is-section-nav-selected', selected);
+        const control = row.matches('[data-section-nav-group]') ? row.querySelector('summary') : row.querySelector('a');
+        if (isActive()) {
+          if (selected) control?.setAttribute('aria-current', 'true');
+          else control?.removeAttribute('aria-current');
+        } else if (row.dataset.outlineKind === 'group') {
+          control?.removeAttribute('aria-current');
         }
       });
-
-      Object.entries(baselineShowTitles).forEach(([indexKey, showTitle]) => {
-        const block = blocks.find((el) => String(blockContentIndex(el)) === indexKey);
-        if (block) applyShowTitleClasses(block, showTitle);
+      order.forEach((block) => block.classList.toggle('is-section-nav-active', isActive() && block === activeBlock));
+      groupToggle.disabled = sectionToggle.disabled = !activeBlock;
+      if (fillFields) {
+        groupToggle.checked = Boolean(group);
+        sectionToggle.checked = Boolean(section);
+        groupLabel.value = group?.label || '';
+        sectionLabel.value = section?.label || '';
+      }
+      groupLabel.closest<HTMLElement>('.section-nav-editor__field')!.hidden = !groupToggle.checked;
+      sectionLabel.closest<HTMLElement>('.section-nav-editor__field')!.hidden = !sectionToggle.checked;
+      const visibility = activeBlock && readVisibility(activeBlock);
+      titleVis.hidden = !visibility;
+      if (visibility) titleVis.querySelectorAll<HTMLButtonElement>('[data-title-bp]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(visibility[button.dataset.titleBp as keyof ShowTitle]));
       });
-
-      pendingSectionIds = {};
-      pendingShowTitles = {};
-      syncSidebarDom();
-      setDirty(false);
+      undoButton.disabled = !history.length;
+      syncBlockOptions();
+      syncing = false;
     };
-
-    const editableBlocks = () =>
-      [
-        ...document.querySelectorAll<HTMLElement>(`${mainScope} [data-dev-spacing-path]`),
-        ...document.querySelectorAll<HTMLElement>(`${mainScope} .section-block[id]`),
-      ].filter((el, index, all) => all.indexOf(el) === index && isEditableBlock(el));
-
-    const findBlockById = (id: string) =>
-      editableBlocks().find((el) => el.id === id) ??
-      document.querySelector<HTMLElement>(`${mainScope} #${CSS.escape(id)}`);
-
-    const blockContentIndex = (block: HTMLElement) => {
-      if (outlineOnly) return null;
-      return sectionIndexFromPath(block.dataset.devSpacingPath);
-    };
-
-    const pageIndexForId = (id: string) => {
-      if (!id) return Number.POSITIVE_INFINITY;
-      const blocks = editableBlocks();
-      const byId = blocks.findIndex((el) => el.id === id);
-      if (byId >= 0) return byId;
-      const el = document.getElementById(id);
-      if (!(el instanceof HTMLElement)) return Number.POSITIVE_INFINITY;
-      const idx = blocks.indexOf(el);
-      return idx >= 0 ? idx : Number.POSITIVE_INFINITY;
-    };
-
-    const sortOutlineByPageOrder = (entries: OutlineEntry[]) =>
-      reorderOutlinePreservingGroups(
-        entries as SharedOutlineEntry[],
-        pageIndexForId,
-      ) as OutlineEntry[];
-
-    const owningSectionForBlock = (block: HTMLElement) => {
-      const blocks = editableBlocks();
-      const blockIndex = blocks.indexOf(block);
-      if (blockIndex < 0) {
-        return { group: null as OutlineGroup | null, section: null as OutlineSection | null };
-      }
-
-      const sorted = sortOutlineByPageOrder(outline);
-      let group: OutlineGroup | null = null;
-      let section: OutlineSection | null = null;
-      for (const entry of sorted) {
-        const pageIndex =
-          entry.kind === 'group'
-            ? pageIndexForId(entry.anchor?.trim() || entry.id)
-            : pageIndexForId(outlineAnchorId(entry));
-        if (pageIndex > blockIndex) break;
-        if (entry.kind === 'group') {
-          group = entry;
-          section = null;
-        } else {
-          section = entry;
-        }
-      }
-      return { group, section };
-    };
-
-    const clearRangeHighlights = () => {
-      editableBlocks().forEach((el) => el.classList.remove('is-section-nav-in-range'));
-    };
-
-    const highlightSectionRange = (sectionEntry: OutlineSection | null) => {
-      clearRangeHighlights();
-      if (!sectionEntry) return;
-      const start = pageIndexForId(outlineAnchorId(sectionEntry));
-      if (!Number.isFinite(start)) return;
-      const sorted = sortOutlineByPageOrder(outline);
-      const sectionPos = sorted.findIndex(
-        (entry) => entry.kind === 'section' && entry.id === sectionEntry.id,
-      );
-      let end = editableBlocks().length;
-      for (let i = sectionPos + 1; i < sorted.length; i += 1) {
-        const next = sorted[i];
-        const pageIndex =
-          next.kind === 'group'
-            ? pageIndexForId(next.anchor?.trim() || next.id)
-            : pageIndexForId(outlineAnchorId(next));
-        if (pageIndex > start) {
-          end = pageIndex;
-          break;
-        }
-      }
-      editableBlocks().forEach((el, index) => {
-        if (index >= start && index < end) el.classList.add('is-section-nav-in-range');
-      });
-    };
-
-    const writeRootDatasets = () => {
-      const nav = deriveNavFromOutline(outline);
-      root.dataset.sectionOutline = JSON.stringify(outline);
-      root.dataset.sectionNav = JSON.stringify(nav);
-    };
-
-    const uniqueId = (preferred: string, used: Set<string>) => {
-      let candidate = preferred;
-      let n = 2;
-      while (used.has(candidate)) {
-        candidate = `${preferred}-${n}`;
-        n += 1;
-      }
-      return candidate;
-    };
-
-    const collectUsedIds = () => {
-      const ids = new Set<string>();
-      for (const entry of outline) ids.add(entry.id);
-      return ids;
-    };
-
-    const entriesForBlock = (block: HTMLElement) => {
-      const id = block.id;
-      if (!id) return [] as OutlineEntry[];
-      return outline.filter((entry) => outlineAnchorId(entry) === id);
-    };
-
-    const readShowTitle = (block: HTMLElement): ShowTitle => {
-      const parsed = parseJson<Partial<ShowTitle> | null>(block.dataset.devShowTitle, null);
-      return {
-        desktop: parsed?.desktop ?? !block.classList.contains('project-section-title--hide-desktop'),
-        tablet: parsed?.tablet ?? !block.classList.contains('project-section-title--hide-tablet'),
-        mobile: parsed?.mobile ?? !block.classList.contains('project-section-title--hide-mobile'),
-      };
-    };
-
-    const applyShowTitleClasses = (block: HTMLElement, showTitle: ShowTitle) => {
-      block.classList.toggle('project-section-title--hide-desktop', !showTitle.desktop);
-      block.classList.toggle('project-section-title--hide-tablet', !showTitle.tablet);
-      block.classList.toggle('project-section-title--hide-mobile', !showTitle.mobile);
-      block.classList.toggle('project-section-title--hide-when-sidebar', !showTitle.desktop);
-      block.dataset.devShowTitle = JSON.stringify(showTitle);
-    };
-
-    const setTitleChip = (bp: keyof ShowTitle, on: boolean) => {
-      const button = titleVis.querySelector<HTMLButtonElement>(`[data-title-bp="${bp}"]`);
-      if (!button) return;
-      button.setAttribute('aria-pressed', on ? 'true' : 'false');
-      button.classList.toggle('is-on', on);
-    };
-
-    const readTitleChips = (): ShowTitle => ({
-      desktop: titleVis.querySelector('[data-title-bp="desktop"]')?.getAttribute('aria-pressed') === 'true',
-      tablet: titleVis.querySelector('[data-title-bp="tablet"]')?.getAttribute('aria-pressed') === 'true',
-      mobile: titleVis.querySelector('[data-title-bp="mobile"]')?.getAttribute('aria-pressed') === 'true',
-    });
-
-    const setStatus = (message: string, isError = false) => {
-      statusEl.hidden = !message;
-      statusEl.textContent = message;
-      statusEl.classList.toggle('is-error', isError);
-    };
-
-    const syncMarkerFields = () => {
-      groupLabelWrap.hidden = !asGroupInput.checked;
-      sectionLabelWrap.hidden = !asSectionInput.checked;
-      groupLabelInput.disabled = !asGroupInput.checked;
-      sectionLabelInput.disabled = !asSectionInput.checked;
-    };
-
-    /** Clears marker-editing state without touching the panel's hidden flag — shared
-     * by closePopover and the DevOverlay traffic-light Hide button, which hides the
-     * panel itself before this code ever finds out. */
-    const clearPopoverState = () => {
-      activeBlock?.classList.remove('is-section-nav-active');
-      activeBlock = null;
-      clearRangeHighlights();
-      setStatus('');
-    };
-
-    const closePopover = () => {
-      popoverPanel.hidden = true;
-      clearPopoverState();
-    };
-
-    // DevOverlay's own traffic-light Hide button closes the panel directly and
-    // only announces it afterwards — catch that path too, or activeBlock/highlight
-    // state is left dangling on the page.
-    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
-      if (event.detail?.panel?.dataset.devPanelKey !== 'section-nav') return;
-      clearPopoverState();
-    }) as EventListener);
-
-    const anchorPopoverNearBlock = (block: HTMLElement) => {
-      const pad = 12;
-      const width = popoverPanel.offsetWidth || Math.min(300, window.innerWidth - pad * 2);
-      const rect = block.getBoundingClientRect();
-      const minTop = headerClearance();
-      const left = clamp(rect.left, pad, window.innerWidth - width - pad);
-      let top = rect.bottom + 8;
-
-      popoverPanel.style.left = `${left}px`;
-      popoverPanel.style.top = `${top}px`;
-      popoverPanel.style.right = 'auto';
-      popoverPanel.style.bottom = 'auto';
-
-      requestAnimationFrame(() => {
-        const popRect = popoverPanel.getBoundingClientRect();
-        if (popRect.bottom > window.innerHeight - pad || popRect.top < minTop) {
-          top = rect.top - popRect.height - 8;
-          if (top < minTop) {
-            top = minTop;
-          }
-          setPopoverPosition(left, top);
-        }
-      });
-    };
-
-    const suggestGroupLabel = () => 'Intro';
-    const suggestSectionLabel = (block: HTMLElement) => {
-      const title = block.querySelector('.project-section-title')?.textContent?.trim();
-      if (title) return title;
-      const img = block.querySelector('img');
-      if (img?.alt?.trim()) {
-        const alt = img.alt.trim();
-        return alt.length > 40 ? `${alt.slice(0, 37)}…` : alt;
-      }
-      return 'Overview';
-    };
-
-    const openPopover = (block: HTMLElement) => {
+    const selectBlock = (block: HTMLElement | null, focusKind?: 'group' | 'section') => {
       activeBlock?.classList.remove('is-section-nav-active');
       activeBlock = block;
-      block.classList.add('is-section-nav-active');
-
-      const markers = entriesForBlock(block);
-      const groupMarker = markers.find((entry) => entry.kind === 'group');
-      const sectionMarker = markers.find((entry) => entry.kind === 'section');
-
-      asGroupInput.checked = Boolean(groupMarker);
-      asSectionInput.checked = Boolean(sectionMarker);
-      // Only fill labels for active markers — suggestions appear when the box is checked.
-      groupLabelInput.value = groupMarker?.label || '';
-      sectionLabelInput.value = sectionMarker?.label || '';
-      syncMarkerFields();
-
-      // Dropped per Anto (2026-08-25): no explanatory status line — the
-      // element stays (other code still queries it) but never shows text.
-      // The range highlight it used to gate on is still worth keeping live.
-      const owned = owningSectionForBlock(block);
-      belongsEl.hidden = true;
-      if (owned.section && !sectionMarker) {
-        highlightSectionRange(owned.section);
-      } else if (sectionMarker) {
-        highlightSectionRange(sectionMarker);
-      } else {
-        clearRangeHighlights();
-      }
-
-      const isTitle = block.dataset.devSectionTitle === 'true';
-      titleVis.hidden = !isTitle;
-      if (isTitle) {
-        const showTitle = readShowTitle(block);
-        setTitleChip('desktop', showTitle.desktop);
-        setTitleChip('tablet', showTitle.tablet);
-        setTitleChip('mobile', showTitle.mobile);
-      }
-
-      setStatus('');
-      popoverPanel.hidden = false;
-      if (!hasStoredPopoverPosition()) {
-        anchorPopoverNearBlock(block);
-      }
-      if (asGroupInput.checked) {
-        groupLabelInput.focus();
-        groupLabelInput.select();
-      } else if (asSectionInput.checked) {
-        sectionLabelInput.focus();
-        sectionLabelInput.select();
+      inputSession = null;
+      renderSelection();
+      panel.hidden = false;
+      if (focusKind) {
+        const input = focusKind === 'group' ? groupLabel : sectionLabel;
+        input.focus({ preventScroll: true });
+        input.select();
       }
     };
-
-    const applyBlockSectionId = (block: HTMLElement, id: string | null) => {
-      if (id) {
-        block.id = id;
+    const changeMarker = (kind: 'group' | 'section', enabled: boolean, label?: string, input?: EventTarget | null) => {
+      const block = activeBlock;
+      if (!block || saving) return;
+      const before = capture(block);
+      const existing = before.entries.find((entry) => entry.kind === kind);
+      const nextLabel = label === undefined ? existing?.label || (kind === 'group' ? 'Group' : block.querySelector('.project-section-title')?.textContent?.trim().slice(0, 120) || 'Section') : label.trim() || (kind === 'group' ? 'Group' : 'Section');
+      if (enabled && existing?.label === nextLabel) return;
+      if (!enabled && !existing) return;
+      remember(block, input);
+      if (!block.id && enabled) {
+        block.id = `block-${newId()}`;
         block.classList.add('section-block');
-      } else {
-        const stillUsed = outline.some((entry) => outlineAnchorId(entry) === block.id);
-        if (!stillUsed) {
-          block.removeAttribute('id');
-          block.classList.remove('section-block');
-        }
       }
-    };
-
-    const syncSidebarDom = () => {
-      replaceOutline(sortOutlineByPageOrder(outline));
-      setDevSectionOutline(outline);
+      const next = getDevSectionOutline().filter((entry) => !(outlineAnchorId(entry) === block.id && entry.kind === kind));
+      if (enabled) next.push({
+        ...(existing || { kind, id: `${kind}-${newId()}`, ...(kind === 'group' ? { defaultOpen: true } : {}) }),
+        label: nextLabel,
+        anchor: block.id,
+      } as OutlineEntry);
+      setDevSectionOutline(orderedOutline(next));
       syncDevSectionOutlineSidebar();
-      bindSidebarLabelEdits();
+      renderSelection(!input);
+      stage();
+    };
+    const undo = () => {
+      if (saving) return;
+      const previous = history.pop();
+      if (!previous) return;
+      restore(previous);
+      inputSession = null;
+      activeBlock = liveBlock(previous);
+      syncDevSectionOutlineSidebar();
+      renderSelection();
+      stage();
+    };
+    const syncMode = () => {
+      if (isActive()) shell.hidden = false;
+      document.documentElement.classList.toggle('is-section-nav-editing', isActive());
+      if (isActive()) {
+        syncDevSectionOutlineSidebar();
+        panel.hidden = false;
+      } else {
+        panel.hidden = true;
+        main?.querySelectorAll('.is-section-nav-hover').forEach((block) => block.classList.remove('is-section-nav-hover'));
+      }
+      renderSelection();
     };
 
-    const syncSidebarLabelEditability = () => {
-      const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
-      if (!list) return;
-
-      const editable = isActive();
-      list.querySelectorAll<HTMLElement>('[data-section-nav-label]').forEach((labelEl) => {
-        if (editable) {
-          labelEl.setAttribute('contenteditable', 'true');
-        } else {
-          labelEl.removeAttribute('contenteditable');
-        }
-      });
-    };
-
-    const bindSidebarLabelEdits = () => {
-      const list = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
-      if (!list) return;
-
-      syncSidebarLabelEditability();
-
-      list.querySelectorAll<HTMLElement>('[data-section-nav-label]').forEach((labelEl) => {
-        labelEl.onclick = (event) => {
-          if (!isActive()) return;
-          event.preventDefault();
-          event.stopPropagation();
-        };
-        labelEl.onmousedown = (event) => {
-          if (!isActive()) return;
-          event.stopPropagation();
-        };
-        labelEl.onblur = () => {
-          if (!isActive()) return;
-          const groupEl = labelEl.closest<HTMLElement>('[data-section-nav-group]');
-          const nextLabel = labelEl.textContent?.trim() || 'Section';
-          if (!groupEl) return;
-          const prevLabel = groupEl.dataset.navLabel || '';
-          groupEl.dataset.navLabel = nextLabel;
-          const group = outline.find(
-            (entry) => entry.kind === 'group' && entry.label === prevLabel,
-          );
-          if (group && group.kind === 'group') {
-            group.label = nextLabel;
-            group.id = slugify(nextLabel);
-          }
-          writeRootDatasets();
-          setDirty(true);
-        };
-        labelEl.onkeydown = (event) => {
-          if (!isActive()) return;
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            // Blur commits the rename into `outline` and stages it — Enter no
-            // longer writes to disk on its own; the save bar owns that.
-            labelEl.blur();
-          }
-        };
-      });
-    };
-
-    const onSidebarLinkClick = (event: MouseEvent) => {
+    blockSelect.addEventListener('change', () => {
+      if (syncing) return;
+      selectBlock(blocks().find((block) => blockKey(block) === blockSelect.value) || null);
+    }, { signal });
+    groupToggle.addEventListener('change', () => changeMarker('group', groupToggle.checked), { signal });
+    sectionToggle.addEventListener('change', () => changeMarker('section', sectionToggle.checked), { signal });
+    for (const [kind, input] of [['group', groupLabel], ['section', sectionLabel]] as const) {
+      input.addEventListener('input', () => changeMarker(kind, true, input.value, input), { signal });
+      input.addEventListener('blur', () => { inputSession = null; renderSelection(); }, { signal });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+      }, { signal });
+    }
+    titleVis.addEventListener('click', (event) => {
+      const button = (event.target as Element).closest<HTMLElement>('[data-title-bp], [data-nav-hide-sidebar]');
+      if (!button || !activeBlock) return;
+      const visibility = readVisibility(activeBlock);
+      if (!visibility) return;
+      remember(activeBlock);
+      if (button.hasAttribute('data-nav-hide-sidebar')) Object.assign(visibility, { desktop: false, tablet: true, mobile: true });
+      else {
+        const bp = button.dataset.titleBp as keyof ShowTitle;
+        visibility[bp] = !visibility[bp];
+      }
+      applyVisibility(activeBlock, visibility);
+      renderSelection();
+      stage();
+    }, { signal });
+    undoButton.addEventListener('click', undo, { signal });
+    shell.querySelector('[data-nav-done]')!.addEventListener('click', closePanel, { signal });
+    sidebar?.addEventListener('click', (event) => {
       if (!isActive()) return;
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const anchor = target.closest<HTMLAnchorElement>('[data-section-nav-link] a');
-      if (!anchor) return;
+      const target = event.target as Element;
+      const row = target.closest<HTMLElement>('[data-outline-id]');
+      if (!row) return;
+      const entry = getDevSectionOutline().find((entry) => entry.id === row.dataset.outlineId && entry.kind === row.dataset.outlineKind);
+      if (!entry) return;
+      const block = blocks().find((block) => block.id === outlineAnchorId(entry));
+      if (!block) return;
       event.preventDefault();
-      const li = anchor.closest<HTMLElement>('[data-section-nav-link]');
-      const id = li?.dataset.navId;
-      if (!id) return;
-      const block = findBlockById(id);
-      if (block) openPopover(block);
-    };
-
-    const sidebarList = document.querySelector<HTMLElement>('[data-section-sidebar-list]');
-    sidebarList?.addEventListener('click', onSidebarLinkClick);
-
-    /**
-     * The shared save bar wrote our pending change to disk — the DOM is already
-     * correct, so this only rebases what Revert would go back to.
-     */
-    window.addEventListener('vcd:dev-pending-committed', () => {
-      if (!dirty) return;
-      pendingSectionIds = {};
-      pendingShowTitles = {};
-      captureBaseline();
-      dirty = false;
-    });
-
-    /**
-     * Insert marker entries at this block’s page position — never push to the
-     * end. Pushing made a re-added section inherit the last group in the file
-     * (e.g. Outcome), so untoggling Research could spawn duplicate groups.
-     */
-    const insertOutlineEntriesAtBlock = (anchorId: string, entries: OutlineEntry[]) => {
-      if (!entries.length) return;
-      const next = insertOutlineEntriesAtPagePosition(
-        outline,
-        anchorId,
-        entries as SharedOutlineEntry[],
-        pageIndexForId,
-      ) as OutlineEntry[];
-      replaceOutline(next);
-    };
-
-    const onApply = () => {
-      if (!activeBlock) return;
-      const index = blockContentIndex(activeBlock);
-      if (!outlineOnly && index === null) {
-        setStatus('This block cannot be marked.', true);
-        return;
-      }
-
-      const wantGroup = asGroupInput.checked;
-      const wantSection = asSectionInput.checked;
-      const groupLabel = groupLabelInput.value.trim() || suggestGroupLabel();
-      const sectionLabel = sectionLabelInput.value.trim() || suggestSectionLabel(activeBlock);
-      const previousId = activeBlock.id || '';
-
-      replaceOutline(outline.filter((entry) => outlineAnchorId(entry) !== previousId));
-
-      if (!wantGroup && !wantSection) {
-        if (previousId) {
-          if (index !== null) {
-            pendingSectionIds[String(index)] = null;
-          }
-          applyBlockSectionId(activeBlock, null);
-        }
-      } else {
-        const used = collectUsedIds();
-        if (previousId) used.delete(previousId);
-
-        const preferred = wantSection ? slugify(sectionLabel) : slugify(groupLabel);
-        const anchorId = previousId || uniqueId(preferred, used);
-
-        editableBlocks().forEach((block) => {
-          if (block !== activeBlock && block.id === anchorId) {
-            const otherIndex = blockContentIndex(block);
-            if (otherIndex !== null) pendingSectionIds[String(otherIndex)] = null;
-            block.removeAttribute('id');
-            block.classList.remove('section-block');
-            replaceOutline(outline.filter((entry) => outlineAnchorId(entry) !== anchorId));
-          }
-        });
-
-        applyBlockSectionId(activeBlock, anchorId);
-        if (index !== null) pendingSectionIds[String(index)] = anchorId;
-
-        const newEntries: OutlineEntry[] = [];
-        if (wantGroup) {
-          const ids = collectUsedIds();
-          ids.add(anchorId);
-          const groupId = wantSection ? uniqueId(slugify(groupLabel), ids) : anchorId;
-          newEntries.push({
-            kind: 'group',
-            id: groupId,
-            label: groupLabel,
-            defaultOpen: true,
-            anchor: anchorId,
-          });
-        }
-
-        if (wantSection) {
-          newEntries.push({
-            kind: 'section',
-            id: anchorId,
-            label: sectionLabel,
-            anchor: anchorId,
-          });
-        }
-
-        insertOutlineEntriesAtBlock(anchorId, newEntries);
-      }
-
-      if (!outlineOnly && activeBlock.dataset.devSectionTitle === 'true') {
-        const showTitle = readTitleChips();
-        if (index !== null) pendingShowTitles[String(index)] = showTitle;
-        applyShowTitleClasses(activeBlock, showTitle);
-      }
-
-      replaceOutline(sortOutlineByPageOrder(outline));
-      syncSidebarDom();
-      setDirty(true);
-      closePopover();
-    };
-
-    const setEditorChrome = (active: boolean) => {
-      shell.hidden = !active;
-      hint.hidden = !active;
-      document.documentElement.classList.toggle('is-section-nav-editing', active);
-      if (!active) {
-        closePopover();
-        hoverBlock?.classList.remove('is-section-nav-hover');
-        hoverBlock = null;
-        editableBlocks().forEach((el) => {
-          el.classList.remove('is-section-nav-hover', 'is-section-nav-active');
-        });
-        // Leaving this mode keeps marker edits staged, the same way closing a crop
-        // tuner does. Undoing them is the save bar's Revert, not Esc.
-        syncSidebarLabelEditability();
-      } else {
-        syncSidebarDom();
-        // Only rebase the revert target when nothing is staged — re-entering the
-        // editor mid-edit must still be able to get back to what is on disk.
-        if (!dirty) captureBaseline();
-      }
-    };
-
-    asGroupInput.addEventListener('change', () => {
-      syncMarkerFields();
-      if (asGroupInput.checked) {
-        if (!groupLabelInput.value.trim()) groupLabelInput.value = suggestGroupLabel();
-      } else {
-        // Clear so a hidden leftover label cannot be mistaken for an active group.
-        groupLabelInput.value = '';
-      }
-    });
-    asSectionInput.addEventListener('change', () => {
-      syncMarkerFields();
-      if (asSectionInput.checked) {
-        if (!sectionLabelInput.value.trim() && activeBlock) {
-          sectionLabelInput.value = suggestSectionLabel(activeBlock);
-        }
-      } else {
-        sectionLabelInput.value = '';
-      }
-    });
-
-    titleVis.querySelectorAll<HTMLButtonElement>('[data-title-bp]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const on = button.getAttribute('aria-pressed') !== 'true';
-        button.setAttribute('aria-pressed', on ? 'true' : 'false');
-        button.classList.toggle('is-on', on);
-      });
-    });
-
-    hideSidebarBtn.addEventListener('click', () => {
-      setTitleChip('desktop', false);
-      setTitleChip('tablet', true);
-      setTitleChip('mobile', true);
-    });
-
-    const onLabelInputKeydown = (event: KeyboardEvent) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      onApply();
-    };
-
-    cancelBtn.addEventListener('click', closePopover);
-    applyBtn.addEventListener('click', onApply);
-    groupLabelInput.addEventListener('keydown', onLabelInputKeydown);
-    sectionLabelInput.addEventListener('keydown', onLabelInputKeydown);
-
-    // Marker edits only reach `outline` via Apply, so an open popover holds work
-    // the save bar cannot see. Land it rather than letting Save drop it silently.
-    window.addEventListener('vcd:dev-before-save', () => {
-      if (!isActive() || popoverPanel.hidden || !activeBlock) return;
-      onApply();
-    });
-
-    const PANEL_RESIZE_SLOP = 16;
-    let panelGestureActive = false;
-
-    const isPointerOnPanelOrSlop = (
-      clientX: number,
-      clientY: number,
-      target: EventTarget | null,
-    ) => {
-      if (target instanceof Element && target.closest('[data-dev-panel-key="section-nav"]')) {
-        return true;
-      }
-      if (popoverPanel.hidden) return false;
-      const rect = popoverPanel.getBoundingClientRect();
-      return (
-        clientX >= rect.left - PANEL_RESIZE_SLOP &&
-        clientX <= rect.right + PANEL_RESIZE_SLOP &&
-        clientY >= rect.top - PANEL_RESIZE_SLOP &&
-        clientY <= rect.bottom + PANEL_RESIZE_SLOP
-      );
-    };
-
-    document.addEventListener(
-      'pointerdown',
-      (event) => {
-        if (!isActive()) return;
-        if (event.button !== 0) return;
-        if (
-          !popoverPanel.hidden &&
-          isPointerOnPanelOrSlop(event.clientX, event.clientY, event.target)
-        ) {
-          panelGestureActive = true;
-        }
-      },
-      true,
-    );
-
-    document.addEventListener(
-      'pointerup',
-      () => {
-        // Defer so the subsequent click (resize-up) still sees the flag.
-        window.setTimeout(() => {
-          panelGestureActive = false;
-        }, 0);
-      },
-      true,
-    );
-
-    document.addEventListener(
-      'pointercancel',
-      () => {
-        panelGestureActive = false;
-      },
-      true,
-    );
-
-    document.addEventListener(
-      'click',
-      (event) => {
-        if (!isActive()) return;
-        const target = event.target as HTMLElement | null;
-        if (!target) return;
-        // Native vertical resize fires click with target outside the overlay.
-        if (panelGestureActive) {
-          panelGestureActive = false;
-          return;
-        }
-        // The whole DevOverlay panel, not just the inner content — its own
-        // head (drag handle, traffic lights) sits outside [data-nav-popover].
-        if (target.closest('[data-dev-panel-key="section-nav"]')) return;
-        if (target.closest('.section-sidebar-nav')) return;
-        if (target.closest('.site-header')) return;
-        // This runs in capture, so a click on Save reached here first and closed
-        // the popover before the save bar's own handler could flush it. Dev chrome
-        // is not page content — clicking it must not dismiss the open marker.
-        if (target.closest('.dev-text-actions')) return;
-
-        const block = target.closest<HTMLElement>(`${mainScope} [data-dev-spacing-path], ${mainScope} .section-block[id]`);
-        if (!block || !isEditableBlock(block)) {
-          if (!popoverPanel.hidden) closePopover();
-          return;
-        }
-
-        event.preventDefault();
-        event.stopPropagation();
-        openPopover(block);
-      },
-      true,
-    );
-
-    document.addEventListener('mousemove', (event) => {
-      if (!isActive() || !popoverPanel.hidden) return;
-      const target = event.target as HTMLElement | null;
-      const block = target?.closest<HTMLElement>(`${mainScope} [data-dev-spacing-path], ${mainScope} .section-block[id]`);
-      if (hoverBlock === block) return;
-      hoverBlock?.classList.remove('is-section-nav-hover');
-      hoverBlock = block && isEditableBlock(block) ? block : null;
-      hoverBlock?.classList.add('is-section-nav-hover');
-    });
-
-    document.addEventListener('keydown', (event) => {
-      if (!isActive()) return;
-      if (event.key !== 'Escape') return;
-      // Only dismiss the marker popover; DevModeController owns Esc → Dev Mode.
-      if (popoverPanel.hidden) return;
+      selectBlock(block, entry.kind);
+    }, { capture: true, signal });
+    document.addEventListener('pointerdown', (event) => {
+      if (!isActive() || !(event.target instanceof Element)) return;
+      const block = event.target.closest<HTMLElement>('[data-section-nav-block]');
+      if (!block) return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      closePopover();
-    }, true);
-
-    // Dragging, position persistence, and resize-clamping are handled by
-    // DevOverlay itself (see [data-drag-handle] in DevOverlay.astro).
-
-    window.addEventListener('vcd:section-nav-editor-change', (() => {
-      setEditorChrome(isActive());
-    }) as EventListener);
-    window.addEventListener('vcd:dev-mode-change', (() => {
-      setEditorChrome(isActive());
-    }) as EventListener);
-
-    writeRootDatasets();
-    setEditorChrome(isActive());
+    }, { capture: true, signal });
+    document.addEventListener('click', (event) => {
+      if (!isActive()) return;
+      const target = event.target as Element;
+      if (target.closest('[data-dev-overlay], .section-sidebar-nav, .site-header, .dev-text-actions')) return;
+      const block = target.closest<HTMLElement>('[data-section-nav-block]');
+      if (!block || !blocks().includes(block)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      block.focus({ preventScroll: true });
+      selectBlock(block);
+    }, { capture: true, signal });
+    main?.addEventListener('pointermove', (event) => {
+      if (!isActive()) return;
+      const block = (event.target as Element).closest<HTMLElement>('[data-section-nav-block]');
+      main.querySelectorAll('.is-section-nav-hover').forEach((el) => { if (el !== block) el.classList.remove('is-section-nav-hover'); });
+      if (block && blocks().includes(block)) block.classList.add('is-section-nav-hover');
+    }, { signal });
+    main?.addEventListener('pointerleave', () => main.querySelectorAll('.is-section-nav-hover').forEach((block) => block.classList.remove('is-section-nav-hover')), { signal });
+    document.addEventListener('keydown', (event) => {
+      if (!isActive()) return;
+      const target = event.target as HTMLElement;
+      const block = target.closest<HTMLElement>('[data-section-nav-block]');
+      if (block && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault(); event.stopImmediatePropagation(); selectBlock(block);
+        return;
+      }
+      if (target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.shiftKey
+        && !target.closest('input, textarea, [contenteditable="true"]')) {
+        event.preventDefault(); event.stopImmediatePropagation(); undo();
+      }
+      if (event.key === 'Escape' && !panel.hidden) {
+        event.preventDefault(); event.stopImmediatePropagation(); closePanel();
+      }
+    }, { capture: true, signal });
+    window.addEventListener('vcd:section-nav-editor-change', syncMode, { signal });
+    window.addEventListener('vcd:dev-mode-change', syncMode, { signal });
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel || !isActive()) return;
+      window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-request', { detail: { active: false } }));
+    }) as EventListener, { signal });
+    window.addEventListener('vcd:section-nav-sidebar-synced', () => { if (!syncing) renderSelection(false); }, { signal });
+    window.addEventListener('vcd:dev-save-state', ((event: CustomEvent<{ saving: boolean }>) => {
+      saving = event.detail.saving;
+      panel.inert = saving;
+    }) as EventListener, { signal });
+    window.addEventListener('vcd:dev-pending-committed', () => {
+      touched.clear(); history.length = 0; dirty = false; inputSession = null; renderSelection();
+    }, { signal });
+    window.addEventListener('vcd:dev-pending-reverted', () => { syncDevSectionOutlineSidebar(); renderSelection(); }, { signal });
+    window.addEventListener('vcd:dev-section-structure-changed', () => {
+      history.length = 0; inputSession = null; renderSelection(); if (dirty) stage();
+    }, { signal });
+    dispose = () => {
+      controller.abort();
+      panel.inert = false;
+      if (dirty) revert();
+      syncSelectableBlocks(false);
+      document.documentElement.classList.remove('is-section-nav-editing');
+      blocks().forEach((block) => block.classList.remove('is-section-nav-active', 'is-section-nav-hover'));
+    };
+    syncMode();
   };
 
   initSectionNavEditor();
+  if (import.meta.hot) import.meta.hot.dispose(() => dispose?.());
 </script>
 
 <style is:global>
-  html.is-section-nav-editing,
-  html.is-section-nav-editing * {
-    cursor: crosshair !important;
-  }
-
-  html.is-section-nav-editing .section-sidebar-nav,
-  html.is-section-nav-editing .section-sidebar-nav * {
-    cursor: default !important;
-  }
-
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'],
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] *,
-  html.is-section-nav-editing .section-nav-editor__hint,
-  html.is-section-nav-editing .section-nav-editor__hint *,
-  /* The save bar is now the save surface for this mode, so it is chrome you click
-     — the mode-wide crosshair over its buttons read as "not clickable here". */
-  html.is-section-nav-editing .dev-text-actions,
-  html.is-section-nav-editing .dev-text-actions * {
-    cursor: auto !important;
-  }
-
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .dev-overlay__head {
-    cursor: grab !important;
-  }
-
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'].is-dragging .dev-overlay__head {
-    cursor: grabbing !important;
-  }
-
-  /* The blanket `auto` above outranks the panel's own `cursor: pointer` on
-     buttons, preset links, and toggles (higher specificity + !important) — restore it explicitly. */
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] button:not(:disabled),
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .section-nav-editor__preset,
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .dev-toggle,
-  html.is-section-nav-editing .dev-overlay[data-dev-panel-key='section-nav'] .dev-toggle * {
-    cursor: pointer !important;
-  }
-
-  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-hover {
-    outline: 2px solid color-mix(in srgb, var(--sys-color-on-srf) 35%, transparent);
-    outline-offset: 4px;
-    border-radius: 0.15em;
-  }
-
-  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-in-range {
-    outline: 2px dashed color-mix(in srgb, var(--sys-color-on-srf) 28%, transparent);
-    outline-offset: 4px;
-    border-radius: 0.15em;
-  }
-
-  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-active {
-    outline: 2px solid var(--sys-color-on-srf);
-    outline-offset: 4px;
-    border-radius: 0.15em;
-  }
-
-  html.is-section-nav-editing .section-sidebar-nav [data-section-nav-label] {
+  html.is-section-nav-editing [data-section-nav-block] {
+    position: relative;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
     outline: none;
-    border-radius: 0.2em;
-    cursor: text !important;
   }
-
-  html.is-section-nav-editing .section-sidebar-nav [data-section-nav-label]:focus {
-    background: color-mix(in srgb, var(--sys-color-srf-container-high) 80%, var(--sys-color-on-srf));
+  html.is-section-nav-editing [data-section-nav-block] * {
+    pointer-events: none !important;
+    cursor: inherit !important;
+  }
+  html.is-section-nav-editing [data-section-nav-main] :is([data-dev-mode-only], [data-dev-edit-trigger], .dev-section-drag-handle, .dev-section-drag-bridge, .dev-section-delete, .dev-gap-toolbar) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  html.is-section-nav-editing [data-section-nav-main] :is([data-dev-text-document], [data-dev-section-deletable], [data-dev-spacing-document])::before,
+  html.is-section-nav-editing [data-section-nav-main] :is([data-dev-text-document], [data-dev-section-deletable])::after {
+    opacity: 0 !important;
+  }
+  .section-nav-block-ring {
+    position: absolute;
+    inset: calc(-0.5 * var(--space-unit));
+    border: 3px solid var(--sys-color-outline-variant);
+    border-radius: calc(0.75 * var(--space-unit));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+  }
+  html.is-section-nav-editing [data-section-nav-block]:is(.is-section-nav-hover, :focus-visible, .is-section-nav-active) > .section-nav-block-ring {
+    opacity: 1;
+  }
+  html.is-section-nav-editing [data-section-nav-block].is-section-nav-active > .section-nav-block-ring {
+    border-color: var(--sys-color-on-srf);
   }
 </style>
 
 <style>
-  /*
-    Bottom-left, not centred: the shared save bar owns bottom-right for the whole
-    of this mode, and a centred hint ran underneath it.
-  */
-  .section-nav-editor__hint {
-    position: fixed;
-    left: max(1em, env(safe-area-inset-left));
-    bottom: max(1em, env(safe-area-inset-bottom));
-    z-index: 40;
-    display: flex;
-    align-items: center;
-    gap: 0.75em;
-    max-width: calc(100vw - 2em);
-    padding: 0.55em 0.9em;
-    border-radius: var(--radius-control-smooth);
-    background: var(--sys-color-on-srf);
-    color: var(--sys-color-srf);
-    font-size: 0.85rem;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    pointer-events: none;
-    box-shadow: 0 0.25em 1em rgba(26, 26, 26, 0.18);
-  }
-
-  /* Not enough width for hint and save bar side by side — stack instead of overlap. */
-  @media (max-width: 74em) {
-    .section-nav-editor__hint {
-      bottom: calc(max(1em, env(safe-area-inset-bottom)) + 3.5em);
-    }
-  }
-
-  /* Chrome (position, background, shadow, drag handle, title) comes from DevOverlay. */
-  .section-nav-editor__popover {
+  .section-nav-editor__popover,
+  .section-nav-editor__group,
+  .section-nav-editor__title-vis {
     display: flex;
     flex-direction: column;
     gap: var(--dev-panel-content-gap);
   }
-
-  .section-nav-editor__group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
+  .section-nav-editor__group { gap: 0.5em; }
+  .section-nav-editor__field[hidden],
+  .section-nav-editor__title-vis[hidden] { display: none; }
   .section-nav-editor__subtitle {
     margin: 0;
     font: var(--dev-text-field-label);
     color: var(--sys-color-on-srf-variant);
   }
-
-  .section-nav-editor__belongs {
-    margin: 0;
-    padding: 0.45em 0.55em;
-    border-radius: var(--dev-radius-control);
-    background: var(--sys-color-srf-container-low);
-    font: var(--dev-text-label);
-    color: var(--sys-color-on-srf);
-  }
-
-  .section-nav-editor__belongs[hidden] {
-    display: none;
-  }
-
-  .section-nav-editor__field[hidden] {
-    display: none;
-  }
-
-  .section-nav-editor__field .dev-field__input::placeholder {
-    color: var(--sys-color-on-srf-subtle);
-  }
-
-  .section-nav-editor__title-vis {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding-top: 8px;
-    margin: 0;
-  }
-
-  /* Class kept only for the margin-bottom reset — pill chrome is .dev-segmented. */
-  .section-nav-editor__chips {
-    margin-bottom: 0;
-    width: 100%;
-  }
-
-  /* No local rule: dev-btn dev-btn--ghost dev-btn--fill on the element owns
-     every declaration this used to carry. The class stays on the element only
-     because the is-section-nav-editing cursor override selects it. */
-
-  /* display/justify-content/gap now come from .dev-panel-actions. */
-
-  .section-nav-editor__status {
-    margin: 0;
-    font: var(--dev-text-label);
-    color: var(--sys-color-on-srf-variant);
-  }
-
-  .section-nav-editor__status.is-error {
-    color: #a33;
-  }
+  .section-nav-editor__chips { margin: 0; width: 100%; }
 </style>
