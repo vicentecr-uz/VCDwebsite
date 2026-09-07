@@ -33,6 +33,7 @@ const shortcuts = [
           </li>
         ))}
       </ul>
+      <p class="dev-shortcuts-help__version" data-dev-shortcuts-version aria-live="polite">Version…</p>
     </div>
   </div>
 </div>
@@ -42,10 +43,12 @@ const shortcuts = [
     const root = document.querySelector('[data-dev-shortcuts-help]');
     const veil = document.querySelector('[data-dev-shortcuts-veil]');
     const card = document.querySelector('[data-dev-shortcuts-card]');
-    if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement)) return;
+    const version = document.querySelector('[data-dev-shortcuts-version]');
+    if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement) || !(version instanceof HTMLElement)) return;
 
     const VEIL_MS = 180;
     let closeTimer = null;
+    let versionRequestId = 0;
 
     const isOpen = () => root.classList.contains('is-dev-shortcuts-open');
 
@@ -60,6 +63,29 @@ const shortcuts = [
         closeTimer = null;
       }
       root.hidden = false;
+      const requestId = ++versionRequestId;
+      version.textContent = 'Version…';
+      fetch('/api/dev-branch-update', { cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) throw new Error('Version unavailable');
+          return response.json();
+        })
+        .then((state) => {
+          if (requestId !== versionRequestId) return;
+          if (!state || typeof state.branch !== 'string' || typeof state.revision !== 'string') throw new Error('Version unavailable');
+          let text = `${state.branch} · ${state.revision.slice(0, 7)}`;
+          if (!state.clean) text += ' · Local changes';
+          if (typeof state.mainRevision !== 'string') text += ' · Main unavailable';
+          else if (state.revision === state.mainRevision) text += ' · Matches fetched main';
+          else {
+            if (state.behind > 0) text += ` · ${state.behind} behind fetched main`;
+            if (state.ahead > 0) text += ` · ${state.ahead} ahead of fetched main`;
+          }
+          version.textContent = text;
+        })
+        .catch(() => {
+          if (requestId === versionRequestId) version.textContent = 'Version unavailable';
+        });
       requestAnimationFrame(() => {
         root.classList.add('is-dev-shortcuts-open');
       });
@@ -185,5 +211,17 @@ const shortcuts = [
 
   .dev-shortcuts-help__name {
     font-weight: var(--text-body-weight);
+  }
+
+  .dev-shortcuts-help__version {
+    margin: var(--space-unit) 0 0;
+    max-inline-size: 100%;
+    inline-size: 0;
+    min-inline-size: 100%;
+    overflow-wrap: anywhere;
+    color: var(--sys-color-on-srf-variant);
+    font-size: 0.75em;
+    line-height: 1.25;
+    letter-spacing: var(--text-body-tracking);
   }
 </style>
