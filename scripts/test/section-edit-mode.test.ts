@@ -43,15 +43,15 @@ test('section mode suspends mounted content controls and restores them on return
 });
 
 test('section reorder remaps carousel paths with the shared path list', () => {
-  const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 0, 'spacing']) });
-  const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1, 'images']) });
+  const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 1, 'spacing']) });
+  const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
   const unrelated = new MockElement({ 'data-dev-other-path': JSON.stringify(['sections', 1, 'other']) });
   globalThis.document = { querySelectorAll: () => [spacing, carousel, unrelated] } as unknown as Document;
 
   remapSectionPaths({ 0: 2, 1: 0 });
 
-  expect(JSON.parse(spacing.getAttribute(DEV_PATH_ATTRS[0])!)).toEqual(['sections', 2, 'spacing']);
-  expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)).toEqual(['sections', 0, 'images']);
+  expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)).toEqual(['sections', 0, 'spacing']);
+  expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)).toEqual(['sections', 0]);
   expect(JSON.parse(unrelated.getAttribute('data-dev-other-path')!)).toEqual(['sections', 1, 'other']);
 });
 
@@ -63,7 +63,7 @@ const reindexSource = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorS
 
 test('section insertion and deletion keep carousel paths aligned with other section paths', () => {
   const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 1, 'spacing']) });
-  const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1, 'images']) });
+  const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
   const env = {
     DEV_PATH_ATTRS,
     document: { querySelectorAll: () => [spacing, carousel] },
@@ -72,12 +72,12 @@ test('section insertion and deletion keep carousel paths aligned with other sect
     spacingStates: [],
     pendingBlockConverts: [],
   };
-  new Function('env', `with (env) { ${reindexSource}; env.reindexDevPaths = reindexDevPaths; }`)(env);
+  const reindexDevPaths = new Function('env', `with (env) { ${reindexSource}; return reindexDevPaths; }`)(env) as (fromIndex: number, delta: number) => void;
 
-  env.reindexDevPaths(1, 1);
+  reindexDevPaths(1, 1);
   expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(2);
   expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(2);
-  env.reindexDevPaths(1, -1);
+  reindexDevPaths(1, -1);
   expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(1);
   expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(1);
 });
