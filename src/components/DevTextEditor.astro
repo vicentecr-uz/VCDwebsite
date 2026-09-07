@@ -260,17 +260,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     return siblings.at(-1) === element;
   };
 
-  /**
-   * Gallery intros sit flush under the header by design, so their page-top
-   * spacing toolbar is redundant.
-   * Keep the control mounted so section reordering can reveal it again; only
-   * suppress it while a non-grid section is first on Home / Work / Play.
-   */
+  /** Intro blocks sit flush under the header, so their page-top spacing toolbar is redundant. */
   const suppressGalleryPageTopSpacing = (element: HTMLElement, pageTop: boolean) => {
     if (!pageTop) return false;
     const documentKey = element.dataset.devSpacingDocument;
     if (documentKey !== 'home' && documentKey !== 'work' && documentKey !== 'play') return false;
-    return !element.querySelector('[data-dev-project-grid]');
+    return element.dataset.devIntro === 'true';
   };
 
   /** Cursor must be within this distance of the control centre to reveal it. */
