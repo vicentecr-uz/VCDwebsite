@@ -1251,10 +1251,8 @@ const easingOptions = [
       if (summary instanceof HTMLElement && nav.contains(summary)) {
         const group = summary.closest('.section-sidebar-nav__group');
         if (!(group instanceof HTMLDetailsElement)) return;
-        if (document.documentElement.classList.contains('show-section-nav-editor')) {
-          event.preventDefault();
-        } else {
-          event.preventDefault();
+        event.preventDefault();
+        if (!isSectionEditorActive()) {
           const willBeOpen = !groupIsVisuallyOpen(group);
           if (willBeOpen) {
             pinnedOpenGroups.add(group);
@@ -1274,11 +1272,10 @@ const easingOptions = [
       }
 
       const link = target.closest('.section-sidebar-nav__link');
-      const sectionEditorActive = document.documentElement.classList.contains('show-section-nav-editor');
-      const group = summary?.closest('.section-sidebar-nav__group');
-      const href = sectionEditorActive && group instanceof HTMLElement
-        ? `#${group.dataset.navAnchor || ''}`
-        : link instanceof HTMLAnchorElement ? link.getAttribute('href') : null;
+      const groupRow = summary?.closest<HTMLElement>('[data-section-nav-group]');
+      const href = isSectionEditorActive() && groupRow
+        ? `#${groupRow.dataset.navAnchor || ''}`
+        : link instanceof HTMLAnchorElement && nav.contains(link) ? link.getAttribute('href') : null;
       if (!href || !href.startsWith('#')) return;
 
       const id = href.slice(1);
