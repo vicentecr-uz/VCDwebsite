@@ -24,6 +24,23 @@ const globalCss = readFileSync(new URL('../../src/styles/global.css', import.met
 const projectCss = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 const devTextEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 
+const spacingHelperStart = devTextEditor.indexOf('  const suppressGalleryPageTopSpacing = (');
+const spacingHelperEnd = devTextEditor.indexOf('\n  };', spacingHelperStart) + '\n  };'.length;
+if (spacingHelperStart < 0 || spacingHelperEnd < 0) throw new Error('Could not extract page-top spacing helper');
+const spacingHelperSource = new Bun.Transpiler({ loader: 'ts' }).transformSync(
+  devTextEditor.slice(spacingHelperStart, spacingHelperEnd),
+);
+const suppressGalleryPageTopSpacing = new Function(
+  `${spacingHelperSource}; return suppressGalleryPageTopSpacing;`,
+)();
+const spacingElement = (documentKey, intro) => ({
+  dataset: { devSpacingDocument: documentKey, ...(intro ? { devIntro: 'true' } : {}) },
+});
+assert.equal(suppressGalleryPageTopSpacing(spacingElement('home', false), true), false);
+assert.equal(suppressGalleryPageTopSpacing(spacingElement('home', true), true), true);
+assert.equal(suppressGalleryPageTopSpacing(spacingElement('home', true), false), false);
+assert.equal(suppressGalleryPageTopSpacing(spacingElement('about', true), true), false);
+
 const validSections = [{ id: 'overview' }, { id: 'details' }];
 assert.deepEqual(resolveProjectOutline({
   outline: [
