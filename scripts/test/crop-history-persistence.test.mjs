@@ -44,3 +44,14 @@ test('history restoration cannot use unsafe paths or invalid crop values', () =>
   assert.equal(applyCropChange(document, { path: ['sections', 0], variants: { desktop: { aspect: '3:2', cx: NaN, cy: 0.5, w: 1 } } }).ok, false);
   assert.equal(document.sections[0].src, 'original.png');
 });
+
+
+test('a rendered derivative cannot replace the original image or partially clear its crop', () => {
+  for (const src of ['original.preview.webp', '/images/original.thumb.webp']) {
+    const document = { sections: [{ type: 'image', src: 'original.jpg', variants: crop }] };
+    const before = structuredClone(document);
+    const result = applyCropChange(document, { path: ['sections', 0], src, clearVariants: true });
+    assert.equal(result.ok, false);
+    assert.deepEqual(document, before);
+  }
+});

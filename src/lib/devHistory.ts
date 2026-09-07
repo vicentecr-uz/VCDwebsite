@@ -102,23 +102,29 @@ export function registerHistoryScope(
 }
 
 export function installHistoryShortcuts(signal: AbortSignal) {
-  let lastTarget: Element | null = null;
+  let lastInteractionTarget: Element | null = null;
   let saving = false;
   document.addEventListener('pointerdown', (event) => {
-    lastTarget = event.target instanceof Element ? event.target : null;
+    lastInteractionTarget = event.target instanceof Element ? event.target : null;
     pageHistory.breakGroup();
   }, { capture: true, signal });
+  document.addEventListener('focusin', (event) => {
+    lastInteractionTarget = event.target instanceof Element ? event.target : null;
+  }, { capture: true, signal });
+  document.addEventListener('wheel', (event) => {
+    lastInteractionTarget = event.target instanceof Element ? event.target : null;
+  }, { capture: true, passive: true, signal });
   window.addEventListener('vcd:dev-save-state', ((event: CustomEvent<{ saving: boolean }>) => {
     saving = event.detail.saving;
     pageHistory.breakGroup();
   }) as EventListener, { signal });
   const route = (event: Event, redo: boolean) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
-    const target = event.target instanceof Element ? event.target : null;
+    const keyboardTarget = event.target instanceof Element ? event.target : null;
+    const target = lastInteractionTarget ?? keyboardTarget;
     const scope = [...scopes].reverse().find(({ element, owns }) =>
       element.isConnected && !element.closest('[hidden], [aria-hidden="true"]')
-      && (element.contains(target) || owns?.(target)
-        || ((target === document.body || target === document.documentElement) && (element.contains(lastTarget) || owns?.(lastTarget)))),
+      && (element.contains(target) || owns?.(target)),
     );
     const nativeField = target?.closest('input, textarea, [contenteditable]:not([contenteditable="false"])');
     // Unregistered text controls keep native undo; authored page text belongs to the page stack.

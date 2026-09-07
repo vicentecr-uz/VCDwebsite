@@ -1,4 +1,5 @@
 // @ts-check
+import { isDerivativeToken } from './scripts/image-derivatives.mjs';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
@@ -664,6 +665,9 @@ export const applyCropChange = (data, change) => {
     return { ok: false, error: 'That image path no longer exists.' };
   }
 
+  const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
+  if (isDerivativeToken(requestedSrc)) return { ok: false, error: 'Reload this editor before saving the image: its original file reference is missing.' };
+
   if (change.clearVariants === true) {
     delete target.variants;
     delete target.crop;
@@ -671,7 +675,6 @@ export const applyCropChange = (data, change) => {
   if (change.clearHoverVariants === true) delete target.hoverVariants;
   if (change.clearHoverImage === true) delete target.hoverImage;
 
-  const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
   const hoverSlot = change.slot === 'hoverImage';
   if (typeof change.src === 'string' && !requestedSrc) {
     return { ok: false, error: 'That image file is not valid.' };

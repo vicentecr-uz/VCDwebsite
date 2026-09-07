@@ -195,4 +195,74 @@ describe('editor history', () => {
     expect(value).toBe(0);
     expect(input.defaultPrevented).toBe(true);
   }));
+
+  test('a crop-stage pointer target owns the next shortcut despite a stale text target', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const cropStage = new FakeElement('crop-stage');
+    const panelHistory = createHistory();
+    let crop = 1, text = 1;
+    panelHistory.push({ label: 'Crop', undo: () => { crop = 0; }, redo: () => { crop = 1; } });
+    pageHistory.push({ label: 'Text', undo: () => { text = 0; }, redo: () => { text = 1; } });
+    registerHistoryScope(panel as any, panelHistory, { owns: (target) => target === cropStage, signal });
+    doc.dispatchEvent(makeEvent('pointerdown', cropStage));
+    const event = makeEvent('keydown', new FakeElement('stale-text', 'data-dev-text-document'), {
+      metaKey: true, key: 'z', isComposing: false,
+    });
+    doc.dispatchEvent(event);
+    await Promise.resolve();
+    expect(crop).toBe(0);
+    expect(text).toBe(1);
+    expect(event.defaultPrevented).toBe(true);
+  }));
+
+  test('an exhausted panel scope does not spill into page history and redo stays scoped', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const panelHistory = createHistory();
+    let panelValue = 1, pageValue = 1;
+    panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => { panelValue = 1; } });
+    pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => { pageValue = 1; } });
+    registerHistoryScope(panel as any, panelHistory, { signal });
+    doc.dispatchEvent(makeEvent('pointerdown', panel));
+    const undo = makeEvent('keydown', panel, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(undo);
+    await Promise.resolve();
+    const exhausted = makeEvent('keydown', panel, { metaKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(exhausted);
+    await Promise.resolve();
+    expect(panelValue).toBe(0);
+    expect(pageValue).toBe(1);
+    const redo = makeEvent('keydown', panel, { metaKey: true, shiftKey: true, key: 'z', isComposing: false });
+    doc.dispatchEvent(redo);
+    await Promise.resolve();
+    expect(panelValue).toBe(1);
+    expect(pageValue).toBe(1);
+  }));
+
+  test('focusin returns ownership to authored page text while a panel remains open', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const text = new FakeElement('text', 'data-dev-text-document');
+    const panelHistory = createHistory();
+    let panelValue = 1, pageValue = 1;
+    panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => { panelValue = 1; } });
+    pageHistory.push({ label: 'Text', undo: () => { pageValue = 0; }, redo: () => { pageValue = 1; } });
+    registerHistoryScope(panel as any, panelHistory, { signal });
+    doc.dispatchEvent(makeEvent('focusin', text));
+    doc.dispatchEvent(makeEvent('keydown', panel, { metaKey: true, key: 'z', isComposing: false }));
+    await Promise.resolve();
+    expect(pageValue).toBe(0);
+    expect(panelValue).toBe(1);
+  }));
+
+  test('wheel interaction selects the panel for a following shortcut', async () => withShortcuts(async (doc, _win, panel, signal) => {
+    const wheelTarget = new FakeElement('wheel-target');
+    const panelHistory = createHistory();
+    let panelValue = 1, pageValue = 1;
+    panelHistory.push({ label: 'Panel', undo: () => { panelValue = 0; }, redo: () => { panelValue = 1; } });
+    pageHistory.push({ label: 'Page', undo: () => { pageValue = 0; }, redo: () => { pageValue = 1; } });
+    registerHistoryScope(panel as any, panelHistory, { owns: (target) => target === wheelTarget, signal });
+    doc.dispatchEvent(makeEvent('wheel', wheelTarget));
+    doc.dispatchEvent(makeEvent('keydown', new FakeElement('stale-text', 'data-dev-text-document'), {
+      metaKey: true, key: 'z', isComposing: false,
+    }));
+    await Promise.resolve();
+    expect(panelValue).toBe(0);
+    expect(pageValue).toBe(1);
+  }));
 });

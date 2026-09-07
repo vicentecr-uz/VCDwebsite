@@ -54,6 +54,8 @@ interface Item {
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   crop?: { x?: number; y?: number; zoom?: number };
   variants?: ImageVariants;
+  srcWidth?: number;
+  srcHeight?: number;
   /** @deprecated Prefer layouts.mobile — kept for one-off legacy items. */
   hideOnMobile?: boolean;
 }
@@ -175,6 +177,9 @@ const editorItems = items.map((item, index) => ({
           path: [...basePath!, 'items', index],
           cropId: itemId,
           variants,
+          src: item.src,
+          srcWidth: item.srcWidth,
+          srcHeight: item.srcHeight,
           caption: item.caption,
           captions: item.captions,
           captionStyle: item.captionStyle,
