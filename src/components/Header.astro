@@ -1223,8 +1223,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       idleTimer = window.setTimeout(() => {
         idleTimer = null;
         if (!menuIsOpen() || currentPageRemoved || idlePhase !== 'good-boy') return;
-        hideCurrentPageNote(currentPageNotes[0]);
-        currentPageNotes.slice(1).forEach(hideCurrentPageNote);
+        currentPageNotes.forEach(hideCurrentPageNote);
         idleTimer = window.setTimeout(() => { idleTimer = null; idlePhase = 'none'; }, 100);
       }, 3100);
     }, 3100);
@@ -1270,8 +1269,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     noteTimers.set(note, window.setTimeout(() => {
       cancelNote(note);
       const trigger = note.closest<HTMLElement>('.header-trigger');
-      note.classList.remove('is-visible');
-      if (trigger) syncMenuSurfaceInlineSize(trigger);
+      if (trigger) animatePanelWidth(trigger, () => {
+        note.classList.remove('is-visible');
+        syncMenuSurfaceInlineSize(trigger);
+      });
+      else note.classList.remove('is-visible');
     }, 100));
   };
   const removeCurrentPage = (focusFallback = false) => {
@@ -1311,28 +1313,44 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }, focusFallback ? 0 : 100);
   };
 
+  const messageWeight = () => !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
+    !completionStored && currentPageClickCount >= 5 && currentPageClickCount <= 6 ? 700 : 400;
+  const pauseMessages = () => {
+    cancelIdle();
+    if (idlePhase !== 'none') {
+      idlePhase = 'none';
+      currentPageClickCount = 25;
+    }
+    needsResume = currentPageClickCount >= 3;
+  };
   currentPageNotes.forEach((note) => {
     const trigger = note.closest<HTMLElement>('.header-trigger');
     trigger?.addEventListener('header:trigger-close', () => {
-      cancelIdle();
-      if (idlePhase !== 'none') { idlePhase = 'none'; currentPageClickCount = 25; }
-      needsResume = currentPageClickCount >= 3;
+      pauseMessages();
       hideCurrentPageNote(note);
     });
     trigger?.addEventListener('header:trigger-open', () => {
       cancelNote(note);
       if (needsResume && !currentPageRemoved) showMessage('You are on this page', 400, false);
-      else { note.classList.remove('is-visible'); syncMenuSurfaceInlineSize(trigger); }
+      else {
+        note.classList.remove('is-visible');
+        syncMenuSurfaceInlineSize(trigger);
+      }
     });
   });
-  document.addEventListener('header:force-close', () => currentPageNotes.forEach((note) => {
-    cancelIdle();
-    if (idlePhase !== 'none') { idlePhase = 'none'; currentPageClickCount = 25; }
-    needsResume = currentPageClickCount >= 3;
-    cancelNote(note);
-    note.classList.remove('is-visible');
-    note.setAttribute('aria-hidden', 'true');
-  }));
+  document.addEventListener('header:force-close', () => {
+    pauseMessages();
+    currentPageNotes.forEach((note) => {
+      cancelNote(note);
+      note.classList.remove('is-visible');
+      note.setAttribute('aria-hidden', 'true');
+    });
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) return;
+    pauseMessages();
+    currentPageNotes.forEach(hideCurrentPageNote);
+  });
 
   currentPageLinks.forEach((link) => {
     link.addEventListener(
@@ -1346,13 +1364,26 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         cancelIdle();
         if (needsResume) {
           needsResume = false;
-          if (idlePhase === 'good-boy' || idlePhase === 'hey') { idlePhase = 'none'; currentPageClickCount = 25; showMessage("i'm not playing", 400, true); }
-          else showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', 400, false);
-          if (currentPageClickCount === 24) scheduleIdle();
+          showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', messageWeight(), event.detail > 0);
+          if (!completionStored && currentPageClickCount === 24) scheduleIdle();
           return;
         }
-        if (idlePhase === 'good-boy') { idlePhase = 'hey'; currentPageClickCount = 25; showMessage('HEY', 400, true); idleTimer = window.setTimeout(() => { idlePhase = 'none'; showMessage("i'm not playing", 400, true); }, 700); return; }
-        if (idlePhase === 'hey') { idlePhase = 'none'; currentPageClickCount = 25; showMessage("i'm not playing", 400, true); return; }
+        if (idlePhase === 'good-boy') {
+          idlePhase = 'hey';
+          currentPageClickCount = 25;
+          showMessage('HEY', 400, event.detail > 0);
+          idleTimer = window.setTimeout(() => {
+            idleTimer = null;
+            idlePhase = 'none';
+            showMessage("i'm not playing", 400, true);
+          }, 800);
+          return;
+        }
+        if (idlePhase === 'hey') {
+          idlePhase = 'none';
+          showMessage("i'm not playing", 400, event.detail > 0);
+          return;
+        }
         currentPageClickCount += 1;
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
@@ -1375,8 +1406,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         if (!completionStored && currentPageClickCount >= 29) return removeCurrentPage(event.detail === 0);
         const message = messageForClick(currentPageClickCount);
         if (!message) return;
-        const weight = !completionStored && currentPageClickCount >= 7 && currentPageClickCount <= 9 ? 900 :
-          !completionStored && currentPageClickCount >= 5 && currentPageClickCount <= 6 ? 700 : 400;
+        const weight = messageWeight();
         currentPageNotes.forEach((note) => {
           note.setAttribute('aria-live', note.closest('.header-trigger') === link.closest('.header-trigger') ? 'polite' : 'off');
           setNote(note, message, weight, event.detail > 0);
