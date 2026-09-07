@@ -46,7 +46,6 @@ const shortcuts = [
     const version = document.querySelector('[data-dev-shortcuts-version]');
     if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement) || !(version instanceof HTMLElement)) return;
 
-    const VEIL_MS = 180;
     let closeTimer = null;
     let versionRequestId = 0;
 
@@ -63,6 +62,7 @@ const shortcuts = [
         closeTimer = null;
       }
       root.hidden = false;
+      void veil.offsetWidth;
       version.hidden = !showVersion;
       const requestId = ++versionRequestId;
       if (showVersion) {
@@ -91,25 +91,27 @@ const shortcuts = [
             if (requestId === versionRequestId) version.textContent = 'Version unavailable';
           });
       }
-      requestAnimationFrame(() => {
-        root.classList.add('is-dev-shortcuts-open');
-      });
+      root.classList.add('is-dev-shortcuts-open');
     };
 
     const close = () => {
-      // Also close when hidden was cleared but the open class has not landed
-      // yet (Option+H between open()'s unhide and the rAF) — otherwise close
-      // no-ops and the later rAF leaves the overlay stuck open.
-      if (root.hidden && !isOpen()) return;
+      if (!isOpen()) return;
       root.classList.remove('is-dev-shortcuts-open');
+      if (closeTimer) clearTimeout(closeTimer);
+      const exitMs = Number.parseFloat(getComputedStyle(root).getPropertyValue('--dev-shortcuts-exit-ms')) || 0;
+      if (exitMs === 0) {
+        root.hidden = true;
+        closeTimer = null;
+        return;
+      }
       closeTimer = window.setTimeout(() => {
         root.hidden = true;
         closeTimer = null;
-      }, VEIL_MS);
+      }, exitMs);
     };
 
     const toggle = (showVersion = false) => {
-      if ((!root.hidden || isOpen()) && version.hidden === !showVersion) close();
+      if (isOpen() && version.hidden === !showVersion) close();
       else open(showVersion);
     };
 
@@ -144,7 +146,7 @@ const shortcuts = [
 
 <style>
   .dev-shortcuts-help {
-    --dev-shortcuts-veil-ms: 180ms;
+    --dev-shortcuts-exit-ms: 125ms;
     position: fixed;
     inset: 0;
     z-index: 110;
@@ -161,7 +163,7 @@ const shortcuts = [
     background: color-mix(in oklab, var(--sys-color-srf) 68%, transparent);
     backdrop-filter: blur(8px);
     opacity: 0;
-    transition: opacity var(--dev-shortcuts-veil-ms) ease;
+    transition: opacity var(--dev-shortcuts-exit-ms) ease-in;
     pointer-events: none;
   }
 
@@ -172,6 +174,8 @@ const shortcuts = [
   .dev-shortcuts-help.is-dev-shortcuts-open .dev-shortcuts-help__veil {
     opacity: 1;
     pointer-events: auto;
+    transition-timing-function: ease-out;
+    transition-duration: 250ms;
   }
 
   .dev-shortcuts-help__card {
@@ -183,6 +187,16 @@ const shortcuts = [
   .dev-shortcuts-help__card:focus-visible {
     outline: 2px solid var(--sys-color-on-srf-variant);
     outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .dev-shortcuts-help {
+      --dev-shortcuts-exit-ms: 0ms;
+    }
+
+    .dev-shortcuts-help__veil {
+      transition: none;
+    }
   }
 
   .dev-shortcuts-help__list {
