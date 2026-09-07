@@ -83,6 +83,12 @@ import SelectField from '../ui/SelectField.astro';
     type OutlineEntry,
   } from '../../lib/projectOutline';
 
+  import textIcon from 'lucide-static/icons/type.svg?raw';
+  import imageIcon from 'lucide-static/icons/image.svg?raw';
+  import galleryIcon from 'lucide-static/icons/images.svg?raw';
+  import quoteIcon from 'lucide-static/icons/quote.svg?raw';
+  import blockIcon from 'lucide-static/icons/square.svg?raw';
+  import { sizeIcon } from '../../lib/icons';
   import { getSectionRootsInDomOrder, sectionIndexFromElement } from '../../scripts/devSectionPaths';
 
   type ShowTitle = { desktop: boolean; tablet: boolean; mobile: boolean };
@@ -117,6 +123,7 @@ import SelectField from '../ui/SelectField.astro';
     const pendingId = `section-nav:${documentKey}`;
     const touched = new Map<HTMLElement, BlockState>();
     const history: BlockState[] = [];
+    const selectable = new Map<HTMLElement, { attributes: Array<[string, string | null]>; children: Map<HTMLElement, boolean>; ring: HTMLElement }>();
     let activeBlock: HTMLElement | null = null;
     let inputSession: EventTarget | null = null;
     let syncing = false;
@@ -134,11 +141,54 @@ import SelectField from '../ui/SelectField.astro';
     const newId = () => crypto.randomUUID?.()
       ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('');
     const blockKey = (block: HTMLElement) => block.dataset.devOutlineKey ||= newId();
-    const blockLabel = (block: HTMLElement, index: number) => {
+    const blockLabel = (block: HTMLElement) => {
       const text = block.querySelector('.project-section-title, [data-dev-text-document]')?.textContent?.trim()
+        || (block.matches('[data-dev-text-document]') ? block.textContent?.trim() : '')
         || block.querySelector('img')?.alt?.trim()
         || block.dataset.devSectionDeletable || 'Block';
-      return `${index + 1}. ${text.slice(0, 70)}`;
+      const words = text.split(/\s+/);
+      return words.slice(0, 4).join(' ') + (words.length > 4 ? '…' : '');
+    };
+    const blockIconSvg = (block: HTMLElement) => {
+      const kind = block.dataset.devSectionDeletable;
+      return sizeIcon(kind === 'bodyText' || kind === 'sectionTitle' ? textIcon
+        : kind === 'imageGrid' || kind === 'imageCarousel' ? galleryIcon
+        : kind === 'pressQuoteTicker' || kind === 'redditCommentCarousel' ? quoteIcon
+        : block.querySelector('img') ? imageIcon : blockIcon, 16);
+    };
+    const syncSelectableBlocks = (enabled = isActive()) => {
+      if (!enabled) {
+        for (const [block, state] of selectable) {
+          for (const [name, value] of state.attributes) {
+            if (value === null) block.removeAttribute(name);
+            else block.setAttribute(name, value);
+          }
+          for (const [child, inert] of state.children) child.inert = inert;
+          state.ring.remove();
+        }
+        selectable.clear();
+        return;
+      }
+      for (const block of blocks()) {
+        if (!selectable.has(block)) {
+          const ring = document.createElement('span');
+          ring.className = 'section-nav-block-ring';
+          ring.setAttribute('aria-hidden', 'true');
+          const attributes = ['role', 'tabindex', 'aria-label', 'data-section-nav-block'].map((name) => [name, block.getAttribute(name)] as [string, string | null]);
+          selectable.set(block, { attributes, children: new Map(), ring });
+          block.append(ring);
+          block.setAttribute('data-section-nav-block', '');
+          block.setAttribute('role', 'button');
+          block.tabIndex = 0;
+        }
+        const state = selectable.get(block)!;
+        block.setAttribute('aria-label', blockLabel(block));
+        for (const child of block.children) {
+          if (!(child instanceof HTMLElement) || child === state.ring) continue;
+          if (!state.children.has(child)) state.children.set(child, child.inert);
+          child.inert = true;
+        }
+      }
     };
     const readVisibility = (block: HTMLElement): ShowTitle | null => {
       if (root.dataset.sectionNavOutlineOnly === 'true' || block.dataset.devSectionTitle !== 'true') return null;
@@ -233,10 +283,14 @@ import SelectField from '../ui/SelectField.astro';
     };
     const syncBlockOptions = () => {
       const all = blocks();
-      const options = all.map((block, index) => ({ value: blockKey(block), label: blockLabel(block, index) }));
+      const options = all.map((block) => ({ value: blockKey(block), label: blockLabel(block), icon: blockIconSvg(block) }));
       const signature = JSON.stringify(options);
       if (blockSelect.dataset.options !== signature) {
-        blockSelect.replaceChildren(new Option('Select block', ''), ...options.map((option) => new Option(option.label, option.value)));
+        blockSelect.replaceChildren(new Option('Select block', ''), ...options.map((option) => {
+          const node = new Option(option.label, option.value);
+          node.dataset.iconSvg = option.icon;
+          return node;
+        }));
         blockSelect.dataset.options = signature;
       }
       blockSelect.value = activeBlock ? blockKey(activeBlock) : '';
@@ -244,6 +298,7 @@ import SelectField from '../ui/SelectField.astro';
     };
     const renderSelection = (fillFields = true) => {
       syncing = true;
+      syncSelectableBlocks();
       if (activeBlock && !activeBlock.isConnected) activeBlock = null;
       const entries = activeBlock ? outlineEntriesForAnchor(getDevSectionOutline(), activeBlock.id) : [];
       const group = entries.find((entry) => entry.kind === 'group');
@@ -387,19 +442,27 @@ import SelectField from '../ui/SelectField.astro';
       event.stopImmediatePropagation();
       selectBlock(block, entry.kind);
     }, { capture: true, signal });
+    document.addEventListener('pointerdown', (event) => {
+      if (!isActive() || !(event.target instanceof Element)) return;
+      const block = event.target.closest<HTMLElement>('[data-section-nav-block]');
+      if (!block) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, { capture: true, signal });
     document.addEventListener('click', (event) => {
       if (!isActive()) return;
       const target = event.target as Element;
       if (target.closest('[data-dev-overlay], .section-sidebar-nav, .site-header, .dev-text-actions')) return;
-      const block = target.closest<HTMLElement>('[data-dev-spacing-path], .section-block[id]');
+      const block = target.closest<HTMLElement>('[data-section-nav-block]');
       if (!block || !blocks().includes(block)) return;
       event.preventDefault();
-      event.stopPropagation();
+      event.stopImmediatePropagation();
+      block.focus({ preventScroll: true });
       selectBlock(block);
     }, { capture: true, signal });
     main?.addEventListener('pointermove', (event) => {
       if (!isActive()) return;
-      const block = (event.target as Element).closest<HTMLElement>('[data-dev-spacing-path], .section-block[id]');
+      const block = (event.target as Element).closest<HTMLElement>('[data-section-nav-block]');
       main.querySelectorAll('.is-section-nav-hover').forEach((el) => { if (el !== block) el.classList.remove('is-section-nav-hover'); });
       if (block && blocks().includes(block)) block.classList.add('is-section-nav-hover');
     }, { signal });
@@ -407,6 +470,12 @@ import SelectField from '../ui/SelectField.astro';
     document.addEventListener('keydown', (event) => {
       if (!isActive()) return;
       const target = event.target as HTMLElement;
+      const block = target.closest<HTMLElement>('[data-section-nav-block]');
+      if (block && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault(); event.stopImmediatePropagation(); selectBlock(block);
+        return;
+      }
+      if (target.closest('.dev-select__trigger')?.getAttribute('aria-expanded') === 'true') return;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z' && !event.shiftKey
         && !target.closest('input, textarea, [contenteditable="true"]')) {
         event.preventDefault(); event.stopImmediatePropagation(); undo();
@@ -433,6 +502,7 @@ import SelectField from '../ui/SelectField.astro';
       controller.abort();
       panel.inert = false;
       if (dirty) revert();
+      syncSelectableBlocks(false);
       document.documentElement.classList.remove('is-section-nav-editing');
       blocks().forEach((block) => block.classList.remove('is-section-nav-active', 'is-section-nav-hover'));
     };
@@ -444,16 +514,39 @@ import SelectField from '../ui/SelectField.astro';
 </script>
 
 <style is:global>
-  html.is-section-nav-editing [data-section-nav-main] [data-dev-spacing-path] {
+  html.is-section-nav-editing [data-section-nav-block] {
+    position: relative;
     cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    outline: none;
   }
-  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-hover {
-    outline: 1px solid var(--sys-color-outline);
-    outline-offset: 4px;
+  html.is-section-nav-editing [data-section-nav-block] * {
+    pointer-events: none !important;
+    cursor: inherit !important;
   }
-  html.is-section-nav-editing [data-section-nav-main] .is-section-nav-active {
-    outline: 2px solid var(--sys-color-on-srf);
-    outline-offset: 4px;
+  html.is-section-nav-editing [data-section-nav-main] :is([data-dev-mode-only], [data-dev-edit-trigger], .dev-section-drag-handle, .dev-section-drag-bridge, .dev-section-delete, .dev-gap-toolbar) {
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+  html.is-section-nav-editing [data-section-nav-main] :is([data-dev-text-document], [data-dev-section-deletable], [data-dev-spacing-document])::before,
+  html.is-section-nav-editing [data-section-nav-main] :is([data-dev-text-document], [data-dev-section-deletable])::after {
+    opacity: 0 !important;
+  }
+  .section-nav-block-ring {
+    position: absolute;
+    inset: calc(-0.5 * var(--space-unit));
+    border: 3px solid var(--sys-color-outline-variant);
+    border-radius: calc(0.75 * var(--space-unit));
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, border-color 0.15s ease;
+  }
+  html.is-section-nav-editing [data-section-nav-block]:is(.is-section-nav-hover, :focus-visible, .is-section-nav-active) > .section-nav-block-ring {
+    opacity: 1;
+  }
+  html.is-section-nav-editing [data-section-nav-block].is-section-nav-active > .section-nav-block-ring {
+    border-color: var(--sys-color-on-srf);
   }
 </style>
 

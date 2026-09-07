@@ -1464,7 +1464,7 @@ const easingOptions = [
   document.querySelectorAll('.section-sidebar-nav').forEach((nav) => initSectionSidebarNav(nav));
 </script>
 
-<style>
+<style is:global>
   .section-sidebar-nav {
     background: var(--sys-color-srf);
     transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1491,7 +1491,7 @@ const easingOptions = [
   }
 
   /* Fade when either header menu is open (same cue as the menu backdrop). */
-  :global(body:has(.header-trigger[data-menu-surface-open])) .section-sidebar-nav {
+  body:has(.header-trigger[data-menu-surface-open]) .section-sidebar-nav {
     opacity: 0;
     pointer-events: none;
   }
@@ -1567,30 +1567,6 @@ const easingOptions = [
   }
 
   .section-sidebar-nav__summary path {
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-  }
-
-  /* Unscoped twin: client DOM edits must keep chevrons sized. */
-  :global(.section-sidebar-nav__summary::-webkit-details-marker) {
-    display: none;
-  }
-
-  :global(.section-sidebar-nav__summary::marker) {
-    content: '';
-  }
-
-  :global(.section-sidebar-nav__summary svg) {
-    width: 0.45em;
-    height: 0.7em;
-    flex: 0 0 auto;
-    overflow: visible;
-  }
-
-  :global(.section-sidebar-nav__summary path) {
     fill: none;
     stroke: currentColor;
     stroke-width: 1.5;
@@ -1741,13 +1717,13 @@ const easingOptions = [
     overflow-y: auto;
   }
 
-  :global(html.show-curve-easing-tuner) .section-sidebar-nav-devpanel {
+  html.show-curve-easing-tuner .section-sidebar-nav-devpanel {
     display: block;
   }
 
   /* Force gutter nav visible while the section editor is active (any width). */
   @media (max-width: 78.4375em) {
-    :global(html.show-section-nav-editor.is-dev-mode) .section-sidebar-nav--desktop-only {
+    html.show-section-nav-editor.is-dev-mode .section-sidebar-nav--desktop-only {
       display: block;
       position: fixed;
       top: 6.75em;
@@ -1762,13 +1738,13 @@ const easingOptions = [
       box-shadow: 0 0.25em 1em rgba(26, 26, 26, 0.08);
     }
 
-    :global(html.show-section-nav-editor.is-dev-mode) .section-sidebar-nav--desktop-only .section-sidebar-nav__scroll {
+    html.show-section-nav-editor.is-dev-mode .section-sidebar-nav--desktop-only .section-sidebar-nav__scroll {
       max-height: inherit;
       overflow: hidden;
       padding: 0.5em;
     }
 
-    :global(html.show-section-nav-editor.is-dev-mode)
+    html.show-section-nav-editor.is-dev-mode
       .section-sidebar-nav--desktop-only
       .section-sidebar-nav__scroll.is-scrollable {
       overflow-y: auto;

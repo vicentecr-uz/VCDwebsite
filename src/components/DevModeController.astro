@@ -169,6 +169,16 @@
       const was = isSectionEditor();
       html.classList.toggle(SECTION_EDITOR_CLASS, next);
       if (was === next) return;
+      if (next) {
+        removeLauncher();
+        devPanels().filter((panel) => panel.dataset.devPanelKey !== 'section-nav').forEach((panel) => {
+          if (panel.hidden) return;
+          panel.hidden = true;
+          window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+        });
+        imageTargets().forEach((target) => target.classList.remove('is-dev-image-selected'));
+      }
+      editTriggers().forEach((trigger) => { trigger.disabled = next || !devMode; });
       window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-change', {
         detail: { active: next },
       }));
@@ -316,7 +326,7 @@
       }
 
       const editTrigger = target.closest<HTMLButtonElement>('[data-dev-edit-trigger]');
-      if (editTrigger && devMode) {
+      if (editTrigger && devMode && !isSectionEditor()) {
         event.preventDefault();
         event.stopImmediatePropagation();
         const panelKey = editTrigger.dataset.devEditTrigger;
@@ -337,7 +347,7 @@
         return;
       }
 
-      if (!devMode || !window.matchMedia('(hover: none)').matches) return;
+      if (!devMode || isSectionEditor() || !window.matchMedia('(hover: none)').matches) return;
 
       const imageTarget = target.closest<HTMLElement>('[data-dev-image-target]');
       if (imageTarget && !imageTarget.classList.contains('is-dev-image-selected')) {
@@ -395,7 +405,7 @@
     document.addEventListener('keydown', (event) => {
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey && event.code === 'KeyM') {
         // Alt+M types 'µ' in an editable — never intercept it there.
-        if (!devMode || isTypingTarget(event.target as HTMLElement | null)) return;
+        if (!devMode || isSectionEditor() || isTypingTarget(event.target as HTMLElement | null)) return;
         event.preventDefault();
         toggleLauncher();
         return;
