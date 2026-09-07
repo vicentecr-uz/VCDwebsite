@@ -132,6 +132,10 @@ import SelectField from '../ui/SelectField.astro';
 
     const isActive = () => document.documentElement.classList.contains('show-section-nav-editor')
       && document.documentElement.classList.contains('is-dev-mode');
+    const closePanel = () => {
+      panel.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+    };
     const contentIndex = (block: HTMLElement) => root.dataset.sectionNavOutlineOnly === 'true' ? null : sectionIndexFromElement(block);
     const blocks = () => {
       if (!main) return [];
@@ -387,7 +391,7 @@ import SelectField from '../ui/SelectField.astro';
       stage();
     };
     const syncMode = () => {
-      shell.hidden = !isActive();
+      if (isActive()) shell.hidden = false;
       document.documentElement.classList.toggle('is-section-nav-editing', isActive());
       if (isActive()) {
         syncDevSectionOutlineSidebar();
@@ -428,7 +432,7 @@ import SelectField from '../ui/SelectField.astro';
       stage();
     }, { signal });
     undoButton.addEventListener('click', undo, { signal });
-    shell.querySelector('[data-nav-done]')!.addEventListener('click', () => { panel.hidden = true; }, { signal });
+    shell.querySelector('[data-nav-done]')!.addEventListener('click', closePanel, { signal });
     sidebar?.addEventListener('click', (event) => {
       if (!isActive()) return;
       const target = event.target as Element;
@@ -480,11 +484,15 @@ import SelectField from '../ui/SelectField.astro';
         event.preventDefault(); event.stopImmediatePropagation(); undo();
       }
       if (event.key === 'Escape' && !panel.hidden) {
-        event.preventDefault(); event.stopImmediatePropagation(); panel.hidden = true;
+        event.preventDefault(); event.stopImmediatePropagation(); closePanel();
       }
     }, { capture: true, signal });
     window.addEventListener('vcd:section-nav-editor-change', syncMode, { signal });
     window.addEventListener('vcd:dev-mode-change', syncMode, { signal });
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== panel || !isActive()) return;
+      window.dispatchEvent(new CustomEvent('vcd:section-nav-editor-request', { detail: { active: false } }));
+    }) as EventListener, { signal });
     window.addEventListener('vcd:section-nav-sidebar-synced', () => { if (!syncing) renderSelection(false); }, { signal });
     window.addEventListener('vcd:dev-save-state', ((event: CustomEvent<{ saving: boolean }>) => {
       saving = event.detail.saving;
