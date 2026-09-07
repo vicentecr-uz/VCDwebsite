@@ -31,7 +31,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version-file: '.node-version'
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
@@ -76,3 +76,13 @@ jobs:
 
       - name: Test production boundary
         run: bun test scripts/test/production-boundary.test.mjs
+
+      - name: Test shipped assets and image-loader lifetime
+        run: bun run test:assets
+
+      - name: Build with Vite config fallback
+        env:
+          NODE_OPTIONS: --no-experimental-strip-types
+        run: |
+          bun run build
+          bun scripts/check-production-output.mjs

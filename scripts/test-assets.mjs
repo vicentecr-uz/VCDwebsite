@@ -233,5 +233,27 @@ await withFixture('svg refs copy through unchanged', async ({ dist, media }) => 
   check('no preview generated', !existsSync(path.join(dist, 'images', 'icon.preview.webp')));
 });
 
+await withFixture('image generation survives the Vite config runner closing', async ({ media }) => {
+  const { createServer } = await import('vite');
+  const server = await createServer({
+    configFile: false,
+    server: { middlewareMode: true, hmr: false, watch: null, ws: false },
+    optimizeDeps: { noDiscovery: true },
+    ssr: { external: true },
+  });
+  let generate;
+  try {
+    const module = await server.environments.ssr.runner.import(path.resolve('scripts/image-derivatives.mjs'));
+    generate = module.generateDerivativeBuffer;
+  } finally {
+    await server.close();
+  }
+  await writeTestJpeg(media, 'hero.jpg');
+  for (const kind of ['thumb', 'preview']) {
+    const buffer = await generate(path.join(media, 'hero.jpg'), kind);
+    check(`${kind} remains available after runner shutdown`, isWebpBytes(buffer));
+  }
+});
+
 console.log(failures ? `\n${failures} failing check(s)\n` : '\nAll checks passed\n');
 process.exit(failures ? 1 : 0);
