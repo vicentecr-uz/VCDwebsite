@@ -46,8 +46,6 @@ const shortcuts = [
     const version = document.querySelector('[data-dev-shortcuts-version]');
     if (!(root instanceof HTMLElement) || !(veil instanceof HTMLElement) || !(card instanceof HTMLElement) || !(version instanceof HTMLElement)) return;
 
-    const VEIL_MS = 180;
-    let closeTimer = null;
     let versionRequestId = 0;
 
     const isOpen = () => root.classList.contains('is-dev-shortcuts-open');
@@ -58,10 +56,6 @@ const shortcuts = [
     };
 
     const open = (showVersion = false) => {
-      if (closeTimer) {
-        clearTimeout(closeTimer);
-        closeTimer = null;
-      }
       root.hidden = false;
       version.hidden = !showVersion;
       const requestId = ++versionRequestId;
@@ -91,25 +85,17 @@ const shortcuts = [
             if (requestId === versionRequestId) version.textContent = 'Version unavailable';
           });
       }
-      requestAnimationFrame(() => {
-        root.classList.add('is-dev-shortcuts-open');
-      });
+      root.classList.add('is-dev-shortcuts-open');
     };
 
     const close = () => {
-      // Also close when hidden was cleared but the open class has not landed
-      // yet (Option+H between open()'s unhide and the rAF) — otherwise close
-      // no-ops and the later rAF leaves the overlay stuck open.
-      if (root.hidden && !isOpen()) return;
+      if (!isOpen()) return;
       root.classList.remove('is-dev-shortcuts-open');
-      closeTimer = window.setTimeout(() => {
-        root.hidden = true;
-        closeTimer = null;
-      }, VEIL_MS);
+      root.hidden = true;
     };
 
     const toggle = (showVersion = false) => {
-      if ((!root.hidden || isOpen()) && version.hidden === !showVersion) close();
+      if (isOpen() && version.hidden === !showVersion) close();
       else open(showVersion);
     };
 
@@ -144,7 +130,6 @@ const shortcuts = [
 
 <style>
   .dev-shortcuts-help {
-    --dev-shortcuts-veil-ms: 180ms;
     position: fixed;
     inset: 0;
     z-index: 110;
@@ -161,7 +146,6 @@ const shortcuts = [
     background: color-mix(in oklab, var(--sys-color-srf) 68%, transparent);
     backdrop-filter: blur(8px);
     opacity: 0;
-    transition: opacity var(--dev-shortcuts-veil-ms) ease;
     pointer-events: none;
   }
 
