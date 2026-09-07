@@ -363,9 +363,11 @@ import SelectField from '../ui/SelectField.astro';
           (historyScope ?? pageHistory).push({ label: 'Edit section outline', mergeKey, undo: () => {
             if (!touched.has(block)) touched.set(block, capture(block));
             restore(before); if (isActive()) activeBlock = liveBlock(before); syncDevSectionOutlineSidebar(); renderSelection(); stage();
+            window.dispatchEvent(new CustomEvent('vcd:section-history-reveal', { detail: { block: liveBlock(before) } }));
           }, redo: () => {
             if (!touched.has(block)) touched.set(block, capture(block));
             restore(current); if (isActive()) activeBlock = liveBlock(current); syncDevSectionOutlineSidebar(); renderSelection(); stage();
+            window.dispatchEvent(new CustomEvent('vcd:section-history-reveal', { detail: { block: liveBlock(current) } }));
           } });
         }
         pendingBefore = null;

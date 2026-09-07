@@ -23,6 +23,12 @@ for (const active of [true, false]) {
       capture: (target: typeof block) => ({ ...target }),
       restore: (state: typeof block) => { block.value = state.value; },
       isActive: () => active, liveBlock: () => block,
+      CustomEvent,
+      window: { dispatchEvent: (event: CustomEvent) => {
+        expect(event.type).toBe('vcd:section-history-reveal');
+        expect(event.detail.block).toBe(block);
+        calls.push('reveal');
+      } },
       syncDevSectionOutlineSidebar: () => calls.push('sidebar'),
       renderSelection: () => calls.push('selection'), stage: () => calls.push('stage'),
     };
@@ -31,16 +37,79 @@ for (const active of [true, false]) {
     expect(block.value).toBe('Research');
     expect(env.activeBlock).toBe(active ? block : otherBlock);
     expect(env.touched.get(block)).toEqual({ value: 'Research QA' });
-    expect(calls).toEqual(['sidebar', 'selection', 'stage']);
+    expect(calls).toEqual(['sidebar', 'selection', 'stage', 'reveal']);
     await historyScope.undo();
     expect(text).toBe('edited');
     env.activeBlock = otherBlock;
     await historyScope.redo();
     expect(block.value).toBe('Research QA');
     expect(env.activeBlock).toBe(active ? block : otherBlock);
-    expect(calls).toEqual(['sidebar', 'selection', 'stage', 'sidebar', 'selection', 'stage']);
+    expect(calls).toEqual(['sidebar', 'selection', 'stage', 'reveal', 'sidebar', 'selection', 'stage', 'reveal']);
     await pageHistory.undo();
     await pageHistory.undo();
     expect(text).toBe('original');
+  });
+}
+
+const sidebarSource = readFileSync(new URL('../../src/components/SectionSidebarNav.astro', import.meta.url), 'utf8');
+const scrollStart = sidebarSource.indexOf('    const scrollToBlock =');
+const scrollEnd = sidebarSource.indexOf('    // Event delegation so Section Editor', scrollStart);
+const scrollScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(sidebarSource.slice(scrollStart, scrollEnd));
+
+for (const motion of ['custom', 'native', 'reduced']) {
+  test(`history reveal uses ${motion} section scrolling and replaces an earlier navigation`, () => {
+    const handlers = new Map<string, Function>();
+    const frames = new Map<number, Function>();
+    const timers = new Map<number, Function>();
+    const scrolls: number[] = [];
+    const links: string[] = [];
+    let nextId = 0;
+    class Block {
+      isConnected = true;
+      constructor(public id: string, public top: number) {}
+      getBoundingClientRect() { return { top: this.top, height: 40 }; }
+    }
+    const env = {
+      scrollRafId: 0, scrollTimeoutId: 0, isAutoScrolling: false, manualLockUntil: 0,
+      clickOffsetPx: 152, clickLockMs: 700, nav: { isConnected: true }, HTMLElement: Block,
+      document: { documentElement: { scrollHeight: 10000 }, addEventListener: (type: string, fn: Function) => handlers.set(type, fn) },
+      window: {
+        scrollY: 0, innerHeight: 900,
+        matchMedia: () => ({ matches: motion === 'reduced' }),
+        scrollTo: (first: number | { top: number }, second?: number) => scrolls.push(typeof first === 'number' ? second! : first.top),
+        history: { replaceState: () => { throw new Error('History reveal must not change the URL'); } },
+        setTimeout: (fn: Function) => { timers.set(++nextId, fn); return nextId; },
+        clearTimeout: (id: number) => timers.delete(id),
+        addEventListener: (type: string, fn: Function) => handlers.set(type, fn),
+        removeEventListener: (type: string) => handlers.delete(type),
+      },
+      performance: { now: () => 0 },
+      scrollEasing: { getUseNative: () => motion === 'native', getEaser: () => (value: number) => value },
+      requestAnimationFrame: (fn: Function) => { frames.set(++nextId, fn); return nextId; },
+      cancelAnimationFrame: (id: number) => frames.delete(id),
+      setActiveLink: (id: string) => links.push(id), updateActiveFromScroll: () => {},
+    };
+    new Function('env', `with (env) { ${scrollScript} }`)(env);
+    const reveal = handlers.get('vcd:section-history-reveal')!;
+    const previous = new Block('distant', 7000);
+    const restored = new Block('research', 2500);
+    reveal({ detail: { block: previous } });
+    const previousFrame = env.scrollRafId, previousTimer = env.scrollTimeoutId;
+    reveal({ detail: { block: restored } });
+    expect(frames.has(previousFrame)).toBe(false);
+    expect(timers.has(previousTimer)).toBe(false);
+    if (motion === 'custom') {
+      const frame = frames.get(env.scrollRafId)!;
+      frame(1);
+      frame(1001);
+    }
+    expect(scrolls.at(-1)).toBe(2348);
+    expect(links.at(-1)).toBe('research');
+    restored.isConnected = false;
+    const count = scrolls.length;
+    reveal({ detail: { block: restored } });
+    expect(scrolls).toHaveLength(count);
+    handlers.get('astro:before-swap')!();
+    expect(handlers.has('vcd:section-history-reveal')).toBe(false);
   });
 }

@@ -228,6 +228,7 @@ const easingOptions = [
       nav.querySelector('[data-section-sidebar-list]');
     let manualLockUntil = 0;
     let scrollRafId = 0;
+    let scrollTimeoutId = 0;
     let isAutoScrolling = false;
     /** Groups the user expanded via the header — stay open until they close them. */
     const pinnedOpenGroups = new WeakSet();
@@ -1242,6 +1243,98 @@ const easingOptions = [
       }
     };
 
+    const scrollToBlock = (scrollTarget: HTMLElement, href?: string) => {
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      if (scrollTimeoutId) window.clearTimeout(scrollTimeoutId);
+      scrollRafId = scrollTimeoutId = 0;
+      isAutoScrolling = false;
+      const id = scrollTarget.id;
+      const startY = window.scrollY;
+      const docHeight = document.documentElement.scrollHeight;
+      const viewportHeight = window.innerHeight;
+      const maxScroll = Math.max(docHeight - viewportHeight, 0);
+      const rect = scrollTarget.getBoundingClientRect();
+      const sectionHeight = rect.height;
+      /**
+       * Short sections pin near the top (under the header offset).
+       * Hero-sized ones (~0.65–2x the viewport) centre vertically so large
+       * images aren't cropped awkwardly at the fold. Anything taller than
+       * that is a catalog/wrapper section (e.g. the whole component
+       * library), not a single hero — centring on its full height would
+       * land the scroll somewhere in its middle, so it falls back to the
+       * top offset instead.
+       */
+      const centerThreshold = viewportHeight * 0.65;
+      const centerCeiling = viewportHeight * 2;
+      const shouldCenter = sectionHeight >= centerThreshold && sectionHeight <= centerCeiling;
+      const rawTargetTop = shouldCenter
+        ? startY + rect.top - (viewportHeight - sectionHeight) / 2
+        : startY + rect.top - clickOffsetPx;
+      const targetTop = Math.min(Math.max(rawTargetTop, 0), maxScroll);
+      const distance = targetTop - startY;
+
+      if (id) setActiveLink(id);
+      if (href) window.history.replaceState(null, '', href);
+
+      const useNativeSmooth = scrollEasing.getUseNative();
+      const currentEaser = scrollEasing.getEaser();
+
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(distance) < 2) {
+        manualLockUntil = performance.now() + Math.min(clickLockMs, 120);
+        window.scrollTo(0, targetTop);
+        return;
+      }
+
+      if (useNativeSmooth) {
+        manualLockUntil = performance.now() + clickLockMs;
+        isAutoScrolling = true;
+        window.scrollTo({ top: targetTop, behavior: 'smooth' });
+        scrollTimeoutId = window.setTimeout(() => {
+          scrollTimeoutId = 0;
+          isAutoScrolling = false;
+          if (id) setActiveLink(id);
+          updateActiveFromScroll();
+        }, clickLockMs);
+        return;
+      }
+
+      const duration = Math.min(900, Math.max(480, Math.abs(distance) * 0.55));
+      manualLockUntil = performance.now() + Math.max(clickLockMs, duration + 100);
+
+      isAutoScrolling = true;
+      let animationStart = 0;
+
+      const animateScroll = (timestamp) => {
+        if (animationStart === 0) animationStart = timestamp;
+        const elapsed = timestamp - animationStart;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = currentEaser(progress);
+        window.scrollTo(0, startY + distance * eased);
+
+        if (progress < 1) {
+          scrollRafId = requestAnimationFrame(animateScroll);
+        } else {
+          scrollRafId = 0;
+          isAutoScrolling = false;
+          if (id) setActiveLink(id);
+          requestAnimationFrame(updateActiveFromScroll);
+        }
+      };
+
+      scrollRafId = requestAnimationFrame(animateScroll);
+    };
+
+    const revealHistoryBlock = (event: CustomEvent<{ block?: HTMLElement }>) => {
+      const block = event.detail?.block;
+      if (nav.isConnected && block instanceof HTMLElement && block.isConnected) scrollToBlock(block);
+    };
+    window.addEventListener('vcd:section-history-reveal', revealHistoryBlock as EventListener);
+    document.addEventListener('astro:before-swap', () => {
+      window.removeEventListener('vcd:section-history-reveal', revealHistoryBlock as EventListener);
+      if (scrollRafId) cancelAnimationFrame(scrollRafId);
+      if (scrollTimeoutId) window.clearTimeout(scrollTimeoutId);
+    }, { once: true });
+
     // Event delegation so Section Editor DOM rebuilds keep working.
     nav.addEventListener('click', (event) => {
       const target = event.target;
@@ -1284,79 +1377,7 @@ const easingOptions = [
 
       event.preventDefault();
 
-      const startY = window.scrollY;
-      const docHeight = document.documentElement.scrollHeight;
-      const viewportHeight = window.innerHeight;
-      const maxScroll = Math.max(docHeight - viewportHeight, 0);
-      const rect = scrollTarget.getBoundingClientRect();
-      const sectionHeight = rect.height;
-      /**
-       * Short sections pin near the top (under the header offset).
-       * Hero-sized ones (~0.65–2x the viewport) centre vertically so large
-       * images aren't cropped awkwardly at the fold. Anything taller than
-       * that is a catalog/wrapper section (e.g. the whole component
-       * library), not a single hero — centring on its full height would
-       * land the scroll somewhere in its middle, so it falls back to the
-       * top offset instead.
-       */
-      const centerThreshold = viewportHeight * 0.65;
-      const centerCeiling = viewportHeight * 2;
-      const shouldCenter = sectionHeight >= centerThreshold && sectionHeight <= centerCeiling;
-      const rawTargetTop = shouldCenter
-        ? startY + rect.top - (viewportHeight - sectionHeight) / 2
-        : startY + rect.top - clickOffsetPx;
-      const targetTop = Math.min(Math.max(rawTargetTop, 0), maxScroll);
-      const distance = targetTop - startY;
-
-      setActiveLink(id);
-      window.history.replaceState(null, '', href);
-
-      const useNativeSmooth = scrollEasing.getUseNative();
-      const currentEaser = scrollEasing.getEaser();
-
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || Math.abs(distance) < 2) {
-        manualLockUntil = performance.now() + Math.min(clickLockMs, 120);
-        window.scrollTo(0, targetTop);
-        return;
-      }
-
-      if (useNativeSmooth) {
-        manualLockUntil = performance.now() + clickLockMs;
-        isAutoScrolling = true;
-        window.scrollTo({ top: targetTop, behavior: 'smooth' });
-        window.setTimeout(() => {
-          isAutoScrolling = false;
-          setActiveLink(id);
-          updateActiveFromScroll();
-        }, clickLockMs);
-        return;
-      }
-
-      const duration = Math.min(900, Math.max(480, Math.abs(distance) * 0.55));
-      manualLockUntil = performance.now() + Math.max(clickLockMs, duration + 100);
-
-      if (scrollRafId) cancelAnimationFrame(scrollRafId);
-      isAutoScrolling = true;
-      let animationStart = 0;
-
-      const animateScroll = (timestamp) => {
-        if (animationStart === 0) animationStart = timestamp;
-        const elapsed = timestamp - animationStart;
-        const progress = Math.min(elapsed / duration, 1);
-        const eased = currentEaser(progress);
-        window.scrollTo(0, startY + distance * eased);
-
-        if (progress < 1) {
-          scrollRafId = requestAnimationFrame(animateScroll);
-        } else {
-          scrollRafId = 0;
-          isAutoScrolling = false;
-          setActiveLink(id);
-          requestAnimationFrame(updateActiveFromScroll);
-        }
-      };
-
-      scrollRafId = requestAnimationFrame(animateScroll);
+      scrollToBlock(scrollTarget, href);
     });
 
     const getActiveSectionId = () => {
