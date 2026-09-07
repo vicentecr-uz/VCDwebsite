@@ -19,6 +19,7 @@
   } from '../scripts/sectionReorder';
   import { shouldKeepLeadingSpacingSeam } from '../lib/projectStack';
   import { setIntroFoldOffsets } from '../lib/safeVh';
+  import { isDevContentEditing } from '../scripts/devSectionMount';
   import gripIcon from 'lucide-static/icons/grip-vertical.svg?raw';
   import { sizeIcon } from '../lib/icons';
 
@@ -90,6 +91,7 @@
   let activeSessionId = 0;
   let droppingSessionId = 0;
   let controlsRevealFrame = 0;
+  let reorderSuspendedForSectionNav = false;
 
   const dropZone = () => getDropZone();
 
@@ -156,7 +158,7 @@
     const current = captureSectionOrder(zone);
     const pendingId = `section-order:${documentKey}`;
 
-    // Always rebuild sidebar from page order + sticky group membership,
+    // Always rebuild sidebar from page order and fixed group boundaries,
     // including when order returns to baseline (otherwise the sidebar sticks
     // on the intermediate wrong state after a round-trip drag).
     syncDevSectionOutlineSidebar();
@@ -1052,24 +1054,45 @@
     activeIntroDrag = false;
   };
 
-  const setReorderActive = (active: boolean) => {
+  const setReorderActive = (active: boolean, preserveBaseline = false) => {
     reorderActive = active;
     if (active) {
       syncDragHandles();
-      baselineOrder = captureSectionOrder();
+      if (!preserveBaseline || !baselineOrder) baselineOrder = captureSectionOrder();
     } else {
       abortActiveSession();
-      dropZone()?.classList.remove('is-section-order-dirty');
+      if (!preserveBaseline) {
+        dropZone()?.classList.remove('is-section-order-dirty');
+        baselineOrder = null;
+      }
     }
     syncDragHandles();
   };
 
   const onDevModeChange = () => {
-    const active = document.documentElement.classList.contains('is-dev-mode') && Boolean(dropZone());
-    setReorderActive(active);
+    if (document.documentElement.classList.contains('show-section-nav-editor')) {
+      reorderSuspendedForSectionNav = true;
+      setReorderActive(false, true);
+      return;
+    }
+    const active = isDevContentEditing() && Boolean(dropZone());
+    const preserveBaseline = reorderSuspendedForSectionNav;
+    reorderSuspendedForSectionNav = false;
+    setReorderActive(active, preserveBaseline);
   };
 
   window.addEventListener('vcd:dev-mode-change', onDevModeChange);
+  window.addEventListener('vcd:section-nav-editor-change', () => {
+    const sectionNavEditor = document.documentElement.classList.contains('show-section-nav-editor');
+    if (sectionNavEditor) {
+      reorderSuspendedForSectionNav = true;
+      setReorderActive(false, true);
+      return;
+    }
+    const wasSuspended = reorderSuspendedForSectionNav;
+    reorderSuspendedForSectionNav = false;
+    if (wasSuspended) setReorderActive(isDevContentEditing() && Boolean(dropZone()), true);
+  });
   window.addEventListener('vcd:dev-section-structure-changed', () => {
     if (!reorderActive) return;
     syncDragHandles();

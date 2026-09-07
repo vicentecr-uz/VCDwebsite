@@ -53,26 +53,26 @@ const outline = resolveProjectOutline({
   outline: outlineProp,
   nav: sectionLinksProp,
 });
-const sectionLinks = sectionLinksProp?.length
-  ? sectionLinksProp
-  : deriveNavFromOutline(outline);
+const sectionLinks = deriveNavFromOutline(outline);
 
 const showDevTools = import.meta.env.DEV;
 const hasSidebar = Array.isArray(sectionLinks) && sectionLinks.length > 0;
 const navDocument = sectionNavDocument ?? '';
+const hasOutlineEditor = showDevTools && Boolean(navDocument);
+const hasOutlineSurface = hasSidebar || hasOutlineEditor;
 ---
 
 <Layout title={`${title} — Vicente Cruz`} description={description} ogImage={ogImage} columnStyle={columnStyle}>
   <div
     class="project-page flex flex-col min-h-dvh"
-    data-section-nav-root={hasSidebar ? '' : undefined}
-    data-section-nav-document={hasSidebar && navDocument ? navDocument : undefined}
-    data-section-nav={hasSidebar ? JSON.stringify(sectionLinks) : undefined}
-    data-section-outline={hasSidebar ? JSON.stringify(outline) : undefined}
+    data-section-nav-root={hasOutlineSurface ? '' : undefined}
+    data-section-nav-document={hasOutlineSurface && navDocument ? navDocument : undefined}
+    data-section-nav={hasOutlineSurface ? JSON.stringify(sectionLinks) : undefined}
+    data-section-outline={hasOutlineSurface ? JSON.stringify(outline) : undefined}
   >
     <Header title={title} wordmarkAsH1 />
 
-    {hasSidebar ? (
+    {hasOutlineSurface ? (
       <div class="project-layout flex-1">
         <SectionSidebarNav
           sectionLinks={sectionLinks}
@@ -94,6 +94,6 @@ const navDocument = sectionNavDocument ?? '';
   {showDevTools && <ProjectImageGridTuner />}
   {showDevTools && <ProjectImageCarouselTuner />}
   {showDevTools && <ProjectImageCaptionTuner />}
-  {showDevTools && hasSidebar && navDocument && <ProjectSectionNavEditor />}
+  {hasOutlineEditor && <ProjectSectionNavEditor />}
   <ProjectCaptionShadow />
 </Layout>

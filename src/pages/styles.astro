@@ -602,10 +602,9 @@ const catalogSectionLinks = [
 ];
 
 const savedOutline = normalizeOutline(stylesNav.outline ?? []);
-const outline = savedOutline.length ? savedOutline : outlineFromNav(catalogSectionLinks);
-const sectionLinks = savedOutline.length
-  ? deriveNavFromOutline(outline)
-  : catalogSectionLinks;
+const hasSavedOutline = savedOutline.length > 0 || ('outlineConfigured' in stylesNav && stylesNav.outlineConfigured === true);
+const outline = hasSavedOutline ? savedOutline : outlineFromNav(catalogSectionLinks);
+const sectionLinks = deriveNavFromOutline(outline);
 ---
 
 <Layout title="Design System — Vicente Cruz" serif>

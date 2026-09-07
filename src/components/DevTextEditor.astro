@@ -104,6 +104,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <script>
   import {
     initMountedSectionCovers,
+    isDevContentEditing,
     mountInsertedSection,
     syncDevModeOnSection,
   } from '../scripts/devSectionMount';
@@ -111,8 +112,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     initDevSectionOutlineSync,
     disposeDevSectionOutlineSync,
     getDevSectionOutline,
+    setDevSectionOutline,
+    syncDevSectionOutlineSidebar,
     remapDevSectionOutlineId,
   } from '../scripts/devSectionOutlineSync';
+  import { normalizeOutline, outlineAnchorId, type OutlineEntry } from '../lib/projectOutline';
   import {
     buildIndexMapFromOrder,
     remapSectionPaths,
@@ -270,15 +274,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   /** Cursor must be within this distance of the control centre to reveal it. */
   const SPACING_ACTIVATION_RADIUS_PX = 96;
 
-  /**
-   * Match project.css / SectionSidebarNav: in-page section titles with
-   * `.project-section-title--hide-when-sidebar` drop their heading when the
-   * gutter nav is shown. The empty title wrapper still owns the section gap,
-   * so the next block's gap control is a duplicate that loses to margin-collapse
-   * (only 12em appears to work). Suppress that following control while hidden.
-   */
-  // Mirrors the sidebar gutter breakpoint — see docs/page-width.md.
-  const SIDEBAR_TITLE_HIDDEN_MQ = '(min-width: 78.5em)';
   let editorAbortController: AbortController | null = null;
   let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -309,16 +304,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     element.dataset.devSpacingValues = JSON.stringify(spacing);
   };
 
-  const followsHiddenSidebarTitle = (element: HTMLElement) => {
-    if (!window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).matches) return false;
+  const followsHiddenTitle = (element: HTMLElement) => {
     const prev = element.previousElementSibling;
-    return (
-      prev instanceof HTMLElement &&
-      (
-        prev.classList.contains('project-section-title--hide-when-sidebar') ||
-        prev.classList.contains('project-section-title--hide-desktop')
-      )
-    );
+    if (!(prev instanceof HTMLElement)) return false;
+    const title = prev.querySelector<HTMLElement>(':scope > .project-section-title');
+    return Boolean(title && getComputedStyle(title).display === 'none');
   };
 
   const initDevTextEditor = () => {
@@ -372,6 +362,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership';
       payload: Record<string, unknown>;
       revert: () => void;
+      prepare?: () => Record<string, unknown>;
       /** Live section root for placeholder fills — index is read from it at Save. */
       root?: HTMLElement;
     };
@@ -385,6 +376,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       spacingState: EditableSpacingState | null;
       outlineRevert: {
         action: 'insert';
+        outlineEntries: OutlineEntry[];
         index: number;
         type?: string;
         section: Record<string, unknown>;
@@ -848,8 +840,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           'data-dev-suppress-gallery-page-top',
           suppressGalleryPageTopSpacing(element, pageTop),
         );
-        const devEnabled = document.documentElement.classList.contains('is-dev-mode');
-        control.hidden = !devEnabled || followsHiddenSidebarTitle(element);
+        const devEnabled = isDevContentEditing();
+        control.hidden = !devEnabled || followsHiddenTitle(element);
         control.innerHTML = `
           <div class="dev-gap-toolbar__pill">
             <button
@@ -1268,9 +1260,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncSpacingControlVisibility = () => {
-      const devEnabled = document.documentElement.classList.contains('is-dev-mode');
+      const devEnabled = isDevContentEditing();
       spacingStates.forEach(({ control, element }) => {
-        const suppressed = followsHiddenSidebarTitle(element);
+        const suppressed = followsHiddenTitle(element);
         control.hidden = !devEnabled || suppressed;
         if (suppressed) clearGapProximity(control);
       });
@@ -1427,7 +1419,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (
-        !document.documentElement.classList.contains('is-dev-mode')
+        !isDevContentEditing()
         || gapsSuppressed()
       ) {
         spacingStates.forEach(({ control }) => {
@@ -1736,7 +1728,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         entry.textState.element = entry.previousTextElement;
         entry.textState.path = entry.previousPath;
         entry.textState.kind = entry.previousKind;
-        if (document.documentElement.classList.contains('is-dev-mode')) {
+        if (isDevContentEditing()) {
           entry.previousTextElement.setAttribute(
             'contenteditable',
             entry.previousKind === 'paragraphs' ? 'true' : 'plaintext-only',
@@ -1852,7 +1844,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         dirtyText.forEach((state) => {
           state.savedValue = readValue(state);
         });
-        syncSavedSectionTitleLabels(dirtyText);
       }
 
       const dirtyLayout = [
@@ -1993,24 +1984,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (!response.ok) throw new Error(payload.error || 'Could not convert the section.');
       }
       pendingBlockConverts.length = 0;
-    };
-
-    const syncSavedSectionTitleLabels = (states: EditableTextState[]) => {
-      states.forEach((state) => {
-        if (state.kind !== 'text') return;
-        const block = state.element.closest<HTMLElement>('.section-block[id], [data-dev-section-title]');
-        const sectionId = block?.id;
-        if (!sectionId) return;
-        const label = readValue(state);
-        if (typeof label !== 'string' || !label.trim()) return;
-        window.dispatchEvent(new CustomEvent('vcd:dev-section-outline-label', {
-          detail: {
-            document: state.document,
-            sectionId,
-            label: label.trim(),
-          },
-        }));
-      });
     };
 
     const revertDirtyEdits = () => {
@@ -2637,7 +2610,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       button.title = 'Delete section';
       button.setAttribute('aria-label', 'Delete section');
       button.innerHTML = TRASH_ICON;
-      button.hidden = !document.documentElement.classList.contains('is-dev-mode');
+      button.hidden = !isDevContentEditing();
 
       const computed = getComputedStyle(element);
       if (computed.position === 'static') {
@@ -2717,7 +2690,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       textStates.push(textState);
       bindTextState(textState);
-      if (document.documentElement.classList.contains('is-dev-mode')) {
+      if (isDevContentEditing()) {
         built.textElement.setAttribute(
           'contenteditable',
           built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
@@ -3107,6 +3080,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacingState: spacing,
         outlineRevert: {
           action: 'insert',
+          outlineEntries: structuredClone(getDevSectionOutline().filter((entry) => outlineAnchorId(entry) === sectionId)),
           index: sectionIndex,
           type: sectionType,
           section: {
@@ -3893,7 +3867,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const enableConvertedText = (element: HTMLElement, kind: EditableTextState['kind']) => {
-      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (!isDevContentEditing()) return;
       element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
       element.setAttribute('spellcheck', 'true');
     };
@@ -4541,7 +4515,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const updateFormatBar = () => {
       if (isFormatBarDismissing() || formatDismissPointer?.active) return;
-      if (!document.documentElement.classList.contains('is-dev-mode')) {
+      if (!isDevContentEditing()) {
         hideFormatBar();
         return;
       }
@@ -5075,7 +5049,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       'keydown',
       (event) => {
         if (event.key !== 'Escape') return;
-        if (!document.documentElement.classList.contains('is-dev-mode')) return;
+        if (!isDevContentEditing()) return;
 
         if (!formatBar.hidden) {
           event.preventDefault();
@@ -5107,7 +5081,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     // ⌘B / ⌘I / ⌘U / ⌘K (link)
     document.addEventListener('keydown', (event) => {
-      if (!document.documentElement.classList.contains('is-dev-mode')) return;
+      if (!isDevContentEditing()) return;
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
 
       const key = event.key.toLowerCase();
@@ -5192,7 +5166,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
-    window.matchMedia(SIDEBAR_TITLE_HIDDEN_MQ).addEventListener('change', syncSpacingControlVisibility, { signal: editorSignal });
+    window.addEventListener('resize', syncSpacingControlVisibility, { signal: editorSignal });
 
     textStates.forEach(bindTextState);
 
@@ -5358,9 +5332,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     }, { signal: editorSignal });
 
     const performSave = async (): Promise<PublishManifest | null> => {
-      // Editors with an explicit Apply step stage nothing until it is pressed —
-      // the section nav marker popover is one. Give them the chance to land an
-      // open draft before we read the pending map, or Save drops what is on screen.
+      // Let open tuners finish their draft before collecting pending changes.
       window.dispatchEvent(new Event('vcd:dev-before-save'));
 
       const dirtyText = dirtyTextStates();
@@ -5446,6 +5418,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       publishButton.disabled = true;
       revertButton.disabled = true;
       actionsBusy = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-save-state', { detail: { saving: true } }));
       saveButton.classList.add('is-dev-actions-busy');
       publishButton.classList.add('is-dev-actions-busy');
       revertButton.classList.add('is-dev-actions-busy');
@@ -5525,7 +5498,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
 
         for (const change of sectionNavChanges) {
-          const payload = change.payload;
+          const payload = change.prepare?.() ?? change.payload;
           payload.outline = structuredClone(getDevSectionOutline());
           const documentIds = serverSectionIds.get(String(payload.document || ''));
           if (documentIds && payload.sectionIds && typeof payload.sectionIds === 'object') {
@@ -5542,6 +5515,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const responsePayload = await readApiJson(response);
           if (!response.ok) throw new Error(String(responsePayload.error || 'Could not save the section outline.'));
+          if (!Array.isArray(responsePayload.outline)) throw new Error('The saved outline could not be confirmed. Refresh before editing again.');
+          setDevSectionOutline(normalizeOutline(responsePayload.outline));
+          syncDevSectionOutlineSidebar();
         }
 
         for (const change of styleTokenChanges) {
@@ -5682,7 +5658,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
         }
         syncPageTopSpacingControls();
-        syncSavedSectionTitleLabels(dirtyText);
 
         pendingMedia.clear();
         persistedMediaInserts.length = 0;
@@ -5703,6 +5678,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return null;
       } finally {
         actionsBusy = false;
+        window.dispatchEvent(new CustomEvent('vcd:dev-save-state', { detail: { saving: false } }));
         publishButton.disabled = false;
         updateActions();
       }
@@ -5962,12 +5938,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     window.addEventListener('vcd:dev-mode-change', (event) => {
       const active = Boolean((event as CustomEvent<{ active: boolean }>).detail?.active);
-      setEditingEnabled(active);
+      setEditingEnabled(active && isDevContentEditing());
       if (active) {
         void refreshPublishState();
         void refreshStyleEngineState();
         void refreshBranchUpdateState();
       }
+    }, { signal: editorSignal });
+    window.addEventListener('vcd:section-nav-editor-change', () => {
+      setEditingEnabled(isDevContentEditing());
     }, { signal: editorSignal });
     window.addEventListener('beforeunload', (event) => {
       if (document.documentElement.classList.contains('is-dev-crop-open')) return;
@@ -5984,7 +5963,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       event.returnValue = '';
     }, { signal: editorSignal });
 
-    setEditingEnabled(document.documentElement.classList.contains('is-dev-mode'));
+    setEditingEnabled(isDevContentEditing());
   };
 
   if (import.meta.hot) {

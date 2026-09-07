@@ -553,12 +553,19 @@ export function mountInsertedSection(
   return mountImageSection(section, documentKey, index);
 }
 
+export function isDevContentEditing() {
+  const root = document.documentElement;
+  return root.classList.contains('is-dev-mode')
+    && !root.classList.contains('show-section-nav-editor');
+}
+
 export function syncDevModeOnSection(root: HTMLElement, devMode: boolean) {
+  const contentEditing = devMode && !document.documentElement.classList.contains('show-section-nav-editor');
   root.querySelectorAll<HTMLElement>('[data-dev-mode-only]').forEach((control) => {
-    control.hidden = !devMode;
+    control.hidden = !contentEditing;
   });
   root.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]').forEach((trigger) => {
-    trigger.disabled = !devMode;
+    trigger.disabled = !contentEditing;
   });
 }
 
