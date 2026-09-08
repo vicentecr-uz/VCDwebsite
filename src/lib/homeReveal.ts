@@ -65,7 +65,8 @@ const waitForFonts = async () => {
   await Promise.race([fonts.ready, new Promise<void>((resolve) => setTimeout(resolve, 120))]);
 };
 
-export function createHomeRevealController(home: HTMLElement, win: Window = window, config: HomeRevealConfig = defaultConfig) {
+export interface HomeRevealControllerOptions { reducedMotion?: boolean; }
+export function createHomeRevealController(home: HTMLElement, win: Window = window, config: HomeRevealConfig = defaultConfig, options: HomeRevealControllerOptions = {}) {
   let armed = false;
   let disposed = false;
   let running = false;
@@ -77,7 +78,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   const original = new Map<HTMLElement, SavedStyle>();
   const clones: HTMLElement[] = [];
   const remember = (el: HTMLElement) => { if (!original.has(el)) original.set(el, { opacity: el.style.opacity, visibility: el.style.visibility, transform: el.style.transform, filter: el.style.filter }); };
-  const reduceMotion = () => win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  const reduceMotion = () => options.reducedMotion ?? (win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true);
   const cleanup = () => {
     animations.forEach((animation) => animation.cancel());
     animations = [];
@@ -164,9 +165,9 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
 }
 
 const controllerKey = '__vcdHomeRevealController';
-export function bindHomeReveal(config: HomeRevealConfig = defaultConfig) {
+export function bindHomeReveal(config: HomeRevealConfig = defaultConfig, options: HomeRevealControllerOptions = {}) {
   const home = document.querySelector<HTMLElement>('[data-home-page]'); if (!home) return null;
   const scope = window as Window & Record<string, unknown>;
   (scope[controllerKey] as ReturnType<typeof createHomeRevealController> | undefined)?.destroy();
-  const controller = createHomeRevealController(home, window, config); scope[controllerKey] = controller; import.meta.hot?.dispose(controller.destroy); return controller;
+  const controller = createHomeRevealController(home, window, config, options); scope[controllerKey] = controller; import.meta.hot?.dispose(controller.destroy); return controller;
 }

@@ -14,6 +14,7 @@ type HomeIntroController = {
   teardown: () => void;
   reset: () => void;
 };
+export type HomeIntroConfig = { durationMs?: number };
 
 const controllerKey = '__vcdHomeIntroController';
 
@@ -27,6 +28,7 @@ export function createHomeIntroController(
   home: HTMLElement,
   root: HTMLElement = document.documentElement,
   win: Window = window,
+  config: HomeIntroConfig = revealConfig.intro,
 ): HomeIntroController {
   let state: HomeIntroState = 'pending';
   let disposed = false;
@@ -84,7 +86,7 @@ export function createHomeIntroController(
         if (!hadTabIndex) main.removeAttribute('tabindex');
       }
       announce('vcd:home-intro-dismissed');
-    }, revealConfig.intro.durationMs);
+    }, config.durationMs ?? revealConfig.intro.durationMs);
   };
 
   const onClick = (event: MouseEvent) => {
@@ -170,13 +172,13 @@ export function createHomeIntroController(
   return { getState: () => state, dismiss, teardown, reset };
 }
 
-export function bindHomeIntro(): HomeIntroController | null {
+export function bindHomeIntro(config: HomeIntroConfig = revealConfig.intro): HomeIntroController | null {
   const surface = document.querySelector<HTMLElement>('[data-home-intro-surface]');
   const home = document.querySelector<HTMLElement>('[data-home-page]');
   if (!surface || !home) return null;
   const existing = (window as Window & Record<string, unknown>)[controllerKey] as HomeIntroController | undefined;
   existing?.teardown();
-  const controller = createHomeIntroController(surface, home);
+  const controller = createHomeIntroController(surface, home, document.documentElement, window, config);
   (window as Window & Record<string, unknown>)[controllerKey] = controller;
   import.meta.hot?.dispose(() => controller.teardown());
   return controller;
