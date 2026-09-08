@@ -84,3 +84,8 @@ test('scroll updates animate after the one-shot initial settle and unresolved ID
   expect(source).toContain('setActiveLink(activeId);');
   expect(source).toContain('if (initialSyncPending && !isSectionEditorActive() && !sectionEditorKeepOpen)');
 });
+
+test('SSR only opens the first group when the first nav item is grouped', () => {
+  expect(source).toContain("const firstGroupIndex = sectionLinks[0] && 'children' in sectionLinks[0] ? 0 : -1;");
+  expect(source).toContain('open={item.defaultOpen && index === firstGroupIndex}');
+});
