@@ -213,6 +213,7 @@ test('cached content still gets one opaque paint; both fades use the approved va
   await f.frame();
   assert.equal(f.tweens.length, 1);
   assert.equal(f.upgrades, 1);
+  assert.equal(f.readinessMarker.hidden, true);
   assert.equal(f.timers.size, 0);
   const entry = f.tweens[0];
   entry.finish();
