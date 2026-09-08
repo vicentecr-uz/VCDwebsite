@@ -25,7 +25,7 @@ export function validateHomeRevealConfig(value) {
   if (!hasExactKeys(value, TOP_LEVEL_KEYS) || !hasExactKeys(value.intro, INTRO_KEYS) || !hasExactKeys(value.entrance, ENTRANCE_KEYS)) throw new Error('Invalid reveal configuration.');
   const { intro, entrance } = value;
   if (!bounded(intro.durationMs, 50, 400) || !bounded(intro.blurPx, 0, 20) || !bounded(intro.scale, 0.8, 1) || !bounded(intro.translateYPx, 0, 80)) throw new Error('Invalid reveal configuration.');
-  if (!bounded(entrance.durationMs, 150, 1200) || !bounded(entrance.totalStaggerMs, 0, 1500) || !bounded(entrance.headerLeadMs, 0, 600) || entrance.headerLeadMs > entrance.totalStaggerMs || !bounded(entrance.blurPx, 0, 40) || !bounded(entrance.translateYPx, -40, 80) || !bounded(entrance.scale, 0.8, 1.3) || !validEasing(entrance.easing)) throw new Error('Invalid reveal configuration.');
+  if (!bounded(entrance.durationMs, 150, 1300) || !bounded(entrance.totalStaggerMs, 0, 1500) || !bounded(entrance.headerLeadMs, 0, 600) || entrance.headerLeadMs > entrance.totalStaggerMs || !bounded(entrance.blurPx, 0, 40) || !bounded(entrance.translateYPx, -40, 80) || !bounded(entrance.scale, 0.8, 1.3) || !validEasing(entrance.easing)) throw new Error('Invalid reveal configuration.');
   return { intro: { ...intro }, entrance: { ...entrance } };
 }
 

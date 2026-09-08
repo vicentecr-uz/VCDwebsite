@@ -19,7 +19,7 @@ describe('home reveal config writer', () => {
     expect(() => validateHomeRevealConfig(missing)).toThrow();
   });
   test('rejects bounds, nonfinite values, and header lead beyond stagger', () => {
-    for (const value of [NaN, Infinity, 1201]) { const config = structuredClone(valid); config.entrance.durationMs = value; expect(() => validateHomeRevealConfig(config)).toThrow(); }
+    for (const value of [NaN, Infinity, 1301]) { const config = structuredClone(valid); config.entrance.durationMs = value; expect(() => validateHomeRevealConfig(config)).toThrow(); }
     const config = structuredClone(valid); config.entrance.headerLeadMs = config.entrance.totalStaggerMs + 1;
     expect(() => validateHomeRevealConfig(config)).toThrow();
     for (const value of [NaN, Infinity, -1, 81]) { const intro = structuredClone(valid); intro.intro.translateYPx = value; expect(() => validateHomeRevealConfig(intro)).toThrow(); }
