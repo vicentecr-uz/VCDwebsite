@@ -943,6 +943,37 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const state = mountSpacingControl(element);
       return state ? [state] : [];
     });
+    const reorderSpacingSnapshots = new Map<string, Map<EditableSpacingState, {
+      currentValue: ProjectStackSpacingResolved;
+      visualSavedValue: ProjectStackSpacingResolved;
+    }>>();
+    const captureReorderSpacingSnapshot = (documentKey: string) => {
+      if (reorderSpacingSnapshots.has(documentKey)) return;
+      reorderSpacingSnapshots.set(documentKey, new Map(
+        spacingStates
+          .filter((state) => state.document === documentKey)
+          .map((state) => [state, {
+            currentValue: cloneSpacing(state.currentValue),
+            visualSavedValue: cloneSpacing(state.visualSavedValue),
+          }]),
+      ));
+    };
+    const restoreReorderSpacingSnapshot = (documentKey: string) => {
+      const snapshot = reorderSpacingSnapshots.get(documentKey);
+      if (!snapshot) return;
+      snapshot.forEach((values, state) => {
+        if (!spacingStates.includes(state)) return;
+        state.currentValue = cloneSpacing(values.currentValue);
+        state.visualSavedValue = cloneSpacing(values.visualSavedValue);
+        applySpacingClass(state.element, state.currentValue);
+        syncSpacingControl(state);
+      });
+      reorderSpacingSnapshots.delete(documentKey);
+    };
+    const resetReorderSpacingSnapshot = (documentKey?: string) => {
+      if (documentKey) reorderSpacingSnapshots.delete(documentKey);
+      else reorderSpacingSnapshots.clear();
+    };
     const syncEmptyZoneState = () => {
       document.querySelectorAll<HTMLElement>('[data-dev-project-drop-zone]').forEach((zone) => {
         const empty = getSectionRoots(zone).length === 0;
@@ -968,6 +999,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncIntroRunControls();
       spacingStates.forEach(syncSpacingControl);
     });
+    window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<{ document?: string }>) => {
+      resetReorderSpacingSnapshot(event.detail?.document);
+    }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', scheduleEmptyZoneState, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-reordered', scheduleEmptyZoneState, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-reverted', scheduleEmptyZoneState, { signal: editorSignal });
@@ -3058,6 +3092,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
+      captureReorderSpacingSnapshot(reorderedDocument);
 
       const visualSavedValues = reorderedStates.map((state) => cloneSpacing(state!.visualSavedValue));
       const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
@@ -3091,6 +3126,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     }) as EventListener, { signal: editorSignal });
+    window.addEventListener('vcd:dev-section-order-baseline', ((event: CustomEvent<{ document?: string }>) => {
+      const documentKey = event.detail?.document;
+      if (documentKey) restoreReorderSpacingSnapshot(documentKey);
+    }) as EventListener, { signal: editorSignal });
+    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
+      (event.detail?.ids ?? [])
+        .filter((id) => id.startsWith('section-order:'))
+        .forEach((id) => resetReorderSpacingSnapshot(id.slice('section-order:'.length)));
+    }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', () => {
       requestAnimationFrame(syncIntroRunControls);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
@@ -3102,6 +3146,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     }, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-reverted', () => {
+      resetReorderSpacingSnapshot();
       syncPageTopSpacingControls(false);
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
