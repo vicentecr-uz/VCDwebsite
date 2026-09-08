@@ -36,7 +36,7 @@ function collectUnits(home: HTMLElement, viewportHeight: number): HomeRevealUnit
     units.push({ element, kind, top: rect.top, left: rect.left });
   };
   home.querySelectorAll<HTMLElement>('.site-header-slot').forEach((el) => add(el, 'header'));
-  home.querySelectorAll<HTMLElement>('.project-block--text, .project-section-title').forEach((el) => add(el, 'text'));
+  home.querySelectorAll<HTMLElement>('.project-body-text, .project-section-title').forEach((el) => add(el, 'text'));
   const media = '.project-grid__cover, .project-image, .project-image-grid, .project-image-carousel';
   home.querySelectorAll<HTMLElement>(media).forEach((el) => { if (!el.parentElement?.closest(media)) add(el, 'media'); });
   return units;
@@ -121,8 +121,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
           const module = await import('gsap/SplitText');
           if (disposed || !armed || preparationGeneration !== generation) { clone.remove(); return; }
           const SplitText = (module as unknown as { SplitText?: { create: (target: HTMLElement, vars: { type: string }) => SplitResult } }).SplitText;
-          const textTarget = clone.querySelector<HTMLElement>('.project-body-text') ?? clone;
-          lines = SplitText?.create(textTarget, { type: 'lines' }).lines;
+          lines = SplitText?.create(clone, { type: 'lines' }).lines;
         } catch { lines = undefined; }
         const index = units.indexOf(unit);
         if (lines?.length) {
