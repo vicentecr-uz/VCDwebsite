@@ -3090,11 +3090,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     }) as EventListener, { signal: editorSignal });
-    window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
-      (event.detail?.ids ?? [])
-        .filter((id) => id.startsWith('section-order:'))
-        .forEach((id) => resetReorderSpacingSnapshot(id.slice('section-order:'.length)));
-    }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', () => {
       requestAnimationFrame(syncIntroRunControls);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
