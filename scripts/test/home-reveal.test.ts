@@ -29,7 +29,7 @@ describe('home reveal choreography', () => {
       { top: 300, left: 20 }, { top: 100, left: 40 }, { top: 101, left: 10 }, { top: 500, left: 0 },
     ]);
     expect(rows.map((row) => row.units.length)).toEqual([2, 1, 1]);
-    expect(rows[0].delay).toBe(0);
+    expect(rows[0].delay).toBe(120);
     expect(rows.at(-1)?.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5);
     expect((rows.at(-1)?.delay ?? 0) + HOME_REVEAL_DURATION).toBeCloseTo(1000, 2);
   });
@@ -38,7 +38,7 @@ describe('home reveal choreography', () => {
     expect(HOME_REVEAL_DURATION).toBe(449.28);
     expect(HOME_REVEAL_STAGGER).toBe(550.72);
     expect(HOME_REVEAL_EASING).toContain('linear(0 0%, 0.006234 1%');
-    expect(HOME_REVEAL_EASING).toContain('1.000058 50%)');
+    expect(HOME_REVEAL_EASING).toContain('1.000058 50%, 1 100%)');
   });
 
   test('prepared visual text clones are visible to opacity animation', () => {
@@ -60,10 +60,10 @@ describe('home reveal choreography', () => {
 
   test('reduced motion preserves spatial row delays while omitting transform/filter', async () => {
     const first = new FakeElement({ top: 10, left: 0, width: 100, height: 20 }); const last = new FakeElement({ top: 500, left: 0, width: 100, height: 20 }); const home = new FakeElement(); home.children = [first, last];
-    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [first, last] as unknown as T[] : [];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('project-grid__stack') ? [first, last] as unknown as T[] : [];
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const win = fakeWindow(true); const controller = createHomeRevealController(home as unknown as HTMLElement, win); win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(first.animations[0]?.options.delay).toBe(0); expect(last.animations[0]?.options.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5); controller.destroy();
+    expect(first.animations[0]?.options.delay).toBe(120); expect(last.animations[0]?.options.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5); controller.destroy();
   });
 
   test('resize rebuilds before dismissal and removes listeners on destroy', async () => {

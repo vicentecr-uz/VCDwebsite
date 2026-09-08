@@ -28,6 +28,7 @@ export function createHomeIntroController(
   let state: HomeIntroState = 'pending';
   let disposed = false;
   let finishTimer: ReturnType<typeof setTimeout> | null = null;
+  let dismissFocus = false;
   const originalInert = home.inert;
   const originalOverflow = document.body.style.overflow;
   const originalRootOverflow = root.style.overflow;
@@ -66,28 +67,33 @@ export function createHomeIntroController(
   const dismiss = () => {
     if (disposed || state !== 'active' || root.classList.contains('is-dev-mode')) return;
     cancelFinish();
+    dismissFocus = surface.contains(document.activeElement);
     setState('dismissing');
     finishTimer = setTimeout(() => {
       finishTimer = null;
       if (disposed || state !== 'dismissing') return;
-      const hadFocus = surface.contains(document.activeElement);
       setState('dismissed');
       const main = document.getElementById('main-content');
-      if (hadFocus && main instanceof HTMLElement) {
+      if (dismissFocus && main instanceof HTMLElement) {
         const hadTabIndex = main.hasAttribute('tabindex');
         if (!hadTabIndex) main.setAttribute('tabindex', '-1');
         main.focus({ preventScroll: true });
         if (!hadTabIndex) main.removeAttribute('tabindex');
       }
       announce('vcd:home-intro-dismissed');
-    }, 250);
+    }, 100);
   };
 
   const onClick = (event: MouseEvent) => {
     if (event.defaultPrevented || win.getSelection?.()?.isCollapsed === false || state !== 'active' || root.classList.contains('is-dev-mode') || isInteractive(event.target)) return;
     dismiss();
   };
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || state !== 'active' || root.classList.contains('is-dev-mode') || isInteractive(event.target)) return;
+    dismiss();
+  };
   const onOkay = () => dismiss();
+  const onOkayPointerDown = (event: PointerEvent) => { if (event.button === 0) dismiss(); };
   const onPointerMove = (event: PointerEvent) => {
     const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
     if (event.pointerType !== 'mouse' || state !== 'active' || !surface.matches(':hover') || !cursor || !win.matchMedia('(pointer: fine)').matches) return;
@@ -128,7 +134,9 @@ export function createHomeIntroController(
     cancelFinish();
     hideCursor();
     surface.removeEventListener('click', onClick);
+    surface.removeEventListener('pointerdown', onPointerDown);
     surface.querySelector('[data-home-intro-okay]')?.removeEventListener('click', onOkay);
+    surface.querySelector('[data-home-intro-okay]')?.removeEventListener('pointerdown', onOkayPointerDown);
     surface.removeEventListener('pointermove', onPointerMove);
     surface.removeEventListener('pointerleave', hideCursor);
     surface.removeEventListener('pointercancel', hideCursor);
@@ -143,7 +151,9 @@ export function createHomeIntroController(
   };
 
   surface.addEventListener('click', onClick);
+  surface.addEventListener('pointerdown', onPointerDown);
   surface.querySelector('[data-home-intro-okay]')?.addEventListener('click', onOkay);
+  surface.querySelector('[data-home-intro-okay]')?.addEventListener('pointerdown', onOkayPointerDown);
   surface.addEventListener('pointermove', onPointerMove);
   surface.addEventListener('pointerleave', hideCursor);
   surface.addEventListener('pointercancel', hideCursor);

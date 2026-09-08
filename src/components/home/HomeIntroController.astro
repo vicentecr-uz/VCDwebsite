@@ -52,13 +52,19 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
     color: var(--sys-color-on-srf);
     isolation: isolate;
     opacity: 1;
-    transition: opacity 250ms ease, filter 250ms ease;
   }
 
-  #home-intro-surface[data-state='dismissing'] {
+  #home-intro-surface[data-state='dismissing'] .home-intro-surface__column {
     opacity: 0;
-    filter: blur(0.35rem);
+    filter: blur(5.6px);
+    transform: scale(0.95);
+    transition: opacity 100ms ease, filter 100ms ease, transform 100ms ease;
     pointer-events: none;
+  }
+
+  #home-intro-surface[data-state='dismissing'] .home-intro-surface__okay,
+  #home-intro-surface[data-state='dismissing'] .home-intro-surface__cursor {
+    display: none;
   }
 
   #home-intro-surface[data-state='dismissed'] {
@@ -117,8 +123,9 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
   }
 
   @media (prefers-reduced-motion: reduce) {
-    #home-intro-surface[data-state='dismissing'] {
-      filter: none;
-    }
+    #home-intro-surface[data-state='dismissing'] .home-intro-surface__column {
+    filter: none;
+    transform: none;
+  }
   }
 </style>
