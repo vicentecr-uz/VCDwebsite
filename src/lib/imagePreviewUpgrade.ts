@@ -28,7 +28,10 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   let gateOpen = false;
   const candidates = new Set<HTMLImageElement>();
   const thumbPreloaded = new WeakSet<HTMLImageElement>();
+  const thumbReady = new WeakSet<HTMLImageElement>();
   const previewLoaded = new WeakMap<HTMLImageElement, string>();
+  const previewQueue = new Set<HTMLImageElement>();
+  let previewQueueScheduled = false;
 
   let swapObserver: IntersectionObserver | null = null;
 
@@ -54,6 +57,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     delete img.dataset.imagePreviewUpgrading;
     delete img.dataset.imagePreviewRevealing;
     candidates.delete(img);
+    previewQueue.delete(img);
     swapObserver?.unobserve(img);
   }
 
@@ -165,11 +169,56 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     thumbPreloaded.add(img);
     const thumb = new Image();
     preloads.add(thumb);
-    thumb.onload = thumb.onerror = () => {
+    thumb.onload = () => {
+      thumb.onload = thumb.onerror = null;
+      void decodeImage(thumb).then(() => {
+        preloads.delete(thumb);
+        if (signal.aborted) return;
+        thumbReady.add(img);
+        queuePreviewFetch(img);
+      });
+    };
+    thumb.onerror = () => {
       thumb.onload = thumb.onerror = null;
       preloads.delete(thumb);
     };
     thumb.src = img.getAttribute('src') || img.currentSrc || img.src;
+  }
+
+  function flushPreviewQueue(): void {
+    previewQueueScheduled = false;
+    if (signal.aborted) return;
+
+    const ready = [...previewQueue]
+      .filter((img) => {
+        if (!img.isConnected || !img.hasAttribute('data-image-preview')) {
+          previewQueue.delete(img);
+          return false;
+        }
+        if (!isIntersectingWithMargin(img, SWAP_MARGIN_PX)) {
+          previewQueue.delete(img);
+          return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const aRect = a.getBoundingClientRect();
+        const bRect = b.getBoundingClientRect();
+        return aRect.top - bRect.top || aRect.left - bRect.left;
+      });
+
+    for (const img of ready) {
+      previewQueue.delete(img);
+      startPreviewFetch(img);
+    }
+  }
+
+  function queuePreviewFetch(img: HTMLImageElement): void {
+    if (signal.aborted || !thumbReady.has(img) || !isIntersectingWithMargin(img, SWAP_MARGIN_PX)) return;
+    previewQueue.add(img);
+    if (previewQueueScheduled) return;
+    previewQueueScheduled = true;
+    queueMicrotask(flushPreviewQueue);
   }
 
   function startPreviewFetch(img: HTMLImageElement): void {
@@ -328,7 +377,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
     if (previewLoaded.get(img) !== preview) {
       if (img.dataset.imagePreviewUpgrading !== 'true' && isIntersectingWithMargin(img, SWAP_MARGIN_PX)) {
-        startPreviewFetch(img);
+        queuePreviewFetch(img);
       }
       return;
     }
@@ -343,10 +392,11 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
     swapObserver = new IntersectionObserver(
       (entries) => {
-        if (!gateOpen) return;
         for (const entry of entries) {
           if (!entry.isIntersecting) continue;
-          trySwap(entry.target as HTMLImageElement);
+          const img = entry.target as HTMLImageElement;
+          queuePreviewFetch(img);
+          if (gateOpen) trySwap(img);
         }
       },
       { rootMargin: `${SWAP_MARGIN_PX}px` },
@@ -414,6 +464,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       preloads.clear();
       clones.forEach((clone) => clone.remove());
       clones.clear();
+      previewQueue.clear();
       for (const image of bound) {
         delete image.dataset.imagePreviewBound;
         delete image.dataset.imagePreviewUpgrading;
