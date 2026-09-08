@@ -1,0 +1,124 @@
+---
+import ProjectSections from '../project/ProjectSections.astro';
+import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../lib/pageColumn';
+import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
+import type { PageDocument } from '../../lib/projects';
+
+interface Props {
+  page: PageDocument;
+}
+
+const { page } = Astro.props;
+const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.sections) : undefined;
+---
+
+<section
+  id="home-intro-surface"
+  data-home-intro-surface
+  data-page-viewport
+  data-state="pending"
+  aria-label="Introduction"
+  style={columnStyle}
+>
+  <div class="home-intro-surface__column">
+    <div class="listing-main">
+      <div data-dev-project-drop-zone data-page-document="home-intro">
+        <ProjectSections documentKey="home-intro" sections={page.sections} introHeight={page.introHeight} />
+        <div
+          class:list={[projectStackClass(page.trailingSpacing ?? 'none')]}
+          {...(spacingDevAttrs('home-intro', ['sections', page.sections.length], page.trailingSpacing ?? 'none', { writePath: ['trailingSpacing'] }) ?? {})}
+          data-home-intro-sentinel
+        />
+      </div>
+    </div>
+  </div>
+  <button type="button" class="home-intro-surface__okay" data-home-intro-okay>Okay</button>
+  <span class="home-intro-surface__cursor" data-home-intro-cursor aria-hidden="true">Okay</span>
+</section>
+
+<script>
+  import { bindHomeIntro } from '../../scripts/homeIntro';
+  bindHomeIntro();
+</script>
+
+<style>
+  #home-intro-surface {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--sys-color-srf);
+    color: var(--sys-color-on-srf);
+    isolation: isolate;
+    opacity: 1;
+    transition: opacity 250ms ease, filter 250ms ease;
+  }
+
+  #home-intro-surface[data-state='dismissing'] {
+    opacity: 0;
+    filter: blur(0.35rem);
+    pointer-events: none;
+  }
+
+  #home-intro-surface[data-state='dismissed'] {
+    display: none;
+  }
+
+  .home-intro-surface__column {
+    min-height: 100%;
+    padding-inline: var(--page-gutter);
+  }
+
+  .home-intro-surface__okay {
+    position: fixed;
+    z-index: 1;
+    inset: auto 50% var(--space-unit) auto;
+    transform: translateX(50%);
+    padding: 0.75rem;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .home-intro-surface__cursor {
+    position: fixed;
+    z-index: 2;
+    top: 0;
+    left: 0;
+    display: none;
+    pointer-events: none;
+    transform: translate(12px, 8px);
+  }
+
+  #home-intro-surface[data-state='editing'] .home-intro-surface__okay,
+  #home-intro-surface[data-state='editing'] .home-intro-surface__cursor {
+    display: none;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    #home-intro-surface[data-state='active'] {
+      cursor: none;
+    }
+
+    #home-intro-surface :global(a[href]),
+    #home-intro-surface :global([role='link']) {
+      cursor: pointer;
+    }
+    #home-intro-surface[data-state='active'] .home-intro-surface__okay {
+      opacity: 0;
+    }
+
+    #home-intro-surface[data-state='active'] .home-intro-surface__okay:focus-visible {
+      opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #home-intro-surface[data-state='dismissing'] {
+      filter: none;
+    }
+  }
+</style>
