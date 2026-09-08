@@ -342,6 +342,12 @@
       const movedAway = activeIntroDrag
         ? placementKey !== SOURCE_PLACEMENT_KEY
         : insertIndex !== activeSourceIndex;
+      if (activeIntroDrag) {
+        window.dispatchEvent(new CustomEvent(
+          movedAway ? 'vcd:dev-section-order-preview-clear' : 'vcd:dev-section-order-preview',
+          { detail: { document: documentKey } },
+        ));
+      }
       indicator.classList.toggle('project-block--intro', activeIntroDrag);
       if (activeIntroDrag) {
         indicator.dataset.devIntroHeightValue = dragItem?.dataset.devIntroHeightValue || '75';

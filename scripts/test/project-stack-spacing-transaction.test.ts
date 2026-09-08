@@ -73,4 +73,17 @@ describe('project stack spacing reorder transactions', () => {
     store.restore('home', (state, snapshot) => Object.assign(state, snapshot));
     expect(home.currentValue.desktop).toBe('major');
   });
+
+  test('preview is non-consuming and restore remains available', () => {
+    const state: State = { document: 'home-intro', currentValue: resolved('major'), visualSavedValue: resolved('major') };
+    const store = createProjectStackSpacingSnapshotStore<State>();
+    store.capture('home-intro', [state]);
+    state.currentValue.desktop = 'related';
+    store.preview('home-intro', (target, snapshot) => Object.assign(target, snapshot));
+    expect(state.currentValue.desktop).toBe('major');
+    state.currentValue.desktop = 'none';
+    store.restore('home-intro', (target, snapshot) => Object.assign(target, snapshot));
+    expect(state.currentValue.desktop).toBe('major');
+    store.preview('home-intro', () => { throw new Error('consumed snapshot'); });
+  });
 });
