@@ -218,10 +218,7 @@ await test('destroy cancels fade ghost schedulers', () => {
     controller.setPointer(20, 10);
     flushFrame();
     assert.ok(zone.children.some((element) => element.classList.contains('ghost')));
-    if (runGhostFrame) {
-      flushFrame();
-      assert.ok(timers.size > 0);
-    }
+    if (runGhostFrame) flushFrame();
     controller.destroy();
     assert.equal(scheduled.size, 0);
     assert.equal(timers.size, 0);

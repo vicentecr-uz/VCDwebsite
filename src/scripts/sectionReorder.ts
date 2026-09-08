@@ -587,8 +587,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let flipMovingElements: HTMLElement[] = [];
   let activeFadeGhosts: HTMLElement[] = [];
-  const fadeGhostFrames = new Map<HTMLElement, number>();
   const fadeGhostTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+  const fadeGhostAnimations = new Map<HTMLElement, Animation>();
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
   /**
@@ -627,12 +627,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const clearGhosts = () => {
     activeFadeGhosts.forEach((ghost) => {
-      const frame = fadeGhostFrames.get(ghost);
-      if (frame) cancelAnimationFrame(frame);
-      fadeGhostFrames.delete(ghost);
       const timer = fadeGhostTimers.get(ghost);
       if (timer) clearTimeout(timer);
       fadeGhostTimers.delete(ghost);
+      fadeGhostAnimations.get(ghost)?.cancel();
+      fadeGhostAnimations.delete(ghost);
       ghost.remove();
     });
     activeFadeGhosts = [];
@@ -783,7 +782,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const spawnFadeGhost = () => {
     const body = getIndicatorBody();
-    if (!body || state.indicatorOpacity <= 0.05) return;
+    if (!body) return null;
+    const computed = getComputedStyle(body);
+    const opacity = Number.parseFloat(computed.opacity || '') || 0;
+    if (opacity <= 0.05) return null;
 
     const rect = body.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -795,27 +797,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ghost.style.left = `${rect.left}px`;
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
-    ghost.style.opacity = String(state.indicatorOpacity);
-    const computed = getComputedStyle(body);
+    ghost.style.opacity = String(opacity);
     ['--dev-section-inset', '--dev-section-inset-end', '--section-lift-card-inset', '--section-slot-card-inset']
       .forEach((property) => ghost.style.setProperty(property, computed.getPropertyValue(property)));
     (host.getDropZone() ?? document.body).appendChild(ghost);
     activeFadeGhosts.push(ghost);
 
-    const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
-
-    const frame = requestAnimationFrame(() => {
-      fadeGhostFrames.delete(ghost);
-      ghost.style.transition = `opacity ${duration}ms ease-out`;
-      ghost.style.opacity = '0';
-      const timer = setTimeout(() => {
-        fadeGhostTimers.delete(ghost);
-        ghost.remove();
-        activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
-      }, duration + 50);
-      fadeGhostTimers.set(ghost, timer);
-    });
-    fadeGhostFrames.set(ghost, frame);
+    return ghost;
   };
 
   const performFlipRelocate = (fromIndex: number, toIndex: number, toKey: string) => {
@@ -934,11 +922,12 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const fromIndex = state.placedIndex;
     // Crossfade hosts leave a ghost at the old slot; physical-slot hosts move
     // the indicator itself in the same FLIP as their neighbours.
+    let outgoingGhost: HTMLElement | null = null;
     if (
       !host.moveIndicatorWithFlip
-      && state.indicatorOpacity > 0.05
+      && indicatorAnim.type !== 'fadeInWait'
     ) {
-      spawnFadeGhost();
+      outgoingGhost = spawnFadeGhost();
       applyIndicatorOpacity(0);
     }
 
@@ -947,13 +936,24 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     state.placedKey = toKey;
     // Relocating during the opening delay must not jump the slot in early —
     // leave that fade in charge and let it finish on its own schedule.
-    if (!host.moveIndicatorWithFlip) {
+    if (!host.moveIndicatorWithFlip && outgoingGhost) {
       const body = getIndicatorBody();
       if (body) {
         dropIndicatorFadeAnimation?.cancel();
+        const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
+        const ghostAnimation = outgoingGhost.animate(
+          [{ opacity: getComputedStyle(outgoingGhost).opacity }, { opacity: 0 }],
+          { duration, easing: 'ease-out', fill: 'forwards' },
+        );
+        fadeGhostAnimations.set(outgoingGhost, ghostAnimation);
+        ghostAnimation.finished.catch(() => {}).then(() => {
+          if (fadeGhostAnimations.get(outgoingGhost!) !== ghostAnimation) return;
+          fadeGhostAnimations.delete(outgoingGhost!);
+          outgoingGhost!.remove();
+        });
         const animation = body.animate(
           [{ opacity: 0 }, { opacity: 1 }],
-          { duration: REORDER_TIMING.DROP_INDICATOR_FADE_MS, easing: 'ease-out', fill: 'forwards' },
+          { duration, easing: 'ease-out', fill: 'forwards' },
         );
         dropIndicatorFadeAnimation = animation;
         animation.finished.catch(() => {}).then(() => {
