@@ -2,13 +2,28 @@
 import Layout from '../../layouts/Layout.astro';
 import Header from '../../components/Header.astro';
 import ProjectSections from '../../components/project/ProjectSections.astro';
+import Footer from '../../components/Footer.astro';
+import HomeIntroController from '../../components/home/HomeIntroController.astro';
 import { loadPageDocument } from '../../lib/projects';
+import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
+import { pageColumnStyle } from '../../lib/pageColumn';
 import revealConfig from '../../lib/homeRevealConfig.json';
 if (!import.meta.env.DEV) return Astro.redirect('/404');
 const home = loadPageDocument('home');
+const homeIntro = loadPageDocument('home-intro');
 ---
 <Layout title="Home reveal tuner (dev)">
-  <div class="home-page" data-home-page><Header navMenu wordmarkAsH1 /><main id="main-content"><ProjectSections documentKey="home" sections={home.sections} introHeight={home.introHeight} /></main></div>
+  <div class="home-page flex flex-col min-h-dvh" data-home-page>
+    <Header navMenu wordmarkAsH1 />
+    <main id="main-content" class="listing-main" style="flex: 1;">
+      <div data-dev-project-drop-zone data-page-document="home">
+        <ProjectSections documentKey="home" sections={home.sections} introHeight={home.introHeight} />
+        <div class:list={[projectStackClass(home.trailingSpacing ?? 'none')]} {...(spacingDevAttrs('home', ['sections', home.sections.length], home.trailingSpacing ?? 'none') ?? {})} />
+      </div>
+    </main>
+    <Footer />
+  </div>
+  <HomeIntroController page={homeIntro} />
   <aside class="tuner" aria-label="Home reveal controls" data-tuner></aside>
 </Layout>
 <script define:vars={{ revealConfig }}>
@@ -18,12 +33,24 @@ const home = loadPageDocument('home');
   const draft = structuredClone(revealConfig);
   const read = (path) => path.split('.').reduce((value,key) => value[key], draft);
   const write = (path,value) => { const keys=path.split('.'); const last=keys.pop(); const target=keys.reduce((value,key)=>value[key],draft); target[last]=Number(value); };
-  const replay = () => { bindHomeReveal(draft)?.run(); };
+  const replay = () => {
+    const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
+    if (intro) {
+      intro.style.setProperty('--home-intro-exit-duration', `${draft.intro.durationMs}ms`);
+      intro.style.setProperty('--home-intro-exit-blur', `${draft.intro.blurPx}px`);
+      intro.style.setProperty('--home-intro-exit-scale', String(draft.intro.scale));
+    }
+    const introController = (window as Window & Record<string, { reset?: () => void; dismiss?: () => void }>).__vcdHomeIntroController;
+    introController?.reset?.();
+    bindHomeReveal(draft);
+    requestAnimationFrame(() => introController?.dismiss?.());
+  };
   fields.forEach(([path,label,min,max]) => { const row=document.createElement('label'); row.textContent=label; const input=document.createElement('input'); input.type='range'; input.min=min; input.max=max; input.step='0.01'; input.value=read(path); const value=document.createElement('output'); value.textContent=input.value; input.oninput=()=>{write(path,input.value); value.textContent=input.value; replay();}; row.append(input,value); tuner?.append(row); });
   const button=document.createElement('button'); button.type='button'; button.textContent='Replay'; button.onclick=replay; tuner?.append(button);
   const easing=document.createElement('textarea'); easing.value=draft.entrance.easing; easing.setAttribute('aria-label','Easing'); easing.oninput=()=>{draft.entrance.easing=easing.value; replay();}; tuner?.append(easing);
   const reduced=document.createElement('button'); reduced.type='button'; reduced.textContent='Reduced motion preview'; reduced.onclick=()=>{document.documentElement.style.setProperty('--home-reveal-reduced-preview',''); replay();}; tuner?.append(reduced);
   const save=document.createElement('button'); save.type='button'; save.textContent='Save'; save.onclick=async()=>{const response=await fetch('/api/home-reveal-config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); save.textContent=response.ok?'Saved src/lib/homeRevealConfig.json':'Save failed';}; tuner?.append(save);
+  bindHomeReveal(draft);
 </script>
 <style>
   .tuner { position: fixed; z-index: 100; right: 1rem; bottom: 1rem; display: grid; gap: .45rem; width: 14rem; padding: .75rem; background: var(--sys-color-srf); color: var(--sys-color-on-srf); border: 1px solid currentColor; }
