@@ -61,6 +61,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   let running = false;
   let dismissPending = false;
   let preparation: Promise<void> | null = null;
+  let generation = 0;
   let animations: AnimationLike[] = [];
   let units: HomeRevealUnit[] = [];
   const original = new Map<HTMLElement, SavedStyle>();
@@ -74,7 +75,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     original.forEach((style, el) => Object.assign(el.style, style));
     original.clear(); units = []; running = false;
   };
-  const cancel = () => { armed = false; dismissPending = false; cleanup(); };
+  const cancel = () => { generation += 1; armed = false; dismissPending = false; preparation = null; cleanup(); };
   const runNow = () => {
     if (disposed || !armed || running) return;
     running = true;
@@ -82,7 +83,9 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     try {
       groupHomeRevealRows(units).forEach((row) => row.units.forEach((unit) => {
         const keyframes = reduce ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, filter: 'blur(12px)', transform: 'translateY(10px) scale(1.07)' }, { opacity: 1, filter: 'blur(0)', transform: 'translateY(0) scale(1)' }];
-        animations.push(unit.element!.animate(keyframes, { duration: HOME_REVEAL_DURATION, delay: reduce ? 0 : row.delay, easing: HOME_REVEAL_EASING, fill: 'both' }));
+        // Reduced motion keeps the spatial opacity wave; only movement and
+        // blur are removed from its visual variant.
+        animations.push(unit.element!.animate(keyframes, { duration: HOME_REVEAL_DURATION, delay: row.delay, easing: HOME_REVEAL_EASING, fill: 'both' }));
       }));
       Promise.all(animations.map((animation) => animation.finished ?? Promise.resolve())).then(() => { if (!disposed) cleanup(); }).catch(cancel);
     } catch { cancel(); }
@@ -90,6 +93,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   const prepare = () => {
     if (disposed || armed) return preparation;
     armed = true;
+    const preparationGeneration = generation;
     const reduce = reduceMotion();
     units = collectUnits(home, win.innerHeight || document.documentElement.clientHeight);
     units.forEach((unit) => {
@@ -100,7 +104,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     });
     preparation = (async () => {
       await waitForFonts();
-      if (disposed || !armed) return;
+      if (disposed || !armed || preparationGeneration !== generation) return;
       for (const unit of [...units].filter((item) => item.kind === 'text')) {
         const source = unit.element!;
         const clone = source.cloneNode(true) as HTMLElement;
@@ -128,17 +132,23 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         }
       }
       if (dismissPending) runNow();
-    })().catch(() => { if (!disposed) cancel(); });
+    })().catch(() => { if (!disposed && preparationGeneration === generation) cancel(); });
     return preparation;
   };
   const onDismissed = () => { dismissPending = true; void (preparation ?? Promise.resolve()).then(() => { if (dismissPending) runNow(); }); };
   const onModeChange = (event: Event) => { if ((event as CustomEvent<{ active?: boolean }>).detail?.active) cancel(); };
-  const onResize = () => cancel();
-  const onOrientationChange = () => cancel();
+  const rebuildBeforeDismissal = () => {
+    if (running || dismissPending) { cancel(); return; }
+    cancel();
+    void Promise.resolve().then(() => { if (!disposed) prepare(); });
+  };
+  const onResize = rebuildBeforeDismissal;
+  const onOrientationChange = rebuildBeforeDismissal;
   const onPageHide = () => cancel();
-  win.addEventListener('vcd:home-intro-dismissed', onDismissed); win.addEventListener('vcd:dev-mode-change', onModeChange); win.addEventListener('resize', onResize); win.addEventListener('orientationchange', onOrientationChange); win.addEventListener('pagehide', onPageHide);
+  const onPageShow = () => { cancel(); void Promise.resolve().then(() => { if (!disposed) prepare(); }); };
+  win.addEventListener('vcd:home-intro-dismissed', onDismissed); win.addEventListener('vcd:dev-mode-change', onModeChange); win.addEventListener('resize', onResize); win.addEventListener('orientationchange', onOrientationChange); win.addEventListener('pagehide', onPageHide); win.addEventListener('pageshow', onPageShow);
   prepare();
-  const destroy = () => { if (disposed) return; disposed = true; cancel(); win.removeEventListener('vcd:home-intro-dismissed', onDismissed); win.removeEventListener('vcd:dev-mode-change', onModeChange); win.removeEventListener('resize', onResize); win.removeEventListener('orientationchange', onOrientationChange); win.removeEventListener('pagehide', onPageHide); };
+  const destroy = () => { if (disposed) return; disposed = true; cancel(); win.removeEventListener('vcd:home-intro-dismissed', onDismissed); win.removeEventListener('vcd:dev-mode-change', onModeChange); win.removeEventListener('resize', onResize); win.removeEventListener('orientationchange', onOrientationChange); win.removeEventListener('pagehide', onPageHide); win.removeEventListener('pageshow', onPageShow); };
   return { prepare, run: () => { dismissPending = true; void (preparation ?? Promise.resolve()).then(() => { if (dismissPending) runNow(); }); }, cancel, isArmed: () => armed, isRunning: () => running, cleanup: destroy, destroy };
 }
 
