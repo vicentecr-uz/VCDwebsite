@@ -7,7 +7,6 @@ import HomeIntroController from '../../components/home/HomeIntroController.astro
 import { loadPageDocument } from '../../lib/projects';
 import { pageColumnStyle } from '../../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
-import revealConfig from '../../lib/homeRevealConfig.json';
 if (!import.meta.env.DEV) return Astro.redirect('/404');
 const home = loadPageDocument('home');
 const homeIntro = loadPageDocument('home-intro');
@@ -42,9 +41,10 @@ const fields = [
     <p data-status aria-live="polite"></p>
   </aside>
 </Layout>
-<script define:vars={{ revealConfig }}>
+<script>
   import { bindHomeIntro } from '../../scripts/homeIntro';
   import { bindHomeReveal } from '../../lib/homeReveal';
+  import revealConfig from '../../lib/homeRevealConfig.json';
   const draft = structuredClone(revealConfig);
   const tuner = document.querySelector('[data-tuner]');
   const status = tuner?.querySelector('[data-status]');
