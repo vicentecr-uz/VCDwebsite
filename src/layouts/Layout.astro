@@ -94,8 +94,9 @@ const showDevTools = import.meta.env.DEV;
     {showDevTools && (
       <script is:inline>
         try {
-          if (new URLSearchParams(location.search).get('dev-transition') === 'visible') {
-            document.documentElement.setAttribute('data-dev-transition', 'visible');
+          const transitionMode = new URLSearchParams(location.search).get('dev-transition');
+          if (transitionMode === 'visible' || transitionMode === 'scrub') {
+            document.documentElement.setAttribute('data-dev-transition', transitionMode);
           }
         } catch (e) {
           /* malformed or unavailable URL APIs leave the normal transition intact */
@@ -198,6 +199,7 @@ const showDevTools = import.meta.env.DEV;
       const overlay = document.getElementById('transition-overlay');
       const readinessMarker = document.getElementById('transition-readiness-marker') as HTMLOutputElement | null;
       const visibleTransition = document.documentElement.dataset.devTransition === 'visible';
+      const scrubTransition = document.documentElement.dataset.devTransition === 'scrub';
       bindImagePreviewUpgrade();
       if (!overlay) {
         openImagePreviewUpgrade();
@@ -210,7 +212,10 @@ const showDevTools = import.meta.env.DEV;
       const MAX_WAIT_MS = 4000;
       const emitTransitionMilestone = (name: string, detail: Record<string, unknown> = {}) => {
         if (!readinessMarker) return;
-        window.dispatchEvent(new CustomEvent('vcd:transition-milestone', { detail: { name, ...detail } }));
+        const eventDetail = { name, time: performance.now(), ...detail };
+        const win = window as Window & { __vcdTransitionMilestones?: Array<Record<string, unknown>> };
+        (win.__vcdTransitionMilestones ??= []).push(eventDetail);
+        window.dispatchEvent(new CustomEvent('vcd:transition-milestone', { detail: eventDetail }));
       };
       emitTransitionMilestone('navigation-dom');
 
@@ -353,21 +358,25 @@ const showDevTools = import.meta.env.DEV;
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
-          await Promise.all([wait.ready, waitForOpaquePaint(controller.signal)]);
+          const opaquePaint = waitForOpaquePaint(controller.signal);
+          await wait.ready;
           if (current !== generation || suspended) return;
           emitTransitionMilestone('readiness-satisfied');
+          await opaquePaint;
+          if (current !== generation || suspended) return;
           emitTransitionMilestone('opaque-paint');
+          emitTransitionMilestone('fade-authorized');
           readinessCleanup?.();
           readinessCleanup = null;
           readinessAbort = null;
           if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
-          emitTransitionMilestone('preview-tier-start');
+          emitTransitionMilestone('preview-gate-open');
           openImagePreviewUpgrade();
-          emitTransitionMilestone('preview-tier-ready');
-          if (visibleTransition) {
+          if (visibleTransition || scrubTransition) {
             overlay.style.opacity = '0';
+            if (scrubTransition) overlay.style.opacity = '1';
             emitTransitionMilestone('veil-fade-start');
-            emitTransitionMilestone('veil-fade-end');
+            if (visibleTransition) emitTransitionMilestone('veil-fade-end');
             return;
           }
           emitTransitionMilestone('veil-fade-start');

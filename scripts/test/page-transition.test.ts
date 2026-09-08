@@ -162,7 +162,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   };
   runInNewContext(compiled, {
     document, window, location, URL, AbortController, Promise,
-    CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } },
+    CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } }, performance: { now: () => 0 },
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
