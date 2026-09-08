@@ -103,18 +103,23 @@ const showDevTools = import.meta.env.DEV;
     )}
     {showDevTools && (
       <style is:inline>
-        html[data-dev-transition="visible"] #transition-overlay {'{'} opacity: 0 !important; animation: none !important; {'}'}
-        #transition-readiness-marker {'{'}
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+        #transition-readiness-marker {
           position: fixed;
-          right: max(12px, env(safe-area-inset-right));
-          bottom: max(12px, env(safe-area-inset-bottom));
+          top: max(24px, env(safe-area-inset-top));
+          left: max(24px, env(safe-area-inset-left));
           z-index: 101;
           pointer-events: none;
-          padding: 6px 8px;
-          border-radius: var(--dev-radius-control);
-          color: var(--sys-color-on-srf);
-          font: var(--dev-text-status);
-        {'}'}
+          padding: 0.3em 0.42em;
+          background: #ff1493;
+          color: #19000d;
+          font-family: inherit;
+          font-size: clamp(2.5rem, 7vw, 6rem);
+          font-weight: 900;
+          line-height: 0.9;
+          letter-spacing: -0.055em;
+          text-transform: uppercase;
+        }
       </style>
     )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -343,7 +348,7 @@ const showDevTools = import.meta.env.DEV;
           readinessCleanup?.();
           readinessCleanup = null;
           readinessAbort = null;
-          if (readinessMarker) readinessMarker.hidden = false;
+          if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
           openImagePreviewUpgrade();
           if (visibleTransition) {
             overlay.style.opacity = '0';
