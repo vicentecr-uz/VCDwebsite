@@ -90,6 +90,33 @@ const showDevTools = import.meta.env.DEV;
         }
       </script>
     )}
+    {showDevTools && (
+      <script is:inline>
+        try {
+          if (new URLSearchParams(location.search).get('dev-transition') === 'visible') {
+            document.documentElement.setAttribute('data-dev-transition', 'visible');
+          }
+        } catch (e) {
+          /* malformed or unavailable URL APIs leave the normal transition intact */
+        }
+      </script>
+    )}
+    {showDevTools && (
+      <style is:inline>
+        html[data-dev-transition="visible"] #transition-overlay {'{'} opacity: 0 !important; animation: none !important; {'}'}
+        #transition-readiness-marker {'{'}
+          position: fixed;
+          right: max(12px, env(safe-area-inset-right));
+          bottom: max(12px, env(safe-area-inset-bottom));
+          z-index: 101;
+          pointer-events: none;
+          padding: 6px 8px;
+          border-radius: var(--dev-radius-control);
+          color: var(--sys-color-on-srf);
+          font: var(--dev-text-status);
+        {'}'}
+      </style>
+    )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
@@ -121,6 +148,7 @@ const showDevTools = import.meta.env.DEV;
 
     <!-- Page transition overlay (GSAP fades this in/out) -->
     <div id="transition-overlay"></div>
+    {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}
 
     <div id="site-wrapper" style={ADAPTIVE_PAGE_COLUMNS_ENABLED ? columnStyle : undefined}>
       <slot />
@@ -161,6 +189,8 @@ const showDevTools = import.meta.env.DEV;
       bindSafeVh();
 
       const overlay = document.getElementById('transition-overlay');
+      const readinessMarker = document.getElementById('transition-readiness-marker') as HTMLOutputElement | null;
+      const visibleTransition = document.documentElement.dataset.devTransition === 'visible';
       bindImagePreviewUpgrade();
       if (!overlay) {
         openImagePreviewUpgrade();
@@ -299,11 +329,12 @@ const showDevTools = import.meta.env.DEV;
       const revealPage = async () => {
         if (!overlay || suspended) return;
         invalidate();
+        if (readinessMarker) readinessMarker.hidden = true;
         const current = generation;
         const controller = new AbortController();
         readinessAbort = controller;
         overlay.style.animation = 'none';
-        overlay.style.opacity = '1';
+        overlay.style.opacity = visibleTransition ? '0' : '1';
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
@@ -312,7 +343,12 @@ const showDevTools = import.meta.env.DEV;
           readinessCleanup?.();
           readinessCleanup = null;
           readinessAbort = null;
+          if (readinessMarker) readinessMarker.hidden = false;
           openImagePreviewUpgrade();
+          if (visibleTransition) {
+            overlay.style.opacity = '0';
+            return;
+          }
           activeTween = gsap.to(overlay, {
             opacity: 0,
             duration: 0.25,
@@ -369,6 +405,11 @@ const showDevTools = import.meta.env.DEV;
               void revealPage();
             }
           };
+          if (visibleTransition) {
+            target.searchParams.set('dev-transition', 'visible');
+            navigate();
+            return;
+          }
           try {
             activeTween = gsap.to(overlay, {
               opacity: 1,

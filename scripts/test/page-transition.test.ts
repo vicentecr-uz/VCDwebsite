@@ -94,17 +94,18 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; reduced?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
   const overlay = { style: { opacity: '1', animation: '', removeProperty(name: string) { delete (this as any)[name]; } } };
+  const readinessMarker = { hidden: true };
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
-    documentElement: { clientHeight: 800, clientWidth: 1200 },
-    getElementById: () => options.noOverlay ? null : overlay,
+    documentElement: { clientHeight: 800, clientWidth: 1200, dataset: options.visible ? { devTransition: 'visible' } : {} },
+    getElementById: (id: string) => id === 'transition-readiness-marker' ? readinessMarker : (options.noOverlay ? null : overlay),
     querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
       ? (options.images ?? []).filter((image) => image.preview)
       : selector === 'a' ? anchors : [],
@@ -172,7 +173,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     console: { warn() {}, error() {}, log() {} },
   });
   return {
-    overlay, anchors, window, document, destinations, tweens, frames, timers,
+    overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers,
     get upgrades() { return upgrades; }, get bound() { return bound; },
     click(index = 0, properties: Record<string, unknown> = {}) {
       return anchors[index].emit('click', {
@@ -222,6 +223,62 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[1].vars.opacity, 1);
+});
+
+test('visible mode exposes content while stalled, then marks the normal fade boundary once without entry tween', async () => {
+  const fonts = deferred();
+  const f = fixture({ visible: true, fonts: fonts.promise });
+  await f.paint();
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.readinessMarker.hidden, true);
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.tweens.length, 0);
+  fonts.resolve();
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 1);
+  assert.equal(f.tweens.length, 0);
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 1);
+});
+
+test('visible mode fallback marks readiness after four seconds', async () => {
+  const f = fixture({ visible: true, fonts: deferred().promise });
+  await f.paint();
+  await f.advance(3999);
+  assert.equal(f.readinessMarker.hidden, true);
+  await f.advance(1);
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 1);
+  assert.equal(f.tweens.length, 0);
+});
+
+test('visible internal navigation skips outgoing tween and carries the diagnostic query', () => {
+  const f = fixture({ visible: true });
+  assert.equal(f.click().defaultPrevented, true);
+  assert.equal(f.tweens.length, 0);
+  assert.deepEqual(f.destinations, ['https://vcd.test/about/?dev-transition=visible']);
+});
+
+test('visible BFCache restore hides and re-shows the readiness marker once', async () => {
+  const f = fixture({ visible: true });
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  f.window.emit('pagehide', { persisted: true });
+  f.window.emit('pageshow', { persisted: true });
+  assert.equal(f.readinessMarker.hidden, true);
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 2);
+  assert.equal(f.tweens.length, 0);
+});
+
+test('visible diagnostic is dev-only in Layout output', () => {
+  assert.match(layout, /showDevTools[\s\S]*data-dev-transition/);
+  assert.match(layout, /showDevTools[\s\S]*transition-readiness-marker/);
+  assert.match(layout, /html\[data-dev-transition="visible"\]/);
+  assert.match(layout, /dev-transition[^\n]*visible/);
 });
 
 test('fonts and visible decoded thumbnails gate reveal; offscreen images never gate it', async () => {
