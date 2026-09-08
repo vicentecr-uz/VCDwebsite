@@ -65,6 +65,8 @@ let now = 0;
 const timers = new Map<number, () => void>();
 let nextTimer = 1;
 let createdElements: FakeElement[] = [];
+let computedOpacity = '1';
+let computedProperties = new Map<string, string>();
 
 const flushFrame = () => {
   const next = scheduled.entries().next().value as [number, FrameRequestCallback] | undefined;
@@ -80,6 +82,8 @@ const resetGlobals = (reduced = false) => {
   timers.clear();
   now = 0;
   createdElements = [];
+  computedOpacity = '1';
+  computedProperties = new Map();
   Object.assign(globalThis, {
     HTMLElement: FakeHTMLElement,
     performance: { now: () => now },
@@ -93,7 +97,16 @@ const resetGlobals = (reduced = false) => {
       documentElement: { scrollHeight: 800 },
       createElement: () => { const element = new FakeElement(); createdElements.push(element); return element; },
     },
-    getComputedStyle: () => ({ marginTop: '0px', marginBottom: '0px', top: '0px', left: '0px', transform: 'none', boxShadow: 'none', opacity: '1', getPropertyValue: () => '' }),
+    getComputedStyle: () => ({
+      marginTop: '0px',
+      marginBottom: '0px',
+      top: '0px',
+      left: '0px',
+      transform: 'none',
+      boxShadow: 'none',
+      opacity: computedOpacity,
+      getPropertyValue: (name: string) => computedProperties.get(name) ?? '',
+    }),
   });
 };
 
@@ -190,6 +203,8 @@ await test('opening delay remains hidden across relocation', () => {
 
 await test('crossfade relocation starts matched outgoing and incoming opacity animations', () => {
   resetGlobals();
+  computedProperties.set('--dev-section-inset', '18px');
+  computedProperties.set('--section-lift-card-inset', '12px');
   const { items, controller, setDrag } = fixture(false);
   setDrag(items[0]);
   controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
@@ -205,6 +220,31 @@ await test('crossfade relocation starts matched outgoing and incoming opacity an
   assert.equal(ghost?.animateCalls.at(-1)?.easing, body?.animateCalls.at(-1)?.easing);
   assert.deepEqual(body?.animateKeyframes.at(-1), [{ opacity: 0 }, { opacity: 1 }]);
   assert.equal(ghost?.animateKeyframes.at(-1)?.at(-1)?.opacity, 0);
+  assert.deepEqual(
+    [ghost?.style.top, ghost?.style.left, ghost?.style.width, ghost?.style.height],
+    ['0px', '0px', '120px', '40px'],
+  );
+  assert.equal(ghost?.style.getPropertyValue('--dev-section-inset'), '18px');
+  assert.equal(ghost?.style.getPropertyValue('--section-lift-card-inset'), '12px');
+  controller.destroy();
+});
+
+await test('release during crossfade fades from the painted indicator opacity', async () => {
+  resetGlobals(true);
+  const { items, controller, setDrag } = fixture(false);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  now = 240;
+  flushFrame();
+  flushFrame();
+  controller.setTargetIndex(2);
+  computedOpacity = '0.4';
+  flushFrame();
+  await controller.endDrop();
+  const body = createdElements.find((element) => element.classList.contains('body'));
+  assert.ok(body?.animateKeyframes.some((frames) => (
+    frames[0]?.opacity === 0.4 && frames.at(-1)?.opacity === 0
+  )));
   controller.destroy();
 });
 
