@@ -3,7 +3,7 @@ import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, createHo
 
 class FakeElement {
   hidden = false; style: Record<string, string> = { opacity: '', visibility: '', transform: '', filter: '' };
-  parentElement: FakeElement | null = null; children: FakeElement[] = []; animations: Array<{ options: KeyframeAnimationOptions; cancel: () => void; finished: Promise<void> }> = [];
+  parentElement: FakeElement | null = null; children: FakeElement[] = []; animations: Array<{ options: KeyframeAnimationOptions; cancel: () => void; finished: Promise<void> }> = []; animateKeyframes: Keyframe[][] = [];
   constructor(public rect = { top: 10, left: 0, width: 100, height: 20 }, public className = '') {}
   classList = { contains: (name: string) => this.className.split(' ').includes(name) };
   hasAttribute() { return false; }
@@ -14,7 +14,7 @@ class FakeElement {
   setAttribute() {}
   append(child: FakeElement) { this.children.push(child); }
   remove() {}
-  animate(_keyframes: Keyframe[], options: KeyframeAnimationOptions) { const animation = { options, cancel() {}, finished: Promise.resolve() }; this.animations.push(animation); return animation; }
+  animate(keyframes: Keyframe[], options: KeyframeAnimationOptions) { const animation = { options, cancel() {}, finished: Promise.resolve() }; this.animateKeyframes.push(keyframes); this.animations.push(animation); return animation; }
 }
 const fakeWindow = (reduce = false) => {
   const listeners = new Map<string, Set<EventListener>>();
@@ -77,7 +77,9 @@ describe('home reveal choreography', () => {
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow(false), undefined, { reducedMotion: true });
     controller.run(); await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(item.animations[0]?.options.easing).toBe(HOME_REVEAL_EASING); controller.destroy();
+    expect(item.animations[0]?.options.easing).toBe(HOME_REVEAL_EASING);
+    expect(item.animateKeyframes[0]).toEqual([{ opacity: 0 }, { opacity: 1 }]);
+    controller.destroy();
   });
 
   test('resize rebuilds before dismissal and removes listeners on destroy', async () => {

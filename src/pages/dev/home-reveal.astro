@@ -51,6 +51,14 @@ const fields = [
   const intro = document.querySelector('[data-home-intro-surface]');
   const read = (path) => path.split('.').reduce((value, key) => value[key], draft);
   const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], draft); target[key] = Number(value); };
+  const syncHeaderLead = () => {
+    const maximum = Math.min(600, draft.entrance.totalStaggerMs);
+    draft.entrance.headerLeadMs = Math.min(draft.entrance.headerLeadMs, maximum);
+    tuner?.querySelectorAll('[data-config="entrance.headerLeadMs"]').forEach((input) => {
+      input.max = String(maximum);
+      input.value = String(draft.entrance.headerLeadMs);
+    });
+  };
   const replay = () => {
     cancelAnimationFrame(replay.frame);
     replay.frame = requestAnimationFrame(() => {
@@ -73,16 +81,35 @@ const fields = [
     const path = input.dataset.config;
     if (!path) return;
     input.value = String(read(path));
-    input.addEventListener('input', () => { write(path, input.value); tuner.querySelectorAll(`[data-config="${path}"]`).forEach((peer) => { if (peer !== input) peer.value = input.value; }); replay(); });
+    input.addEventListener('input', () => {
+      write(path, input.value);
+      if (path === 'entrance.totalStaggerMs' || path === 'entrance.headerLeadMs') syncHeaderLead();
+      tuner.querySelectorAll(`[data-config="${path}"]`).forEach((peer) => { peer.value = String(read(path)); });
+      replay();
+    });
   });
   const easing = tuner?.querySelector('[data-easing]');
-  if (easing) { easing.value = draft.entrance.easing; easing.addEventListener('input', () => { draft.entrance.easing = easing.value; replay(); }); }
+  if (easing) {
+    easing.value = draft.entrance.easing;
+    easing.addEventListener('input', () => {
+      draft.entrance.easing = easing.value;
+      if (CSS.supports('animation-timing-function', easing.value)) replay();
+      else if (status) status.textContent = 'Invalid easing';
+    });
+  }
+  syncHeaderLead();
   tuner?.querySelector('[data-reduced]')?.addEventListener('change', replay);
   tuner?.querySelector('[data-replay]')?.addEventListener('click', replay);
-  tuner?.querySelector('[data-save]')?.addEventListener('click', async () => { const response = await fetch('/api/home-reveal-config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) }); if (status) status.textContent = response.ok ? 'Saved' : 'Save failed'; });
+  tuner?.querySelector('[data-save]')?.addEventListener('click', async () => {
+    const response = await fetch('/api/home-reveal-config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) });
+    const result = await response.json().catch(() => ({}));
+    if (status) status.textContent = response.ok ? `Saved · ${result.path}` : 'Save failed';
+  });
   replay();
 </script>
 <style>
   .tuner { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; display: grid; gap: calc(var(--space-unit) * .5); width: min(22rem, calc(100vw - 2 * var(--space-unit))); max-height: calc(100dvh - 2 * var(--space-unit)); overflow: auto; padding: var(--space-unit); background: var(--sys-color-srf); color: var(--sys-color-on-srf); border-radius: var(--radius-sm, .5rem); box-shadow: var(--shadow-md, 0 4px 20px rgb(0 0 0 / .16)); }
+  .listing-main { padding: 0; }
+  .home-page { position: relative; z-index: 0; }
   .tuner h2, .tuner p { margin: 0; } .tuner__fields { display: grid; gap: .5rem; } .tuner label { display: grid; gap: .25rem; font-size: .75rem; } .tuner label > span { display: flex; justify-content: space-between; align-items: center; } .tuner input[type='number'] { width: 5rem; } .tuner textarea { width: 100%; font: inherit; } .tuner__toggle { display: flex !important; align-items: center; } .tuner__actions { display: flex; gap: .5rem; } .tuner button { padding: .35rem .6rem; font: inherit; cursor: pointer; }
 </style>
