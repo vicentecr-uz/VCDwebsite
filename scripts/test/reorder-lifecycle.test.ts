@@ -96,7 +96,11 @@ const resetGlobals = (reduced = false) => {
   });
 };
 
-const fixture = (moveIndicatorWithFlip = true, events: string[] = []) => {
+const fixture = (
+  moveIndicatorWithFlip = true,
+  events: string[] = [],
+  onSlotSync?: (indicator: FakeElement) => void,
+) => {
   const zone = new FakeElement();
   const items = Array.from({ length: 3 }, (_, index) => {
     const item = new FakeElement();
@@ -111,7 +115,7 @@ const fixture = (moveIndicatorWithFlip = true, events: string[] = []) => {
     getDragItem: () => dragItem,
     classes: { indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost' },
     measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px' }; },
-    onSlotSync: () => { events.push('slot'); },
+    onSlotSync: (indicator) => { events.push('slot'); onSlotSync?.(indicator as FakeElement); },
     scrollTuning: { maxScrollSpeed: 0 },
     moveIndicatorWithFlip,
   });
@@ -132,6 +136,19 @@ await test('slot mutation runs before final slot metrics measurement', () => {
   assert.ok(events.indexOf('slot') >= 0);
   assert.ok(events.indexOf('measure') >= 0);
   assert.ok(events.indexOf('slot') < events.indexOf('measure'));
+  controller.destroy();
+});
+
+await test('initial slot height is seeded before host layout sync', () => {
+  resetGlobals();
+  let heightAtSlotSync = '';
+  const { items, controller, setDrag } = fixture(true, [], (indicator) => {
+    heightAtSlotSync = indicator.style['--gap-height'] ?? '';
+    void indicator.offsetHeight;
+  });
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.equal(heightAtSlotSync, '40px');
   controller.destroy();
 });
 

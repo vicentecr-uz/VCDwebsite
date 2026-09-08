@@ -763,10 +763,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ));
   };
 
-  const createIndicator = () => {
+  const createIndicator = (blockHeight = 0) => {
     const indicator = document.createElement(host.indicatorTag ?? 'div');
     indicator.className = host.classes.indicator;
     indicator.setAttribute('aria-hidden', 'true');
+    indicator.style.setProperty('--gap-height', `${blockHeight}px`);
     const body = document.createElement('div');
     body.className = host.classes.indicatorBody;
     body.setAttribute('aria-hidden', 'true');
@@ -1339,7 +1340,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       item.style.zIndex = '100';
       setLiftTransformOrigin(item, handle);
 
-      dropIndicator = createIndicator();
+      // Seed the slot's full block height before connecting it. Host sync may
+      // force layout while applying intro/fold geometry; gap metrics follow.
+      dropIndicator = createIndicator(state.blockHeight);
       // Layout space is present from the first connected frame; opacity owns
       // the delayed visual reveal independently.
       dropIndicator.classList.add('is-visible');
