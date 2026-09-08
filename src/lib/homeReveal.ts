@@ -1,6 +1,6 @@
 export const HOME_REVEAL_DURATION = 449.28;
 export const HOME_REVEAL_STAGGER = 550.72;
-export const HOME_REVEAL_EASING = 'linear(0 0%, 0.006234 1%, 0.023295 2%, 0.04897 3%, 0.081353 4%, 0.118809 5%, 0.159948 6%, 0.20359 7%, 0.248745 8%, 0.294589 9%, 0.34044 10%, 0.385746 11%, 0.43006 12%, 0.473032 13%, 0.514392 14%, 0.553942 15%, 0.591539 16%, 0.627092 17%, 0.660552 18%, 0.691902 19%, 0.721157 20%, 0.748351 21%, 0.773538 22%, 0.796788 23%, 0.818178 24%, 0.837796 25%, 0.855733 26%, 0.872085 27%, 0.886949 28%, 0.90042 29%, 0.912596 30%, 0.923568 31%, 0.933428 32%, 0.942263 33%, 0.950157 34%, 0.957188 35%, 0.963433 36%, 0.968961 37%, 0.973838 38%, 0.978127 39%, 0.981885 40%, 0.985164 41%, 0.988015 42%, 0.990482 43%, 0.992606 44%, 0.994426 45%, 0.995975 46%, 0.997286 47%, 0.998387 48%, 0.999303 49%, 1.000058 50%)';
+export const HOME_REVEAL_EASING = 'linear(0 0%, 0.006234 1%, 0.023295 2%, 0.04897 3%, 0.081353 4%, 0.118809 5%, 0.159948 6%, 0.20359 7%, 0.248745 8%, 0.294589 9%, 0.34044 10%, 0.385746 11%, 0.43006 12%, 0.473032 13%, 0.514392 14%, 0.553942 15%, 0.591539 16%, 0.627092 17%, 0.660552 18%, 0.691902 19%, 0.721157 20%, 0.748351 21%, 0.773538 22%, 0.796788 23%, 0.818178 24%, 0.837796 25%, 0.855733 26%, 0.872085 27%, 0.886949 28%, 0.90042 29%, 0.912596 30%, 0.923568 31%, 0.933428 32%, 0.942263 33%, 0.950157 34%, 0.957188 35%, 0.963433 36%, 0.968961 37%, 0.973838 38%, 0.978127 39%, 0.981885 40%, 0.985164 41%, 0.988015 42%, 0.990482 43%, 0.992606 44%, 0.994426 45%, 0.995975 46%, 0.997286 47%, 0.998387 48%, 0.999303 49%, 1.000058 50%, 1 100%)';
 
 export interface HomeRevealUnit { element?: HTMLElement; top: number; left: number; kind?: string; }
 export interface HomeRevealRow { units: HomeRevealUnit[]; top: number; delay: number; }
@@ -14,7 +14,13 @@ export function groupHomeRevealRows(units: HomeRevealUnit[], tolerance = 4): Hom
   }
   const first = rows[0]?.top ?? 0;
   const last = rows.at(-1)?.top ?? first;
-  for (const row of rows) row.delay = last === first ? 0 : HOME_REVEAL_STAGGER * (row.top - first) / (last - first);
+  const nonHeader = rows.filter((row) => !row.units.every((unit) => unit.kind === 'header'));
+  const firstContent = nonHeader[0]?.top ?? first;
+  const lastContent = nonHeader.at(-1)?.top ?? firstContent;
+  for (const row of rows) {
+    if (row.units.every((unit) => unit.kind === 'header')) row.delay = 0;
+    else row.delay = lastContent === firstContent ? 120 : 120 + (HOME_REVEAL_STAGGER - 120) * (row.top - firstContent) / (lastContent - firstContent);
+  }
   return rows;
 }
 
