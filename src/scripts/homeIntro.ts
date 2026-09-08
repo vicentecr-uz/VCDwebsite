@@ -12,6 +12,7 @@ type HomeIntroController = {
   getState: () => HomeIntroState;
   dismiss: () => void;
   teardown: () => void;
+  reset: () => void;
 };
 
 const controllerKey = '__vcdHomeIntroController';
@@ -151,6 +152,7 @@ export function createHomeIntroController(
     document.body.style.overflow = originalOverflow;
     root.style.overflow = originalRootOverflow;
   };
+  const reset = () => { if (!disposed) { cancelFinish(); surface.hidden = false; setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active'); } };
 
   surface.addEventListener('click', onClick);
   surface.addEventListener('pointerdown', onPointerDown);
@@ -165,7 +167,7 @@ export function createHomeIntroController(
   setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active');
   announce('vcd:intro-layout-sync');
 
-  return { getState: () => state, dismiss, teardown };
+  return { getState: () => state, dismiss, teardown, reset };
 }
 
 export function bindHomeIntro(): HomeIntroController | null {
