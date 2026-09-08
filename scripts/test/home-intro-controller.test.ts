@@ -92,6 +92,7 @@ const fixture = () => {
 };
 
 const waitForExit = () => new Promise((resolve) => setTimeout(resolve, 270));
+const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('home intro controller', () => {
   test('waits without activation and ignores links and selected text', async () => {
@@ -121,6 +122,22 @@ describe('home intro controller', () => {
     expect(f.surface.hidden).toBe(true);
     expect(f.surface.inert).toBe(true);
     expect(f.home.inert).toBe(false);
+  });
+
+  test('primary pointerdown starts the 100ms exit and dispatches once after it settles', async () => {
+    const f = fixture();
+    let completed = 0;
+    f.win.addEventListener('vcd:home-intro-dismissed', () => completed++);
+    f.okay.emit('pointerdown', { button: 2 });
+    expect(f.controller.getState()).toBe('active');
+    f.okay.emit('pointerdown', { button: 0 });
+    expect(f.controller.getState()).toBe('dismissing');
+    await waitFor(60);
+    expect(f.controller.getState()).toBe('dismissing');
+    expect(completed).toBe(0);
+    await waitFor(70);
+    expect(f.controller.getState()).toBe('dismissed');
+    expect(completed).toBe(1);
   });
 
   test('Edit cancels an in-flight dismissal', async () => {
