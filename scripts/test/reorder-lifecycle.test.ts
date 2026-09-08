@@ -100,6 +100,7 @@ const fixture = (
   moveIndicatorWithFlip = true,
   events: string[] = [],
   onSlotSync?: (indicator: FakeElement) => void,
+  onIndicatorCreate?: (indicator: FakeElement) => void,
 ) => {
   const zone = new FakeElement();
   const items = Array.from({ length: 3 }, (_, index) => {
@@ -116,6 +117,7 @@ const fixture = (
     classes: { indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost' },
     measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px' }; },
     onSlotSync: (indicator) => { events.push('slot'); onSlotSync?.(indicator as FakeElement); },
+    onIndicatorCreate: (indicator) => onIndicatorCreate?.(indicator as FakeElement),
     scrollTuning: { maxScrollSpeed: 0 },
     moveIndicatorWithFlip,
   });
@@ -142,13 +144,16 @@ await test('slot mutation runs before final slot metrics measurement', () => {
 await test('initial slot height is seeded before host layout sync', () => {
   resetGlobals();
   let heightAtSlotSync = '';
+  let insetAtSlotSync = '';
   const { items, controller, setDrag } = fixture(true, [], (indicator) => {
     heightAtSlotSync = indicator.style['--gap-height'] ?? '';
+    insetAtSlotSync = indicator.style['--dev-section-inset'] ?? '';
     void indicator.offsetHeight;
-  });
+  }, (indicator) => indicator.style.setProperty('--dev-section-inset', '12px'));
   setDrag(items[0]);
   controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
   assert.equal(heightAtSlotSync, '40px');
+  assert.equal(insetAtSlotSync, '12px');
   controller.destroy();
 });
 
