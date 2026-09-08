@@ -25,6 +25,12 @@ function setup() {
       removeAttribute: () => { delete dataset.devImageDrag; },
     } },
     root: { contains: () => true },
+    getDropZone: () => new Element(),
+    zoneForElement: (element: InstanceType<typeof Element>) => element.cover ? null : element,
+    beginTransaction: (_documentKey: string, element?: InstanceType<typeof Element>) => ({
+      documentKey: 'home',
+      dropZone: element && !element.cover ? element : new Element(),
+    }),
     clearCarouselDropTarget: () => {}, clearPlaceholderTarget: () => {},
     closeMultiDropChoice: () => {}, carouselAtPoint: () => null,
     carouselTargetFromElement: () => null, setCarouselDropTarget: () => {},
@@ -80,8 +86,89 @@ for (const asset of [false, true]) {
     h.onDrop(event);
     expect(h.calls).toEqual([
       ['prevent'],
-      asset ? ['insert', 'image', [], ['existing/photo.png']] : ['files', event.dataTransfer.files, 200, 100],
+      asset
+        ? ['insert', 'image', [], ['existing/photo.png'], expect.any(Object)]
+        : ['files', event.dataTransfer.files, 200, 100, expect.any(Object)],
     ]);
     if (asset) expect(h.env.pendingInsertIndex).toBe(3);
   });
 }
+
+function transactionSetup() {
+  class Element {
+    dataset: Record<string, string> = {};
+    hidden = false;
+    parent: Element | null = null;
+    constructor(documentKey?: string, hidden = false) {
+      this.hidden = hidden;
+      if (documentKey) this.dataset.pageDocument = documentKey;
+    }
+    closest(selector: string) {
+      if (selector === '[hidden], [inert]') return this.hidden ? this : null;
+      if (selector === '[data-dev-project-drop-zone]') return this;
+      return null;
+    }
+    querySelector() { return null; }
+    querySelectorAll() { return []; }
+  }
+  const home = new Element('home', true);
+  const veil = new Element('home-intro');
+  const zones = [home, veil];
+  const env = {
+    Element, HTMLElement: Element, fallbackDocumentKey: 'home', activeTransaction: null,
+    document: { querySelectorAll: () => zones },
+    getDropZone: (documentKey?: string) => documentKey
+      ? zones.find((zone) => zone.dataset.pageDocument === documentKey) ?? null
+      : zones.find((zone) => !zone.hidden) ?? null,
+  };
+  const ownership = new Function('env', `with (env) {
+    ${between('  const isUsableZone =', '  const dropLabel =')}
+    return { beginTransaction };
+  }`)(env);
+  return { env, home, veil, beginTransaction: ownership.beginTransaction };
+}
+
+test('transactions stay on the exposed zone and reject inactive or unknown documents', () => {
+  const h = transactionSetup();
+  expect(h.beginTransaction('home')).toBeNull();
+  expect(h.beginTransaction('missing')).toBeNull();
+  expect(h.beginTransaction()).toEqual({ documentKey: 'home-intro', dropZone: h.veil });
+});
+
+test('insertSection keeps the captured document and index across async state changes', async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  let pendingInsertIndex = 1;
+  let activeTransaction = { documentKey: 'home', dropZone: null };
+  const window = {
+    dispatchEvent(event: CustomEvent) {
+      if (event.type === 'vcd:dev-flush-pending-edits') {
+        pendingInsertIndex = 9;
+        activeTransaction = { documentKey: 'home', dropZone: null };
+        event.detail.resolve();
+      }
+    },
+  };
+  const fetch = async (_url: string, init: RequestInit) => {
+    calls.push(JSON.parse(String(init.body)));
+    return { ok: true, json: async () => ({ section: { type: 'image' } }) };
+  };
+  const env = {
+    pendingInsertIndex,
+    activeTransaction,
+    window,
+    fetch,
+    flushPendingEdits: (documentKey: string) => new Promise<void>((resolve) => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-flush-pending-edits', {
+        detail: { documentKey, resolve, reject: () => {} },
+      }));
+    }),
+    closePicker: () => {},
+  };
+  const insertSection = new Function('env', `with (env) {
+    ${between('  const insertSection =', '  const appendToCarousel =')}
+    return insertSection;
+  }`)(env);
+  const target = { documentKey: 'home-intro', dropZone: null, insertIndex: 1 };
+  await insertSection('image', ['intro.png'], [], target);
+  expect(calls).toEqual([{ document: 'home-intro', index: 1, type: 'image', filenames: ['intro.png'] }]);
+});

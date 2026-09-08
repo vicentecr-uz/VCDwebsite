@@ -84,17 +84,17 @@ const globeSvg = sizeIcon(globeIcon, 16);
 <script>
   import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
   import { getLastPointerPosition } from '../lib/lastPointer';
+  import { getDropZone } from '../scripts/devSectionPaths';
 
   const ASSET_DRAG_TYPE = 'application/x-vcd-asset-src';
 
-  const dropZone = document.querySelector('[data-dev-project-drop-zone]');
   const pageDropVeil = document.querySelector('[data-dev-image-drop]');
   const multiDropChoice = document.querySelector('[data-dev-image-drop-choice]');
   const multiDropChoiceButtons = multiDropChoice?.querySelectorAll('[data-dev-image-drop-choice-type]') ?? [];
   const multiDropChoiceHome = multiDropChoice?.parentNode ?? null;
   const multiDropChoiceNextSibling = multiDropChoice?.nextSibling ?? null;
   const panel = document.querySelector('[data-dev-image-picker]');
-  const documentKey = panel instanceof HTMLElement ? (panel.dataset.documentKey || '') : '';
+  const fallbackDocumentKey = panel instanceof HTMLElement ? (panel.dataset.documentKey || '') : '';
   const pickerCount = document.querySelector('[data-dev-image-picker-count]');
   const dropzone = document.querySelector('[data-dev-image-dropzone]');
   const typeActions = document.querySelector('[data-dev-image-type-actions]');
@@ -125,6 +125,41 @@ const globeSvg = sizeIcon(globeIcon, 16);
   let activeCarouselDrop = null;
   /** @type {HTMLElement | null} */
   let multiDropChoiceHost = null;
+  /** @type {{ documentKey: string, dropZone: HTMLElement | null } | null} */
+  let activeTransaction = null;
+
+  const isUsableZone = (zone) => (
+    zone instanceof HTMLElement
+    && !zone.hidden
+    && !zone.closest('[hidden], [inert]')
+  );
+
+  const documentKeyForZone = (zone) => {
+    if (!(zone instanceof HTMLElement)) return fallbackDocumentKey;
+    if (zone.dataset.pageDocument) return zone.dataset.pageDocument;
+    const source = zone.querySelector('[data-dev-spacing-document], [data-dev-text-document]');
+    return source instanceof HTMLElement
+      ? (source.dataset.devSpacingDocument || source.dataset.devTextDocument || fallbackDocumentKey)
+      : fallbackDocumentKey;
+  };
+
+  const zoneForElement = (element) => {
+    if (!(element instanceof Element)) return null;
+    const zone = element.closest('[data-dev-project-drop-zone]');
+    return isUsableZone(zone) ? zone : null;
+  };
+
+  const beginTransaction = (requestedDocumentKey, element) => {
+    const requestedZone = requestedDocumentKey ? getDropZone(requestedDocumentKey) : zoneForElement(element);
+    if (requestedDocumentKey && !isUsableZone(requestedZone)) return null;
+    const zone = isUsableZone(requestedZone) ? requestedZone : getDropZone();
+    if (!isUsableZone(zone)) return null;
+    const documentKey = requestedDocumentKey || documentKeyForZone(zone);
+    activeTransaction = { documentKey, dropZone: zone };
+    return activeTransaction;
+  };
+
+  const currentTransaction = () => activeTransaction || beginTransaction();
 
   const dropLabel = pageDropVeil instanceof HTMLElement
     ? pageDropVeil.querySelector('[data-dev-image-drop-label]')
@@ -250,6 +285,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const carouselAtPoint = (clientX, clientY) => {
     const hit = document.elementFromPoint(clientX, clientY);
     if (!(hit instanceof Element)) return null;
+    if (!zoneForElement(hit)) return null;
     return hit.closest('[data-dev-carousel-target]');
   };
 
@@ -268,6 +304,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const standalonePlaceholderAtPoint = (clientX, clientY) => {
     const hit = document.elementFromPoint(clientX, clientY);
     if (!(hit instanceof Element)) return null;
+    if (!zoneForElement(hit)) return null;
     const figure = hit.closest('.project-media--placeholder');
     if (!(figure instanceof HTMLElement)) return null;
     // Grid-item placeholders stay out of scope — fill full image blocks only.
@@ -331,11 +368,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
   };
 
-  const spacingBlocks = () => Array.from(
-    document.querySelectorAll('[data-dev-spacing-document]'),
+  const spacingBlocks = (zone = currentTransaction().dropZone) => Array.from(
+    (zone || document).querySelectorAll('[data-dev-spacing-document]'),
   );
 
-  const spacingBlockForInsertIndex = (insertIndex) => spacingBlocks().find((block) => {
+  const spacingBlockForInsertIndex = (insertIndex, zone) => spacingBlocks(zone).find((block) => {
     try {
       const path = JSON.parse(block.dataset.devSpacingPath || '[]');
       return path.at(-2) === insertIndex;
@@ -344,15 +381,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
   });
 
-  const gapToolbarForInsertIndex = (insertIndex) => {
-    const block = spacingBlockForInsertIndex(insertIndex);
+  const gapToolbarForInsertIndex = (insertIndex, zone) => {
+    const block = spacingBlockForInsertIndex(insertIndex, zone);
     if (!(block instanceof HTMLElement)) return null;
     const toolbar = block.querySelector(':scope > .dev-gap-toolbar');
     return toolbar instanceof HTMLElement ? toolbar : null;
   };
 
-  const gapAnchorForInsertIndex = (insertIndex) => {
-    const indexed = spacingBlocks().map((block) => {
+  const gapAnchorForInsertIndex = (insertIndex, zone = currentTransaction().dropZone) => {
+    const indexed = spacingBlocks(zone).map((block) => {
       try {
         const path = JSON.parse(block.dataset.devSpacingPath || '[]');
         const sectionIndex = path.at(-2);
@@ -372,8 +409,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
       if (previous) {
         anchorY = (previous.block.getBoundingClientRect().bottom + nextTop) / 2;
       } else {
-        const anchorRoot = dropZone instanceof HTMLElement
-          ? dropZone
+        const anchorRoot = zone instanceof HTMLElement
+          ? zone
           : document.querySelector('main');
         const rootTop = anchorRoot instanceof HTMLElement
           ? anchorRoot.getBoundingClientRect().top
@@ -384,15 +421,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
       anchorY = last.block.getBoundingClientRect().bottom;
     }
     if (anchorY == null) return null;
-    const zoneRect = dropZone instanceof HTMLElement ? dropZone.getBoundingClientRect() : null;
+    const zoneRect = zone instanceof HTMLElement ? zone.getBoundingClientRect() : null;
     return {
       x: zoneRect ? zoneRect.left + zoneRect.width / 2 : window.innerWidth / 2,
       y: anchorY,
     };
   };
 
-  const insertIndexForY = (clientY) => {
-    const blocks = spacingBlocks();
+  const insertIndexForY = (clientY, zone = currentTransaction().dropZone) => {
+    const blocks = spacingBlocks(zone);
     if (!blocks.length) return 0;
     for (let index = 0; index < blocks.length; index += 1) {
       const rect = blocks[index].getBoundingClientRect();
@@ -487,6 +524,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     // Hide type row before preferredType clears — otherwise it flashes mid-fade.
     if (typeActions instanceof HTMLElement) typeActions.hidden = true;
     resetPickerState();
+    activeTransaction = null;
     if (panel instanceof HTMLElement) {
       panel.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', {
@@ -512,7 +550,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }));
   });
 
-  const uploadFiles = async (files) => {
+  const uploadFiles = async (files, target = currentTransaction()) => {
     const payload = await Promise.all(files.map(async (file) => ({
       filename: file.name,
       data: await readFileAsBase64(file),
@@ -521,15 +559,17 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const response = await fetch('/api/upload', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ document: documentKey, files: payload }),
+      body: JSON.stringify({ document: target.documentKey, files: payload }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Upload failed.');
     return result.filenames;
   };
 
-  const insertSection = async (type, filenames = [], srcs = []) => {
-    await flushPendingEdits(documentKey);
+  const insertSection = async (type, filenames = [], srcs = [], target = currentTransaction()) => {
+    if (!target) throw new Error('Could not find the active page.');
+    const initialIndex = target.insertIndex ?? pendingInsertIndex;
+    await flushPendingEdits(target.documentKey);
 
     const payloads = type === 'image' && (srcs.length > 1 || filenames.length > 1)
       ? (srcs.length
@@ -540,13 +580,13 @@ const globeSvg = sizeIcon(globeIcon, 16);
           ...(srcs.length ? { srcs } : filenames.length ? { filenames } : {}),
         }];
 
-    let index = pendingInsertIndex;
+    let index = initialIndex;
     for (const payload of payloads) {
       const response = await fetch('/api/content-section', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          document: documentKey,
+          document: target.documentKey,
           index,
           ...payload,
         }),
@@ -555,7 +595,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       if (!response.ok) throw new Error(result.error || 'Could not insert images.');
       window.dispatchEvent(new CustomEvent('vcd:dev-section-inserted', {
         detail: {
-          documentKey,
+          documentKey: target.documentKey,
           index,
           section: result.section,
         },
@@ -660,10 +700,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
   };
 
   const pickFromAssetManager = () => new Promise((resolve, reject) => {
+    const target = currentTransaction();
     window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
       detail: {
-        documentKey,
-        project: documentKey,
+        documentKey: target.documentKey,
+        project: target.documentKey,
         mode: 'pick',
         opener: panel instanceof HTMLElement ? panel : undefined,
         // Carry Add-block menu choice (Image / Carousel) into the pick session.
@@ -725,14 +766,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
     return section;
   };
 
-  const fillPlaceholder = async (figure, file) => {
+  const fillPlaceholder = async (figure, file, target = beginTransaction('', figure)) => {
+    if (!target) throw new Error('Could not find the active page.');
     const index = sectionIndexFromPlaceholder(figure);
     if (typeof index !== 'number') {
       throw new Error('Could not find which placeholder to fill.');
     }
-    await flushPendingEdits(documentKey);
+    await flushPendingEdits(target.documentKey);
     const previousSection = capturePlaceholderSection(figure);
-    const filenames = await uploadFiles([file]);
+    const filenames = await uploadFiles([file], target);
     const dims = await readImageDimsFromFile(file);
     const alt = String(previousSection.alt || '');
     const variants = (
@@ -755,7 +797,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     };
     window.dispatchEvent(new CustomEvent('vcd:dev-placeholder-fill-pending', {
       detail: {
-        documentKey,
+        documentKey: target.documentKey,
         index,
         filenames,
         previousSection,
@@ -764,21 +806,29 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }));
   };
 
-  const openPicker = (clientY) => {
+  const openPicker = (clientY, target = currentTransaction()) => {
+    if (!target) return;
     if (typeof clientY === 'number') {
-      pendingInsertIndex = insertIndexForY(clientY);
+      pendingInsertIndex = insertIndexForY(clientY, target.dropZone);
+      target.insertIndex = pendingInsertIndex;
     }
     showPanel(clientY);
   };
 
-  const insertWithPreferredType = async (filenames = [], srcs = []) => {
-    if (hasCarouselTarget()) {
-      await appendToCarousel(filenames, srcs);
+  const insertWithPreferredType = async (
+    filenames = [],
+    srcs = [],
+    target = currentTransaction(),
+    type = preferredType,
+    carousel = targetedCarousel,
+  ) => {
+    if (carousel) {
+      await appendToCarousel(filenames, srcs, carousel);
       closePicker();
       return true;
     }
-    if (!hasPreferredType()) return false;
-    await insertSection(preferredType, filenames, srcs);
+    if (type !== 'image' && type !== 'imageGrid' && type !== 'imageCarousel') return false;
+    await insertSection(type, filenames, srcs, target);
     return true;
   };
 
@@ -788,7 +838,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
     syncPickerState();
   };
 
-  const handleFiles = (files, clientY, clientX) => {
+  const handleFiles = (files, clientY, clientX, target = currentTransaction()) => {
+    if (!target) return;
     const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
     if (!images.length) return;
 
@@ -798,7 +849,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (placeholder) {
       void (async () => {
         try {
-          await fillPlaceholder(placeholder, images[0]);
+          await fillPlaceholder(placeholder, images[0], target);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not fill placeholder.');
         }
@@ -806,12 +857,13 @@ const globeSvg = sizeIcon(globeIcon, 16);
       return;
     }
 
-    pendingInsertIndex = insertIndexForY(clientY);
+    pendingInsertIndex = insertIndexForY(clientY, target.dropZone);
+    target.insertIndex = pendingInsertIndex;
     if (images.length === 1) {
       void (async () => {
         try {
-          const filenames = await uploadFiles(images);
-          await insertSection('image', filenames);
+          const filenames = await uploadFiles(images, target);
+          await insertSection('image', filenames, [], target);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add image.');
         }
@@ -834,6 +886,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const isValidImageDrag = (event) => {
     // Gallery cover drops belong to DevProjectGridEditor.
     if (event.target instanceof Element && event.target.closest('[data-dev-cover-drop]')) return false;
+    if (event.target instanceof Element && !zoneForElement(event.target) && getDropZone() == null) return false;
     const transfer = event.dataTransfer;
     if (!transfer) return false;
     if (Array.from(transfer.types || []).includes(ASSET_DRAG_TYPE)) return true;
@@ -899,7 +952,9 @@ const globeSvg = sizeIcon(globeIcon, 16);
           }
           const images = Array.from(transfer.files).filter((file) => file.type.startsWith('image/'));
           if (!images.length) return;
-          const filenames = await uploadFiles(images);
+          const target = beginTransaction('', carouselTarget.target);
+          if (!target) return;
+          const filenames = await uploadFiles(images, target);
           await appendToCarousel(filenames, [], carouselTarget);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images to that carousel.');
@@ -908,29 +963,33 @@ const globeSvg = sizeIcon(globeIcon, 16);
       return;
     }
     if (assetSrc) {
-      pendingInsertIndex = insertIndexForY(clientY);
-      void insertSection('image', [], [assetSrc]).catch((error) => {
+      const target = beginTransaction('', event.target);
+      if (!target) return;
+      pendingInsertIndex = insertIndexForY(clientY, target.dropZone);
+      target.insertIndex = pendingInsertIndex;
+      void insertSection('image', [], [assetSrc], target).catch((error) => {
         window.alert(error instanceof Error ? error.message : 'Could not add image.');
       });
       return;
     }
     if (!transfer?.files?.length) return;
-    handleFiles(transfer.files, clientY, clientX);
+    handleFiles(transfer.files, clientY, clientX, beginTransaction('', event.target));
   };
 
   pickButtons.forEach((button) => {
     button.addEventListener('click', () => {
+      const target = currentTransaction();
       const type = button.getAttribute('data-dev-image-pick');
       if (!type) return;
       void (async () => {
         try {
           if (pendingSrcs.length) {
-            await insertSection(type, [], pendingSrcs);
+            await insertSection(type, [], pendingSrcs, target);
             return;
           }
           if (!pendingFiles.length) return;
-          const filenames = await uploadFiles(pendingFiles);
-          await insertSection(type, filenames);
+          const filenames = await uploadFiles(pendingFiles, target);
+          await insertSection(type, filenames, [], target);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -943,11 +1002,12 @@ const globeSvg = sizeIcon(globeIcon, 16);
       const type = button.getAttribute('data-dev-image-drop-choice-type');
       if (type !== 'imageGrid' && type !== 'imageCarousel') return;
       const files = [...pendingFiles];
+      const target = currentTransaction();
       closeMultiDropChoice();
       void (async () => {
         try {
-          const filenames = await uploadFiles(files);
-          await insertSection(type, filenames);
+          const filenames = await uploadFiles(files, target);
+          await insertSection(type, filenames, [], target);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -968,9 +1028,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
   });
 
   placeholderButton?.addEventListener('click', () => {
+    const target = currentTransaction();
     void (async () => {
       try {
-        await insertSection('placeholder');
+        await insertSection('placeholder', [], [], target);
       } catch (error) {
         window.alert(error instanceof Error ? error.message : 'Could not add placeholder.');
       }
@@ -986,6 +1047,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
   });
 
   chooseAssetsButton?.addEventListener('click', () => {
+    const target = currentTransaction();
+    if (!target) return;
+    const type = preferredType;
+    const carousel = targetedCarousel;
     void (async () => {
       try {
         suppressCloseReset = true;
@@ -996,13 +1061,13 @@ const globeSvg = sizeIcon(globeIcon, 16);
           showPanel();
           return;
         }
-        if (hasCarouselTarget()) {
-          await appendToCarousel([], srcs);
+        if (carousel) {
+          await appendToCarousel([], srcs, carousel);
           closePicker();
           return;
         }
-        if (hasPreferredType()) {
-          await insertSection(preferredType, [], srcs);
+        if (type === 'image' || type === 'imageGrid' || type === 'imageCarousel') {
+          await insertSection(type, [], srcs, target);
           return;
         }
         // Type not chosen yet — stage assets and show Single / Grid / Carousel.
@@ -1025,12 +1090,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
   fileInput?.addEventListener('change', () => {
     if (!(fileInput instanceof HTMLInputElement) || !fileInput.files?.length) return;
     setPendingFiles(fileInput.files);
+    const target = currentTransaction();
+    const type = preferredType;
+    const carousel = targetedCarousel;
     fileInput.value = '';
-    if ((hasPreferredType() || hasCarouselTarget()) && pendingFiles.length) {
+    if ((type || carousel) && pendingFiles.length) {
       void (async () => {
         try {
-          const filenames = await uploadFiles(pendingFiles);
-          await insertWithPreferredType(filenames);
+          const filenames = await uploadFiles(pendingFiles, target);
+          await insertWithPreferredType(filenames, [], target, type, carousel);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -1053,11 +1121,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (dropzone instanceof HTMLElement) dropzone.classList.remove('is-dragover');
     if (!event.dataTransfer?.files?.length) return;
     setPendingFiles(event.dataTransfer.files);
-    if ((hasPreferredType() || hasCarouselTarget()) && pendingFiles.length) {
+    const target = currentTransaction();
+    const type = preferredType;
+    const carousel = targetedCarousel;
+    if ((type || carousel) && pendingFiles.length) {
       void (async () => {
         try {
-          const filenames = await uploadFiles(pendingFiles);
-          await insertWithPreferredType(filenames);
+          const filenames = await uploadFiles(pendingFiles, target);
+          await insertWithPreferredType(filenames, [], target, type, carousel);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -1072,7 +1143,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     resetPickerState();
   }));
 
-  const root = dropZone?.closest('main') ?? dropZone ?? document.body;
+  const root = document;
   root.addEventListener('dragenter', onDragEnter);
   root.addEventListener('dragover', onDragOver);
   root.addEventListener('dragleave', onDragLeave);
@@ -1084,25 +1155,38 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   window.addEventListener('vcd:dev-mode-change', syncVisibility);
 
+  window.addEventListener('vcd:page-surface-change', ((event) => {
+    const nextDocumentKey = event.detail?.documentKey || event.detail?.document;
+    if (!(panel instanceof HTMLElement) || panel.hidden || !activeTransaction) return;
+    if (typeof nextDocumentKey === 'string' && nextDocumentKey !== activeTransaction.documentKey) {
+      closePicker();
+    }
+  }));
+
   window.addEventListener('vcd:dev-image-picker-open', ((event) => {
     const detail = event.detail ?? {};
-    if (detail.documentKey !== documentKey || typeof detail.index !== 'number') return;
+    if (typeof detail.documentKey !== 'string' || typeof detail.index !== 'number') return;
+    const target = beginTransaction(detail.documentKey);
+    if (!target) return;
+    target.insertIndex = detail.index;
     pendingInsertIndex = detail.index;
     targetedCarousel = null;
     preferredType = typeof detail.preferredType === 'string' ? detail.preferredType : null;
     pendingFiles = [];
     pendingSrcs = [];
-    openPicker();
+    openPicker(undefined, target);
   }));
 
   window.addEventListener('vcd:dev-carousel-image-picker-open', ((event) => {
     const detail = event.detail ?? {};
     if (
-      detail.documentKey !== documentKey
+      typeof detail.documentKey !== 'string'
       || !Array.isArray(detail.path)
       || !detail.path.length
       || !(detail.target instanceof HTMLElement)
     ) return;
+    const transaction = beginTransaction(detail.documentKey, detail.target);
+    if (!transaction) return;
     targetedCarousel = {
       documentKey: detail.documentKey,
       path: detail.path,

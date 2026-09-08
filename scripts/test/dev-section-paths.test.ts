@@ -69,4 +69,5 @@ describe('dev section path helpers', () => {
     second.order = 0;
     expect(captureSectionOrder(zone)).toEqual([1, 0]);
   });
+
 });

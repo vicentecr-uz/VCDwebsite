@@ -14,6 +14,7 @@ class FakeStyle {
   [key: string]: string | undefined;
   removeProperty(name: string) { delete this[name]; }
   setProperty(name: string, value: string) { this[name] = value; }
+  getPropertyValue(name: string) { return this[name] ?? ''; }
 }
 
 class FakeText { parentNode: FakeElement | null = null; }
@@ -48,6 +49,7 @@ class FakeElement {
     return (this.children.find((child) => child.classList.contains(className)) as T | undefined) ?? null;
   }
   getBoundingClientRect() { return this.rect; }
+  closest() { return null; }
   animate(keyframes: Keyframe[], options: KeyframeAnimationOptions) {
     this.animateKeyframes.push(keyframes);
     this.animateCalls.push(options);
@@ -63,6 +65,8 @@ let now = 0;
 const timers = new Map<number, () => void>();
 let nextTimer = 1;
 let createdElements: FakeElement[] = [];
+let computedOpacity = '1';
+let computedProperties = new Map<string, string>();
 
 const flushFrame = () => {
   const next = scheduled.entries().next().value as [number, FrameRequestCallback] | undefined;
@@ -78,6 +82,8 @@ const resetGlobals = (reduced = false) => {
   timers.clear();
   now = 0;
   createdElements = [];
+  computedOpacity = '1';
+  computedProperties = new Map();
   Object.assign(globalThis, {
     HTMLElement: FakeHTMLElement,
     performance: { now: () => now },
@@ -91,11 +97,26 @@ const resetGlobals = (reduced = false) => {
       documentElement: { scrollHeight: 800 },
       createElement: () => { const element = new FakeElement(); createdElements.push(element); return element; },
     },
-    getComputedStyle: () => ({ marginTop: '0px', marginBottom: '0px', top: '0px', left: '0px', transform: 'none', boxShadow: 'none', opacity: '1' }),
+    getComputedStyle: () => ({
+      marginTop: '0px',
+      marginBottom: '0px',
+      top: '0px',
+      left: '0px',
+      transform: 'none',
+      boxShadow: 'none',
+      opacity: computedOpacity,
+      getPropertyValue: (name: string) => computedProperties.get(name) ?? '',
+    }),
   });
 };
 
-const fixture = (moveIndicatorWithFlip = true) => {
+const fixture = (
+  moveIndicatorWithFlip = true,
+  events: string[] = [],
+  onSlotSync?: (indicator: FakeElement) => void,
+  onIndicatorCreate?: (indicator: FakeElement) => void,
+  onSlotLayout?: (indicator: FakeElement) => void,
+) => {
   const zone = new FakeElement();
   const items = Array.from({ length: 3 }, (_, index) => {
     const item = new FakeElement();
@@ -109,7 +130,10 @@ const fixture = (moveIndicatorWithFlip = true) => {
     getDropZone: () => zone,
     getDragItem: () => dragItem,
     classes: { indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost' },
-    measureInsertGaps: () => ({ top: '0px', bottom: '0px' }),
+    measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px', marginTop: '24px' }; },
+    onSlotSync: (indicator) => { events.push('slot'); onSlotSync?.(indicator as FakeElement); },
+    onSlotLayout: (indicator) => { events.push('layout'); onSlotLayout?.(indicator as FakeElement); },
+    onIndicatorCreate: (indicator) => onIndicatorCreate?.(indicator as FakeElement),
     scrollTuning: { maxScrollSpeed: 0 },
     moveIndicatorWithFlip,
   });
@@ -120,6 +144,109 @@ const test = async (name: string, run: () => Promise<void> | void) => {
   await run();
   console.log(`PASS: ${name}`);
 };
+
+await test('slot mutation runs before final slot metrics measurement', () => {
+  resetGlobals();
+  const events: string[] = [];
+  const { items, controller, setDrag } = fixture(true, events);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.ok(events.indexOf('slot') >= 0);
+  assert.ok(events.indexOf('measure') >= 0);
+  assert.ok(events.indexOf('slot') < events.indexOf('measure'));
+  controller.destroy();
+});
+
+await test('initial slot height is seeded before host layout sync', () => {
+  resetGlobals();
+  let heightAtSlotSync = '';
+  let insetAtSlotSync = '';
+  const { items, controller, setDrag } = fixture(true, [], (indicator) => {
+    heightAtSlotSync = indicator.style['--gap-height'] ?? '';
+    insetAtSlotSync = indicator.style['--dev-section-inset'] ?? '';
+    void indicator.offsetHeight;
+  }, (indicator) => indicator.style.setProperty('--dev-section-inset', '12px'));
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.equal(heightAtSlotSync, '40px');
+  assert.equal(insetAtSlotSync, '12px');
+  controller.destroy();
+});
+
+await test('post-layout hook runs after final slot metrics', () => {
+  resetGlobals();
+  const events: string[] = [];
+  let marginAtLayout = '';
+  const { items, controller, setDrag } = fixture(true, events, undefined, undefined, (indicator) => {
+    marginAtLayout = indicator.style.marginTop ?? '';
+  });
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.equal(marginAtLayout, '24px');
+  assert.ok(events.indexOf('slot') < events.indexOf('measure'));
+  assert.ok(events.indexOf('measure') < events.indexOf('layout'));
+  controller.destroy();
+});
+
+await test('opening delay remains hidden across relocation', () => {
+  resetGlobals();
+  const { items, controller, setDrag } = fixture(false);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  controller.setTargetIndex(2);
+  flushFrame();
+  flushFrame();
+  assert.equal(controller.getState().indicatorOpacity, 0);
+  assert.equal(createdElements.filter((element) => element.classList.contains('ghost')).length, 0);
+  controller.destroy();
+});
+
+await test('crossfade relocation starts matched outgoing and incoming opacity animations', () => {
+  resetGlobals();
+  computedProperties.set('--dev-section-inset', '18px');
+  computedProperties.set('--section-lift-card-inset', '12px');
+  const { items, controller, setDrag } = fixture(false);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  now = 240;
+  flushFrame();
+  flushFrame();
+  controller.setTargetIndex(2);
+  flushFrame();
+  const ghost = createdElements.find((element) => element.classList.contains('ghost'));
+  const body = createdElements.find((element) => element.classList.contains('body'));
+  assert.ok(ghost && body);
+  assert.equal(ghost?.animateCalls.at(-1)?.duration, body?.animateCalls.at(-1)?.duration);
+  assert.equal(ghost?.animateCalls.at(-1)?.easing, body?.animateCalls.at(-1)?.easing);
+  assert.deepEqual(body?.animateKeyframes.at(-1), [{ opacity: 0 }, { opacity: 1 }]);
+  assert.equal(ghost?.animateKeyframes.at(-1)?.at(-1)?.opacity, 0);
+  assert.deepEqual(
+    [ghost?.style.top, ghost?.style.left, ghost?.style.width, ghost?.style.height],
+    ['0px', '0px', '120px', '40px'],
+  );
+  assert.equal(ghost?.style.getPropertyValue('--dev-section-inset'), '18px');
+  assert.equal(ghost?.style.getPropertyValue('--section-lift-card-inset'), '12px');
+  controller.destroy();
+});
+
+await test('release during crossfade fades from the painted indicator opacity', async () => {
+  resetGlobals(true);
+  const { items, controller, setDrag } = fixture(false);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  now = 240;
+  flushFrame();
+  flushFrame();
+  controller.setTargetIndex(2);
+  computedOpacity = '0.4';
+  flushFrame();
+  await controller.endDrop();
+  const body = createdElements.find((element) => element.classList.contains('body'));
+  assert.ok(body?.animateKeyframes.some((frames) => (
+    frames[0]?.opacity === 0.4 && frames.at(-1)?.opacity === 0
+  )));
+  controller.destroy();
+});
 
 await test('destroy cancels lift frame and removes chrome/styles', () => {
   resetGlobals();
@@ -181,10 +308,7 @@ await test('destroy cancels fade ghost schedulers', () => {
     controller.setPointer(20, 10);
     flushFrame();
     assert.ok(zone.children.some((element) => element.classList.contains('ghost')));
-    if (runGhostFrame) {
-      flushFrame();
-      assert.ok(timers.size > 0);
-    }
+    if (runGhostFrame) flushFrame();
     controller.destroy();
     assert.equal(scheduled.size, 0);
     assert.equal(timers.size, 0);

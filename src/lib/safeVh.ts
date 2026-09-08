@@ -25,6 +25,8 @@ const INTRO_OUTER_AIR_PROP = '--intro-outer-air';
 const LEGACY_INTRO_AIR_PROP = '--intro-air-slot';
 const REORDER_CHROME = new Set([
   'dev-section-drop-indicator',
+  'dev-section-source-gap-indicator',
+  'is-drop-indicator-fade-ghost',
   'dev-section-reorder-spacer',
   INTRO_AIR_CLASS,
 ]);
@@ -118,9 +120,13 @@ export function setIntroFoldOffsets(root: ParentNode = document): void {
 
     first.setAttribute(INTRO_RUN_START_ATTR, '');
     next?.setAttribute(INTRO_AFTER_RUN_ATTR, '');
-    const naturalDocumentBottom = next
-      ? next.getBoundingClientRect().top + scrollTop
-      : last.getBoundingClientRect().bottom + scrollTop;
+    const pageViewport = first.closest<HTMLElement>('[data-page-viewport]');
+    const measuredBottom = next
+      ? next.getBoundingClientRect().top
+      : last.getBoundingClientRect().bottom;
+    const naturalDocumentBottom = pageViewport
+      ? measuredBottom - pageViewport.getBoundingClientRect().top + pageViewport.scrollTop
+      : measuredBottom + scrollTop;
     const layout = introLayout(height, safeViewportHeight || window.innerHeight, naturalDocumentBottom);
     const outerAir = `${layout.outerGapPx}px`;
     startSpacer.style.height = outerAir;
