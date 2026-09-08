@@ -12,10 +12,10 @@ const home = loadPageDocument('home');
 const homeIntro = loadPageDocument('home-intro');
 const pageStyle = pageColumnStyle(home.sections);
 const fields = [
-  ['entrance.durationMs', 'Entrance duration', 150, 1200, .01, 'ms'], ['entrance.totalStaggerMs', 'Total stagger', 0, 1500, .01, 'ms'],
-  ['entrance.headerLeadMs', 'Header lead', 0, 600, .01, 'ms'], ['entrance.blurPx', 'Blur', 0, 40, .1, 'px'],
-  ['entrance.translateYPx', 'Vertical offset', -40, 80, .1, 'px'], ['entrance.scale', 'Scale', .8, 1.3, .01, ''],
-  ['intro.durationMs', 'Intro duration', 50, 400, .01, 'ms'], ['intro.blurPx', 'Intro blur', 0, 20, .1, 'px'], ['intro.scale', 'Intro scale', .8, 1, .01, ''],
+  ['entrance.durationMs', 'Entrance duration', 150, 1200, 10, 'ms'], ['entrance.totalStaggerMs', 'Total stagger', 0, 1500, 10, 'ms'],
+  ['entrance.headerLeadMs', 'Header lead', 0, 600, 10, 'ms'], ['entrance.blurPx', 'Blur', 0, 40, 2, 'px'],
+  ['entrance.translateYPx', 'Vertical offset', -40, 80, 2, 'px'], ['entrance.scale', 'Scale', .8, 1.3, .01, ''],
+  ['intro.durationMs', 'Intro duration', 50, 400, 10, 'ms'], ['intro.blurPx', 'Intro blur', 0, 20, 2, 'px'], ['intro.scale', 'Intro scale', .8, 1, .01, ''],
 ];
 ---
 <Layout title="Home reveal tuner (dev)" columnStyle={pageStyle}>
@@ -52,6 +52,7 @@ const fields = [
   const REPLAY_HOLD_MS = 600;
   const read = (path) => path.split('.').reduce((value, key) => value[key], draft);
   const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], draft); target[key] = Number(value); };
+  const snapToStep = (value, min, step) => Number((min + Math.round((value - min) / step) * step).toFixed(6));
   const syncHeaderLead = () => {
     const maximum = Math.min(600, draft.entrance.totalStaggerMs);
     draft.entrance.headerLeadMs = Math.min(draft.entrance.headerLeadMs, maximum);
@@ -86,6 +87,7 @@ const fields = [
   tuner?.querySelectorAll('input[data-config]').forEach((input) => {
     const path = input.dataset.config;
     if (!path) return;
+    write(path, snapToStep(read(path), Number(input.min), Number(input.step)));
     input.value = String(read(path));
     input.addEventListener('input', () => {
       write(path, input.value);
