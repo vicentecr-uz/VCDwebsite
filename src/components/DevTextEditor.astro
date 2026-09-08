@@ -957,6 +957,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         syncSpacingControl(state);
       });
     };
+    const previewReorderSpacingSnapshot = (documentKey: string) => {
+      reorderSpacingSnapshots.preview(documentKey, (state, values) => {
+        if (!spacingStates.includes(state)) return;
+        applySpacingClass(state.element, values.currentValue);
+      });
+    };
     const resetReorderSpacingSnapshot = (documentKey?: string) => {
       reorderSpacingSnapshots.reset(documentKey);
     };
@@ -3115,6 +3121,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     window.addEventListener('vcd:dev-section-order-baseline', ((event: CustomEvent<{ document?: string }>) => {
       const documentKey = event.detail?.document;
       if (documentKey) restoreReorderSpacingSnapshot(documentKey);
+    }) as EventListener, { signal: editorSignal });
+    window.addEventListener('vcd:dev-section-order-preview', ((event: CustomEvent<{ document?: string }>) => {
+      if (event.detail?.document) previewReorderSpacingSnapshot(event.detail.document);
+    }) as EventListener, { signal: editorSignal });
+    window.addEventListener('vcd:dev-section-order-preview-clear', ((event: CustomEvent<{ document?: string }>) => {
+      const documentKey = event.detail?.document;
+      if (!documentKey) return;
+      spacingStates.filter((state) => state.document === documentKey).forEach((state) => {
+        applySpacingClass(state.element, state.currentValue);
+      });
     }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       (event.detail?.ids ?? [])

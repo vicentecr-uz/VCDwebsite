@@ -52,6 +52,17 @@ export function createProjectStackSpacingSnapshotStore<T extends ProjectStackSpa
       }));
       snapshots.delete(document);
     },
+    preview(document: string, apply: (state: T, snapshot: {
+      currentValue: ProjectStackSpacingResolved;
+      visualSavedValue: ProjectStackSpacingResolved;
+    }) => void) {
+      const snapshot = snapshots.get(document);
+      if (!snapshot) return;
+      snapshot.forEach((values, state) => apply(state, {
+        currentValue: cloneResolvedSpacing(values.currentValue),
+        visualSavedValue: cloneResolvedSpacing(values.visualSavedValue),
+      }));
+    },
     reset(document?: string) {
       if (document) snapshots.delete(document);
       else snapshots.clear();
