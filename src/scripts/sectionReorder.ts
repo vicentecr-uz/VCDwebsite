@@ -299,6 +299,7 @@ export const createScrollDriver = (
     rampPx?: number;
     maxScrollSpeed?: number;
     velocitySmoothing?: number;
+    scrollBy?: (step: number) => void;
   } = {},
 ): ScrollDriver => {
   const deadZonePx = options.deadZonePx ?? SCROLL_HOLD.DEAD_ZONE_PX;
@@ -339,7 +340,8 @@ export const createScrollDriver = (
       const step = scrollRemainder > 0
         ? Math.floor(scrollRemainder)
         : Math.ceil(scrollRemainder);
-      window.scrollBy(0, step);
+      if (options.scrollBy) options.scrollBy(step);
+      else window.scrollBy(0, step);
       scrollRemainder -= step;
     },
     getLastTickTime: () => lastTickTime,
@@ -558,7 +560,17 @@ export type ReorderController = {
  * this owns placement, FLIP, indicator fade, scroll, and drop glide.
  */
 export const createReorderController = (host: ReorderHost): ReorderController => {
-  const scrollDriver = createScrollDriver(host.scrollTuning);
+  const scrollViewport = () => host.getDropZone()?.closest<HTMLElement>('[data-page-viewport]') ?? null;
+  const scrollY = () => scrollViewport()?.scrollTop ?? window.scrollY;
+  const setScrollY = (top: number) => {
+    const viewport = scrollViewport();
+    if (viewport) viewport.scrollTop = top;
+    else window.scrollTo(0, top);
+  };
+  const scrollDriver = createScrollDriver({
+    ...host.scrollTuning,
+    scrollBy: (step) => setScrollY(scrollY() + step),
+  });
   const liftedClass = host.classes.lifted ?? 'is-lifted';
   let state = idleState();
   let dropIndicator: HTMLElement | null = null;
@@ -829,10 +841,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     // Moving the drop slot changes content height above in-view nodes. Scroll
     // anchoring would pin those nodes' viewport tops (deltaY ≈ 0), so downward
     // FLIP skips and neighbors snap. Pin scrollY across the layout write.
-    const scrollYBefore = window.scrollY;
+    const scrollYBefore = scrollY();
     syncPlacement(toIndex, toKey);
-    if (window.scrollY !== scrollYBefore) {
-      window.scrollTo(0, scrollYBefore);
+    if (scrollY() !== scrollYBefore) {
+      setScrollY(scrollYBefore);
     }
     void dropIndicator.offsetHeight;
 
@@ -965,7 +977,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const updateStatus = () => {
     if (!host.onStatus || state.phase === 'idle') return;
-    const key = `${state.sourceIndex}:${state.targetIndex}:${state.targetKey}:${Math.round(window.scrollY)}`;
+    const key = `${state.sourceIndex}:${state.targetIndex}:${state.targetKey}:${Math.round(scrollY())}`;
     if (key === lastStatusKey) return;
     lastStatusKey = key;
     host.onStatus(
@@ -999,7 +1011,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       const center = liftCenter();
       const travelX = center.x + window.scrollX;
-      const travelY = center.y + window.scrollY;
+      const travelY = center.y + scrollY();
       const deltaX = lastTravelX === null ? 0 : travelX - lastTravelX;
       const deltaY = lastTravelY === null ? 0 : travelY - lastTravelY;
       const travelled = Math.hypot(deltaX, deltaY) > TRAVEL_EPSILON_PX;
@@ -1070,7 +1082,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   ) => new Promise<void>((resolve) => {
     dropPositionResolver = resolve;
     const itemRect = item.getBoundingClientRect();
-    const fromPageTop = (Number.parseFloat(item.style.top) || itemRect.top) + window.scrollY;
+    const fromPageTop = (Number.parseFloat(item.style.top) || itemRect.top) + scrollY();
     const fromPageLeft = (Number.parseFloat(item.style.left) || itemRect.left) + window.scrollX;
     const start = nowMs();
     let landed = false;
@@ -1085,7 +1097,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       const t = clamp01((now - start) / motionMs);
       const pos = 1 + (easeOutElastic(t) - 1) * DROP_ELASTIC_AMPLITUDE;
-      const fromTop = fromPageTop - window.scrollY;
+      const fromTop = fromPageTop - scrollY();
       const fromLeft = fromPageLeft - window.scrollX;
       const target = body.getBoundingClientRect();
 
@@ -1313,7 +1325,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         block sat in the viewport. Same pin performFlipRelocate uses for slot
         moves; the lift needed it too.
       */
-      const scrollYBeforeLift = window.scrollY;
+      const scrollYBeforeLift = scrollY();
 
       // Take the item out of flow before inserting the slot stand-in, so the
       // indicator inherits the same collapse context the section had.
@@ -1345,8 +1357,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       // browser made. Reading scrollY without this reads the pre-layout value
       // and the pin silently does nothing.
       void dropIndicator.offsetHeight;
-      if (window.scrollY !== scrollYBeforeLift) {
-        window.scrollTo(0, scrollYBeforeLift);
+      if (scrollY() !== scrollYBeforeLift) {
+        setScrollY(scrollYBeforeLift);
       }
       indicatorAnim = {
         type: 'fadeInWait',
@@ -1368,7 +1380,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       travelDirection = 0;
       const initialCenter = liftCenter();
       lastTravelX = initialCenter.x + window.scrollX;
-      lastTravelY = initialCenter.y + window.scrollY;
+      lastTravelY = initialCenter.y + scrollY();
       startTick();
       updateStatus();
     },
@@ -1456,7 +1468,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       travelDirection = 0;
       const resumedCenter = liftCenter();
       lastTravelX = resumedCenter.x + window.scrollX;
-      lastTravelY = resumedCenter.y + window.scrollY;
+      lastTravelY = resumedCenter.y + scrollY();
       startTick();
       updateStatus();
       return true;

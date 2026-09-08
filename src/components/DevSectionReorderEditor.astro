@@ -77,6 +77,7 @@
   } | null = null;
   let grabMarginSnapshot = new Map<HTMLElement, string>();
   let baselineOrder: number[] | null = null;
+  const baselineOrders = new Map<string, number[]>();
   let documentKey = '';
   let sessionPointerActive = false;
   let sessionButtonDown = false;
@@ -93,14 +94,14 @@
   let controlsRevealFrame = 0;
   let reorderSuspendedForSectionNav = false;
 
-  const dropZone = () => getDropZone();
+  const dropZone = () => getDropZone(documentKey || undefined);
 
   const isChromeNode = (el: HTMLElement) =>
     el.classList.contains(SPACER_CLASS)
     || el.classList.contains(DROP_INDICATOR_CLASS);
 
   const getContentSections = () =>
-    (activeItems ?? getSectionRootsInDomOrder()).filter((el) => el !== dragItem && !isChromeNode(el));
+    (activeItems ?? getSectionRootsInDomOrder(dropZone())).filter((el) => el !== dragItem && !isChromeNode(el));
 
   const ordersMatch = (left: number[], right: number[]) =>
     JSON.stringify(left) === JSON.stringify(right);
@@ -110,8 +111,8 @@
    * Appending each node to the drop zone instead would strand every other child
    * (component scripts, the scroll finale) in front of the whole project.
    */
-  const restoreNodeOrder = (nodes: ChildNode[]) => {
-    const zone = dropZone();
+  const restoreNodeOrder = (nodes: ChildNode[], targetZone: HTMLElement | null = dropZone()) => {
+    const zone = targetZone;
     if (!zone) return;
 
     const wanted = new Set(nodes.filter((node) => node.parentNode === zone));
@@ -132,8 +133,8 @@
   };
 
   /** Snapshot restore by section id — the save bar's baseline outlives its nodes. */
-  const restoreDomOrder = (order: number[]) => {
-    const zone = dropZone();
+  const restoreDomOrder = (order: number[], targetZone: HTMLElement | null = dropZone()) => {
+    const zone = targetZone;
     if (!zone) return;
 
     const rootsById = new Map<number, HTMLElement>();
@@ -146,6 +147,7 @@
       order
         .map((id) => rootsById.get(id))
         .filter((root): root is HTMLElement => Boolean(root)),
+      zone,
     );
   };
 
@@ -153,7 +155,10 @@
     const zone = dropZone();
     if (!zone || !documentKey) return;
 
-    if (!baselineOrder) baselineOrder = captureSectionOrder(zone);
+    if (!baselineOrder) {
+      baselineOrder = baselineOrders.get(documentKey) ?? captureSectionOrder(zone);
+      baselineOrders.set(documentKey, baselineOrder);
+    }
     const baseline = baselineOrder;
     const current = captureSectionOrder(zone);
     const pendingId = `section-order:${documentKey}`;
@@ -161,7 +166,7 @@
     // Always rebuild sidebar from page order and fixed group boundaries,
     // including when order returns to baseline (otherwise the sidebar sticks
     // on the intermediate wrong state after a round-trip drag).
-    syncDevSectionOutlineSidebar();
+    if (documentKey !== 'home-intro') syncDevSectionOutlineSidebar();
 
     if (ordersMatch(baseline, current)) {
       zone.classList.remove('is-section-order-dirty');
@@ -180,9 +185,9 @@
           outline: getDevSectionOutline().map((entry) => ({ ...entry })),
         },
         revert: () => {
-          restoreDomOrder(structuredClone(baseline));
+          restoreDomOrder(structuredClone(baseline), zone);
           zone.classList.remove('is-section-order-dirty');
-          syncDevSectionOutlineSidebar();
+          if (documentKey !== 'home-intro') syncDevSectionOutlineSidebar();
         },
       },
     }));
@@ -192,7 +197,7 @@
     getItems: getContentSections,
     getFlipElements: () => activeIntroDrag
       ? [
-          ...getSectionRootsInDomOrder().filter(
+          ...getSectionRootsInDomOrder(dropZone()).filter(
             (section) => section !== dragItem && !isChromeNode(section),
           ),
           ...(sourceGapIndicator?.isConnected ? [sourceGapIndicator] : []),
@@ -246,7 +251,7 @@
     resolveInsertPlacement: ({ items, centerY, currentIndex, currentKey, sourceIndex, direction, slot }) => {
       if (!activeIntroDrag) {
         let target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
-        const full = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
+        const full = getSectionRootsInDomOrder(dropZone()).filter((el) => !isChromeNode(el));
         for (let i = 0; i < full.length;) {
           if (full[i].dataset.devIntro !== 'true') { i += 1; continue; }
           const run = [];
@@ -541,7 +546,7 @@
     }
 
     const members = new Set(before);
-    const after = getSectionRootsInDomOrder().filter((section) => members.has(section));
+    const after = getSectionRootsInDomOrder(dropZone()).filter((section) => members.has(section));
     const orderChanged = before.some((section, index) => section !== after[index]);
     const seamChanged = activeIntroDrag
       && activePlacementKey !== ''
@@ -685,7 +690,7 @@
 
   const clearHostLiftChrome = () => {
     removeLiftBackdrop();
-    getSectionRootsInDomOrder().forEach((item) => {
+    getSectionRootsInDomOrder(dropZone()).forEach((item) => {
       if (!isChromeNode(item)) item.classList.remove('is-section-drop-target');
     });
     dragItem?.classList.remove('is-section-dragging');
@@ -724,7 +729,7 @@
     sessionSeq += 1;
     activeSessionId = sessionSeq;
 
-    grabOrderSnapshot = captureSectionOrder();
+    grabOrderSnapshot = captureSectionOrder(dropZone());
     grabNodeSnapshot = [...(dropZone()?.childNodes ?? [])];
 
     try {
@@ -734,7 +739,7 @@
     }
 
     if (!resumed) {
-      const sections = getSectionRootsInDomOrder().filter((el) => !isChromeNode(el));
+      const sections = getSectionRootsInDomOrder(dropZone()).filter((el) => !isChromeNode(el));
       activeIntroDrag = root.dataset.devIntro === 'true';
       if (activeIntroDrag) {
         const all = sections;
@@ -762,7 +767,7 @@
     }
 
     pinSectionControls(root);
-    getSectionRootsInDomOrder().forEach((section) => {
+    getSectionRootsInDomOrder(dropZone()).forEach((section) => {
       if (isChromeNode(section) || section === root) return;
       section.classList.remove('is-dev-section-controls-visible');
     });
@@ -1006,8 +1011,13 @@
     const zone = dropZone();
     if (!zone) return;
 
+    if (!documentKey) {
+      const first = getSectionRootsInDomOrder(zone).find((el) => !isChromeNode(el));
+      documentKey = first?.dataset.devSpacingDocument || zone.dataset.pageDocument || '';
+    }
+
     ensureSectionOrderIds(zone);
-    getSectionRootsInDomOrder().forEach((root) => {
+    getSectionRootsInDomOrder(dropZone()).forEach((root) => {
       if (isChromeNode(root)) return;
       mountDragHandle(root);
       root.toggleAttribute('data-dev-section-reorderable', reorderActive);
@@ -1019,10 +1029,6 @@
       syncDragHandleAnchor(root);
     });
 
-    if (!documentKey) {
-      const first = getSectionRootsInDomOrder().find((el) => !isChromeNode(el));
-      documentKey = first?.dataset.devSpacingDocument ?? '';
-    }
   };
 
   const abortActiveSession = () => {
@@ -1058,13 +1064,13 @@
     reorderActive = active;
     if (active) {
       syncDragHandles();
-      if (!preserveBaseline || !baselineOrder) baselineOrder = captureSectionOrder();
+      if (!baselineOrder) {
+        baselineOrder = baselineOrders.get(documentKey) ?? captureSectionOrder(dropZone());
+        if (documentKey) baselineOrders.set(documentKey, baselineOrder);
+      }
     } else {
       abortActiveSession();
-      if (!preserveBaseline) {
-        dropZone()?.classList.remove('is-section-order-dirty');
-        baselineOrder = null;
-      }
+
     }
     syncDragHandles();
   };
@@ -1075,6 +1081,13 @@
       setReorderActive(false, true);
       return;
     }
+    const exposed = getDropZone();
+    const exposedKey = exposed?.dataset.pageDocument || exposed?.querySelector<HTMLElement>('[data-dev-spacing-document]')?.dataset.devSpacingDocument || '';
+    if (exposedKey !== documentKey) {
+      if (documentKey && baselineOrder) baselineOrders.set(documentKey, baselineOrder);
+      documentKey = exposedKey;
+      baselineOrder = baselineOrders.get(documentKey) ?? null;
+    }
     const active = isDevContentEditing() && Boolean(dropZone());
     const preserveBaseline = reorderSuspendedForSectionNav;
     reorderSuspendedForSectionNav = false;
@@ -1082,6 +1095,29 @@
   };
 
   window.addEventListener('vcd:dev-mode-change', onDevModeChange);
+  const onPageSurfaceChange = ((event: CustomEvent<{ documentKey?: string; document?: string }>) => {
+    const previousZone = dropZone();
+    if (documentKey && baselineOrder) baselineOrders.set(documentKey, baselineOrder);
+    abortActiveSession();
+    const requested = event.detail?.documentKey || event.detail?.document || '';
+    const zone = getDropZone(requested || undefined);
+    const first = zone && getSectionRootsInDomOrder(zone).find((el) => !isChromeNode(el));
+    documentKey = requested || first?.dataset.devSpacingDocument || zone?.dataset.pageDocument || '';
+    if (previousZone === zone) return;
+    baselineOrder = baselineOrders.get(documentKey) ?? null;
+    if (reorderActive) {
+      syncDragHandles();
+      if (!baselineOrder) {
+        baselineOrder = captureSectionOrder(dropZone());
+        baselineOrders.set(documentKey, baselineOrder);
+      }
+    }
+  }) as EventListener;
+  window.addEventListener('vcd:page-surface-change', onPageSurfaceChange);
+  import.meta.hot?.dispose(() => {
+    window.removeEventListener('vcd:page-surface-change', onPageSurfaceChange);
+    abortActiveSession();
+  });
   window.addEventListener('vcd:section-nav-editor-change', () => {
     const sectionNavEditor = document.documentElement.classList.contains('show-section-nav-editor');
     if (sectionNavEditor) {
@@ -1093,8 +1129,9 @@
     reorderSuspendedForSectionNav = false;
     if (wasSuspended) setReorderActive(isDevContentEditing() && Boolean(dropZone()), true);
   });
-  window.addEventListener('vcd:dev-section-structure-changed', () => {
+  window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<{ document?: string }>) => {
     if (!reorderActive) return;
+    if (event.detail?.document && event.detail.document !== documentKey) return;
     syncDragHandles();
 
     // An insert or delete renumbers every section after it, which invalidates
@@ -1109,8 +1146,9 @@
     const zone = dropZone();
     if (!zone) return;
     baselineOrder = [...captureSectionOrder(zone)].sort((a, b) => a - b);
+    baselineOrders.set(documentKey, baselineOrder);
     syncPending();
-  });
+  }) as EventListener);
 
   /**
    * Re-anchor when a tuner reshapes a frame. The ResizeObserver covers passive
@@ -1124,13 +1162,13 @@
       syncDragHandleAnchor(scope);
       return;
     }
-    getSectionRootsInDomOrder().forEach((root) => {
+    getSectionRootsInDomOrder(dropZone()).forEach((root) => {
       if (!isChromeNode(root)) syncDragHandleAnchor(root);
     });
   }) as EventListener);
 
   window.addEventListener('resize', () => {
-    getSectionRootsInDomOrder().forEach((root) => {
+    getSectionRootsInDomOrder(dropZone()).forEach((root) => {
       if (!isChromeNode(root)) syncDragHandleAnchor(root);
     });
   });
@@ -1141,13 +1179,14 @@
     const ids = event.detail?.ids;
     if (ids && !ids.includes(`section-order:${documentKey}`)) return;
     baselineOrder = captureSectionOrder(zone);
+    baselineOrders.set(documentKey, baselineOrder);
     zone.classList.remove('is-section-order-dirty');
   }) as EventListener);
 
   window.addEventListener('vcd:dev-pending-reverted', () => {
     dropZone()?.classList.remove('is-section-order-dirty');
     if (reorderActive) {
-      baselineOrder = captureSectionOrder();
+      baselineOrder = captureSectionOrder(dropZone());
       syncDevSectionOutlineSidebar();
     }
   });
