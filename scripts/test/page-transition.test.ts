@@ -9,6 +9,8 @@ const timeline = readFileSync(new URL('../../src/components/DevTransitionTimelin
 test('timeline capture initializes inline before the Layout transition module', () => {
   assert.match(timeline, /<script is:inline>/);
   assert.ok(layout.indexOf('<DevTransitionTimeline />') < layout.indexOf("import gsap from 'gsap'"));
+  assert.match(layout, /data-transition-image-index/);
+  assert.match(timeline, /data-transition-image-index/);
   assert.doesNotMatch(timeline.match(/<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '', /\bas\s+(?:Window|CustomEvent|HTML)|:\s*Record<|querySelector(?:All)?</);
 });
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]

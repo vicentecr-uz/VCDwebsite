@@ -298,7 +298,9 @@ const showDevTools = import.meta.env.DEV;
         const waits: Promise<unknown>[] = [];
         waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
         let thumbIndex = 0;
-        for (const img of Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; })) {
+        const readinessImages = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+        readinessImages.forEach((img, index) => { if (scrubTransition) img.setAttribute('data-transition-image-index', String(index + 1)); });
+        for (const img of readinessImages) {
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
             if (!img.complete) {
