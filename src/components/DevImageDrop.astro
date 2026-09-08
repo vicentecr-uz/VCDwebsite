@@ -61,7 +61,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
           <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
           Asset manager
         </button>
-        <input type="file" accept="image/*" multiple hidden data-dev-image-file-input />
+        <input type="file" accept="image/*,.heic,.heif" multiple hidden data-dev-image-file-input />
       </div>
     </div>
 
@@ -85,6 +85,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
   import { getLastPointerPosition } from '../lib/lastPointer';
   import { getDropZone } from '../scripts/devSectionPaths';
+  import { isAcceptedImageFile } from '../lib/imageUpload.mjs';
 
   const ASSET_DRAG_TYPE = 'application/x-vcd-asset-src';
 
@@ -429,7 +430,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   };
 
   const insertIndexForY = (clientY, zone = currentTransaction().dropZone) => {
-    const blocks = spacingBlocks(zone);
+    const blocks = spacingBlocks(zone).filter((block) => !block.dataset.devSpacingWritePath);
     if (!blocks.length) return 0;
     for (let index = 0; index < blocks.length; index += 1) {
       const rect = blocks[index].getBoundingClientRect();
@@ -833,14 +834,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
   };
 
   const setPendingFiles = (files) => {
-    pendingFiles = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    pendingFiles = Array.from(files).filter(isAcceptedImageFile);
     pendingSrcs = [];
     syncPickerState();
   };
 
   const handleFiles = (files, clientY, clientX, target = currentTransaction()) => {
     if (!target) return;
-    const images = Array.from(files).filter((file) => file.type.startsWith('image/'));
+    const images = Array.from(files).filter(isAcceptedImageFile);
     if (!images.length) return;
 
     const placeholder = typeof clientX === 'number'
@@ -892,7 +893,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (Array.from(transfer.types || []).includes(ASSET_DRAG_TYPE)) return true;
     if (!Array.from(transfer.types || []).includes('Files')) return false;
     const items = Array.from(transfer.items || []);
-    return !items.length || items.some((item) => item.kind === 'file' && item.type.startsWith('image/'));
+    // Dragover does not expose filenames; an empty-MIME file item may be HEIC.
+    return !items.length || items.some((item) => item.kind === 'file' && (!item.type || item.type.startsWith('image/')));
   };
 
   const onDragEnter = (event) => {
@@ -950,7 +952,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
             await appendToCarousel([], [assetSrc], carouselTarget);
             return;
           }
-          const images = Array.from(transfer.files).filter((file) => file.type.startsWith('image/'));
+          const images = Array.from(transfer.files).filter(isAcceptedImageFile);
           if (!images.length) return;
           const target = beginTransaction('', carouselTarget.target);
           if (!target) return;
