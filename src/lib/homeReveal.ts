@@ -119,6 +119,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         let lines: HTMLElement[] | undefined;
         try {
           const module = await import('gsap/SplitText');
+          if (disposed || !armed || preparationGeneration !== generation) { clone.remove(); return; }
           const SplitText = (module as unknown as { SplitText?: { create: (target: HTMLElement, vars: { type: string }) => SplitResult } }).SplitText;
           lines = SplitText?.create(clone, { type: 'lines' }).lines;
         } catch { lines = undefined; }
