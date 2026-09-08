@@ -4,7 +4,8 @@ import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, createHo
 class FakeElement {
   hidden = false; style: Record<string, string> = { opacity: '', visibility: '', transform: '', filter: '' };
   parentElement: FakeElement | null = null; children: FakeElement[] = []; animations: Array<{ options: KeyframeAnimationOptions; cancel: () => void; finished: Promise<void> }> = [];
-  constructor(public rect = { top: 10, left: 0, width: 100, height: 20 }) {}
+  constructor(public rect = { top: 10, left: 0, width: 100, height: 20 }, public className = '') {}
+  classList = { contains: (name: string) => this.className.split(' ').includes(name) };
   hasAttribute() { return false; }
   getBoundingClientRect() { return { ...this.rect, right: this.rect.left + this.rect.width, bottom: this.rect.top + this.rect.height }; }
   closest() { return null; }
@@ -88,5 +89,24 @@ describe('home reveal choreography', () => {
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
     expect(mediaSelector).toContain('.project-grid__stack'); expect(mediaSelector).not.toContain('.project-grid__cover'); controller.destroy();
+  });
+
+  test('collects card metadata as a separate visual row', () => {
+    const meta = new FakeElement(); const home = new FakeElement(); let metaSelector = '';
+    home.querySelectorAll = <T>(selector: string) => { if (selector.includes('project-grid__meta')) { metaSelector = selector; return [meta] as unknown as T[]; } return []; };
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
+    expect(metaSelector).toContain('.project-grid__meta'); controller.destroy();
+  });
+
+  test('moves card background to the visual stack and restores it after reveal', async () => {
+    const cover = new FakeElement(); cover.style.backgroundColor = 'rgb(1, 2, 3)';
+    const stack = new FakeElement({ top: 10, left: 0, width: 100, height: 20 }, 'project-grid__stack'); stack.parentElement = cover;
+    stack.closest = () => cover as unknown as null;
+    const home = new FakeElement(); home.querySelectorAll = <T>(selector: string) => selector.includes('project-grid__stack') ? [stack] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(); win.getComputedStyle = (() => ({ backgroundColor: 'rgb(1, 2, 3)' })) as typeof win.getComputedStyle;
+    const controller = createHomeRevealController(home as unknown as HTMLElement, win); expect(cover.style.backgroundColor).toBe('transparent');
+    win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0)); expect(cover.style.backgroundColor).toBe('rgb(1, 2, 3)'); controller.destroy();
   });
 });
