@@ -102,6 +102,7 @@ const fixture = (
   events: string[] = [],
   onSlotSync?: (indicator: FakeElement) => void,
   onIndicatorCreate?: (indicator: FakeElement) => void,
+  onSlotLayout?: (indicator: FakeElement) => void,
 ) => {
   const zone = new FakeElement();
   const items = Array.from({ length: 3 }, (_, index) => {
@@ -116,8 +117,9 @@ const fixture = (
     getDropZone: () => zone,
     getDragItem: () => dragItem,
     classes: { indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost' },
-    measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px' }; },
+    measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px', marginTop: '24px' }; },
     onSlotSync: (indicator) => { events.push('slot'); onSlotSync?.(indicator as FakeElement); },
+    onSlotLayout: (indicator) => { events.push('layout'); onSlotLayout?.(indicator as FakeElement); },
     onIndicatorCreate: (indicator) => onIndicatorCreate?.(indicator as FakeElement),
     scrollTuning: { maxScrollSpeed: 0 },
     moveIndicatorWithFlip,
@@ -155,6 +157,54 @@ await test('initial slot height is seeded before host layout sync', () => {
   controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
   assert.equal(heightAtSlotSync, '40px');
   assert.equal(insetAtSlotSync, '12px');
+  controller.destroy();
+});
+
+await test('post-layout hook runs after final slot metrics', () => {
+  resetGlobals();
+  const events: string[] = [];
+  let marginAtLayout = '';
+  const { items, controller, setDrag } = fixture(true, events, undefined, undefined, (indicator) => {
+    marginAtLayout = indicator.style.marginTop ?? '';
+  });
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.equal(marginAtLayout, '24px');
+  assert.ok(events.indexOf('slot') < events.indexOf('measure'));
+  assert.ok(events.indexOf('measure') < events.indexOf('layout'));
+  controller.destroy();
+});
+
+await test('opening delay remains hidden across relocation', () => {
+  resetGlobals();
+  const { items, controller, setDrag } = fixture(false);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  controller.setTargetIndex(2);
+  flushFrame();
+  flushFrame();
+  assert.equal(controller.getState().indicatorOpacity, 0);
+  assert.equal(createdElements.filter((element) => element.classList.contains('ghost')).length, 0);
+  controller.destroy();
+});
+
+await test('crossfade relocation starts matched outgoing and incoming opacity animations', () => {
+  resetGlobals();
+  const { items, controller, setDrag } = fixture(false);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  now = 240;
+  flushFrame();
+  flushFrame();
+  controller.setTargetIndex(2);
+  flushFrame();
+  const ghost = createdElements.find((element) => element.classList.contains('ghost'));
+  const body = createdElements.find((element) => element.classList.contains('body'));
+  assert.ok(ghost && body);
+  assert.equal(ghost?.animateCalls.at(-1)?.duration, body?.animateCalls.at(-1)?.duration);
+  assert.equal(ghost?.animateCalls.at(-1)?.easing, body?.animateCalls.at(-1)?.easing);
+  assert.deepEqual(body?.animateKeyframes.at(-1), [{ opacity: 0 }, { opacity: 1 }]);
+  assert.equal(ghost?.animateKeyframes.at(-1)?.at(-1)?.opacity, 0);
   controller.destroy();
 });
 

@@ -784,7 +784,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     if (opacity <= 0.05) return null;
 
     const rect = body.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
+    if (rect.width <= 0 || rect.height <= 0) return null;
 
     const ghost = document.createElement('div');
     ghost.className = `${host.classes.indicatorBody} ${host.classes.fadeGhost}`;
@@ -946,6 +946,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
           if (fadeGhostAnimations.get(outgoingGhost!) !== ghostAnimation) return;
           fadeGhostAnimations.delete(outgoingGhost!);
           outgoingGhost!.remove();
+          activeFadeGhosts = activeFadeGhosts.filter((item) => item !== outgoingGhost);
         });
         const animation = body.animate(
           [{ opacity: 0 }, { opacity: 1 }],
