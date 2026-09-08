@@ -14,6 +14,7 @@ class FakeStyle {
   [key: string]: string | undefined;
   removeProperty(name: string) { delete this[name]; }
   setProperty(name: string, value: string) { this[name] = value; }
+  getPropertyValue(name: string) { return this[name] ?? ''; }
 }
 
 class FakeText { parentNode: FakeElement | null = null; }
@@ -92,7 +93,7 @@ const resetGlobals = (reduced = false) => {
       documentElement: { scrollHeight: 800 },
       createElement: () => { const element = new FakeElement(); createdElements.push(element); return element; },
     },
-    getComputedStyle: () => ({ marginTop: '0px', marginBottom: '0px', top: '0px', left: '0px', transform: 'none', boxShadow: 'none', opacity: '1' }),
+    getComputedStyle: () => ({ marginTop: '0px', marginBottom: '0px', top: '0px', left: '0px', transform: 'none', boxShadow: 'none', opacity: '1', getPropertyValue: () => '' }),
   });
 };
 

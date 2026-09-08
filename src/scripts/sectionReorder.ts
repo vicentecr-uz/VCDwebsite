@@ -467,6 +467,8 @@ export type ReorderHost = {
    * model does not own — a grid slot's column span, for instance.
    */
   onSlotSync?: (indicator: HTMLElement, insertIndex: number, placementKey: string) => void;
+  /** Runs after destination gap metrics are applied and before paint settles. */
+  onSlotLayout?: (indicator: HTMLElement, insertIndex: number, placementKey: string) => void;
   onStatus?: (text: string) => void;
 };
 
@@ -725,6 +727,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     bindNeighbor(insertIndex);
     if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex, placementKey);
     applySlotMetrics(insertIndex, placementKey);
+    if (dropIndicator) host.onSlotLayout?.(dropIndicator, insertIndex, placementKey);
   };
 
   /** Centre of the lifted block in viewport space — what placement is keyed off. */
@@ -793,6 +796,9 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
     ghost.style.opacity = String(state.indicatorOpacity);
+    const computed = getComputedStyle(body);
+    ['--dev-section-inset', '--dev-section-inset-end', '--section-lift-card-inset', '--section-slot-card-inset']
+      .forEach((property) => ghost.style.setProperty(property, computed.getPropertyValue(property)));
     (host.getDropZone() ?? document.body).appendChild(ghost);
     activeFadeGhosts.push(ghost);
 
@@ -933,6 +939,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       && state.indicatorOpacity > 0.05
     ) {
       spawnFadeGhost();
+      applyIndicatorOpacity(0);
     }
 
     performFlipRelocate(fromIndex, toIndex, toKey);
@@ -940,7 +947,23 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     state.placedKey = toKey;
     // Relocating during the opening delay must not jump the slot in early —
     // leave that fade in charge and let it finish on its own schedule.
-    if (indicatorAnim.type === 'steady') applyIndicatorOpacity(1);
+    if (!host.moveIndicatorWithFlip) {
+      const body = getIndicatorBody();
+      if (body) {
+        dropIndicatorFadeAnimation?.cancel();
+        const animation = body.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration: REORDER_TIMING.DROP_INDICATOR_FADE_MS, easing: 'ease-out', fill: 'forwards' },
+        );
+        dropIndicatorFadeAnimation = animation;
+        animation.finished.catch(() => {}).then(() => {
+          if (dropIndicatorFadeAnimation !== animation) return;
+          dropIndicatorFadeAnimation = null;
+          applyIndicatorOpacity(1);
+          animation.cancel();
+        });
+      }
+    } else if (indicatorAnim.type === 'steady') applyIndicatorOpacity(1);
   };
 
   const advanceIndicatorAnim = (now: number) => {
