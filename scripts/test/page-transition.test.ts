@@ -64,15 +64,32 @@ class ImageFixture extends Target {
   naturalWidth = 0;
   decodeCalls = 0;
   decoded = deferred();
-  constructor(public visible = true) { super(); }
-  getBoundingClientRect() {
-    return this.visible
+  parentElement: ContainerFixture | null = null;
+  preview = true;
+  style: Record<string, string> = {};
+  rect: { top: number; left: number; bottom: number; right: number };
+  constructor(public visible = true) {
+    super();
+    this.rect = visible
       ? { top: 0, left: 0, bottom: 100, right: 100 }
       : { top: 900, left: 0, bottom: 1000, right: 100 };
+  }
+  getBoundingClientRect() {
+    return this.rect;
   }
   decode() { this.decodeCalls++; return this.decoded.promise; }
   load() { this.complete = true; this.naturalWidth = 300; this.emit('load'); }
   fail() { this.complete = true; this.naturalWidth = 0; this.emit('error'); }
+}
+
+class ContainerFixture {
+  parentElement: ContainerFixture | null = null;
+  style: Record<string, string>;
+  constructor(
+    public rect = { top: 0, left: 0, bottom: 100, right: 100 },
+    style: Record<string, string> = {},
+  ) { this.style = style; }
+  getBoundingClientRect() { return this.rect; }
 }
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
@@ -88,7 +105,9 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
     documentElement: { clientHeight: 800, clientWidth: 1200 },
     getElementById: () => options.noOverlay ? null : overlay,
-    querySelectorAll: () => anchors,
+    querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
+      ? (options.images ?? []).filter((image) => image.preview)
+      : selector === 'a' ? anchors : [],
   });
   const destinations: string[] = [];
   const location = {
@@ -144,7 +163,12 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
-    getComputedStyle: () => ({ opacity: overlay.style.opacity }),
+    getComputedStyle: (element: any) => ({
+      opacity: element.style?.opacity ?? overlay.style.opacity,
+      display: element.style?.display ?? '', visibility: element.style?.visibility ?? '',
+      overflow: element.style?.overflow ?? '', overflowX: element.style?.overflowX ?? '',
+      overflowY: element.style?.overflowY ?? '',
+    }),
     console: { warn() {}, error() {}, log() {} },
   });
   return {
@@ -219,6 +243,32 @@ test('fonts and visible decoded thumbnails gate reveal; offscreen images never g
   assert.equal(offscreen.count('load'), 0);
   assert.equal(offscreen.decodeCalls, 0);
   assert.equal(visible.count('load') + visible.count('error'), 0);
+});
+
+test('only visible progressive thumbnails participate in readiness geometry', async () => {
+  const active = new ImageFixture();
+  const rawAvatar = new ImageFixture();
+  rawAvatar.preview = false;
+  const offscreenLoop = new ImageFixture();
+  offscreenLoop.parentElement = new ContainerFixture({ top: 900, left: 0, bottom: 1000, right: 1200 }, { overflow: 'hidden' });
+  const clippedAdjacent = new ImageFixture();
+  clippedAdjacent.rect = { top: 0, left: 1190, bottom: 100, right: 1290 };
+  clippedAdjacent.parentElement = new ContainerFixture({ top: 0, left: 0, bottom: 100, right: 1100 }, { overflowX: 'hidden' });
+  const hiddenHover = new ImageFixture();
+  hiddenHover.style.visibility = 'hidden';
+  const f = fixture({ images: [active, rawAvatar, offscreenLoop, clippedAdjacent, hiddenHover] });
+  await f.paint();
+  assert.equal(active.count('load'), 1);
+  assert.equal(rawAvatar.count('load') + rawAvatar.count('error'), 0);
+  assert.equal(offscreenLoop.count('load') + offscreenLoop.count('error'), 0);
+  assert.equal(clippedAdjacent.count('load') + clippedAdjacent.count('error'), 0);
+  assert.equal(hiddenHover.count('load') + hiddenHover.count('error'), 0);
+  active.load();
+  await flush();
+  assert.equal(active.decodeCalls, 1);
+  active.decoded.resolve();
+  await flush();
+  assert.equal(f.tweens.length, 1);
 });
 
 test('four-second fallback releases stalled fonts/media and removes losing listeners', async () => {
