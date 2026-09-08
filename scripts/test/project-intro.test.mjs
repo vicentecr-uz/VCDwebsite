@@ -76,6 +76,8 @@ assert.match(devSectionReorderEditor, /activeIntroDrag && movedAway && sourceGap
 assert.match(devSectionReorderEditor, /sourceGapPreview\.element\.before\(sourceGapIndicator\)/);
 assert.match(devSectionReorderEditor, /activeIntroDrag && target === sourceIndex/);
 assert.doesNotMatch(devSectionReorderEditor, /syncSlotMediaInset\(root\)/);
+assert.match(devSectionReorderEditor, /rootRect\.left - zoneRect\.left\) \+ innerInset\('--dev-section-inset'\)/);
+assert.match(devSectionReorderEditor, /zoneRect\.right - rootRect\.right\) \+ innerInset\('--dev-section-inset-end'\)/);
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',

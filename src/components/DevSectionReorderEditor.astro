@@ -210,8 +210,18 @@
       if (!zone || !dragItem) return;
       const zoneRect = zone.getBoundingClientRect();
       const rootRect = dragItem.getBoundingClientRect();
-      indicator.style.setProperty('--dev-section-inset', `${Math.max(0, rootRect.left - zoneRect.left)}px`);
-      indicator.style.setProperty('--dev-section-inset-end', `${Math.max(0, zoneRect.right - rootRect.right)}px`);
+      const innerInset = (name: string) => {
+        const value = Number.parseFloat(dragItem!.style.getPropertyValue(name));
+        return Number.isFinite(value) ? value : 0;
+      };
+      indicator.style.setProperty(
+        '--dev-section-inset',
+        `${Math.max(0, rootRect.left - zoneRect.left) + innerInset('--dev-section-inset')}px`,
+      );
+      indicator.style.setProperty(
+        '--dev-section-inset-end',
+        `${Math.max(0, zoneRect.right - rootRect.right) + innerInset('--dev-section-inset-end')}px`,
+      );
     },
     moveIndicatorWithFlip: true,
     classes: {
