@@ -230,6 +230,7 @@ const easingOptions = [
     let scrollRafId = 0;
     let scrollTimeoutId = 0;
     let isAutoScrolling = false;
+    let initialSyncPending = true;
     /** Groups the user expanded via the header — stay open until they close them. */
     const pinnedOpenGroups = new WeakSet();
     /** Groups the user collapsed via the header — stay closed only while
@@ -1219,6 +1220,40 @@ const easingOptions = [
       syncActiveGroupHighlight(activeGroup);
     };
 
+    const settleInitialActiveLink = (id) => {
+      if (isSectionEditorActive() || sectionEditorKeepOpen) return;
+
+      groupAnims.forEach((anim, group) => {
+        anim.content.classList.remove('is-expanding', 'is-collapsing');
+        clearGroupAnimStyles(anim.content);
+        clearChevronDegrees(group);
+      });
+      groupAnims.clear();
+      if (animRafId) cancelAnimationFrame(animRafId);
+      animRafId = 0;
+      clearListCtrl();
+      updateAnimatingClass();
+
+      let activeGroup = null;
+      getNavLinks().forEach((link) => {
+        const isActive = link.getAttribute('href') === `#${id}`;
+        link.classList.toggle('is-active', isActive);
+        if (isActive) {
+          link.setAttribute('aria-current', 'true');
+          const group = link.closest('.section-sidebar-nav__group');
+          if (group instanceof HTMLDetailsElement) activeGroup = group;
+        } else {
+          link.removeAttribute('aria-current');
+        }
+      });
+
+      getNavGroups().forEach((group) => {
+        if (!(group instanceof HTMLDetailsElement)) return;
+        group.open = group === activeGroup;
+      });
+      syncActiveGroupHighlight(activeGroup);
+    };
+
     let ticking = false;
     const updateActiveFromScroll = () => {
       if (!ticking) {
@@ -1236,7 +1271,14 @@ const easingOptions = [
             return;
           }
           const activeId = getActiveSectionId();
-          if (activeId) setActiveLink(activeId);
+          if (activeId) {
+            if (initialSyncPending && !isSectionEditorActive() && !sectionEditorKeepOpen) {
+              settleInitialActiveLink(activeId);
+              initialSyncPending = false;
+            } else {
+              setActiveLink(activeId);
+            }
+          }
           ticking = false;
         });
         ticking = true;
