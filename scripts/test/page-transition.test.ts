@@ -34,6 +34,7 @@ class Target {
     }
     return event;
   }
+  dispatchEvent(event: any) { return this.emit(event.type, event); }
   count(type: string) { return this.listeners.get(type)?.size ?? 0; }
 }
 
@@ -161,6 +162,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   };
   runInNewContext(compiled, {
     document, window, location, URL, AbortController, Promise,
+    CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } },
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },

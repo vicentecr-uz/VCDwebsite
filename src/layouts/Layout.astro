@@ -19,6 +19,7 @@ import DevShortcutsHelp from '../components/DevShortcutsHelp.astro';
 import DevAssetManager from '../components/DevAssetManager.astro';
 import DevPageColumn from '../components/DevPageColumn.astro';
 import ArchivedDevPanels from '../components/archive/ArchivedDevPanels.astro';
+import DevTransitionTimeline from '../components/DevTransitionTimeline.astro';
 import GalleryMediaInk from '../components/GalleryMediaInk.astro';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED } from '../lib/pageColumn';
 
@@ -172,6 +173,7 @@ const showDevTools = import.meta.env.DEV;
     {showDevTools && <DevAssetManager />}
     {showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn />}
     {showDevTools && <ArchivedDevPanels />}
+    {showDevTools && <DevTransitionTimeline />}
     <GalleryMediaInk />
 
     {showDevTools && (
@@ -206,6 +208,11 @@ const showDevTools = import.meta.env.DEV;
       // and call registerHyperellipse() here.
       const REVEAL_EASE = 'power1.out';
       const MAX_WAIT_MS = 4000;
+      const emitTransitionMilestone = (name: string, detail: Record<string, unknown> = {}) => {
+        if (!readinessMarker) return;
+        window.dispatchEvent(new CustomEvent('vcd:transition-milestone', { detail: { name, ...detail } }));
+      };
+      emitTransitionMilestone('navigation-dom');
 
       const isInViewport = (el: Element) => {
         const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -284,8 +291,10 @@ const showDevTools = import.meta.env.DEV;
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
         const waits: Promise<unknown>[] = [];
-        waits.push(Promise.resolve(document.fonts?.ready).catch(() => undefined));
+        waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
+        let thumbIndex = 0;
         for (const img of Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)) {
+          const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
             if (!img.complete) {
               await new Promise<void>((resolve) => {
@@ -308,6 +317,7 @@ const showDevTools = import.meta.env.DEV;
             if (typeof img.decode === 'function' && img.naturalWidth > 0) {
               await Promise.resolve(img.decode()).catch(() => undefined);
             }
+            emitTransitionMilestone('thumb-ready', { index: currentThumbIndex + 1 });
           })());
         }
         Promise.all(waits).then(settle, settle);
@@ -345,20 +355,28 @@ const showDevTools = import.meta.env.DEV;
           readinessCleanup = wait.cleanup;
           await Promise.all([wait.ready, waitForOpaquePaint(controller.signal)]);
           if (current !== generation || suspended) return;
+          emitTransitionMilestone('readiness-satisfied');
+          emitTransitionMilestone('opaque-paint');
           readinessCleanup?.();
           readinessCleanup = null;
           readinessAbort = null;
           if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
+          emitTransitionMilestone('preview-tier-start');
           openImagePreviewUpgrade();
+          emitTransitionMilestone('preview-tier-ready');
           if (visibleTransition) {
             overlay.style.opacity = '0';
+            emitTransitionMilestone('veil-fade-start');
+            emitTransitionMilestone('veil-fade-end');
             return;
           }
+          emitTransitionMilestone('veil-fade-start');
           activeTween = gsap.to(overlay, {
             opacity: 0,
             duration: 0.25,
             ease: REVEAL_EASE,
             onComplete: () => {
+              emitTransitionMilestone('veil-fade-end');
               if (current === generation) activeTween = null;
             },
           });
