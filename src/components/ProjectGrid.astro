@@ -1086,9 +1086,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
     cursor: text;
     /* Matches the chips' fade out during a drop — see the drop-active rule above. */
     transition: outline-color 0.2s ease;
-    /* Shrink-wrap when filled; min-width only on :empty below (years looked padded). */
+    /* Keep descenders inside the dash without growing the baseline-aligned row. */
+    padding-block-end: 0.2em;
+    margin-block-end: -0.2em;
+    /* Shrink-wrap when filled; empty fields get their hit-area floor below. */
     display: inline-block;
-    min-height: 1.15em;
     vertical-align: baseline;
   }
 
@@ -1099,6 +1101,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   html.is-dev-mode
     :is([data-dev-project-title], [data-dev-project-subtitle], [data-dev-project-teaser-label])[contenteditable]:has(> br:only-child) {
     width: max-content;
+    min-height: 1.15em;
   }
 
   html.is-dev-mode
