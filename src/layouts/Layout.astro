@@ -173,10 +173,37 @@ const showDevTools = import.meta.env.DEV;
       const MAX_WAIT_MS = 4000;
 
       const isInViewport = (el: Element) => {
-        const rect = el.getBoundingClientRect();
         const vh = window.innerHeight || document.documentElement.clientHeight;
         const vw = window.innerWidth || document.documentElement.clientWidth;
-        return rect.bottom > 0 && rect.right > 0 && rect.top < vh && rect.left < vw;
+        let rect = el.getBoundingClientRect();
+        const intersect = (left: number, top: number, right: number, bottom: number) => {
+          const next = {
+            left: Math.max(rect.left, left), top: Math.max(rect.top, top),
+            right: Math.min(rect.right, right), bottom: Math.min(rect.bottom, bottom),
+          };
+          if (next.right <= next.left || next.bottom <= next.top) return false;
+          rect = next;
+          return true;
+        };
+        if (!intersect(0, 0, vw, vh)) return false;
+        for (let current: Element | null = el; current; current = current.parentElement) {
+          const style = getComputedStyle(current);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const overflowX = style.overflowX || style.overflow;
+          const overflowY = style.overflowY || style.overflow;
+          const ancestorRect = current.getBoundingClientRect();
+          const clipX = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowX);
+          const clipY = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowY);
+          if (clipX || clipY) {
+            if (!intersect(
+              clipX ? ancestorRect.left : rect.left,
+              clipY ? ancestorRect.top : rect.top,
+              clipX ? ancestorRect.right : rect.right,
+              clipY ? ancestorRect.bottom : rect.bottom,
+            )) return false;
+          }
+        }
+        return true;
       };
 
       let generation = 0;
@@ -223,7 +250,7 @@ const showDevTools = import.meta.env.DEV;
 
         const waits: Promise<unknown>[] = [];
         waits.push(Promise.resolve(document.fonts?.ready).catch(() => undefined));
-        for (const img of Array.from(document.images).filter(isInViewport)) {
+        for (const img of Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)) {
           waits.push((async () => {
             if (!img.complete) {
               await new Promise<void>((resolve) => {
