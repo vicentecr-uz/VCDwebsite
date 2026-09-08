@@ -3,6 +3,7 @@ import { createHomeRevealConfigHandler, validateHomeRevealConfig } from '../home
 import defaults from '../../src/lib/homeRevealConfig.json';
 
 const valid = structuredClone(defaults);
+valid.intro.translateYPx ??= 0;
 const request = (body, method = 'POST') => ({ method, async *[Symbol.asyncIterator]() { yield JSON.stringify(body); } });
 const response = () => ({ statusCode: 200, headers: {}, body: '', setHeader(name, value) { this.headers[name] = value; }, end(value) { this.body = value; } });
 
@@ -21,6 +22,7 @@ describe('home reveal config writer', () => {
     for (const value of [NaN, Infinity, 1201]) { const config = structuredClone(valid); config.entrance.durationMs = value; expect(() => validateHomeRevealConfig(config)).toThrow(); }
     const config = structuredClone(valid); config.entrance.headerLeadMs = config.entrance.totalStaggerMs + 1;
     expect(() => validateHomeRevealConfig(config)).toThrow();
+    for (const value of [NaN, Infinity, -1, 81]) { const intro = structuredClone(valid); intro.intro.translateYPx = value; expect(() => validateHomeRevealConfig(intro)).toThrow(); }
   });
   test('accepts named and balanced functional easing', () => {
     for (const easing of ['ease', 'ease-in', 'ease-out', 'ease-in-out', 'linear(0, 1)', 'cubic-bezier(0.2, 0.8, 0.2, 1)']) {

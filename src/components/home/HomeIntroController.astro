@@ -11,6 +11,7 @@ interface Props {
 
 const { page } = Astro.props;
 const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.sections) : undefined;
+const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { translateYPx?: number }).translateYPx ?? 0;
 ---
 
 <section
@@ -20,7 +21,7 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
   data-state="pending"
   data-reduced-motion-preview="false"
   aria-label="Introduction"
-  style={`${columnStyle ?? ''};--home-intro-exit-duration:${revealConfig.intro.durationMs}ms;--home-intro-exit-blur:${revealConfig.intro.blurPx}px;--home-intro-exit-scale:${revealConfig.intro.scale}`}
+  style={`${columnStyle ?? ''};--home-intro-exit-duration:${revealConfig.intro.durationMs}ms;--home-intro-exit-blur:${revealConfig.intro.blurPx}px;--home-intro-exit-scale:${revealConfig.intro.scale};--home-intro-exit-y:-${introTranslateY}px`}
 >
   <div class="home-intro-surface__column">
     <div class="listing-main">
@@ -59,7 +60,7 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
   #home-intro-surface[data-state='dismissing'] .home-intro-surface__column {
     opacity: 0;
     filter: blur(var(--home-intro-exit-blur));
-    transform: scale(var(--home-intro-exit-scale));
+    transform: translateY(var(--home-intro-exit-y)) scale(var(--home-intro-exit-scale));
     transition: opacity var(--home-intro-exit-duration) ease, filter var(--home-intro-exit-duration) ease, transform var(--home-intro-exit-duration) ease;
     pointer-events: none;
   }
