@@ -1,5 +1,26 @@
-import { describe, expect, test } from 'bun:test';
-import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, groupHomeRevealRows, makeHomeRevealCloneVisible } from '../../src/lib/homeReveal';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, createHomeRevealController, groupHomeRevealRows, makeHomeRevealCloneVisible } from '../../src/lib/homeReveal';
+
+class FakeElement {
+  hidden = false; style: Record<string, string> = { opacity: '', visibility: '', transform: '', filter: '' };
+  parentElement: FakeElement | null = null; children: FakeElement[] = []; animations: Array<{ options: KeyframeAnimationOptions; cancel: () => void; finished: Promise<void> }> = [];
+  constructor(public rect = { top: 10, left: 0, width: 100, height: 20 }) {}
+  hasAttribute() { return false; }
+  getBoundingClientRect() { return { ...this.rect, right: this.rect.left + this.rect.width, bottom: this.rect.top + this.rect.height }; }
+  closest() { return null; }
+  querySelectorAll<T>() { return [] as T[]; }
+  cloneNode() { return new FakeElement(this.rect); }
+  setAttribute() {}
+  append(child: FakeElement) { this.children.push(child); }
+  remove() {}
+  animate(_keyframes: Keyframe[], options: KeyframeAnimationOptions) { const animation = { options, cancel() {}, finished: Promise.resolve() }; this.animations.push(animation); return animation; }
+}
+const fakeWindow = (reduce = false) => {
+  const listeners = new Map<string, Set<EventListener>>();
+  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string) { listeners.get(name)?.forEach((fn) => fn({ type: name } as Event)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string) => void; listenerCount: (name: string) => number };
+};
+const savedDocument = globalThis.document;
+afterEach(() => { Object.assign(globalThis, { document: savedDocument }); });
 
 describe('home reveal choreography', () => {
   test('groups equal-top units and delays the final row across the specified span', () => {
@@ -23,5 +44,31 @@ describe('home reveal choreography', () => {
     const clone = { style: { visibility: 'hidden' } } as unknown as HTMLElement;
     makeHomeRevealCloneVisible(clone);
     expect(clone.style.visibility).toBe('visible');
+  });
+
+  test('arms under inert Home, reveals after dismissal, then restores source styles', async () => {
+    const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    expect(controller.isArmed()).toBe(true); expect(header.style.opacity).toBe('0');
+    win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(header.animations).toHaveLength(1); await Promise.resolve();
+    expect(header.style.opacity).toBe(''); controller.destroy();
+  });
+
+  test('reduced motion preserves spatial row delays while omitting transform/filter', async () => {
+    const first = new FakeElement({ top: 10, left: 0, width: 100, height: 20 }); const last = new FakeElement({ top: 500, left: 0, width: 100, height: 20 }); const home = new FakeElement(); home.children = [first, last];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [first, last] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(true); const controller = createHomeRevealController(home as unknown as HTMLElement, win); win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(first.animations[0]?.options.delay).toBe(0); expect(last.animations[0]?.options.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5); controller.destroy();
+  });
+
+  test('resize rebuilds before dismissal and removes listeners on destroy', async () => {
+    const item = new FakeElement(); const home = new FakeElement(); home.querySelectorAll = <T>() => [item] as unknown as T[];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win); win.emit('resize'); await Promise.resolve();
+    expect(controller.isArmed()).toBe(true); controller.destroy(); expect(win.listenerCount('resize')).toBe(0); expect(win.listenerCount('pageshow')).toBe(0);
   });
 });
