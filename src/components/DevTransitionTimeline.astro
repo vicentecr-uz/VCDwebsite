@@ -1,0 +1,58 @@
+<aside class="dev-transition-timeline" data-dev-transition-timeline hidden aria-label="Transition timeline">
+  <div class="dev-transition-timeline__head">
+    <div><span class="dev-transition-timeline__eyebrow">Load timeline</span><strong data-transition-current>Navigation / DOM</strong></div>
+    <button type="button" class="dev-transition-timeline__replay" data-transition-replay>Replay</button>
+  </div>
+  <div class="dev-transition-timeline__track-wrap">
+    <div class="dev-transition-timeline__track"><span data-transition-progress></span><i data-transition-playhead></i></div>
+    <input type="range" min="0" max="1000" value="0" step="1" aria-label="Scrub transition simulation" data-transition-scrubber />
+    <div class="dev-transition-timeline__ticks"><span>blank</span><span>loaded page</span></div>
+  </div>
+  <div class="dev-transition-timeline__body">
+    <div class="dev-transition-timeline__stage"><span>Page surface</span><i data-transition-stage-veil></i></div>
+    <ol data-transition-milestones></ol>
+  </div>
+</aside>
+
+<style>
+  .dev-transition-timeline { position: fixed; inset: auto 16px max(12px, env(safe-area-inset-bottom)); z-index: 101; padding: 12px 16px 10px; border-radius: var(--dev-radius-panel); color: var(--sys-color-on-srf); background: var(--sys-color-srf); box-shadow: var(--dev-surface-shadow); font: var(--dev-text-label); }
+  .dev-transition-timeline__head, .dev-transition-timeline__body { display: flex; align-items: center; gap: 16px; }
+  .dev-transition-timeline__head { justify-content: space-between; margin-bottom: 10px; }
+  .dev-transition-timeline__eyebrow { display: block; color: var(--sys-color-on-srf-subtle); font: var(--dev-text-badge); letter-spacing: .08em; text-transform: uppercase; }
+  .dev-transition-timeline__replay { border: 0; border-radius: var(--dev-radius-control); padding: 6px 10px; color: var(--sys-color-on-srf); background: var(--sys-color-srf-variant); font: var(--dev-text-label); cursor: pointer; }
+  .dev-transition-timeline__track-wrap { position: relative; }
+  .dev-transition-timeline__track { position: relative; height: 3px; margin: 0 1px; background: var(--sys-color-srf-variant); }
+  .dev-transition-timeline__track span { display: block; width: 0; height: 100%; background: var(--sys-color-on-srf); }
+  .dev-transition-timeline__track i { position: absolute; top: -4px; left: 0; width: 2px; height: 11px; background: var(--sys-color-on-srf); }
+  .dev-transition-timeline input { position: absolute; inset: -7px 0 auto; width: 100%; height: 18px; opacity: 0; cursor: ew-resize; }
+  .dev-transition-timeline__ticks { display: flex; justify-content: space-between; margin-top: 5px; color: var(--sys-color-on-srf-subtle); font: var(--dev-text-badge); }
+  .dev-transition-timeline__body { align-items: stretch; margin-top: 10px; }
+  .dev-transition-timeline__stage { position: relative; display: grid; min-width: 120px; min-height: 34px; place-items: center; overflow: hidden; border-radius: var(--dev-radius-control); background: var(--sys-color-srf-variant); color: var(--sys-color-on-srf-subtle); font: var(--dev-text-badge); }
+  .dev-transition-timeline__stage i { position: absolute; inset: 0; background: var(--sys-color-on-srf); opacity: 1; }
+  .dev-transition-timeline ol { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: 1; gap: 6px 16px; margin: 0; padding: 0; list-style: none; }
+  .dev-transition-timeline li { display: flex; align-items: center; gap: 5px; color: var(--sys-color-on-srf-subtle); font: var(--dev-text-badge); }
+  .dev-transition-timeline li::before { content: ''; width: 5px; height: 5px; flex: 0 0 auto; border-radius: 50%; background: var(--sys-color-srf-variant); }
+  .dev-transition-timeline li[data-seen='true'] { color: var(--sys-color-on-srf); }
+  .dev-transition-timeline li[data-seen='true']::before { background: var(--sys-color-on-srf); }
+  @media (max-width: 640px) { .dev-transition-timeline { inset-inline: 8px; } .dev-transition-timeline ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+
+<script>
+  const timeline = document.querySelector<HTMLElement>('[data-dev-transition-timeline]');
+  if (timeline && new URLSearchParams(location.search).get('dev-transition') === 'scrub') {
+    timeline.hidden = false;
+    const labels: Record<string, string> = { 'navigation-dom': 'Navigation / DOM', 'thumb-ready': 'Visible thumb', 'fonts-ready': 'Fonts ready', 'readiness-satisfied': 'Readiness satisfied', 'opaque-paint': 'Opaque paint', 'preview-tier-start': 'Preview tier start', 'preview-tier-ready': 'Preview tier ready', 'veil-fade-start': 'Veil fade start', 'veil-fade-end': 'Veil fade end' };
+    const current = timeline.querySelector<HTMLElement>('[data-transition-current]');
+    const scrubber = timeline.querySelector<HTMLInputElement>('[data-transition-scrubber]');
+    const progress = timeline.querySelector<HTMLElement>('[data-transition-progress]');
+    const playhead = timeline.querySelector<HTMLElement>('[data-transition-playhead]');
+    const veil = timeline.querySelector<HTMLElement>('[data-transition-stage-veil]');
+    const list = timeline.querySelector<HTMLOListElement>('[data-transition-milestones]');
+    const render = () => { const value = Number(scrubber?.value ?? 0) / 1000; if (progress) progress.style.width = `${value * 100}%`; if (playhead) playhead.style.left = `${value * 100}%`; if (veil) veil.style.opacity = String(1 - value); };
+    const record = (name: string) => { if (!list) return; const existing = list.querySelector(`[data-name="${name}"]`); if (existing) existing.setAttribute('data-seen', 'true'); else { const item = document.createElement('li'); item.dataset.name = name; item.dataset.seen = 'true'; item.textContent = labels[name] ?? name; list.appendChild(item); } if (current) current.textContent = labels[name] ?? name; };
+    window.addEventListener('vcd:transition-milestone', (event) => record((event as CustomEvent<{ name: string }>).detail.name));
+    scrubber?.addEventListener('input', render);
+    timeline.querySelector('[data-transition-replay]')?.addEventListener('click', () => window.location.reload());
+    render();
+  }
+</script>
