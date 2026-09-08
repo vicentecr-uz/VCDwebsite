@@ -75,6 +75,7 @@ assert.match(devTextEditor, /change\.payload\.outline = structuredClone\(getDevS
 assert.match(devSectionReorderEditor, /activeIntroDrag && movedAway && sourceGapPreview\?\.element\.parentElement/);
 assert.match(devSectionReorderEditor, /sourceGapPreview\.element\.before\(sourceGapIndicator\)/);
 assert.match(devSectionReorderEditor, /activeIntroDrag && target === sourceIndex/);
+assert.match(devSectionReorderEditor, /moveIndicatorWithFlip: false/);
 assert.doesNotMatch(devSectionReorderEditor, /syncSlotMediaInset\(root\)/);
 assert.match(devSectionReorderEditor, /rootRect\.left - zoneRect\.left\) \+ innerInset\('--dev-section-inset'\)/);
 assert.match(devSectionReorderEditor, /zoneRect\.right - rootRect\.right\) \+ innerInset\('--dev-section-inset-end'\)/);
