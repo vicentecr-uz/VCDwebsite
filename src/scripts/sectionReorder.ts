@@ -719,10 +719,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const syncPlacement = (insertIndex: number, placementKey: string) => {
     releaseNeighbor();
-    applySlotMetrics(insertIndex, placementKey);
     placeIndicatorBeforeIndex(insertIndex);
     bindNeighbor(insertIndex);
     if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex, placementKey);
+    applySlotMetrics(insertIndex, placementKey);
   };
 
   /** Centre of the lifted block in viewport space — what placement is keyed off. */
@@ -1344,13 +1344,6 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       // the delayed visual reveal independently.
       dropIndicator.classList.add('is-visible');
       applyIndicatorOpacity(0);
-      // Size and span the slot *before* it enters the flow. Inserting a bare
-      // cell and correcting it inside syncPlacement costs a frame of wrong
-      // layout — unnoticeable in a single column, violent in a grid, where a
-      // column-spanning block is briefly replaced by a one-column, zero-height
-      // cell and every card after it reflows and snaps back.
-      applySlotMetrics(sourceIndex, initialPlacementKey);
-      host.onSlotSync?.(dropIndicator, sourceIndex, initialPlacementKey);
       item.before(dropIndicator);
       syncPlacement(sourceIndex, initialPlacementKey);
       // Force the layout the pin is guarding, then undo any adjustment the

@@ -48,6 +48,7 @@ class FakeElement {
     return (this.children.find((child) => child.classList.contains(className)) as T | undefined) ?? null;
   }
   getBoundingClientRect() { return this.rect; }
+  closest() { return null; }
   animate(keyframes: Keyframe[], options: KeyframeAnimationOptions) {
     this.animateKeyframes.push(keyframes);
     this.animateCalls.push(options);
@@ -95,7 +96,7 @@ const resetGlobals = (reduced = false) => {
   });
 };
 
-const fixture = (moveIndicatorWithFlip = true) => {
+const fixture = (moveIndicatorWithFlip = true, events: string[] = []) => {
   const zone = new FakeElement();
   const items = Array.from({ length: 3 }, (_, index) => {
     const item = new FakeElement();
@@ -109,7 +110,8 @@ const fixture = (moveIndicatorWithFlip = true) => {
     getDropZone: () => zone,
     getDragItem: () => dragItem,
     classes: { indicator: 'indicator', indicatorBody: 'body', flipMoving: 'flip', lifted: 'lifted', fadeGhost: 'ghost' },
-    measureInsertGaps: () => ({ top: '0px', bottom: '0px' }),
+    measureInsertGaps: () => { events.push('measure'); return { top: '0px', bottom: '0px' }; },
+    onSlotSync: () => { events.push('slot'); },
     scrollTuning: { maxScrollSpeed: 0 },
     moveIndicatorWithFlip,
   });
@@ -120,6 +122,18 @@ const test = async (name: string, run: () => Promise<void> | void) => {
   await run();
   console.log(`PASS: ${name}`);
 };
+
+await test('slot mutation runs before final slot metrics measurement', () => {
+  resetGlobals();
+  const events: string[] = [];
+  const { items, controller, setDrag } = fixture(true, events);
+  setDrag(items[0]);
+  controller.beginLift(items[0], new FakeElement(), 10, 10, 0, { followPointer: false });
+  assert.ok(events.indexOf('slot') >= 0);
+  assert.ok(events.indexOf('measure') >= 0);
+  assert.ok(events.indexOf('slot') < events.indexOf('measure'));
+  controller.destroy();
+});
 
 await test('destroy cancels lift frame and removes chrome/styles', () => {
   resetGlobals();
