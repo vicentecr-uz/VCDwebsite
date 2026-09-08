@@ -440,6 +440,8 @@ export type ReorderHost = {
   flipEasing?: string;
   /** Move the existing slot with its neighbours instead of crossfading locations. */
   moveIndicatorWithFlip?: boolean;
+  /** Initialize visual-only indicator sizing before it enters layout. */
+  onIndicatorCreate?: (indicator: HTMLElement) => void;
   /**
    * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
    * wants a longer, gentler ramp than a page of full-width sections — the same
@@ -772,6 +774,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     body.className = host.classes.indicatorBody;
     body.setAttribute('aria-hidden', 'true');
     indicator.append(body);
+    host.onIndicatorCreate?.(indicator);
     return indicator;
   };
 
