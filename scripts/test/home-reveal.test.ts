@@ -81,4 +81,12 @@ describe('home reveal choreography', () => {
     expect(home.children).toHaveLength(1);
     expect(home.children[0]?.style.visibility).toBe('visible'); controller.destroy();
   });
+
+  test('uses the project visual stack, not the card cover or metadata, as media unit', () => {
+    const stack = new FakeElement(); const home = new FakeElement(); let mediaSelector = '';
+    home.querySelectorAll = <T>(selector: string) => { if (selector.includes('project-grid__stack')) { mediaSelector = selector; return [stack] as unknown as T[]; } return []; };
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
+    expect(mediaSelector).toContain('.project-grid__stack'); expect(mediaSelector).not.toContain('.project-grid__cover'); controller.destroy();
+  });
 });
