@@ -5,6 +5,11 @@ import { test } from 'bun:test';
 import gsap from 'gsap';
 
 const layout = readFileSync(process.env.LAYOUT_TEST_SOURCE ?? new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+const timeline = readFileSync(new URL('../../src/components/DevTransitionTimeline.astro', import.meta.url), 'utf8');
+test('timeline capture initializes inline before the Layout transition module', () => {
+  assert.match(timeline, /<script is:inline>/);
+  assert.ok(timeline.indexOf('<script is:inline>') < layout.indexOf("import gsap from 'gsap'"));
+});
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
 assert.ok(script, 'Exercise the actual Layout transition script');
