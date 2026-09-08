@@ -3,6 +3,7 @@ import ProjectSections from '../project/ProjectSections.astro';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
 import type { PageDocument } from '../../lib/projects';
+import revealConfig from '../../lib/homeRevealConfig.json';
 
 interface Props {
   page: PageDocument;
@@ -18,7 +19,7 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
   data-page-viewport
   data-state="pending"
   aria-label="Introduction"
-  style={columnStyle}
+  style={`${columnStyle ?? ''};--home-intro-exit-duration:${revealConfig.intro.durationMs}ms;--home-intro-exit-blur:${revealConfig.intro.blurPx}px;--home-intro-exit-scale:${revealConfig.intro.scale}`}
 >
   <div class="home-intro-surface__column">
     <div class="listing-main">
@@ -56,9 +57,9 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
 
   #home-intro-surface[data-state='dismissing'] .home-intro-surface__column {
     opacity: 0;
-    filter: blur(5.6px);
-    transform: scale(0.95);
-    transition: opacity 100ms ease, filter 100ms ease, transform 100ms ease;
+    filter: blur(var(--home-intro-exit-blur));
+    transform: scale(var(--home-intro-exit-scale));
+    transition: opacity var(--home-intro-exit-duration) ease, filter var(--home-intro-exit-duration) ease, transform var(--home-intro-exit-duration) ease;
     pointer-events: none;
   }
 

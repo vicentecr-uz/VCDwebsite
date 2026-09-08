@@ -1,10 +1,12 @@
-export const HOME_REVEAL_DURATION = 449.28;
-export const HOME_REVEAL_STAGGER = 550.72;
-export const HOME_REVEAL_EASING = 'linear(0 0%, 0.006234 1%, 0.023295 2%, 0.04897 3%, 0.081353 4%, 0.118809 5%, 0.159948 6%, 0.20359 7%, 0.248745 8%, 0.294589 9%, 0.34044 10%, 0.385746 11%, 0.43006 12%, 0.473032 13%, 0.514392 14%, 0.553942 15%, 0.591539 16%, 0.627092 17%, 0.660552 18%, 0.691902 19%, 0.721157 20%, 0.748351 21%, 0.773538 22%, 0.796788 23%, 0.818178 24%, 0.837796 25%, 0.855733 26%, 0.872085 27%, 0.886949 28%, 0.90042 29%, 0.912596 30%, 0.923568 31%, 0.933428 32%, 0.942263 33%, 0.950157 34%, 0.957188 35%, 0.963433 36%, 0.968961 37%, 0.973838 38%, 0.978127 39%, 0.981885 40%, 0.985164 41%, 0.988015 42%, 0.990482 43%, 0.992606 44%, 0.994426 45%, 0.995975 46%, 0.997286 47%, 0.998387 48%, 0.999303 49%, 1.000058 50%, 1 100%)';
+import defaultConfig from './homeRevealConfig.json';
+export const HOME_REVEAL_DURATION = defaultConfig.entrance.durationMs;
+export const HOME_REVEAL_STAGGER = defaultConfig.entrance.totalStaggerMs;
+export const HOME_REVEAL_EASING = defaultConfig.entrance.easing;
+export type HomeRevealConfig = typeof defaultConfig;
 
 export interface HomeRevealUnit { element?: HTMLElement; top: number; left: number; kind?: string; }
 export interface HomeRevealRow { units: HomeRevealUnit[]; top: number; delay: number; }
-export function groupHomeRevealRows(units: HomeRevealUnit[], tolerance = 4): HomeRevealRow[] {
+export function groupHomeRevealRows(units: HomeRevealUnit[], tolerance = 4, config: HomeRevealConfig = defaultConfig): HomeRevealRow[] {
   const ordered = [...units].sort((a, b) => a.top - b.top || a.left - b.left);
   const rows: HomeRevealRow[] = [];
   for (const unit of ordered) {
@@ -20,8 +22,8 @@ export function groupHomeRevealRows(units: HomeRevealUnit[], tolerance = 4): Hom
   const lastContent = nonHeader.at(-1)?.top ?? firstContent;
   for (const row of rows) {
     if (row.units.every((unit) => unit.kind === 'header')) row.delay = 0;
-    else if (!hasHeader) row.delay = lastContent === firstContent ? 0 : HOME_REVEAL_STAGGER * (row.top - firstContent) / (lastContent - firstContent);
-    else row.delay = lastContent === firstContent ? 120 : 120 + (HOME_REVEAL_STAGGER - 120) * (row.top - firstContent) / (lastContent - firstContent);
+    else if (!hasHeader) row.delay = lastContent === firstContent ? 0 : config.entrance.totalStaggerMs * (row.top - firstContent) / (lastContent - firstContent);
+    else row.delay = lastContent === firstContent ? config.entrance.headerLeadMs : config.entrance.headerLeadMs + (config.entrance.totalStaggerMs - config.entrance.headerLeadMs) * (row.top - firstContent) / (lastContent - firstContent);
   }
   return rows;
 }
@@ -63,7 +65,7 @@ const waitForFonts = async () => {
   await Promise.race([fonts.ready, new Promise<void>((resolve) => setTimeout(resolve, 120))]);
 };
 
-export function createHomeRevealController(home: HTMLElement, win: Window = window) {
+export function createHomeRevealController(home: HTMLElement, win: Window = window, config: HomeRevealConfig = defaultConfig) {
   let armed = false;
   let disposed = false;
   let running = false;
@@ -89,11 +91,11 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     running = true;
     const reduce = reduceMotion();
     try {
-      groupHomeRevealRows(units).forEach((row) => row.units.forEach((unit) => {
-        const keyframes = reduce ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, filter: 'blur(12px)', transform: 'translateY(10px) scale(1.07)' }, { opacity: 1, filter: 'blur(0)', transform: 'translateY(0) scale(1)' }];
+      groupHomeRevealRows(units, 4, config).forEach((row) => row.units.forEach((unit) => {
+        const keyframes = reduce ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, filter: `blur(${config.entrance.blurPx}px)`, transform: `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})` }, { opacity: 1, filter: 'blur(0)', transform: 'translateY(0) scale(1)' }];
         // Reduced motion keeps the spatial opacity wave; only movement and
         // blur are removed from its visual variant.
-        animations.push(unit.element!.animate(keyframes, { duration: HOME_REVEAL_DURATION, delay: row.delay, easing: HOME_REVEAL_EASING, fill: 'both' }));
+        animations.push(unit.element!.animate(keyframes, { duration: config.entrance.durationMs, delay: row.delay, easing: config.entrance.easing, fill: 'both' }));
       }));
       Promise.all(animations.map((animation) => animation.finished ?? Promise.resolve())).then(() => { if (!disposed) cleanup(); }).catch(cancel);
     } catch { cancel(); }
@@ -107,7 +109,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     units.forEach((unit) => {
       const source = unit.element!; remember(source); source.style.opacity = '0';
       if (unit.kind === 'text') source.style.visibility = 'hidden';
-      if (!reduce && unit.kind !== 'text') { source.style.transform = 'translateY(10px) scale(1.07)'; source.style.filter = 'blur(12px)'; }
+      if (!reduce && unit.kind !== 'text') { source.style.transform = `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})`; source.style.filter = `blur(${config.entrance.blurPx}px)`; }
       if (unit.kind === 'media') source.querySelectorAll<HTMLImageElement>('img').forEach((image) => { void image.decode?.().catch(() => undefined); });
     });
     preparation = (async () => {
@@ -133,11 +135,11 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         } catch { lines = undefined; }
         const index = units.indexOf(unit);
         if (lines?.length) {
-          const lineUnits = lines.map((line) => { const lineRect = line.getBoundingClientRect(); remember(line); line.style.opacity = '0'; if (!reduce) { line.style.transform = 'translateY(10px) scale(1.07)'; line.style.filter = 'blur(12px)'; } return { element: line, kind: 'text-line', top: lineRect.top, left: lineRect.left }; });
+          const lineUnits = lines.map((line) => { const lineRect = line.getBoundingClientRect(); remember(line); line.style.opacity = '0'; if (!reduce) { line.style.transform = `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})`; line.style.filter = `blur(${config.entrance.blurPx}px)`; } return { element: line, kind: 'text-line', top: lineRect.top, left: lineRect.left }; });
           if (index >= 0) units.splice(index, 1, ...lineUnits);
         } else if (index >= 0) {
           const cloneRect = clone.getBoundingClientRect(); units[index] = { element: clone, kind: 'text-line', top: cloneRect.top, left: cloneRect.left }; remember(clone); clone.style.opacity = '0';
-          if (!reduce) { clone.style.transform = 'translateY(10px) scale(1.07)'; clone.style.filter = 'blur(12px)'; }
+          if (!reduce) { clone.style.transform = `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})`; clone.style.filter = `blur(${config.entrance.blurPx}px)`; }
         }
       }
       if (dismissPending) runNow();

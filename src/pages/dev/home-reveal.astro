@@ -1,0 +1,29 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import { loadPageDocument } from '../../lib/projects';
+import revealConfig from '../../lib/homeRevealConfig.json';
+if (!import.meta.env.DEV) return Astro.redirect('/404');
+const home = loadPageDocument('home');
+---
+<Layout title="Home reveal tuner (dev)">
+  <div class="home-page" data-home-page><Header navMenu wordmarkAsH1 /><main id="main-content"><ProjectSections documentKey="home" sections={home.sections} introHeight={home.introHeight} /></main></div>
+  <aside class="tuner" aria-label="Home reveal controls" data-tuner></aside>
+</Layout>
+<script define:vars={{ revealConfig }}>
+  import { bindHomeReveal } from '../../lib/homeReveal';
+  const tuner = document.querySelector('[data-tuner]');
+  const fields = [['entrance.durationMs','Duration',150,1200],['entrance.totalStaggerMs','Stagger',0,1500],['entrance.headerLeadMs','Header lead',0,600],['entrance.blurPx','Blur',0,40],['entrance.translateYPx','Offset',-40,80],['entrance.scale','Scale',0.8,1.3],['intro.durationMs','Intro duration',50,400],['intro.blurPx','Intro blur',0,20],['intro.scale','Intro scale',0.8,1]];
+  const draft = structuredClone(revealConfig);
+  const read = (path) => path.split('.').reduce((value,key) => value[key], draft);
+  const write = (path,value) => { const keys=path.split('.'); const last=keys.pop(); const target=keys.reduce((value,key)=>value[key],draft); target[last]=Number(value); };
+  const replay = () => { bindHomeReveal()?.run(); };
+  fields.forEach(([path,label,min,max]) => { const row=document.createElement('label'); row.textContent=label; const input=document.createElement('input'); input.type='range'; input.min=min; input.max=max; input.step='0.01'; input.value=read(path); const value=document.createElement('output'); value.textContent=input.value; input.oninput=()=>{write(path,input.value); value.textContent=input.value; replay();}; row.append(input,value); tuner?.append(row); });
+  const button=document.createElement('button'); button.type='button'; button.textContent='Replay'; button.onclick=replay; tuner?.append(button);
+</script>
+<style>
+  .tuner { position: fixed; z-index: 100; right: 1rem; bottom: 1rem; display: grid; gap: .45rem; width: 14rem; padding: .75rem; background: var(--sys-color-srf); color: var(--sys-color-on-srf); border: 1px solid currentColor; }
+  .tuner label { display: grid; grid-template-columns: 1fr auto; gap: .25rem; font-size: .75rem; }
+  .tuner input { grid-column: 1 / -1; width: 100%; }
+</style>
