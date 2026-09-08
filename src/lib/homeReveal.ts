@@ -45,6 +45,10 @@ function collectUnits(home: HTMLElement, viewportHeight: number): HomeRevealUnit
 type AnimationLike = { cancel: () => void; finished?: Promise<unknown> };
 type SavedStyle = { opacity: string; visibility: string; transform: string; filter: string };
 type SplitResult = { lines?: HTMLElement[] };
+export function makeHomeRevealCloneVisible(clone: HTMLElement) {
+  clone.style.visibility = 'visible';
+  return clone;
+}
 const waitForFonts = async () => {
   const fonts = document.fonts;
   if (!fonts?.ready) return;
@@ -102,6 +106,10 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         const clone = source.cloneNode(true) as HTMLElement;
         clone.setAttribute('aria-hidden', 'true'); clone.setAttribute('inert', '');
         const rect = source.getBoundingClientRect();
+        // cloneNode carries the source's pre-hide visibility. The clone must
+        // stay visible so opacity/WAAPI can reveal it while the semantic source
+        // remains hidden until cleanup.
+        makeHomeRevealCloneVisible(clone);
         Object.assign(clone.style, { position: 'fixed', margin: '0', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, pointerEvents: 'none' });
         home.append(clone); clones.push(clone);
         let lines: HTMLElement[] | undefined;
