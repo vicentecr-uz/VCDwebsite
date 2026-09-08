@@ -29,7 +29,7 @@ describe('home reveal choreography', () => {
       { top: 300, left: 20 }, { top: 100, left: 40 }, { top: 101, left: 10 }, { top: 500, left: 0 },
     ]);
     expect(rows.map((row) => row.units.length)).toEqual([2, 1, 1]);
-    expect(rows[0].delay).toBe(120);
+    expect(rows[0].delay).toBe(0);
     expect(rows.at(-1)?.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5);
     expect((rows.at(-1)?.delay ?? 0) + HOME_REVEAL_DURATION).toBeCloseTo(1000, 2);
   });
@@ -39,6 +39,11 @@ describe('home reveal choreography', () => {
     expect(HOME_REVEAL_STAGGER).toBe(550.72);
     expect(HOME_REVEAL_EASING).toContain('linear(0 0%, 0.006234 1%');
     expect(HOME_REVEAL_EASING).toContain('1.000058 50%, 1 100%)');
+  });
+
+  test('gives the first content row a lead after the header row', () => {
+    const rows = groupHomeRevealRows([{ top: 0, left: 0, kind: 'header' }, { top: 100, left: 0, kind: 'media' }, { top: 500, left: 0, kind: 'media' }]);
+    expect(rows[0].delay).toBe(0); expect(rows[1].delay).toBe(120); expect(rows[2].delay).toBe(HOME_REVEAL_STAGGER);
   });
 
   test('prepared visual text clones are visible to opacity animation', () => {
@@ -60,10 +65,10 @@ describe('home reveal choreography', () => {
 
   test('reduced motion preserves spatial row delays while omitting transform/filter', async () => {
     const first = new FakeElement({ top: 10, left: 0, width: 100, height: 20 }); const last = new FakeElement({ top: 500, left: 0, width: 100, height: 20 }); const home = new FakeElement(); home.children = [first, last];
-    home.querySelectorAll = <T>(selector: string) => selector.includes('project-grid__stack') ? [first, last] as unknown as T[] : [];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('project-grid__cover') ? [first, last] as unknown as T[] : [];
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const win = fakeWindow(true); const controller = createHomeRevealController(home as unknown as HTMLElement, win); win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(first.animations[0]?.options.delay).toBe(120); expect(last.animations[0]?.options.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5); controller.destroy();
+    expect(first.animations[0]?.options.delay).toBe(0); expect(last.animations[0]?.options.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5); controller.destroy();
   });
 
   test('resize rebuilds before dismissal and removes listeners on destroy', async () => {
@@ -83,30 +88,11 @@ describe('home reveal choreography', () => {
     expect(home.children[0]?.style.visibility).toBe('visible'); controller.destroy();
   });
 
-  test('uses the project visual stack, not the card cover or metadata, as media unit', () => {
-    const stack = new FakeElement(); const home = new FakeElement(); let mediaSelector = '';
-    home.querySelectorAll = <T>(selector: string) => { if (selector.includes('project-grid__stack')) { mediaSelector = selector; return [stack] as unknown as T[]; } return []; };
+  test('uses the project cover, not stack or metadata, as media unit', () => {
+    const cover = new FakeElement(); const home = new FakeElement(); let mediaSelector = '';
+    home.querySelectorAll = <T>(selector: string) => { if (selector.includes('project-grid__cover')) { mediaSelector = selector; return [cover] as unknown as T[]; } return []; };
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
-    expect(mediaSelector).toContain('.project-grid__stack'); expect(mediaSelector).not.toContain('.project-grid__cover'); controller.destroy();
-  });
-
-  test('collects card metadata as a separate visual row', () => {
-    const meta = new FakeElement(); const home = new FakeElement(); let metaSelector = '';
-    home.querySelectorAll = <T>(selector: string) => { if (selector.includes('project-grid__meta')) { metaSelector = selector; return [meta] as unknown as T[]; } return []; };
-    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
-    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
-    expect(metaSelector).toContain('.project-grid__meta'); controller.destroy();
-  });
-
-  test('moves card background to the visual stack and restores it after reveal', async () => {
-    const cover = new FakeElement(); cover.style.backgroundColor = 'rgb(1, 2, 3)';
-    const stack = new FakeElement({ top: 10, left: 0, width: 100, height: 20 }, 'project-grid__stack'); stack.parentElement = cover;
-    stack.closest = () => cover as unknown as null;
-    const home = new FakeElement(); home.querySelectorAll = <T>(selector: string) => selector.includes('project-grid__stack') ? [stack] as unknown as T[] : [];
-    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
-    const win = fakeWindow(); win.getComputedStyle = (() => ({ backgroundColor: 'rgb(1, 2, 3)' })) as typeof win.getComputedStyle;
-    const controller = createHomeRevealController(home as unknown as HTMLElement, win); expect(cover.style.backgroundColor).toBe('transparent');
-    win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0)); expect(cover.style.backgroundColor).toBe('rgb(1, 2, 3)'); controller.destroy();
+    expect(mediaSelector).toContain('.project-grid__cover'); expect(mediaSelector).not.toContain('.project-grid__stack'); expect(mediaSelector).not.toContain('.project-grid__meta'); controller.destroy();
   });
 });

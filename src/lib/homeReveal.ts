@@ -14,11 +14,13 @@ export function groupHomeRevealRows(units: HomeRevealUnit[], tolerance = 4): Hom
   }
   const first = rows[0]?.top ?? 0;
   const last = rows.at(-1)?.top ?? first;
+  const hasHeader = rows.some((row) => row.units.every((unit) => unit.kind === 'header'));
   const nonHeader = rows.filter((row) => !row.units.every((unit) => unit.kind === 'header'));
   const firstContent = nonHeader[0]?.top ?? first;
   const lastContent = nonHeader.at(-1)?.top ?? firstContent;
   for (const row of rows) {
     if (row.units.every((unit) => unit.kind === 'header')) row.delay = 0;
+    else if (!hasHeader) row.delay = lastContent === firstContent ? 0 : HOME_REVEAL_STAGGER * (row.top - firstContent) / (lastContent - firstContent);
     else row.delay = lastContent === firstContent ? 120 : 120 + (HOME_REVEAL_STAGGER - 120) * (row.top - firstContent) / (lastContent - firstContent);
   }
   return rows;
@@ -43,14 +45,13 @@ function collectUnits(home: HTMLElement, viewportHeight: number): HomeRevealUnit
   };
   home.querySelectorAll<HTMLElement>('.site-header-slot').forEach((el) => add(el, 'header'));
   home.querySelectorAll<HTMLElement>('.project-body-text, .project-section-title').forEach((el) => add(el, 'text'));
-  home.querySelectorAll<HTMLElement>('.project-grid__meta').forEach((el) => add(el, 'meta'));
-  const media = '.project-grid__stack, .project-image, .project-image-grid, .project-image-carousel';
+  const media = '.project-grid__cover, .project-image, .project-image-grid, .project-image-carousel';
   home.querySelectorAll<HTMLElement>(media).forEach((el) => { if (!el.parentElement?.closest(media)) add(el, 'media'); });
   return units;
 }
 
 type AnimationLike = { cancel: () => void; finished?: Promise<unknown> };
-type SavedStyle = { opacity: string; visibility: string; transform: string; filter: string; backgroundColor: string };
+type SavedStyle = { opacity: string; visibility: string; transform: string; filter: string };
 type SplitResult = { lines?: HTMLElement[] };
 export function makeHomeRevealCloneVisible(clone: HTMLElement) {
   clone.style.visibility = 'visible';
@@ -73,7 +74,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   let units: HomeRevealUnit[] = [];
   const original = new Map<HTMLElement, SavedStyle>();
   const clones: HTMLElement[] = [];
-  const remember = (el: HTMLElement) => { if (!original.has(el)) original.set(el, { opacity: el.style.opacity, visibility: el.style.visibility, transform: el.style.transform, filter: el.style.filter, backgroundColor: el.style.backgroundColor }); };
+  const remember = (el: HTMLElement) => { if (!original.has(el)) original.set(el, { opacity: el.style.opacity, visibility: el.style.visibility, transform: el.style.transform, filter: el.style.filter }); };
   const reduceMotion = () => win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
   const cleanup = () => {
     animations.forEach((animation) => animation.cancel());
@@ -107,14 +108,6 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
       const source = unit.element!; remember(source); source.style.opacity = '0';
       if (unit.kind === 'text') source.style.visibility = 'hidden';
       if (!reduce && unit.kind !== 'text') { source.style.transform = 'translateY(10px) scale(1.07)'; source.style.filter = 'blur(12px)'; }
-      if (unit.kind === 'media' && source.classList?.contains('project-grid__stack')) {
-        const cover = source.closest<HTMLElement>('.project-grid__cover');
-        if (cover) {
-          remember(cover);
-          source.style.backgroundColor = win.getComputedStyle?.(cover).backgroundColor ?? cover.style.backgroundColor;
-          cover.style.backgroundColor = 'transparent';
-        }
-      }
       if (unit.kind === 'media') source.querySelectorAll<HTMLImageElement>('img').forEach((image) => { void image.decode?.().catch(() => undefined); });
     });
     preparation = (async () => {
