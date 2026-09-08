@@ -8,7 +8,8 @@ const layout = readFileSync(process.env.LAYOUT_TEST_SOURCE ?? new URL('../../src
 const timeline = readFileSync(new URL('../../src/components/DevTransitionTimeline.astro', import.meta.url), 'utf8');
 test('timeline capture initializes inline before the Layout transition module', () => {
   assert.match(timeline, /<script is:inline>/);
-  assert.ok(timeline.indexOf('<script is:inline>') < layout.indexOf("import gsap from 'gsap'"));
+  assert.ok(layout.indexOf('<DevTransitionTimeline />') < layout.indexOf("import gsap from 'gsap'"));
+  assert.doesNotMatch(timeline.match(/<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '', /\bas\s+(?:Window|CustomEvent|HTML)|:\s*Record<|querySelector(?:All)?</);
 });
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
