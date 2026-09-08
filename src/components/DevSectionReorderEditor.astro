@@ -170,6 +170,9 @@
 
     if (ordersMatch(baseline, current)) {
       zone.classList.remove('is-section-order-dirty');
+      window.dispatchEvent(new CustomEvent('vcd:dev-section-order-baseline', {
+        detail: { document: documentKey },
+      }));
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
       return;
     }
