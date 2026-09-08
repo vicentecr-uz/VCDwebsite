@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, groupHomeRevealRows } from '../../src/lib/homeReveal';
+import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, groupHomeRevealRows, makeHomeRevealCloneVisible } from '../../src/lib/homeReveal';
 
 describe('home reveal choreography', () => {
   test('groups equal-top units and delays the final row across the specified span', () => {
@@ -17,5 +17,11 @@ describe('home reveal choreography', () => {
     expect(HOME_REVEAL_STAGGER).toBe(550.72);
     expect(HOME_REVEAL_EASING).toContain('linear(0 0%, 0.006234 1%');
     expect(HOME_REVEAL_EASING).toContain('1.000058 50%)');
+  });
+
+  test('prepared visual text clones are visible to opacity animation', () => {
+    const clone = { style: { visibility: 'hidden' } } as unknown as HTMLElement;
+    makeHomeRevealCloneVisible(clone);
+    expect(clone.style.visibility).toBe('visible');
   });
 });
