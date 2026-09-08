@@ -43,6 +43,7 @@ const {
 } = Astro.props;
 
 const navId = `section-sidebar-nav-${Math.random().toString(36).slice(2, 10)}`;
+const firstGroupIndex = sectionLinks[0] && 'children' in sectionLinks[0] ? 0 : -1;
 const easingOptions = [
   { key: 'nativeSmooth', label: 'Browser native smooth' },
   { key: 'appleOut', label: 'Apple easeOut' },
@@ -70,10 +71,10 @@ const easingOptions = [
 >
   <div class="section-sidebar-nav__scroll" data-section-sidebar-scroll>
     <ul class="section-sidebar-nav__list" data-section-sidebar-list>
-    {sectionLinks.map((item) => (
+    {sectionLinks.map((item, index) => (
       'children' in item ? (
         <li class="section-sidebar-nav__group-item" data-section-nav-group data-outline-id={item.id} data-outline-kind="group" data-nav-anchor={item.anchor} data-nav-label={item.label}>
-          <details class="section-sidebar-nav__group" open={item.defaultOpen}>
+          <details class="section-sidebar-nav__group" open={item.defaultOpen && index === firstGroupIndex}>
             <summary class="section-sidebar-nav__summary">
               <svg viewBox="0 0 8 12" aria-hidden="true">
                 <path d="M1.5 1.5 6 6l-4.5 4.5"></path>
