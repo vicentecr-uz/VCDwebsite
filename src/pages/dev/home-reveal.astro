@@ -49,6 +49,7 @@ const fields = [
   const tuner = document.querySelector('[data-tuner]');
   const status = tuner?.querySelector('[data-status]');
   const intro = document.querySelector('[data-home-intro-surface]');
+  const REPLAY_HOLD_MS = 600;
   const read = (path) => path.split('.').reduce((value, key) => value[key], draft);
   const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], draft); target[key] = Number(value); };
   const syncHeaderLead = () => {
@@ -61,6 +62,7 @@ const fields = [
   };
   const replay = () => {
     cancelAnimationFrame(replay.frame);
+    clearTimeout(replay.timeout);
     replay.frame = requestAnimationFrame(() => {
       if (intro instanceof HTMLElement) {
         intro.style.setProperty('--home-intro-exit-duration', `${draft.intro.durationMs}ms`);
@@ -72,11 +74,15 @@ const fields = [
       oldIntro?.teardown?.();
       const nextIntro = bindHomeIntro({ durationMs: draft.intro.durationMs });
       bindHomeReveal(draft, { reducedMotion: tuner?.querySelector('[data-reduced]')?.checked === true });
-      requestAnimationFrame(() => nextIntro?.dismiss?.());
-      if (status) status.textContent = 'Replayed';
+      if (status) status.textContent = 'Holding intro…';
+      replay.timeout = window.setTimeout(() => {
+        nextIntro?.dismiss?.();
+        if (status) status.textContent = 'Replayed';
+      }, REPLAY_HOLD_MS);
     });
   };
   replay.frame = 0;
+  replay.timeout = 0;
   tuner?.querySelectorAll('input[data-config]').forEach((input) => {
     const path = input.dataset.config;
     if (!path) return;
