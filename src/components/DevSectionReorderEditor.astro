@@ -425,7 +425,14 @@
       }
       if (sourceGapIndicator && sourceGapOwner) {
         sourceGapIndicatorFollowsSlot = sourceGapOwner === indicator;
-        sourceGapOwner.append(sourceGapIndicator);
+        if (activeIntroDrag && movedAway && sourceGapPreview?.element.parentElement) {
+          // Keep the source marker in the page stack. Nesting it in the adjacent
+          // text block constrains its 75vh card to that block's narrow track.
+          sourceGapPreview.element.before(sourceGapIndicator);
+          sourceGapIndicatorFollowsSlot = false;
+        } else {
+          sourceGapOwner.append(sourceGapIndicator);
+        }
       }
       if (indicator.isConnected) setIntroFoldOffsets();
     },

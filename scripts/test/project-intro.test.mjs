@@ -23,6 +23,7 @@ const projectSectionTitle = readFileSync(new URL('../../src/components/project/P
 const globalCss = readFileSync(new URL('../../src/styles/global.css', import.meta.url), 'utf8');
 const projectCss = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 const devTextEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+const devSectionReorderEditor = readFileSync(new URL('../../src/components/DevSectionReorderEditor.astro', import.meta.url), 'utf8');
 
 const spacingHelperStart = devTextEditor.indexOf('  const suppressGalleryPageTopSpacing = (');
 const spacingHelperEnd = devTextEditor.indexOf('\n  };', spacingHelperStart) + '\n  };'.length;
@@ -71,6 +72,8 @@ assert.equal(validateProjectOutlineTargets([
 assert.match(devTextEditor, /getDevSectionOutline/);
 assert.match(devTextEditor, /payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
 assert.match(devTextEditor, /change\.payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
+assert.match(devSectionReorderEditor, /activeIntroDrag && movedAway && sourceGapPreview\?\.element\.parentElement/);
+assert.match(devSectionReorderEditor, /sourceGapPreview\.element\.before\(sourceGapIndicator\)/);
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',
