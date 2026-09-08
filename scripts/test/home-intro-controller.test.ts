@@ -140,6 +140,16 @@ describe('home intro controller', () => {
     expect(completed).toBe(1);
   });
 
+  test('uses an explicit intro duration override', async () => {
+    const f = fixture();
+    f.controller.teardown();
+    const replacement = createHomeIntroController(f.surface, f.home, f.root, f.win, { durationMs: 200 });
+    replacement.dismiss();
+    await waitFor(130);
+    expect(replacement.getState()).toBe('dismissing');
+    replacement.teardown();
+  });
+
   test('Edit cancels an in-flight dismissal', async () => {
     const f = fixture();
     f.okay.emit('click');

@@ -5,15 +5,22 @@ import ProjectSections from '../../components/project/ProjectSections.astro';
 import Footer from '../../components/Footer.astro';
 import HomeIntroController from '../../components/home/HomeIntroController.astro';
 import { loadPageDocument } from '../../lib/projects';
-import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
 import { pageColumnStyle } from '../../lib/pageColumn';
+import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
 import revealConfig from '../../lib/homeRevealConfig.json';
 if (!import.meta.env.DEV) return Astro.redirect('/404');
 const home = loadPageDocument('home');
 const homeIntro = loadPageDocument('home-intro');
+const pageStyle = pageColumnStyle(home.sections);
+const fields = [
+  ['entrance.durationMs', 'Entrance duration', 150, 1200, .01, 'ms'], ['entrance.totalStaggerMs', 'Total stagger', 0, 1500, .01, 'ms'],
+  ['entrance.headerLeadMs', 'Header lead', 0, 600, .01, 'ms'], ['entrance.blurPx', 'Blur', 0, 40, .1, 'px'],
+  ['entrance.translateYPx', 'Vertical offset', -40, 80, .1, 'px'], ['entrance.scale', 'Scale', .8, 1.3, .01, ''],
+  ['intro.durationMs', 'Intro duration', 50, 400, .01, 'ms'], ['intro.blurPx', 'Intro blur', 0, 20, .1, 'px'], ['intro.scale', 'Intro scale', .8, 1, .01, ''],
+];
 ---
-<Layout title="Home reveal tuner (dev)">
-  <div class="home-page flex flex-col min-h-dvh" data-home-page>
+<Layout title="Home reveal tuner (dev)" columnStyle={pageStyle}>
+  <div class="home-page flex min-h-dvh flex-col" data-home-page>
     <Header navMenu wordmarkAsH1 />
     <main id="main-content" class="listing-main" style="flex: 1;">
       <div data-dev-project-drop-zone data-page-document="home">
@@ -24,36 +31,58 @@ const homeIntro = loadPageDocument('home-intro');
     <Footer />
   </div>
   <HomeIntroController page={homeIntro} />
-  <aside class="tuner" aria-label="Home reveal controls" data-tuner></aside>
+  <aside class="tuner" aria-label="Home reveal controls" data-tuner>
+    <h2>Home reveal</h2>
+    <div class="tuner__fields">
+      {fields.map(([path, label, min, max, step, unit]) => <label>{label} <span><input data-config={path} type="number" min={min} max={max} step={step} /> {unit}</span><input data-config={path} type="range" min={min} max={max} step={step} /></label>)}
+      <label>Easing <textarea data-easing rows="4"></textarea></label>
+    </div>
+    <label class="tuner__toggle"><input data-reduced type="checkbox" /> Reduced motion</label>
+    <div class="tuner__actions"><button type="button" data-replay>Replay</button><button type="button" data-save>Save</button></div>
+    <p data-status aria-live="polite"></p>
+  </aside>
 </Layout>
 <script define:vars={{ revealConfig }}>
+  import { bindHomeIntro } from '../../scripts/homeIntro';
   import { bindHomeReveal } from '../../lib/homeReveal';
-  const tuner = document.querySelector('[data-tuner]');
-  const fields = [['entrance.durationMs','Duration',150,1200],['entrance.totalStaggerMs','Stagger',0,1500],['entrance.headerLeadMs','Header lead',0,600],['entrance.blurPx','Blur',0,40],['entrance.translateYPx','Offset',-40,80],['entrance.scale','Scale',0.8,1.3],['intro.durationMs','Intro duration',50,400],['intro.blurPx','Intro blur',0,20],['intro.scale','Intro scale',0.8,1]];
   const draft = structuredClone(revealConfig);
-  const read = (path) => path.split('.').reduce((value,key) => value[key], draft);
-  const write = (path,value) => { const keys=path.split('.'); const last=keys.pop(); const target=keys.reduce((value,key)=>value[key],draft); target[last]=Number(value); };
+  const tuner = document.querySelector('[data-tuner]');
+  const status = tuner?.querySelector('[data-status]');
+  const intro = document.querySelector('[data-home-intro-surface]');
+  const read = (path) => path.split('.').reduce((value, key) => value[key], draft);
+  const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], draft); target[key] = Number(value); };
   const replay = () => {
-    const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
-    if (intro) {
-      intro.style.setProperty('--home-intro-exit-duration', `${draft.intro.durationMs}ms`);
-      intro.style.setProperty('--home-intro-exit-blur', `${draft.intro.blurPx}px`);
-      intro.style.setProperty('--home-intro-exit-scale', String(draft.intro.scale));
-    }
-    const introController = (window as Window & Record<string, { reset?: () => void; dismiss?: () => void }>).__vcdHomeIntroController;
-    introController?.reset?.();
-    bindHomeReveal(draft);
-    requestAnimationFrame(() => introController?.dismiss?.());
+    cancelAnimationFrame(replay.frame);
+    replay.frame = requestAnimationFrame(() => {
+      if (intro instanceof HTMLElement) {
+        intro.style.setProperty('--home-intro-exit-duration', `${draft.intro.durationMs}ms`);
+        intro.style.setProperty('--home-intro-exit-blur', `${draft.intro.blurPx}px`);
+        intro.style.setProperty('--home-intro-exit-scale', String(draft.intro.scale));
+        intro.dataset.reducedMotionPreview = tuner?.querySelector('[data-reduced]')?.checked ? 'true' : 'false';
+      }
+      const oldIntro = window.__vcdHomeIntroController;
+      oldIntro?.teardown?.();
+      const nextIntro = bindHomeIntro({ durationMs: draft.intro.durationMs });
+      bindHomeReveal(draft, { reducedMotion: tuner?.querySelector('[data-reduced]')?.checked === true });
+      requestAnimationFrame(() => nextIntro?.dismiss?.());
+      if (status) status.textContent = 'Replayed';
+    });
   };
-  fields.forEach(([path,label,min,max]) => { const row=document.createElement('label'); row.textContent=label; const input=document.createElement('input'); input.type='range'; input.min=min; input.max=max; input.step='0.01'; input.value=read(path); const value=document.createElement('output'); value.textContent=input.value; input.oninput=()=>{write(path,input.value); value.textContent=input.value; replay();}; row.append(input,value); tuner?.append(row); });
-  const button=document.createElement('button'); button.type='button'; button.textContent='Replay'; button.onclick=replay; tuner?.append(button);
-  const easing=document.createElement('textarea'); easing.value=draft.entrance.easing; easing.setAttribute('aria-label','Easing'); easing.oninput=()=>{draft.entrance.easing=easing.value; replay();}; tuner?.append(easing);
-  const reduced=document.createElement('button'); reduced.type='button'; reduced.textContent='Reduced motion preview'; reduced.onclick=()=>{document.documentElement.style.setProperty('--home-reveal-reduced-preview',''); replay();}; tuner?.append(reduced);
-  const save=document.createElement('button'); save.type='button'; save.textContent='Save'; save.onclick=async()=>{const response=await fetch('/api/home-reveal-config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); save.textContent=response.ok?'Saved src/lib/homeRevealConfig.json':'Save failed';}; tuner?.append(save);
-  bindHomeReveal(draft);
+  replay.frame = 0;
+  tuner?.querySelectorAll('input[data-config]').forEach((input) => {
+    const path = input.dataset.config;
+    if (!path) return;
+    input.value = String(read(path));
+    input.addEventListener('input', () => { write(path, input.value); tuner.querySelectorAll(`[data-config="${path}"]`).forEach((peer) => { if (peer !== input) peer.value = input.value; }); replay(); });
+  });
+  const easing = tuner?.querySelector('[data-easing]');
+  if (easing) { easing.value = draft.entrance.easing; easing.addEventListener('input', () => { draft.entrance.easing = easing.value; replay(); }); }
+  tuner?.querySelector('[data-reduced]')?.addEventListener('change', replay);
+  tuner?.querySelector('[data-replay]')?.addEventListener('click', replay);
+  tuner?.querySelector('[data-save]')?.addEventListener('click', async () => { const response = await fetch('/api/home-reveal-config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) }); if (status) status.textContent = response.ok ? 'Saved' : 'Save failed'; });
+  replay();
 </script>
 <style>
-  .tuner { position: fixed; z-index: 100; right: 1rem; bottom: 1rem; display: grid; gap: .45rem; width: 14rem; padding: .75rem; background: var(--sys-color-srf); color: var(--sys-color-on-srf); border: 1px solid currentColor; }
-  .tuner label { display: grid; grid-template-columns: 1fr auto; gap: .25rem; font-size: .75rem; }
-  .tuner input { grid-column: 1 / -1; width: 100%; }
+  .tuner { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; display: grid; gap: calc(var(--space-unit) * .5); width: min(22rem, calc(100vw - 2 * var(--space-unit))); max-height: calc(100dvh - 2 * var(--space-unit)); overflow: auto; padding: var(--space-unit); background: var(--sys-color-srf); color: var(--sys-color-on-srf); border-radius: var(--radius-sm, .5rem); box-shadow: var(--shadow-md, 0 4px 20px rgb(0 0 0 / .16)); }
+  .tuner h2, .tuner p { margin: 0; } .tuner__fields { display: grid; gap: .5rem; } .tuner label { display: grid; gap: .25rem; font-size: .75rem; } .tuner label > span { display: flex; justify-content: space-between; align-items: center; } .tuner input[type='number'] { width: 5rem; } .tuner textarea { width: 100%; font: inherit; } .tuner__toggle { display: flex !important; align-items: center; } .tuner__actions { display: flex; gap: .5rem; } .tuner button { padding: .35rem .6rem; font: inherit; cursor: pointer; }
 </style>

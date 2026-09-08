@@ -71,6 +71,15 @@ describe('home reveal choreography', () => {
     expect(first.animations[0]?.options.delay).toBe(0); expect(last.animations[0]?.options.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5); controller.destroy();
   });
 
+  test('explicit reduced-motion override wins over the media query', async () => {
+    const item = new FakeElement({ top: 10, left: 0, width: 100, height: 20 }); const home = new FakeElement();
+    home.querySelectorAll = <T>(selector: string) => selector.includes('project-grid__cover') ? [item] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow(false), undefined, { reducedMotion: true });
+    controller.run(); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(item.animations[0]?.options.easing).toBe(HOME_REVEAL_EASING); controller.destroy();
+  });
+
   test('resize rebuilds before dismissal and removes listeners on destroy', async () => {
     const item = new FakeElement(); const home = new FakeElement(); home.querySelectorAll = <T>() => [item] as unknown as T[];
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
