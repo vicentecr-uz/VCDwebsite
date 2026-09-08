@@ -3,7 +3,7 @@ import { writeAtomicJson } from './dev-api-plugins.mjs';
 
 export const HOME_REVEAL_CONFIG_PATH = path.resolve('src/lib/homeRevealConfig.json');
 const TOP_LEVEL_KEYS = ['intro', 'entrance'];
-const INTRO_KEYS = ['durationMs', 'blurPx', 'scale'];
+const INTRO_KEYS = ['durationMs', 'blurPx', 'scale', 'translateYPx'];
 const ENTRANCE_KEYS = ['durationMs', 'totalStaggerMs', 'headerLeadMs', 'blurPx', 'translateYPx', 'scale', 'easing'];
 
 const hasExactKeys = (value, keys) => (
@@ -24,7 +24,7 @@ function validEasing(value) {
 export function validateHomeRevealConfig(value) {
   if (!hasExactKeys(value, TOP_LEVEL_KEYS) || !hasExactKeys(value.intro, INTRO_KEYS) || !hasExactKeys(value.entrance, ENTRANCE_KEYS)) throw new Error('Invalid reveal configuration.');
   const { intro, entrance } = value;
-  if (!bounded(intro.durationMs, 50, 400) || !bounded(intro.blurPx, 0, 20) || !bounded(intro.scale, 0.8, 1)) throw new Error('Invalid reveal configuration.');
+  if (!bounded(intro.durationMs, 50, 400) || !bounded(intro.blurPx, 0, 20) || !bounded(intro.scale, 0.8, 1) || !bounded(intro.translateYPx, 0, 80)) throw new Error('Invalid reveal configuration.');
   if (!bounded(entrance.durationMs, 150, 1200) || !bounded(entrance.totalStaggerMs, 0, 1500) || !bounded(entrance.headerLeadMs, 0, 600) || entrance.headerLeadMs > entrance.totalStaggerMs || !bounded(entrance.blurPx, 0, 40) || !bounded(entrance.translateYPx, -40, 80) || !bounded(entrance.scale, 0.8, 1.3) || !validEasing(entrance.easing)) throw new Error('Invalid reveal configuration.');
   return { intro: { ...intro }, entrance: { ...entrance } };
 }
