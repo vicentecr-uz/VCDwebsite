@@ -135,6 +135,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     projectStackClass,
     resolveProjectStackSpacing,
     reorderProjectStackSpacingSeams,
+    createProjectStackSpacingSnapshotStore,
     setProjectStackSpacingAtViewport,
     type ProjectStackSpacingResolved,
     type ProjectStackSpacingValue,
@@ -943,36 +944,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const state = mountSpacingControl(element);
       return state ? [state] : [];
     });
-    const reorderSpacingSnapshots = new Map<string, Map<EditableSpacingState, {
-      currentValue: ProjectStackSpacingResolved;
-      visualSavedValue: ProjectStackSpacingResolved;
-    }>>();
+    const reorderSpacingSnapshots = createProjectStackSpacingSnapshotStore<EditableSpacingState>();
     const captureReorderSpacingSnapshot = (documentKey: string) => {
-      if (reorderSpacingSnapshots.has(documentKey)) return;
-      reorderSpacingSnapshots.set(documentKey, new Map(
-        spacingStates
-          .filter((state) => state.document === documentKey)
-          .map((state) => [state, {
-            currentValue: cloneSpacing(state.currentValue),
-            visualSavedValue: cloneSpacing(state.visualSavedValue),
-          }]),
-      ));
+      reorderSpacingSnapshots.capture(documentKey, spacingStates);
     };
     const restoreReorderSpacingSnapshot = (documentKey: string) => {
-      const snapshot = reorderSpacingSnapshots.get(documentKey);
-      if (!snapshot) return;
-      snapshot.forEach((values, state) => {
+      reorderSpacingSnapshots.restore(documentKey, (state, values) => {
         if (!spacingStates.includes(state)) return;
         state.currentValue = cloneSpacing(values.currentValue);
         state.visualSavedValue = cloneSpacing(values.visualSavedValue);
         applySpacingClass(state.element, state.currentValue);
         syncSpacingControl(state);
       });
-      reorderSpacingSnapshots.delete(documentKey);
     };
     const resetReorderSpacingSnapshot = (documentKey?: string) => {
-      if (documentKey) reorderSpacingSnapshots.delete(documentKey);
-      else reorderSpacingSnapshots.clear();
+      reorderSpacingSnapshots.reset(documentKey);
     };
     const syncEmptyZoneState = () => {
       document.querySelectorAll<HTMLElement>('[data-dev-project-drop-zone]').forEach((zone) => {
