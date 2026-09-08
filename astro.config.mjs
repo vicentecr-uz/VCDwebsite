@@ -55,6 +55,7 @@ import {
   applyTokenBlock,
 } from './scripts/build-tokens.mjs';
 import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './src/lib/projectStackSpacing.js';
+import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -2383,6 +2384,7 @@ export default defineConfig({
       contentSectionDevWriter(),
       contentBatchDevWriter(),
       contentNavDevWriter(),
+      homeRevealConfigWriter(),
     ],
     optimizeDeps: {
       include: ['gsap', 'color-dialog-box'],

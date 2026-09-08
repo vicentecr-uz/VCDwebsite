@@ -1,3 +1,5 @@
+import revealConfig from '../lib/homeRevealConfig.json';
+
 export type HomeIntroState = 'pending' | 'active' | 'editing' | 'dismissing' | 'dismissed';
 
 export function nextHomeIntroModeState(state: HomeIntroState, editActive: boolean): HomeIntroState {
@@ -81,7 +83,7 @@ export function createHomeIntroController(
         if (!hadTabIndex) main.removeAttribute('tabindex');
       }
       announce('vcd:home-intro-dismissed');
-    }, 100);
+    }, revealConfig.intro.durationMs);
   };
 
   const onClick = (event: MouseEvent) => {
