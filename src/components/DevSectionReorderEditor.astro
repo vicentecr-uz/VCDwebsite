@@ -205,6 +205,14 @@
       : [],
     getDropZone: dropZone,
     getDragItem: () => dragItem,
+    onIndicatorCreate: (indicator) => {
+      const zone = dropZone();
+      if (!zone || !dragItem) return;
+      const zoneRect = zone.getBoundingClientRect();
+      const rootRect = dragItem.getBoundingClientRect();
+      indicator.style.setProperty('--dev-section-inset', `${Math.max(0, rootRect.left - zoneRect.left)}px`);
+      indicator.style.setProperty('--dev-section-inset-end', `${Math.max(0, zoneRect.right - rootRect.right)}px`);
+    },
     moveIndicatorWithFlip: true,
     classes: {
       indicator: DROP_INDICATOR_CLASS,
@@ -306,6 +314,9 @@
 
       const target = resolveInsertIndexFromY(items, centerY, currentIndex, direction);
       if (currentKey === SOURCE_PLACEMENT_KEY && target === sourceIndex) {
+        return { index: target, key: SOURCE_PLACEMENT_KEY };
+      }
+      if (activeIntroDrag && target === sourceIndex) {
         return { index: target, key: SOURCE_PLACEMENT_KEY };
       }
       if (target <= 0) return { index: 0, key: START_PLACEMENT_KEY };
@@ -670,24 +681,6 @@
     root.classList.remove('is-dev-section-controls-visible');
   };
 
-  /**
-   * The drop slot stands in for the lifted block, so its card has to hug the
-   * same media box. The slot lives outside the section, so the anchor vars
-   * can't be inherited — copy them across for the session.
-   */
-  const syncSlotMediaInset = (root: HTMLElement) => {
-    const indicator = dropZone()?.querySelector<HTMLElement>(`.${DROP_INDICATOR_CLASS}`);
-    if (!indicator) return;
-    indicator.style.setProperty(
-      '--dev-section-inset',
-      root.style.getPropertyValue('--dev-section-inset') || '0px',
-    );
-    indicator.style.setProperty(
-      '--dev-section-inset-end',
-      root.style.getPropertyValue('--dev-section-inset-end') || '0px',
-    );
-  };
-
   const releaseSessionRoot = (root: HTMLElement | null) => {
     if (!root) return;
     root.classList.remove('is-section-lifted-session');
@@ -770,7 +763,6 @@
       );
       controller.beginLift(root, handle, x, y, sourceIndex);
       attachLiftBackdrop(root);
-      syncSlotMediaInset(root);
     }
 
     pinSectionControls(root);

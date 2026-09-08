@@ -74,6 +74,8 @@ assert.match(devTextEditor, /payload\.outline = structuredClone\(getDevSectionOu
 assert.match(devTextEditor, /change\.payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
 assert.match(devSectionReorderEditor, /activeIntroDrag && movedAway && sourceGapPreview\?\.element\.parentElement/);
 assert.match(devSectionReorderEditor, /sourceGapPreview\.element\.before\(sourceGapIndicator\)/);
+assert.match(devSectionReorderEditor, /activeIntroDrag && target === sourceIndex/);
+assert.doesNotMatch(devSectionReorderEditor, /syncSlotMediaInset\(root\)/);
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',
