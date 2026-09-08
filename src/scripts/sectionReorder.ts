@@ -587,7 +587,6 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let flipMovingElements: HTMLElement[] = [];
   let activeFadeGhosts: HTMLElement[] = [];
-  const fadeGhostTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
   const fadeGhostAnimations = new Map<HTMLElement, Animation>();
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
@@ -627,9 +626,6 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const clearGhosts = () => {
     activeFadeGhosts.forEach((ghost) => {
-      const timer = fadeGhostTimers.get(ghost);
-      if (timer) clearTimeout(timer);
-      fadeGhostTimers.delete(ghost);
       fadeGhostAnimations.get(ghost)?.cancel();
       fadeGhostAnimations.delete(ghost);
       ghost.remove();
@@ -1254,12 +1250,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
    */
   const fadeOutIndicator = (run: number) => {
     const body = getIndicatorBody();
-    if (!body || state.indicatorOpacity <= 0.01) return Promise.resolve();
+    if (!body) return Promise.resolve();
+    const paintedOpacity = Number.parseFloat(getComputedStyle(body).opacity || '') || 0;
+    dropIndicatorFadeAnimation?.cancel();
+    dropIndicatorFadeAnimation = null;
+    applyIndicatorOpacity(paintedOpacity);
+    if (paintedOpacity <= 0.01) return Promise.resolve();
 
     const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
 
     const fadeAnim = body.animate(
-      [{ opacity: state.indicatorOpacity }, { opacity: 0 }],
+      [{ opacity: paintedOpacity }, { opacity: 0 }],
       { duration, easing: 'ease-out', fill: 'forwards' },
     );
     dropIndicatorFadeAnimation = fadeAnim;
