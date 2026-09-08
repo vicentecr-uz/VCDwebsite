@@ -74,10 +74,11 @@ describe('home reveal choreography', () => {
 
   test('clones the body-text block so its subtree styling survives line splitting', async () => {
     const textBlock = new FakeElement(); const home = new FakeElement();
-    home.querySelectorAll = <T>(selector: string) => selector.includes('.project-block--text') ? [textBlock] as unknown as T[] : [];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('.project-body-text') ? [textBlock] as unknown as T[] : [];
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
     expect(textBlock.style.opacity).toBe('0'); win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(home.children).toHaveLength(1);
     expect(home.children[0]?.style.visibility).toBe('visible'); controller.destroy();
   });
 });
