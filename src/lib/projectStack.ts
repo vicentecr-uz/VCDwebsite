@@ -18,58 +18,6 @@ export type ProjectStackSpacingResolved = Record<
   ProjectStackSpacingValue
 >;
 
-export type ProjectStackSpacingSnapshotState = {
-  document: string;
-  currentValue: ProjectStackSpacingResolved;
-  visualSavedValue: ProjectStackSpacingResolved;
-};
-
-const cloneResolvedSpacing = (value: ProjectStackSpacingResolved): ProjectStackSpacingResolved => ({ ...value });
-
-/** Keeps reorder seam state isolated to one pending document transaction. */
-export function createProjectStackSpacingSnapshotStore<T extends ProjectStackSpacingSnapshotState>() {
-  const snapshots = new Map<string, Map<T, {
-    currentValue: ProjectStackSpacingResolved;
-    visualSavedValue: ProjectStackSpacingResolved;
-  }>>();
-  return {
-    capture(document: string, states: readonly T[]) {
-      if (snapshots.has(document)) return;
-      snapshots.set(document, new Map(states.filter((state) => state.document === document).map((state) => [state, {
-        currentValue: cloneResolvedSpacing(state.currentValue),
-        visualSavedValue: cloneResolvedSpacing(state.visualSavedValue),
-      }])));
-    },
-    restore(document: string, apply: (state: T, snapshot: {
-      currentValue: ProjectStackSpacingResolved;
-      visualSavedValue: ProjectStackSpacingResolved;
-    }) => void) {
-      const snapshot = snapshots.get(document);
-      if (!snapshot) return;
-      snapshot.forEach((values, state) => apply(state, {
-        currentValue: cloneResolvedSpacing(values.currentValue),
-        visualSavedValue: cloneResolvedSpacing(values.visualSavedValue),
-      }));
-      snapshots.delete(document);
-    },
-    preview(document: string, apply: (state: T, snapshot: {
-      currentValue: ProjectStackSpacingResolved;
-      visualSavedValue: ProjectStackSpacingResolved;
-    }) => void) {
-      const snapshot = snapshots.get(document);
-      if (!snapshot) return;
-      snapshot.forEach((values, state) => apply(state, {
-        currentValue: cloneResolvedSpacing(values.currentValue),
-        visualSavedValue: cloneResolvedSpacing(values.visualSavedValue),
-      }));
-    },
-    reset(document?: string) {
-      if (document) snapshots.delete(document);
-      else snapshots.clear();
-    },
-  };
-}
-
 export {
   canonicalizeProjectStackSpacing,
   isProjectStackSpacingPath,

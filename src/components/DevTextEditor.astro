@@ -135,7 +135,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     projectStackClass,
     resolveProjectStackSpacing,
     reorderProjectStackSpacingSeams,
-    createProjectStackSpacingSnapshotStore,
     setProjectStackSpacingAtViewport,
     type ProjectStackSpacingResolved,
     type ProjectStackSpacingValue,
@@ -944,28 +943,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const state = mountSpacingControl(element);
       return state ? [state] : [];
     });
-    const reorderSpacingSnapshots = createProjectStackSpacingSnapshotStore<EditableSpacingState>();
-    const captureReorderSpacingSnapshot = (documentKey: string) => {
-      reorderSpacingSnapshots.capture(documentKey, spacingStates);
-    };
-    const restoreReorderSpacingSnapshot = (documentKey: string) => {
-      reorderSpacingSnapshots.restore(documentKey, (state, values) => {
-        if (!spacingStates.includes(state)) return;
-        state.currentValue = cloneSpacing(values.currentValue);
-        state.visualSavedValue = cloneSpacing(values.visualSavedValue);
-        applySpacingClass(state.element, state.currentValue);
-        syncSpacingControl(state);
-      });
-    };
-    const previewReorderSpacingSnapshot = (documentKey: string) => {
-      reorderSpacingSnapshots.preview(documentKey, (state, values) => {
-        if (!spacingStates.includes(state)) return;
-        applySpacingClass(state.element, values.currentValue);
-      });
-    };
-    const resetReorderSpacingSnapshot = (documentKey?: string) => {
-      reorderSpacingSnapshots.reset(documentKey);
-    };
     const syncEmptyZoneState = () => {
       document.querySelectorAll<HTMLElement>('[data-dev-project-drop-zone]').forEach((zone) => {
         const empty = getSectionRoots(zone).length === 0;
@@ -991,9 +968,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncIntroRunControls();
       spacingStates.forEach(syncSpacingControl);
     });
-    window.addEventListener('vcd:dev-section-structure-changed', ((event: CustomEvent<{ document?: string }>) => {
-      resetReorderSpacingSnapshot(event.detail?.document);
-    }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-structure-changed', scheduleEmptyZoneState, { signal: editorSignal });
     window.addEventListener('vcd:dev-section-reordered', scheduleEmptyZoneState, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-reverted', scheduleEmptyZoneState, { signal: editorSignal });
@@ -3084,8 +3058,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
-      captureReorderSpacingSnapshot(reorderedDocument);
-
       const visualSavedValues = reorderedStates.map((state) => cloneSpacing(state!.visualSavedValue));
       const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
         reorderProjectStackSpacingSeams(
@@ -3118,20 +3090,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
       updateActions();
     }) as EventListener, { signal: editorSignal });
-    window.addEventListener('vcd:dev-section-order-baseline', ((event: CustomEvent<{ document?: string }>) => {
-      const documentKey = event.detail?.document;
-      if (documentKey) restoreReorderSpacingSnapshot(documentKey);
-    }) as EventListener, { signal: editorSignal });
-    window.addEventListener('vcd:dev-section-order-preview', ((event: CustomEvent<{ document?: string }>) => {
-      if (event.detail?.document) previewReorderSpacingSnapshot(event.detail.document);
-    }) as EventListener, { signal: editorSignal });
-    window.addEventListener('vcd:dev-section-order-preview-clear', ((event: CustomEvent<{ document?: string }>) => {
-      const documentKey = event.detail?.document;
-      if (!documentKey) return;
-      spacingStates.filter((state) => state.document === documentKey).forEach((state) => {
-        applySpacingClass(state.element, state.currentValue);
-      });
-    }) as EventListener, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       (event.detail?.ids ?? [])
         .filter((id) => id.startsWith('section-order:'))
@@ -3148,7 +3106,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     }, { signal: editorSignal });
     window.addEventListener('vcd:dev-pending-reverted', () => {
-      resetReorderSpacingSnapshot();
       syncPageTopSpacingControls(false);
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
