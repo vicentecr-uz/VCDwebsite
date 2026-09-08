@@ -298,7 +298,7 @@ const showDevTools = import.meta.env.DEV;
         const waits: Promise<unknown>[] = [];
         waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
         let thumbIndex = 0;
-        for (const img of Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)) {
+        for (const img of Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; })) {
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
             if (!img.complete) {
@@ -358,13 +358,12 @@ const showDevTools = import.meta.env.DEV;
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
-          const opaquePaint = waitForOpaquePaint(controller.signal);
-          await wait.ready;
+          const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
+          const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied'));
+          await readiness;
           if (current !== generation || suspended) return;
-          emitTransitionMilestone('readiness-satisfied');
           await opaquePaint;
           if (current !== generation || suspended) return;
-          emitTransitionMilestone('opaque-paint');
           emitTransitionMilestone('fade-authorized');
           readinessCleanup?.();
           readinessCleanup = null;
