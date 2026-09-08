@@ -7,6 +7,7 @@ import HomeIntroController from '../../components/home/HomeIntroController.astro
 import { loadPageDocument } from '../../lib/projects';
 import { pageColumnStyle } from '../../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
+import { CUBIC_EASING_PRESETS, SPRING_EASING_PRESETS, presetEasing, springDurationMs } from '../../lib/easingDevPresets';
 if (!import.meta.env.DEV) return Astro.redirect('/404');
 const home = loadPageDocument('home');
 const homeIntro = loadPageDocument('home-intro');
@@ -34,7 +35,18 @@ const fields = [
     <h2>Home reveal</h2>
     <div class="tuner__fields">
       {fields.map(([path, label, min, max, step, unit]) => <label>{label} <span><input data-config={path} type="number" min={min} max={max} step={step} /> {unit}</span><input data-config={path} type="range" min={min} max={max} step={step} /></label>)}
-      <label>Easing <textarea data-easing rows="4"></textarea></label>
+      <label>Easing
+        <select data-easing-preset>
+          <option value="custom">Custom</option>
+          <optgroup label="Cubic easing">
+            {CUBIC_EASING_PRESETS.map((preset) => <option value={preset.name}>{preset.name}</option>)}
+          </optgroup>
+          <optgroup label="Spring">
+            {SPRING_EASING_PRESETS.map((preset) => <option value={preset.name}>{preset.name}</option>)}
+          </optgroup>
+        </select>
+        <textarea data-easing rows="4"></textarea>
+      </label>
     </div>
     <label class="tuner__toggle"><input data-reduced type="checkbox" /> Reduced motion</label>
     <div class="tuner__actions"><button type="button" data-replay>Replay</button><button type="button" data-save>Save</button></div>
@@ -45,6 +57,7 @@ const fields = [
   import { bindHomeIntro } from '../../scripts/homeIntro';
   import { bindHomeReveal } from '../../lib/homeReveal';
   import revealConfig from '../../lib/homeRevealConfig.json';
+  import { CUBIC_EASING_PRESETS, SPRING_EASING_PRESETS, presetEasing, springDurationMs } from '../../lib/easingDevPresets';
   const draft = structuredClone(revealConfig);
   const tuner = document.querySelector('[data-tuner]');
   const status = tuner?.querySelector('[data-status]');
@@ -97,14 +110,35 @@ const fields = [
     });
   });
   const easing = tuner?.querySelector('[data-easing]');
+  const easingPreset = tuner?.querySelector('[data-easing-preset]');
+  const allPresets = [...CUBIC_EASING_PRESETS, ...SPRING_EASING_PRESETS];
+  const durationStep = 10;
+  const syncDuration = () => tuner?.querySelectorAll('[data-config="entrance.durationMs"]').forEach((input) => { input.value = String(draft.entrance.durationMs); });
+  const matchingPreset = allPresets.find((preset) => {
+    if (presetEasing(preset) !== draft.entrance.easing) return false;
+    return preset.type !== 'spring' || Math.round(springDurationMs(preset) / durationStep) * durationStep === draft.entrance.durationMs;
+  });
+  if (easingPreset) easingPreset.value = matchingPreset?.name ?? 'custom';
   if (easing) {
     easing.value = draft.entrance.easing;
     easing.addEventListener('input', () => {
       draft.entrance.easing = easing.value;
+      if (easingPreset) easingPreset.value = 'custom';
       if (CSS.supports('animation-timing-function', easing.value)) replay();
       else if (status) status.textContent = 'Invalid easing';
     });
   }
+  easingPreset?.addEventListener('change', () => {
+    const preset = allPresets.find((candidate) => candidate.name === easingPreset.value);
+    if (!preset || !easing) return;
+    draft.entrance.easing = presetEasing(preset);
+    easing.value = draft.entrance.easing;
+    if (preset.type === 'spring') {
+      draft.entrance.durationMs = Math.round(springDurationMs(preset) / durationStep) * durationStep;
+      syncDuration();
+    }
+    replay();
+  });
   syncHeaderLead();
   tuner?.querySelector('[data-reduced]')?.addEventListener('change', replay);
   tuner?.querySelector('[data-replay]')?.addEventListener('click', replay);
