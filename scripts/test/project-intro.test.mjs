@@ -12,7 +12,7 @@ import {
   shouldKeepLeadingSpacingSeam,
 } from '../../src/lib/projectStack.ts';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../src/lib/pageColumn.ts';
-import { resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
+import { createScrollDriver, resolveGapLaneSide } from '../../src/scripts/sectionReorder.ts';
 import { resolveProjectOutline } from '../../src/lib/projectOutline.ts';
 import { validateProjectOutlineTargets } from '../dev-api-plugins.mjs';
 
@@ -23,6 +23,7 @@ const projectSectionTitle = readFileSync(new URL('../../src/components/project/P
 const globalCss = readFileSync(new URL('../../src/styles/global.css', import.meta.url), 'utf8');
 const projectCss = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 const devTextEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+const devSectionReorderEditor = readFileSync(new URL('../../src/components/DevSectionReorderEditor.astro', import.meta.url), 'utf8');
 
 const spacingHelperStart = devTextEditor.indexOf('  const suppressGalleryPageTopSpacing = (');
 const spacingHelperEnd = devTextEditor.indexOf('\n  };', spacingHelperStart) + '\n  };'.length;
@@ -71,6 +72,13 @@ assert.equal(validateProjectOutlineTargets([
 assert.match(devTextEditor, /getDevSectionOutline/);
 assert.match(devTextEditor, /payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
 assert.match(devTextEditor, /change\.payload\.outline = structuredClone\(getDevSectionOutline\(\)\)/);
+assert.match(devSectionReorderEditor, /activeIntroDrag && movedAway && sourceGapPreview\?\.element\.parentElement/);
+assert.match(devSectionReorderEditor, /sourceGapPreview\.element\.before\(sourceGapIndicator\)/);
+assert.match(devSectionReorderEditor, /activeIntroDrag && target === sourceIndex/);
+assert.match(devSectionReorderEditor, /moveIndicatorWithFlip: false/);
+assert.doesNotMatch(devSectionReorderEditor, /syncSlotMediaInset\(root\)/);
+assert.match(devSectionReorderEditor, /rootRect\.left - zoneRect\.left\) \+ innerInset\('--dev-section-inset'\)/);
+assert.match(devSectionReorderEditor, /zoneRect\.right - rootRect\.right\) \+ innerInset\('--dev-section-inset-end'\)/);
 
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'section', mobile: 'none' }), {
   desktop: 'section', tablet: 'section', mobile: 'none',
@@ -224,3 +232,25 @@ assert.deepEqual(
 );
 
 console.log('project-intro: ok');
+
+const veilScrollSteps = [];
+const veilScroll = createScrollDriver({ scrollBy: (step) => veilScrollSteps.push(step) });
+veilScroll.apply(1000 / 60, 100, 400);
+assert.ok(veilScrollSteps[0] > 0);
+veilScroll.reset();
+veilScroll.apply(1000 / 60, 400, 100);
+assert.ok(veilScrollSteps[1] < 0);
+
+const viewportSource = readFileSync(new URL('../../src/lib/safeVh.ts', import.meta.url), 'utf8');
+const geometryStart = viewportSource.indexOf('    const pageViewport =');
+const geometryEnd = viewportSource.indexOf('    const outerAir =', geometryStart);
+const geometryScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(viewportSource.slice(geometryStart, geometryEnd));
+const measureIntro = new Function('first', 'next', 'last', 'scrollTop', 'height', 'safeViewportHeight', 'introLayout', `${geometryScript}; return layout;`);
+const overlayViewport = { scrollTop: 150, getBoundingClientRect: () => ({ top: 20 }) };
+const overlayFirst = { closest: () => overlayViewport };
+const overlayNext = { getBoundingClientRect: () => ({ top: 170 }) };
+assert.equal(measureIntro(overlayFirst, overlayNext, null, 900, 100, 1000, introLayout).outerGapPx, 350);
+overlayViewport.scrollTop = 200;
+overlayNext.getBoundingClientRect = () => ({ top: 120 });
+assert.equal(measureIntro(overlayFirst, overlayNext, null, 900, 100, 1000, introLayout).outerGapPx, 350);
+assert.equal(measureIntro({ closest: () => null }, { getBoundingClientRect: () => ({ top: 200 }) }, null, 100, 100, 1000, introLayout).outerGapPx, 350);

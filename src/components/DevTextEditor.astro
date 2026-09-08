@@ -121,6 +121,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import {
     buildIndexMapFromOrder,
     DEV_PATH_ATTRS,
+    getDropZone,
+    getSectionRoots,
     remapSectionPaths,
     resetSectionOrderIds,
     shiftSectionOrderIds,
@@ -809,7 +811,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const pageBottom = isPageBottomSpacingBlock(element);
         const initial = cloneSpacing(raw);
         const docKey = element.dataset.devSpacingDocument || '';
-        const supportsIntro = docKey === 'home' || docKey === 'work' || docKey === 'play' || docKey === 'about';
+        const supportsIntro = docKey === 'home' || docKey === 'home-intro' || docKey === 'work' || docKey === 'play' || docKey === 'about';
         const introMenuItem = supportsIntro
           ? '<button type="button" class="dev-surface" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro text</button><button type="button" class="dev-surface" role="menuitem" data-dev-section-type="sectionTitle" data-dev-section-intro="true">Intro heading</button>'
           : '';
@@ -941,6 +943,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const state = mountSpacingControl(element);
       return state ? [state] : [];
     });
+    const syncEmptyZoneState = () => {
+      document.querySelectorAll<HTMLElement>('[data-dev-project-drop-zone]').forEach((zone) => {
+        const empty = getSectionRoots(zone).length === 0;
+        zone.classList.toggle('is-dev-empty-page', empty);
+        spacingStates.filter((state) => state.element.parentElement === zone).forEach((state) => {
+          const sentinel = state.element.dataset.devSpacingWritePath === '["trailingSpacing"]';
+          state.control.classList.toggle('is-dev-empty-add', empty && sentinel);
+        });
+      });
+    };
     let lastSpacingViewport = currentSpacingViewport();
     window.addEventListener('resize', () => {
       const viewport = currentSpacingViewport();
@@ -950,6 +962,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     }, { signal: editorSignal });
     syncPageTopSpacingControls();
+    syncEmptyZoneState();
+    const scheduleEmptyZoneState = () => requestAnimationFrame(() => {
+      syncEmptyZoneState();
+      syncIntroRunControls();
+      spacingStates.forEach(syncSpacingControl);
+    });
+    window.addEventListener('vcd:dev-section-structure-changed', scheduleEmptyZoneState, { signal: editorSignal });
+    window.addEventListener('vcd:dev-section-reordered', scheduleEmptyZoneState, { signal: editorSignal });
+    window.addEventListener('vcd:dev-pending-reverted', scheduleEmptyZoneState, { signal: editorSignal });
+    window.addEventListener('vcd:dev-mode-change', scheduleEmptyZoneState, { signal: editorSignal });
+    window.addEventListener('vcd:page-surface-change', scheduleEmptyZoneState, { signal: editorSignal });
 
     const bumpSectionPath = (
       path: Array<string | number>,
@@ -966,33 +989,37 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return true;
     };
 
-    const remapPathsInStates = (indexMap: Record<number, number>) => {
+    const remapPathsInStates = (indexMap: Record<number, number>, documentKey: string) => {
       textStates.forEach((state) => {
+        if (state.document !== documentKey) return;
         if (state.path[0] === 'sections' && typeof state.path[1] === 'number') {
           const newIdx = indexMap[state.path[1]];
           if (newIdx !== undefined) state.path[1] = newIdx;
         }
       });
       spacingStates.forEach((state) => {
+        if (state.document !== documentKey) return;
         if (state.path[0] === 'sections' && typeof state.path[1] === 'number') {
           const newIdx = indexMap[state.path[1]];
           if (newIdx !== undefined) state.path[1] = newIdx;
         }
       });
       spacingStates.forEach((state) => {
-        if (!state.introHeight) return;
+        if (state.document !== documentKey || !state.introHeight) return;
         const newIdx = indexMap[state.introHeight.path[1] as number];
         if (newIdx !== undefined) state.introHeight.path[1] = newIdx;
       });
     };
 
-    const reindexDevPaths = (fromIndex: number, delta: number) => {
+    const reindexDevPaths = (fromIndex: number, delta: number, documentKey: string) => {
       // Order ids are not in DEV_PATH_ATTRS but track the same JSON index, so
       // they have to move with the paths. Every caller mutates the DOM either
       // before the new root is attached or after the old one is detached, so
       // the shifted set never includes the block being added or removed.
-      shiftSectionOrderIds(fromIndex, delta);
-      document.querySelectorAll<HTMLElement>(DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(',')).forEach((el) => {
+      const zone = getDropZone(documentKey);
+      if (!zone) return;
+      shiftSectionOrderIds(fromIndex, delta, zone);
+      zone.querySelectorAll<HTMLElement>(DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(',')).forEach((el) => {
         DEV_PATH_ATTRS.forEach((attr) => {
           const raw = el.getAttribute(attr);
           if (!raw) return;
@@ -1008,13 +1035,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
       });
       textStates.forEach((state) => {
+        if (state.document !== documentKey) return;
         bumpSectionPath(state.path, fromIndex, delta);
       });
       spacingStates.forEach((state) => {
+        if (state.document !== documentKey) return;
         bumpSectionPath(state.path, fromIndex, delta);
         if (state.introHeight) bumpSectionPath(state.introHeight.path, fromIndex, delta);
       });
       pendingBlockConverts.forEach((entry) => {
+        if (entry.documentKey !== documentKey) return;
         // Connected roots already moved with the document query above.
         if (entry.previousRoot !== entry.root && !entry.previousRoot.isConnected) {
           bumpPathAttrsOnElement(entry.previousRoot, fromIndex, delta);
@@ -1210,7 +1240,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return;
       }
       const held = spacingStates.some((state) => {
-        if (state.control.hidden) return false;
+        if (state.control.hidden || !isActiveSpacingState(state)) return false;
         const pillUp =
           state.control.classList.contains('is-near-add')
           || state.control.classList.contains('is-near-spacing')
@@ -1372,8 +1402,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      */
     const isPointerOverHeaderChrome = (clientX: number, clientY: number) => {
       const header = document.querySelector('.site-header');
-      if (!header) return false;
+      if (!header || header.closest('[hidden], [inert]')) return false;
       return [...header.querySelectorAll<HTMLElement>('.header-trigger')].some((trigger) => {
+        if (trigger.closest('[hidden], [inert]')) return false;
         const panel = trigger.querySelector<HTMLElement>('.header-trigger__panel');
         const box =
           trigger.classList.contains('is-menu-open') && panel
@@ -1400,6 +1431,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       || document.documentElement.classList.contains('is-dev-tuner-open')
       || document.documentElement.hasAttribute('data-dev-image-drop-choice-open');
 
+    const isActiveSpacingState = (state: EditableSpacingState) => {
+      const zone = state.element.closest<HTMLElement>('[data-dev-project-drop-zone]');
+      return Boolean(zone && !zone.closest('[hidden], [inert]') && getDropZone(state.document) === zone);
+    };
+
     const syncSpacingProximity = (clientX: number, clientY: number) => {
       if (
         !isDevContentEditing()
@@ -1414,7 +1450,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       if (suppressGapProximity) {
         const stillNear = spacingStates.some((state) => {
-          if (state.control.hidden) return false;
+          if (state.control.hidden || !isActiveSpacingState(state)) return false;
           if (isPointerOverToolbarHitbox(state, clientX, clientY)) return true;
           return distanceToToolbarPill(state, clientX, clientY) <= SPACING_ACTIVATION_RADIUS_PX;
         });
@@ -1449,7 +1485,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       let nearestDistance = Infinity;
 
       spacingStates.forEach((state) => {
-        if (state.control.hidden) return;
+        if (state.control.hidden || !isActiveSpacingState(state)) return;
         // Mid-page chips stay suppressed under the sticky header; page-top may lift above it.
         if (overHeader && !isPageTopGapControl(state.control)) return;
         if (isAddControlPinned(state) || isSpacingControlPinned(state)) return;
@@ -1605,14 +1641,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const restorePendingSectionDelete = (pending: PendingSectionDelete) => {
-      reindexDevPaths(pending.deletedIndex, 1);
-      const anchor = findInsertAnchor(pending.deletedIndex);
+      reindexDevPaths(pending.deletedIndex, 1, pending.documentKey);
+      const anchor = findInsertAnchor(pending.deletedIndex, pending.documentKey);
       if (anchor) {
         anchor.before(pending.root);
       } else if (pending.insertBefore?.parentNode) {
         pending.insertBefore.parentNode.insertBefore(pending.root, pending.insertBefore);
       } else {
-        document.querySelector('[data-dev-project-drop-zone]')?.append(pending.root);
+        getDropZone(pending.documentKey)?.append(pending.root);
       }
 
       textStates.push(...pending.textStates);
@@ -1737,7 +1773,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
         const deletableIdx = deletableSections.indexOf(entry.root);
         if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
-        reindexDevPaths(entry.index, -1);
+        reindexDevPaths(entry.index, -1, entry.documentKey);
         entry.root.remove();
         window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
           detail: {
@@ -1778,7 +1814,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const deletableIdx = deletableSections.indexOf(entry.root);
         if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
         entry.root.remove();
-        reindexDevPaths(entry.index, -1);
+        reindexDevPaths(entry.index, -1, entry.documentKey);
 
         window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
           detail: {
@@ -2729,7 +2765,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const sectionId = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
-      reindexDevPaths(insertIndex, 1);
+      reindexDevPaths(insertIndex, 1, documentKey);
 
       const introHeight = options?.intro
         ? (spacingStates.find((candidate) => candidate.document === documentKey && candidate.introHeight)?.introHeight?.currentValue ?? 75)
@@ -2902,13 +2938,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
-    const sectionRoots = () => {
-      const zone = document.querySelector<HTMLElement>('[data-dev-project-drop-zone]');
-      return [...(zone?.querySelectorAll<HTMLElement>('[data-dev-spacing-document]') ?? [])]
-        .filter((element) => element.dataset.devSectionDeletable || element.dataset.devSpacingPath);
+    const sectionRoots = (documentKey?: string) => {
+      const zone = getDropZone(documentKey);
+      return [...(zone?.querySelectorAll<HTMLElement>('[data-dev-spacing-document]') ?? [])];
     };
     const refreshSectionMenu = (state: EditableSpacingState) => {
-      const roots = sectionRoots();
+      const roots = sectionRoots(state.document);
       const index = roots.indexOf(state.element);
       const previous = roots[index - 1];
       const currentIntro = state.element.dataset.devIntro === 'true';
@@ -2924,18 +2959,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const normal = state.control.querySelector<HTMLElement>('[data-dev-normal-section-menu]');
       const intro = state.control.querySelector<HTMLElement>('[data-dev-intro-section-menu]');
       if (normal) normal.hidden = boundary;
-      const supportsIntro = ['home', 'work', 'play', 'about'].includes(state.document);
+      const supportsIntro = ['home', 'home-intro', 'work', 'play', 'about'].includes(state.document);
       if (intro) intro.hidden = !supportsIntro || (hasIntro && !boundary);
     };
     const syncIntroRunControls = () => {
       let previousIntro = false;
       let lead: EditableIntroHeightState | null = null;
       const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
-      const orderedStates = sectionRoots()
+      const orderedStates = [...new Set(spacingStates.map((state) => state.document))].flatMap((key) => sectionRoots(key))
         .map((root) => statesByElement.get(root))
         .filter((state): state is EditableSpacingState => Boolean(state));
+      let previousDocument = '';
       orderedStates.forEach((state) => {
         if (!state.element.isConnected) return;
+        if (state.document !== previousDocument) { previousIntro = false; lead = null; }
+        previousDocument = state.document;
         refreshSectionMenu(state);
         const isIntro = state.element.dataset.devIntro === 'true';
         if (!isIntro) { previousIntro = false; lead = null; return; }
@@ -3020,7 +3058,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const statesByElement = new Map(spacingStates.map((state) => [state.element, state]));
       const reorderedStates = before.map((root) => statesByElement.get(root));
       if (reorderedStates.some((state) => !state || state.document !== reorderedDocument)) return;
-
       const visualSavedValues = reorderedStates.map((state) => cloneSpacing(state!.visualSavedValue));
       const reorderedMaps = (['desktop', 'tablet', 'mobile'] as const).map((viewport) => (
         reorderProjectStackSpacingSeams(
@@ -3112,7 +3149,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (deletableIdx >= 0) deletableSections.splice(deletableIdx, 1);
 
       element.remove();
-      reindexDevPaths(sectionIndex, -1);
+      reindexDevPaths(sectionIndex, -1, documentKey);
 
       if (pendingInsertIdx >= 0) {
         pendingSectionInserts.splice(pendingInsertIdx, 1);
@@ -3463,10 +3500,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       mountDeleteButton(element);
     });
 
-    const findInsertAnchor = (index: number) => {
-      for (const block of document.querySelectorAll<HTMLElement>(
+    const findInsertAnchor = (index: number, documentKey: string) => {
+      const zone = getDropZone(documentKey);
+      for (const block of zone?.querySelectorAll<HTMLElement>(
         '[data-dev-spacing-document][data-dev-spacing-path]',
-      )) {
+      ) ?? []) {
+        if (block.dataset.devSpacingDocument !== documentKey) continue;
         try {
           const path = JSON.parse(block.dataset.devSpacingPath || '[]');
           if (path[0] === 'sections' && path[1] === index + 1) return block;
@@ -3487,11 +3526,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         || textStates.some((state) => state.document === documentKey);
       if (!pageUsesDocument) return;
 
-      reindexDevPaths(index, 1);
+      reindexDevPaths(index, 1, documentKey);
       const root = mountInsertedSection(section, documentKey, index);
-      const anchor = findInsertAnchor(index);
+      const anchor = findInsertAnchor(index, documentKey);
       if (anchor) anchor.before(root);
-      else document.querySelector('[data-dev-project-drop-zone]')?.append(root);
+      else getDropZone(documentKey)?.append(root);
 
       const spacingState = mountSpacingControl(root);
       if (spacingState) {
@@ -3527,10 +3566,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       updateActions();
     };
 
-    const findSectionRootByIndex = (index: number) => {
-      for (const block of document.querySelectorAll<HTMLElement>(
+    const findSectionRootByIndex = (index: number, documentKey: string) => {
+      const zone = getDropZone(documentKey);
+      for (const block of zone?.querySelectorAll<HTMLElement>(
         '[data-dev-spacing-document][data-dev-spacing-path]',
-      )) {
+      ) ?? []) {
+        if (block.dataset.devSpacingDocument !== documentKey) continue;
         try {
           const path = JSON.parse(block.dataset.devSpacingPath || '[]');
           if (
@@ -3557,7 +3598,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         || textStates.some((state) => state.document === documentKey);
       if (!pageUsesDocument) return null;
 
-      const existing = findSectionRootByIndex(index);
+      const existing = findSectionRootByIndex(index, documentKey);
       if (!existing) return null;
 
       detachSectionStates(existing);
@@ -5738,7 +5779,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           submittedHeights.get(state),
         ));
         for (const change of sectionOrderChanges) {
-          change.payload.outline = structuredClone(getDevSectionOutline());
+          const reorderedDocument = String(change.payload.document || '');
+          if (reorderedDocument !== 'home-intro') {
+            change.payload.outline = structuredClone(getDevSectionOutline());
+          }
           const response = await fetch('/api/content-section-order', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -5750,10 +5794,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             ? change.payload.order.map((value) => Number(value))
             : [];
           const indexMap = buildIndexMapFromOrder(order);
-          remapSectionPaths(indexMap);
-          remapPathsInStates(indexMap);
-          resetSectionOrderIds();
-          const reorderedDocument = String(change.payload.document || '');
+          remapSectionPaths(indexMap, reorderedDocument);
+          remapPathsInStates(indexMap, reorderedDocument);
+          resetSectionOrderIds(getDropZone(reorderedDocument));
           spacingStates.forEach((state) => {
             if (state.document !== reorderedDocument) return;
             state.savedValue = cloneSpacing(submittedSpacing.get(state) ?? state.currentValue);
@@ -6524,6 +6567,31 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      only the redundant spacing row stays suppressed. */
   .dev-gap-toolbar[data-dev-suppress-gallery-page-top]:not(:has(.dev-intro-height-control)) {
     display: none !important;
+  }
+
+  .is-dev-mode [data-dev-project-drop-zone].is-dev-empty-page {
+    min-height: calc(var(--vh-safe, 1svh) * 100);
+  }
+
+  .is-dev-mode [data-dev-project-drop-zone].is-dev-empty-page > [data-dev-spacing-document]:last-child {
+    min-height: inherit;
+  }
+
+  .is-dev-mode .is-dev-empty-page .dev-gap-toolbar.is-dev-empty-add {
+    top: 50%;
+    left: 50%;
+    right: auto;
+    width: auto;
+    transform: translate(-50%, -50%);
+  }
+
+  .is-dev-mode .dev-gap-toolbar.is-dev-empty-add > .dev-gap-toolbar__pill {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .dev-gap-toolbar.is-dev-empty-add > .dev-gap-toolbar__pill > :not(.dev-gap-toolbar__add) {
+    display: none;
   }
 
   .dev-gap-toolbar[data-dev-suppress-gallery-page-top]:not(:has(.dev-intro-height-control))

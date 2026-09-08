@@ -1,18 +1,36 @@
 import { afterEach, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { isDevContentEditing, syncDevModeOnSection } from '../../src/scripts/devSectionMount';
-import { DEV_PATH_ATTRS, remapSectionPaths } from '../../src/scripts/devSectionPaths';
+import { DEV_PATH_ATTRS, getDropZone, remapSectionPaths } from '../../src/scripts/devSectionPaths';
 
 const originalDocument = globalThis.document;
 afterEach(() => { globalThis.document = originalDocument; });
 
 class MockElement {
   private attributes = new Map<string, string>();
+  dataset: Record<string, string> = {};
   constructor(attributes: Record<string, string>) {
     Object.entries(attributes).forEach(([name, value]) => this.attributes.set(name, value));
   }
   getAttribute(name: string) { return this.attributes.get(name) ?? null; }
   setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+}
+
+class MockZone {
+  hidden: boolean;
+  inert: boolean;
+  dataset: Record<string, string>;
+  constructor(private children: MockElement[], documentKey = '', hidden = false, inert = false) {
+    this.hidden = hidden;
+    this.inert = inert;
+    this.dataset = documentKey ? { pageDocument: documentKey } : {};
+  }
+  closest(selector: string) { return (this.hidden && selector.includes('hidden')) || (this.inert && selector.includes('inert')) ? this : null; }
+  querySelector(selector: string) {
+    const match = selector.match(/data-(?:dev-spacing|dev-text)-document="([^"]+)"/);
+    return match?.[1] === this.dataset.pageDocument ? this.children[0] : null;
+  }
+  querySelectorAll() { return this.children; }
 }
 
 test('section mode suspends mounted content controls and restores them on return to Edit', () => {
@@ -46,13 +64,32 @@ test('section reorder remaps carousel paths with the shared path list', () => {
   const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 1, 'spacing']) });
   const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
   const unrelated = new MockElement({ 'data-dev-other-path': JSON.stringify(['sections', 1, 'other']) });
-  globalThis.document = { querySelectorAll: () => [spacing, carousel, unrelated] } as unknown as Document;
+  const zone = new MockZone([spacing, carousel, unrelated]);
+  globalThis.document = { querySelectorAll: () => [zone] } as unknown as Document;
 
   remapSectionPaths({ 0: 2, 1: 0 });
 
   expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)).toEqual(['sections', 0, 'spacing']);
   expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)).toEqual(['sections', 0]);
   expect(JSON.parse(unrelated.getAttribute('data-dev-other-path')!)).toEqual(['sections', 1, 'other']);
+});
+
+test('document scoped remapping preserves the other surface and ignores inactive zones', () => {
+  const homePath = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
+  const introPath = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
+  const hiddenPath = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
+  const homeZone = new MockZone([homePath], 'home', false, true);
+  const introZone = new MockZone([introPath], 'home-intro');
+  const hiddenZone = new MockZone([hiddenPath], 'hidden-doc', true);
+  globalThis.document = { querySelectorAll: () => [homeZone, introZone, hiddenZone] } as unknown as Document;
+
+  expect(getDropZone()).toBe(introZone);
+  remapSectionPaths({ 1: 0 }, 'home-intro');
+  expect(JSON.parse(introPath.getAttribute('data-dev-carousel-path')!)[1]).toBe(0);
+  expect(JSON.parse(homePath.getAttribute('data-dev-carousel-path')!)[1]).toBe(1);
+  expect(JSON.parse(hiddenPath.getAttribute('data-dev-carousel-path')!)[1]).toBe(1);
+  remapSectionPaths({ 1: 0 }, 'missing-document');
+  expect(JSON.parse(introPath.getAttribute('data-dev-carousel-path')!)[1]).toBe(0);
 });
 
 const editorSource = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
@@ -64,20 +101,22 @@ const reindexSource = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorS
 test('section insertion and deletion keep carousel paths aligned with other section paths', () => {
   const spacing = new MockElement({ 'data-dev-spacing-path': JSON.stringify(['sections', 1, 'spacing']) });
   const carousel = new MockElement({ 'data-dev-carousel-path': JSON.stringify(['sections', 1]) });
+  const zone = new MockZone([spacing, carousel], 'home-intro');
   const env = {
     DEV_PATH_ATTRS,
-    document: { querySelectorAll: () => [spacing, carousel] },
+    document: { querySelectorAll: () => [zone] },
+    getDropZone: (documentKey?: string) => documentKey === 'home-intro' ? zone : null,
     shiftSectionOrderIds: () => {},
     textStates: [],
     spacingStates: [],
     pendingBlockConverts: [],
   };
-  const reindexDevPaths = new Function('env', `with (env) { ${reindexSource}; return reindexDevPaths; }`)(env) as (fromIndex: number, delta: number) => void;
+  const reindexDevPaths = new Function('env', `with (env) { ${reindexSource}; return reindexDevPaths; }`)(env) as (fromIndex: number, delta: number, documentKey: string) => void;
 
-  reindexDevPaths(1, 1);
+  reindexDevPaths(1, 1, 'home-intro');
   expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(2);
   expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(2);
-  reindexDevPaths(1, -1);
+  reindexDevPaths(1, -1, 'home-intro');
   expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(1);
   expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(1);
 });

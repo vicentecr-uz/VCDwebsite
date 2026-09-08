@@ -26,8 +26,21 @@ export function sectionIndexFromElement(el: HTMLElement): number | null {
   return sectionIndexFromPath(el.dataset.devSpacingWritePath ?? el.dataset.devSpacingPath);
 }
 
-export function getDropZone(): HTMLElement | null {
-  return document.querySelector('[data-dev-project-drop-zone]');
+export function getDropZone(documentKey?: string): HTMLElement | null {
+  const zones = [...document.querySelectorAll<HTMLElement>('[data-dev-project-drop-zone]')];
+  const isExposed = (zone: HTMLElement) => {
+    if (zone.hidden || zone.closest('[hidden], [inert]')) return false;
+    return true;
+  };
+  if (documentKey) {
+    const escapedKey = documentKey.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+    const explicit = zones.find((zone) => (
+      zone.dataset.pageDocument === documentKey
+      || zone.querySelector(`[data-dev-spacing-document="${escapedKey}"], [data-dev-text-document="${escapedKey}"]`)
+    ));
+    return explicit ?? null;
+  }
+  return zones.find(isExposed) ?? null;
 }
 
 /** One outermost root element per section index in the drop zone. */
@@ -119,10 +132,11 @@ export function buildIndexMapFromOrder(order: number[]): Record<number, number> 
   return map;
 }
 
-export function remapSectionPaths(indexMap: Record<number, number>) {
-  document.querySelectorAll<HTMLElement>(
-    DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(','),
-  ).forEach((el) => {
+export function remapSectionPaths(indexMap: Record<number, number>, documentKey?: string) {
+  const zone = getDropZone(documentKey);
+  if (!zone) return;
+  const nodes = zone.querySelectorAll<HTMLElement>(DEV_PATH_ATTRS.map((attr) => `[${attr}]`).join(','));
+  nodes.forEach((el) => {
     DEV_PATH_ATTRS.forEach((attr) => {
       const raw = el.getAttribute(attr);
       if (!raw) return;

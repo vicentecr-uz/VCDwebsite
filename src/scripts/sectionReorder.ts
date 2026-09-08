@@ -299,6 +299,7 @@ export const createScrollDriver = (
     rampPx?: number;
     maxScrollSpeed?: number;
     velocitySmoothing?: number;
+    scrollBy?: (step: number) => void;
   } = {},
 ): ScrollDriver => {
   const deadZonePx = options.deadZonePx ?? SCROLL_HOLD.DEAD_ZONE_PX;
@@ -339,7 +340,8 @@ export const createScrollDriver = (
       const step = scrollRemainder > 0
         ? Math.floor(scrollRemainder)
         : Math.ceil(scrollRemainder);
-      window.scrollBy(0, step);
+      if (options.scrollBy) options.scrollBy(step);
+      else window.scrollBy(0, step);
       scrollRemainder -= step;
     },
     getLastTickTime: () => lastTickTime,
@@ -438,6 +440,8 @@ export type ReorderHost = {
   flipEasing?: string;
   /** Move the existing slot with its neighbours instead of crossfading locations. */
   moveIndicatorWithFlip?: boolean;
+  /** Initialize visual-only indicator sizing before it enters layout. */
+  onIndicatorCreate?: (indicator: HTMLElement) => void;
   /**
    * Per-host edge-scroll feel. Defaults to {@link SCROLL_HOLD}. A dense grid
    * wants a longer, gentler ramp than a page of full-width sections — the same
@@ -463,6 +467,8 @@ export type ReorderHost = {
    * model does not own — a grid slot's column span, for instance.
    */
   onSlotSync?: (indicator: HTMLElement, insertIndex: number, placementKey: string) => void;
+  /** Runs after destination gap metrics are applied and before paint settles. */
+  onSlotLayout?: (indicator: HTMLElement, insertIndex: number, placementKey: string) => void;
   onStatus?: (text: string) => void;
 };
 
@@ -558,7 +564,17 @@ export type ReorderController = {
  * this owns placement, FLIP, indicator fade, scroll, and drop glide.
  */
 export const createReorderController = (host: ReorderHost): ReorderController => {
-  const scrollDriver = createScrollDriver(host.scrollTuning);
+  const scrollViewport = () => host.getDropZone()?.closest<HTMLElement>('[data-page-viewport]') ?? null;
+  const scrollY = () => scrollViewport()?.scrollTop ?? window.scrollY;
+  const setScrollY = (top: number) => {
+    const viewport = scrollViewport();
+    if (viewport) viewport.scrollTop = top;
+    else window.scrollTo(0, top);
+  };
+  const scrollDriver = createScrollDriver({
+    ...host.scrollTuning,
+    scrollBy: (step) => setScrollY(scrollY() + step),
+  });
   const liftedClass = host.classes.lifted ?? 'is-lifted';
   let state = idleState();
   let dropIndicator: HTMLElement | null = null;
@@ -571,8 +587,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   let flipCleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let flipMovingElements: HTMLElement[] = [];
   let activeFadeGhosts: HTMLElement[] = [];
-  const fadeGhostFrames = new Map<HTMLElement, number>();
-  const fadeGhostTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+  const fadeGhostAnimations = new Map<HTMLElement, Animation>();
   let indicatorAnim: IndicatorAnim = { type: 'steady' };
   let lastStatusKey = '';
   /**
@@ -611,12 +626,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const clearGhosts = () => {
     activeFadeGhosts.forEach((ghost) => {
-      const frame = fadeGhostFrames.get(ghost);
-      if (frame) cancelAnimationFrame(frame);
-      fadeGhostFrames.delete(ghost);
-      const timer = fadeGhostTimers.get(ghost);
-      if (timer) clearTimeout(timer);
-      fadeGhostTimers.delete(ghost);
+      fadeGhostAnimations.get(ghost)?.cancel();
+      fadeGhostAnimations.delete(ghost);
       ghost.remove();
     });
     activeFadeGhosts = [];
@@ -707,10 +718,11 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const syncPlacement = (insertIndex: number, placementKey: string) => {
     releaseNeighbor();
-    applySlotMetrics(insertIndex, placementKey);
     placeIndicatorBeforeIndex(insertIndex);
     bindNeighbor(insertIndex);
     if (dropIndicator) host.onSlotSync?.(dropIndicator, insertIndex, placementKey);
+    applySlotMetrics(insertIndex, placementKey);
+    if (dropIndicator) host.onSlotLayout?.(dropIndicator, insertIndex, placementKey);
   };
 
   /** Centre of the lifted block in viewport space — what placement is keyed off. */
@@ -751,23 +763,28 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ));
   };
 
-  const createIndicator = () => {
+  const createIndicator = (blockHeight = 0) => {
     const indicator = document.createElement(host.indicatorTag ?? 'div');
     indicator.className = host.classes.indicator;
     indicator.setAttribute('aria-hidden', 'true');
+    indicator.style.setProperty('--gap-height', `${blockHeight}px`);
     const body = document.createElement('div');
     body.className = host.classes.indicatorBody;
     body.setAttribute('aria-hidden', 'true');
     indicator.append(body);
+    host.onIndicatorCreate?.(indicator);
     return indicator;
   };
 
   const spawnFadeGhost = () => {
     const body = getIndicatorBody();
-    if (!body || state.indicatorOpacity <= 0.05) return;
+    if (!body) return null;
+    const computed = getComputedStyle(body);
+    const opacity = Number.parseFloat(computed.opacity || '') || 0;
+    if (opacity <= 0.05) return null;
 
     const rect = body.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
+    if (rect.width <= 0 || rect.height <= 0) return null;
 
     const ghost = document.createElement('div');
     ghost.className = `${host.classes.indicatorBody} ${host.classes.fadeGhost}`;
@@ -776,24 +793,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     ghost.style.left = `${rect.left}px`;
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
-    ghost.style.opacity = String(state.indicatorOpacity);
+    ghost.style.opacity = String(opacity);
+    ['--dev-section-inset', '--dev-section-inset-end', '--section-lift-card-inset', '--section-slot-card-inset']
+      .forEach((property) => ghost.style.setProperty(property, computed.getPropertyValue(property)));
     (host.getDropZone() ?? document.body).appendChild(ghost);
     activeFadeGhosts.push(ghost);
 
-    const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
-
-    const frame = requestAnimationFrame(() => {
-      fadeGhostFrames.delete(ghost);
-      ghost.style.transition = `opacity ${duration}ms ease-out`;
-      ghost.style.opacity = '0';
-      const timer = setTimeout(() => {
-        fadeGhostTimers.delete(ghost);
-        ghost.remove();
-        activeFadeGhosts = activeFadeGhosts.filter((item) => item !== ghost);
-      }, duration + 50);
-      fadeGhostTimers.set(ghost, timer);
-    });
-    fadeGhostFrames.set(ghost, frame);
+    return ghost;
   };
 
   const performFlipRelocate = (fromIndex: number, toIndex: number, toKey: string) => {
@@ -829,10 +835,10 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     // Moving the drop slot changes content height above in-view nodes. Scroll
     // anchoring would pin those nodes' viewport tops (deltaY ≈ 0), so downward
     // FLIP skips and neighbors snap. Pin scrollY across the layout write.
-    const scrollYBefore = window.scrollY;
+    const scrollYBefore = scrollY();
     syncPlacement(toIndex, toKey);
-    if (window.scrollY !== scrollYBefore) {
-      window.scrollTo(0, scrollYBefore);
+    if (scrollY() !== scrollYBefore) {
+      setScrollY(scrollYBefore);
     }
     void dropIndicator.offsetHeight;
 
@@ -912,11 +918,13 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     const fromIndex = state.placedIndex;
     // Crossfade hosts leave a ghost at the old slot; physical-slot hosts move
     // the indicator itself in the same FLIP as their neighbours.
+    let outgoingGhost: HTMLElement | null = null;
     if (
       !host.moveIndicatorWithFlip
-      && state.indicatorOpacity > 0.05
+      && indicatorAnim.type !== 'fadeInWait'
     ) {
-      spawnFadeGhost();
+      outgoingGhost = spawnFadeGhost();
+      applyIndicatorOpacity(0);
     }
 
     performFlipRelocate(fromIndex, toIndex, toKey);
@@ -924,7 +932,35 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
     state.placedKey = toKey;
     // Relocating during the opening delay must not jump the slot in early —
     // leave that fade in charge and let it finish on its own schedule.
-    if (indicatorAnim.type === 'steady') applyIndicatorOpacity(1);
+    if (!host.moveIndicatorWithFlip && outgoingGhost) {
+      const body = getIndicatorBody();
+      if (body) {
+        dropIndicatorFadeAnimation?.cancel();
+        const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
+        const ghostAnimation = outgoingGhost.animate(
+          [{ opacity: getComputedStyle(outgoingGhost).opacity }, { opacity: 0 }],
+          { duration, easing: 'ease-out', fill: 'forwards' },
+        );
+        fadeGhostAnimations.set(outgoingGhost, ghostAnimation);
+        ghostAnimation.finished.catch(() => {}).then(() => {
+          if (fadeGhostAnimations.get(outgoingGhost!) !== ghostAnimation) return;
+          fadeGhostAnimations.delete(outgoingGhost!);
+          outgoingGhost!.remove();
+          activeFadeGhosts = activeFadeGhosts.filter((item) => item !== outgoingGhost);
+        });
+        const animation = body.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration, easing: 'ease-out', fill: 'forwards' },
+        );
+        dropIndicatorFadeAnimation = animation;
+        animation.finished.catch(() => {}).then(() => {
+          if (dropIndicatorFadeAnimation !== animation) return;
+          dropIndicatorFadeAnimation = null;
+          applyIndicatorOpacity(1);
+          animation.cancel();
+        });
+      }
+    } else if (indicatorAnim.type === 'steady') applyIndicatorOpacity(1);
   };
 
   const advanceIndicatorAnim = (now: number) => {
@@ -965,7 +1001,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
   const updateStatus = () => {
     if (!host.onStatus || state.phase === 'idle') return;
-    const key = `${state.sourceIndex}:${state.targetIndex}:${state.targetKey}:${Math.round(window.scrollY)}`;
+    const key = `${state.sourceIndex}:${state.targetIndex}:${state.targetKey}:${Math.round(scrollY())}`;
     if (key === lastStatusKey) return;
     lastStatusKey = key;
     host.onStatus(
@@ -999,7 +1035,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       const center = liftCenter();
       const travelX = center.x + window.scrollX;
-      const travelY = center.y + window.scrollY;
+      const travelY = center.y + scrollY();
       const deltaX = lastTravelX === null ? 0 : travelX - lastTravelX;
       const deltaY = lastTravelY === null ? 0 : travelY - lastTravelY;
       const travelled = Math.hypot(deltaX, deltaY) > TRAVEL_EPSILON_PX;
@@ -1070,7 +1106,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
   ) => new Promise<void>((resolve) => {
     dropPositionResolver = resolve;
     const itemRect = item.getBoundingClientRect();
-    const fromPageTop = (Number.parseFloat(item.style.top) || itemRect.top) + window.scrollY;
+    const fromPageTop = (Number.parseFloat(item.style.top) || itemRect.top) + scrollY();
     const fromPageLeft = (Number.parseFloat(item.style.left) || itemRect.left) + window.scrollX;
     const start = nowMs();
     let landed = false;
@@ -1085,7 +1121,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
       const t = clamp01((now - start) / motionMs);
       const pos = 1 + (easeOutElastic(t) - 1) * DROP_ELASTIC_AMPLITUDE;
-      const fromTop = fromPageTop - window.scrollY;
+      const fromTop = fromPageTop - scrollY();
       const fromLeft = fromPageLeft - window.scrollX;
       const target = body.getBoundingClientRect();
 
@@ -1215,12 +1251,17 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
    */
   const fadeOutIndicator = (run: number) => {
     const body = getIndicatorBody();
-    if (!body || state.indicatorOpacity <= 0.01) return Promise.resolve();
+    if (!body) return Promise.resolve();
+    const paintedOpacity = Number.parseFloat(getComputedStyle(body).opacity || '') || 0;
+    dropIndicatorFadeAnimation?.cancel();
+    dropIndicatorFadeAnimation = null;
+    applyIndicatorOpacity(paintedOpacity);
+    if (paintedOpacity <= 0.01) return Promise.resolve();
 
     const duration = REORDER_TIMING.DROP_INDICATOR_FADE_MS;
 
     const fadeAnim = body.animate(
-      [{ opacity: state.indicatorOpacity }, { opacity: 0 }],
+      [{ opacity: paintedOpacity }, { opacity: 0 }],
       { duration, easing: 'ease-out', fill: 'forwards' },
     );
     dropIndicatorFadeAnimation = fadeAnim;
@@ -1313,7 +1354,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
         block sat in the viewport. Same pin performFlipRelocate uses for slot
         moves; the lift needed it too.
       */
-      const scrollYBeforeLift = window.scrollY;
+      const scrollYBeforeLift = scrollY();
 
       // Take the item out of flow before inserting the slot stand-in, so the
       // indicator inherits the same collapse context the section had.
@@ -1327,26 +1368,21 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       item.style.zIndex = '100';
       setLiftTransformOrigin(item, handle);
 
-      dropIndicator = createIndicator();
+      // Seed the slot's full block height before connecting it. Host sync may
+      // force layout while applying intro/fold geometry; gap metrics follow.
+      dropIndicator = createIndicator(state.blockHeight);
       // Layout space is present from the first connected frame; opacity owns
       // the delayed visual reveal independently.
       dropIndicator.classList.add('is-visible');
       applyIndicatorOpacity(0);
-      // Size and span the slot *before* it enters the flow. Inserting a bare
-      // cell and correcting it inside syncPlacement costs a frame of wrong
-      // layout — unnoticeable in a single column, violent in a grid, where a
-      // column-spanning block is briefly replaced by a one-column, zero-height
-      // cell and every card after it reflows and snaps back.
-      applySlotMetrics(sourceIndex, initialPlacementKey);
-      host.onSlotSync?.(dropIndicator, sourceIndex, initialPlacementKey);
       item.before(dropIndicator);
       syncPlacement(sourceIndex, initialPlacementKey);
       // Force the layout the pin is guarding, then undo any adjustment the
       // browser made. Reading scrollY without this reads the pre-layout value
       // and the pin silently does nothing.
       void dropIndicator.offsetHeight;
-      if (window.scrollY !== scrollYBeforeLift) {
-        window.scrollTo(0, scrollYBeforeLift);
+      if (scrollY() !== scrollYBeforeLift) {
+        setScrollY(scrollYBeforeLift);
       }
       indicatorAnim = {
         type: 'fadeInWait',
@@ -1368,7 +1404,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       travelDirection = 0;
       const initialCenter = liftCenter();
       lastTravelX = initialCenter.x + window.scrollX;
-      lastTravelY = initialCenter.y + window.scrollY;
+      lastTravelY = initialCenter.y + scrollY();
       startTick();
       updateStatus();
     },
@@ -1456,7 +1492,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       travelDirection = 0;
       const resumedCenter = liftCenter();
       lastTravelX = resumedCenter.x + window.scrollX;
-      lastTravelY = resumedCenter.y + window.scrollY;
+      lastTravelY = resumedCenter.y + scrollY();
       startTick();
       updateStatus();
       return true;
