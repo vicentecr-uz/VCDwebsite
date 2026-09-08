@@ -1,12 +1,15 @@
 // @ts-check
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { execFile as execFileCallback } from 'node:child_process';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
 import { normalizeOutline } from '../src/lib/projectOutline.ts';
+import { isHeicUpload, uploadFilename } from '../src/lib/imageUpload.mjs';
 import {
   derivativeKind,
   findOriginal,
@@ -343,6 +346,33 @@ export async function uniqueUploadFilename(directory, filename) {
     } catch {
       return candidate;
     }
+  }
+}
+
+const execFile = promisify(execFileCallback);
+
+export class HeicConversionError extends Error {
+  constructor() {
+    super('Could not convert HEIC image to JPEG.');
+    this.name = 'HeicConversionError';
+    this.code = 'HEIC_CONVERSION_FAILED';
+  }
+}
+
+export async function convertHeicUpload(data, options = {}) {
+  const run = options.run || ((...args) => execFile(...args));
+  const temporaryDirectory = await mkdtemp(path.join(options.tmpdir || process.env.TMPDIR || '/tmp', 'vcd-heic-'));
+  const input = path.join(temporaryDirectory, 'input.heic');
+  const output = path.join(temporaryDirectory, 'output.jpg');
+  try {
+    await writeFile(input, data);
+    // Deliberate limit: local editor conversion currently relies on macOS sips; a cross-platform/online editor needs a portable HEIC decoder.
+    await run('/usr/bin/sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '90', input, '--out', output]);
+    return await readFile(output);
+  } catch {
+    throw new HeicConversionError();
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -731,18 +761,27 @@ export function uploadDevWriter() {
           const filenames = [];
           for (const file of files) {
             const mimeType = String(file.mimeType || '');
-            if (!mimeType.startsWith('image/')) {
+            const filename = String(file.filename || '');
+            const mime = mimeType.toLowerCase().split(';', 1)[0].trim();
+            if (!mime.startsWith('image/') && !(isHeicUpload(filename, mimeType) && !mime)) {
               send(400, { error: 'Only image uploads are supported.' });
               return;
             }
-            const filename = await uniqueUploadFilename(directory, file.filename);
             const data = Buffer.from(String(file.data || ''), 'base64');
-            await writeFile(path.join(directory, filename), data);
-            filenames.push(filename);
+            const converted = isHeicUpload(filename, mimeType)
+              ? await convertHeicUpload(data)
+              : data;
+            const outputFilename = await uniqueUploadFilename(directory, uploadFilename(filename, mimeType));
+            await writeFile(path.join(directory, outputFilename), converted);
+            filenames.push(outputFilename);
           }
           send(200, { ok: true, filenames });
-        } catch {
-          send(400, { error: 'Could not save uploaded files.' });
+        } catch (error) {
+          send(400, {
+            error: error?.code === 'HEIC_CONVERSION_FAILED'
+              ? 'Could not convert HEIC image to JPEG.'
+              : 'Could not save uploaded files.',
+          });
         }
       });
     },

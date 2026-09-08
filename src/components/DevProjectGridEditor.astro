@@ -115,6 +115,7 @@ const visibilityOptions = [
   } from '../scripts/coverLuminance';
   import { cropHostFor, readCropVars } from '../scripts/adaptiveMediaInk';
   import { resolveDevPanelTitle } from '../lib/devPanelTitles';
+  import { isAcceptedImageFile, isHeicUpload } from '../lib/imageUpload.mjs';
   import 'color-dialog-box';
   import { createHistory, pageHistory, registerHistoryScope } from '../lib/devHistory';
 
@@ -123,9 +124,12 @@ const visibilityOptions = [
   window.__vcdRegisterHistoryScope = registerHistoryScope;
 
   window.__vcdResolveDevPanelTitle = resolveDevPanelTitle;
+  window.__vcdIsAcceptedImageFile = isAcceptedImageFile;
+  window.__vcdIsHeicUpload = isHeicUpload;
 
   window.__vcdMeasureHoverDark = async function measureHoverDark(file, item) {
     let objectUrl = '';
+    let ownsObjectUrl = false;
     try {
       const cover = item?.querySelector('.project-grid__cover');
       const meta = item?.querySelector('.project-grid__meta');
@@ -145,7 +149,8 @@ const visibilityOptions = [
         h: metaRect.height / coverRect.height,
       };
 
-      objectUrl = URL.createObjectURL(file);
+      ownsObjectUrl = file instanceof File;
+      objectUrl = ownsObjectUrl ? URL.createObjectURL(file) : String(file || '');
       const img = await new Promise((resolve, reject) => {
         const el = new Image();
         el.onload = () => resolve(el);
@@ -169,7 +174,7 @@ const visibilityOptions = [
     } catch {
       return null;
     } finally {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrl && ownsObjectUrl) URL.revokeObjectURL(objectUrl);
     }
   };
 </script>
@@ -1227,13 +1232,13 @@ const visibilityOptions = [
     return `/images/${encodeURIComponent(filename)}`;
   };
 
-  const applyCoverFileToCard = async (slug, file, blobUrl, slot = 'image') => {
-    if (!(file instanceof File) || !file.type.startsWith('image/')) return;
+  const applyCoverFileToCard = async (slug, file, blobUrl, slot = 'image', uploadedUrl = '') => {
+    if (!(file instanceof File) || !window.__vcdIsAcceptedImageFile?.(file)) return;
     const item = gridItemForSlug(slug);
     if (!(item instanceof HTMLElement)) return;
     try {
       const entry = await ensureLoaded(slug, item);
-      const url = await uploadCoverImage(slug, file);
+      const url = uploadedUrl || await uploadCoverImage(slug, file);
       const before = structuredClone(entry.draft);
       if (slot === 'hoverImage') {
         entry.draft.listing.hoverImage = url;
@@ -1243,7 +1248,7 @@ const visibilityOptions = [
         let hoverDark = entry.draft.listing.dark;
         try {
           const measured = typeof window.__vcdMeasureHoverDark === 'function'
-            ? await window.__vcdMeasureHoverDark(file, item)
+            ? await window.__vcdMeasureHoverDark(window.__vcdIsHeicUpload?.(file.name, file.type) ? url : file, item)
             : null;
           if (typeof measured === 'boolean') hoverDark = measured;
           // The fallback is indistinguishable from a real measurement that
@@ -1413,8 +1418,9 @@ const visibilityOptions = [
    * (or, for the hover slot, the hover image) under the overlay, then remove
    * the overlay — keep the blob until Save.
    */
-  const playCoverCrossfade = (cover, file, slot = 'image') => new Promise((resolve, reject) => {
-    const blobUrl = URL.createObjectURL(file);
+  const playCoverCrossfade = (cover, source, slot = 'image') => new Promise((resolve, reject) => {
+    const blobUrl = source instanceof File ? URL.createObjectURL(source) : String(source || '');
+    const ownsBlobUrl = source instanceof File;
     const overlay = document.createElement('img');
     overlay.className = 'project-grid__crossfade';
     overlay.alt = '';
@@ -1430,7 +1436,7 @@ const visibilityOptions = [
         stack.style.transition = '';
         stack.style.opacity = '';
       }
-      URL.revokeObjectURL(blobUrl);
+      if (ownsBlobUrl) URL.revokeObjectURL(blobUrl);
     };
 
     const finish = async () => {
@@ -1749,7 +1755,7 @@ const visibilityOptions = [
     });
     const slug = cover.dataset.devCoverDrop;
     const file = event.dataTransfer?.files?.[0];
-    if (!slug || !(file instanceof File) || !file.type.startsWith('image/')) {
+    if (!slug || !(file instanceof File) || !window.__vcdIsAcceptedImageFile?.(file)) {
       delete cover.dataset.devDropActive;
       return;
     }
@@ -1763,9 +1769,12 @@ const visibilityOptions = [
 
     void (async () => {
       try {
-        const { finish, blobUrl } = await playCoverCrossfade(cover, file, slot);
+        const uploadedUrl = window.__vcdIsHeicUpload?.(file.name, file.type)
+          ? await uploadCoverImage(slug, file)
+          : '';
+        const { finish, blobUrl } = await playCoverCrossfade(cover, uploadedUrl || file, slot);
         await finish();
-        await applyCoverFileToCard(slug, file, blobUrl, slot);
+        await applyCoverFileToCard(slug, file, uploadedUrl ? '' : blobUrl, slot, uploadedUrl);
       } catch (error) {
         if (error instanceof Error && !/upload/i.test(error.message)) {
           window.alert(error.message);
