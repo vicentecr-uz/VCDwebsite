@@ -186,7 +186,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             <span class="dev-btn__icon" aria-hidden="true" set:html={globeSvg} />
             Asset manager
           </button>
-          <input type="file" accept="image/*" hidden data-crop-replace-file />
+          <input type="file" accept="image/*,.heic,.heif" hidden data-crop-replace-file />
         </div>
       </div>
     </div>
@@ -213,6 +213,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { projectImage } from '../../lib/images';
+  import { isAcceptedImageFile } from '../../lib/imageUpload.mjs';
   import { isPlaceholderSrc } from '../../lib/projectImageFrame';
   import { bindFitPlaceholderLabel } from '../../lib/placeholderLabel';
   import { pageHistory, registerHistoryScope } from '../../lib/devHistory';
@@ -2849,7 +2850,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const replaceWithFile = (file: File | null | undefined) => {
-      if (!file || !file.type.startsWith('image/')) return;
+      if (!file || !isAcceptedImageFile(file)) return;
       void (async () => {
         try {
           status.textContent = 'Uploading…';
@@ -2886,7 +2887,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!items) return;
       const file = [...items]
         .map((item) => (item.kind === 'file' ? item.getAsFile() : null))
-        .find((next) => next?.type.startsWith('image/'));
+        .find(isAcceptedImageFile);
       if (!file) return;
       event.preventDefault();
       replaceWithFile(file);

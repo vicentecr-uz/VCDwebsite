@@ -7,6 +7,7 @@ const script = [
   between('  const clearDragState =', '  const closeMultiDropChoice ='),
   between('  const prevent =', '  pickButtons.forEach('),
 ].join('\n');
+const geometryScript = source.slice(source.indexOf('  const spacingBlocks ='), source.indexOf('  const hasPreferredType ='));
 
 function setup() {
   class Element {
@@ -71,6 +72,27 @@ test('moving from a page gap onto a cover clears page drop feedback', () => {
   expect(h.dataset.devImageDrag).toBeUndefined();
   expect(h.pageDropVeil.dataset.active).toBeUndefined();
   expect(h.env.dragDepth).toBe(0);
+});
+
+test('below a single real section appends before the trailing spacing sentinel', () => {
+  const real = {
+    dataset: { devSpacingPath: '["sections",0,"spacing"]' },
+    getBoundingClientRect: () => ({ top: 100, height: 100 }),
+  };
+  const sentinel = {
+    dataset: {
+      devSpacingPath: '["sections",1,"spacing"]',
+      devSpacingWritePath: '["trailingSpacing"]',
+    },
+    getBoundingClientRect: () => ({ top: 220, height: 40 }),
+  };
+  const env = {
+    document: { querySelectorAll: () => [real, sentinel] },
+    currentTransaction: () => ({ dropZone: null }),
+  };
+  const { spacingBlocks, insertIndexForY } = new Function('env', `with (env) { ${geometryScript}; return { spacingBlocks, insertIndexForY }; }`)(env);
+  expect(spacingBlocks()).toHaveLength(2);
+  expect(insertIndexForY(500)).toBe(1);
 });
 
 for (const asset of [false, true]) {
