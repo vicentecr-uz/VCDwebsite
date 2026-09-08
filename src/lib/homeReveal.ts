@@ -164,9 +164,9 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
 }
 
 const controllerKey = '__vcdHomeRevealController';
-export function bindHomeReveal() {
+export function bindHomeReveal(config: HomeRevealConfig = defaultConfig) {
   const home = document.querySelector<HTMLElement>('[data-home-page]'); if (!home) return null;
   const scope = window as Window & Record<string, unknown>;
   (scope[controllerKey] as ReturnType<typeof createHomeRevealController> | undefined)?.destroy();
-  const controller = createHomeRevealController(home); scope[controllerKey] = controller; import.meta.hot?.dispose(controller.destroy); return controller;
+  const controller = createHomeRevealController(home, window, config); scope[controllerKey] = controller; import.meta.hot?.dispose(controller.destroy); return controller;
 }

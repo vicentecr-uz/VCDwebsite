@@ -18,9 +18,12 @@ const home = loadPageDocument('home');
   const draft = structuredClone(revealConfig);
   const read = (path) => path.split('.').reduce((value,key) => value[key], draft);
   const write = (path,value) => { const keys=path.split('.'); const last=keys.pop(); const target=keys.reduce((value,key)=>value[key],draft); target[last]=Number(value); };
-  const replay = () => { bindHomeReveal()?.run(); };
+  const replay = () => { bindHomeReveal(draft)?.run(); };
   fields.forEach(([path,label,min,max]) => { const row=document.createElement('label'); row.textContent=label; const input=document.createElement('input'); input.type='range'; input.min=min; input.max=max; input.step='0.01'; input.value=read(path); const value=document.createElement('output'); value.textContent=input.value; input.oninput=()=>{write(path,input.value); value.textContent=input.value; replay();}; row.append(input,value); tuner?.append(row); });
   const button=document.createElement('button'); button.type='button'; button.textContent='Replay'; button.onclick=replay; tuner?.append(button);
+  const easing=document.createElement('textarea'); easing.value=draft.entrance.easing; easing.setAttribute('aria-label','Easing'); easing.oninput=()=>{draft.entrance.easing=easing.value; replay();}; tuner?.append(easing);
+  const reduced=document.createElement('button'); reduced.type='button'; reduced.textContent='Reduced motion preview'; reduced.onclick=()=>{document.documentElement.style.setProperty('--home-reveal-reduced-preview',''); replay();}; tuner?.append(reduced);
+  const save=document.createElement('button'); save.type='button'; save.textContent='Save'; save.onclick=async()=>{const response=await fetch('/api/home-reveal-config',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(draft)}); save.textContent=response.ok?'Saved src/lib/homeRevealConfig.json':'Save failed';}; tuner?.append(save);
 </script>
 <style>
   .tuner { position: fixed; z-index: 100; right: 1rem; bottom: 1rem; display: grid; gap: .45rem; width: 14rem; padding: .75rem; background: var(--sys-color-srf); color: var(--sys-color-on-srf); border: 1px solid currentColor; }
