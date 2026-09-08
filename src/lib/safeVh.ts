@@ -25,6 +25,8 @@ const INTRO_OUTER_AIR_PROP = '--intro-outer-air';
 const LEGACY_INTRO_AIR_PROP = '--intro-air-slot';
 const REORDER_CHROME = new Set([
   'dev-section-drop-indicator',
+  'dev-section-source-gap-indicator',
+  'is-drop-indicator-fade-ghost',
   'dev-section-reorder-spacer',
   INTRO_AIR_CLASS,
 ]);
