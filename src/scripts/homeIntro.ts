@@ -92,13 +92,15 @@ export function createHomeIntroController(
   const onClick = (event: MouseEvent) => {
     if (event.defaultPrevented || win.getSelection?.()?.isCollapsed === false || state !== 'active' || root.classList.contains('is-dev-mode') || isInteractive(event.target)) return;
     dismiss();
+    event.preventDefault();
+    event.stopPropagation();
   };
-  const onPointerDown = (event: PointerEvent) => {
-    if (event.button !== 0 || state !== 'active' || root.classList.contains('is-dev-mode') || isInteractive(event.target)) return;
+  const onOkay = (event: MouseEvent) => {
+    if (event.defaultPrevented || state !== 'active' || root.classList.contains('is-dev-mode')) return;
+    event.preventDefault();
+    event.stopPropagation();
     dismiss();
   };
-  const onOkay = () => dismiss();
-  const onOkayPointerDown = (event: PointerEvent) => { if (event.button === 0) dismiss(); };
   const onPointerMove = (event: PointerEvent) => {
     const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
     if (event.pointerType !== 'mouse' || state !== 'active' || !surface.matches(':hover') || !cursor || !win.matchMedia('(pointer: fine)').matches) return;
@@ -139,9 +141,7 @@ export function createHomeIntroController(
     cancelFinish();
     hideCursor();
     surface.removeEventListener('click', onClick);
-    surface.removeEventListener('pointerdown', onPointerDown);
     surface.querySelector('[data-home-intro-okay]')?.removeEventListener('click', onOkay);
-    surface.querySelector('[data-home-intro-okay]')?.removeEventListener('pointerdown', onOkayPointerDown);
     surface.removeEventListener('pointermove', onPointerMove);
     surface.removeEventListener('pointerleave', hideCursor);
     surface.removeEventListener('pointercancel', hideCursor);
@@ -157,9 +157,7 @@ export function createHomeIntroController(
   const reset = () => { if (!disposed) { cancelFinish(); surface.hidden = false; setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active'); } };
 
   surface.addEventListener('click', onClick);
-  surface.addEventListener('pointerdown', onPointerDown);
   surface.querySelector('[data-home-intro-okay]')?.addEventListener('click', onOkay);
-  surface.querySelector('[data-home-intro-okay]')?.addEventListener('pointerdown', onOkayPointerDown);
   surface.addEventListener('pointermove', onPointerMove);
   surface.addEventListener('pointerleave', hideCursor);
   surface.addEventListener('pointercancel', hideCursor);
