@@ -61,6 +61,9 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
     // iOS sticky :hover must not sample hoverDark / the hover image while the
     // cover is still what's painted.
     if (focusVisible) return true;
+    if (cover?.classList.contains('is-mobile-preview')) {
+      return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+    }
     if (!pointerHover) return false;
     return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   };

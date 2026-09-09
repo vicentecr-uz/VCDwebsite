@@ -59,7 +59,12 @@ describe('home reveal choreography', () => {
     expect(controller.isArmed()).toBe(true); expect(header.style.opacity).toBe('0');
     win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
     expect(header.animations).toHaveLength(1); await Promise.resolve();
-    expect(header.style.opacity).toBe(''); controller.destroy();
+    expect(header.style.opacity).toBe('');
+    win.emit('pageshow');
+    await Promise.resolve();
+    expect(header.style.opacity).toBe('');
+    expect(header.animations).toHaveLength(1);
+    controller.destroy();
   });
 
   test('reduced motion preserves spatial row delays while omitting transform/filter', async () => {

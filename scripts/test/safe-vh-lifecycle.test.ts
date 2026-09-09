@@ -10,12 +10,13 @@ function setup(finePointer = true) {
   let nextFrame = 0, height = 0, measurements = 0, gap = 0, dragging = false, contentHeight = 400;
   const window = {
     innerWidth: 1200, innerHeight: 800,
+    dispatchEvent: (event: Event) => { if (event.type === 'vcd:intro-layout-ready') expect(measurements).toBe(1); return true; },
     matchMedia: () => ({ matches: finePointer }),
     addEventListener: (type: string, fn: () => void) => handlers.set(type, fn),
   };
   const env = {
     window,
-    document: { documentElement: { classList: { contains: () => dragging } }, fonts: { ready: { then() {} } } },
+    document: { documentElement: { dataset: {}, classList: { contains: () => dragging } }, fonts: { ready: { then() {} } } },
     BOUND_FLAG: '__bound',
     requestAnimationFrame: (fn: () => void) => { frames.set(++nextFrame, fn); return nextFrame; },
     cancelAnimationFrame: (id: number) => frames.delete(id),

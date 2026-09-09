@@ -139,38 +139,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
     object-fit: cover;
   }
 
-  /* Hover image and its project-colour backing fade as one event. The backing
-     sits above the cover so alpha in a PNG reveals the authored project colour,
-     never the cover bitmap. Distinct from the drop-replace crossfade further
-     down (0.55s) — that one is a destructive edit and wants weight; this is
-     a browsing gesture and reads sluggish at the same speed. */
-  .project-grid__cover--has-hover .project-grid__hover-background,
-  .project-grid__cover--has-hover .project-grid__img--hover {
-    transition:
-      opacity 0.2s ease,
-      visibility 0s linear 0.2s;
-  }
-
-  /*
-    The chip swap must fade too, and it has to be declared outside
-    .is-dev-hover-forced: a transition only on the forced state animates the
-    way in and snaps back on the way out. Same 0.2s as the hover fade above —
-    it is the same visual event, just driven by a chip instead of a pointer.
-  */
-  html.is-dev-mode .project-grid__cover .project-grid__hover-background,
-  html.is-dev-mode .project-grid__cover .project-grid__img--hover {
-    transition:
-      opacity 0.2s ease,
-      visibility 0s linear 0.2s;
-  }
-
-  /* Empty-slot forced preview still fades the cover out (no hover image to
-     overlay) — keep that transition so it doesn't snap. */
-  html.is-dev-mode .project-grid__cover:not(.project-grid__cover--has-hover) .project-grid__img--base {
-    transition: opacity 0.2s ease;
-  }
-
-  .project-grid__hover-background {
+  /* Composite the bitmap and its opaque backing before fading, so the cover
+     is replaced once rather than obscured by two independently fading layers. */
+  .project-grid__hover-layer {
     position: absolute;
     inset: 0;
     z-index: 1;
@@ -178,31 +149,15 @@ const gridCardTemplateSeed: ProjectGridItem = {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
-    transition:
-      opacity 0.2s ease,
-      visibility 0s linear 0.2s;
+    transition: opacity 0.2s ease, visibility 0s linear 0.2s;
   }
 
-  .project-grid__img--hover {
-    z-index: 2;
-    opacity: 0;
-    /* opacity:0 still composites; visibility:hidden stops a 1px Safari leak
-       at the cover's bottom edge while the overlay is meant to be off. */
-    visibility: hidden;
-    transition:
-      opacity 0.2s ease,
-      visibility 0s linear 0.2s;
+  html.is-dev-mode .project-grid__cover:not(.project-grid__cover--has-hover) .project-grid__img--base {
+    transition: opacity 0.2s ease;
   }
 
-  /* Chip — the only way hover shows in Edit (WYSIWYG: cover stays cover
-     while travelling to the crop tuner). Keyboard + pointer hover are live-only.
-     Specificity must beat `html.is-dev-mode .project-grid__cover .project-grid__img--hover`
-     above: that rule's delayed visibility (for fade-out) otherwise wins on the
-     way in, so opacity animates while still hidden and the bitmap pops at 1. */
   html.is-dev-mode .project-grid__cover.is-dev-hover-forced.project-grid__cover--has-hover
-    .project-grid__hover-background,
-  html.is-dev-mode .project-grid__cover.is-dev-hover-forced.project-grid__cover--has-hover
-    .project-grid__img--hover {
+    .project-grid__hover-layer {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.2s ease, visibility 0s;
@@ -215,9 +170,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   */
   @media (hover: hover) and (pointer: fine) {
     html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover
-      .project-grid__hover-background,
-    html:not(.is-dev-mode) .project-grid__card:hover .project-grid__cover--has-hover
-      .project-grid__img--hover {
+      .project-grid__hover-layer {
       opacity: 1;
       visibility: visible;
       transition: opacity 0.2s ease, visibility 0s;
@@ -225,12 +178,36 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover
-    .project-grid__hover-background,
-  html:not(.is-dev-mode) .project-grid__card:focus-visible .project-grid__cover--has-hover
-    .project-grid__img--hover {
+    .project-grid__hover-layer {
     opacity: 1;
     visibility: visible;
     transition: opacity 0.2s ease, visibility 0s;
+  }
+
+  @media (hover: none) and (pointer: coarse) {
+    /* Keep the transparent layer composited before touch so its first fade
+       does not also have to make a hidden bitmap renderable. */
+    .project-grid__hover-layer {
+      visibility: visible;
+      will-change: opacity;
+      transition: opacity 0.2s ease;
+    }
+
+    html:not(.is-dev-mode) .project-grid__cover.is-mobile-preview.project-grid__cover--has-hover
+      .project-grid__hover-layer {
+      opacity: 1;
+      visibility: visible;
+      transition: opacity 0.2s ease, visibility 0s;
+    }
+
+    html:not(.is-dev-mode) .project-grid__cover.is-mobile-preview .project-grid__title {
+      color: var(--title-ink-hover);
+    }
+
+    html:not(.is-dev-mode) .project-grid__cover.is-mobile-preview .project-grid__subtitle,
+    html:not(.is-dev-mode) .project-grid__cover.is-mobile-preview .project-grid__teaser-label {
+      color: var(--subtitle-ink-hover);
+    }
   }
 
   /* No hover image: forced preview still reveals the page ground. With a
@@ -507,10 +484,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .project-grid__cover--has-hover .project-grid__hover-background,
-    .project-grid__cover--has-hover .project-grid__img,
-    html.is-dev-mode .project-grid__cover .project-grid__hover-background,
-    html.is-dev-mode .project-grid__cover .project-grid__img,
     .project-grid__meta,
     .project-grid__title,
     .project-grid__subtitle,
@@ -1135,7 +1108,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   /* Default hover — fill the linked frame (no letterbox when cover aspect changes). */
-  .project-grid__cover.project-cropped > .project-grid__stack > .project-crop-clip > img.project-grid__img--hover {
+  .project-grid__cover.project-cropped > .project-grid__stack > .project-crop-clip > .project-grid__hover-layer > img.project-grid__img--hover {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -1148,7 +1121,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /* Authored or live-applied hover crop — same pan/zoom math as the cover bitmap. */
   .project-grid__cover.project-cropped.project-grid__cover--hover-cropped
-    > .project-grid__stack > .project-crop-clip > img.project-grid__img--hover {
+    > .project-grid__stack > .project-crop-clip > .project-grid__hover-layer > img.project-grid__img--hover {
     inset: auto;
     top: 50%;
     left: 50%;
