@@ -27,6 +27,9 @@ const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
 assert.ok(script, 'Exercise the actual Layout transition script');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(script.replace(/^\s*import .*?;\s*$/gm, ''));
+const earlyScript = layout.match(/<script is:inline>\s*((?:\(\(\) => \{)[\s\S]*?\}\)\(\);)\s*<\/script>/)?.[1];
+assert.ok(earlyScript, 'Exercise the actual initial reveal controller');
+const earlyCompiled = new Bun.Transpiler({ loader: 'js' }).transformSync(earlyScript);
 
 class Target {
   listeners = new Map<string, Map<Function, { once?: boolean; signal?: AbortSignal; abort?: () => void }>>();
@@ -113,12 +116,12 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
-  const overlay = { style: { opacity: '1', animation: '', removeProperty(name: string) { delete (this as any)[name]; } } };
+  const overlay = Object.assign(new Target(), { dataset: {}, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
   const readinessMarker = { hidden: true };
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
@@ -181,10 +184,11 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     killTweensOf(target: any) { tweens.filter((t) => t.element === target).forEach((t) => t.kill()); },
     set(target: any, values: any) { Object.assign(target.style, values); },
   };
-  runInNewContext(compiled, {
+  const context = {
     document, window, location, URL, AbortController, Promise,
     CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } },
     performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
+    Event: class { constructor(public type: string) {} }, innerHeight: 800, innerWidth: 1200,
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
@@ -195,7 +199,9 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
       overflowY: element.style?.overflowY ?? '',
     }),
     console: { warn() {}, error() {}, log() {} },
-  });
+  };
+  if ((options as any).initialController) runInNewContext(earlyCompiled, context);
+  runInNewContext(compiled, context);
   return {
     overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers, marks,
     get upgrades() { return upgrades; }, get bound() { return bound; },
@@ -248,6 +254,21 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[1].vars.opacity, 1);
+});
+
+test('early initial controller reveals once and deferred module adopts its state', async () => {
+  const f = fixture({ initialController: true });
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.tweens.length, 0);
+  assert.equal(f.upgrades, 1);
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-start'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-satisfied'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-end'));
 });
 
 test('browser trace marks are emitted without the DEV readiness marker', async () => {
