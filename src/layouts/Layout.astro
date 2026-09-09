@@ -90,6 +90,57 @@ const showDevTools = import.meta.env.DEV;
         }
       </script>
     )}
+    {showDevTools && (
+      <script is:inline>
+        try {
+          const transitionMode = new URLSearchParams(location.search).get('dev-transition');
+          if (transitionMode === 'visible') {
+            document.documentElement.setAttribute('data-dev-transition', transitionMode);
+          }
+        } catch (e) {
+          /* malformed or unavailable URL APIs leave the normal transition intact */
+        }
+      </script>
+    )}
+    {!showDevTools && (
+      <script is:inline>
+        try {
+          const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+          const transitionMode = new URLSearchParams(location.search).get('dev-transition');
+          if (loopbackHosts.has(location.hostname) && transitionMode === 'visible') {
+            document.documentElement.setAttribute('data-dev-transition', transitionMode);
+          }
+        } catch (e) {
+          /* malformed or unavailable URL APIs leave the normal transition intact */
+        }
+      </script>
+    )}
+    {showDevTools && (
+      <style is:inline>
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+        #transition-readiness-marker {
+          position: fixed;
+          top: max(24px, env(safe-area-inset-top));
+          left: max(24px, env(safe-area-inset-left));
+          z-index: 101;
+          pointer-events: none;
+          padding: 0.3em 0.42em;
+          background: #ff1493;
+          color: #19000d;
+          font-family: inherit;
+          font-size: clamp(2.5rem, 7vw, 6rem);
+          font-weight: 900;
+          line-height: 0.9;
+          letter-spacing: -0.055em;
+          text-transform: uppercase;
+        }
+      </style>
+    )}
+    {!showDevTools && (
+      <style is:inline>
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+      </style>
+    )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,700&display=swap" />
@@ -121,10 +172,60 @@ const showDevTools = import.meta.env.DEV;
 
     <!-- Page transition overlay (GSAP fades this in/out) -->
     <div id="transition-overlay"></div>
+    {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}
 
     <div id="site-wrapper" style={ADAPTIVE_PAGE_COLUMNS_ENABLED ? columnStyle : undefined}>
       <slot />
     </div>
+
+    <script is:inline>
+      (() => {
+        const overlay = document.getElementById('transition-overlay');
+        if (!overlay || document.documentElement.dataset.devTransition === 'visible') return;
+        const mark = (name, detail) => {
+          try {
+            if (typeof performance?.mark !== 'function') return;
+            try { performance.mark(`vcd:${name}`, { detail }); } catch { performance.mark(`vcd:${name}`); }
+          } catch {}
+        };
+        const visible = (image) => {
+          const rect = image.getBoundingClientRect();
+          const viewport = document.documentElement;
+          return rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || viewport.clientHeight) && rect.left < (innerWidth || viewport.clientWidth);
+        };
+        const images = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible);
+        const imageReady = images.map((image) => new Promise((resolve) => {
+          if (image.complete) { resolve(); return; }
+          const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); resolve(); };
+          image.addEventListener('load', done, { once: true });
+          image.addEventListener('error', done, { once: true });
+        }));
+        overlay.dataset.vcdInitialReveal = 'running';
+        overlay.style.animation = 'none';
+        mark('initial-readiness-start');
+        const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
+        Promise.race([Promise.all([Promise.resolve(document.fonts?.ready).catch(() => undefined), ...imageReady]), timeout]).then(() => {
+          mark('initial-readiness-satisfied');
+          requestAnimationFrame(() => requestAnimationFrame(() => {
+            mark('initial-fade-start');
+            overlay.style.transition = 'opacity 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+            overlay.style.opacity = '0';
+            let finished = false;
+            const finish = () => {
+              if (finished) return;
+              finished = true;
+              overlay.removeEventListener('transitionend', finish);
+              overlay.style.removeProperty('transition');
+              overlay.dataset.vcdInitialReveal = 'complete';
+              mark('initial-fade-end');
+              window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
+            };
+            overlay.addEventListener('transitionend', finish, { once: true });
+            setTimeout(finish, 250);
+          }));
+        });
+      })();
+    </script>
 
     {showDevTools && <DevTextEditor />}
     {showDevTools && <DevModeController />}
@@ -161,7 +262,15 @@ const showDevTools = import.meta.env.DEV;
       bindSafeVh();
 
       const overlay = document.getElementById('transition-overlay');
+      const readinessMarker = document.getElementById('transition-readiness-marker') as HTMLOutputElement | null;
+      const visibleTransition = document.documentElement.dataset.devTransition === 'visible';
+      const initialRevealState = overlay?.dataset.vcdInitialReveal;
       bindImagePreviewUpgrade();
+      if (initialRevealState === 'running') {
+        window.addEventListener('vcd:initial-reveal-complete', () => openImagePreviewUpgrade(), { once: true });
+      } else if (initialRevealState === 'complete') {
+        openImagePreviewUpgrade();
+      }
       if (!overlay) {
         openImagePreviewUpgrade();
       }
@@ -171,12 +280,59 @@ const showDevTools = import.meta.env.DEV;
       // and call registerHyperellipse() here.
       const REVEAL_EASE = 'power1.out';
       const MAX_WAIT_MS = 4000;
+      const emitTransitionMilestone = (name: string, detail: Record<string, unknown> = {}) => {
+        try {
+          const mark = performance?.mark;
+          if (typeof mark === 'function') {
+            try {
+              mark.call(performance, `vcd:${name}`, { detail });
+            } catch {
+              mark.call(performance, `vcd:${name}`);
+            }
+          }
+        } catch {
+          // Performance marks are diagnostic only and must never affect reveal.
+        }
+        if (!readinessMarker) return;
+        const eventDetail = { name, time: performance.now(), ...detail };
+        const win = window as Window & { __vcdTransitionMilestones?: Array<Record<string, unknown>> };
+        (win.__vcdTransitionMilestones ??= []).push(eventDetail);
+        window.dispatchEvent(new CustomEvent('vcd:transition-milestone', { detail: eventDetail }));
+      };
+      emitTransitionMilestone('transition-script-start');
 
       const isInViewport = (el: Element) => {
-        const rect = el.getBoundingClientRect();
         const vh = window.innerHeight || document.documentElement.clientHeight;
         const vw = window.innerWidth || document.documentElement.clientWidth;
-        return rect.bottom > 0 && rect.right > 0 && rect.top < vh && rect.left < vw;
+        let rect = el.getBoundingClientRect();
+        const intersect = (left: number, top: number, right: number, bottom: number) => {
+          const next = {
+            left: Math.max(rect.left, left), top: Math.max(rect.top, top),
+            right: Math.min(rect.right, right), bottom: Math.min(rect.bottom, bottom),
+          };
+          if (next.right <= next.left || next.bottom <= next.top) return false;
+          rect = next;
+          return true;
+        };
+        if (!intersect(0, 0, vw, vh)) return false;
+        for (let current: Element | null = el; current; current = current.parentElement) {
+          const style = getComputedStyle(current);
+          if (style.display === 'none' || style.visibility === 'hidden') return false;
+          const overflowX = style.overflowX || style.overflow;
+          const overflowY = style.overflowY || style.overflow;
+          const ancestorRect = current.getBoundingClientRect();
+          const clipX = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowX);
+          const clipY = ['hidden', 'clip', 'auto', 'scroll'].includes(overflowY);
+          if (clipX || clipY) {
+            if (!intersect(
+              clipX ? ancestorRect.left : rect.left,
+              clipY ? ancestorRect.top : rect.top,
+              clipX ? ancestorRect.right : rect.right,
+              clipY ? ancestorRect.bottom : rect.bottom,
+            )) return false;
+          }
+        }
+        return true;
       };
 
       let generation = 0;
@@ -205,25 +361,30 @@ const showDevTools = import.meta.env.DEV;
       const waitForReadiness = (signal: AbortSignal) => {
         let timer: ReturnType<typeof setTimeout> | null = null;
         let settled = false;
+        let releaseReason: 'resources' | 'timeout' | 'aborted' = 'resources';
         const cleanups: Array<() => void> = [];
         let resolveReady!: () => void;
         const ready = new Promise<void>((resolve) => {
           resolveReady = resolve;
         });
-        const settle = () => {
+        const settle = (reason: 'resources' | 'timeout' | 'aborted' = 'resources') => {
           if (settled) return;
           settled = true;
+          releaseReason = reason;
           if (timer !== null) clearTimeout(timer);
           for (const cleanup of cleanups) cleanup();
           resolveReady();
         };
-        const onAbort = () => settle();
+        const onAbort = () => settle('aborted');
         signal.addEventListener('abort', onAbort, { once: true });
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
         const waits: Promise<unknown>[] = [];
-        waits.push(Promise.resolve(document.fonts?.ready).catch(() => undefined));
-        for (const img of Array.from(document.images).filter(isInViewport)) {
+        waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
+        let thumbIndex = 0;
+        const readinessImages = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+        for (const img of readinessImages) {
+          const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
             if (!img.complete) {
               await new Promise<void>((resolve) => {
@@ -246,11 +407,12 @@ const showDevTools = import.meta.env.DEV;
             if (typeof img.decode === 'function' && img.naturalWidth > 0) {
               await Promise.resolve(img.decode()).catch(() => undefined);
             }
+            emitTransitionMilestone('thumb-ready', { index: currentThumbIndex + 1 });
           })());
         }
-        Promise.all(waits).then(settle, settle);
-        timer = setTimeout(settle, MAX_WAIT_MS);
-        return { ready, cleanup: settle };
+        Promise.all(waits).then(() => settle('resources'), () => settle('resources'));
+        timer = setTimeout(() => settle('timeout'), MAX_WAIT_MS);
+        return { ready, cleanup: settle, get releaseReason() { return releaseReason; } };
       };
 
       const waitForOpaquePaint = (signal: AbortSignal) =>
@@ -272,25 +434,43 @@ const showDevTools = import.meta.env.DEV;
       const revealPage = async () => {
         if (!overlay || suspended) return;
         invalidate();
+        if (readinessMarker) readinessMarker.hidden = true;
         const current = generation;
         const controller = new AbortController();
         readinessAbort = controller;
         overlay.style.animation = 'none';
-        overlay.style.opacity = '1';
+        overlay.style.opacity = visibleTransition ? '0' : '1';
         try {
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
-          await Promise.all([wait.ready, waitForOpaquePaint(controller.signal)]);
+          const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
+          const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied', {
+            release: wait.releaseReason === 'timeout' ? 'timeout' : 'resources',
+          }));
+          await readiness;
           if (current !== generation || suspended) return;
+          await opaquePaint;
+          if (current !== generation || suspended) return;
+          emitTransitionMilestone('fade-authorized');
           readinessCleanup?.();
           readinessCleanup = null;
           readinessAbort = null;
+          if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
+          emitTransitionMilestone('preview-gate-open');
           openImagePreviewUpgrade();
+          if (visibleTransition) {
+            overlay.style.opacity = '0';
+            emitTransitionMilestone('veil-fade-start');
+            if (visibleTransition) emitTransitionMilestone('veil-fade-end');
+            return;
+          }
+          emitTransitionMilestone('veil-fade-start');
           activeTween = gsap.to(overlay, {
             opacity: 0,
             duration: 0.25,
             ease: REVEAL_EASE,
             onComplete: () => {
+              emitTransitionMilestone('veil-fade-end');
               if (current === generation) activeTween = null;
             },
           });
@@ -305,7 +485,7 @@ const showDevTools = import.meta.env.DEV;
         }
       };
 
-      void revealPage();
+      if (!initialRevealState) void revealPage();
 
       document.querySelectorAll('a').forEach((link) => {
         const anchor = link as HTMLAnchorElement;
@@ -342,6 +522,11 @@ const showDevTools = import.meta.env.DEV;
               void revealPage();
             }
           };
+          if (visibleTransition) {
+            target.searchParams.set('dev-transition', 'visible');
+            navigate();
+            return;
+          }
           try {
             activeTween = gsap.to(overlay, {
               opacity: 1,
