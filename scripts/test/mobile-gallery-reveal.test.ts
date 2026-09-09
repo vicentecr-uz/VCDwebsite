@@ -84,8 +84,9 @@ try {
   const teardown = bindMobileGalleryReveal();
   const point = { identifier: 1, clientX: 15, clientY: 100, target: first.card };
   touch('touchstart', first.card, [point]);
+  assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'preview starts on touchstart before any timer or movement');
   advance(1000);
-  assert.equal(first.cover.classList.contains('is-mobile-preview'), false, 'initial timer cannot reveal during a finger-down gesture');
+  assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'finger-down reveals without waiting for movement or release');
   point.clientY = 130;
   touch('touchmove', first.card, [point]);
   assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'vertical gesture reveals before release');
@@ -147,7 +148,7 @@ try {
   const scrollTeardown = bindMobileGalleryReveal();
   window.dispatchEvent(new window.Event('scroll'));
   advance(250);
-  assert.equal(scrollFallback.cover.classList.contains('is-mobile-preview'), true, 'scroll settle can rank a card without a tracked touch origin');
+  assert.equal(scrollFallback.cover.classList.contains('is-mobile-preview'), false, 'untracked scroll does not reveal an unrelated card');
   scrollTeardown();
 
   document.body.innerHTML = '';
@@ -165,7 +166,7 @@ try {
   touch('touchstart', tap.card, [tapPoint]);
   const tapEnd = touch('touchend', tap.card, [], [tapPoint]);
   assert.equal(tapEnd.defaultPrevented, false, 'stationary tap is never prevented');
-  assert.equal(tap.cover.classList.contains('is-mobile-preview'), false);
+  assert.equal(tap.cover.classList.contains('is-mobile-preview'), true, 'stationary touch reveals while preserving navigation');
   tapTeardown();
 
   document.body.innerHTML = '';
@@ -195,7 +196,7 @@ try {
   advance(999);
   assert.equal(initial.cover.classList.contains('is-mobile-preview'), false);
   advance(1);
-  assert.equal(initial.cover.classList.contains('is-mobile-preview'), true, 'initial preview starts after readable page pause');
+  assert.equal(initial.cover.classList.contains('is-mobile-preview'), false, 'page reveal never starts an automatic preview');
   window.dispatchEvent(new window.Event('pagehide'));
   assert.equal(initial.cover.classList.contains('is-mobile-preview'), false, 'navigation clears active preview');
   initialTeardown();
@@ -237,7 +238,7 @@ try {
   advance(999);
   assert.equal(underVeil.cover.classList.contains('is-mobile-preview'), false);
   advance(1);
-  assert.equal(underVeil.cover.classList.contains('is-mobile-preview'), true, 'dismissal tap allows a fresh initial preview after veil is gone');
+  assert.equal(underVeil.cover.classList.contains('is-mobile-preview'), false, 'intro dismissal never starts an automatic preview');
   veilTeardown();
   console.log('mobile-gallery-reveal: passed (selection, gesture, timing, navigation, teardown)');
 } finally {

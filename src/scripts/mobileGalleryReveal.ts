@@ -1,7 +1,6 @@
 const TOUCH_MOVE_THRESHOLD = 10;
 const SCROLL_SETTLE_MS = 250;
 const PREVIEW_HOLD_MS = 1600;
-const INITIAL_DELAY_MS = 1000;
 const CLICK_GUARD_MS = 500;
 
 type CoverCandidate = {
@@ -52,7 +51,6 @@ function allCandidates(): CoverCandidate[] {
 
 export function bindMobileGalleryReveal(): () => void {
   let active: CoverCandidate | null = null;
-  let initialTimer: ReturnType<typeof setTimeout> | undefined;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
   let holdTimer: ReturnType<typeof setTimeout> | undefined;
   let gesture: { id: number; x: number; y: number; origin: HTMLElement | null; moved: boolean } | null = null;
@@ -60,8 +58,6 @@ export function bindMobileGalleryReveal(): () => void {
   let fingerDown = false;
   let clickGuard: HTMLElement | null = null;
   let clickGuardExpiry = 0;
-  let initialScheduled = false;
-  let initialCancelled = false;
   let disposed = false;
 
   const clearTimer = (timer: ReturnType<typeof setTimeout> | undefined) => {
@@ -137,10 +133,8 @@ export function bindMobileGalleryReveal(): () => void {
   };
 
   const onTouchStart = (event: TouchEvent) => {
-    if (!mobileCapability() || document.documentElement.classList.contains('is-dev-mode')) return;
-    initialCancelled = true;
-    clearTimer(initialTimer);
-    initialTimer = undefined;
+    if (!mobileCapability() || introVisible() || document.documentElement.classList.contains('is-dev-mode')) return;
+
     clearTimer(holdTimer);
     holdTimer = undefined;
     cancelPending();
@@ -154,6 +148,7 @@ export function bindMobileGalleryReveal(): () => void {
     const touch = event.touches[0];
     const target = touch.target instanceof Element ? touch.target.closest<HTMLElement>('.project-grid__item') : null;
     gesture = { id: touch.identifier, x: touch.clientX, y: touch.clientY, origin: target, moved: false };
+    if (target && candidateFor(target)) reveal(target, true);
   };
 
   const onTouchMove = (event: TouchEvent) => {
@@ -189,7 +184,7 @@ export function bindMobileGalleryReveal(): () => void {
     const dx = touch ? touch.clientX - finished.x : 0;
     const dy = touch ? touch.clientY - finished.y : 0;
     if (!finished.moved || Math.abs(dy) < Math.abs(dx)) {
-      clearPreview();
+      if (active) scheduleReveal();
       return;
     }
     pendingOrigin = finished.origin;
@@ -205,12 +200,9 @@ export function bindMobileGalleryReveal(): () => void {
   };
 
   const onScroll = () => {
-    initialCancelled = true;
-    clearTimer(initialTimer);
-    initialTimer = undefined;
     clearTimer(holdTimer);
     holdTimer = undefined;
-    if (!fingerDown) {
+    if (!fingerDown && (active || pendingOrigin)) {
       scheduleReveal();
     }
   };
@@ -230,9 +222,6 @@ export function bindMobileGalleryReveal(): () => void {
 
   const onVisibility = () => {
     if (document.hidden) {
-      initialCancelled = true;
-      clearTimer(initialTimer);
-      initialTimer = undefined;
       fingerDown = false;
       resetGesture();
       clearPreview();
@@ -241,48 +230,21 @@ export function bindMobileGalleryReveal(): () => void {
 
   const onMediaChange = () => {
     if (!mobileCapability()) {
-      initialCancelled = true;
       fingerDown = false;
       resetGesture();
       clearPreview();
-      clearTimer(initialTimer);
-      initialTimer = undefined;
     }
   };
 
   const onHtmlMutation = () => {
     if (document.documentElement.classList.contains('is-dev-mode')) {
-      initialCancelled = true;
-      clearTimer(initialTimer);
-      initialTimer = undefined;
       fingerDown = false;
       resetGesture();
       clearPreview();
     }
   };
 
-  const scheduleInitial = () => {
-    if (initialScheduled || initialCancelled || disposed || introVisible() || !mobileCapability()) return;
-    const overlay = document.getElementById('transition-overlay');
-    if (overlay && overlay.dataset.vcdInitialReveal !== 'complete') return;
-    initialScheduled = true;
-    initialTimer = setTimeout(() => {
-      initialTimer = undefined;
-      reveal(null);
-    }, INITIAL_DELAY_MS);
-  };
-
-  const onInitialRevealComplete = () => {
-    if (!initialCancelled) scheduleInitial();
-  };
-  const onHomeIntroDismissed = () => {
-    initialCancelled = false;
-    scheduleInitial();
-  };
   const onPageHide = () => {
-    initialCancelled = true;
-    clearTimer(initialTimer);
-    initialTimer = undefined;
     fingerDown = false;
     resetGesture();
     clearPreview();
@@ -297,23 +259,17 @@ export function bindMobileGalleryReveal(): () => void {
   document.addEventListener('visibilitychange', onVisibility);
   window.addEventListener('scroll', onScroll, { passive: true });
   mediaQuery.addEventListener?.('change', onMediaChange);
-  window.addEventListener('vcd:initial-reveal-complete', onInitialRevealComplete);
   window.addEventListener('pagehide', onPageHide);
-  window.addEventListener('vcd:home-intro-dismissed', onHomeIntroDismissed);
   const htmlObserver = new MutationObserver(onHtmlMutation);
   htmlObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  scheduleInitial();
 
   return () => {
     disposed = true;
-    clearTimer(initialTimer);
     clearTimer(settleTimer);
     resetGesture();
     clearPreview();
     htmlObserver.disconnect();
-    window.removeEventListener('vcd:initial-reveal-complete', onInitialRevealComplete);
     window.removeEventListener('pagehide', onPageHide);
-    window.removeEventListener('vcd:home-intro-dismissed', onHomeIntroDismissed);
     mediaQuery.removeEventListener?.('change', onMediaChange);
     document.removeEventListener('touchstart', onTouchStart);
     document.removeEventListener('touchmove', onTouchMove);
