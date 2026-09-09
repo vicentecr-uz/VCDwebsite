@@ -51,7 +51,6 @@ export function bindMobileGalleryReveal(): () => void {
   let holdTimer: ReturnType<typeof setTimeout> | undefined;
   let gesture: { id: number; x: number; y: number; origin: HTMLElement | null; moved: boolean } | null = null;
   let pendingOrigin: HTMLElement | null = null;
-  let pendingReveal = false;
   let fingerDown = false;
   let clickGuard: HTMLElement | null = null;
   let clickGuardExpiry = 0;
@@ -74,7 +73,6 @@ export function bindMobileGalleryReveal(): () => void {
     clearTimer(settleTimer);
     settleTimer = undefined;
     pendingOrigin = null;
-    pendingReveal = false;
   };
 
   const resetGesture = () => {
@@ -117,7 +115,6 @@ export function bindMobileGalleryReveal(): () => void {
       settleTimer = undefined;
       const origin = pendingOrigin;
       pendingOrigin = null;
-      pendingReveal = false;
       reveal(origin);
     }, SCROLL_SETTLE_MS);
   };
@@ -166,14 +163,13 @@ export function bindMobileGalleryReveal(): () => void {
     const dy = touch ? touch.clientY - finished.y : 0;
     if (!finished.moved || Math.abs(dy) < Math.abs(dx)) return;
     pendingOrigin = finished.origin;
-    pendingReveal = true;
     clickGuard = finished.origin;
     clickGuardExpiry = Date.now() + CLICK_GUARD_MS;
     scheduleReveal();
   };
 
-  const onTouchCancel = () => {
-    fingerDown = false;
+  const onTouchCancel = (event: TouchEvent) => {
+    fingerDown = event.touches.length > 0;
     resetGesture();
     clearPreview();
   };
@@ -184,7 +180,6 @@ export function bindMobileGalleryReveal(): () => void {
     initialTimer = undefined;
     clearPreview();
     if (!fingerDown) {
-      pendingReveal = true;
       scheduleReveal();
     }
   };
@@ -216,6 +211,7 @@ export function bindMobileGalleryReveal(): () => void {
   const onMediaChange = () => {
     if (!mobileCapability()) {
       initialCancelled = true;
+      fingerDown = false;
       resetGesture();
       clearPreview();
       clearTimer(initialTimer);
