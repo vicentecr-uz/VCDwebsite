@@ -102,6 +102,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
+  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
     initMountedSectionCovers,
@@ -433,69 +434,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const persistedChanges = new WeakSet<PendingMediaChange>();
 
     const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
-    const PARAGRAPH_PLACEHOLDER_ATTRIBUTE = 'data-dev-placeholder';
     const createParagraphPlaceholderBreak = () => {
       const br = document.createElement('br');
       br.setAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE, 'true');
       return br;
     };
-    /** Keep authored inline markup through Save; unwrap anything else. */
-    const serializeInlineHtml = (root: ParentNode): string => {
-      const walk = (node: Node): string => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          return cleanText(node.textContent ?? '');
-        }
-        if (!(node instanceof HTMLElement)) return '';
-
-        const inner = [...node.childNodes].map(walk).join('');
-        const tag = node.tagName;
-        if (tag === 'BR') {
-          if (node.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE)) return '';
-          return '<br>';
-        }
-        if (tag === 'STRONG' || tag === 'B') return inner ? `<strong>${inner}</strong>` : '';
-        if (tag === 'SPAN' && node.classList.contains('text-emphasis')) {
-          return inner ? `<span class="text-emphasis">${inner}</span>` : '';
-        }
-        if (tag === 'EM' || tag === 'I') return inner ? `<em>${inner}</em>` : '';
-        if (tag === 'U') return inner ? `<u>${inner}</u>` : '';
-        if (tag === 'A') {
-          const href = (node.getAttribute('href') || '').trim();
-          const safeHref = SAFE_HREF.test(href) ? href.replaceAll('"', '%22') : '';
-          if (!safeHref || !inner) return inner;
-          const off = node.classList.contains('is-underline-off');
-          return `<a href="${safeHref}"${off ? ' class="is-underline-off"' : ''}>${inner}</a>`;
-        }
-        return inner;
-      };
-
-      const children = [...root.childNodes];
-      if (
-        root instanceof HTMLParagraphElement &&
-        children.length === 1 &&
-        children[0] instanceof HTMLBRElement
-      ) {
-        return '';
-      }
-      return children.map(walk).join('');
-    };
     const fillParagraph = (paragraph: HTMLElement, html: string) => {
       if (html) paragraph.innerHTML = html;
       else paragraph.replaceChildren(createParagraphPlaceholderBreak());
-    };
-    const readParagraphsValue = (element: HTMLElement): string[] => {
-      const paragraphs = [...element.querySelectorAll<HTMLElement>(':scope > p')];
-      if (paragraphs.length) {
-        return paragraphs.map((paragraph) => serializeInlineHtml(paragraph));
-      }
-      const blocks = [...element.children].filter(
-        (child): child is HTMLElement => child instanceof HTMLElement,
-      );
-      if (blocks.length) {
-        return blocks.map((block) => serializeInlineHtml(block));
-      }
-      const inline = serializeInlineHtml(element);
-      return inline ? [inline] : [];
     };
     const readValue = (state: Pick<EditableTextState, 'element' | 'kind'>): EditableTextValue =>
       state.kind === 'paragraphs'
@@ -2376,12 +2322,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return built;
     };
 
-    /**
-     * Enter / focus often leave the caret on the contenteditable root (the
-     * div) instead of inside a <p>. Our Enter handler requires a direct-child
-     * paragraph — without this, preventDefault runs and Return does nothing
-     * until a click places the caret in a <p> (or after save+reload).
-     */
     const placeCaretInParagraph = (paragraph: HTMLElement, atStart: boolean) => {
       const selection = window.getSelection();
       if (!selection) return;
@@ -2397,58 +2337,52 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       selection.addRange(range);
     };
 
-    const ensureParagraphSelection = (element: HTMLElement): HTMLParagraphElement | null => {
+    const ensureParagraphSelection = (element: HTMLElement): HTMLElement | null => {
       const selection = window.getSelection();
       if (!selection?.rangeCount) return null;
       const range = selection.getRangeAt(0);
-      if (!element.contains(range.startContainer)) return null;
-
-      const startElement = range.startContainer instanceof Element
-        ? range.startContainer
-        : range.startContainer.parentElement;
-      const existing = startElement?.closest('p');
-      if (existing instanceof HTMLParagraphElement && existing.parentElement === element) {
-        return existing;
-      }
+      if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return null;
+      let direct = range.startContainer;
+      while (direct !== element && direct.parentNode !== element) direct = direct.parentNode!;
+      if (direct instanceof HTMLElement && direct.matches('p, div') && direct !== element) return direct;
       if (!range.collapsed) return null;
-
-      const paragraphs = [...element.querySelectorAll<HTMLParagraphElement>(':scope > p')];
-      // A click in server-rendered whitespace can leave the caret on the root
-      // beside a paragraph. Choose the paragraph on that side instead of always
-      // jumping to the start of the block, where Backspace means merge.
-      const children = [...element.childNodes];
-      let boundary = range.startOffset;
-      if (range.startContainer !== element) {
-        let direct: Node = range.startContainer;
-        while (direct.parentNode && direct.parentNode !== element) direct = direct.parentNode;
-        const directIndex = children.indexOf(direct);
-        if (directIndex >= 0) boundary = directIndex + (range.startOffset > 0 ? 1 : 0);
+      if (direct === element) {
+        const after = element.childNodes[range.startOffset];
+        const before = element.childNodes[range.startOffset - 1];
+        if (after instanceof HTMLElement && after.matches('p, div')) {
+          placeCaretInParagraph(after, true);
+          return after;
+        }
+        if (before instanceof HTMLElement && before.matches('p, div')) {
+          placeCaretInParagraph(before, false);
+          return before;
+        }
+        direct = after ?? before ?? element;
       }
-      const before = children.slice(0, boundary).reverse().find(
-        (node): node is HTMLParagraphElement => node instanceof HTMLParagraphElement,
-      );
-      if (before) {
-        placeCaretInParagraph(before, false);
-        return before;
+      const paragraph = document.createElement('p');
+      if (direct === element) {
+        paragraph.append(createParagraphPlaceholderBreak());
+        element.append(paragraph);
+        placeCaretInParagraph(paragraph, true);
+      } else {
+        // Only explicit section commands wrap root text; ordinary input never rewrites the DOM.
+        const anchor = selection.anchorNode!;
+        const anchorOffset = selection.anchorOffset;
+        let first = direct;
+        while (first.previousSibling && !(first.previousSibling instanceof HTMLElement && first.previousSibling.matches('p, div'))) {
+          first = first.previousSibling;
+        }
+        element.insertBefore(paragraph, first);
+        while (first && !(first instanceof HTMLElement && first.matches('p, div'))) {
+          const next = first.nextSibling;
+          paragraph.append(first);
+          if (!next) break;
+          first = next;
+        }
+        if (anchor !== element) selection.setPosition(anchor, anchorOffset);
+        else placeCaretInParagraph(paragraph, range.startOffset === 0);
       }
-      const after = children.slice(boundary).find(
-        (node): node is HTMLParagraphElement => node instanceof HTMLParagraphElement,
-      );
-      if (after) {
-        placeCaretInParagraph(after, true);
-        return after;
-      }
-      if (paragraphs.length) {
-        const fallback = paragraphs[0];
-        placeCaretInParagraph(fallback, true);
-        return fallback;
-      }
-
-      const created = document.createElement('p');
-      created.append(createParagraphPlaceholderBreak());
-      element.append(created);
-      placeCaretInParagraph(created, true);
-      return created;
+      return paragraph;
     };
 
     const fragmentHasContent = (node: ParentNode) =>
@@ -2461,63 +2395,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       paragraph.querySelectorAll(`br[${PARAGRAPH_PLACEHOLDER_ATTRIBUTE}]`).forEach((br) => br.remove());
     };
 
-    const normalizeParagraphPlaceholders = (element: HTMLElement) => {
-      element.querySelectorAll<HTMLParagraphElement>(':scope > p').forEach((paragraph) => {
-        if (fragmentHasContent(paragraph)) {
-          stripParagraphPlaceholders(paragraph);
-          return;
-        }
-        // Keep the browser-owned caret node so Firefox can undo the deletion.
-        if (
-          paragraph.childNodes.length === 1
-          && paragraph.firstChild instanceof HTMLBRElement
-        ) return;
-        stripParagraphPlaceholders(paragraph);
-        paragraph.append(createParagraphPlaceholderBreak());
-      });
-    };
-
-    const restoreTrailingSoftLineCaret = (element: HTMLElement) => {
-      const selection = window.getSelection();
-      if (!selection?.rangeCount || !selection.isCollapsed) return;
-      const anchor = selection.anchorNode instanceof Element
-        ? selection.anchorNode
-        : selection.anchorNode?.parentElement;
-      const paragraph = anchor?.closest('p');
-      if (!(paragraph instanceof HTMLParagraphElement) || paragraph.parentElement !== element) return;
-      const breaks = [...paragraph.querySelectorAll<HTMLBRElement>('br')];
-      const softBreak = breaks.at(-1);
-      if (!softBreak) return;
-
-      const caret = selection.getRangeAt(0);
-      const trailing = document.createRange();
-      trailing.setStartAfter(softBreak);
-      trailing.setEnd(paragraph, paragraph.childNodes.length);
-      if (fragmentHasContent(trailing.cloneContents())) return;
-
-      // Chromium supplies an untagged filler; Firefox needs one appended.
-      const breakStart = document.createRange();
-      breakStart.setStartBefore(softBreak);
-      breakStart.collapse(true);
-      if (caret.compareBoundaryPoints(Range.START_TO_START, breakStart) === 0) {
-        const authoredBreak = breaks.at(-2);
-        if (!authoredBreak) return;
-        const authoredBreakEnd = document.createRange();
-        authoredBreakEnd.setStartAfter(authoredBreak);
-        authoredBreakEnd.collapse(true);
-        if (caret.compareBoundaryPoints(Range.START_TO_START, authoredBreakEnd) === 0) {
-          softBreak.setAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE, 'true');
-        }
-        return;
-      }
-
-      const breakEnd = document.createRange();
-      breakEnd.setStartAfter(softBreak);
-      breakEnd.collapse(true);
-      if (caret.compareBoundaryPoints(Range.START_TO_START, breakEnd) !== 0) return;
-      softBreak.after(createParagraphPlaceholderBreak());
-    };
-
     const removeParagraphRootWhitespace = (element: HTMLElement) => {
       [...element.childNodes].forEach((node) => {
         if (node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) node.remove();
@@ -2525,7 +2402,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const extractTrailingFromParagraph = (
-      paragraph: HTMLParagraphElement,
+      paragraph: HTMLElement,
       liveRange: Range,
     ) => {
       const afterRange = document.createRange();
@@ -2545,68 +2422,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return { nextParagraph, empty };
     };
 
-    const insertSoftBreakInsideParagraph = (state: EditableTextState) => {
-      const paragraph = ensureParagraphSelection(state.element);
-      if (!paragraph) return;
-      stripParagraphPlaceholders(paragraph);
-
-      const selection = window.getSelection();
-      if (!selection?.rangeCount) return;
-      const range = selection.getRangeAt(0);
-      if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
-        placeCaretInParagraph(paragraph, false);
-      }
-      const liveRange = selection.getRangeAt(0);
-      if (!liveRange.collapsed) liveRange.deleteContents();
-
-      const br = document.createElement('br');
-      liveRange.insertNode(br);
-      // A trailing br is collapsed by the engine; a second one holds the caret
-      // on the new visual line, same as a wrap.
-      const trailingRange = document.createRange();
-      trailingRange.setStartAfter(br);
-      trailingRange.setEnd(paragraph, paragraph.childNodes.length);
-      if (!fragmentHasContent(trailingRange.cloneContents())) {
-        br.after(createParagraphPlaceholderBreak());
-      }
-
-      const nextRange = document.createRange();
-      nextRange.setStartAfter(br);
-      nextRange.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(nextRange);
-      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-      updateActions();
-    };
-
-    const splitParagraphInsideBlock = (state: EditableTextState) => {
-      const { element } = state;
-      const paragraph = ensureParagraphSelection(element);
-      if (!paragraph) return;
-
-      const selection = window.getSelection();
-      if (!selection?.rangeCount) return;
-      // Re-read after ensureParagraphSelection may have moved the caret.
-      const range = selection.getRangeAt(0);
-      if (!paragraph.contains(range.startContainer) && range.startContainer !== paragraph) {
-        placeCaretInParagraph(paragraph, false);
-      }
-      const liveRange = selection.getRangeAt(0);
-
-      if (!liveRange.collapsed) liveRange.deleteContents();
-
-      const { nextParagraph } = extractTrailingFromParagraph(paragraph, liveRange);
-      paragraph.after(nextParagraph);
-
-      const nextRange = document.createRange();
-      nextRange.setStart(nextParagraph, 0);
-      nextRange.collapse(true);
-      selection.removeAllRanges();
-      selection.addRange(nextRange);
-      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
-      updateActions();
-    };
-
     let splitBlockAtCaret = (_state: EditableTextState) => {};
     let tryMergeBlockAtCaret = (
       _state: EditableTextState,
@@ -2616,74 +2431,56 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const bindTextState = (state: EditableTextState) => {
       const { element } = state;
       if (state.kind === 'paragraphs') removeParagraphRootWhitespace(element);
-      // Typing is the signal that the last Save/Publish message has been read.
-      element.addEventListener('input', () => {
-        if (state.kind === 'paragraphs') {
-          normalizeParagraphPlaceholders(element);
-          restoreTrailingSoftLineCaret(element);
-        }
+      const notifyTextInput = () => {
         window.dispatchEvent(new Event('vcd:intro-layout-sync'));
         stickyStatus = '';
         updateActions();
-      }, { signal: editorSignal });
+      };
+      element.addEventListener('input', notifyTextInput, { signal: editorSignal });
       if (state.kind === 'paragraphs') {
         element.addEventListener('focus', () => {
-          // Defer so the browser finishes its own caret placement first.
-          requestAnimationFrame(() => ensureParagraphSelection(element));
+          document.execCommand('defaultParagraphSeparator', false, 'p');
         }, { signal: editorSignal });
-      }
-      if (state.kind === 'paragraphs') {
-        // Native Enter still fires insertParagraph after our keydown split on
-        // some engines (Safari), so one Return became two <p>s.
-        element.addEventListener('beforeinput', (event) => {
-          if (linkPanelOpen) hideFormatBar();
-          if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
-            event.preventDefault();
-          } else if (event.inputType.startsWith('delete')) {
-            ensureParagraphSelection(element);
+        element.addEventListener('paste', (event) => {
+          const clipboard = event.clipboardData;
+          const selection = window.getSelection();
+          if (!clipboard || !selection?.rangeCount) return;
+          const range = selection.getRangeAt(0);
+          if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return;
+          const text = clipboard.getData('text/plain');
+          const html = clipboard.getData('text/html');
+          if (!text && !html) return;
+          event.preventDefault();
+          const content = clipboardParagraphHtml(text, html);
+          if (!content) return;
+          pageHistory.breakGroup();
+          // Insert as one browser edit; the shared page history records its input.
+          if (!document.execCommand('insertHTML', false, content)) {
+            setStickyStatus('Could not paste. Try Paste and Match Style.');
+            return;
           }
-        }, { signal: editorSignal });
-        element.addEventListener('pointerup', () => {
-          requestAnimationFrame(() => ensureParagraphSelection(element));
+          notifyTextInput();
+          queueMicrotask(() => pageHistory.breakGroup());
         }, { signal: editorSignal });
       }
+      element.addEventListener('beforeinput', () => {
+        if (linkPanelOpen) hideFormatBar();
+      }, { signal: editorSignal });
       element.addEventListener('keydown', (event) => {
+        if (event.isComposing || event.defaultPrevented) return;
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
           if (linkPanelOpen) hideFormatBar();
-          if (state.kind === 'paragraphs') ensureParagraphSelection(element);
           if (tryMergeBlockAtCaret(state, event.key === 'Delete' ? 'forward' : 'backward')) {
             event.preventDefault();
           }
           return;
         }
-
         if (event.key !== 'Enter') return;
         if (linkPanelOpen) hideFormatBar();
-
-        if (event.shiftKey && !event.altKey) {
-          if (state.kind !== 'paragraphs') return;
-          event.preventDefault();
-          insertSoftBreakInsideParagraph(state);
-          return;
-        }
-
-        if (event.altKey) {
-          if (state.kind !== 'paragraphs') return;
-          event.preventDefault();
-          splitParagraphInsideBlock(state);
-          return;
-        }
-
         if (event.metaKey || event.ctrlKey) {
           event.preventDefault();
           splitBlockAtCaret(state);
-          return;
-        }
-
-        if (state.kind === 'paragraphs') {
-          event.preventDefault();
-          splitParagraphInsideBlock(state);
         }
       }, { signal: editorSignal });
     };
@@ -2839,7 +2636,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       requestAnimationFrame(() => {
         built.textElement.focus();
         if (built.textKind === 'paragraphs') {
-          const first = built.textElement.querySelector<HTMLParagraphElement>(':scope > p');
+          const first = built.textElement.querySelector<HTMLElement>(':scope > p, :scope > div');
           if (first) placeCaretInParagraph(first, true);
           else ensureParagraphSelection(built.textElement);
         } else if (built.textKind === 'text') {
@@ -2871,10 +2668,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const selection = window.getSelection();
       if (!selection?.rangeCount) return;
 
-      let payloadParagraphs: HTMLParagraphElement[] = [];
+      let payloadParagraphs: HTMLElement[] = [];
       let headingRemainder = '';
 
       if (state.kind === 'paragraphs') {
+        const selected = selection.getRangeAt(0);
+        if (!state.element.contains(selected.startContainer) || !state.element.contains(selected.endContainer)) return;
+        if (!selected.collapsed) selected.deleteContents();
         const paragraph = ensureParagraphSelection(state.element);
         if (!paragraph) return;
 
@@ -2890,11 +2690,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           paragraph,
           liveRange,
         );
-        const following: HTMLParagraphElement[] = [];
+        materializeParagraphs(state.element);
+        const following: HTMLElement[] = [];
         let sibling = paragraph.nextElementSibling;
         while (sibling) {
           const next = sibling.nextElementSibling;
-          if (sibling instanceof HTMLParagraphElement) {
+          if (sibling instanceof HTMLElement && sibling.matches('p, div')) {
             sibling.remove();
             following.push(sibling);
           }
@@ -2931,7 +2732,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         built.textElement.replaceChildren(...payloadParagraphs);
       } else if (headingRemainder) {
         const paragraph = document.createElement('p');
-        fillParagraph(paragraph, headingRemainder);
+        fillParagraph(paragraph, escapeTextHtml(headingRemainder));
         built.textElement.replaceChildren(paragraph);
       }
 
@@ -3207,24 +3008,24 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const blockParagraphs = (element: HTMLElement) =>
-      [...element.querySelectorAll<HTMLParagraphElement>(':scope > p')];
+      [...element.querySelectorAll<HTMLElement>(':scope > p, :scope > div')];
 
     const paragraphContainingCaret = (
       element: HTMLElement,
       range: Range,
-    ): HTMLParagraphElement | null => {
+    ): HTMLElement | null => {
       const startElement = range.startContainer instanceof Element
         ? range.startContainer
         : range.startContainer.parentElement;
-      const existing = startElement?.closest('p');
-      if (existing instanceof HTMLParagraphElement && existing.parentElement === element) {
+      const existing = startElement?.closest('p, div');
+      if (existing instanceof HTMLElement && existing.parentElement === element) {
         return existing;
       }
       if (range.startContainer === element) {
         const atOffset = element.childNodes[range.startOffset];
-        if (atOffset instanceof HTMLParagraphElement) return atOffset;
+        if (atOffset instanceof HTMLElement && atOffset.matches('p, div')) return atOffset;
         const before = element.childNodes[range.startOffset - 1];
-        if (before instanceof HTMLParagraphElement) return before;
+        if (before instanceof HTMLElement && before.matches('p, div')) return before;
       }
       return null;
     };
@@ -3245,7 +3046,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (range.startContainer === state.element && range.startOffset === 0) return true;
       if (paragraphContainingCaret(state.element, range) !== first) return false;
       const before = document.createRange();
-      before.setStart(first, 0);
+      before.setStart(state.element, 0);
       try {
         before.setEnd(range.startContainer, range.startOffset);
       } catch {
@@ -3275,7 +3076,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       } catch {
         return false;
       }
-      after.setEnd(last, last.childNodes.length);
+      after.setEnd(state.element, state.element.childNodes.length);
       return !fragmentHasContent(after.cloneContents());
     };
 
@@ -3342,17 +3143,35 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       selection.addRange(range);
     };
 
-    const takeAbsorbedParagraphs = (element: HTMLElement) => {
-      const paragraphs = blockParagraphs(element);
-      while (paragraphs.length > 1 && !fragmentHasContent(paragraphs[0])) {
-        paragraphs.shift();
+    const materializeParagraphs = (element: HTMLElement) => {
+      const paragraphs: HTMLElement[] = [];
+      let inline: HTMLElement | null = null;
+      for (const node of [...element.childNodes]) {
+        if (node instanceof HTMLElement && node.matches('p, div')) {
+          paragraphs.push(node);
+          inline = null;
+        } else {
+          if (!inline && node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()) continue;
+          if (!inline) {
+            inline = document.createElement('p');
+            node.before(inline);
+            paragraphs.push(inline);
+          }
+          inline.append(node);
+        }
       }
       return paragraphs;
     };
 
+    const takeAbsorbedParagraphs = (element: HTMLElement) => {
+      const paragraphs = materializeParagraphs(element);
+      while (paragraphs.length > 1 && !fragmentHasContent(paragraphs[0])) paragraphs.shift();
+      return paragraphs;
+    };
+
     const inlineJoinParagraph = (
-      target: HTMLParagraphElement,
-      source: HTMLParagraphElement,
+      target: HTMLElement,
+      source: HTMLElement,
     ): Node | null => {
       stripParagraphPlaceholders(target);
       stripParagraphPlaceholders(source);
@@ -3371,7 +3190,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const lastOrCreateParagraph = (element: HTMLElement) => {
-      const last = blockParagraphs(element).at(-1);
+      const last = materializeParagraphs(element).at(-1);
       if (last) return last;
       const created = document.createElement('p');
       created.append(createParagraphPlaceholderBreak());
@@ -3929,9 +3748,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (state.kind !== 'paragraphs') {
         return readPlainDomText(state.element);
       }
-      const paragraphs = [...state.element.querySelectorAll<HTMLElement>(':scope > p')];
-      if (!paragraphs.length) return readPlainDomText(state.element);
-      return paragraphs.map(readPlainDomText).join('\n');
+      return readParagraphsValue(state.element).map((html) => {
+        const paragraph = document.createElement('p');
+        fillParagraph(paragraph, html);
+        return readPlainDomText(paragraph);
+      }).join('\n');
     };
 
     const sectionIndexFromBlock = (section: HTMLElement): number | null => {
@@ -4812,8 +4633,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const endElement = range.endContainer instanceof Element
         ? range.endContainer
         : range.endContainer.parentElement;
-      const paragraph = startElement?.closest<HTMLParagraphElement>('p');
-      if (!paragraph || paragraph !== endElement?.closest('p')) return null;
+      const paragraph = startElement?.closest<HTMLElement>('p, div');
+      if (!paragraph || paragraph !== endElement?.closest('p, div')) return null;
 
       const startBoundary = document.createElement('span');
       const endBoundary = document.createElement('span');
