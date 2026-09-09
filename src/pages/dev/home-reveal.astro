@@ -1,0 +1,159 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import Header from '../../components/Header.astro';
+import ProjectSections from '../../components/project/ProjectSections.astro';
+import Footer from '../../components/Footer.astro';
+import HomeIntroController from '../../components/home/HomeIntroController.astro';
+import { loadPageDocument } from '../../lib/projects';
+import { pageColumnStyle } from '../../lib/pageColumn';
+import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
+import { CUBIC_EASING_PRESETS, SPRING_EASING_PRESETS, presetEasing, springDurationMs } from '../../lib/easingDevPresets';
+if (!import.meta.env.DEV) return Astro.redirect('/404');
+const home = loadPageDocument('home');
+const homeIntro = loadPageDocument('home-intro');
+const pageStyle = pageColumnStyle(home.sections);
+const fields = [
+  ['entrance.durationMs', 'Entrance duration', 150, 1300, 10, 'ms'], ['entrance.totalStaggerMs', 'Total stagger', 0, 1500, 10, 'ms'],
+  ['entrance.headerLeadMs', 'Header lead', 0, 600, 10, 'ms'], ['entrance.blurPx', 'Blur', 0, 40, 2, 'px'],
+  ['entrance.translateYPx', 'Vertical offset', -40, 80, 2, 'px'], ['entrance.scale', 'Scale', .8, 1.3, .01, ''],
+  ['intro.durationMs', 'Intro duration', 50, 400, 10, 'ms'], ['intro.blurPx', 'Intro blur', 0, 20, 2, 'px'], ['intro.scale', 'Intro scale', .8, 1, .01, ''], ['intro.translateYPx', 'Intro upward offset', 0, 80, 2, 'px'],
+];
+---
+<Layout title="Home reveal tuner (dev)" columnStyle={pageStyle}>
+  <div class="home-page flex min-h-dvh flex-col" data-home-page>
+    <Header navMenu wordmarkAsH1 />
+    <main id="main-content" class="listing-main" style="flex: 1;">
+      <div data-dev-project-drop-zone data-page-document="home">
+        <ProjectSections documentKey="home" sections={home.sections} introHeight={home.introHeight} />
+        <div class:list={[projectStackClass(home.trailingSpacing ?? 'none')]} {...(spacingDevAttrs('home', ['sections', home.sections.length], home.trailingSpacing ?? 'none') ?? {})} />
+      </div>
+    </main>
+    <Footer />
+  </div>
+  <HomeIntroController page={homeIntro} />
+  <aside class="tuner" aria-label="Home reveal controls" data-tuner>
+    <h2>Home reveal</h2>
+    <div class="tuner__fields">
+      {fields.map(([path, label, min, max, step, unit]) => <label>{label} <span><input data-config={path} type="number" min={min} max={max} step={step} /> {unit}</span><input data-config={path} type="range" min={min} max={max} step={step} /></label>)}
+      <label>Easing
+        <select data-easing-preset>
+          <option value="custom">Custom</option>
+          <optgroup label="Cubic easing">
+            {CUBIC_EASING_PRESETS.map((preset) => <option value={preset.name}>{preset.name}</option>)}
+          </optgroup>
+          <optgroup label="Spring">
+            {SPRING_EASING_PRESETS.map((preset) => <option value={preset.name}>{preset.name}</option>)}
+          </optgroup>
+        </select>
+        <textarea data-easing rows="4"></textarea>
+      </label>
+    </div>
+    <label class="tuner__toggle"><input data-reduced type="checkbox" /> Reduced motion</label>
+    <div class="tuner__actions"><button type="button" data-replay>Replay</button><button type="button" data-save>Save</button></div>
+    <p data-status aria-live="polite"></p>
+  </aside>
+</Layout>
+<script>
+  import { bindHomeIntro } from '../../scripts/homeIntro';
+  import { bindHomeReveal } from '../../lib/homeReveal';
+  import revealConfig from '../../lib/homeRevealConfig.json';
+  import { CUBIC_EASING_PRESETS, SPRING_EASING_PRESETS, presetEasing, springDurationMs } from '../../lib/easingDevPresets';
+  const draft = structuredClone(revealConfig) as typeof revealConfig & { intro: typeof revealConfig.intro & { translateYPx: number } };
+  draft.intro.translateYPx ??= 0;
+  const tuner = document.querySelector('[data-tuner]');
+  const status = tuner?.querySelector('[data-status]');
+  const intro = document.querySelector('[data-home-intro-surface]');
+  const REPLAY_HOLD_MS = 600;
+  const read = (path) => path.split('.').reduce((value, key) => value[key], draft);
+  const write = (path, value) => { const keys = path.split('.'); const key = keys.pop(); const target = keys.reduce((value, name) => value[name], draft); target[key] = Number(value); };
+  const snapToStep = (value, min, step) => Number((min + Math.round((value - min) / step) * step).toFixed(6));
+  const syncHeaderLead = () => {
+    const maximum = Math.min(600, draft.entrance.totalStaggerMs);
+    draft.entrance.headerLeadMs = Math.min(draft.entrance.headerLeadMs, maximum);
+    tuner?.querySelectorAll('[data-config="entrance.headerLeadMs"]').forEach((input) => {
+      input.max = String(maximum);
+      input.value = String(draft.entrance.headerLeadMs);
+    });
+  };
+  const replay = () => {
+    cancelAnimationFrame(replay.frame);
+    clearTimeout(replay.timeout);
+    replay.frame = requestAnimationFrame(() => {
+      if (intro instanceof HTMLElement) {
+        intro.style.setProperty('--home-intro-exit-duration', `${draft.intro.durationMs}ms`);
+        intro.style.setProperty('--home-intro-exit-blur', `${draft.intro.blurPx}px`);
+        intro.style.setProperty('--home-intro-exit-scale', String(draft.intro.scale));
+        intro.style.setProperty('--home-intro-exit-y', `-${draft.intro.translateYPx}px`);
+        intro.dataset.reducedMotionPreview = tuner?.querySelector('[data-reduced]')?.checked ? 'true' : 'false';
+      }
+      const oldIntro = window.__vcdHomeIntroController;
+      oldIntro?.teardown?.();
+      const nextIntro = bindHomeIntro({ durationMs: draft.intro.durationMs });
+      bindHomeReveal(draft, { reducedMotion: tuner?.querySelector('[data-reduced]')?.checked === true });
+      if (status) status.textContent = 'Holding intro…';
+      replay.timeout = window.setTimeout(() => {
+        nextIntro?.dismiss?.();
+        if (status) status.textContent = 'Replayed';
+      }, REPLAY_HOLD_MS);
+    });
+  };
+  replay.frame = 0;
+  replay.timeout = 0;
+  tuner?.querySelectorAll('input[data-config]').forEach((input) => {
+    const path = input.dataset.config;
+    if (!path) return;
+    write(path, snapToStep(read(path), Number(input.min), Number(input.step)));
+    input.value = String(read(path));
+    input.addEventListener('input', () => {
+      write(path, input.value);
+      if (path === 'entrance.totalStaggerMs' || path === 'entrance.headerLeadMs') syncHeaderLead();
+      tuner.querySelectorAll(`[data-config="${path}"]`).forEach((peer) => { peer.value = String(read(path)); });
+      replay();
+    });
+  });
+  const easing = tuner?.querySelector('[data-easing]');
+  const easingPreset = tuner?.querySelector('[data-easing-preset]');
+  const allPresets = [...CUBIC_EASING_PRESETS, ...SPRING_EASING_PRESETS];
+  const durationStep = 10;
+  const syncDuration = () => tuner?.querySelectorAll('[data-config="entrance.durationMs"]').forEach((input) => { input.value = String(draft.entrance.durationMs); });
+  const matchingPreset = allPresets.find((preset) => {
+    if (presetEasing(preset) !== draft.entrance.easing) return false;
+    return preset.type !== 'spring' || Math.round(springDurationMs(preset) / durationStep) * durationStep === draft.entrance.durationMs;
+  });
+  if (easingPreset) easingPreset.value = matchingPreset?.name ?? 'custom';
+  if (easing) {
+    easing.value = draft.entrance.easing;
+    easing.addEventListener('input', () => {
+      draft.entrance.easing = easing.value;
+      if (easingPreset) easingPreset.value = 'custom';
+      if (CSS.supports('animation-timing-function', easing.value)) replay();
+      else if (status) status.textContent = 'Invalid easing';
+    });
+  }
+  easingPreset?.addEventListener('change', () => {
+    const preset = allPresets.find((candidate) => candidate.name === easingPreset.value);
+    if (!preset || !easing) return;
+    draft.entrance.easing = presetEasing(preset);
+    easing.value = draft.entrance.easing;
+    if (preset.type === 'spring') {
+      draft.entrance.durationMs = Math.round(springDurationMs(preset) / durationStep) * durationStep;
+      syncDuration();
+    }
+    replay();
+  });
+  syncHeaderLead();
+  tuner?.querySelector('[data-reduced]')?.addEventListener('change', replay);
+  tuner?.querySelector('[data-replay]')?.addEventListener('click', replay);
+  tuner?.querySelector('[data-save]')?.addEventListener('click', async () => {
+    const response = await fetch('/api/home-reveal-config', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(draft) });
+    const result = await response.json().catch(() => ({}));
+    if (status) status.textContent = response.ok ? `Saved · ${result.path}` : 'Save failed';
+  });
+  replay();
+</script>
+<style>
+  .tuner { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; display: grid; gap: calc(var(--space-unit) * .5); width: min(22rem, calc(100vw - 2 * var(--space-unit))); max-height: calc(100dvh - 2 * var(--space-unit)); overflow: auto; padding: var(--space-unit); background: var(--sys-color-srf); color: var(--sys-color-on-srf); border-radius: var(--radius-sm, .5rem); box-shadow: var(--shadow-md, 0 4px 20px rgb(0 0 0 / .16)); }
+  .listing-main { padding: 0; }
+  .home-page { position: relative; z-index: 0; }
+  .tuner h2, .tuner p { margin: 0; } .tuner__fields { display: grid; gap: .5rem; } .tuner label { display: grid; gap: .25rem; font-size: .75rem; } .tuner label > span { display: flex; justify-content: space-between; align-items: center; } .tuner input[type='number'] { width: 5rem; } .tuner textarea { width: 100%; font: inherit; } .tuner__toggle { display: flex !important; align-items: center; } .tuner__actions { display: flex; gap: .5rem; } .tuner button { padding: .35rem .6rem; font: inherit; cursor: pointer; }
+</style>

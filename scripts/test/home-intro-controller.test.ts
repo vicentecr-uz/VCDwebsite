@@ -92,6 +92,7 @@ const fixture = () => {
 };
 
 const waitForExit = () => new Promise((resolve) => setTimeout(resolve, 270));
+const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('home intro controller', () => {
   test('waits without activation and ignores links and selected text', async () => {
@@ -121,6 +122,32 @@ describe('home intro controller', () => {
     expect(f.surface.hidden).toBe(true);
     expect(f.surface.inert).toBe(true);
     expect(f.home.inert).toBe(false);
+  });
+
+  test('primary pointerdown starts the 150ms exit and dispatches once after it settles', async () => {
+    const f = fixture();
+    let completed = 0;
+    f.win.addEventListener('vcd:home-intro-dismissed', () => completed++);
+    f.okay.emit('pointerdown', { button: 2 });
+    expect(f.controller.getState()).toBe('active');
+    f.okay.emit('pointerdown', { button: 0 });
+    expect(f.controller.getState()).toBe('dismissing');
+    await waitFor(90);
+    expect(f.controller.getState()).toBe('dismissing');
+    expect(completed).toBe(0);
+    await waitFor(90);
+    expect(f.controller.getState()).toBe('dismissed');
+    expect(completed).toBe(1);
+  });
+
+  test('uses an explicit intro duration override', async () => {
+    const f = fixture();
+    f.controller.teardown();
+    const replacement = createHomeIntroController(f.surface, f.home, f.root, f.win, { durationMs: 200 });
+    replacement.dismiss();
+    await waitFor(130);
+    expect(replacement.getState()).toBe('dismissing');
+    replacement.teardown();
   });
 
   test('Edit cancels an in-flight dismissal', async () => {

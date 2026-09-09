@@ -1,3 +1,5 @@
+import revealConfig from '../lib/homeRevealConfig.json';
+
 export type HomeIntroState = 'pending' | 'active' | 'editing' | 'dismissing' | 'dismissed';
 
 export function nextHomeIntroModeState(state: HomeIntroState, editActive: boolean): HomeIntroState {
@@ -10,7 +12,9 @@ type HomeIntroController = {
   getState: () => HomeIntroState;
   dismiss: () => void;
   teardown: () => void;
+  reset: () => void;
 };
+export type HomeIntroConfig = { durationMs?: number };
 
 const controllerKey = '__vcdHomeIntroController';
 
@@ -24,10 +28,12 @@ export function createHomeIntroController(
   home: HTMLElement,
   root: HTMLElement = document.documentElement,
   win: Window = window,
+  config: HomeIntroConfig = revealConfig.intro,
 ): HomeIntroController {
   let state: HomeIntroState = 'pending';
   let disposed = false;
   let finishTimer: ReturnType<typeof setTimeout> | null = null;
+  let dismissFocus = false;
   const originalInert = home.inert;
   const originalOverflow = document.body.style.overflow;
   const originalRootOverflow = root.style.overflow;
@@ -66,28 +72,33 @@ export function createHomeIntroController(
   const dismiss = () => {
     if (disposed || state !== 'active' || root.classList.contains('is-dev-mode')) return;
     cancelFinish();
+    dismissFocus = surface.contains(document.activeElement);
     setState('dismissing');
     finishTimer = setTimeout(() => {
       finishTimer = null;
       if (disposed || state !== 'dismissing') return;
-      const hadFocus = surface.contains(document.activeElement);
       setState('dismissed');
       const main = document.getElementById('main-content');
-      if (hadFocus && main instanceof HTMLElement) {
+      if (dismissFocus && main instanceof HTMLElement) {
         const hadTabIndex = main.hasAttribute('tabindex');
         if (!hadTabIndex) main.setAttribute('tabindex', '-1');
         main.focus({ preventScroll: true });
         if (!hadTabIndex) main.removeAttribute('tabindex');
       }
       announce('vcd:home-intro-dismissed');
-    }, 250);
+    }, config.durationMs ?? revealConfig.intro.durationMs);
   };
 
   const onClick = (event: MouseEvent) => {
     if (event.defaultPrevented || win.getSelection?.()?.isCollapsed === false || state !== 'active' || root.classList.contains('is-dev-mode') || isInteractive(event.target)) return;
     dismiss();
   };
+  const onPointerDown = (event: PointerEvent) => {
+    if (event.button !== 0 || state !== 'active' || root.classList.contains('is-dev-mode') || isInteractive(event.target)) return;
+    dismiss();
+  };
   const onOkay = () => dismiss();
+  const onOkayPointerDown = (event: PointerEvent) => { if (event.button === 0) dismiss(); };
   const onPointerMove = (event: PointerEvent) => {
     const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
     if (event.pointerType !== 'mouse' || state !== 'active' || !surface.matches(':hover') || !cursor || !win.matchMedia('(pointer: fine)').matches) return;
@@ -128,7 +139,9 @@ export function createHomeIntroController(
     cancelFinish();
     hideCursor();
     surface.removeEventListener('click', onClick);
+    surface.removeEventListener('pointerdown', onPointerDown);
     surface.querySelector('[data-home-intro-okay]')?.removeEventListener('click', onOkay);
+    surface.querySelector('[data-home-intro-okay]')?.removeEventListener('pointerdown', onOkayPointerDown);
     surface.removeEventListener('pointermove', onPointerMove);
     surface.removeEventListener('pointerleave', hideCursor);
     surface.removeEventListener('pointercancel', hideCursor);
@@ -141,9 +154,12 @@ export function createHomeIntroController(
     document.body.style.overflow = originalOverflow;
     root.style.overflow = originalRootOverflow;
   };
+  const reset = () => { if (!disposed) { cancelFinish(); surface.hidden = false; setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active'); } };
 
   surface.addEventListener('click', onClick);
+  surface.addEventListener('pointerdown', onPointerDown);
   surface.querySelector('[data-home-intro-okay]')?.addEventListener('click', onOkay);
+  surface.querySelector('[data-home-intro-okay]')?.addEventListener('pointerdown', onOkayPointerDown);
   surface.addEventListener('pointermove', onPointerMove);
   surface.addEventListener('pointerleave', hideCursor);
   surface.addEventListener('pointercancel', hideCursor);
@@ -153,16 +169,16 @@ export function createHomeIntroController(
   setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active');
   announce('vcd:intro-layout-sync');
 
-  return { getState: () => state, dismiss, teardown };
+  return { getState: () => state, dismiss, teardown, reset };
 }
 
-export function bindHomeIntro(): HomeIntroController | null {
+export function bindHomeIntro(config: HomeIntroConfig = revealConfig.intro): HomeIntroController | null {
   const surface = document.querySelector<HTMLElement>('[data-home-intro-surface]');
   const home = document.querySelector<HTMLElement>('[data-home-page]');
   if (!surface || !home) return null;
   const existing = (window as Window & Record<string, unknown>)[controllerKey] as HomeIntroController | undefined;
   existing?.teardown();
-  const controller = createHomeIntroController(surface, home);
+  const controller = createHomeIntroController(surface, home, document.documentElement, window, config);
   (window as Window & Record<string, unknown>)[controllerKey] = controller;
   import.meta.hot?.dispose(() => controller.teardown());
   return controller;
