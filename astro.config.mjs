@@ -56,6 +56,7 @@ import {
 } from './scripts/build-tokens.mjs';
 import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './src/lib/projectStackSpacing.js';
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
+import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -1573,7 +1574,8 @@ const writeContentJson = async (file, data) => {
  *
  * @returns {import('vite').Plugin}
  */
-function contentSectionDevWriter() {
+export function contentSectionDevWriter() {
+  const restoreStore = createSectionRestoreStore();
   return {
     name: 'content-section-dev-writer',
     apply: 'serve',
@@ -1605,7 +1607,9 @@ function contentSectionDevWriter() {
           const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
           const documentKey = String(body.document || '');
           const relativeFile = resolveEditableDocument(documentKey);
-          const action = body.action === 'delete'
+          const action = body.action === 'restore'
+            ? 'restore'
+            : body.action === 'delete'
             ? 'delete'
             : body.action === 'fillPlaceholder'
               ? 'fillPlaceholder'
@@ -1627,6 +1631,29 @@ function contentSectionDevWriter() {
           const data = JSON.parse(await readFile(file, 'utf8'));
           if (!Array.isArray(data.sections)) {
             send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+            return;
+          }
+
+          if (action === 'restore') {
+            const restoreData = structuredClone(data);
+            try {
+              const section = restoreStore.restore(documentKey, body.restoreToken, restoreData, index);
+              restoreData.sections.splice(index, 0, section);
+              restoreStore.restoreOutline(restoreData, body.restoreToken);
+              await writeContentJson(file, restoreData);
+              restoreStore.commit(documentKey, body.restoreToken);
+              send(200, {
+                ok: true,
+                action: 'restore',
+                index,
+                id: section.id,
+                type: section.type,
+                section,
+              });
+            } catch (error) {
+              restoreStore.release(documentKey, body.restoreToken);
+              send(400, { error: error instanceof Error ? error.message : 'Could not restore that section.' });
+            }
             return;
           }
 
@@ -1764,10 +1791,17 @@ function contentSectionDevWriter() {
                 ?? data.sections.find((section) => section?.intro === true && Number.isFinite(Number(section.introHeight)))?.introHeight;
               normalizeCanonicalIntroHeight(data, legacyHeight);
             }
+            const outlineEntries = Array.isArray(data.outline)
+              ? data.outline.flatMap((entry, outlineIndex) => {
+                const anchors = new Set([String(existing.sectionId || ''), String(existing.id || '')].map((value) => value.trim()).filter(Boolean));
+                return anchors.has(outlineAnchorId(entry)) ? [{ entry, index: outlineIndex }] : [];
+              })
+              : [];
+            const restoreToken = restoreStore.remember(documentKey, existing, outlineEntries);
             syncOutlineForSectionMutation(data, { action: 'delete', section: existing });
             data.sections.splice(index, 1);
             await writeContentJson(file, data);
-            send(200, { ok: true, action: 'delete', index, type: existingType, section: existing });
+            send(200, { ok: true, action: 'delete', index, type: existingType, section: existing, restoreToken });
             return;
           }
 
