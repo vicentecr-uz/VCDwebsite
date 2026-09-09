@@ -3,6 +3,7 @@ import ProjectSections from '../project/ProjectSections.astro';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED, pageColumnStyle } from '../../lib/pageColumn';
 import { projectStackClass, spacingDevAttrs } from '../../lib/projectStack';
 import type { PageDocument } from '../../lib/projects';
+import revealConfig from '../../lib/homeRevealConfig.json';
 
 interface Props {
   page: PageDocument;
@@ -10,6 +11,7 @@ interface Props {
 
 const { page } = Astro.props;
 const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.sections) : undefined;
+const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { translateYPx?: number }).translateYPx ?? 0;
 ---
 
 <section
@@ -17,8 +19,9 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
   data-home-intro-surface
   data-page-viewport
   data-state="pending"
+  data-reduced-motion-preview="false"
   aria-label="Introduction"
-  style={columnStyle}
+  style={`${columnStyle ?? ''};--home-intro-exit-duration:${revealConfig.intro.durationMs}ms;--home-intro-exit-blur:${revealConfig.intro.blurPx}px;--home-intro-exit-scale:${revealConfig.intro.scale};--home-intro-exit-y:-${introTranslateY}px`}
 >
   <div class="home-intro-surface__column">
     <div class="listing-main">
@@ -52,13 +55,19 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
     color: var(--sys-color-on-srf);
     isolation: isolate;
     opacity: 1;
-    transition: opacity 250ms ease, filter 250ms ease;
   }
 
-  #home-intro-surface[data-state='dismissing'] {
+  #home-intro-surface[data-state='dismissing'] .home-intro-surface__column {
     opacity: 0;
-    filter: blur(0.35rem);
+    filter: blur(var(--home-intro-exit-blur));
+    transform: translateY(var(--home-intro-exit-y)) scale(var(--home-intro-exit-scale));
+    transition: opacity var(--home-intro-exit-duration) ease, filter var(--home-intro-exit-duration) ease, transform var(--home-intro-exit-duration) ease;
     pointer-events: none;
+  }
+
+  #home-intro-surface[data-state='dismissing'] .home-intro-surface__okay,
+  #home-intro-surface[data-state='dismissing'] .home-intro-surface__cursor {
+    display: none;
   }
 
   #home-intro-surface[data-state='dismissed'] {
@@ -117,8 +126,14 @@ const columnStyle = ADAPTIVE_PAGE_COLUMNS_ENABLED ? pageColumnStyle(page.section
   }
 
   @media (prefers-reduced-motion: reduce) {
-    #home-intro-surface[data-state='dismissing'] {
+    #home-intro-surface[data-state='dismissing'] .home-intro-surface__column {
       filter: none;
+      transform: none;
     }
+  }
+
+  #home-intro-surface[data-reduced-motion-preview='true'][data-state='dismissing'] .home-intro-surface__column {
+    filter: none;
+    transform: none;
   }
 </style>
