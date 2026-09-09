@@ -5,18 +5,10 @@ import { test } from 'bun:test';
 import gsap from 'gsap';
 
 const layout = readFileSync(process.env.LAYOUT_TEST_SOURCE ?? new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
-const timeline = readFileSync(new URL('../../src/components/DevTransitionTimeline.astro', import.meta.url), 'utf8');
-test('timeline capture initializes inline before the Layout transition module', () => {
-  assert.match(timeline, /<script is:inline>/);
-  assert.ok(layout.indexOf('<DevTransitionTimeline />') < layout.indexOf("import gsap from 'gsap'"));
-  assert.match(layout, /data-transition-image-index/);
-  assert.match(layout, /data-transition-thumb-src/);
-  assert.match(layout, /data-transition-preview-src/);
-  assert.match(timeline, /data-transition-image-index/);
-  assert.doesNotMatch(timeline.match(/<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '', /\bas\s+(?:Window|CustomEvent|HTML)|:\s*Record<|querySelector(?:All)?</);
-  assert.match(timeline, /data-transition-toggle-fade[\s\S]*aria-pressed/);
-  assert.match(timeline, /localStorage[\s\S]*fadeStartMs[\s\S]*navigator\.clipboard/);
-  assert.match(timeline, /fontsReadyAt[\s\S]*--font-sans[\s\S]*system-ui/);
+test('scrub transition UI and source instrumentation are removed', () => {
+  assert.doesNotMatch(layout, /DevTransitionTimeline|dev-transition[^\n]*scrub|data-transition-(?:image-index|thumb-src|preview-src)|Scrub transition/);
+  assert.match(layout, /transitionMode === 'visible'/);
+  assert.doesNotMatch(layout, /transitionMode === 'scrub'/);
 });
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
@@ -108,7 +100,7 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
@@ -119,7 +111,9 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
     documentElement: { clientHeight: 800, clientWidth: 1200, dataset: options.visible ? { devTransition: 'visible' } : {} },
-    getElementById: (id: string) => id === 'transition-readiness-marker' ? readinessMarker : (options.noOverlay ? null : overlay),
+    getElementById: (id: string) => id === 'transition-readiness-marker'
+      ? (options.noReadinessMarker ? null : readinessMarker)
+      : (options.noOverlay ? null : overlay),
     querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
       ? (options.images ?? []).filter((image) => image.preview)
       : selector === 'a' ? anchors : [],
@@ -150,6 +144,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     matchMedia: () => ({ matches: options.reduced ?? false }),
   });
+  const marks: Array<{ name: string; options?: any }> = [];
   const tweens: any[] = [];
   let upgrades = 0;
   let bound = 0;
@@ -175,7 +170,8 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
   };
   runInNewContext(compiled, {
     document, window, location, URL, AbortController, Promise,
-    CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } }, performance: { now: () => 0 },
+    CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } },
+    performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
@@ -188,7 +184,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     console: { warn() {}, error() {}, log() {} },
   });
   return {
-    overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers,
+    overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers, marks,
     get upgrades() { return upgrades; }, get bound() { return bound; },
     click(index = 0, properties: Record<string, unknown> = {}) {
       return anchors[index].emit('click', {
@@ -239,6 +235,23 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[1].vars.opacity, 1);
+});
+
+test('browser trace marks are emitted without the DEV readiness marker', async () => {
+  const f = fixture({ noReadinessMarker: true });
+  await f.paint();
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:transition-script-start'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:fonts-ready'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:readiness-satisfied'));
+  assert.equal(f.window.count('vcd:transition-milestone'), 0);
+});
+
+test('readiness trace detail distinguishes resource completion from timeout release', async () => {
+  const f = fixture({ fonts: deferred().promise });
+  await f.paint();
+  await f.advance(4000);
+  const readinessMark = f.marks.find((mark) => mark.name === 'vcd:readiness-satisfied');
+  assert.equal(readinessMark?.options?.detail?.release, 'timeout');
 });
 
 test('visible mode exposes content while stalled, then marks the normal fade boundary once without entry tween', async () => {

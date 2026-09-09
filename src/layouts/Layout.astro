@@ -19,7 +19,6 @@ import DevShortcutsHelp from '../components/DevShortcutsHelp.astro';
 import DevAssetManager from '../components/DevAssetManager.astro';
 import DevPageColumn from '../components/DevPageColumn.astro';
 import ArchivedDevPanels from '../components/archive/ArchivedDevPanels.astro';
-import DevTransitionTimeline from '../components/DevTransitionTimeline.astro';
 import GalleryMediaInk from '../components/GalleryMediaInk.astro';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED } from '../lib/pageColumn';
 
@@ -95,7 +94,7 @@ const showDevTools = import.meta.env.DEV;
       <script is:inline>
         try {
           const transitionMode = new URLSearchParams(location.search).get('dev-transition');
-          if (transitionMode === 'visible' || transitionMode === 'scrub') {
+          if (transitionMode === 'visible') {
             document.documentElement.setAttribute('data-dev-transition', transitionMode);
           }
         } catch (e) {
@@ -174,7 +173,6 @@ const showDevTools = import.meta.env.DEV;
     {showDevTools && <DevAssetManager />}
     {showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn />}
     {showDevTools && <ArchivedDevPanels />}
-    {showDevTools && <DevTransitionTimeline />}
     <GalleryMediaInk />
 
     {showDevTools && (
@@ -199,7 +197,6 @@ const showDevTools = import.meta.env.DEV;
       const overlay = document.getElementById('transition-overlay');
       const readinessMarker = document.getElementById('transition-readiness-marker') as HTMLOutputElement | null;
       const visibleTransition = document.documentElement.dataset.devTransition === 'visible';
-      const scrubTransition = document.documentElement.dataset.devTransition === 'scrub';
       bindImagePreviewUpgrade();
       if (!overlay) {
         openImagePreviewUpgrade();
@@ -211,13 +208,25 @@ const showDevTools = import.meta.env.DEV;
       const REVEAL_EASE = 'power1.out';
       const MAX_WAIT_MS = 4000;
       const emitTransitionMilestone = (name: string, detail: Record<string, unknown> = {}) => {
+        try {
+          const mark = performance?.mark;
+          if (typeof mark === 'function') {
+            try {
+              mark.call(performance, `vcd:${name}`, { detail });
+            } catch {
+              mark.call(performance, `vcd:${name}`);
+            }
+          }
+        } catch {
+          // Performance marks are diagnostic only and must never affect reveal.
+        }
         if (!readinessMarker) return;
         const eventDetail = { name, time: performance.now(), ...detail };
         const win = window as Window & { __vcdTransitionMilestones?: Array<Record<string, unknown>> };
         (win.__vcdTransitionMilestones ??= []).push(eventDetail);
         window.dispatchEvent(new CustomEvent('vcd:transition-milestone', { detail: eventDetail }));
       };
-      emitTransitionMilestone('navigation-dom');
+      emitTransitionMilestone('transition-script-start');
 
       const isInViewport = (el: Element) => {
         const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -279,19 +288,21 @@ const showDevTools = import.meta.env.DEV;
       const waitForReadiness = (signal: AbortSignal) => {
         let timer: ReturnType<typeof setTimeout> | null = null;
         let settled = false;
+        let releaseReason: 'resources' | 'timeout' | 'aborted' = 'resources';
         const cleanups: Array<() => void> = [];
         let resolveReady!: () => void;
         const ready = new Promise<void>((resolve) => {
           resolveReady = resolve;
         });
-        const settle = () => {
+        const settle = (reason: 'resources' | 'timeout' | 'aborted' = 'resources') => {
           if (settled) return;
           settled = true;
+          releaseReason = reason;
           if (timer !== null) clearTimeout(timer);
           for (const cleanup of cleanups) cleanup();
           resolveReady();
         };
-        const onAbort = () => settle();
+        const onAbort = () => settle('aborted');
         signal.addEventListener('abort', onAbort, { once: true });
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
@@ -299,12 +310,6 @@ const showDevTools = import.meta.env.DEV;
         waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
         let thumbIndex = 0;
         const readinessImages = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
-        readinessImages.forEach((img, index) => {
-          if (!scrubTransition) return;
-          img.setAttribute('data-transition-thumb-src', img.currentSrc || img.src);
-          img.setAttribute('data-transition-preview-src', img.getAttribute('data-image-preview') || '');
-          img.setAttribute('data-transition-image-index', String(index + 1));
-        });
         for (const img of readinessImages) {
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
@@ -332,9 +337,9 @@ const showDevTools = import.meta.env.DEV;
             emitTransitionMilestone('thumb-ready', { index: currentThumbIndex + 1 });
           })());
         }
-        Promise.all(waits).then(settle, settle);
-        timer = setTimeout(settle, MAX_WAIT_MS);
-        return { ready, cleanup: settle };
+        Promise.all(waits).then(() => settle('resources'), () => settle('resources'));
+        timer = setTimeout(() => settle('timeout'), MAX_WAIT_MS);
+        return { ready, cleanup: settle, get releaseReason() { return releaseReason; } };
       };
 
       const waitForOpaquePaint = (signal: AbortSignal) =>
@@ -366,7 +371,9 @@ const showDevTools = import.meta.env.DEV;
           const wait = waitForReadiness(controller.signal);
           readinessCleanup = wait.cleanup;
           const opaquePaint = waitForOpaquePaint(controller.signal).then(() => emitTransitionMilestone('opaque-paint'));
-          const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied'));
+          const readiness = wait.ready.then(() => emitTransitionMilestone('readiness-satisfied', {
+            release: wait.releaseReason === 'timeout' ? 'timeout' : 'resources',
+          }));
           await readiness;
           if (current !== generation || suspended) return;
           await opaquePaint;
@@ -378,9 +385,8 @@ const showDevTools = import.meta.env.DEV;
           if (readinessMarker && visibleTransition) readinessMarker.hidden = false;
           emitTransitionMilestone('preview-gate-open');
           openImagePreviewUpgrade();
-          if (visibleTransition || scrubTransition) {
+          if (visibleTransition) {
             overlay.style.opacity = '0';
-            if (scrubTransition) overlay.style.opacity = '1';
             emitTransitionMilestone('veil-fade-start');
             if (visibleTransition) emitTransitionMilestone('veil-fade-end');
             return;
