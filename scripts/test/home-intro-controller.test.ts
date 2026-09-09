@@ -18,8 +18,16 @@ class FixtureElement {
   }
   removeEventListener(name: string, fn: EventListener) { this.listeners.get(name)?.delete(fn); }
   emit(type: string, detail: Record<string, unknown> = {}) {
-    const event = { type, target: this, defaultPrevented: false, ...detail } as unknown as Event;
+    const event = {
+      type,
+      target: this,
+      defaultPrevented: false,
+      preventDefault() { this.defaultPrevented = true; },
+      stopPropagation() {},
+      ...detail,
+    } as unknown as Event;
     for (const fn of this.listeners.get(type) ?? []) fn(event);
+    return event;
   }
   querySelector<T extends FixtureElement>(selector: string) { return this.children[selector] as T | undefined; }
   closest() { return this.tag === 'a' || this.tag === 'button' ? this : null; }
@@ -60,6 +68,7 @@ const fixtureWindow = () => {
       const event = { type, ...detail } as unknown as Event;
       for (const fn of listeners.get(type) ?? []) fn(event);
     },
+    scrollTo() {},
     getSelection: () => ({ isCollapsed: true }),
     matchMedia: () => ({ matches: false }),
   } as unknown as Window & { emit: (type: string, detail?: Record<string, unknown>) => void };
@@ -124,20 +133,38 @@ describe('home intro controller', () => {
     expect(f.home.inert).toBe(false);
   });
 
-  test('primary pointerdown starts the 150ms exit and dispatches once after it settles', async () => {
+  test('pointerdown alone never dismisses; the later click starts the exit', async () => {
     const f = fixture();
     let completed = 0;
     f.win.addEventListener('vcd:home-intro-dismissed', () => completed++);
-    f.okay.emit('pointerdown', { button: 2 });
-    expect(f.controller.getState()).toBe('active');
     f.okay.emit('pointerdown', { button: 0 });
+    await waitFor(180);
+    expect(f.controller.getState()).toBe('active');
+    expect(f.home.inert).toBe(true);
+    const click = f.okay.emit('click') as unknown as MouseEvent;
+    expect(click.defaultPrevented).toBe(true);
+    expect(f.home.inert).toBe(true);
     expect(f.controller.getState()).toBe('dismissing');
+    expect(f.home.inert).toBe(true);
     await waitFor(90);
     expect(f.controller.getState()).toBe('dismissing');
     expect(completed).toBe(0);
     await waitFor(90);
     expect(f.controller.getState()).toBe('dismissed');
     expect(completed).toBe(1);
+  });
+
+  test('late initial pageshow cannot resurrect a dismissed intro', async () => {
+    const f = fixture();
+    let scroll: ScrollToOptions | undefined;
+    f.win.scrollTo = ((options: ScrollToOptions) => { scroll = options; }) as typeof window.scrollTo;
+    f.controller.dismiss();
+    f.win.emit('pageshow', { persisted: false });
+    expect(f.controller.getState()).toBe('dismissing');
+    await waitForExit();
+    f.win.emit('pageshow', { persisted: false });
+    expect(f.controller.getState()).toBe('dismissed');
+    expect(scroll).toEqual({ top: 0, left: 0, behavior: 'instant' });
   });
 
   test('uses an explicit intro duration override', async () => {

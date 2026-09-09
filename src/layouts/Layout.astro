@@ -203,8 +203,12 @@ const showDevTools = import.meta.env.DEV;
         overlay.dataset.vcdInitialReveal = 'running';
         overlay.style.animation = 'none';
         mark('initial-readiness-start');
+        const introLayoutReady = new Promise((resolve) => {
+          if (!document.querySelector('.project-block--intro') || document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
+          window.addEventListener('vcd:intro-layout-ready', resolve, { once: true });
+        });
         const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
-        Promise.race([Promise.all([Promise.resolve(document.fonts?.ready).catch(() => undefined), ...imageReady]), timeout]).then(() => {
+        Promise.race([Promise.all([Promise.resolve(document.fonts?.ready).catch(() => undefined), introLayoutReady, ...imageReady]), timeout]).then(() => {
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
             mark('initial-fade-start');
