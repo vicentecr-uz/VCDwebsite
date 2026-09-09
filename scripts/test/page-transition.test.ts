@@ -10,6 +10,19 @@ test('scrub transition UI and source instrumentation are removed', () => {
   assert.match(layout, /transitionMode === 'visible'/);
   assert.doesNotMatch(layout, /transitionMode === 'scrub'/);
 });
+
+test('production visible diagnostic is limited to loopback hosts and the veil', () => {
+  const productionParser = layout.match(/\{!showDevTools && \(\s*<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  const productionStyle = layout.match(/\{!showDevTools && \(\s*<style is:inline>([\s\S]*?)<\/style>/)?.[1] ?? '';
+  assert.match(productionParser, /localhost/);
+  assert.match(productionParser, /127\.0\.0\.1/);
+  assert.match(productionParser, /['"]::1['"]/);
+  assert.match(productionParser, /location\.hostname/);
+  assert.match(productionParser, /transitionMode === 'visible'/);
+  assert.doesNotMatch(productionParser, /transition-readiness-marker|DevModeController/);
+  assert.match(productionStyle, /#transition-overlay/);
+  assert.doesNotMatch(productionStyle, /transition-readiness-marker|background: #ff1493/);
+});
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
 assert.ok(script, 'Exercise the actual Layout transition script');

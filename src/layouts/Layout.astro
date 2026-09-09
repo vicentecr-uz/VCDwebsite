@@ -102,6 +102,19 @@ const showDevTools = import.meta.env.DEV;
         }
       </script>
     )}
+    {!showDevTools && (
+      <script is:inline>
+        try {
+          const loopbackHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+          const transitionMode = new URLSearchParams(location.search).get('dev-transition');
+          if (loopbackHosts.has(location.hostname) && transitionMode === 'visible') {
+            document.documentElement.setAttribute('data-dev-transition', transitionMode);
+          }
+        } catch (e) {
+          /* malformed or unavailable URL APIs leave the normal transition intact */
+        }
+      </script>
+    )}
     {showDevTools && (
       <style is:inline>
         html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
@@ -121,6 +134,11 @@ const showDevTools = import.meta.env.DEV;
           letter-spacing: -0.055em;
           text-transform: uppercase;
         }
+      </style>
+    )}
+    {!showDevTools && (
+      <style is:inline>
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
       </style>
     )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
