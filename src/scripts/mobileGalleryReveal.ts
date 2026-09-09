@@ -105,14 +105,14 @@ export function bindMobileGalleryReveal(): () => void {
       .sort((a, b) => b.area - a.area || a.centerDistance - b.centerDistance || a.index - b.index)[0]?.candidate ?? null;
   };
 
-  const reveal = (origin: HTMLElement | null) => {
-    if (disposed || fingerDown || introVisible() || !mobileCapability() || document.hidden || document.documentElement.classList.contains('is-dev-mode')) return;
+  const reveal = (origin: HTMLElement | null, duringGesture = false) => {
+    if (disposed || (fingerDown && !duringGesture) || introVisible() || !mobileCapability() || document.hidden || document.documentElement.classList.contains('is-dev-mode')) return;
     const next = rankedCandidate(origin);
     if (!next) return;
     clearPreview();
     active = next;
     next.cover.classList.add('is-mobile-preview');
-    holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
+    if (!fingerDown) holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
   };
 
   const scheduleReveal = () => {
@@ -121,7 +121,12 @@ export function bindMobileGalleryReveal(): () => void {
       settleTimer = undefined;
       const origin = pendingOrigin;
       pendingOrigin = null;
-      reveal(origin);
+      if (active && candidateFor(active.item)) {
+        holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
+      } else {
+        clearPreview();
+        reveal(origin);
+      }
     }, SCROLL_SETTLE_MS);
   };
 
@@ -145,12 +150,20 @@ export function bindMobileGalleryReveal(): () => void {
 
   const onTouchMove = (event: TouchEvent) => {
     if (!gesture || event.touches.length !== 1) {
-      if (event.touches.length > 1) resetGesture();
+      if (event.touches.length > 1) {
+        resetGesture();
+        clearPreview();
+      }
       return;
     }
     const touch = [...event.touches].find((entry) => entry.identifier === gesture?.id);
     if (!touch) return;
-    if (Math.abs(touch.clientY - gesture.y) >= TOUCH_MOVE_THRESHOLD) gesture.moved = true;
+    const dx = Math.abs(touch.clientX - gesture.x);
+    const dy = Math.abs(touch.clientY - gesture.y);
+    if (!gesture.moved && dy >= TOUCH_MOVE_THRESHOLD && dy >= dx) {
+      gesture.moved = true;
+      reveal(gesture.origin, true);
+    }
   };
 
   const onTouchEnd = (event: TouchEvent) => {
@@ -167,7 +180,10 @@ export function bindMobileGalleryReveal(): () => void {
     if (fingerDown) return;
     const dx = touch ? touch.clientX - finished.x : 0;
     const dy = touch ? touch.clientY - finished.y : 0;
-    if (!finished.moved || Math.abs(dy) < Math.abs(dx)) return;
+    if (!finished.moved || Math.abs(dy) < Math.abs(dx)) {
+      clearPreview();
+      return;
+    }
     pendingOrigin = finished.origin;
     clickGuard = finished.origin;
     clickGuardExpiry = Date.now() + CLICK_GUARD_MS;
@@ -184,7 +200,8 @@ export function bindMobileGalleryReveal(): () => void {
     initialCancelled = true;
     clearTimer(initialTimer);
     initialTimer = undefined;
-    clearPreview();
+    clearTimer(holdTimer);
+    holdTimer = undefined;
     if (!fingerDown) {
       scheduleReveal();
     }
