@@ -375,7 +375,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       insertBefore: ChildNode | null;
       textStates: EditableTextState[];
       spacingState: EditableSpacingState | null;
+      pendingInsert?: PendingSectionInsert;
+      persistedInsert?: PersistedMediaInsert;
+      converts: PendingBlockConvert[];
+      restoreToken?: string;
       outlineRevert: {
+        document: string;
         action: 'insert';
         outlineEntries: OutlineEntry[];
         index: number;
@@ -387,7 +392,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     type PendingSectionInsert = {
       documentKey: string;
       index: number;
-      type: InsertableSectionType;
+      type: string;
+      restoreToken?: string;
       spacing: SpacingValue;
       sectionId: string;
       root: HTMLElement;
@@ -1600,7 +1606,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       textStates.push(...pending.textStates);
       if (pending.spacingState) {
         spacingStates.push(pending.spacingState);
-        wireSectionAddMenu(pending.spacingState);
       }
       deletableSections.push(pending.root);
       mountDeleteButton(pending.root);
@@ -1863,6 +1868,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           type: entry.type,
           spacing: entry.spacing,
         };
+        if (entry.restoreToken) {
+          body.action = 'restore';
+          body.restoreToken = entry.restoreToken;
+        }
         if (entry.type === 'sectionTitle' && entry.level === 3) body.level = 3;
         if (entry.intro) body.intro = true;
         const response = await fetch('/api/content-section', {
@@ -1911,6 +1920,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not delete the section.');
+        entry.restoreToken = payload.restoreToken;
         pendingSectionDeletes.splice(pendingSectionDeletes.indexOf(entry), 1);
       }
     };
@@ -2493,7 +2503,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       ),
     ];
 
-    let deleteSectionAt: (element: HTMLElement) => Promise<void> = async () => {};
+    let deleteSectionAt: (element: HTMLElement) => Promise<PendingSectionDelete | undefined> = async () => undefined;
 
     const mountDeleteButton = (element: HTMLElement) => {
       if (element.querySelector(':scope > [data-dev-section-delete]')) return;
@@ -2907,7 +2917,39 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
     }, { signal: editorSignal });
 
+    const undoSectionDelete = (entry: PendingSectionDelete) => {
+      const pendingIndex = pendingSectionDeletes.indexOf(entry);
+      if (pendingIndex < 0 && !entry.pendingInsert && !entry.restoreToken) {
+        throw new Error('This deletion can no longer be restored. Reload to continue editing.');
+      }
+      if (!getDropZone(entry.documentKey)) throw new Error('The deleted block’s page is no longer available.');
+      if (pendingIndex >= 0) pendingSectionDeletes.splice(pendingIndex, 1);
+      restorePendingSectionDelete(entry);
+      if (entry.pendingInsert) {
+        pendingSectionInserts.push(entry.pendingInsert);
+      } else if (entry.restoreToken) {
+        pendingSectionInserts.push({
+          documentKey: entry.documentKey,
+          index: entry.deletedIndex,
+          root: entry.root,
+          type: entry.root.dataset.devSectionDeletable || 'bodyText',
+          sectionId: entry.root.id,
+          spacing: entry.root.dataset.devSpacingValue as SpacingValue || 'section',
+          textStates: entry.textStates,
+          spacingState: entry.spacingState,
+          restoreToken: entry.restoreToken,
+        });
+      }
+      if (entry.persistedInsert && !entry.restoreToken) persistedMediaInserts.push(entry.persistedInsert);
+      pendingBlockConverts.push(...entry.converts);
+      window.dispatchEvent(new CustomEvent('vcd:section-history-reveal', { detail: { block: entry.root } }));
+      updateActions();
+    };
+
     deleteSectionAt = async (element: HTMLElement) => {
+      if (!element.isConnected || actionsBusy) return;
+      captureFieldHistory();
+      pageHistory.breakGroup();
       let path: Array<string | number> = [];
       try {
         path = JSON.parse(element.dataset.devSpacingPath || '[]');
@@ -2929,6 +2971,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertBefore = element.nextSibling;
       const pendingInsertIdx = pendingSectionInserts.findIndex((entry) => entry.root === element);
       const persistedInsertIdx = persistedMediaInserts.findIndex((entry) => entry.root === element);
+      const converts = pendingBlockConverts.filter((entry) => entry.root === element);
       for (let i = pendingBlockConverts.length - 1; i >= 0; i -= 1) {
         if (pendingBlockConverts[i].root === element) pendingBlockConverts.splice(i, 1);
       }
@@ -2952,44 +2995,34 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       element.remove();
       reindexDevPaths(sectionIndex, -1, documentKey);
 
-      if (pendingInsertIdx >= 0) {
-        pendingSectionInserts.splice(pendingInsertIdx, 1);
-        window.dispatchEvent(new CustomEvent('vcd:dev-section-structure-changed', {
-          detail: {
-            document: documentKey,
-            action: 'delete',
-            index: sectionIndex,
-            sectionId,
-            type: sectionType,
-          },
-        }));
-        syncPageTopSpacingControls();
-        updateActions();
-        return;
-      }
-
-      if (persistedInsertIdx >= 0) {
-        persistedMediaInserts.splice(persistedInsertIdx, 1);
-      }
-
-      pendingSectionDeletes.push({
+      const entry: PendingSectionDelete = {
         documentKey,
         deletedIndex: sectionIndex,
         root: element,
         insertBefore,
         textStates: texts,
         spacingState: spacing,
+        converts,
+        ...(pendingInsertIdx >= 0 ? { pendingInsert: pendingSectionInserts.splice(pendingInsertIdx, 1)[0] } : {}),
+        ...(persistedInsertIdx >= 0 ? { persistedInsert: persistedMediaInserts.splice(persistedInsertIdx, 1)[0] } : {}),
         outlineRevert: {
+          document: documentKey,
           action: 'insert',
           outlineEntries: structuredClone(getDevSectionOutline().filter((entry) => outlineAnchorId(entry) === sectionId)),
           index: sectionIndex,
           type: sectionType,
-          section: {
-            type: sectionType,
-            sectionId,
-            id: sectionId,
-            title,
-          },
+          section: { type: sectionType, sectionId, id: sectionId, title },
+        },
+      };
+      if (!entry.pendingInsert) pendingSectionDeletes.push(entry);
+      let deletion = entry;
+      pageHistory.push({
+        label: 'Delete block',
+        undo: () => undoSectionDelete(deletion),
+        redo: async () => {
+          const next = await deleteSectionAt(element);
+          if (!next) throw new Error('This block can no longer be deleted.');
+          deletion = next;
         },
       });
 
@@ -3005,6 +3038,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       syncPageTopSpacingControls();
       updateActions();
+      return entry;
     };
 
     const blockParagraphs = (element: HTMLElement) =>
