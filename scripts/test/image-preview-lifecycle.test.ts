@@ -30,12 +30,13 @@ class TestImage extends EventTarget {
   onerror: (() => void) | null = null;
   decode: () => Promise<void> = () => Promise.resolve();
   clone?: TestImage;
+  top = 20;
   constructor() { super(); images.push(this); }
   getAttribute(name: string) { return this.attributes.get(name) ?? null; }
   setAttribute(name: string, value: string) { this.attributes.set(name, value); }
   removeAttribute(name: string) { this.attributes.delete(name); }
   hasAttribute(name: string) { return this.attributes.has(name); }
-  getBoundingClientRect() { return { top: 20, left: 20, bottom: 220, right: 320 }; }
+  getBoundingClientRect() { return { top: this.top, left: 20, bottom: this.top + 200, right: 320 }; }
   cloneNode() { return new TestImage(); }
   insertAdjacentElement(_where: string, clone: TestImage) { this.clone = clone; }
   remove() { this.isConnected = false; }
@@ -44,9 +45,10 @@ class TestImage extends EventTarget {
 class TestObserver {
   disconnected = false;
   observed = new Set<TestImage>();
-  constructor() { observers.push(this); }
+  constructor(private readonly callback: (entries: Array<{ isIntersecting: boolean; target: TestImage }>) => void) { observers.push(this); }
   observe(image: TestImage) { this.observed.add(image); }
   unobserve(image: TestImage) { this.observed.delete(image); }
+  emit(...entries: Array<{ isIntersecting: boolean; target: TestImage }>) { this.callback(entries); }
   disconnect() { this.disconnected = true; this.observed.clear(); }
 }
 
@@ -80,10 +82,14 @@ try {
   const first = createImagePreviewUpgrade();
   const second = createImagePreviewUpgrade();
   first.bind(a.root);
+  const aThumb = images.at(-1)!;
   second.bind(b.root);
+  const bThumb = images.at(-1)!;
   assert.equal(images.some((image) => image.src === '/a.webp'), false, 'binding is inert before opening');
+  aThumb.onload!();
+  await flush();
+  assert.equal(images.some((image) => image.src === '/a.webp'), true, 'visible previews fetch before opening');
   first.open();
-  assert.equal(images.some((image) => image.src === '/a.webp'), true);
   assert.equal(images.some((image) => image.src === '/b.webp'), false, 'opening one instance must not open another');
 
   const loading = images.find((image) => image.src === '/a.webp')!;
@@ -99,6 +105,8 @@ try {
   assert.equal(observers[0].disconnected, true);
   assert.equal(observers[1].disconnected, false, 'destroy remains instance-local');
 
+  bThumb.onload!();
+  await flush();
   second.open();
   images.find((image) => image.src === '/b.webp')!.onload!();
   await flush();
@@ -115,6 +123,8 @@ try {
   const c = fixture('/missing.webp');
   const failing = createImagePreviewUpgrade({ onError: () => failures++ });
   failing.bind(c.root);
+  images.at(-1)!.onload!();
+  await flush();
   failing.open();
   images.find((image) => image.src === '/missing.webp')!.onerror!();
   assert.equal(failures, 1);
@@ -125,6 +135,26 @@ try {
   failing.open();
   assert.equal(images.length, before, 'disposed instances cannot restart');
   assert.ok(observers.every((observer) => observer.disconnected));
+
+  const ordered = [fixture('/top.webp'), fixture('/middle.webp'), fixture('/offscreen.webp')];
+  ordered[0].image.top = 10;
+  ordered[1].image.top = 300;
+  ordered[2].image.top = 900;
+  const priority = createImagePreviewUpgrade();
+  priority.bind({ querySelectorAll: () => ordered.map(({ image }) => image) } as unknown as ParentNode);
+  const thumbs = images.slice(-3);
+  thumbs[2].onload!();
+  thumbs[0].onload!();
+  thumbs[1].onload!();
+  await flush();
+  const fetched = images.filter((image) => ['/top.webp', '/middle.webp', '/offscreen.webp'].includes(image.src));
+  assert.deepEqual(fetched.map((image) => image.src), ['/top.webp', '/middle.webp'], 'visible previews fetch top-to-bottom and off-screen work waits');
+
+  ordered[2].image.top = 400;
+  observers.at(-1)!.emit({ isIntersecting: true, target: ordered[2].image });
+  await flush();
+  assert.equal(images.filter((image) => image.src === '/offscreen.webp').length, 1, 'off-screen preview fetches when it enters the viewport');
+  priority.destroy();
   console.log('image-preview-lifecycle: passed (instance isolation, reset during decode/reveal, failure, disposal)');
 } finally {
   for (const [key, descriptor] of Object.entries(originals)) {

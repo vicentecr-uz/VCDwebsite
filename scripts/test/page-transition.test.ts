@@ -5,10 +5,31 @@ import { test } from 'bun:test';
 import gsap from 'gsap';
 
 const layout = readFileSync(process.env.LAYOUT_TEST_SOURCE ?? new URL('../../src/layouts/Layout.astro', import.meta.url), 'utf8');
+test('scrub transition UI and source instrumentation are removed', () => {
+  assert.doesNotMatch(layout, /DevTransitionTimeline|dev-transition[^\n]*scrub|data-transition-(?:image-index|thumb-src|preview-src)|Scrub transition/);
+  assert.match(layout, /transitionMode === 'visible'/);
+  assert.doesNotMatch(layout, /transitionMode === 'scrub'/);
+});
+
+test('production visible diagnostic is limited to loopback hosts and the veil', () => {
+  const productionParser = layout.match(/\{!showDevTools && \(\s*<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '';
+  const productionStyle = layout.match(/\{!showDevTools && \(\s*<style is:inline>([\s\S]*?)<\/style>/)?.[1] ?? '';
+  assert.match(productionParser, /localhost/);
+  assert.match(productionParser, /127\.0\.0\.1/);
+  assert.match(productionParser, /['"]::1['"]/);
+  assert.match(productionParser, /location\.hostname/);
+  assert.match(productionParser, /transitionMode === 'visible'/);
+  assert.doesNotMatch(productionParser, /transition-readiness-marker|DevModeController/);
+  assert.match(productionStyle, /#transition-overlay/);
+  assert.doesNotMatch(productionStyle, /transition-readiness-marker|background: #ff1493/);
+});
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
 assert.ok(script, 'Exercise the actual Layout transition script');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(script.replace(/^\s*import .*?;\s*$/gm, ''));
+const earlyScript = layout.match(/<script is:inline>\s*((?:\(\(\) => \{)[\s\S]*?\}\)\(\);)\s*<\/script>/)?.[1];
+assert.ok(earlyScript, 'Exercise the actual initial reveal controller');
+const earlyCompiled = new Bun.Transpiler({ loader: 'js' }).transformSync(earlyScript);
 
 class Target {
   listeners = new Map<string, Map<Function, { once?: boolean; signal?: AbortSignal; abort?: () => void }>>();
@@ -34,6 +55,7 @@ class Target {
     }
     return event;
   }
+  dispatchEvent(event: any) { return this.emit(event.type, event); }
   count(type: string) { return this.listeners.get(type)?.size ?? 0; }
 }
 
@@ -64,31 +86,53 @@ class ImageFixture extends Target {
   naturalWidth = 0;
   decodeCalls = 0;
   decoded = deferred();
-  constructor(public visible = true) { super(); }
-  getBoundingClientRect() {
-    return this.visible
+  parentElement: ContainerFixture | null = null;
+  preview = true;
+  style: Record<string, string> = {};
+  rect: { top: number; left: number; bottom: number; right: number };
+  constructor(public visible = true) {
+    super();
+    this.rect = visible
       ? { top: 0, left: 0, bottom: 100, right: 100 }
       : { top: 900, left: 0, bottom: 1000, right: 100 };
+  }
+  getBoundingClientRect() {
+    return this.rect;
   }
   decode() { this.decodeCalls++; return this.decoded.promise; }
   load() { this.complete = true; this.naturalWidth = 300; this.emit('load'); }
   fail() { this.complete = true; this.naturalWidth = 0; this.emit('error'); }
 }
 
+class ContainerFixture {
+  parentElement: ContainerFixture | null = null;
+  style: Record<string, string>;
+  constructor(
+    public rect = { top: 0, left: 0, bottom: 100, right: 100 },
+    style: Record<string, string> = {},
+  ) { this.style = style; }
+  getBoundingClientRect() { return this.rect; }
+}
+
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; reduced?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
-  const overlay = { style: { opacity: '1', animation: '', removeProperty(name: string) { delete (this as any)[name]; } } };
+  const overlay = Object.assign(new Target(), { dataset: {}, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
+  const readinessMarker = { hidden: true };
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
-    documentElement: { clientHeight: 800, clientWidth: 1200 },
-    getElementById: () => options.noOverlay ? null : overlay,
-    querySelectorAll: () => anchors,
+    documentElement: { clientHeight: 800, clientWidth: 1200, dataset: options.visible ? { devTransition: 'visible' } : {} },
+    getElementById: (id: string) => id === 'transition-readiness-marker'
+      ? (options.noReadinessMarker ? null : readinessMarker)
+      : (options.noOverlay ? null : overlay),
+    querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
+      ? (options.images ?? []).filter((image) => image.preview)
+      : selector === 'a' ? anchors : [],
   });
   const destinations: string[] = [];
   const location = {
@@ -116,6 +160,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     matchMedia: () => ({ matches: options.reduced ?? false }),
   });
+  const marks: Array<{ name: string; options?: any }> = [];
   const tweens: any[] = [];
   let upgrades = 0;
   let bound = 0;
@@ -139,16 +184,26 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     killTweensOf(target: any) { tweens.filter((t) => t.element === target).forEach((t) => t.kill()); },
     set(target: any, values: any) { Object.assign(target.style, values); },
   };
-  runInNewContext(compiled, {
+  const context = {
     document, window, location, URL, AbortController, Promise,
+    CustomEvent: class { constructor(public type: string, public init: any = {}) {} get detail() { return this.init.detail; } },
+    performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
+    Event: class { constructor(public type: string) {} }, innerHeight: 800, innerWidth: 1200,
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
     gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
-    getComputedStyle: () => ({ opacity: overlay.style.opacity }),
+    getComputedStyle: (element: any) => ({
+      opacity: element.style?.opacity ?? overlay.style.opacity,
+      display: element.style?.display ?? '', visibility: element.style?.visibility ?? '',
+      overflow: element.style?.overflow ?? '', overflowX: element.style?.overflowX ?? '',
+      overflowY: element.style?.overflowY ?? '',
+    }),
     console: { warn() {}, error() {}, log() {} },
-  });
+  };
+  if ((options as any).initialController) runInNewContext(earlyCompiled, context);
+  runInNewContext(compiled, context);
   return {
-    overlay, anchors, window, document, destinations, tweens, frames, timers,
+    overlay, readinessMarker, anchors, window, document, destinations, tweens, frames, timers, marks,
     get upgrades() { return upgrades; }, get bound() { return bound; },
     click(index = 0, properties: Record<string, unknown> = {}) {
       return anchors[index].emit('click', {
@@ -188,6 +243,7 @@ test('cached content still gets one opaque paint; both fades use the approved va
   await f.frame();
   assert.equal(f.tweens.length, 1);
   assert.equal(f.upgrades, 1);
+  assert.equal(f.readinessMarker.hidden, true);
   assert.equal(f.timers.size, 0);
   const entry = f.tweens[0];
   entry.finish();
@@ -198,6 +254,95 @@ test('cached content still gets one opaque paint; both fades use the approved va
     assert.equal(typeof gsap.parseEase(tween.vars.ease), 'function');
   }
   assert.equal(f.tweens[1].vars.opacity, 1);
+});
+
+test('early initial controller reveals once and deferred module adopts its state', async () => {
+  const f = fixture({ initialController: true });
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.overlay.style.transition ?? '', '');
+  assert.equal(f.tweens.length, 0);
+  assert.equal(f.upgrades, 1);
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-start'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-satisfied'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-end'));
+});
+
+test('browser trace marks are emitted without the DEV readiness marker', async () => {
+  const f = fixture({ noReadinessMarker: true });
+  await f.paint();
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:transition-script-start'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:fonts-ready'));
+  assert.ok(f.marks.some((mark) => mark.name === 'vcd:readiness-satisfied'));
+  assert.equal(f.window.count('vcd:transition-milestone'), 0);
+});
+
+test('readiness trace detail distinguishes resource completion from timeout release', async () => {
+  const f = fixture({ fonts: deferred().promise });
+  await f.paint();
+  await f.advance(4000);
+  const readinessMark = f.marks.find((mark) => mark.name === 'vcd:readiness-satisfied');
+  assert.equal(readinessMark?.options?.detail?.release, 'timeout');
+});
+
+test('visible mode exposes content while stalled, then marks the normal fade boundary once without entry tween', async () => {
+  const fonts = deferred();
+  const f = fixture({ visible: true, fonts: fonts.promise });
+  await f.paint();
+  assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.readinessMarker.hidden, true);
+  assert.equal(f.upgrades, 0);
+  assert.equal(f.tweens.length, 0);
+  fonts.resolve();
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 1);
+  assert.equal(f.tweens.length, 0);
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 1);
+});
+
+test('visible mode fallback marks readiness after four seconds', async () => {
+  const f = fixture({ visible: true, fonts: deferred().promise });
+  await f.paint();
+  await f.advance(3999);
+  assert.equal(f.readinessMarker.hidden, true);
+  await f.advance(1);
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 1);
+  assert.equal(f.tweens.length, 0);
+});
+
+test('visible internal navigation skips outgoing tween and carries the diagnostic query', () => {
+  const f = fixture({ visible: true });
+  assert.equal(f.click().defaultPrevented, true);
+  assert.equal(f.tweens.length, 0);
+  assert.deepEqual(f.destinations, ['https://vcd.test/about/?dev-transition=visible']);
+});
+
+test('visible BFCache restore hides and re-shows the readiness marker once', async () => {
+  const f = fixture({ visible: true });
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  f.window.emit('pagehide', { persisted: true });
+  f.window.emit('pageshow', { persisted: true });
+  assert.equal(f.readinessMarker.hidden, true);
+  await f.paint();
+  assert.equal(f.readinessMarker.hidden, false);
+  assert.equal(f.upgrades, 2);
+  assert.equal(f.tweens.length, 0);
+});
+
+test('visible readiness marker remains dev-only in Layout output', () => {
+  assert.match(layout, /showDevTools[\s\S]*data-dev-transition/);
+  assert.match(layout, /showDevTools[\s\S]*transition-readiness-marker/);
+  assert.match(layout, /html\[data-dev-transition="visible"\]/);
+  assert.match(layout, /dev-transition[^\n]*visible/);
 });
 
 test('fonts and visible decoded thumbnails gate reveal; offscreen images never gate it', async () => {
@@ -219,6 +364,32 @@ test('fonts and visible decoded thumbnails gate reveal; offscreen images never g
   assert.equal(offscreen.count('load'), 0);
   assert.equal(offscreen.decodeCalls, 0);
   assert.equal(visible.count('load') + visible.count('error'), 0);
+});
+
+test('only visible progressive thumbnails participate in readiness geometry', async () => {
+  const active = new ImageFixture();
+  const rawAvatar = new ImageFixture();
+  rawAvatar.preview = false;
+  const offscreenLoop = new ImageFixture();
+  offscreenLoop.parentElement = new ContainerFixture({ top: 900, left: 0, bottom: 1000, right: 1200 }, { overflow: 'hidden' });
+  const clippedAdjacent = new ImageFixture();
+  clippedAdjacent.rect = { top: 0, left: 1190, bottom: 100, right: 1290 };
+  clippedAdjacent.parentElement = new ContainerFixture({ top: 0, left: 0, bottom: 100, right: 1100 }, { overflowX: 'hidden' });
+  const hiddenHover = new ImageFixture();
+  hiddenHover.style.visibility = 'hidden';
+  const f = fixture({ images: [active, rawAvatar, offscreenLoop, clippedAdjacent, hiddenHover] });
+  await f.paint();
+  assert.equal(active.count('load'), 1);
+  assert.equal(rawAvatar.count('load') + rawAvatar.count('error'), 0);
+  assert.equal(offscreenLoop.count('load') + offscreenLoop.count('error'), 0);
+  assert.equal(clippedAdjacent.count('load') + clippedAdjacent.count('error'), 0);
+  assert.equal(hiddenHover.count('load') + hiddenHover.count('error'), 0);
+  active.load();
+  await flush();
+  assert.equal(active.decodeCalls, 1);
+  active.decoded.resolve();
+  await flush();
+  assert.equal(f.tweens.length, 1);
 });
 
 test('four-second fallback releases stalled fonts/media and removes losing listeners', async () => {
