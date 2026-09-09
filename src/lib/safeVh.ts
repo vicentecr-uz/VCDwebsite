@@ -153,6 +153,8 @@ export function bindSafeVh(): void {
   let lastHeight = window.innerHeight;
   setSafeVh();
   setIntroFoldOffsets();
+  document.documentElement.dataset.introLayoutReady = 'true';
+  window.dispatchEvent(new Event('vcd:intro-layout-ready'));
 
   let introSyncFrame = 0;
   const scheduleIntroSync = () => {

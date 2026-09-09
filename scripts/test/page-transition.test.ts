@@ -116,7 +116,7 @@ class ContainerFixture {
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
@@ -130,6 +130,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     getElementById: (id: string) => id === 'transition-readiness-marker'
       ? (options.noReadinessMarker ? null : readinessMarker)
       : (options.noOverlay ? null : overlay),
+    querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {} : null,
     querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
       ? (options.images ?? []).filter((image) => image.preview)
       : selector === 'a' ? anchors : [],
@@ -270,6 +271,18 @@ test('early initial controller reveals once and deferred module adopts its state
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-satisfied'));
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'));
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-end'));
+});
+
+test('initial page stays covered until intro spacing is ready', async () => {
+  const f = fixture({ initialController: true, intro: true });
+  await f.paint();
+  await f.advance(500);
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  f.window.emit('vcd:intro-layout-ready');
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
 });
 
 test('browser trace marks are emitted without the DEV readiness marker', async () => {

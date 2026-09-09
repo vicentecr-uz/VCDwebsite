@@ -52,7 +52,7 @@ function allCandidates(): CoverCandidate[] {
 export function bindMobileGalleryReveal(): () => void {
   let active: CoverCandidate | null = null;
   let settleTimer: ReturnType<typeof setTimeout> | undefined;
-  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  const holds = new Map<HTMLElement, ReturnType<typeof setTimeout> | undefined>();
   let gesture: { id: number; x: number; y: number; origin: HTMLElement | null; moved: boolean } | null = null;
   let pendingOrigin: HTMLElement | null = null;
   let fingerDown = false;
@@ -64,10 +64,26 @@ export function bindMobileGalleryReveal(): () => void {
     if (timer !== undefined) clearTimeout(timer);
   };
 
+  const pauseHold = (cover: HTMLElement) => {
+    clearTimer(holds.get(cover));
+    holds.set(cover, undefined);
+  };
+
+  const startHold = (cover: HTMLElement) => {
+    pauseHold(cover);
+    holds.set(cover, setTimeout(() => {
+      cover.classList.remove('is-mobile-preview');
+      holds.delete(cover);
+      if (active?.cover === cover) active = null;
+    }, PREVIEW_HOLD_MS));
+  };
+
   const clearPreview = () => {
-    clearTimer(holdTimer);
-    holdTimer = undefined;
-    active?.cover.classList.remove('is-mobile-preview');
+    for (const [cover, timer] of holds) {
+      clearTimer(timer);
+      cover.classList.remove('is-mobile-preview');
+    }
+    holds.clear();
     active = null;
   };
 
@@ -105,16 +121,13 @@ export function bindMobileGalleryReveal(): () => void {
     if (disposed || (fingerDown && !duringGesture) || introVisible() || !mobileCapability() || document.hidden || document.documentElement.classList.contains('is-dev-mode')) return;
     const next = rankedCandidate(origin);
     if (!next) return;
-    if (active?.cover === next.cover) {
-      clearTimer(holdTimer);
-      holdTimer = undefined;
-      if (!fingerDown) holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
-      return;
+    if (active && active.cover !== next.cover && holds.get(active.cover) === undefined) {
+      startHold(active.cover);
     }
-    clearPreview();
     active = next;
+    pauseHold(next.cover);
     next.cover.classList.add('is-mobile-preview');
-    if (!fingerDown) holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
+    if (!fingerDown) startHold(next.cover);
   };
 
   const scheduleReveal = () => {
@@ -124,9 +137,10 @@ export function bindMobileGalleryReveal(): () => void {
       const origin = pendingOrigin;
       pendingOrigin = null;
       if (active && candidateFor(active.item)) {
-        holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
+        startHold(active.cover);
       } else {
-        clearPreview();
+        if (active && holds.get(active.cover) === undefined) startHold(active.cover);
+        active = null;
         reveal(origin);
       }
     }, SCROLL_SETTLE_MS);
@@ -135,8 +149,6 @@ export function bindMobileGalleryReveal(): () => void {
   const onTouchStart = (event: TouchEvent) => {
     if (!mobileCapability() || introVisible() || document.documentElement.classList.contains('is-dev-mode')) return;
 
-    clearTimer(holdTimer);
-    holdTimer = undefined;
     cancelPending();
     clickGuard = null;
     fingerDown = true;
@@ -200,8 +212,7 @@ export function bindMobileGalleryReveal(): () => void {
   };
 
   const onScroll = () => {
-    clearTimer(holdTimer);
-    holdTimer = undefined;
+    if (active) pauseHold(active.cover);
     if (!fingerDown && (active || pendingOrigin)) {
       scheduleReveal();
     }

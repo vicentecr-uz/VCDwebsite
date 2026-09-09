@@ -185,6 +185,14 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   @media (hover: none) and (pointer: coarse) {
+    /* Keep the transparent layer composited before touch so its first fade
+       does not also have to make a hidden bitmap renderable. */
+    .project-grid__hover-layer {
+      visibility: visible;
+      will-change: opacity;
+      transition: opacity 0.2s ease;
+    }
+
     html:not(.is-dev-mode) .project-grid__cover.is-mobile-preview.project-grid__cover--has-hover
       .project-grid__hover-layer {
       opacity: 1;
