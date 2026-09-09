@@ -78,6 +78,7 @@ export function createHomeIntroController(
       finishTimer = null;
       if (disposed || state !== 'dismissing') return;
       setState('dismissed');
+      win.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       const main = document.getElementById('main-content');
       if (dismissFocus && main instanceof HTMLElement) {
         const hadTabIndex = main.hasAttribute('tabindex');
@@ -130,7 +131,8 @@ export function createHomeIntroController(
     root.style.overflow = originalRootOverflow;
   };
   const onPageHide = () => restoreAfterPageHide();
-  const onPageShow = () => {
+  const onPageShow = (event: PageTransitionEvent) => {
+    if (!event.persisted) return;
     setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active');
     surface.hidden = false;
     announce('vcd:intro-layout-sync');

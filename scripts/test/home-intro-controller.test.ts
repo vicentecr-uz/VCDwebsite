@@ -68,6 +68,7 @@ const fixtureWindow = () => {
       const event = { type, ...detail } as unknown as Event;
       for (const fn of listeners.get(type) ?? []) fn(event);
     },
+    scrollTo() {},
     getSelection: () => ({ isCollapsed: true }),
     matchMedia: () => ({ matches: false }),
   } as unknown as Window & { emit: (type: string, detail?: Record<string, unknown>) => void };
@@ -151,6 +152,19 @@ describe('home intro controller', () => {
     await waitFor(90);
     expect(f.controller.getState()).toBe('dismissed');
     expect(completed).toBe(1);
+  });
+
+  test('late initial pageshow cannot resurrect a dismissed intro', async () => {
+    const f = fixture();
+    let scroll: ScrollToOptions | undefined;
+    f.win.scrollTo = ((options: ScrollToOptions) => { scroll = options; }) as typeof window.scrollTo;
+    f.controller.dismiss();
+    f.win.emit('pageshow', { persisted: false });
+    expect(f.controller.getState()).toBe('dismissing');
+    await waitForExit();
+    f.win.emit('pageshow', { persisted: false });
+    expect(f.controller.getState()).toBe('dismissed');
+    expect(scroll).toEqual({ top: 0, left: 0, behavior: 'instant' });
   });
 
   test('uses an explicit intro duration override', async () => {
