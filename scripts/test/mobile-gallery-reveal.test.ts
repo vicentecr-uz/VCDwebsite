@@ -117,6 +117,19 @@ try {
   assert.equal(first.cover.classList.contains('is-mobile-preview'), false, 'preview clears after one hold');
   assert.equal(second.cover.classList.contains('is-mobile-preview'), false, 'only one cover is active');
 
+  touch('touchstart', first.card, [point]);
+  touch('touchend', first.card, [], [point]);
+  advance(250);
+  advance(500);
+  const other = { identifier: 9, clientX: 20, clientY: 350, target: second.card };
+  touch('touchstart', second.card, [other]);
+  assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'previous preview keeps its own countdown');
+  assert.equal(second.cover.classList.contains('is-mobile-preview'), true, 'another preview can start simultaneously');
+  advance(1100);
+  assert.equal(first.cover.classList.contains('is-mobile-preview'), false, 'previous preview expires independently');
+  assert.equal(second.cover.classList.contains('is-mobile-preview'), true, 'held preview stays visible after previous one expires');
+  touch('touchend', second.card, [], [other]);
+
   teardown();
   document.body.innerHTML = '';
   media.matches = true;

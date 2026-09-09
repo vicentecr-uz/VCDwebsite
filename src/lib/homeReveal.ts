@@ -157,7 +157,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   const onResize = rebuildBeforeDismissal;
   const onOrientationChange = rebuildBeforeDismissal;
   const onPageHide = () => cancel();
-  const onPageShow = () => { cancel(); void Promise.resolve().then(() => { if (!disposed) prepare(); }); };
+  const onPageShow = (event: PageTransitionEvent) => { if (!event.persisted) return; cancel(); void Promise.resolve().then(() => { if (!disposed) prepare(); }); };
   win.addEventListener('vcd:home-intro-dismissed', onDismissed); win.addEventListener('vcd:dev-mode-change', onModeChange); win.addEventListener('resize', onResize); win.addEventListener('orientationchange', onOrientationChange); win.addEventListener('pagehide', onPageHide); win.addEventListener('pageshow', onPageShow);
   prepare();
   const destroy = () => { if (disposed) return; disposed = true; cancel(); win.removeEventListener('vcd:home-intro-dismissed', onDismissed); win.removeEventListener('vcd:dev-mode-change', onModeChange); win.removeEventListener('resize', onResize); win.removeEventListener('orientationchange', onOrientationChange); win.removeEventListener('pagehide', onPageHide); win.removeEventListener('pageshow', onPageShow); };
