@@ -338,7 +338,7 @@ test('visible BFCache restore hides and re-shows the readiness marker once', asy
   assert.equal(f.tweens.length, 0);
 });
 
-test('visible diagnostic is dev-only in Layout output', () => {
+test('visible readiness marker remains dev-only in Layout output', () => {
   assert.match(layout, /showDevTools[\s\S]*data-dev-transition/);
   assert.match(layout, /showDevTools[\s\S]*transition-readiness-marker/);
   assert.match(layout, /html\[data-dev-transition="visible"\]/);
