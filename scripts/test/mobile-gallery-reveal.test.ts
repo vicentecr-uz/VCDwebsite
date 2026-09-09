@@ -103,6 +103,13 @@ try {
   assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'momentum scroll preserves preview and resets the hold clock');
   advance(1);
   assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'touch origin wins after a drag');
+  touch('touchstart', first.card, [point]);
+  assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'touching an active preview does not flash back to the cover');
+  point.clientY += 30;
+  touch('touchmove', first.card, [point]);
+  assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'continuing a gesture preserves the same preview');
+  touch('touchend', first.card, [], [point]);
+  advance(250);
   advance(1599);
   assert.equal(first.cover.classList.contains('is-mobile-preview'), true, 'preview remains during its hold');
   advance(1);

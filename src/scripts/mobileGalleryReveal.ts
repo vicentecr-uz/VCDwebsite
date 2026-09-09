@@ -109,6 +109,12 @@ export function bindMobileGalleryReveal(): () => void {
     if (disposed || (fingerDown && !duringGesture) || introVisible() || !mobileCapability() || document.hidden || document.documentElement.classList.contains('is-dev-mode')) return;
     const next = rankedCandidate(origin);
     if (!next) return;
+    if (active?.cover === next.cover) {
+      clearTimer(holdTimer);
+      holdTimer = undefined;
+      if (!fingerDown) holdTimer = setTimeout(clearPreview, PREVIEW_HOLD_MS);
+      return;
+    }
     clearPreview();
     active = next;
     next.cover.classList.add('is-mobile-preview');
@@ -135,11 +141,13 @@ export function bindMobileGalleryReveal(): () => void {
     initialCancelled = true;
     clearTimer(initialTimer);
     initialTimer = undefined;
-    clearPreview();
+    clearTimer(holdTimer);
+    holdTimer = undefined;
     cancelPending();
     clickGuard = null;
     fingerDown = true;
     if (event.touches.length !== 1) {
+      clearPreview();
       resetGesture();
       return;
     }
