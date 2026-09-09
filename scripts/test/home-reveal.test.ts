@@ -31,19 +31,18 @@ describe('home reveal choreography', () => {
     expect(rows.map((row) => row.units.length)).toEqual([2, 1, 1]);
     expect(rows[0].delay).toBe(0);
     expect(rows.at(-1)?.delay).toBeCloseTo(HOME_REVEAL_STAGGER, 5);
-    expect((rows.at(-1)?.delay ?? 0) + HOME_REVEAL_DURATION).toBeCloseTo(1000, 2);
+    expect((rows.at(-1)?.delay ?? 0) + HOME_REVEAL_DURATION).toBeCloseTo(800, 2);
   });
 
   test('keeps the exact WAAPI timing contract', () => {
-    expect(HOME_REVEAL_DURATION).toBe(449.28);
-    expect(HOME_REVEAL_STAGGER).toBe(550.72);
-    expect(HOME_REVEAL_EASING).toContain('linear(0 0%, 0.006234 1%');
-    expect(HOME_REVEAL_EASING).toContain('1.000058 50%, 1 100%)');
+    expect(HOME_REVEAL_DURATION).toBe(600);
+    expect(HOME_REVEAL_STAGGER).toBe(200);
+    expect(HOME_REVEAL_EASING).toBe('cubic-bezier(0.19, 1, 0.22, 1)');
   });
 
   test('gives the first content row a lead after the header row', () => {
     const rows = groupHomeRevealRows([{ top: 0, left: 0, kind: 'header' }, { top: 100, left: 0, kind: 'media' }, { top: 500, left: 0, kind: 'media' }]);
-    expect(rows[0].delay).toBe(0); expect(rows[1].delay).toBe(120); expect(rows[2].delay).toBe(HOME_REVEAL_STAGGER);
+    expect(rows[0].delay).toBe(0); expect(rows[1].delay).toBe(110); expect(rows[2].delay).toBe(HOME_REVEAL_STAGGER);
   });
 
   test('prepared visual text clones are visible to opacity animation', () => {

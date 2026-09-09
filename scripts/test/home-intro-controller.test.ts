@@ -124,7 +124,7 @@ describe('home intro controller', () => {
     expect(f.home.inert).toBe(false);
   });
 
-  test('primary pointerdown starts the 100ms exit and dispatches once after it settles', async () => {
+  test('primary pointerdown starts the 150ms exit and dispatches once after it settles', async () => {
     const f = fixture();
     let completed = 0;
     f.win.addEventListener('vcd:home-intro-dismissed', () => completed++);
@@ -132,10 +132,10 @@ describe('home intro controller', () => {
     expect(f.controller.getState()).toBe('active');
     f.okay.emit('pointerdown', { button: 0 });
     expect(f.controller.getState()).toBe('dismissing');
-    await waitFor(60);
+    await waitFor(90);
     expect(f.controller.getState()).toBe('dismissing');
     expect(completed).toBe(0);
-    await waitFor(70);
+    await waitFor(90);
     expect(f.controller.getState()).toBe('dismissed');
     expect(completed).toBe(1);
   });
