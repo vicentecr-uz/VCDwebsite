@@ -263,6 +263,7 @@ test('early initial controller reveals once and deferred module adopts its state
   await f.advance(250);
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
   assert.equal(Number(f.overlay.style.opacity), 0);
+  assert.equal(f.overlay.style.transition ?? '', '');
   assert.equal(f.tweens.length, 0);
   assert.equal(f.upgrades, 1);
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-start'));
