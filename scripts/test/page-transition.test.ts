@@ -16,6 +16,7 @@ test('timeline capture initializes inline before the Layout transition module', 
   assert.doesNotMatch(timeline.match(/<script is:inline>([\s\S]*?)<\/script>/)?.[1] ?? '', /\bas\s+(?:Window|CustomEvent|HTML)|:\s*Record<|querySelector(?:All)?</);
   assert.match(timeline, /data-transition-toggle-fade[\s\S]*aria-pressed/);
   assert.match(timeline, /localStorage[\s\S]*fadeStartMs[\s\S]*navigator\.clipboard/);
+  assert.match(timeline, /fontsReadyAt[\s\S]*--font-sans[\s\S]*system-ui/);
 });
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
