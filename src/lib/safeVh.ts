@@ -2,9 +2,9 @@
  * Stable `1vh` unit for height constraints that must not track iOS/Edge
  * toolbar show/hide (raw `svh`/`vh` drifts mid-scroll on those browsers).
  *
- * Sets `--vh-safe` on `:root` once on load; recomputes only when the viewport
- * *width* changes (rotation / real resize). Keep `svh` as the CSS fallback:
- * `calc(var(--vh-safe, 1svh) * N)`.
+ * Sets `--vh-safe` on `:root` once on load; recomputes on desktop viewport
+ * resizes while keeping mobile toolbar show/hide frozen. Keep `svh` as the CSS
+ * fallback: `calc(var(--vh-safe, 1svh) * N)`.
  *
  * Bind from the site layout (or any early client script). Multiple callers are
  * safe — listeners bind once.
@@ -150,6 +150,7 @@ export function bindSafeVh(): void {
   w[BOUND_FLAG] = true;
 
   let lastWidth = window.innerWidth;
+  let lastHeight = window.innerHeight;
   setSafeVh();
   setIntroFoldOffsets();
 
@@ -170,14 +171,24 @@ export function bindSafeVh(): void {
   // change intro geometry, and recalculating here disrupts native momentum.
   document.fonts.ready.then(scheduleIntroSync);
   window.addEventListener('vcd:intro-layout-sync', scheduleIntroSync);
+  window.addEventListener('vcd:dev-mode-change', scheduleIntroSync);
 
   window.addEventListener('resize', () => {
-    if (window.innerWidth === lastWidth) return;
-    lastWidth = window.innerWidth;
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const widthChanged = width !== lastWidth;
+    const heightChanged = height !== lastHeight;
+    if (!widthChanged && !heightChanged) return;
+    const desktopResize = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+    if (!widthChanged && !desktopResize) return;
+    lastWidth = width;
+    lastHeight = height;
     setSafeVh();
     scheduleIntroSync();
   });
   window.addEventListener('orientationchange', () => {
+    lastWidth = window.innerWidth;
+    lastHeight = window.innerHeight;
     setSafeVh();
     scheduleIntroSync();
   });
