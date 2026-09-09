@@ -2,18 +2,22 @@
   import { bindCaptionMediaInk } from '../scripts/bindCaptionMediaInk';
   import { bindGalleryHoverFill } from '../scripts/clampGalleryHoverFill';
   import { bindGalleryMediaInk } from '../scripts/bindGalleryMediaInk';
+  import { bindMobileGalleryReveal } from '../scripts/mobileGalleryReveal';
 
   let teardownGallery: (() => void) | undefined;
   let teardownHoverFill: (() => void) | undefined;
   let teardownCaptions: (() => void) | undefined;
+  let teardownMobileReveal: (() => void) | undefined;
 
   function mount() {
     teardownGallery?.();
     teardownHoverFill?.();
     teardownCaptions?.();
+    teardownMobileReveal?.();
     teardownGallery = bindGalleryMediaInk();
     teardownHoverFill = bindGalleryHoverFill();
     teardownCaptions = bindCaptionMediaInk();
+    teardownMobileReveal = bindMobileGalleryReveal();
   }
 
   mount();
@@ -22,8 +26,10 @@
     teardownGallery?.();
     teardownHoverFill?.();
     teardownCaptions?.();
+    teardownMobileReveal?.();
     teardownGallery = undefined;
     teardownHoverFill = undefined;
     teardownCaptions = undefined;
+    teardownMobileReveal = undefined;
   });
 </script>
