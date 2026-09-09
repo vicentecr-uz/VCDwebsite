@@ -23,7 +23,13 @@ function visibleArea(rect: DOMRect): number {
   return Math.max(0, right - left) * Math.max(0, bottom - top);
 }
 
+function introVisible(): boolean {
+  const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
+  return Boolean(intro && !intro.hidden && intro.dataset.state !== 'dismissed');
+}
+
 function candidateFor(item: HTMLElement): CoverCandidate | null {
+  if (item.closest('[inert]')) return null;
   if (item.classList.contains('project-grid__item--new') || item.dataset.devProjectSlug === '__template__') return null;
   const card = item.querySelector<HTMLElement>('.project-grid__card');
   const cover = item.querySelector<HTMLElement>('.project-grid__cover.project-grid__cover--has-hover');
@@ -100,7 +106,7 @@ export function bindMobileGalleryReveal(): () => void {
   };
 
   const reveal = (origin: HTMLElement | null) => {
-    if (disposed || fingerDown || !mobileCapability() || document.hidden || document.documentElement.classList.contains('is-dev-mode')) return;
+    if (disposed || fingerDown || introVisible() || !mobileCapability() || document.hidden || document.documentElement.classList.contains('is-dev-mode')) return;
     const next = rankedCandidate(origin);
     if (!next) return;
     clearPreview();
@@ -231,7 +237,7 @@ export function bindMobileGalleryReveal(): () => void {
   };
 
   const scheduleInitial = () => {
-    if (initialScheduled || initialCancelled || disposed || !mobileCapability()) return;
+    if (initialScheduled || initialCancelled || disposed || introVisible() || !mobileCapability()) return;
     const overlay = document.getElementById('transition-overlay');
     if (overlay && overlay.dataset.vcdInitialReveal !== 'complete') return;
     initialScheduled = true;
@@ -243,6 +249,10 @@ export function bindMobileGalleryReveal(): () => void {
 
   const onInitialRevealComplete = () => {
     if (!initialCancelled) scheduleInitial();
+  };
+  const onHomeIntroDismissed = () => {
+    initialCancelled = false;
+    scheduleInitial();
   };
   const onPageHide = () => {
     initialCancelled = true;
@@ -264,6 +274,7 @@ export function bindMobileGalleryReveal(): () => void {
   mediaQuery.addEventListener?.('change', onMediaChange);
   window.addEventListener('vcd:initial-reveal-complete', onInitialRevealComplete);
   window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('vcd:home-intro-dismissed', onHomeIntroDismissed);
   const htmlObserver = new MutationObserver(onHtmlMutation);
   htmlObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   scheduleInitial();
@@ -277,6 +288,7 @@ export function bindMobileGalleryReveal(): () => void {
     htmlObserver.disconnect();
     window.removeEventListener('vcd:initial-reveal-complete', onInitialRevealComplete);
     window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('vcd:home-intro-dismissed', onHomeIntroDismissed);
     mediaQuery.removeEventListener?.('change', onMediaChange);
     document.removeEventListener('touchstart', onTouchStart);
     document.removeEventListener('touchmove', onTouchMove);
