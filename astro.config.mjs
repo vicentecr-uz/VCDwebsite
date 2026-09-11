@@ -16,6 +16,7 @@ import {
   buildPlaceholderImageSection,
   buildPlaceholderImageGridSection,
   buildPlaceholderImageCarouselSection,
+  buildPlaceholderItem,
   mediaDevServer,
   fillPlaceholderImageSection,
   listingOrderDevWriter,
@@ -1711,17 +1712,32 @@ export function contentSectionDevWriter() {
               !target
               || typeof target !== 'object'
               || Array.isArray(target)
-              || target.type !== 'imageCarousel'
+              || (target.type !== 'imageCarousel' && target.type !== 'imageGrid')
               || !Array.isArray(target.items)
             ) {
               send(400, { error: 'That carousel path no longer exists.' });
               return;
             }
 
+            const placeholder = body.placeholder === true;
+            if (placeholder && (srcs.length || filenames.length)) {
+              send(400, { error: 'Placeholder append cannot include image files.' });
+              return;
+            }
+            if (!placeholder && !srcs.length && !filenames.length) {
+              send(400, { error: 'At least one image file is required.' });
+              return;
+            }
             try {
-              const built = srcs.length
-                ? await buildImageCarouselSectionFromSrcs(srcs)
-                : await buildImageCarouselSection(documentKey, filenames);
+              const built = placeholder
+                ? { items: [buildPlaceholderItem(`${target.type === 'imageGrid' ? 'grid' : 'carousel'}-item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`)] }
+                : target.type === 'imageGrid'
+                  ? (srcs.length
+                    ? await buildImageGridSectionFromSrcs(srcs)
+                    : await buildImageGridSection(documentKey, filenames))
+                  : (srcs.length
+                    ? await buildImageCarouselSectionFromSrcs(srcs)
+                    : await buildImageCarouselSection(documentKey, filenames));
               const appendedItems = Array.isArray(built.items) ? built.items : [];
               const appendedIds = appendedItems.map((item) => String(item.id || '')).filter(Boolean);
               if (!appendedItems.length || appendedItems.length !== appendedIds.length) {
@@ -1732,15 +1748,19 @@ export function contentSectionDevWriter() {
                 .map((item) => String(item?.id || ''))
                 .filter(Boolean);
               target.items.push(...appendedItems);
-              target.visible = [
-                ...(Array.isArray(target.visible) ? target.visible.map(String) : existingIds),
-                ...appendedIds,
+              if (target.type === 'imageCarousel') target.visible = [
+                ...(Array.isArray(target.visible) ? target.visible.map(String) : existingIds), ...appendedIds,
               ];
               if (target.breakpoints && typeof target.breakpoints === 'object' && !Array.isArray(target.breakpoints)) {
                 for (const breakpoint of Object.values(target.breakpoints)) {
                   if (!breakpoint || typeof breakpoint !== 'object' || Array.isArray(breakpoint)) continue;
                   if (!Array.isArray(breakpoint.visible)) continue;
                   breakpoint.visible.push(...appendedIds);
+                }
+              }
+              if (target.type === 'imageGrid' && target.layouts && typeof target.layouts === 'object' && !Array.isArray(target.layouts)) {
+                for (const layout of Object.values(target.layouts)) {
+                  if (layout && typeof layout === 'object' && Array.isArray(layout.visible)) layout.visible.push(...appendedIds);
                 }
               }
 
