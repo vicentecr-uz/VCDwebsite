@@ -30,6 +30,48 @@ export function isPlaceholderSrc(src: string): boolean {
   return src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
 }
 
+/** Keep live media chrome in sync when an editor changes the source in place. */
+export function syncPlaceholderState(
+  target: HTMLElement,
+  src: string,
+  slot: 'cover' | 'hover' = 'cover',
+): boolean {
+  if (slot === 'hover') return false;
+  const placeholder = isPlaceholderSrc(src);
+  if (
+    target.classList.contains('project-media')
+    || target.classList.contains('project-image')
+    || target.classList.contains('project-image-grid__item')
+    || target.classList.contains('project-image-carousel__slide')
+  ) {
+    target.classList.toggle('project-media--placeholder', placeholder);
+  }
+
+  target.querySelectorAll<HTMLElement>('.project-media__placeholder-label').forEach((label) => {
+    label.hidden = !placeholder;
+    label.style.display = placeholder ? '' : 'none';
+  });
+  return placeholder;
+}
+
+/** Replace source dimensions without allowing metadata from the previous image to linger. */
+export function syncImageSourceDims(
+  target: HTMLElement,
+  dims?: { srcWidth?: number; srcHeight?: number },
+): void {
+  if (dims?.srcWidth && dims?.srcHeight) {
+    target.dataset.devImageSrcWidth = String(dims.srcWidth);
+    target.dataset.devImageSrcHeight = String(dims.srcHeight);
+    target.style.setProperty('--project-image-original-ratio', `${dims.srcWidth} / ${dims.srcHeight}`);
+    target.style.setProperty('--project-image-original-ratio-num', String(dims.srcWidth / dims.srcHeight));
+    return;
+  }
+  delete target.dataset.devImageSrcWidth;
+  delete target.dataset.devImageSrcHeight;
+  target.style.removeProperty('--project-image-original-ratio');
+  target.style.removeProperty('--project-image-original-ratio-num');
+}
+
 const VARIANT_FIELDS = ['aspect', 'cx', 'cy', 'w', 'aspectRatio', 'x', 'y', 'zoom'] as const;
 
 export function hasCropVariants(variants: ImageVariants | undefined): boolean {
