@@ -14,6 +14,8 @@ import {
   buildImageSection,
   buildImageSectionFromSrcs,
   buildPlaceholderImageSection,
+  buildPlaceholderImageGridSection,
+  buildPlaceholderImageCarouselSection,
   mediaDevServer,
   fillPlaceholderImageSection,
   listingOrderDevWriter,
@@ -1498,6 +1500,8 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'imageGrid',
   'imageCarousel',
   'placeholder',
+  'placeholderImageGrid',
+  'placeholderImageCarousel',
 ]);
 // Insert stays allowlisted (construction needs a known shape). Delete is
 // default-on: any section at a valid index can go — no type registration.
@@ -2000,6 +2004,12 @@ export function contentSectionDevWriter() {
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();
+          } else if (type === 'placeholderImageGrid') {
+            section = buildPlaceholderImageGridSection();
+          } else if (type === 'placeholderImageCarousel') {
+            section = buildPlaceholderImageCarouselSection();
+          }
+          if (type === 'placeholder' || type === 'placeholderImageGrid' || type === 'placeholderImageCarousel') {
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           }
 

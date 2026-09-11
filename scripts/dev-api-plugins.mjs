@@ -417,6 +417,32 @@ export function buildPlaceholderImageSection() {
   };
 }
 
+const buildPlaceholderItem = (prefix, index) => ({
+  id: `${prefix}-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+  src: 'placeholder.svg',
+  alt: 'Placeholder',
+  variants: structuredClone(PLACEHOLDER_IMAGE_VARIANTS),
+});
+
+export function buildPlaceholderImageGridSection() {
+  const id = `placeholder-grid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const items = [buildPlaceholderItem('grid-item', 0), buildPlaceholderItem('grid-item', 1)];
+  const visible = items.map((item) => item.id);
+  return {
+    type: 'imageGrid', id, columns: 2, defaultAspectRatio: '4:3', spacing: 'section', items,
+    layouts: { desktop: { visible: [...visible] }, mobile: { visible: [...visible] } },
+  };
+}
+
+export function buildPlaceholderImageCarouselSection() {
+  const id = `placeholder-carousel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  const items = [buildPlaceholderItem('carousel-item', 0), buildPlaceholderItem('carousel-item', 1)];
+  return {
+    type: 'imageCarousel', id, orientation: 'horizontal', heightMode: 'dynamic', dotsPlacement: 'outside',
+    defaultAspectRatio: 'original', spacing: 'section', items, visible: items.map((item) => item.id),
+  };
+}
+
 export function isPlaceholderImageSrc(src) {
   const value = String(src || '');
   return value === 'placeholder.svg' || value.endsWith('/placeholder.svg');

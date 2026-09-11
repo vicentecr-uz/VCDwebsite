@@ -75,7 +75,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     </div>
 
     <PanelActions>
-      <Button type="button" emphasis="ghost" label="Add placeholder" data-dev-image-placeholder />
+      <Button type="button" emphasis="ghost" label="Add image placeholder" data-dev-image-placeholder />
       <Button type="button" emphasis="ghost" label="Cancel" data-dev-image-cancel />
     </PanelActions>
   </div>
@@ -458,7 +458,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!(titleEl instanceof HTMLElement)) return;
     titleEl.textContent = hasCarouselTarget()
       ? 'Add image'
-      : preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
+      : preferredType === 'imageGrid' ? 'Add grid'
+        : preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
   };
 
   const syncPickerState = () => {
@@ -473,8 +474,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
       typeActions.hidden = typedUpstream;
     }
     if (placeholderButton instanceof HTMLButtonElement) {
-      placeholderButton.hidden = preferredType === 'imageCarousel' || hasCarouselTarget();
+      placeholderButton.hidden = !hasPreferredType() || hasCarouselTarget();
       placeholderButton.disabled = count > 0;
+      placeholderButton.textContent = preferredType === 'imageGrid'
+        ? 'Add grid placeholder'
+        : preferredType === 'imageCarousel' ? 'Add carousel placeholder' : 'Add image placeholder';
     }
 
     if (pickerCount instanceof HTMLElement) {
@@ -828,7 +832,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
       closePicker();
       return true;
     }
-    if (type !== 'image' && type !== 'imageGrid' && type !== 'imageCarousel') return false;
+    if (type !== 'image' && type !== 'imageGrid' && type !== 'imageCarousel'
+      && type !== 'placeholder' && type !== 'placeholderImageGrid' && type !== 'placeholderImageCarousel') return false;
     await insertSection(type, filenames, srcs, target);
     return true;
   };
@@ -1033,7 +1038,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const target = currentTransaction();
     void (async () => {
       try {
-        await insertSection('placeholder', [], [], target);
+        const placeholderType = preferredType === 'imageGrid'
+          ? 'placeholderImageGrid'
+          : preferredType === 'imageCarousel' ? 'placeholderImageCarousel' : 'placeholder';
+        await insertSection(placeholderType, [], [], target);
       } catch (error) {
         window.alert(error instanceof Error ? error.message : 'Could not add placeholder.');
       }
