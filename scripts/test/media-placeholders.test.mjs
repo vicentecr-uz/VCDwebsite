@@ -38,6 +38,8 @@ assert.match(gridTuner, /<style is:global>/);
 assert.match(editor, /const registerTextStates = \(root: HTMLElement\)/);
 assert.match(editor, /detachSectionStates\(existing\)/);
 assert.match(editor, /registerTextStates\(root\)/);
+assert.match(editor, /setAttribute\('contenteditable', state\.kind === 'paragraphs' \? 'true' : 'plaintext-only'\)/);
+assert.match(editor, /removeAttribute\('contenteditable'\)/);
 assert.match(carouselTuner, /document\.createElement\('div'\)/);
 assert.match(picker, /hasGridTarget\(\) \? \{ type: 'imageGrid' \}/);
 assert.match(picker, /appendToGrid\(\[\], \[\], targetedGrid, true\)/);

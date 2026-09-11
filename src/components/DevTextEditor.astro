@@ -2510,8 +2510,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           state.savedValue = readValue(state);
           textStates.push(state);
           bindTextState(state);
-          element.toggleAttribute('contenteditable', isDevContentEditing());
-          if (isDevContentEditing()) element.setAttribute('spellcheck', 'true');
+          if (isDevContentEditing()) {
+            element.setAttribute('contenteditable', state.kind === 'paragraphs' ? 'true' : 'plaintext-only');
+            element.setAttribute('spellcheck', 'true');
+          } else {
+            element.removeAttribute('contenteditable');
+            element.removeAttribute('spellcheck');
+          }
         } catch {
           // Ignore malformed dynamic text nodes.
         }
