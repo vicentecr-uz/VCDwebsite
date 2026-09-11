@@ -35,11 +35,20 @@ test('source dimensions replace prior metadata and clear when unavailable', () =
   const window = new Window();
   const target = window.document.createElement('figure');
 
+  const frame = window.document.createElement('div');
+  frame.className = 'project-image-grid__frame';
+  frame.dataset.originalRatioLocked = 'true';
+  target.dataset.originalRatioLocked = 'true';
+  target.append(frame);
   syncImageSourceDims(target, { srcWidth: 1600, srcHeight: 900 });
+  assert.equal(frame.dataset.originalRatioLocked, undefined);
+  assert.equal(target.dataset.originalRatioLocked, undefined);
+  assert.equal(frame.style.getPropertyValue('--project-image-original-ratio'), '1600 / 900');
   assert.equal(target.dataset.devImageSrcWidth, '1600');
   assert.equal(target.style.getPropertyValue('--project-image-original-ratio'), '1600 / 900');
 
   syncImageSourceDims(target);
+  assert.equal(frame.style.getPropertyValue('--project-image-original-ratio'), '');
   assert.equal(target.dataset.devImageSrcWidth, undefined);
   assert.equal(target.dataset.devImageSrcHeight, undefined);
   assert.equal(target.style.getPropertyValue('--project-image-original-ratio'), '');

@@ -59,17 +59,24 @@ export function syncImageSourceDims(
   target: HTMLElement,
   dims?: { srcWidth?: number; srcHeight?: number },
 ): void {
+  const frame = target.querySelector<HTMLElement>(':scope > .project-image-grid__frame');
+  for (const element of frame ? [target, frame] : [target]) {
+    delete element.dataset.originalRatioLocked;
+    if (dims?.srcWidth && dims?.srcHeight) {
+      element.style.setProperty('--project-image-original-ratio', `${dims.srcWidth} / ${dims.srcHeight}`);
+      element.style.setProperty('--project-image-original-ratio-num', String(dims.srcWidth / dims.srcHeight));
+    } else {
+      element.style.removeProperty('--project-image-original-ratio');
+      element.style.removeProperty('--project-image-original-ratio-num');
+    }
+  }
   if (dims?.srcWidth && dims?.srcHeight) {
     target.dataset.devImageSrcWidth = String(dims.srcWidth);
     target.dataset.devImageSrcHeight = String(dims.srcHeight);
-    target.style.setProperty('--project-image-original-ratio', `${dims.srcWidth} / ${dims.srcHeight}`);
-    target.style.setProperty('--project-image-original-ratio-num', String(dims.srcWidth / dims.srcHeight));
-    return;
+  } else {
+    delete target.dataset.devImageSrcWidth;
+    delete target.dataset.devImageSrcHeight;
   }
-  delete target.dataset.devImageSrcWidth;
-  delete target.dataset.devImageSrcHeight;
-  target.style.removeProperty('--project-image-original-ratio');
-  target.style.removeProperty('--project-image-original-ratio-num');
 }
 
 const VARIANT_FIELDS = ['aspect', 'cx', 'cy', 'w', 'aspectRatio', 'x', 'y', 'zoom'] as const;
