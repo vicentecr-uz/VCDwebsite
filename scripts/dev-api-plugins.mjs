@@ -405,28 +405,24 @@ export async function buildImageSectionFromSrcs(srcs) {
   };
 }
 
-export function buildPlaceholderImageSection() {
-  const id = `placeholder-${Date.now().toString(36)}`;
-  return {
-    type: 'image',
-    id,
-    src: 'placeholder.svg',
-    alt: 'Placeholder',
-    spacing: 'section',
-    variants: structuredClone(PLACEHOLDER_IMAGE_VARIANTS),
-  };
-}
-
-const buildPlaceholderItem = (prefix, index) => ({
-  id: `${prefix}-${index + 1}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+const buildPlaceholderItem = (id) => ({
+  id,
   src: 'placeholder.svg',
   alt: 'Placeholder',
   variants: structuredClone(PLACEHOLDER_IMAGE_VARIANTS),
 });
 
+export function buildPlaceholderImageSection() {
+  const id = `placeholder-${Date.now().toString(36)}`;
+  return { type: 'image', id, spacing: 'section', ...buildPlaceholderItem(id) };
+}
+
 export function buildPlaceholderImageGridSection() {
   const id = `placeholder-grid-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const items = [buildPlaceholderItem('grid-item', 0), buildPlaceholderItem('grid-item', 1)];
+  const items = [
+    buildPlaceholderItem(`grid-item-1-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
+    buildPlaceholderItem(`grid-item-2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
+  ];
   const visible = items.map((item) => item.id);
   return {
     type: 'imageGrid', id, columns: 2, defaultAspectRatio: '4:3', spacing: 'section', items,
@@ -436,7 +432,10 @@ export function buildPlaceholderImageGridSection() {
 
 export function buildPlaceholderImageCarouselSection() {
   const id = `placeholder-carousel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-  const items = [buildPlaceholderItem('carousel-item', 0), buildPlaceholderItem('carousel-item', 1)];
+  const items = [
+    buildPlaceholderItem(`carousel-item-1-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
+    buildPlaceholderItem(`carousel-item-2-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`),
+  ];
   return {
     type: 'imageCarousel', id, orientation: 'horizontal', heightMode: 'dynamic', dotsPlacement: 'outside',
     defaultAspectRatio: 'original', spacing: 'section', items, visible: items.map((item) => item.id),

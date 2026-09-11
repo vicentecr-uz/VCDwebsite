@@ -16,6 +16,8 @@ assert.match(editor, /preferredType: type/);
 assert.match(picker, /label="Add image placeholder"/);
 assert.match(picker, /'Add grid placeholder'/);
 assert.match(picker, /'Add carousel placeholder'/);
+assert.match(picker, /placeholderButton\.hidden = hasCarouselTarget\(\)/);
+assert.match(picker, /: 'Add image placeholder';/);
 assert.match(config, /'placeholderImageGrid'/);
 assert.match(config, /'placeholderImageCarousel'/);
 assert.match(config, /type === 'placeholderImageGrid'/);
