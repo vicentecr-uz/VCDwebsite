@@ -30,6 +30,55 @@ export function isPlaceholderSrc(src: string): boolean {
   return src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
 }
 
+/** Keep live media chrome in sync when an editor changes the source in place. */
+export function syncPlaceholderState(
+  target: HTMLElement,
+  src: string,
+  slot: 'cover' | 'hover' = 'cover',
+): boolean {
+  if (slot === 'hover') return false;
+  const placeholder = isPlaceholderSrc(src);
+  if (
+    target.classList.contains('project-media')
+    || target.classList.contains('project-image')
+    || target.classList.contains('project-image-grid__item')
+    || target.classList.contains('project-image-carousel__slide')
+  ) {
+    target.classList.toggle('project-media--placeholder', placeholder);
+  }
+
+  target.querySelectorAll<HTMLElement>('.project-media__placeholder-label').forEach((label) => {
+    label.hidden = !placeholder;
+    label.style.display = placeholder ? '' : 'none';
+  });
+  return placeholder;
+}
+
+/** Replace source dimensions without allowing metadata from the previous image to linger. */
+export function syncImageSourceDims(
+  target: HTMLElement,
+  dims?: { srcWidth?: number; srcHeight?: number },
+): void {
+  const frame = target.querySelector<HTMLElement>(':scope > .project-image-grid__frame');
+  for (const element of frame ? [target, frame] : [target]) {
+    delete element.dataset.originalRatioLocked;
+    if (dims?.srcWidth && dims?.srcHeight) {
+      element.style.setProperty('--project-image-original-ratio', `${dims.srcWidth} / ${dims.srcHeight}`);
+      element.style.setProperty('--project-image-original-ratio-num', String(dims.srcWidth / dims.srcHeight));
+    } else {
+      element.style.removeProperty('--project-image-original-ratio');
+      element.style.removeProperty('--project-image-original-ratio-num');
+    }
+  }
+  if (dims?.srcWidth && dims?.srcHeight) {
+    target.dataset.devImageSrcWidth = String(dims.srcWidth);
+    target.dataset.devImageSrcHeight = String(dims.srcHeight);
+  } else {
+    delete target.dataset.devImageSrcWidth;
+    delete target.dataset.devImageSrcHeight;
+  }
+}
+
 const VARIANT_FIELDS = ['aspect', 'cx', 'cy', 'w', 'aspectRatio', 'x', 'y', 'zoom'] as const;
 
 export function hasCropVariants(variants: ImageVariants | undefined): boolean {
