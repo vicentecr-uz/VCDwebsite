@@ -14,8 +14,8 @@ export const REORDER_TIMING = {
   FADE_IN_DELAY_MS: 100,
   /** Lift card fade; the drop slot holds off revealing until this has landed. */
   LIFT_CARD_FADE_MS: 200,
-  /** Drop settle via easeOutElastic (sampled WAAPI keyframes). */
-  DROP_ANIMATION_MS: 700,
+  /** Drop settle using the SwiftUI snappy spring's 500ms perceptual duration. */
+  DROP_ANIMATION_MS: 500,
 } as const;
 
 export const SCROLL_HOLD = {
@@ -510,18 +510,25 @@ const idleState = (): ReorderState => ({
 
 const easeOut = (t: number) => 1 - (1 - t) ** 2;
 
-/** easings.net easeOutElastic — spring settle with decaying overshoot. */
-export const easeOutElastic = (t: number) => {
-  if (t === 0 || t === 1) return t;
-  const c4 = (2 * Math.PI) / 3;
-  return 2 ** (-10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+/** SwiftUI snappy spring response: duration 0.5s, bounce 0.15. */
+export const dropSpringProgress = (t: number) => {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+
+  const dampingRatio = 0.85;
+  const angularFrequency = 2 * Math.PI;
+  const dampedFrequency = angularFrequency * Math.sqrt(1 - dampingRatio ** 2);
+  const envelope = Math.exp(-dampingRatio * angularFrequency * t);
+  const oscillation =
+    Math.cos(dampedFrequency * t) +
+    (dampingRatio / Math.sqrt(1 - dampingRatio ** 2)) * Math.sin(dampedFrequency * t);
+
+  return 1 - envelope * oscillation;
 };
 
 const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
 
-const DROP_ELASTIC_SAMPLES = 32;
-/** Softens easeOutElastic overshoot (1 = full easings.net amplitude). */
-const DROP_ELASTIC_AMPLITUDE = 0.55;
+const DROP_ANIMATION_SAMPLES = 32;
 
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 
@@ -1120,7 +1127,7 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
       }
 
       const t = clamp01((now - start) / motionMs);
-      const pos = 1 + (easeOutElastic(t) - 1) * DROP_ELASTIC_AMPLITUDE;
+      const pos = dropSpringProgress(t);
       const fromTop = fromPageTop - scrollY();
       const fromLeft = fromPageLeft - window.scrollX;
       const target = body.getBoundingClientRect();
@@ -1186,8 +1193,8 @@ export const createReorderController = (host: ReorderHost): ReorderController =>
 
     const scaleKeyframes: Keyframe[] = [];
     const shadowKeyframes: Keyframe[] = [];
-    for (let i = 0; i <= DROP_ELASTIC_SAMPLES; i += 1) {
-      const t = i / DROP_ELASTIC_SAMPLES;
+    for (let i = 0; i <= DROP_ANIMATION_SAMPLES; i += 1) {
+      const t = i / DROP_ANIMATION_SAMPLES;
       const scaleT = easeOutCubic(t);
       scaleKeyframes.push({
         transform: `scale(${fromScale + (toScale - fromScale) * scaleT})`,
