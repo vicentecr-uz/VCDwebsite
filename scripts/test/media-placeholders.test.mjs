@@ -34,6 +34,7 @@ assert.match(mount, /'dev-carousel-edit-target'/);
 assert.match(gridTuner, /document\.createElement\('div'\)/);
 assert.match(gridTuner, /saveDraft\(\);[\s\S]*vcd:dev-grid-image-picker-open/);
 assert.match(gridTuner, /aria-label', 'Add image to grid'/);
+assert.doesNotMatch(gridTuner, /window\.confirm|Remove this image from the page/);
 assert.match(gridTuner, /<style is:global>/);
 assert.match(editor, /const registerTextStates = \(root: HTMLElement\)/);
 assert.match(editor, /detachSectionStates\(existing\)/);
