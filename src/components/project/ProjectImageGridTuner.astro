@@ -114,6 +114,8 @@ import Button from '../ui/Button.astro';
 </DevOverlay>
 
 <script>
+  import plusIcon from 'lucide-static/icons/plus.svg?raw';
+  import { sizeIcon } from '../../lib/icons';
   import { refreshProjectCropCovers } from '../../lib/projectCropCover';
   import {
     imageGridConstrainedStyle,
@@ -676,7 +678,8 @@ import Button from '../ui/Button.astro';
       button.type = 'button';
       button.className = 'project-grid-tuner__add';
       button.setAttribute('aria-label', 'Add image to grid');
-      button.textContent = '+';
+      button.innerHTML = sizeIcon(plusIcon, 18);
+      button.addEventListener('pointerdown', (event) => event.stopPropagation());
       button.addEventListener('click', () => {
         const target = editTarget;
         const documentKey = target.dataset.devDocument || '';
@@ -686,7 +689,7 @@ import Button from '../ui/Button.astro';
           status.textContent = 'This grid is not wired for saving.';
           return;
         }
-        dispatchGridUpsert(target, documentKey, path, pendingIdFor(target), snapshotBaseline(target));
+        saveDraft();
         closePanel();
         window.dispatchEvent(new CustomEvent('vcd:dev-grid-image-picker-open', {
           detail: { documentKey, path, target },
@@ -1131,11 +1134,21 @@ import Button from '../ui/Button.astro';
     background: transparent;
     color: var(--sys-color-on-srf-variant);
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
   }
 
   .project-grid-tuner__add:focus-visible {
     outline: 2px solid var(--sys-color-primary);
     outline-offset: 2px;
+  }
+
+  .project-grid-tuner__add:active { transform: scale(0.96); }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-grid-tuner__add:hover {
+      background: var(--sys-color-srf-container-high);
+      color: var(--sys-color-on-srf);
+    }
   }
 
   .project-grid-tuner__thumb {

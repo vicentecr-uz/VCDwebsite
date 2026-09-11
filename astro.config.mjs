@@ -1695,7 +1695,12 @@ export function contentSectionDevWriter() {
               send(400, { error: 'That carousel path is invalid.' });
               return;
             }
-            if (!filenames.length && !srcs.length) {
+            const placeholder = body.placeholder === true;
+            if (placeholder && (srcs.length || filenames.length)) {
+              send(400, { error: 'Placeholder append cannot include image files.' });
+              return;
+            }
+            if (!placeholder && !filenames.length && !srcs.length) {
               send(400, { error: 'At least one image file is required.' });
               return;
             }
@@ -1715,17 +1720,7 @@ export function contentSectionDevWriter() {
               || (target.type !== 'imageCarousel' && target.type !== 'imageGrid')
               || !Array.isArray(target.items)
             ) {
-              send(400, { error: 'That carousel path no longer exists.' });
-              return;
-            }
-
-            const placeholder = body.placeholder === true;
-            if (placeholder && (srcs.length || filenames.length)) {
-              send(400, { error: 'Placeholder append cannot include image files.' });
-              return;
-            }
-            if (!placeholder && !srcs.length && !filenames.length) {
-              send(400, { error: 'At least one image file is required.' });
+              send(400, { error: 'That media block path no longer exists.' });
               return;
             }
             try {
