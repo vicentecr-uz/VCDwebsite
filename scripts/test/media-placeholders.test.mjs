@@ -43,6 +43,8 @@ assert.match(editor, /removeAttribute\('contenteditable'\)/);
 assert.match(carouselTuner, /document\.createElement\('div'\)/);
 assert.match(picker, /hasGridTarget\(\) \? \{ type: 'imageGrid' \}/);
 assert.match(picker, /appendToGrid\(\[\], \[\], targetedGrid, true\)/);
+assert.match(picker, /flushPendingEdits\(target\.documentKey\)[\s\S]*content-batch/);
+assert.match(picker, /dev-pending-committed/);
 
 const image = buildPlaceholderImageSection();
 assert.equal(image.type, 'image');
@@ -91,7 +93,8 @@ test('content writer appends one grid placeholder and preserves explicit visibil
   await mkdir(directory, { recursive: true });
   const source = {
     sections: [{
-      type: 'imageGrid', id: 'grid', items: [{ id: 'existing', src: 'one.jpg', alt: '' }],
+      type: 'imageGrid', id: 'grid', columns: 3,
+      items: [{ id: 'existing', src: 'one.jpg', alt: '' }, { id: 'existing-two', src: 'two.jpg', alt: '' }],
       layouts: { desktop: { visible: ['existing'] }, mobile: { visible: [] } },
     }],
   };
@@ -106,12 +109,13 @@ test('content writer appends one grid placeholder and preserves explicit visibil
     assert.equal(appended.status, 200);
     const saved = JSON.parse(await readFile(file, 'utf8'));
     const items = saved.sections[0].items;
-    assert.equal(items.length, 2);
-    assert.equal(items[1].src, 'placeholder.svg');
-    assert.equal(items[1].alt, 'Placeholder');
-    assert.deepEqual(items[1].variants, PLACEHOLDER_IMAGE_VARIANTS);
-    assert.equal(saved.sections[0].layouts.desktop.visible.at(-1), items[1].id);
-    assert.equal(saved.sections[0].layouts.mobile.visible.at(-1), items[1].id);
+    assert.equal(items.length, 3);
+    assert.equal(saved.sections[0].columns, 3);
+    assert.equal(items[2].src, 'placeholder.svg');
+    assert.equal(items[2].alt, 'Placeholder');
+    assert.deepEqual(items[2].variants, PLACEHOLDER_IMAGE_VARIANTS);
+    assert.equal(saved.sections[0].layouts.desktop.visible.at(-1), items[2].id);
+    assert.equal(saved.sections[0].layouts.mobile.visible.at(-1), items[2].id);
 
     const unchanged = JSON.stringify(saved);
     result = response();
