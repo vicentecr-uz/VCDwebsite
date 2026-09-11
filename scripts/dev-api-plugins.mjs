@@ -405,7 +405,7 @@ export async function buildImageSectionFromSrcs(srcs) {
   };
 }
 
-const buildPlaceholderItem = (id) => ({
+export const buildPlaceholderItem = (id) => ({
   id,
   src: 'placeholder.svg',
   alt: 'Placeholder',
