@@ -2496,6 +2496,28 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }, { signal: editorSignal });
     };
 
+    const registerTextStates = (root: HTMLElement) => {
+      root.querySelectorAll<HTMLElement>('[data-dev-text-document][data-dev-text-path]').forEach((element) => {
+        if (textStates.some((state) => state.element === element)) return;
+        try {
+          const path = JSON.parse(element.dataset.devTextPath || '[]');
+          const documentKey = element.dataset.devTextDocument || '';
+          if (!Array.isArray(path) || !documentKey) return;
+          const state: EditableTextState = {
+            element, document: documentKey, path,
+            kind: element.dataset.devTextKind === 'paragraphs' ? 'paragraphs' : 'text', savedValue: '',
+          };
+          state.savedValue = readValue(state);
+          textStates.push(state);
+          bindTextState(state);
+          element.toggleAttribute('contenteditable', isDevContentEditing());
+          if (isDevContentEditing()) element.setAttribute('spellcheck', 'true');
+        } catch {
+          // Ignore malformed dynamic text nodes.
+        }
+      });
+    };
+
     const TRASH_ICON = sizeIcon(trashIcon);
 
     const deletableSections: HTMLElement[] = [
@@ -3391,6 +3413,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacingStates.push(spacingState);
         wireSectionAddMenu(spacingState);
       }
+      registerTextStates(root);
       mountDeleteButton(root);
       deletableSections.push(root);
       initMountedSectionCovers(root);
@@ -3467,6 +3490,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacingStates.push(spacingState);
         wireSectionAddMenu(spacingState);
       }
+      registerTextStates(root);
       mountDeleteButton(root);
       deletableSections.push(root);
       initMountedSectionCovers(root);
