@@ -75,7 +75,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     </div>
 
     <PanelActions>
-      <Button type="button" emphasis="ghost" label="Add placeholder" data-dev-image-placeholder />
+      <Button type="button" emphasis="ghost" label="Add image placeholder" data-dev-image-placeholder />
       <Button type="button" emphasis="ghost" label="Cancel" data-dev-image-cancel />
     </PanelActions>
   </div>
@@ -122,6 +122,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
   let suppressCloseReset = false;
   /** @type {{ documentKey: string, path: Array<string | number>, target: HTMLElement } | null} */
   let targetedCarousel = null;
+  /** @type {{ documentKey: string, path: Array<string | number>, target: HTMLElement } | null} */
+  let targetedGrid = null;
   /** @type {HTMLElement | null} */
   let activeCarouselDrop = null;
   /** @type {HTMLElement | null} */
@@ -453,19 +455,21 @@ const globeSvg = sizeIcon(globeIcon, 16);
   );
 
   const hasCarouselTarget = () => Boolean(targetedCarousel);
+  const hasGridTarget = () => Boolean(targetedGrid);
 
   const syncTitle = () => {
     if (!(titleEl instanceof HTMLElement)) return;
     titleEl.textContent = hasCarouselTarget()
       ? 'Add image'
-      : preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
+      : preferredType === 'imageGrid' ? 'Add grid'
+        : preferredType === 'imageCarousel' ? 'Add carousel' : 'Add image';
   };
 
   const syncPickerState = () => {
     const fileCount = pendingFiles.length;
     const srcCount = pendingSrcs.length;
     const count = fileCount || srcCount;
-    const typedUpstream = hasPreferredType() || hasCarouselTarget();
+    const typedUpstream = hasPreferredType() || hasCarouselTarget() || hasGridTarget();
 
     syncTitle();
 
@@ -473,8 +477,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
       typeActions.hidden = typedUpstream;
     }
     if (placeholderButton instanceof HTMLButtonElement) {
-      placeholderButton.hidden = preferredType === 'imageCarousel' || hasCarouselTarget();
+      placeholderButton.hidden = hasCarouselTarget();
       placeholderButton.disabled = count > 0;
+      placeholderButton.textContent = preferredType === 'imageGrid'
+        ? 'Add grid placeholder'
+        : preferredType === 'imageCarousel' ? 'Add carousel placeholder' : 'Add image placeholder';
     }
 
     if (pickerCount instanceof HTMLElement) {
@@ -498,6 +505,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     pendingSrcs = [];
     preferredType = null;
     targetedCarousel = null;
+    targetedGrid = null;
     syncPickerState();
   };
 
@@ -700,6 +708,52 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }));
   };
 
+  const appendToGrid = async (filenames = [], srcs = [], target = targetedGrid, placeholder = false) => {
+    if (!target) throw new Error('Could not find that grid.');
+    await flushPendingEdits(target.documentKey);
+    let columns;
+    let constrained;
+    let layouts;
+    try {
+      columns = JSON.parse(target.target.dataset.devGridColumns || '{}');
+      constrained = JSON.parse(target.target.dataset.devGridConstrained || '{}');
+      layouts = JSON.parse(target.target.dataset.devGridLayouts || '{}');
+    } catch {
+      throw new Error('Could not read the current grid settings.');
+    }
+    if (!columns || typeof columns !== 'object' || Array.isArray(columns)
+      || !constrained || typeof constrained !== 'object' || Array.isArray(constrained)
+      || !layouts || typeof layouts !== 'object' || Array.isArray(layouts)) {
+      throw new Error('Could not read the current grid settings.');
+    }
+    const settingsResponse = await fetch('/api/content-batch', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ grids: [{
+        document: target.documentKey,
+        path: target.path,
+        columns,
+        constrained,
+        defaultAspectRatio: target.target.dataset.devGridDefaultAspect || '4:3',
+        matchHeight: target.target.dataset.devGridMatchHeight === 'true',
+        layouts,
+      }] }),
+    });
+    const settingsResult = await settingsResponse.json();
+    if (!settingsResponse.ok) throw new Error(settingsResult.error || 'Could not save the current grid settings.');
+    const pendingId = `grid:${target.documentKey}:${target.target.dataset.devGridPath || JSON.stringify(target.path)}`;
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids: [pendingId] } }));
+    const response = await fetch('/api/content-section', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ document: target.documentKey, action: 'appendMediaItems', path: target.path, ...(placeholder ? { placeholder: true } : srcs.length ? { srcs } : { filenames }) }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not add images to that grid.');
+    window.dispatchEvent(new CustomEvent('vcd:dev-grid-media-appended', {
+      detail: { documentKey: target.documentKey, index: result.index, section: result.section },
+    }));
+  };
+
   const pickFromAssetManager = () => new Promise((resolve, reject) => {
     const target = currentTransaction();
     window.dispatchEvent(new CustomEvent('vcd:dev-asset-manager-open', {
@@ -711,6 +765,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
         // Carry Add-block menu choice (Image / Carousel) into the pick session.
         ...(hasCarouselTarget()
           ? { type: 'imageCarousel' }
+          : hasGridTarget() ? { type: 'imageGrid' }
           : hasPreferredType() ? { type: preferredType } : {}),
         resolve,
         reject,
@@ -1033,7 +1088,15 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const target = currentTransaction();
     void (async () => {
       try {
-        await insertSection('placeholder', [], [], target);
+        if (targetedGrid) {
+          await appendToGrid([], [], targetedGrid, true);
+          closePicker();
+          return;
+        }
+        const placeholderType = preferredType === 'imageGrid'
+          ? 'placeholderImageGrid'
+          : preferredType === 'imageCarousel' ? 'placeholderImageCarousel' : 'placeholder';
+        await insertSection(placeholderType, [], [], target);
       } catch (error) {
         window.alert(error instanceof Error ? error.message : 'Could not add placeholder.');
       }
@@ -1053,6 +1116,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!target) return;
     const type = preferredType;
     const carousel = targetedCarousel;
+    const grid = targetedGrid;
     void (async () => {
       try {
         suppressCloseReset = true;
@@ -1065,6 +1129,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
         }
         if (carousel) {
           await appendToCarousel([], srcs, carousel);
+          closePicker();
+          return;
+        }
+        if (grid) {
+          await appendToGrid([], srcs, grid);
           closePicker();
           return;
         }
@@ -1095,12 +1164,14 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const target = currentTransaction();
     const type = preferredType;
     const carousel = targetedCarousel;
+    const grid = targetedGrid;
     fileInput.value = '';
-    if ((type || carousel) && pendingFiles.length) {
+    if ((type || carousel || grid) && pendingFiles.length) {
       void (async () => {
         try {
           const filenames = await uploadFiles(pendingFiles, target);
-          await insertWithPreferredType(filenames, [], target, type, carousel);
+          if (grid) await appendToGrid(filenames, [], grid);
+          else await insertWithPreferredType(filenames, [], target, type, carousel);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -1126,11 +1197,13 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const target = currentTransaction();
     const type = preferredType;
     const carousel = targetedCarousel;
-    if ((type || carousel) && pendingFiles.length) {
+    const grid = targetedGrid;
+    if ((type || carousel || grid) && pendingFiles.length) {
       void (async () => {
         try {
           const filenames = await uploadFiles(pendingFiles, target);
-          await insertWithPreferredType(filenames, [], target, type, carousel);
+          if (grid) await appendToGrid(filenames, [], grid);
+          else await insertWithPreferredType(filenames, [], target, type, carousel);
         } catch (error) {
           window.alert(error instanceof Error ? error.message : 'Could not add images.');
         }
@@ -1173,6 +1246,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     target.insertIndex = detail.index;
     pendingInsertIndex = detail.index;
     targetedCarousel = null;
+    targetedGrid = null;
     preferredType = typeof detail.preferredType === 'string' ? detail.preferredType : null;
     pendingFiles = [];
     pendingSrcs = [];
@@ -1194,6 +1268,25 @@ const globeSvg = sizeIcon(globeIcon, 16);
       path: detail.path,
       target: detail.target,
     };
+    targetedGrid = null;
+    preferredType = null;
+    pendingFiles = [];
+    pendingSrcs = [];
+    showPanel();
+  }));
+
+  window.addEventListener('vcd:dev-grid-image-picker-open', ((event) => {
+    const detail = event.detail ?? {};
+    if (
+      typeof detail.documentKey !== 'string'
+      || !Array.isArray(detail.path)
+      || !detail.path.length
+      || !(detail.target instanceof HTMLElement)
+    ) return;
+    const transaction = beginTransaction(detail.documentKey, detail.target);
+    if (!transaction) return;
+    targetedGrid = { documentKey: detail.documentKey, path: detail.path, target: detail.target };
+    targetedCarousel = null;
     preferredType = null;
     pendingFiles = [];
     pendingSrcs = [];

@@ -180,7 +180,12 @@ import ToggleRow from '../ui/ToggleRow.astro';
     const cancelButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-cancel]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-carousel-revert]');
     const status = tuner.querySelector<HTMLElement>('[data-carousel-status]');
-    const initialTarget = document.querySelector<HTMLElement>('[data-dev-carousel-target]');
+    const initialTarget = document.querySelector<HTMLElement>('[data-dev-carousel-target]') || (() => {
+      const target = document.createElement('div');
+      target.dataset.devCarouselItems = '[]';
+      target.dataset.devCarouselSettings = JSON.stringify({ orientation: 'horizontal', visible: [] });
+      return target;
+    })();
     if (
       !orientationButtons.length
       || !viewportButtons.length
@@ -197,7 +202,6 @@ import ToggleRow from '../ui/ToggleRow.astro';
       || !saveButton
       || !revertButton
       || !status
-      || !initialTarget
     ) return;
 
     const readCatalog = (target: HTMLElement): CatalogItem[] => {
