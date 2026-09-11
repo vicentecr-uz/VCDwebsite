@@ -180,7 +180,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageCarousel';
+  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageGrid' | 'imageCarousel';
 
   type SpacingOption = { value: SpacingValue; label: string; title: string };
 
@@ -824,6 +824,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="bodyText">Text section</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="image">Image</button>
+              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
             </span>
             <span data-dev-intro-section-menu>${introMenuItem}</span>
@@ -2823,7 +2824,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           event.preventDefault();
           event.stopPropagation();
           const type = button.dataset.devSectionType as InsertableSectionType | undefined;
-          if (type === 'image' || type === 'imageCarousel') {
+          if (type === 'image' || type === 'imageGrid' || type === 'imageCarousel') {
             const sectionIndex = state.path.at(-2);
             if (typeof sectionIndex !== 'number') return;
             dismissGapToolbarAfterAddChoice();
@@ -2831,7 +2832,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               detail: {
                 documentKey: state.document,
                 index: sectionIndex,
-                preferredType: type === 'imageCarousel' ? 'imageCarousel' : 'image',
+                preferredType: type,
               },
             }));
             return;
