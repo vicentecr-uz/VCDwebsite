@@ -14,14 +14,21 @@ import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, 
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 import { getProjectGridListings } from '../../lib/projects';
 import { introRun, resolveIntroHeight } from '../../lib/projectIntro';
+import { shouldUseProjectScrollFinale } from '../../lib/projectScrollFinale';
 
 interface Props {
   documentKey: string;
   sections: Array<Record<string, unknown>>;
   introHeight?: number;
+  scrollFinale?: boolean;
 }
 
-const { documentKey, sections, introHeight: documentIntroHeight } = Astro.props;
+const {
+  documentKey,
+  sections,
+  introHeight: documentIntroHeight,
+  scrollFinale = false,
+} = Astro.props;
 const introMembers = new Map<number, Record<string, unknown>>();
 for (const run of introRun(sections)) {
   const height = resolveIntroHeight(documentIntroHeight, run);
@@ -44,11 +51,7 @@ const sectionSpacing = (
 
 const finaleFadeSection = sections.at(-2);
 const finaleTargetSection = sections.at(-1);
-const useScrollFinale = Boolean(
-  sections.length >= 2
-  && finaleFadeSection?.type === 'image'
-  && finaleTargetSection?.type === 'image',
-);
+const useScrollFinale = shouldUseProjectScrollFinale(scrollFinale, sections);
 const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
 ---
 
