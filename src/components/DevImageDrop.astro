@@ -711,6 +711,38 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const appendToGrid = async (filenames = [], srcs = [], target = targetedGrid, placeholder = false) => {
     if (!target) throw new Error('Could not find that grid.');
     await flushPendingEdits(target.documentKey);
+    let columns;
+    let constrained;
+    let layouts;
+    try {
+      columns = JSON.parse(target.target.dataset.devGridColumns || '{}');
+      constrained = JSON.parse(target.target.dataset.devGridConstrained || '{}');
+      layouts = JSON.parse(target.target.dataset.devGridLayouts || '{}');
+    } catch {
+      throw new Error('Could not read the current grid settings.');
+    }
+    if (!columns || typeof columns !== 'object' || Array.isArray(columns)
+      || !constrained || typeof constrained !== 'object' || Array.isArray(constrained)
+      || !layouts || typeof layouts !== 'object' || Array.isArray(layouts)) {
+      throw new Error('Could not read the current grid settings.');
+    }
+    const settingsResponse = await fetch('/api/content-batch', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ grids: [{
+        document: target.documentKey,
+        path: target.path,
+        columns,
+        constrained,
+        defaultAspectRatio: target.target.dataset.devGridDefaultAspect || '4:3',
+        matchHeight: target.target.dataset.devGridMatchHeight === 'true',
+        layouts,
+      }] }),
+    });
+    const settingsResult = await settingsResponse.json();
+    if (!settingsResponse.ok) throw new Error(settingsResult.error || 'Could not save the current grid settings.');
+    const pendingId = `grid:${target.documentKey}:${target.target.dataset.devGridPath || JSON.stringify(target.path)}`;
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
+    window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids: [pendingId] } }));
     const response = await fetch('/api/content-section', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ document: target.documentKey, action: 'appendMediaItems', path: target.path, ...(placeholder ? { placeholder: true } : srcs.length ? { srcs } : { filenames }) }),
