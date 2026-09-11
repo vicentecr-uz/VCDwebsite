@@ -9,6 +9,7 @@ import ProjectRedditCommentCarousel from './ProjectRedditCommentCarousel.astro';
 import ProjectSectionTitle from './ProjectSectionTitle.astro';
 import ProjectVideo from './ProjectVideo.astro';
 import ProjectInteractiveDemo from './ProjectInteractiveDemo.astro';
+import ProjectDetails from './ProjectDetails.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
@@ -133,6 +134,25 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         intro={intro !== undefined}
         introHeight={introHeight}
         introHeightPath={intro ? ['introHeight'] : undefined}
+      />
+    );
+  }
+
+  if (type === 'projectDetails') {
+    const rows = Array.isArray(section.rows)
+      ? section.rows.filter((row): row is { label: string; value: string } => (
+        Boolean(row) && typeof row === 'object' && !Array.isArray(row)
+        && typeof row.label === 'string' && typeof row.value === 'string'
+      ))
+      : [];
+    return (
+      <ProjectDetails
+        title={String(section.title ?? 'Project details & credits')}
+        rows={rows}
+        documentKey={documentKey}
+        sectionPath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
       />
     );
   }

@@ -63,12 +63,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       <SelectField
         class="dev-text-format__emphasis-style"
         hideLabel
-        label="Emphasis"
+        label="Text tone"
         data-dev-emphasis-style
-        value="normal"
+        value="default"
         options={[
-          { value: 'normal', label: 'Normal' },
-          { value: 'emphasis', label: 'Emphasis' },
+          { value: 'default', label: 'Default' },
+          { value: 'subtle', label: 'Subtle' },
         ]}
       />
       <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
@@ -180,7 +180,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageGrid' | 'imageCarousel';
+  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'projectDetails' | 'image' | 'imageGrid' | 'imageCarousel';
 
   type SpacingOption = { value: SpacingValue; label: string; title: string };
 
@@ -360,7 +360,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership' | 'project-details-rows';
       payload: Record<string, unknown>;
       revert: () => void;
       prepare?: () => Record<string, unknown>;
@@ -823,6 +823,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             <span data-dev-normal-section-menu>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="bodyText">Text section</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
+              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="image">Image</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
@@ -1792,6 +1793,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         await persistPendingBlockConverts();
       }
       await persistPlaceholderFills(documentKey);
+      for (const change of [...pendingMedia.values()]) {
+        if (change.kind !== 'project-details-rows' || change.payload.document !== documentKey) continue;
+        await persistDetailsRows(change);
+        pendingMedia.delete(change.id);
+      }
 
       const dirtyText = dirtyTextStates().filter((state) => state.document === documentKey);
       const dirtySpacing = dirtySpacingStates().filter((state) => state.document === documentKey);
@@ -2235,6 +2241,41 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const spacingClass = projectStackClassName(spacing, false);
       const introClass = intro ? ' project-block--intro' : '';
 
+      if (type === 'projectDetails') {
+        const section = document.createElement('section');
+        section.className = spacingClass
+          ? `project-block project-details ${spacingClass}${introClass}`
+          : `project-block project-details${introClass}`;
+        section.dataset.devSpacingDocument = documentKey;
+        section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
+        section.dataset.devSpacingValue = spacing;
+        section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
+        section.dataset.devSectionDeletable = 'projectDetails';
+        section.dataset.devProjectDetails = '';
+        const title = document.createElement('h2');
+        title.className = 'project-details__title';
+        title.dataset.devTextDocument = documentKey;
+        title.dataset.devTextPath = JSON.stringify([...sectionPath, 'title']);
+        title.dataset.devTextKind = 'text';
+        title.textContent = 'Project details & credits';
+        section.append(title);
+        const list = document.createElement('dl');
+        list.className = 'project-details__list';
+        section.append(list);
+        const row = createDetailsRow(section);
+        row.querySelector('dt')!.textContent = 'Role';
+        list.append(row);
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'project-details__add';
+        add.dataset.projectDetailsAdd = '';
+        add.dataset.devModeOnly = '';
+        add.textContent = 'Add row';
+        section.append(add);
+        syncProjectDetailsRowPaths(section);
+        return { root: section, textElement: title, textKind: 'text' as const, textPath: [...sectionPath, 'title'] };
+      }
+
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
@@ -2479,6 +2520,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }, { signal: editorSignal });
       element.addEventListener('keydown', (event) => {
         if (event.isComposing || event.defaultPrevented) return;
+        if (element.closest('[data-dev-project-details]')) {
+          if (event.key === 'Enter') event.preventDefault();
+          return;
+        }
         if (event.key === 'Backspace' || event.key === 'Delete') {
           if (event.metaKey || event.ctrlKey || event.altKey) return;
           if (linkPanelOpen) hideFormatBar();
@@ -2597,7 +2642,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
         options?.spacing ?? (sectionIndex === 0 ? 'none' : 'section');
-      const sectionId = `${type === 'sectionTitle' ? 'title' : 'body'}-${Date.now().toString(36)}`;
+      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1, documentKey);
@@ -2622,8 +2667,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         kind: built.textKind,
         savedValue: built.textKind === 'paragraphs' ? [''] : 'Section title',
       };
-      textStates.push(textState);
-      bindTextState(textState);
+      if (type === 'projectDetails') {
+        registerTextStates(built.root);
+      } else {
+        textStates.push(textState);
+        bindTextState(textState);
+      }
       if (isDevContentEditing()) {
         built.textElement.setAttribute(
           'contenteditable',
@@ -2635,7 +2684,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       mountDeleteButton(built.root);
       deletableSections.push(built.root);
 
-      if (type === 'sectionTitle') {
+      if (type === 'projectDetails') {
+        built.root.id = sectionId;
+        built.root.classList.add('section-block');
+      } else if (type === 'sectionTitle') {
         built.root.id = sectionId;
         built.root.classList.add('section-block');
         built.root.dataset.devSectionTitle = 'true';
@@ -2648,7 +2700,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacing: newSpacing,
         sectionId,
         root: built.root,
-        textStates: [textState],
+        textStates: type === 'projectDetails' ? textStates.filter((state) => built.root.contains(state.element)) : [textState],
         spacingState: spacingState ?? null,
         ...(options?.intro ? { intro: true } : {}),
       });
@@ -2664,7 +2716,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             type,
             id: sectionId,
             sectionId,
-            title: 'Section title',
+            title: type === 'projectDetails' ? 'Project details & credits' : 'Section title',
           },
         },
       }));
@@ -2864,7 +2916,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }));
             return;
           }
-          if (type !== 'bodyText' && type !== 'sectionTitle') return;
+          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'projectDetails') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
@@ -2873,6 +2925,144 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     spacingStates.forEach(wireSectionAddMenu);
+
+    type DetailsSnapshot = { rows: HTMLElement[]; fields: EditableTextState[] };
+    const detailsBaselines = new Map<HTMLElement, DetailsSnapshot>();
+    const detailsPendingIds = new WeakMap<HTMLElement, string>();
+    const detailsSnapshot = (root: HTMLElement): DetailsSnapshot => ({
+      rows: [...root.querySelectorAll<HTMLElement>('[data-project-details-row]')],
+      fields: textStates.filter((state) => root.querySelector('dl')?.contains(state.element)),
+    });
+    const readProjectDetailsRows = (root: HTMLElement) => detailsSnapshot(root).rows.map((row) => ({
+      label: cleanText(row.querySelector('[data-project-details-label]')?.textContent ?? ''),
+      value: cleanText(row.querySelector('[data-project-details-value]')?.textContent ?? ''),
+    }));
+    const syncProjectDetailsRowPaths = (root: HTMLElement) => {
+      const sectionPath = JSON.parse(root.dataset.devSpacingPath || '[]').slice(0, -1);
+      detailsSnapshot(root).rows.forEach((row, index) => {
+        for (const name of ['label', 'value']) {
+          const field = row.querySelector<HTMLElement>(`[data-project-details-${name}]`);
+          if (!field) continue;
+          const path = [...sectionPath, 'rows', index, name];
+          field.dataset.devTextPath = JSON.stringify(path);
+          const state = textStates.find((candidate) => candidate.element === field);
+          if (state) state.path = path;
+        }
+      });
+      root.querySelectorAll<HTMLButtonElement>('[data-project-details-remove]').forEach((button) => {
+        button.disabled = detailsSnapshot(root).rows.length <= 1;
+      });
+      const add = root.querySelector<HTMLButtonElement>('[data-project-details-add]');
+      if (add) add.disabled = detailsSnapshot(root).rows.length >= 100;
+    };
+    const restoreDetailsSnapshot = (root: HTMLElement, snapshot: DetailsSnapshot) => {
+      const list = root.querySelector('dl');
+      if (!list) return;
+      detachSectionStates(list);
+      list.replaceChildren(...snapshot.rows);
+      textStates.push(...snapshot.fields);
+      syncProjectDetailsRowPaths(root);
+    };
+    const stageProjectDetailsRows = (root: HTMLElement) => {
+      const baseline = detailsBaselines.get(root);
+      if (!baseline) return;
+      let id = detailsPendingIds.get(root);
+      if (!id) {
+        id = `project-details:${crypto.randomUUID()}`;
+        detailsPendingIds.set(root, id);
+      }
+      const current = detailsSnapshot(root);
+      if (current.rows.length === baseline.rows.length && current.rows.every((row, i) => row === baseline.rows[i])) {
+        pendingMedia.delete(id);
+        updateActions();
+        return;
+      }
+      const prepare = () => ({
+        action: 'updateProjectDetailsRows',
+        document: root.dataset.devSpacingDocument,
+        index: JSON.parse(root.dataset.devSpacingPath || '[]').at(-2),
+        rows: readProjectDetailsRows(root),
+      });
+      pendingMedia.set(id, {
+        id, root, kind: 'project-details-rows', payload: prepare(), prepare,
+        revert: () => {
+          restoreDetailsSnapshot(root, baseline);
+          baseline.fields.forEach((field) => renderValue(field, field.savedValue));
+        },
+      });
+      updateActions();
+    };
+    const persistDetailsRows = async (change: PendingMediaChange) => {
+      if (!change.root?.isConnected) return;
+      const response = await fetch('/api/content-section', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(change.prepare?.() ?? change.payload),
+      });
+      const payload = await readApiJson(response);
+      if (!response.ok) throw new Error(String(payload.error || 'Could not save project details rows.'));
+      detailsBaselines.set(change.root, detailsSnapshot(change.root));
+    };
+    const createDetailsRow = (root: HTMLElement) => {
+      const row = document.createElement('div');
+      row.className = 'project-details__row';
+      row.dataset.projectDetailsRow = '';
+      for (const [tag, name] of [['dt', 'label'], ['dd', 'value']]) {
+        const field = document.createElement(tag);
+        field.className = `project-details__${name}`;
+        field.setAttribute(`data-project-details-${name}`, '');
+        field.dataset.devTextDocument = root.dataset.devSpacingDocument;
+        field.dataset.devTextPath = '[]';
+        field.dataset.devTextKind = 'text';
+        field.textContent = name === 'label' ? 'Detail' : '';
+        row.append(field);
+      }
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'project-details__remove';
+      remove.dataset.projectDetailsRemove = '';
+      remove.dataset.devModeOnly = '';
+      remove.setAttribute('aria-label', 'Remove detail');
+      remove.textContent = 'Remove';
+      row.append(remove);
+      return row;
+    };
+    document.addEventListener('click', (event) => {
+      if (!isDevContentEditing() || actionsBusy || pageHistory.busy) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const root = target.closest<HTMLElement>('[data-dev-project-details]');
+      if (!root) return;
+      const add = target.closest('[data-project-details-add]');
+      const remove = target.closest('[data-project-details-remove]');
+      if (!add && !remove) return;
+      event.preventDefault();
+      captureFieldHistory();
+      pageHistory.breakGroup();
+      const before = detailsSnapshot(root);
+      if (!detailsBaselines.has(root)) detailsBaselines.set(root, before);
+      if (add) {
+        if (before.rows.length >= 100) return;
+        const row = createDetailsRow(root);
+        root.querySelector('dl')!.append(row);
+        syncProjectDetailsRowPaths(root);
+        registerTextStates(row);
+      } else {
+        if (before.rows.length <= 1) return;
+        const row = target.closest<HTMLElement>('[data-project-details-row]');
+        if (!row) return;
+        detachSectionStates(row);
+        row.remove();
+      }
+      syncProjectDetailsRowPaths(root);
+      const after = detailsSnapshot(root);
+      const restore = (snapshot: DetailsSnapshot) => {
+        restoreDetailsSnapshot(root, snapshot);
+        stageProjectDetailsRows(root);
+      };
+      pageHistory.push({ label: add ? 'Add detail' : 'Remove detail', undo: () => restore(before), redo: () => restore(after) });
+      stageProjectDetailsRows(root);
+      if (add) after.rows.at(-1)?.querySelector<HTMLElement>('dt')?.focus();
+    }, { signal: editorSignal });
     syncIntroRunControls();
     window.addEventListener('vcd:dev-section-reordered', ((event: CustomEvent<{
       document?: string;
@@ -2953,6 +3143,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!getDropZone(entry.documentKey)) throw new Error('The deleted block’s page is no longer available.');
       if (pendingIndex >= 0) pendingSectionDeletes.splice(pendingIndex, 1);
       restorePendingSectionDelete(entry);
+      if (detailsBaselines.has(entry.root)) stageProjectDetailsRows(entry.root);
       if (entry.pendingInsert) {
         pendingSectionInserts.push(entry.pendingInsert);
       } else if (entry.restoreToken) {
@@ -3705,7 +3896,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           && detail.kind !== 'section-nav'
           && detail.kind !== 'media-remove'
           && detail.kind !== 'project-settings'
-          && detail.kind !== 'gallery-membership')
+          && detail.kind !== 'gallery-membership'
+          && detail.kind !== 'project-details-rows')
       ) {
         return;
       }
@@ -3842,6 +4034,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     let syncingBlockStyle = false;
 
     const syncBlockStyleSelect = (state: EditableTextState) => {
+      const field = blockStyleSelect.closest<HTMLElement>('.dev-text-format__block-style');
+      if (field) field.hidden = Boolean(state.element.closest('[data-dev-project-details]'));
       const next = blockStyleValue(state);
       syncingBlockStyle = true;
       if (blockStyleSelect.value !== next) {
@@ -3900,7 +4094,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const node = savedFormatRange?.commonAncestorContainer
         ?? (selection?.rangeCount ? selection.getRangeAt(0).commonAncestorContainer : null);
       const block = findBlockState(node);
-      if (!block) return;
+      if (!block || block.section.matches('[data-dev-project-details]')) return;
       const current = blockStyleValue(block.state);
       if (current === value) return;
 
@@ -4562,7 +4756,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const range = selection.getRangeAt(0);
       const selectionBlock = findBlockState(range.commonAncestorContainer);
       const block = focusBlock ?? selectionBlock;
-      if (!block) {
+      if (!block || block.section.matches('[data-dev-project-details]')) {
         hideFormatBar();
         return;
       }
@@ -4642,6 +4836,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     const markSelector = {
       emphasis: '.text-emphasis',
+      subtle: '.text-subtle',
       bold: 'strong, b',
       italic: 'em, i',
       underline: 'u',
@@ -4680,14 +4875,15 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncEmphasisStyle = () => {
-      const active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'emphasis'));
+      const active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'subtle'));
       emphasisStyleSelect.value = active
-        ? 'emphasis'
-        : 'normal';
+        ? 'subtle'
+        : 'default';
     };
 
     type InlineMarks = {
       emphasis: boolean;
+      subtle: boolean;
       bold: boolean;
       italic: boolean;
       underline: boolean;
@@ -4700,7 +4896,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       selected: boolean;
     };
 
-    const applyEmphasisMark = (range: Range, emphasized: boolean) => {
+    const applyEmphasisMark = (range: Range, subtle: boolean) => {
       const startElement = range.startContainer instanceof Element
         ? range.startContainer
         : range.startContainer.parentElement;
@@ -4739,6 +4935,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (!(node instanceof HTMLElement)) return;
         const marks = { ...inherited };
         if (node.matches(markSelector.emphasis)) marks.emphasis = true;
+        if (node.matches(markSelector.subtle)) marks.subtle = true;
         if (node.matches(markSelector.bold)) marks.bold = true;
         if (node.matches(markSelector.italic)) marks.italic = true;
         if (node.matches(markSelector.underline)) marks.underline = true;
@@ -4756,6 +4953,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       };
       const emptyMarks: InlineMarks = {
         emphasis: false,
+        subtle: false,
         bold: false,
         italic: false,
         underline: false,
@@ -4765,7 +4963,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const selectedAtoms = atoms.filter((atom) => atom.selected);
       if (!selectedAtoms.length) return null;
       selectedAtoms.forEach((atom) => {
-        atom.marks = { ...atom.marks, emphasis: emphasized };
+        atom.marks = { ...atom.marks, subtle };
       });
 
       const keyFor = (atom: InlineAtom) => JSON.stringify({
@@ -4796,6 +4994,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (marks.italic) rendered = wrap(rendered, 'em');
         if (marks.bold) rendered = wrap(rendered, 'strong');
         if (marks.emphasis) rendered = wrap(rendered, 'span', 'text-emphasis');
+        if (marks.subtle) rendered = wrap(rendered, 'span', 'text-subtle');
         if (marks.link?.href) {
           const anchor = wrap(rendered, 'a', marks.link.underlineOff ? 'is-underline-off' : '');
           anchor.setAttribute('href', marks.link.href);
@@ -4829,7 +5028,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!restoreFormatRange() || !savedFormatRange || savedFormatRange.collapsed) return;
       const block = findParagraphState(savedFormatRange.commonAncestorContainer)?.element;
       if (!block) return;
-      const range = applyEmphasisMark(savedFormatRange, value === 'emphasis');
+      const range = applyEmphasisMark(savedFormatRange, value === 'subtle');
       if (!range) return;
       const selection = window.getSelection();
       selection?.removeAllRanges();
@@ -5375,6 +5574,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const styleTokenChanges = pendingChanges.filter((change) => change.kind === 'style-token');
       const sectionNavChanges = pendingChanges.filter((change) => change.kind === 'section-nav');
       const mediaRemoveChanges = pendingChanges.filter((change) => change.kind === 'media-remove');
+      const detailsChanges = pendingChanges.filter((change) => change.kind === 'project-details-rows');
       const imageChanges = pendingChanges.filter(
         (change) => (
           change.kind !== 'listing-order'
@@ -5385,6 +5585,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           && change.kind !== 'section-nav'
           && change.kind !== 'media-remove'
           && change.kind !== 'project-settings'
+          && change.kind !== 'project-details-rows'
         ),
       );
       if (
@@ -5435,6 +5636,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           styleToken: styleTokenChanges.length,
           sectionNav: sectionNavChanges.length,
           mediaRemove: mediaRemoveChanges.length,
+          projectDetailsRows: detailsChanges.length,
         },
         textPaths: dirtyText.slice(0, 8).map((state) => state.path.join('.')),
       };
@@ -5579,6 +5781,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const payload = await readApiJson(response);
           if (!response.ok) throw new Error(String(payload.error || 'Could not commit style changes.'));
           acknowledge(styleTokenChanges);
+        }
+
+        for (const change of detailsChanges) {
+          await persistDetailsRows(change);
+          acknowledge([change]);
         }
 
         if (imageChanges.length > 0) {

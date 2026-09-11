@@ -1497,6 +1497,7 @@ function contentBatchDevWriter() {
 const INSERTABLE_SECTION_TYPES = new Set([
   'bodyText',
   'sectionTitle',
+  'projectDetails',
   'image',
   'imageGrid',
   'imageCarousel',
@@ -1622,6 +1623,8 @@ export function contentSectionDevWriter() {
                 ? 'appendMediaItems'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
+              : body.action === 'updateProjectDetailsRows'
+                ? 'updateProjectDetailsRows'
                 : body.action === 'convert'
                   ? 'convert'
                   : 'insert';
@@ -1636,6 +1639,30 @@ export function contentSectionDevWriter() {
           const data = JSON.parse(await readFile(file, 'utf8'));
           if (!Array.isArray(data.sections)) {
             send(400, { error: 'The sections list is out of date. Refresh and try again.' });
+            return;
+          }
+
+          if (action === 'updateProjectDetailsRows') {
+            if (!Number.isInteger(index) || index < 0 || index >= data.sections.length) {
+              send(400, { error: 'That section cannot be updated.' });
+              return;
+            }
+            const section = data.sections[index];
+            const rows = body.rows;
+            // Up to 100 plain-text rows; extend this shape when richer credit fields are needed.
+            const validRows = Array.isArray(rows)
+              && rows.length >= 1 && rows.length <= 100
+              && rows.every((row) => row && typeof row === 'object' && !Array.isArray(row)
+                && typeof row.label === 'string' && row.label.length <= 500
+                && typeof row.value === 'string' && row.value.length <= 20_000);
+            if (!section || typeof section !== 'object' || Array.isArray(section) || section.type !== 'projectDetails' || !validRows) {
+              send(400, { error: 'That details block is out of date.' });
+              return;
+            }
+            const previousRows = Array.isArray(section.rows) ? structuredClone(section.rows) : [];
+            section.rows = rows.map((row) => ({ label: row.label, value: row.value }));
+            await writeContentJson(file, data);
+            send(200, { ok: true, action, index, previousRows, rows: section.rows, section });
             return;
           }
 
@@ -1989,6 +2016,15 @@ export function contentSectionDevWriter() {
               spacing: insertSpacing,
               paragraphs: [''],
               ...(intro ? { intro: true } : {}),
+            };
+          } else if (type === 'projectDetails') {
+            const id = `details-${Date.now().toString(36)}`;
+            section = {
+              type: 'projectDetails',
+              id,
+              title: 'Project details & credits',
+              rows: [{ label: 'Role', value: '' }],
+              spacing: insertSpacing,
             };
           } else if (type === 'image') {
             if (!srcs.length && !filenames.length) {
