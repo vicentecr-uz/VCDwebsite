@@ -17,7 +17,7 @@ const el = (html: string) => {
 
 test('serializes supported inline markup and escapes unsafe content', () => {
   assert.equal(serializeInlineHtml(el('<strong>A &amp; B</strong><script>bad()</script><a href="https://e.test/?a=1&amp;b=2">go</a>')), '<strong>A &amp; B</strong><a href="https://e.test/?a=1&amp;b=2">go</a>');
-  assert.equal(serializeInlineHtml(el('<a href="javascript:alert(1)">unsafe</a><span class="text-emphasis">ok</span>')), 'unsafe<span class="text-emphasis">ok</span>');
+  assert.equal(serializeInlineHtml(el('<a href="javascript:alert(1)">unsafe</a><span class="text-emphasis">old tone</span><span class="text-subtle">quiet tone</span>')), 'unsafe<span class="text-emphasis">old tone</span><span class="text-subtle">quiet tone</span>');
   assert.equal(serializeInlineHtml(el('<strong>root <a href="/x">link</a></strong><br>')), '<strong>root <a href="/x">link</a></strong><br>');
   assert.equal(serializeInlineHtml(el('<p><br></p>').firstElementChild!), '');
 });

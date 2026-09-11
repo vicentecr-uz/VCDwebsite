@@ -38,6 +38,7 @@ function setup() {
   let token = 0;
   const env: any = {
     window, document, Node: window.Node, HTMLElement: window.HTMLElement, CustomEvent: window.CustomEvent,
+    detailsBaselines: new Map(), stageProjectDetailsRows() {},
     actionsBusy: false, savedFormatRange: null, pageHistory, textStates, spacingStates,
     pendingSectionDeletes: [], pendingSectionInserts: [], persistedMediaInserts: [], pendingBlockConverts: [],
     deletableSections: [...blocks], serverSectionIds: new Map(),
