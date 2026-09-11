@@ -1692,7 +1692,7 @@ export function contentSectionDevWriter() {
               ? body.srcs.map((value) => String(value || '').trim()).filter(Boolean)
               : [];
             if (!fieldPath.length || !fieldPath.every(isSafePathPart)) {
-              send(400, { error: 'That carousel path is invalid.' });
+              send(400, { error: 'That media block path is invalid.' });
               return;
             }
             const placeholder = body.placeholder === true;
@@ -1736,7 +1736,7 @@ export function contentSectionDevWriter() {
               const appendedItems = Array.isArray(built.items) ? built.items : [];
               const appendedIds = appendedItems.map((item) => String(item.id || '')).filter(Boolean);
               if (!appendedItems.length || appendedItems.length !== appendedIds.length) {
-                throw new Error('Could not build those carousel images.');
+                throw new Error('Could not build those images.');
               }
 
               const existingIds = target.items
@@ -1763,7 +1763,7 @@ export function contentSectionDevWriter() {
                 ? fieldPath[1]
                 : -1;
               if (sectionIndex < 0 || sectionIndex >= data.sections.length) {
-                throw new Error('That carousel section no longer exists.');
+                throw new Error('That media block no longer exists.');
               }
               await writeContentJson(file, data);
               send(200, {
@@ -1775,7 +1775,7 @@ export function contentSectionDevWriter() {
               });
             } catch (error) {
               send(400, {
-                error: error instanceof Error ? error.message : 'Could not add images to that carousel.',
+                error: error instanceof Error ? error.message : 'Could not add images to that media block.',
               });
             }
             return;
