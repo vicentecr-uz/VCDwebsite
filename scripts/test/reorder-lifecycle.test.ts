@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createReorderController } from '../../src/scripts/sectionReorder.ts';
+import { createReorderController, dropSpringProgress, REORDER_TIMING } from '../../src/scripts/sectionReorder.ts';
 
 type FakeNode = FakeElement | FakeText;
 
@@ -155,6 +155,19 @@ await test('slot mutation runs before final slot metrics measurement', () => {
   assert.ok(events.indexOf('measure') >= 0);
   assert.ok(events.indexOf('slot') < events.indexOf('measure'));
   controller.destroy();
+});
+
+await test('drop spring settles with Apple-snappy-small overshoot', () => {
+  assert.equal(REORDER_TIMING.DROP_ANIMATION_MS, 500);
+  assert.equal(dropSpringProgress(0), 0);
+  assert.equal(dropSpringProgress(1), 1);
+
+  let maximum = 0;
+  for (let index = 0; index <= 1000; index += 1) {
+    maximum = Math.max(maximum, dropSpringProgress(index / 1000));
+  }
+  assert.ok(maximum > 1, 'the spring should retain a small natural overshoot');
+  assert.ok(maximum < 1.01, 'the spring overshoot should stay below 1%');
 });
 
 await test('initial slot height is seeded before host layout sync', () => {
