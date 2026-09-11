@@ -43,6 +43,7 @@ export type ProjectDocument = {
   listings?: Partial<Record<'home' | 'work' | 'play', ProjectListingCard>>;
   teaser?: ProjectTeaserConfig;
   trailingSpacing?: ProjectStackSpacing;
+  scrollFinale?: boolean;
   outline?: Array<Record<string, unknown>>;
   sections: Array<Record<string, unknown>>;
 };
