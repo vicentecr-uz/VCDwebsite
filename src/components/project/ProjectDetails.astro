@@ -1,0 +1,61 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+
+interface Props {
+  title: string;
+  rows: Array<{ label: string; value: string }>;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+}
+
+const {
+  title,
+  rows,
+  documentKey = '',
+  sectionPath = [],
+  spacing = 'section',
+  sectionId,
+} = Astro.props;
+const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
+const path = (field: string | number) => JSON.stringify([...sectionPath, field]);
+const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...sectionPath, 'rows', index, field]);
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-details', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingDevAttrs(documentKey, sectionPath, spacing) ?? {})}
+  data-dev-section-deletable={editable ? "projectDetails" : undefined}
+  data-dev-project-details={editable ? "" : undefined}
+>
+  <h2
+    class="project-details__title"
+    data-dev-text-document={editable ? documentKey : undefined}
+    data-dev-text-path={editable ? path('title') : undefined}
+    data-dev-text-kind={editable ? 'text' : undefined}
+  >{title}</h2>
+  <dl class="project-details__list">
+    {rows.map((row, index) => (
+      <div class="project-details__row" data-project-details-row>
+        <dt
+          class="project-details__label"
+          data-project-details-label
+          data-dev-text-document={editable ? documentKey : undefined}
+          data-dev-text-path={editable ? rowPath(index, 'label') : undefined}
+          data-dev-text-kind={editable ? 'text' : undefined}
+        >{row.label}</dt>
+        <dd
+          class="project-details__value"
+          data-project-details-value
+          data-dev-text-document={editable ? documentKey : undefined}
+          data-dev-text-path={editable ? rowPath(index, 'value') : undefined}
+          data-dev-text-kind={editable ? 'text' : undefined}
+        >{row.value}</dd>
+        {editable && <button type="button" class="project-details__remove" data-project-details-remove data-dev-mode-only disabled={rows.length <= 1} aria-label={`Remove ${row.label || 'detail'}`}>Remove</button>}
+      </div>
+    ))}
+  </dl>
+  {editable && <button type="button" class="project-details__add" data-project-details-add data-dev-mode-only>Add row</button>}
+</section>

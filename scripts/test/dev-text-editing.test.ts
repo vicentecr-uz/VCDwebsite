@@ -6,6 +6,29 @@ import { clipboardParagraphHtml } from '../../src/lib/devTextDom';
 const source = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const start = source.indexOf('    const bindTextState =');
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, source.indexOf('    const TRASH_ICON', start)) + '\nreturn bindTextState;');
+const toneScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
+  const markSelector = { emphasis: '.text-emphasis', subtle: '.text-subtle', bold: 'strong, b', italic: 'em, i', underline: 'u' };
+  ${source.slice(source.indexOf('    const applyEmphasisMark ='), source.indexOf('    const applyEmphasisStyle ='))}
+  return applyEmphasisMark;
+`);
+
+function applyTone(markup: string, subtle: boolean) {
+  const window = new Window();
+  const document = window.document;
+  const paragraph = document.createElement('p');
+  paragraph.innerHTML = markup;
+  document.body.append(paragraph);
+  const text = paragraph.querySelector('.text-emphasis')?.firstChild ?? paragraph.firstChild!;
+  const range = document.createRange();
+  range.selectNodeContents(text);
+  const apply = new Function('env', `with(env) { ${toneScript} }`)({
+    window, document, Element: window.Element, HTMLElement: window.HTMLElement,
+    HTMLAnchorElement: window.HTMLAnchorElement, HTMLBRElement: window.HTMLBRElement,
+    Node: window.Node, Text: window.Text,
+  });
+  apply(range, subtle);
+  return paragraph.innerHTML;
+}
 
 function setup(markup = '<p>Before</p><p>After</p>') {
   const window = new Window();
@@ -101,6 +124,20 @@ test('native undo input leaves browser-owned empty and soft-line nodes intact', 
   element.dispatchEvent(new window.InputEvent('input', { inputType: 'historyUndo' }));
   expect(element.innerHTML).toBe(before);
   expect(window.getSelection().anchorNode).toBe(element.lastChild);
+});
+
+test('text tone preserves legacy emphasis weight while toggling subtle colour', () => {
+  expect(applyTone('<span class="text-emphasis">Legacy</span> plain', true))
+    .toBe('<span class="text-subtle"><span class="text-emphasis">Legacy</span></span> plain');
+  expect(applyTone('<span class="text-subtle"><span class="text-emphasis">Legacy</span></span> plain', false))
+    .toBe('<span class="text-emphasis">Legacy</span> plain');
+});
+
+test('text tone preserves inline marks, link attributes, and unselected tones', () => {
+  const markup = '<span class="text-emphasis"><strong><em><u><a href="/legacy" class="is-underline-off">Legacy</a></u></em></strong></span> <span class="text-subtle"><span class="text-emphasis">quiet</span></span> tail';
+  expect(applyTone(markup, true)).toBe(
+    '<a class="is-underline-off" href="/legacy"><span class="text-subtle"><span class="text-emphasis"><strong><em><u>Legacy</u></em></strong></span></span></a> <span class="text-subtle"><span class="text-emphasis">quiet</span></span> tail',
+  );
 });
 
 function sectionCommands(markup: string) {

@@ -32,6 +32,9 @@ const serializeNode = (node: Node): string => {
   if (tag === 'SPAN' && node.classList.contains('text-emphasis')) {
     return inner ? '<span class="text-emphasis">' + inner + '</span>' : '';
   }
+  if (tag === 'SPAN' && node.classList.contains('text-subtle')) {
+    return inner ? '<span class="text-subtle">' + inner + '</span>' : '';
+  }
   if (tag === 'A') {
     const href = (node.getAttribute('href') ?? '').trim();
     if (!inner || !SAFE_HREF.test(href)) return inner;
