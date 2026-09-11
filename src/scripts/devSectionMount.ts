@@ -197,6 +197,7 @@ export function mountImageGridSection(
     'project-image-grid',
     matchHeight && 'project-image-grid--match-height',
     projectStackClass(spacing),
+    'dev-grid-edit-target',
   ].filter(Boolean).join(' ');
   grid.style.cssText = `${imageGridColumnsStyle(columns)};${imageGridConstrainedStyle(constrained)};`;
   grid.setAttribute('data-match-height', matchHeight ? 'true' : 'false');

@@ -14,6 +14,9 @@ import {
   buildImageSection,
   buildImageSectionFromSrcs,
   buildPlaceholderImageSection,
+  buildPlaceholderImageGridSection,
+  buildPlaceholderImageCarouselSection,
+  buildPlaceholderItem,
   mediaDevServer,
   fillPlaceholderImageSection,
   listingOrderDevWriter,
@@ -1498,6 +1501,8 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'imageGrid',
   'imageCarousel',
   'placeholder',
+  'placeholderImageGrid',
+  'placeholderImageCarousel',
 ]);
 // Insert stays allowlisted (construction needs a known shape). Delete is
 // default-on: any section at a valid index can go — no type registration.
@@ -1687,10 +1692,15 @@ export function contentSectionDevWriter() {
               ? body.srcs.map((value) => String(value || '').trim()).filter(Boolean)
               : [];
             if (!fieldPath.length || !fieldPath.every(isSafePathPart)) {
-              send(400, { error: 'That carousel path is invalid.' });
+              send(400, { error: 'That media block path is invalid.' });
               return;
             }
-            if (!filenames.length && !srcs.length) {
+            const placeholder = body.placeholder === true;
+            if (placeholder && (srcs.length || filenames.length)) {
+              send(400, { error: 'Placeholder append cannot include image files.' });
+              return;
+            }
+            if (!placeholder && !filenames.length && !srcs.length) {
               send(400, { error: 'At least one image file is required.' });
               return;
             }
@@ -1707,30 +1717,34 @@ export function contentSectionDevWriter() {
               !target
               || typeof target !== 'object'
               || Array.isArray(target)
-              || target.type !== 'imageCarousel'
+              || (target.type !== 'imageCarousel' && target.type !== 'imageGrid')
               || !Array.isArray(target.items)
             ) {
-              send(400, { error: 'That carousel path no longer exists.' });
+              send(400, { error: 'That media block path no longer exists.' });
               return;
             }
-
             try {
-              const built = srcs.length
-                ? await buildImageCarouselSectionFromSrcs(srcs)
-                : await buildImageCarouselSection(documentKey, filenames);
+              const built = placeholder
+                ? { items: [buildPlaceholderItem(`${target.type === 'imageGrid' ? 'grid' : 'carousel'}-item-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`)] }
+                : target.type === 'imageGrid'
+                  ? (srcs.length
+                    ? await buildImageGridSectionFromSrcs(srcs)
+                    : await buildImageGridSection(documentKey, filenames))
+                  : (srcs.length
+                    ? await buildImageCarouselSectionFromSrcs(srcs)
+                    : await buildImageCarouselSection(documentKey, filenames));
               const appendedItems = Array.isArray(built.items) ? built.items : [];
               const appendedIds = appendedItems.map((item) => String(item.id || '')).filter(Boolean);
               if (!appendedItems.length || appendedItems.length !== appendedIds.length) {
-                throw new Error('Could not build those carousel images.');
+                throw new Error('Could not build those images.');
               }
 
               const existingIds = target.items
                 .map((item) => String(item?.id || ''))
                 .filter(Boolean);
               target.items.push(...appendedItems);
-              target.visible = [
-                ...(Array.isArray(target.visible) ? target.visible.map(String) : existingIds),
-                ...appendedIds,
+              if (target.type === 'imageCarousel') target.visible = [
+                ...(Array.isArray(target.visible) ? target.visible.map(String) : existingIds), ...appendedIds,
               ];
               if (target.breakpoints && typeof target.breakpoints === 'object' && !Array.isArray(target.breakpoints)) {
                 for (const breakpoint of Object.values(target.breakpoints)) {
@@ -1739,12 +1753,17 @@ export function contentSectionDevWriter() {
                   breakpoint.visible.push(...appendedIds);
                 }
               }
+              if (target.type === 'imageGrid' && target.layouts && typeof target.layouts === 'object' && !Array.isArray(target.layouts)) {
+                for (const layout of Object.values(target.layouts)) {
+                  if (layout && typeof layout === 'object' && Array.isArray(layout.visible)) layout.visible.push(...appendedIds);
+                }
+              }
 
               const sectionIndex = fieldPath[0] === 'sections' && Number.isInteger(fieldPath[1])
                 ? fieldPath[1]
                 : -1;
               if (sectionIndex < 0 || sectionIndex >= data.sections.length) {
-                throw new Error('That carousel section no longer exists.');
+                throw new Error('That media block no longer exists.');
               }
               await writeContentJson(file, data);
               send(200, {
@@ -1756,7 +1775,7 @@ export function contentSectionDevWriter() {
               });
             } catch (error) {
               send(400, {
-                error: error instanceof Error ? error.message : 'Could not add images to that carousel.',
+                error: error instanceof Error ? error.message : 'Could not add images to that media block.',
               });
             }
             return;
@@ -2000,6 +2019,12 @@ export function contentSectionDevWriter() {
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           } else if (type === 'placeholder') {
             section = buildPlaceholderImageSection();
+          } else if (type === 'placeholderImageGrid') {
+            section = buildPlaceholderImageGridSection();
+          } else if (type === 'placeholderImageCarousel') {
+            section = buildPlaceholderImageCarouselSection();
+          }
+          if (type === 'placeholder' || type === 'placeholderImageGrid' || type === 'placeholderImageCarousel') {
             if (section && typeof section === 'object') section.spacing = insertSpacing;
           }
 

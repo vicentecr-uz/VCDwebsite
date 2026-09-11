@@ -114,6 +114,8 @@ import Button from '../ui/Button.astro';
 </DevOverlay>
 
 <script>
+  import plusIcon from 'lucide-static/icons/plus.svg?raw';
+  import { sizeIcon } from '../../lib/icons';
   import { refreshProjectCropCovers } from '../../lib/projectCropCover';
   import {
     imageGridConstrainedStyle,
@@ -154,7 +156,14 @@ import Button from '../ui/Button.astro';
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-grid-revert]');
     const clearOverrideButton = tuner.querySelector<HTMLButtonElement>('[data-grid-clear-override]');
     const status = tuner.querySelector<HTMLElement>('[data-grid-status]');
-    const initialTarget = document.querySelector<HTMLElement>('[data-dev-grid-target]');
+    const initialTarget = document.querySelector<HTMLElement>('[data-dev-grid-target]') || (() => {
+      const target = document.createElement('div');
+      target.dataset.devGridColumns = JSON.stringify({ desktop: 2, tablet: 2, mobile: 2 });
+      target.dataset.devGridItems = '[]';
+      target.dataset.devGridLayouts = '{}';
+      target.dataset.devGridDefaultAspect = '4:3';
+      return target;
+    })();
     if (
       !viewportButtons.length ||
       !columnsSelect ||
@@ -168,8 +177,7 @@ import Button from '../ui/Button.astro';
       !saveButton ||
       !revertButton ||
       !clearOverrideButton ||
-      !status ||
-      !initialTarget
+      !status
     ) return;
 
     const viewportForWidth = (): ImageViewport => {
@@ -519,11 +527,6 @@ import Button from '../ui/Button.astro';
         status.textContent = 'Keep at least one image, or delete the whole section.';
         return;
       }
-      const ok = window.confirm(
-        'Remove this image from the page?\n\nIt stays in the asset manager so you can reuse it later.',
-      );
-      if (!ok) return;
-
       const target = editTarget;
       const documentKey = target.dataset.devDocument || '';
       let gridPath: Array<string | number> = [];
@@ -665,6 +668,30 @@ import Button from '../ui/Button.astro';
       return wrap;
     };
 
+    const makeAddThumb = () => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'project-grid-tuner__add';
+      button.setAttribute('aria-label', 'Add image to grid');
+      button.innerHTML = sizeIcon(plusIcon, 18);
+      button.addEventListener('pointerdown', (event) => event.stopPropagation());
+      button.addEventListener('click', () => {
+        const target = editTarget;
+        const documentKey = target.dataset.devDocument || '';
+        let path: Array<string | number> = [];
+        try { path = JSON.parse(target.dataset.devGridPath || '[]'); } catch { path = []; }
+        if (!documentKey || !path.length) {
+          status.textContent = 'This grid is not wired for saving.';
+          return;
+        }
+        saveDraft();
+        window.dispatchEvent(new CustomEvent('vcd:dev-grid-image-picker-open', {
+          detail: { documentKey, path, target },
+        }));
+      });
+      return button;
+    };
+
     const insertIdAt = (list: string[], id: string, beforeId: string | null) => {
       const without = list.filter((entry) => entry !== id);
       if (!beforeId) {
@@ -736,6 +763,7 @@ import Button from '../ui/Button.astro';
       );
       visibleBoard.dataset.gridColumns = String(draftColumns[selectedViewport]);
       visibleBoard.replaceChildren(
+        makeAddThumb(),
         ...resolved.visible
           .map((id) => byId.get(id))
           .filter((item): item is GridItem => !!item)
@@ -1016,7 +1044,7 @@ import Button from '../ui/Button.astro';
     .forEach(initProjectImageGridTuner);
 </script>
 
-<style>
+<style is:global>
   .project-grid-tuner {
     position: relative;
     display: flex;
@@ -1084,6 +1112,37 @@ import Button from '../ui/Button.astro';
     grid-template-rows: auto auto;
     gap: 0.15em;
     min-width: 0;
+  }
+
+  .project-grid-tuner__add {
+    display: grid;
+    place-items: center;
+    align-self: start;
+    width: 100%;
+    aspect-ratio: 1;
+    margin: 0;
+    padding: 0;
+    border: var(--dev-edit-dash);
+    border-color: var(--dev-edit-dash-color);
+    border-radius: 0.2em;
+    background: transparent;
+    color: var(--sys-color-on-srf-variant);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  }
+
+  .project-grid-tuner__add:focus-visible {
+    outline: 2px solid var(--sys-color-primary);
+    outline-offset: 2px;
+  }
+
+  .project-grid-tuner__add:active { transform: scale(0.96); }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-grid-tuner__add:hover {
+      background: var(--sys-color-srf-container-high);
+      color: var(--sys-color-on-srf);
+    }
   }
 
   .project-grid-tuner__thumb {

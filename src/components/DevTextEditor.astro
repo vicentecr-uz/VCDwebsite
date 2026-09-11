@@ -180,7 +180,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageCarousel';
+  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'image' | 'imageGrid' | 'imageCarousel';
 
   type SpacingOption = { value: SpacingValue; label: string; title: string };
 
@@ -824,6 +824,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="bodyText">Text section</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="image">Image</button>
+              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
               <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
             </span>
             <span data-dev-intro-section-menu>${introMenuItem}</span>
@@ -2495,6 +2496,33 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }, { signal: editorSignal });
     };
 
+    const registerTextStates = (root: HTMLElement) => {
+      root.querySelectorAll<HTMLElement>('[data-dev-text-document][data-dev-text-path]').forEach((element) => {
+        if (textStates.some((state) => state.element === element)) return;
+        try {
+          const path = JSON.parse(element.dataset.devTextPath || '[]');
+          const documentKey = element.dataset.devTextDocument || '';
+          if (!Array.isArray(path) || !documentKey) return;
+          const state: EditableTextState = {
+            element, document: documentKey, path,
+            kind: element.dataset.devTextKind === 'paragraphs' ? 'paragraphs' : 'text', savedValue: '',
+          };
+          state.savedValue = readValue(state);
+          textStates.push(state);
+          bindTextState(state);
+          if (isDevContentEditing()) {
+            element.setAttribute('contenteditable', state.kind === 'paragraphs' ? 'true' : 'plaintext-only');
+            element.setAttribute('spellcheck', 'true');
+          } else {
+            element.removeAttribute('contenteditable');
+            element.removeAttribute('spellcheck');
+          }
+        } catch {
+          // Ignore malformed dynamic text nodes.
+        }
+      });
+    };
+
     const TRASH_ICON = sizeIcon(trashIcon);
 
     const deletableSections: HTMLElement[] = [
@@ -2823,7 +2851,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           event.preventDefault();
           event.stopPropagation();
           const type = button.dataset.devSectionType as InsertableSectionType | undefined;
-          if (type === 'image' || type === 'imageCarousel') {
+          if (type === 'image' || type === 'imageGrid' || type === 'imageCarousel') {
             const sectionIndex = state.path.at(-2);
             if (typeof sectionIndex !== 'number') return;
             dismissGapToolbarAfterAddChoice();
@@ -2831,7 +2859,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               detail: {
                 documentKey: state.document,
                 index: sectionIndex,
-                preferredType: type === 'imageCarousel' ? 'imageCarousel' : 'image',
+                preferredType: type,
               },
             }));
             return;
@@ -3390,6 +3418,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacingStates.push(spacingState);
         wireSectionAddMenu(spacingState);
       }
+      registerTextStates(root);
       mountDeleteButton(root);
       deletableSections.push(root);
       initMountedSectionCovers(root);
@@ -3466,6 +3495,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         spacingStates.push(spacingState);
         wireSectionAddMenu(spacingState);
       }
+      registerTextStates(root);
       mountDeleteButton(root);
       deletableSections.push(root);
       initMountedSectionCovers(root);
@@ -3575,6 +3605,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!documentKey || typeof index !== 'number' || !section) return;
       const root = replaceMediaSectionInPlace(section, documentKey, index);
       if (root && activeItemId) restoreCarouselActiveItem(root, activeItemId);
+    }) as EventListener, { signal: editorSignal });
+
+    window.addEventListener('vcd:dev-grid-media-appended', ((event: CustomEvent<{
+      documentKey?: string;
+      index?: number;
+      section?: Record<string, unknown>;
+    }>) => {
+      const { documentKey, index, section } = event.detail ?? {};
+      if (!documentKey || typeof index !== 'number' || !section) return;
+      replaceMediaSectionInPlace(section, documentKey, index);
     }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-placeholder-fill-pending', ((event: CustomEvent<{
