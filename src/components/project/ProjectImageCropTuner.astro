@@ -214,7 +214,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   } from '../../lib/responsiveImage';
   import { projectImage } from '../../lib/images';
   import { isAcceptedImageFile } from '../../lib/imageUpload.mjs';
-  import { isPlaceholderSrc } from '../../lib/projectImageFrame';
+  import { isPlaceholderSrc, syncImageSourceDims, syncPlaceholderState } from '../../lib/projectImageFrame';
+  import { cancelImagePreviewUpgrade } from '../../lib/imagePreviewUpgrade';
   import { bindFitPlaceholderLabel } from '../../lib/placeholderLabel';
   import { pageHistory, registerHistoryScope } from '../../lib/devHistory';
   import lockIcon from 'lucide-static/icons/lock.svg?raw';
@@ -465,6 +466,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let draftConstrained: ConstrainedByViewport = resolveImageGridConstrained(false);
     let savedMaxVh: number | undefined;
     let draftMaxVh: number | undefined;
+    let sourceRevision = 0;
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
     const isListingCover = (target: HTMLElement) => Boolean(target.dataset.devListingCover);
@@ -1028,22 +1030,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (!src) return null;
       const image = pageImageFor(target, slot);
       if (!image) return null;
+      if (image.getAttribute('src') !== projectImage(src)) cancelImagePreviewUpgrade(image);
+      sourceRevision += 1;
+      image.removeAttribute('srcset');
       image.src = projectImage(src);
+      syncPlaceholderState(target, src, slot);
       if (slot === 'hover') target.dataset.devHoverImageSrc = src;
       else {
         target.dataset.devImageSrc = src;
-        if (dims?.srcWidth) target.dataset.devImageSrcWidth = String(dims.srcWidth);
-        if (dims?.srcHeight) target.dataset.devImageSrcHeight = String(dims.srcHeight);
-      }
-      if (dims?.srcWidth && dims?.srcHeight) {
-        target.style.setProperty(
-          '--project-image-original-ratio',
-          `${dims.srcWidth} / ${dims.srcHeight}`,
-        );
-        target.style.setProperty(
-          '--project-image-original-ratio-num',
-          String(dims.srcWidth / dims.srcHeight),
-        );
+        syncImageSourceDims(target, dims);
       }
       if (isListingCover(target)) {
         const resolvedSrc = projectImage(src);
@@ -1065,6 +1060,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           }));
         }
       }
+      if (target === editTarget) syncPreviewPlaceholder();
       return image;
     };
 
@@ -1658,9 +1654,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const isPlaceholderTarget = (target: HTMLElement | null): boolean => {
       if (!target) return false;
       if (target.classList.contains('project-media--placeholder')) return true;
-      const img = target.querySelector('img');
-      if (img && isPlaceholderSrc(img.src)) return true;
-      return false;
+      const src = activeSlot === 'hover'
+        ? target.dataset.devHoverImageSrc
+        : target.dataset.devImageSrc;
+      if (src) return isPlaceholderSrc(src);
+      const img = pageImageFor(target, activeSlot);
+      return Boolean(img && isPlaceholderSrc(img.getAttribute('src') || img.src));
     };
 
     const syncPreviewPlaceholder = () => {
@@ -2791,11 +2790,19 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftSrcHeight = dims?.srcHeight;
 
       const url = projectImage(src);
-      const image = applySrcLive(editTarget, src, dims) ?? editedImage;
+      const replacementTarget = editTarget;
+      const image = applySrcLive(replacementTarget, src, dims) ?? editedImage;
+      const replacementRevision = sourceRevision;
       previewImage.src = url;
       if (pageStage) pageStage.ghostImg.src = url;
 
       const finish = () => {
+        if (
+          replacementRevision !== sourceRevision
+          || editTarget !== replacementTarget
+          || draftSrc !== src
+          || image.getAttribute('src') !== url
+        ) return;
         const nextDims = dims?.srcWidth && dims?.srcHeight
           ? dims
           : readTargetDims(image);
