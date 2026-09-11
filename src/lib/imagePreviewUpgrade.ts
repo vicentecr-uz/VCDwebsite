@@ -6,6 +6,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   const timers = new Set<number>();
   const preloads = new Set<HTMLImageElement>();
   const clones = new Set<HTMLImageElement>();
+  const revealClones = new Map<HTMLImageElement, HTMLImageElement>();
   const bound = new Set<HTMLImageElement>();
   const nextFrame = (callback: FrameRequestCallback) => {
     const id = requestAnimationFrame((time) => {
@@ -59,6 +60,18 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     candidates.delete(img);
     previewQueue.delete(img);
     swapObserver?.unobserve(img);
+  }
+
+  function cancel(img: HTMLImageElement): void {
+    cleanupCandidate(img);
+    previewLoaded.delete(img);
+    const clone = revealClones.get(img);
+    if (clone) {
+      clone.remove();
+      clones.delete(clone);
+      revealClones.delete(img);
+    }
+    img.classList.remove('image-preview-reveal--fade-only', 'is-revealing');
   }
 
   function afterNextPaint(): Promise<void> {
@@ -126,7 +139,12 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     preview: string,
     clone?: HTMLImageElement,
   ): Promise<void> {
-    if (!current(img, preview)) return;
+    if (!current(img, preview)) {
+      clone?.remove();
+      if (clone) clones.delete(clone);
+      if (revealClones.get(img) === clone) revealClones.delete(img);
+      return;
+    }
     freezeInFlowBox(img);
     img.src = preview;
     img.removeAttribute('data-image-preview');
@@ -147,6 +165,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       await afterNextPaint();
       clone.remove();
       clones.delete(clone);
+      if (revealClones.get(img) === clone) revealClones.delete(img);
     }
     if (signal.aborted) return;
     delete img.dataset.imagePreviewRevealing;
@@ -304,6 +323,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   function revealWithClone(img: HTMLImageElement, preview: string): void {
     const clone = img.cloneNode(false) as HTMLImageElement;
     clones.add(clone);
+    revealClones.set(img, clone);
     clone.className = img.className;
     clone.removeAttribute('data-image-preview');
     clone.removeAttribute('data-image-preview-bound');
@@ -448,6 +468,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   return {
     bind,
     open,
+    cancel,
     destroy() {
       controller.abort();
       frames.forEach(cancelAnimationFrame);
@@ -464,6 +485,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       preloads.clear();
       clones.forEach((clone) => clone.remove());
       clones.clear();
+      revealClones.clear();
       previewQueue.clear();
       for (const image of bound) {
         delete image.dataset.imagePreviewBound;
@@ -480,3 +502,5 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 const pageUpgrade = createImagePreviewUpgrade();
 export const bindImagePreviewUpgrade = pageUpgrade.bind;
 export const openImagePreviewUpgrade = pageUpgrade.open;
+
+export const cancelImagePreviewUpgrade = pageUpgrade.cancel;

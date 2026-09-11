@@ -155,6 +155,38 @@ try {
   await flush();
   assert.equal(images.filter((image) => image.src === '/offscreen.webp').length, 1, 'off-screen preview fetches when it enters the viewport');
   priority.destroy();
+  const replacement = fixture('/old-preview.webp');
+  const replacing = createImagePreviewUpgrade();
+  replacing.bind(replacement.root);
+  images.at(-1)!.onload!();
+  await flush();
+  replacing.open();
+  const oldPreview = images.find((image) => image.src === '/old-preview.webp')!;
+  replacing.cancel(replacement.image as unknown as HTMLImageElement);
+  replacement.image.src = '/replacement.webp';
+  oldPreview.onload!();
+  await flush();
+  assert.equal(replacement.image.src, '/replacement.webp', 'late preview load cannot undo replacement');
+  assert.equal(replacement.image.clone, undefined);
+  replacing.destroy();
+
+  const revealing = fixture('/revealing.webp');
+  const revealReplacement = createImagePreviewUpgrade();
+  revealReplacement.bind(revealing.root);
+  images.at(-1)!.onload!();
+  await flush();
+  revealReplacement.open();
+  images.find((image) => image.src === '/revealing.webp')!.onload!();
+  await flush();
+  const staleClone = revealing.image.clone!;
+  assert.ok(staleClone.isConnected);
+  revealReplacement.cancel(revealing.image as unknown as HTMLImageElement);
+  revealing.image.src = '/new.webp';
+  assert.equal(staleClone.isConnected, false, 'replacement removes the old reveal overlay immediately');
+  for (const callback of [...timers.values()]) callback();
+  await flush();
+  assert.equal(revealing.image.src, '/new.webp', 'old reveal completion cannot overwrite replacement');
+  revealReplacement.destroy();
   console.log('image-preview-lifecycle: passed (instance isolation, reset during decode/reveal, failure, disposal)');
 } finally {
   for (const [key, descriptor] of Object.entries(originals)) {
