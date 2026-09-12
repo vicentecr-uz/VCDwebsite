@@ -55,3 +55,20 @@ test('a rendered derivative cannot replace the original image or partially clear
     assert.deepEqual(document, before);
   }
 });
+
+test('mobile inset accepts a boolean mutation and preserves it when omitted', () => {
+  const document = { sections: [{ type: 'image', src: 'original.png', mobileInset: true }] };
+  assert.equal(applyCropChange(document, { path: ['sections', 0], mobileInset: false }).ok, true);
+  assert.equal(document.sections[0].mobileInset, undefined);
+  assert.equal(applyCropChange(document, { path: ['sections', 0], mobileInset: true }).ok, true);
+  assert.equal(document.sections[0].mobileInset, true);
+  assert.equal(applyCropChange(document, { path: ['sections', 0], maxVh: 70 }).ok, true);
+  assert.equal(document.sections[0].mobileInset, true);
+});
+
+test('mobile inset rejects non-boolean mutations without changing the document', () => {
+  const document = { sections: [{ type: 'image', src: 'original.png' }] };
+  const before = structuredClone(document);
+  assert.equal(applyCropChange(document, { path: ['sections', 0], mobileInset: 'true' }).ok, false);
+  assert.deepEqual(document, before);
+});

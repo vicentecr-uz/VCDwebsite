@@ -623,6 +623,11 @@ const resolvePathTarget = (data, fieldPath) => {
  */
 const applyImageWidthFlags = (target, change) => {
   let touched = false;
+  if (typeof change.mobileInset === 'boolean') {
+    if (change.mobileInset) target.mobileInset = true;
+    else delete target.mobileInset;
+    touched = true;
+  }
   if (typeof change.constrained === 'boolean') {
     if (change.constrained) target.constrained = true;
     else delete target.constrained;
@@ -684,6 +689,9 @@ export const applyCropChange = (data, change) => {
   const target = resolvePathTarget(data, resolvedPath);
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That image path no longer exists.' };
+  }
+  if (Object.prototype.hasOwnProperty.call(change, 'mobileInset') && typeof change.mobileInset !== 'boolean') {
+    return { ok: false, error: 'Mobile inset must be a boolean.' };
   }
 
   const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
@@ -778,7 +786,8 @@ export const applyCropChange = (data, change) => {
     || (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained))
     || typeof change.centered === 'boolean'
     || Object.prototype.hasOwnProperty.call(change, 'maxVh')
-    || typeof change.max80 === 'boolean';
+    || typeof change.max80 === 'boolean'
+    || typeof change.mobileInset === 'boolean';
 
   if (requestedHoverVariants) {
     const parsed = parseVariantBlob(requestedHoverVariants);

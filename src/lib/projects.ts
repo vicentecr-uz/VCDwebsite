@@ -27,6 +27,7 @@ export type ProjectListingCard = {
   hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  mobileInset?: boolean;
 };
 
 export type ProjectTeaserConfig = {
@@ -67,6 +68,7 @@ export type ProjectGridListing = {
   hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  mobileInset?: boolean;
 };
 
 const projectModules = import.meta.glob<{ default: ProjectDocument }>(
@@ -216,6 +218,7 @@ function listingCardForGrid(
     hoverVariants: listing.hoverVariants,
     srcWidth: listing.srcWidth,
     srcHeight: listing.srcHeight,
+    mobileInset: listing.mobileInset,
   };
 }
 

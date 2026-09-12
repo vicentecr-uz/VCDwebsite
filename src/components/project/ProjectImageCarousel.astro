@@ -58,6 +58,7 @@ interface Item {
   variants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  mobileInset?: boolean;
   /** Per-image cap as % of safe vh (`--vh-safe`) — same control as a standalone image. */
   maxVh?: number;
 }
@@ -257,6 +258,7 @@ const blockStyle = [
               gridDefaultAspect: defaultAspectRatio,
               hasOwnVariants: crop.hasOwnVariants,
               maxVh: entry.maxVh,
+              mobileInset: item.mobileInset,
             })
           : {};
         return (
@@ -278,6 +280,8 @@ const blockStyle = [
             aria-label={parked ? undefined : `${displayIndex + 1} of ${visibleCount}`}
             aria-hidden={parked ? 'true' : undefined}
             {...editAttrs}
+            data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
+            data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
           >
             {/*
               Surface carries the max-height width cap so the visible image and
