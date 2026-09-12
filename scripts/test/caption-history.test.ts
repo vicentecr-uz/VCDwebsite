@@ -159,8 +159,27 @@ test('ordinary live caption painting preserves the active typing node', () => {
 });
 
 test('closing the caption editor exits the session before restoring saved text', () => {
-  const handler = source.slice(source.indexOf("window.addEventListener('vcd:dev-edit-close'"), source.indexOf("const saveDraft =", source.indexOf("window.addEventListener('vcd:dev-edit-close'")));
-  expect(handler.indexOf('captionSession = false;')).toBeLessThan(handler.indexOf('revertToSaved();'));
+  const start = source.indexOf("window.addEventListener('vcd:dev-edit-close'");
+  const end = source.indexOf('    const saveDraft =', start);
+  const closeScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end));
+  let listener: ((event: any) => void) | undefined;
+  let restoredWhileSession: boolean | undefined;
+  const env = {
+    captionSession: true,
+    revertToSaved: () => { restoredWhileSession = env.captionSession; },
+    window: { addEventListener: (_event: string, handler: (event: any) => void) => { listener = handler; } },
+  };
+  new Function('env', `with (env) { ${closeScript}; }`)(env);
+  const captionPanel = { dataset: { devPanelKey: 'caption' } };
+  listener?.({ detail: { panel: captionPanel } });
+  expect(env.captionSession).toBe(false);
+  expect(restoredWhileSession).toBe(false);
+
+  env.captionSession = true;
+  restoredWhileSession = undefined;
+  listener?.({ detail: { panel: { dataset: { devPanelKey: 'grid' } } } });
+  expect(env.captionSession).toBe(true);
+  expect(restoredWhileSession).toBeUndefined();
 });
 
 test('position control records separately from text, while rendering adds no history', async () => {
