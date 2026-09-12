@@ -586,6 +586,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (flags.maxVh) target.dataset.maxVh = String(flags.maxVh);
         else delete target.dataset.maxVh;
         target.dataset.devMaxVh = flags.maxVh ? String(flags.maxVh) : '';
+        const rawConstrained = target.closest<HTMLElement>('[data-project-image-carousel]')?.dataset.devCarouselConstrained;
+        let constrained = flags.constrained;
+        if (rawConstrained) {
+          try { constrained = resolveImageGridConstrained(JSON.parse(rawConstrained) as never); } catch { /* keep draft */ }
+        }
+        target.dataset.mobileBleedEligible = constrained.mobile === 100 && !flags.maxVh ? 'true' : 'false';
         setMaxVhVar(target, flags.maxVh);
         announceFrameChange(target);
         window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', {
@@ -598,6 +604,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       applyConstrainedStyle(target, flags.constrained);
       target.classList.toggle('project-media--constrained', hasConstraint);
       target.dataset.devConstrained = JSON.stringify(flags.constrained);
+      target.dataset.mobileBleedEligible = flags.constrained.mobile === 100 && !flags.maxVh ? 'true' : 'false';
       target.dataset.devCentered = hasConstraint ? 'true' : 'false';
       const hasMaxVh = !!flags.maxVh;
       target.classList.toggle('project-media--max-vh', hasMaxVh);
@@ -621,12 +628,21 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         return draftConstrained.mobile === 100 && !draftMaxVh;
       }
       if (isCarouselItem(target)) {
-        return target.dataset.mobileBleedEligible === 'true' && !draftMaxVh;
+        const raw = target.closest<HTMLElement>('[data-project-image-carousel]')?.dataset.devCarouselConstrained;
+        let constrained = resolveImageGridConstrained(false);
+        if (raw) {
+          try { constrained = resolveImageGridConstrained(JSON.parse(raw) as never); } catch { /* use default */ }
+        }
+        return constrained.mobile === 100 && !draftMaxVh;
       }
       const owner = target.dataset.mobileBleedEligible
         ? target
         : target.closest<HTMLElement>('.project-grid__item');
-      if (owner?.dataset.mobileBleedEligible === 'true') return true;
+      if (owner?.dataset.mobileBleedEligible === 'true') {
+        const listing = target.closest<HTMLElement>('.project-grid--work, .project-grid--play');
+        if (listing && window.innerWidth > 480 && window.innerWidth <= 640) return false;
+        return true;
+      }
       if (owner?.dataset.mobileBleedEligible === 'false') return false;
       return false;
     };
@@ -3157,6 +3173,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             document: documentKey,
             path: imagePath,
             clearVariants: true,
+            mobileInset: draftMobileInset,
           },
           revert: () => {
             applyVariantsToTarget(target, baseline.variants);
