@@ -1622,6 +1622,37 @@ h3.project-section-title {
   max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
 }
 
+@media (max-width: 40em) {
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) {
+    max-width: none;
+  }
+
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']):has(> .project-caption--below) {
+    max-width: none;
+  }
+
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .project-caption--below,
+  .project-image-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-caption--below {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    padding-inline: var(--page-gutter);
+  }
+
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .project-caption:not(.project-caption--below),
+  .project-image-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-caption:not(.project-caption--below),
+  .project-image-carousel__slide[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-caption:not(.project-caption--below) {
+    margin-inline: var(--page-gutter);
+    max-width: calc(100% - 2 * var(--page-gutter));
+  }
+
+  .project-image-carousel__caption[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) {
+    box-sizing: border-box;
+    padding-inline: var(--page-gutter);
+  }
+}
+
 /*
   Per-breakpoint grid caption text. Kept global (not Astro-scoped) so
   dynamically created caption nodes from the Dev Mode tuner still hide
