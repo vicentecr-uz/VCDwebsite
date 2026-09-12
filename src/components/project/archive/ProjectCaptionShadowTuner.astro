@@ -1,20 +1,22 @@
 ---
 import DevOverlay from '../../DevOverlay.astro';
+import Field from '../../ui/Field.astro';
+import Button from '../../ui/Button.astro';
 ---
 
 <DevOverlay
-  title="Caption shadow"
   storageKey="caption-shadow"
   panelKey="caption-shadow"
   defaultHidden
 >
   <div class="caption-shadow-tuner" data-caption-shadow-tuner>
-    <label>
-      <span>Extension</span>
-      <input data-shadow-extension type="range" min="0" max="200" step="1" />
-      <output data-shadow-extension-output></output>
-    </label>
-    <button type="button" data-shadow-extension-reset>Reset</button>
+    <Field label="Extension" labelFor="caption-shadow-extension">
+      <div class="caption-shadow-tuner__control">
+        <input id="caption-shadow-extension" data-shadow-extension type="range" min="0" max="200" step="1" value="0" />
+        <output for="caption-shadow-extension" data-shadow-extension-output>+0px</output>
+      </div>
+    </Field>
+    <Button label="Reset" emphasis="ghost" data-shadow-extension-reset />
   </div>
 </DevOverlay>
 
@@ -79,15 +81,15 @@ import DevOverlay from '../../DevOverlay.astro';
 <style>
   .caption-shadow-tuner {
     display: grid;
-    gap: 0.65em;
+    gap: var(--space-unit);
   }
 
-  .caption-shadow-tuner label {
+  .caption-shadow-tuner__control {
     display: grid;
-    grid-template-columns: 6em 1fr 3.5em;
+    grid-template-columns: minmax(0, 1fr) 4em;
     align-items: center;
-    gap: 0.55em;
-    font-size: 0.8rem;
+    gap: var(--space-unit);
+    font-size: 1rem;
   }
 
   .caption-shadow-tuner input {
@@ -98,6 +100,5 @@ import DevOverlay from '../../DevOverlay.astro';
   .caption-shadow-tuner output {
     font-variant-numeric: tabular-nums;
     text-align: right;
-    font-size: 0.75rem;
   }
 </style>
