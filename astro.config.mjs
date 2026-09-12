@@ -61,6 +61,7 @@ import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './sr
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
+import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -688,6 +689,9 @@ export const applyCropChange = (data, change) => {
 
   const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
   if (isDerivativeToken(requestedSrc)) return { ok: false, error: 'Reload this editor before saving the image: its original file reference is missing.' };
+  const hasBackground = Object.prototype.hasOwnProperty.call(change, 'background');
+  const background = hasBackground ? normalizeImageBackground(change.background) : undefined;
+  if (hasBackground && background === null) return { ok: false, error: 'Use a supported hex background colour or transparent.' };
 
   if (change.clearVariants === true) {
     delete target.variants;
@@ -814,12 +818,16 @@ export const applyCropChange = (data, change) => {
       }
     }
     delete target.crop;
-  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc
+  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground
     && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 
   applyImageWidthFlags(target, change);
+  if (hasBackground) {
+    if (background === 'transparent') delete target.background;
+    else target.background = background;
+  }
   return { ok: true };
 };
 

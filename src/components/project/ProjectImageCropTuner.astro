@@ -28,6 +28,16 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
   <div class="tapico-crop-tuner" data-project-image-crop-tuner>
     <ViewportSelector dataAttr="data-crop-viewport" />
 
+    <div class="dev-field" data-crop-background-wrap>
+      <label class="dev-field__label" for="crop-background">Background</label>
+      <div class="tapico-crop-tuner__background-value">
+        <input id="crop-background" class="dev-field__input" type="text" maxlength="9" autocomplete="off" spellcheck="false" placeholder="None" data-crop-background />
+        <button type="button" class="tapico-crop-tuner__background-swatch" aria-label="Choose image background colour" data-crop-background-swatch></button>
+        <Button emphasis="ghost" label="None" data-crop-background-none />
+      </div>
+      <color-picker data-crop-background-picker label-title="Colour" label-hue="Hue" label-saturation="Saturation" label-lightness="Lightness" label-opacity="Opacity" label-ok="Done"></color-picker>
+    </div>
+
     <SelectField
       label="Aspect ratio"
       data-crop-aspect-ratio-wrap
@@ -214,6 +224,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { projectImage } from '../../lib/images';
+  import 'color-dialog-box';
+  import { normalizeImageBackground } from '../../lib/imageBackground.mjs';
   import { isAcceptedImageFile } from '../../lib/imageUpload.mjs';
   import { isPlaceholderSrc, syncImageSourceDims, syncPlaceholderState } from '../../lib/projectImageFrame';
   import { cancelImagePreviewUpgrade } from '../../lib/imagePreviewUpgrade';
@@ -248,6 +260,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
     const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
     const previewPlaceholderLabel = preview?.querySelector<HTMLElement>('.project-media__placeholder-label-text');
+    const backgroundWrap = tuner.querySelector<HTMLElement>('[data-crop-background-wrap]');
+    const backgroundInput = tuner.querySelector<HTMLInputElement>('[data-crop-background]');
+    const backgroundSwatch = tuner.querySelector<HTMLButtonElement>('[data-crop-background-swatch]');
+    const backgroundNone = tuner.querySelector<HTMLButtonElement>('[data-crop-background-none]');
+    const backgroundPicker = tuner.querySelector<HTMLElement>('[data-crop-background-picker]');
     const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
     const linkedAspectHint = tuner.querySelector<HTMLButtonElement>('[data-crop-linked-aspect-hint]');
     const linkedAspectTooltip = linkedAspectHint?.querySelector<HTMLElement>('[role="tooltip"]');
@@ -468,6 +485,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let savedMaxVh: number | undefined;
     let draftMaxVh: number | undefined;
     let sourceRevision = 0;
+    let savedBackground = 'transparent';
+    let draftBackground = 'transparent';
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
     const isListingCover = (target: HTMLElement) => Boolean(target.dataset.devListingCover);
@@ -750,6 +769,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       allConstrained: ConstrainedByViewport;
       allLocks: Record<ImageViewport, boolean>;
       maxVhValue: number | undefined;
+      background: string;
       cropped: boolean;
       ownVariants: boolean;
       hoverCropped: boolean;
@@ -772,7 +792,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const appliedSnapshots = new Map<HTMLElement, CropUndoEntry>();
     const semanticCrop = (state: CropUndoEntry) => JSON.stringify({
       variants: state.allCover, hover: state.allHover, constrained: state.allConstrained,
-      maxVh: state.maxVhValue, coverSrc: state.coverSrc, hoverSrc: state.hoverSrc,
+      background: state.background, maxVh: state.maxVhValue, coverSrc: state.coverSrc, hoverSrc: state.hoverSrc,
     });
     const GESTURE_UNDO_CAP = 20;
 
@@ -801,6 +821,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         allConstrained: structuredClone(draftConstrained),
         allLocks: structuredClone(constrainByViewport),
         maxVhValue: draftMaxVh,
+        background: draftBackground,
         cropped: editTarget.classList.contains('project-cropped') || isGridTarget(editTarget),
         ownVariants: editTarget.dataset.devHasOwnVariants === 'true',
         hoverCropped: editTarget.classList.contains('project-grid__cover--hover-cropped'),
@@ -843,6 +864,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         ? draftHoverVariants : draftCoverVariants;
       draftConstrained = structuredClone(entry.allConstrained);
       draftMaxVh = entry.maxVhValue;
+      draftBackground = entry.background;
+      applyBackgroundLive(editTarget, draftBackground);
       draftSrc = entry.src;
       draftSrcWidth = entry.srcWidth;
       draftSrcHeight = entry.srcHeight;
@@ -1017,6 +1040,37 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           .find((img) => !img.closest('.dev-crop-ghost'))
         ?? null
       );
+    };
+
+    const closeBackgroundPicker = () => {
+      backgroundPicker?.shadowRoot?.querySelector<HTMLDialogElement>('dialog')?.close();
+      backgroundPicker?.removeAttribute('open');
+    };
+
+    const syncBackgroundControl = () => {
+      if (backgroundWrap) backgroundWrap.hidden = isListingCover(editTarget);
+      if (isListingCover(editTarget)) return;
+      if (backgroundInput) {
+        backgroundInput.value = draftBackground === 'transparent' ? '' : draftBackground;
+        backgroundInput.removeAttribute('aria-invalid');
+      }
+      if (backgroundSwatch) backgroundSwatch.style.backgroundColor = draftBackground;
+      if (backgroundNone) {
+        backgroundNone.setAttribute('aria-pressed', String(draftBackground === 'transparent'));
+        backgroundNone.classList.toggle('is-selected', draftBackground === 'transparent');
+      }
+      const clip = preview.querySelector<HTMLElement>('.tapico-crop-tuner__preview-clip');
+      if (clip) clip.style.backgroundColor = draftBackground;
+      previewImage.style.backgroundColor = draftBackground;
+      if (pageStage) pageStage.ghostImg.style.backgroundColor = draftBackground;
+    };
+
+    const applyBackgroundLive = (target: HTMLElement, value: string) => {
+      if (isListingCover(target)) return;
+      const background = normalizeImageBackground(value) ?? 'transparent';
+      target.dataset.devImageBackground = background;
+      target.style.setProperty('--project-image-background', background);
+      if (target === editTarget) syncBackgroundControl();
     };
 
     const applySrcLive = (
@@ -1335,6 +1389,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         }
       }
       if (isStandaloneMedia(target) || isCarouselItem(target)) applyFrameFlagsLive(target, { constrained: state.allConstrained, maxVh: state.maxVhValue });
+      applyBackgroundLive(target, state.background);
       appliedSnapshots.set(target, structuredClone(state));
       for (const slot of listing ? ['cover', 'hover'] as const : ['cover'] as const) {
         const src = slot === 'cover' ? state.coverSrc : state.hoverSrc;
@@ -1350,6 +1405,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         savedConstrained = { ...state.allConstrained };
         draftConstrained = { ...state.allConstrained };
         savedMaxVh = draftMaxVh = state.maxVhValue;
+        savedBackground = draftBackground = state.background;
+        syncBackgroundControl();
         savedSrc = draftSrc = listing && activeSlot === 'hover' ? state.hoverSrc : state.coverSrc;
         savedSrcWidth = draftSrcWidth = state.srcWidth;
         savedSrcHeight = draftSrcHeight = state.srcHeight;
@@ -1384,6 +1441,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             id, kind: 'crop', payload: {
               document: target.dataset.devDocument, path: JSON.parse(target.dataset.devImagePath || '[]'),
               ...(slot === 'cover' ? {
+                ...(!isListingCover(target) ? { background: state.background } : {}),
                 ...(clearVariants ? { clearVariants: true } : { variants: structuredClone(state.allCover) }),
                 ...(state.coverSrc ? { src: state.coverSrc, srcWidth: state.coverWidth, srcHeight: state.coverHeight } : {}),
                 ...(isStandaloneMedia(target) ? { constrained: { ...state.allConstrained }, centered: imageHasWidthConstraint(state.allConstrained) } : {}),
@@ -1490,6 +1548,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         savedConstrained = { ...stagedConstrained };
         savedMaxVh = stagedMaxVh;
       }
+      savedBackground = draftBackground;
       savedSinceSelect = true;
       if (isGridTarget(target) && persistCrop) {
         target.dataset.devHasOwnVariants = 'true';
@@ -1504,6 +1563,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           payload: {
             document: documentKey,
             path: imagePath,
+            ...(!isListingCover(target) ? { background: draftBackground } : {}),
             ...(persistCrop ? { variants: stagedVariants } : {}),
             ...(persistCrop && stagedHoverVariants ? { hoverVariants: stagedHoverVariants } : {}),
             ...(isListingCover(target)
@@ -1597,6 +1657,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draft = { ...saved };
       draftConstrained = { ...savedConstrained };
       draftMaxVh = savedMaxVh;
+      draftBackground = savedBackground;
+      applyBackgroundLive(target, draftBackground);
+      syncBackgroundControl();
       const srcNeedsRestore = Boolean(savedSrc) && draftSrc !== savedSrc;
       draftSrc = savedSrc;
       draftSrcWidth = savedSrcWidth;
@@ -1746,8 +1809,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : draftCoverVariants;
       savedConstrained = isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false);
       draftConstrained = { ...savedConstrained };
+      closeBackgroundPicker();
+      savedBackground = normalizeImageBackground(target.dataset.devImageBackground) ?? 'transparent';
       savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
       draftMaxVh = savedMaxVh;
+      draftBackground = savedBackground;
+      applyBackgroundLive(target, draftBackground);
+      syncBackgroundControl();
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
       savedSrc = stagedSource?.src ?? readTargetSrc(editedImage) ?? baseline.src;
@@ -2413,6 +2481,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const ghostImg = document.createElement('img');
       ghostImg.alt = '';
       ghostImg.draggable = false;
+      ghostImg.style.backgroundColor = draftBackground;
       ghostImg.src = editedImage.src || editedImage.currentSrc;
       ghost.append(ghostImg);
 
@@ -2485,6 +2554,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     }) as EventListener);
 
     const teardownEditSession = () => {
+      closeBackgroundPicker();
       unregisterHistoryScope?.();
       unregisterHistoryScope = null;
       unmountPageStage();
@@ -2726,6 +2796,33 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : 'Full height — unsaved changes.';
       syncDraftDirty();
     });
+
+    const changeBackground = (value: string) => {
+      const background = value.trim() ? normalizeImageBackground(value) : 'transparent';
+      if (!background) {
+        backgroundInput?.setAttribute('aria-invalid', 'true');
+        status.textContent = 'Enter a hex colour, or choose None.';
+        return;
+      }
+      if (background !== draftBackground) {
+        pushUndo();
+        draftBackground = background;
+        applyBackgroundLive(editTarget, background);
+        syncDraftDirty();
+      } else syncBackgroundControl();
+    };
+    backgroundInput?.addEventListener('change', () => changeBackground(backgroundInput.value));
+    backgroundNone?.addEventListener('click', () => {
+      changeBackground('transparent');
+      closeBackgroundPicker();
+    });
+    backgroundSwatch?.addEventListener('click', () => {
+      backgroundPicker?.setAttribute('hex', draftBackground === 'transparent' ? '#ffffffff' : `${draftBackground}ff`);
+      backgroundPicker?.setAttribute('open', 'true');
+    });
+    backgroundPicker?.addEventListener('update-color', ((event: CustomEvent<{ hex?: string }>) => {
+      if (event.detail?.hex) changeBackground(event.detail.hex);
+    }) as EventListener);
 
     const readFileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
@@ -3046,6 +3143,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             document: documentKey,
             path: imagePath,
             clearVariants: true,
+            background: draftBackground,
           },
           revert: () => {
             applyVariantsToTarget(target, baseline.variants);
@@ -3110,6 +3208,52 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </script>
 
 <style>
+  .tapico-crop-tuner__background-value {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .tapico-crop-tuner__background-value input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .tapico-crop-tuner__background-swatch {
+    position: relative;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    border: 1px solid var(--sys-color-outline-variant);
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__background-swatch::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  [data-crop-background-wrap][hidden] {
+    display: none;
+  }
+
+  color-picker[data-crop-background-picker] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
+    --font: var(--font-sans);
+    --bg-primary: var(--sys-color-srf);
+    --bg-secondary: var(--sys-color-srf-container-low);
+    --bg-header: var(--sys-color-srf-container-high);
+    --border-color-primary: var(--sys-color-outline-variant);
+    --border-color-secondary: var(--sys-color-on-srf);
+    --txt-color-primary: var(--sys-color-on-srf);
+  }
+
+
   /* Width + height caps read as one decision, so they share a row. Collapses
      to nothing when both children are hidden — an empty flex item would still
      take the parent column's gap. */
