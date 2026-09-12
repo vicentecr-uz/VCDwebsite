@@ -83,7 +83,6 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
 <script>
   import { devEditPendingId, withDevEditTarget } from '../scripts/devEditTarget';
-  import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
   import { getLastPointerPosition } from '../lib/lastPointer';
   import { getDropZone } from '../scripts/devSectionPaths';
   import { isAcceptedImageFile } from '../lib/imageUpload.mjs';
@@ -305,46 +304,13 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
   };
 
-  const standalonePlaceholderAtPoint = (clientX, clientY) => {
+  const placeholderAtPoint = (clientX, clientY) => {
     const hit = document.elementFromPoint(clientX, clientY);
     if (!(hit instanceof Element)) return null;
     if (!zoneForElement(hit)) return null;
     const figure = hit.closest('.project-media--placeholder');
     if (!(figure instanceof HTMLElement)) return null;
-    // Grid-item placeholders stay out of scope — fill full image blocks only.
-    if (figure.closest('.project-image-grid')) return null;
     return figure;
-  };
-
-  const sectionIndexFromPlaceholder = (figure) => {
-    try {
-      const imagePath = JSON.parse(figure.dataset.devImagePath || '[]');
-      if (
-        Array.isArray(imagePath)
-        && imagePath[0] === 'sections'
-        && typeof imagePath[1] === 'number'
-        && imagePath.length === 2
-      ) {
-        return imagePath[1];
-      }
-    } catch {
-      // Fall through to spacing path on the section root.
-    }
-    const root = figure.closest('[data-dev-spacing-path]');
-    if (!(root instanceof HTMLElement)) return null;
-    try {
-      const spacingPath = JSON.parse(root.dataset.devSpacingPath || '[]');
-      if (
-        Array.isArray(spacingPath)
-        && spacingPath[0] === 'sections'
-        && typeof spacingPath[1] === 'number'
-      ) {
-        return spacingPath[1];
-      }
-    } catch {
-      // Ignore malformed paths.
-    }
-    return null;
   };
 
   const setPlaceholderTarget = (figure) => {
@@ -774,96 +740,6 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }));
   });
 
-  const readImageDimsFromFile = (file) => new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      resolve({
-        srcWidth: image.naturalWidth || undefined,
-        srcHeight: image.naturalHeight || undefined,
-      });
-      URL.revokeObjectURL(url);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve({});
-    };
-    image.src = url;
-  });
-
-  const capturePlaceholderSection = (figure) => {
-    const root = figure.closest('[data-dev-spacing-document]');
-    let variants = {};
-    try {
-      variants = JSON.parse(figure.dataset.devImageVariants || '{}');
-    } catch {
-      variants = {};
-    }
-    const img = figure.querySelector('img');
-    /** @type {Record<string, unknown>} */
-    const section = {
-      type: 'image',
-      id: figure.dataset.devCropId || 'placeholder',
-      src: 'placeholder.svg',
-      alt: img?.getAttribute('alt') || 'Placeholder',
-      background: figure.dataset.devImageBackground || 'transparent',
-      spacing: root instanceof HTMLElement
-        ? (() => {
-          try {
-            return root.dataset.devSpacingValues
-              ? JSON.parse(root.dataset.devSpacingValues)
-              : (root.dataset.devSpacingValue || 'section');
-          } catch {
-            return root.dataset.devSpacingValue || 'section';
-          }
-        })()
-        : 'section',
-      variants,
-    };
-    if (root instanceof HTMLElement && root.id) section.sectionId = root.id;
-    return section;
-  };
-
-  const fillPlaceholder = async (figure, file, target = beginTransaction('', figure)) => {
-    if (!target) throw new Error('Could not find the active page.');
-    const index = sectionIndexFromPlaceholder(figure);
-    if (typeof index !== 'number') {
-      throw new Error('Could not find which placeholder to fill.');
-    }
-    await flushPendingEdits(target.documentKey);
-    const previousSection = capturePlaceholderSection(figure);
-    const filenames = await uploadFiles([file], target);
-    const dims = await readImageDimsFromFile(file);
-    const alt = String(previousSection.alt || '');
-    const variants = (
-      previousSection.variants
-      && typeof previousSection.variants === 'object'
-      && !Array.isArray(previousSection.variants)
-      && Object.keys(previousSection.variants).length > 0
-    )
-      ? structuredClone(previousSection.variants)
-      : structuredClone(PLACEHOLDER_IMAGE_VARIANTS);
-    const section = {
-      ...previousSection,
-      type: 'image',
-      src: filenames[0],
-      alt: alt === 'Placeholder' ? '' : alt,
-      // Keep the placeholder frame — fill is cover-in-frame, not a new crop.
-      variants,
-      ...(dims.srcWidth ? { srcWidth: dims.srcWidth } : {}),
-      ...(dims.srcHeight ? { srcHeight: dims.srcHeight } : {}),
-    };
-    window.dispatchEvent(new CustomEvent('vcd:dev-placeholder-fill-pending', {
-      detail: {
-        documentKey: target.documentKey,
-        index,
-        filenames,
-        previousSection,
-        section,
-      },
-    }));
-  };
-
   const openPicker = (clientY, target = currentTransaction()) => {
     if (!target) return;
     if (typeof clientY === 'number') {
@@ -900,20 +776,6 @@ const globeSvg = sizeIcon(globeIcon, 16);
     if (!target) return;
     const images = Array.from(files).filter(isAcceptedImageFile);
     if (!images.length) return;
-
-    const placeholder = typeof clientX === 'number'
-      ? standalonePlaceholderAtPoint(clientX, clientY)
-      : null;
-    if (placeholder) {
-      void (async () => {
-        try {
-          await fillPlaceholder(placeholder, images[0], target);
-        } catch (error) {
-          window.alert(error instanceof Error ? error.message : 'Could not fill placeholder.');
-        }
-      })();
-      return;
-    }
 
     pendingInsertIndex = insertIndexForY(clientY, target.dropZone);
     target.insertIndex = pendingInsertIndex;
@@ -974,10 +836,10 @@ const globeSvg = sizeIcon(globeIcon, 16);
       return;
     }
     prevent(event);
-    const carousel = carouselAtPoint(event.clientX, event.clientY);
+    const placeholder = placeholderAtPoint(event.clientX, event.clientY);
+    const carousel = placeholder ? null : carouselAtPoint(event.clientX, event.clientY);
     setCarouselDropTarget(carousel);
-    const placeholder = standalonePlaceholderAtPoint(event.clientX, event.clientY);
-    setPlaceholderTarget(carousel ? null : placeholder);
+    setPlaceholderTarget(placeholder);
     if (pageDropVeil instanceof HTMLElement) {
       if (carousel || placeholder) delete pageDropVeil.dataset.active;
       else pageDropVeil.dataset.active = 'true';
@@ -999,9 +861,25 @@ const globeSvg = sizeIcon(globeIcon, 16);
     clearDragState();
     if (!isValidImageDrag(event)) return;
     event.preventDefault();
+    const assetSrc = transfer?.getData(ASSET_DRAG_TYPE) || '';
+    const placeholder = placeholderAtPoint(clientX, clientY);
+    if (placeholder) {
+      const file = Array.from(transfer?.files || []).find(isAcceptedImageFile);
+      if (!file && !assetSrc) return;
+      const replacementEvent = new CustomEvent('vcd:dev-image-replace', {
+        cancelable: true,
+        detail: {
+          target: placeholder,
+          ...(file ? { file } : assetSrc ? { src: assetSrc } : {}),
+        },
+      });
+      window.dispatchEvent(replacementEvent);
+      if (replacementEvent.defaultPrevented) return;
+      window.alert('Could not replace that image. Reload the editor and try again.');
+      return;
+    }
     const carousel = carouselAtPoint(clientX, clientY);
     const carouselTarget = carouselTargetFromElement(carousel);
-    const assetSrc = transfer?.getData(ASSET_DRAG_TYPE) || '';
     if (carouselTarget && (assetSrc || transfer?.files?.length)) {
       void (async () => {
         try {
