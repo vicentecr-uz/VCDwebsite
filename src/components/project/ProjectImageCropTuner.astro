@@ -865,8 +865,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       replacementPending = pending;
       saveButton.disabled = pending;
       saveButton.textContent = pending ? label : 'Save changes';
-      saveButton.toggleAttribute('aria-busy', pending);
-      if (!pending) status.removeAttribute('data-replacement-error');
+      if (pending) saveButton.setAttribute('aria-busy', 'true');
+      else saveButton.removeAttribute('aria-busy');
+      status.removeAttribute('data-replacement-error');
     };
 
     const setReplacementError = (message: string) => {
@@ -2580,7 +2581,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       // Only the image/crop panel — caption/grid opens must not hijack this target.
       const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
-      if (!panel || panel.dataset.devPanelKey !== 'image') return;
+      if (!panel || panel !== tuner.closest('[data-dev-panel-key="image"]')) return;
       const target = trigger?.closest<HTMLElement>('[data-dev-image-target]')
         // Gallery crop chip sits on the --end rail (sibling of the cover target).
         ?? trigger?.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]')
@@ -2593,6 +2594,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       file?: File;
       src?: string;
     }>) => {
+      if (event.defaultPrevented) return;
       const target = event.detail?.target;
       const src = event.detail?.src;
       if (!(target instanceof HTMLElement) || !target.matches('[data-dev-image-target]')) return;
