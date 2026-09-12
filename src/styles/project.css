@@ -1265,6 +1265,32 @@ h3.project-section-title {
   width: var(--project-image-grid-width, 80%);
 }
 
+/* Full-column media reaches the viewport edge on narrow phones. The width
+   helper opts in only when that breakpoint is saved as full width. */
+@media (max-width: 40em) {
+  .project-image,
+  .project-image-grid,
+  .project-image-carousel,
+  .project-media:not(.project-media--max-vh) {
+    --project-full-media-width: calc(100% + 2 * var(--page-gutter));
+    max-width: none;
+  }
+
+  .project-image {
+    width: var(--project-full-media-width);
+    margin-inline: calc(-1 * var(--page-gutter));
+  }
+
+  .project-image-grid,
+  .project-media:not(.project-media--max-vh) {
+    margin-inline: calc((100% - var(--project-image-grid-width, 100%)) / 2);
+  }
+
+  .project-image-carousel {
+    margin-inline: calc((100% - var(--project-image-carousel-width, 100%)) / 2);
+  }
+}
+
 @media (max-width: 991px) {
   .project-media {
     --project-image-grid-width: var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%));

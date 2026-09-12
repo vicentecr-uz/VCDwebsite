@@ -145,7 +145,9 @@ export function imageGridConstrainedStyle(
   return VIEWPORTS
     .map((viewport) => {
       const value = constrained[viewport];
-      if (value === 100) return `--project-image-grid-width-${viewport}:100%`;
+      if (value === 100) {
+        return `--project-image-grid-width-${viewport}:var(--project-full-media-width, 100%)`;
+      }
       if (value === 'text') {
         return `--project-image-grid-width-${viewport}:min(100%, var(--page-text-max-width))`;
       }
