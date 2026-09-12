@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { devEditPendingId, editsRemovedMedia, withDevEditTarget } from '../../src/scripts/devEditTarget';
+import { devEditPendingId, editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../../src/scripts/devEditTarget';
 import { applyCropChange } from '../../astro.config.mjs';
 
 const originalDocument = globalThis.document;
@@ -87,4 +87,11 @@ test('removing an image supersedes its queued edits but preserves its neighbours
   expect(editsRemovedMedia(edit, { ...removal, itemId: 'image-b' })).toBe(false);
   expect(editsRemovedMedia(edit, { ...removal, document: 'other' })).toBe(false);
   expect(editsRemovedMedia(edit, { ...removal, target: { sectionId: 'section-b' } })).toBe(false);
+});
+
+test('a deleted section retains its canonical target while detached for undo', () => {
+  const { root } = setup();
+  root.id = 'outline-label';
+  root.remove();
+  expect(sectionEditTarget(root)).toEqual({ sectionId: 'section-a' });
 });
