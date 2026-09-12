@@ -485,6 +485,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let savedMaxVh: number | undefined;
     let draftMaxVh: number | undefined;
     let sourceRevision = 0;
+    let replacementSession = 0;
+    let replacementAttempt = 0;
+    let replacementPending = false;
     let savedBackground = 'transparent';
     let draftBackground = 'transparent';
 
@@ -849,7 +852,28 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       pushUndo(extra);
     };
 
+    const invalidateReplacement = () => {
+      replacementAttempt += 1;
+      replacementPending = false;
+      saveButton.disabled = false;
+      saveButton.removeAttribute('aria-busy');
+    };
+
+    const setReplacementPending = (pending: boolean) => {
+      replacementPending = pending;
+      saveButton.disabled = pending;
+      saveButton.toggleAttribute('aria-busy', pending);
+      if (!pending) status.removeAttribute('data-replacement-error');
+    };
+
+    const setReplacementError = (message: string) => {
+      setReplacementPending(false);
+      status.dataset.replacementError = 'true';
+      status.textContent = message;
+    };
+
     const applyUndoEntry = (entry: CropUndoEntry) => {
+      invalidateReplacement();
       const vp = entry.selectedViewport;
       selectedViewport = vp;
       activeSlot = entry.activeSlot;
@@ -1459,6 +1483,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const saveDraft = () => {
+      if (replacementPending) {
+        status.textContent = 'Wait for the image replacement to finish.';
+        return false;
+      }
       const target = editTarget;
       const beforeState = openingSnapshot ? structuredClone(openingSnapshot) : snapshotViewport();
       const documentKey = target.dataset.devDocument;
@@ -1599,6 +1627,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       clearAllStacks();
       draftDirty = false;
       closePanel();
+      return true;
     };
 
     const refreshCover = () => {
@@ -1636,6 +1665,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
      * and then cancelling without touching anything is a no-op.
      */
     const revertToSaved = () => {
+      invalidateReplacement();
       const target = editTarget;
       if (!target) return;
       if (openingSnapshot) {
@@ -1759,6 +1789,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
+      replacementSession += 1;
+      invalidateReplacement();
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
       const preserveLocalHistory = editingSession && live && target === editTarget;
       if (!preserveLocalHistory) clearAllStacks();
@@ -2553,6 +2585,29 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (target) selectTarget(target, true);
     }) as EventListener);
 
+    window.addEventListener('vcd:dev-image-replace', ((event: CustomEvent<{
+      target?: HTMLElement;
+      file?: File;
+      src?: string;
+    }>) => {
+      const target = event.detail?.target;
+      const src = event.detail?.src;
+      if (!(target instanceof HTMLElement) || !target.matches('[data-dev-image-target]')) return;
+      if (!event.detail?.file && !src) return;
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key="image"]');
+      if (!panel) return;
+      event.preventDefault();
+      panel.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+        detail: { trigger: target, panel },
+      }));
+      const context = replacementContext();
+      replacementAttempt = context.attempt;
+      setReplacementPending(true);
+      if (event.detail?.file) replaceWithFile(event.detail.file);
+      else if (src) startReplacement(src, context);
+    }) as EventListener);
+
     const teardownEditSession = () => {
       closeBackgroundPicker();
       unregisterHistoryScope?.();
@@ -2870,8 +2925,56 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }));
     });
 
-    const applyReplacement = (src: string, dims?: { srcWidth?: number; srcHeight?: number }) => {
-      if (!src) return;
+    type ReplacementContext = {
+      target: HTMLElement;
+      slot: 'cover' | 'hover';
+      session: number;
+      source: number;
+      attempt: number;
+    };
+
+    const replacementContext = (): ReplacementContext => ({
+      target: editTarget,
+      slot: activeSlot,
+      session: replacementSession,
+      source: sourceRevision,
+      attempt: replacementAttempt + 1,
+    });
+
+    const isCurrentReplacement = (context: ReplacementContext) => (
+      replacementPending
+      && context.attempt === replacementAttempt
+      && context.session === replacementSession
+      && context.source === sourceRevision
+      && context.target === editTarget
+      && context.slot === activeSlot
+    );
+
+    const readUploadedImageDims = (src: string) => new Promise<{ srcWidth: number; srcHeight: number }>((resolve, reject) => {
+      const image = new Image();
+      const fail = () => reject(new Error('Could not load the replacement image.'));
+      image.addEventListener('error', fail, { once: true });
+      image.addEventListener('load', () => {
+        if (!image.naturalWidth || !image.naturalHeight) {
+          fail();
+          return;
+        }
+        const finish = () => resolve({ srcWidth: image.naturalWidth, srcHeight: image.naturalHeight });
+        if (typeof image.decode === 'function') void image.decode().then(finish, fail);
+        else finish();
+      }, { once: true });
+      image.src = projectImage(src);
+      if (image.complete && image.naturalWidth) {
+        const finish = () => resolve({ srcWidth: image.naturalWidth, srcHeight: image.naturalHeight });
+        if (typeof image.decode === 'function') void image.decode().then(finish, fail);
+        else finish();
+      }
+    });
+
+    const applyReplacement = (src: string, dims: { srcWidth: number; srcHeight: number }, context: ReplacementContext) => {
+      if (!src || !isCurrentReplacement(context)) return;
+      const beforeReplacement = snapshotViewport();
+      const undoLength = undoStack.length;
       pushUndo({
         src: draftSrc,
         srcWidth: draftSrcWidth,
@@ -2885,22 +2988,19 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftSrcHeight = dims?.srcHeight;
 
       const url = projectImage(src);
-      const replacementTarget = editTarget;
+      const replacementTarget = context.target;
       const image = applySrcLive(replacementTarget, src, dims) ?? editedImage;
-      const replacementRevision = sourceRevision;
+      context.source = sourceRevision;
       previewImage.src = url;
       if (pageStage) pageStage.ghostImg.src = url;
 
       const finish = () => {
         if (
-          replacementRevision !== sourceRevision
-          || editTarget !== replacementTarget
+          !isCurrentReplacement(context)
           || draftSrc !== src
           || image.getAttribute('src') !== url
         ) return;
-        const nextDims = dims?.srcWidth && dims?.srcHeight
-          ? dims
-          : readTargetDims(image);
+        const nextDims = dims;
         if (nextDims.srcWidth && nextDims.srcHeight) {
           draftSrcWidth = nextDims.srcWidth;
           draftSrcHeight = nextDims.srcHeight;
@@ -2933,35 +3033,53 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         } else if (editingSession) {
           mountPageStage();
         }
+        setReplacementPending(false);
         status.textContent = 'Image replaced — unsaved changes.';
       };
 
       // `complete` can still reflect the previous bitmap for a tick after src
       // assignment — prefer decode(), fall back to load.
-      const ready = (img: HTMLImageElement) => {
-        if (typeof img.decode === 'function') {
-          return img.decode().then(() => undefined, () => undefined);
-        }
-        if (img.complete && img.naturalWidth) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          img.addEventListener('load', () => resolve(), { once: true });
-          img.addEventListener('error', () => resolve(), { once: true });
+      void Promise.all([image.decode?.() ?? Promise.resolve(), previewImage.decode?.() ?? Promise.resolve()])
+        .then(finish, () => {
+          if (isCurrentReplacement(context)) {
+            undoStack.splice(undoLength);
+            applyUndoEntry(beforeReplacement);
+            setReplacementError('Could not load the replacement image.');
+          }
         });
-      };
-      void Promise.all([ready(image), ready(previewImage)]).then(finish);
+    };
+
+    const startReplacement = (src: string, context: ReplacementContext) => {
+      if (!src) return;
+      replacementAttempt = context.attempt;
+      setReplacementPending(true);
+      status.textContent = 'Loading replacement…';
+      void readUploadedImageDims(src).then((dims) => {
+        if (isCurrentReplacement(context)) applyReplacement(src, dims, context);
+      }, (error) => {
+        if (isCurrentReplacement(context)) {
+          setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
+        }
+      });
     };
 
     const replaceWithFile = (file: File | null | undefined) => {
       if (!file || !isAcceptedImageFile(file)) return;
+      const context = replacementContext();
       void (async () => {
         try {
           status.textContent = 'Uploading…';
           const src = await uploadReplaceFile(file);
-          applyReplacement(src);
+          if (!isCurrentReplacement(context)) return;
+          startReplacement(src, context);
         } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+          if (isCurrentReplacement(context)) {
+            setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
+          }
         }
       })();
+      replacementAttempt = context.attempt;
+      setReplacementPending(true);
     };
 
     const replaceControlFrom = (event: Event) =>
@@ -3008,6 +3126,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     replaceAssetsButton.addEventListener('click', (event) => {
       event.stopPropagation();
+      const context = replacementContext();
+      replacementAttempt = context.attempt;
+      replacementPending = true;
       void (async () => {
         try {
           const result = await pickReplaceFromAssetManager();
@@ -3015,10 +3136,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             ? String(result.srcs.find(Boolean) || '')
             : '';
           if (!src) return;
-          applyReplacement(src);
+          if (isCurrentReplacement(context)) startReplacement(src, context);
         } catch (error) {
-          if (error instanceof Error && error.message === 'cancelled') return;
-          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+          if (!isCurrentReplacement(context)) return;
+          setReplacementPending(false);
+          if (error instanceof Error && error.message === 'cancelled') {
+            status.textContent = 'Replacement cancelled.';
+            return;
+          }
+          setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
         }
       })();
     });
@@ -3047,8 +3173,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     saveButton.addEventListener('click', saveDraft);
-    window.addEventListener('vcd:dev-before-save', () => {
-      if (editingSession) { syncDraftDirty(); if (draftDirty) saveDraft(); }
+    window.addEventListener('vcd:dev-before-save', (event) => {
+      if (!editingSession) return;
+      if (replacementPending) {
+        event.preventDefault();
+        status.textContent = 'Wait for the image replacement to finish.';
+        return;
+      }
+      syncDraftDirty();
+      if (draftDirty) saveDraft();
     });
     window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
       if (editingSession) { syncDraftDirty(); if (draftDirty && event.detail) event.detail.dirty = true; }
@@ -3611,6 +3744,17 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  .tapico-crop-tuner__status[data-replacement-error="true"] {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    color: var(--sys-color-error);
+    white-space: normal;
   }
 
 </style>
