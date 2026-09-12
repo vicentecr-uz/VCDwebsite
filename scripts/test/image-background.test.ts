@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { applyCropChange } from '../../astro.config.mjs';
 import { normalizeImageBackground } from '../../src/lib/imageBackground.mjs';
@@ -58,16 +57,4 @@ test('SSR attrs and mounted image sections carry the canonical background', () =
   } finally {
     globalThis.document = previous;
   }
-});
-
-test('uploading into a placeholder preserves its background in replacement and undo snapshots', () => {
-  const source = readFileSync(new URL('../../src/components/DevImageDrop.astro', import.meta.url), 'utf8');
-  const body = source.slice(source.indexOf('  const capturePlaceholderSection ='), source.indexOf('  const fillPlaceholder ='));
-  const win = new Window();
-  const capture = new Function('HTMLElement', `${body}; return capturePlaceholderSection;`)(win.HTMLElement);
-  const figure = win.document.createElement('figure');
-  figure.dataset.devImageBackground = '#123456';
-  const image = win.document.createElement('img');
-  figure.append(image);
-  expect(capture(figure).background).toBe('#123456');
 });

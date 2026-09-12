@@ -9,7 +9,7 @@ const script = [
 ].join('\n');
 const geometryScript = source.slice(source.indexOf('  const spacingBlocks ='), source.indexOf('  const hasPreferredType ='));
 
-function setup() {
+function setup(options: { placeholder?: boolean; preventReplacement?: boolean; carousel?: boolean } = {}) {
   class Element {
     dataset: Record<string, string> = {};
     constructor(public cover = false) {}
@@ -18,6 +18,7 @@ function setup() {
   const pageDropVeil = new Element();
   const calls: unknown[][] = [];
   const dataset: Record<string, string> = {};
+  const placeholder = new Element();
   const env = {
     Element, HTMLElement: Element, Node: Element, pageDropVeil,
     ASSET_DRAG_TYPE: 'application/x-vcd-asset-src', dragDepth: 0, pendingInsertIndex: 0,
@@ -26,16 +27,28 @@ function setup() {
       removeAttribute: () => { delete dataset.devImageDrag; },
     } },
     root: { contains: () => true },
+    window: {
+      dispatchEvent: (event: CustomEvent) => {
+        calls.push(['replace', event.type, event.detail]);
+        if (options.preventReplacement) event.preventDefault();
+        return !event.defaultPrevented;
+      },
+      alert: (message: string) => calls.push(['alert', message]),
+    },
     getDropZone: () => new Element(),
+    isAcceptedImageFile: (file: { type?: string }) => file.type?.startsWith('image/'),
     zoneForElement: (element: InstanceType<typeof Element>) => element.cover ? null : element,
     beginTransaction: (_documentKey: string, element?: InstanceType<typeof Element>) => ({
       documentKey: 'home',
       dropZone: element && !element.cover ? element : new Element(),
     }),
     clearCarouselDropTarget: () => {}, clearPlaceholderTarget: () => {},
-    closeMultiDropChoice: () => {}, carouselAtPoint: () => null,
-    carouselTargetFromElement: () => null, setCarouselDropTarget: () => {},
-    standalonePlaceholderAtPoint: () => null, setPlaceholderTarget: () => {},
+    closeMultiDropChoice: () => {}, carouselAtPoint: () => options.carousel ? new Element() : null,
+    carouselTargetFromElement: (target: InstanceType<typeof Element>) => options.carousel
+      ? { documentKey: 'home', path: ['sections', 0], target }
+      : null,
+    placeholderAtPoint: () => options.placeholder ? placeholder : null,
+    setCarouselDropTarget: () => {}, setPlaceholderTarget: () => {},
     insertIndexForY: () => 3,
     handleFiles: (...args: unknown[]) => calls.push(['files', ...args]),
     insertSection: async (...args: unknown[]) => { calls.push(['insert', ...args]); },
@@ -53,6 +66,52 @@ function setup() {
   });
   return { ...handlers, env, calls, dataset, pageDropVeil, event };
 }
+
+test('a placeholder drop is offered to the replacement flow before page routing', () => {
+  const h = setup({ placeholder: true, preventReplacement: true });
+  const event = h.event(false);
+  h.onDrop(event);
+  expect(h.calls[1]).toEqual(['replace', 'vcd:dev-image-replace', {
+    target: expect.any(Object),
+    file: event.dataTransfer.files[0],
+  }]);
+  expect(h.calls).toHaveLength(2);
+});
+
+test('a placeholder drop wins over carousel append routing', () => {
+  const h = setup({ placeholder: true, carousel: true, preventReplacement: true });
+  h.onDrop(h.event(false));
+  expect(h.calls.some(([kind]) => kind === 'replace')).toBe(true);
+  expect(h.calls.some(([kind]) => kind === 'insert')).toBe(false);
+});
+
+test('an asset drop sends its source when no file is available', () => {
+  const h = setup({ placeholder: true, preventReplacement: true });
+  const event = h.event(false, true);
+  event.dataTransfer.files = [];
+  h.onDrop(event);
+  expect(h.calls[1]).toEqual(['replace', 'vcd:dev-image-replace', {
+    target: expect.any(Object),
+    src: 'existing/photo.png',
+  }]);
+});
+
+test('placeholder replacement prefers the first accepted file', () => {
+  const h = setup({ placeholder: true, preventReplacement: true });
+  const event = h.event(false);
+  const image = { name: 'first.png', type: 'image/png' };
+  event.dataTransfer.files = [{ name: 'notes.txt', type: 'text/plain' }, image, { name: 'second.jpg', type: 'image/jpeg' }];
+  h.onDrop(event);
+  expect(h.calls[1]?.[2]).toMatchObject({ file: image });
+});
+
+test('an unhandled placeholder replacement stops without page routing', () => {
+  const h = setup({ placeholder: true });
+  const event = h.event(false);
+  h.onDrop(event);
+  expect(h.calls[1]?.[0]).toBe('replace');
+  expect(h.calls.at(-1)).toEqual(['alert', 'Could not replace that image. Reload the editor and try again.']);
+});
 
 test('entering a gallery cover leaves its drag feedback to the gallery editor', () => {
   const h = setup();
