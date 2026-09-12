@@ -102,6 +102,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
+  import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
   import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
@@ -124,6 +125,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     DEV_PATH_ATTRS,
     getDropZone,
     getSectionRoots,
+    getSectionRootsInDomOrder,
     remapSectionPaths,
     resetSectionOrderIds,
     shiftSectionOrderIds,
@@ -1800,6 +1802,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             action: 'delete',
             document: entry.documentKey,
             index: entry.index,
+            target: sectionEditTarget(entry.root),
           }),
         });
         const payload = await response.json();
@@ -1851,11 +1854,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            changes: dirtyText.map((state) => ({
+            changes: dirtyText.map((state) => withDevEditTarget({
               document: state.document,
               path: state.path,
               value: readValue(state),
-            })),
+            }, state.element)),
           }),
         });
         const payload = await response.json();
@@ -1866,16 +1869,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       const dirtyLayout = [
-        ...dirtySpacing.map((state) => ({
+        ...dirtySpacing.map((state) => withDevEditTarget({
           document: state.document,
           path: state.writePath,
           value: state.currentValue,
-        })),
-        ...dirtyIntroHeights.map((state) => ({
+        }, state.element)),
+        ...dirtyIntroHeights.map((state) => withDevEditTarget({
           document: state.document,
           path: state.path,
           value: state.currentValue,
-        })),
+        }, state.element)),
       ];
       if (dirtyLayout.length) {
         const response = await fetch('/api/content-spacing', {
@@ -1931,6 +1934,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
         pendingSectionInserts.splice(pendingSectionInserts.indexOf(entry), 1);
+        if (payload.section?.id) entry.root.dataset.devContentId = String(payload.section.id);
         const serverSectionId = String(
           payload.section?.sectionId || payload.section?.id || payload.id || clientId,
         );
@@ -1965,6 +1969,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             action: 'delete',
             document: entry.documentKey,
             index: entry.deletedIndex,
+            target: sectionEditTarget(entry.root),
           }),
         });
         const payload = await response.json();
@@ -1995,6 +2000,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
         const body: Record<string, unknown> = {
           action: 'convert',
+          target: sectionEditTarget(entry.root),
           document: entry.documentKey,
           index,
           type: entry.to,
@@ -2693,6 +2699,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         ? (spacingStates.find((candidate) => candidate.document === documentKey && candidate.introHeight)?.introHeight?.currentValue ?? 75)
         : undefined;
       const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
+      built.root.dataset.devContentId = sectionId;
       if (placement === 'after') host.after(built.root);
       else host.before(built.root);
 
@@ -3021,6 +3028,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
       const prepare = () => ({
         action: 'updateProjectDetailsRows',
+        target: sectionEditTarget(root),
         document: root.dataset.devSpacingDocument,
         index: JSON.parse(root.dataset.devSpacingPath || '[]').at(-2),
         rows: readProjectDetailsRows(root),
@@ -3803,6 +3811,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           body: JSON.stringify({
             document: change.payload.document,
             action: 'fillPlaceholder',
+            target: sectionEditTarget(change.root),
             index,
             filenames,
             ...(variants ? { variants } : {}),
@@ -3958,6 +3967,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
       if (typeof detail.revert !== 'function' || !detail.payload || typeof detail.payload !== 'object') {
         return;
+      }
+      if (isPathPendingMediaChange(detail) || detail.kind === 'media-remove') {
+        detail.payload = withDevEditTarget(detail.payload);
       }
       pendingMedia.set(detail.id, detail);
       if (detail.kind === 'section-order') syncPageTopSpacingControls();
@@ -4289,6 +4301,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const fromWasH1 = current === 'sectionTitle:2';
       const toIsH1 = parsed.type === 'sectionTitle' && parsed.level === 2;
 
+      if (previousRoot.dataset.devContentId) built.root.dataset.devContentId = previousRoot.dataset.devContentId;
       previousRoot.replaceWith(built.root);
 
       const delIdx = deletableSections.indexOf(previousRoot);
@@ -5630,9 +5643,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const sectionNavChanges = pendingChanges.filter((change) => change.kind === 'section-nav');
       const mediaRemoveChanges = pendingChanges.filter((change) => change.kind === 'media-remove');
       const detailsChanges = pendingChanges.filter((change) => change.kind === 'project-details-rows');
+      const removedImageChanges = pendingChanges.filter((change) =>
+        (change.kind === 'crop' || change.kind === 'caption')
+        && mediaRemoveChanges.some((removal) => editsRemovedMedia(change.payload, removal.payload)));
       const imageChanges = pendingChanges.filter(
         (change) => (
-          change.kind !== 'listing-order'
+          !removedImageChanges.includes(change)
+          && change.kind !== 'listing-order'
           && change.kind !== 'gallery-membership'
           && change.kind !== 'section-order'
           && change.kind !== 'placeholder-fill'
@@ -5733,7 +5750,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const payload = await readApiJson(response);
           if (!response.ok) throw new Error(String(payload.error || 'Could not remove that image.'));
           persistedChanges.add(change);
-          acknowledge([change]);
+          acknowledge([change, ...removedImageChanges.filter((edit) => editsRemovedMedia(edit.payload, change.payload))]);
         }
         // Membership before order — listing-order skips slugs that lack listings[grid].
         for (const change of galleryMembershipChanges) {
@@ -5860,20 +5877,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               captions: imageChanges
                 .filter((change) => change.kind === 'caption')
                 .map((change) => change.payload),
-              text: dirtyText.map((state) => ({
+              text: dirtyText.map((state) => withDevEditTarget({
                 document: state.document,
                 path: state.path,
                 value: submittedText.get(state),
-              })),
-              spacing: dirtySpacing.map((state) => ({
+              }, state.element)),
+              spacing: dirtySpacing.map((state) => withDevEditTarget({
                 document: state.document,
                 path: state.writePath,
                 value: submittedSpacing.get(state),
-              })).concat(dirtyIntroHeights.map((state) => ({
+              }, state.element)).concat(dirtyIntroHeights.map((state) => withDevEditTarget({
                 document: state.document,
                 path: state.path,
                 value: submittedHeights.get(state),
-              }))),
+              }, state.element))),
             }),
           });
           const payload = await response.json();
@@ -5885,11 +5902,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               method: 'POST',
               headers: { 'content-type': 'application/json' },
               body: JSON.stringify({
-                changes: dirtyText.map((state) => ({
+                changes: dirtyText.map((state) => withDevEditTarget({
                   document: state.document,
                   path: state.path,
                   value: submittedText.get(state),
-                })),
+                }, state.element)),
               }),
             });
             const payload = await response.json();
@@ -5898,16 +5915,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           }
 
           const dirtyLayout = [
-            ...dirtySpacing.map((state) => ({
+            ...dirtySpacing.map((state) => withDevEditTarget({
               document: state.document,
               path: state.writePath,
               value: submittedSpacing.get(state),
-            })),
-            ...dirtyIntroHeights.map((state) => ({
+            }, state.element)),
+            ...dirtyIntroHeights.map((state) => withDevEditTarget({
               document: state.document,
               path: state.path,
               value: submittedHeights.get(state),
-            })),
+            }, state.element)),
           ];
           if (dirtyLayout.length) {
             const response = await fetch('/api/content-spacing', {
@@ -5940,6 +5957,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (reorderedDocument !== 'home-intro') {
             change.payload.outline = structuredClone(getDevSectionOutline());
           }
+          let order = Array.isArray(change.payload.order)
+            ? change.payload.order.map((value) => Number(value))
+            : [];
+          const identifiedRoots = getSectionRootsInDomOrder(getDropZone(reorderedDocument))
+            .filter((root) => root.dataset.devContentId);
+          if (identifiedRoots.length) {
+            if (identifiedRoots.length !== order.length) throw new Error('A section identity is missing from the new order.');
+            change.payload.orderIds = identifiedRoots.map((root) => root.dataset.devContentId);
+            order = identifiedRoots.map((root) => sectionIndexFromRoot(root)!);
+            change.payload.order = order;
+          }
           const response = await fetch('/api/content-section-order', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -5947,9 +5975,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save section order.');
-          const order = Array.isArray(change.payload.order)
-            ? change.payload.order.map((value) => Number(value))
-            : [];
           const indexMap = buildIndexMapFromOrder(order);
           remapSectionPaths(indexMap, reorderedDocument);
           remapPathsInStates(indexMap, reorderedDocument);

@@ -60,6 +60,7 @@ import {
 import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './src/lib/projectStackSpacing.js';
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
+import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -67,6 +68,8 @@ const isSafePathPart = (part) => (
   part !== 'prototype' &&
   part !== 'constructor'
 );
+
+const resolveSavePath = (data, change) => resolveContentTarget(data, change?.path, change?.target);
 
 const normalizeIntroHeight = (value) => {
   const number = Number(value);
@@ -309,9 +312,16 @@ function imageGridDevWriter() {
           }
 
           const data = await readDevDocument(target.relativeFile);
+          let resolvedPath;
+          try {
+            resolvedPath = resolveContentTarget(data, fieldPath, body.target);
+          } catch (error) {
+            send(400, { error: error instanceof Error ? error.message : 'That grid is not editable.' });
+            return;
+          }
 
           let node = data;
-          for (const part of target.path) {
+          for (const part of resolvedPath) {
             if (
               node === null ||
               typeof node !== 'object' ||
@@ -521,18 +531,13 @@ function contentTextDevWriter() {
               !target.path.length ||
               target.path.length > 8 ||
               (!valueIsText && !valueIsParagraphs) ||
-              target.path.some((part) => (
-                (typeof part !== 'string' && typeof part !== 'number') ||
-                part === '__proto__' ||
-                part === 'prototype' ||
-                part === 'constructor'
-              ))
+              !isSafeContentPath(target.path)
             ) {
               send(400, { error: 'One or more text fields are not editable.' });
               return;
             }
             const documentChanges = grouped.get(target.relativeFile) || [];
-            documentChanges.push({ path: target.path, value });
+            documentChanges.push({ path: target.path, target: change.target, value });
             grouped.set(target.relativeFile, documentChanges);
           }
 
@@ -540,8 +545,15 @@ function contentTextDevWriter() {
             const data = await readDevDocument(relativeFile);
 
             for (const change of documentChanges) {
+              let resolvedPath;
+              try {
+                resolvedPath = resolveContentTarget(data, change.path, change.target);
+              } catch (error) {
+                send(400, { error: error instanceof Error ? error.message : 'An editable text path no longer exists.' });
+                return;
+              }
               let target = data;
-              for (const part of change.path.slice(0, -1)) {
+              for (const part of resolvedPath.slice(0, -1)) {
                 if (
                   target === null ||
                   typeof target !== 'object' ||
@@ -553,7 +565,7 @@ function contentTextDevWriter() {
                 target = target[part];
               }
 
-              const field = change.path.at(-1);
+              const field = resolvedPath.at(-1);
               const currentValue = target?.[field];
               if (
                 target === null ||
@@ -662,10 +674,14 @@ const applyImageWidthFlags = (target, change) => {
  */
 export const applyCropChange = (data, change) => {
   const fieldPath = change.path;
-  if (!Array.isArray(fieldPath) || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+  if (!isSafeContentPath(fieldPath)) {
     return { ok: false, error: 'That image is not editable.' };
   }
-  const target = fieldPath.length === 0 ? data : resolvePathTarget(data, fieldPath);
+  let resolvedPath;
+  try { resolvedPath = resolveSavePath(data, change); } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'That image is not editable.' };
+  }
+  const target = resolvePathTarget(data, resolvedPath);
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That image path no longer exists.' };
   }
@@ -813,10 +829,14 @@ export const applyCropChange = (data, change) => {
  */
 const applyGridChange = (data, change) => {
   const fieldPath = change.path;
-  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+  if (!isSafeContentPath(fieldPath) || !fieldPath.length) {
     return { ok: false, error: 'That grid is not editable.' };
   }
-  const target = resolvePathTarget(data, fieldPath);
+  let resolvedPath;
+  try { resolvedPath = resolveSavePath(data, change); } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'That grid is not editable.' };
+  }
+  const target = resolvePathTarget(data, resolvedPath);
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That grid path no longer exists.' };
   }
@@ -961,10 +981,14 @@ const parseCarouselBreakpointOverride = (raw, itemIds) => {
  */
 const applyCarouselChange = (data, change) => {
   const fieldPath = change.path;
-  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+  if (!isSafeContentPath(fieldPath) || !fieldPath.length) {
     return { ok: false, error: 'That carousel is not editable.' };
   }
-  const target = resolvePathTarget(data, fieldPath);
+  let resolvedPath;
+  try { resolvedPath = resolveSavePath(data, change); } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'That carousel is not editable.' };
+  }
+  const target = resolvePathTarget(data, resolvedPath);
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That carousel path no longer exists.' };
   }
@@ -1069,10 +1093,14 @@ const applyCarouselChange = (data, change) => {
  */
 const applyCaptionChange = (data, change) => {
   const fieldPath = change.path;
-  if (!Array.isArray(fieldPath) || !fieldPath.length || fieldPath.length > 8 || !fieldPath.every(isSafePathPart)) {
+  if (!isSafeContentPath(fieldPath) || !fieldPath.length) {
     return { ok: false, error: 'That image is not editable.' };
   }
-  const target = resolvePathTarget(data, fieldPath);
+  let resolvedPath;
+  try { resolvedPath = resolveSavePath(data, change); } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'That image is not editable.' };
+  }
+  const target = resolvePathTarget(data, resolvedPath);
   if (target === null || typeof target !== 'object' || Array.isArray(target)) {
     return { ok: false, error: 'That image path no longer exists.' };
   }
@@ -1261,7 +1289,7 @@ function contentBatchDevWriter() {
 
           /** @type {Map<string, { crops: any[], grids: any[], carousels: any[], captions: any[], text: any[], spacing: any[] }>} */
           const grouped = new Map();
-          const resolveBatchChange = (documentKey, fieldPath) => {
+          const resolveBatchChange = (documentKey, fieldPath, stableTarget) => {
             // resolveDevFieldTarget throws on an unknown document or an invalid
             // path (empty path is only valid for play:* roots); swallow it so
             // the caller's specific message wins over the catch-all below.
@@ -1277,44 +1305,44 @@ function contentBatchDevWriter() {
               group = { crops: [], grids: [], carousels: [], captions: [], text: [], spacing: [] };
               grouped.set(target.relativeFile, group);
             }
-            return { group, path: target.path };
+            return { group, path: target.path, target: stableTarget };
           };
 
           for (const change of crops) {
             const documentKey = String(change?.document || '');
-            const resolved = resolveBatchChange(documentKey, change?.path);
+            const resolved = resolveBatchChange(documentKey, change?.path, change?.target);
             if (!resolved) {
               send(400, { error: 'That image is not editable.' });
               return;
             }
-            resolved.group.crops.push({ ...change, path: resolved.path });
+            resolved.group.crops.push({ ...change, path: resolved.path, target: resolved.target });
           }
           for (const change of grids) {
             const documentKey = String(change?.document || '');
-            const resolved = resolveBatchChange(documentKey, change?.path);
+            const resolved = resolveBatchChange(documentKey, change?.path, change?.target);
             if (!resolved) {
               send(400, { error: 'That grid is not editable.' });
               return;
             }
-            resolved.group.grids.push({ ...change, path: resolved.path });
+            resolved.group.grids.push({ ...change, path: resolved.path, target: resolved.target });
           }
           for (const change of carousels) {
             const documentKey = String(change?.document || '');
-            const resolved = resolveBatchChange(documentKey, change?.path);
+            const resolved = resolveBatchChange(documentKey, change?.path, change?.target);
             if (!resolved) {
               send(400, { error: 'That carousel is not editable.' });
               return;
             }
-            resolved.group.carousels.push({ ...change, path: resolved.path });
+            resolved.group.carousels.push({ ...change, path: resolved.path, target: resolved.target });
           }
           for (const change of captions) {
             const documentKey = String(change?.document || '');
-            const resolved = resolveBatchChange(documentKey, change?.path);
+            const resolved = resolveBatchChange(documentKey, change?.path, change?.target);
             if (!resolved) {
               send(400, { error: 'That image is not editable.' });
               return;
             }
-            resolved.group.captions.push({ ...change, path: resolved.path });
+            resolved.group.captions.push({ ...change, path: resolved.path, target: resolved.target });
           }
           for (const change of textChanges) {
             const documentKey = String(change?.document || '');
@@ -1326,25 +1354,25 @@ function contentBatchDevWriter() {
               value.every((paragraph) => typeof paragraph === 'string') &&
               value.join('').length <= 20_000
             );
-            const resolved = resolveBatchChange(documentKey, fieldPath);
+            const resolved = resolveBatchChange(documentKey, fieldPath, change?.target);
             if (
               !resolved ||
               !Array.isArray(resolved.path) ||
               !resolved.path.length ||
               resolved.path.length > 8 ||
               (!valueIsText && !valueIsParagraphs) ||
-              resolved.path.some((part) => !isSafePathPart(part))
+              !isSafeContentPath(resolved.path)
             ) {
               send(400, { error: 'One or more text fields are not editable.' });
               return;
             }
-            resolved.group.text.push({ ...change, path: resolved.path });
+            resolved.group.text.push({ ...change, path: resolved.path, target: resolved.target });
           }
           for (const change of spacingChanges) {
             const documentKey = String(change?.document || '');
             const fieldPath = change?.path;
             const value = change?.value;
-            const resolved = resolveBatchChange(documentKey, fieldPath);
+            const resolved = resolveBatchChange(documentKey, fieldPath, change?.target);
             const field = resolved?.path?.at(-1);
             let canonicalSpacing;
             try {
@@ -1362,7 +1390,7 @@ function contentBatchDevWriter() {
               !Array.isArray(resolved.path) ||
               resolved.path.length > 8 ||
               (!validSpacing && !validIntroHeight) ||
-              resolved.path.some((part) => !isSafePathPart(part))
+              !isSafeContentPath(resolved.path)
             ) {
               send(400, { error: 'One or more layout fields are not editable.' });
               return;
@@ -1371,6 +1399,7 @@ function contentBatchDevWriter() {
               ...change,
               value: validSpacing ? canonicalSpacing : value,
               path: resolved.path,
+              target: resolved.target,
             });
           }
 
@@ -1406,8 +1435,13 @@ function contentBatchDevWriter() {
               }
             }
             for (const change of group.text) {
+              let resolvedPath;
+              try { resolvedPath = resolveContentTarget(data, change.path, change.target); } catch (error) {
+                send(400, { error: error instanceof Error ? error.message : 'An editable text path no longer exists.' });
+                return;
+              }
               let target = data;
-              for (const part of change.path.slice(0, -1)) {
+              for (const part of resolvedPath.slice(0, -1)) {
                 if (
                   target === null ||
                   typeof target !== 'object' ||
@@ -1418,7 +1452,7 @@ function contentBatchDevWriter() {
                 }
                 target = target[part];
               }
-              const field = change.path.at(-1);
+              const field = resolvedPath.at(-1);
               const currentValue = target?.[field];
               if (
                 target === null ||
@@ -1436,8 +1470,13 @@ function contentBatchDevWriter() {
               target[field] = change.value;
             }
             for (const change of group.spacing) {
+              let resolvedPath;
+              try { resolvedPath = resolveContentTarget(data, change.path, change.target); } catch (error) {
+                send(400, { error: error instanceof Error ? error.message : 'A layout path no longer exists.' });
+                return;
+              }
               let target = data;
-              for (const part of change.path.slice(0, -1)) {
+              for (const part of resolvedPath.slice(0, -1)) {
                 if (
                   target === null ||
                   typeof target !== 'object' ||
@@ -1452,8 +1491,8 @@ function contentBatchDevWriter() {
                 send(400, { error: 'A layout path no longer exists.' });
                 return;
               }
-              const field = change.path.at(-1);
-              if (field === 'introHeight' && change.path.length === 1) {
+              const field = resolvedPath.at(-1);
+              if (field === 'introHeight' && resolvedPath.length === 1) {
                 normalizeCanonicalIntroHeight(data, change.value);
               } else {
                 if (field === 'introHeight' && target.intro !== true) {
@@ -1628,7 +1667,7 @@ export function contentSectionDevWriter() {
                 : body.action === 'convert'
                   ? 'convert'
                   : 'insert';
-          const index = Number(body.index);
+          let index = Number(body.index);
 
           if (!relativeFile) {
             send(400, { error: 'That section cannot be updated.' });
@@ -1640,6 +1679,20 @@ export function contentSectionDevWriter() {
           if (!Array.isArray(data.sections)) {
             send(400, { error: 'The sections list is out of date. Refresh and try again.' });
             return;
+          }
+
+          const stableSectionActions = new Set(['delete', 'convert', 'fillPlaceholder', 'updateProjectDetailsRows']);
+          if (body.target !== undefined && (action === 'insert' || action === 'restore')) {
+            send(400, { error: 'Stable targets cannot be used for section placement.' });
+            return;
+          }
+          if (body.target !== undefined && stableSectionActions.has(action)) {
+            try {
+              index = resolveContentTarget(data, ['sections', index], body.target)[1];
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'That section no longer exists.' });
+              return;
+            }
           }
 
           if (action === 'updateProjectDetailsRows') {
@@ -1693,13 +1746,15 @@ export function contentSectionDevWriter() {
             const itemId = String(body.itemId || '').trim();
             const fieldPath = Array.isArray(body.path) ? body.path : [];
             try {
-              const section = removeMediaItemFromDocument(data, fieldPath, itemId);
+              const resolvedPath = resolveContentTarget(data, fieldPath, body.target);
+              const section = removeMediaItemFromDocument(data, resolvedPath, itemId);
               await writeContentJson(file, data);
               send(200, {
                 ok: true,
                 action: 'removeMediaItem',
                 itemId,
                 path: fieldPath,
+                index: resolvedPath[1],
                 section,
               });
             } catch (error) {
@@ -1722,6 +1777,13 @@ export function contentSectionDevWriter() {
               send(400, { error: 'That media block path is invalid.' });
               return;
             }
+            let resolvedPath;
+            try {
+              resolvedPath = resolveContentTarget(data, fieldPath, body.target);
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'That media block path is invalid.' });
+              return;
+            }
             const placeholder = body.placeholder === true;
             if (placeholder && (srcs.length || filenames.length)) {
               send(400, { error: 'Placeholder append cannot include image files.' });
@@ -1733,7 +1795,7 @@ export function contentSectionDevWriter() {
             }
 
             let target = data;
-            for (const part of fieldPath) {
+            for (const part of resolvedPath) {
               if (!target || typeof target !== 'object') {
                 target = null;
                 break;
@@ -1786,8 +1848,8 @@ export function contentSectionDevWriter() {
                 }
               }
 
-              const sectionIndex = fieldPath[0] === 'sections' && Number.isInteger(fieldPath[1])
-                ? fieldPath[1]
+              const sectionIndex = resolvedPath[0] === 'sections' && Number.isInteger(resolvedPath[1])
+                ? resolvedPath[1]
                 : -1;
               if (sectionIndex < 0 || sectionIndex >= data.sections.length) {
                 throw new Error('That media block no longer exists.');
@@ -2149,6 +2211,7 @@ function contentSpacingDevWriter() {
             const documentChanges = grouped.get(target.relativeFile) || [];
             documentChanges.push({
               path: target.path,
+              target: change.target,
               value: validSpacing ? canonicalSpacing : value,
             });
             grouped.set(target.relativeFile, documentChanges);
@@ -2158,8 +2221,13 @@ function contentSpacingDevWriter() {
             const data = await readDevDocument(relativeFile);
 
             for (const change of documentChanges) {
+              let resolvedPath;
+              try { resolvedPath = resolveContentTarget(data, change.path, change.target); } catch (error) {
+                send(400, { error: error instanceof Error ? error.message : 'A layout path no longer exists.' });
+                return;
+              }
               let target = data;
-              for (const part of change.path.slice(0, -1)) {
+              for (const part of resolvedPath.slice(0, -1)) {
                 if (
                   target === null ||
                   typeof target !== 'object' ||
@@ -2171,19 +2239,19 @@ function contentSpacingDevWriter() {
                 target = target[part];
               }
 
-              const field = change.path.at(-1);
+              const field = resolvedPath.at(-1);
               if (target === null || typeof target !== 'object' || Array.isArray(target)) {
                 send(400, { error: 'A layout path no longer exists.' });
                 return;
               }
-              if (field === 'introHeight' && change.path.length === 1) {
+              if (field === 'introHeight' && resolvedPath.length === 1) {
                 normalizeCanonicalIntroHeight(data, change.value);
               } else {
                 if (field === 'introHeight' && target.intro !== true) {
                   send(400, { error: 'Intro height is only editable on Intro blocks.' });
                   return;
                 }
-                target[field] = isProjectStackSpacingPath(change.path)
+                target[field] = isProjectStackSpacingPath(resolvedPath)
                   ? canonicalizeProjectStackSpacing(change.value)
                   : change.value;
               }

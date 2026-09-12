@@ -114,6 +114,7 @@ import Button from '../ui/Button.astro';
 </DevOverlay>
 
 <script>
+  import { devEditPendingId } from '../../scripts/devEditTarget';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../../lib/icons';
   import { refreshProjectCropCovers } from '../../lib/projectCropCover';
@@ -306,11 +307,8 @@ import Button from '../ui/Button.astro';
     };
     const diskBaselines = new Map<string, GridBaseline>();
 
-    const pendingIdFor = (target: HTMLElement) => {
-      const documentKey = target.dataset.devDocument || '';
-      const gridPath = target.dataset.devGridPath || '[]';
-      return `grid:${documentKey}:${gridPath}`;
-    };
+    const pendingIdFor = (target: HTMLElement) =>
+      devEditPendingId('grid', target);
 
     const closePanel = () => {
       const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
@@ -590,7 +588,7 @@ import Button from '../ui/Button.astro';
 
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
         detail: {
-          id: `media-remove:${documentKey}:${target.dataset.devGridPath || '[]'}:${id}`,
+          id: `media-remove:${devEditPendingId('grid', target)}:${id}`,
           kind: 'media-remove',
           payload: {
             document: documentKey,
