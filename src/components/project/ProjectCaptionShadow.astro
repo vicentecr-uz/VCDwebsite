@@ -202,6 +202,10 @@
   }
   window.addEventListener('load', layoutAllShadows);
   window.addEventListener('resize', scheduleLayout);
+  window.addEventListener('vcd:dev-frame-changed', scheduleLayout);
+  if (import.meta.hot) {
+    import.meta.hot.on('vite:afterUpdate', scheduleLayout);
+  }
 
   const observer = new MutationObserver((records) => {
     const relevant = records.some((record) => {
@@ -225,6 +229,13 @@
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-caption-position', 'data-caption-style', 'data-media-ground', 'class'],
+    attributeFilter: [
+      'data-caption-position',
+      'data-caption-style',
+      'data-media-ground',
+      'data-mobile-inset',
+      'data-mobile-bleed-eligible',
+      'class',
+    ],
   });
 </script>
