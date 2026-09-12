@@ -206,6 +206,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </DevOverlay>
 
 <script>
+  import { devEditPendingId } from '../../scripts/devEditTarget';
   import {
     imageGridConstrainedStyle,
     imageHasWidthConstraint,
@@ -924,11 +925,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       srcWidth?: number;
       srcHeight?: number;
     }>();
-    const pendingIdFor = (target: HTMLElement, slot: 'cover' | 'hover' = activeSlot) => {
-      const documentKey = target.dataset.devDocument || '';
-      const imagePath = target.dataset.devImagePath || '[]';
-      return `crop:${documentKey}:${imagePath}${slot === 'hover' ? ':hover' : ''}`;
-    };
+    const pendingIdFor = (target: HTMLElement, slot: 'cover' | 'hover' = activeSlot) =>
+      `${devEditPendingId('crop', target)}${slot === 'hover' ? ':hover' : ''}`;
 
     const canonicalSrcFromUrl = (url: string) => {
       try {
