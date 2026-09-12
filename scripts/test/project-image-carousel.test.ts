@@ -21,10 +21,14 @@ for (const axis of ['horizontal', 'vertical']) {
     block.innerHTML = `<div data-carousel-track>${[0, 1, 2].map((i) =>
       `<div data-carousel-slide data-grid-item-id="item-${i}"></div>`).join('')}</div>
       <div data-carousel-dots><div data-carousel-dot-window><div data-carousel-dot-strip>${[0, 1, 2].map((i) =>
-        `<button data-carousel-dot data-carousel-item-id="item-${i}"></button>`).join('')}</div></div></div>`;
+        `<button data-carousel-dot data-carousel-item-id="item-${i}"></button>`).join('')}</div></div></div>
+      <div data-carousel-caption-slot>${[0, 1, 2].map((i) =>
+        `<span data-carousel-caption data-carousel-item-id="item-${i}">Caption ${i}</span>`).join('')}</div>`;
     document.body.append(block);
     const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
     const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+    slides[2].dataset.mobileBleedEligible = 'true';
+    slides[2].dataset.mobileInset = 'false';
     let isolated = false;
     slides.forEach((slide, index) => {
       Object.defineProperties(slide, {
@@ -43,10 +47,15 @@ for (const axis of ['horizontal', 'vertical']) {
     expect(restoreCarouselActiveItem(block, 'item-2')).toBe(true);
     const dots = [...block.querySelectorAll<HTMLElement>('[data-carousel-dot]')];
     const refresh = () => window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+    const captions = [...block.querySelectorAll<HTMLElement>('[data-carousel-caption]')];
+    expect(captions[2].dataset.mobileBleedEligible).toBe('true');
+    expect(captions[0].dataset.mobileBleedEligible).toBe('false');
+    slides[2].dataset.mobileInset = 'true';
 
     isolated = true;
     slides[2].classList.add('dev-crop-stage-host');
     refresh();
+    expect(captions[2].dataset.mobileInset).toBe('true');
     track.dispatchEvent(new window.Event('scroll'));
     expect(dots[2].getAttribute('aria-current')).toBe('true');
     expect(dots[0].getAttribute('aria-current')).toBe('false');
