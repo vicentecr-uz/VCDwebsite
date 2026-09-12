@@ -8,6 +8,7 @@ interface Props {
   sectionPath?: Array<string | number>;
   spacing?: ProjectStackSpacing;
   sectionId?: string;
+  contentId?: string;
 }
 
 const {
@@ -17,6 +18,7 @@ const {
   sectionPath = [],
   spacing = 'section',
   sectionId,
+  contentId,
 } = Astro.props;
 const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
 const path = (field: string | number) => JSON.stringify([...sectionPath, field]);
@@ -26,7 +28,7 @@ const rowPath = (index: number, field: 'label' | 'value') => JSON.stringify([...
 <section
   id={sectionId}
   class:list={['project-block', 'project-block--text', 'project-details', projectStackClass(spacing), sectionId && 'section-block']}
-  {...(spacingDevAttrs(documentKey, sectionPath, spacing) ?? {})}
+  {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
   data-dev-section-deletable={editable ? "projectDetails" : undefined}
   data-dev-project-details={editable ? "" : undefined}
 >

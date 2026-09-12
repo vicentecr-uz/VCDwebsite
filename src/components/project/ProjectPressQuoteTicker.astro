@@ -21,6 +21,7 @@ interface Props {
   sectionPath?: Array<string | number>;
   spacing?: ProjectStackSpacing;
   sectionId?: string;
+  contentId?: string;
   /** Pixels per second at full speed. */
   speed?: number;
   /** Logo opacity in light mode (0–1). */
@@ -33,13 +34,14 @@ const {
   sectionPath,
   spacing = 'section',
   sectionId,
+  contentId,
   speed = 36,
   logoOpacity = 0.6,
 } = Astro.props;
 
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const stackClass = projectStackClass(spacing);
-const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 // Duplicate once for a seamless loop.
 const loopItems = [...items, ...items];
 ---

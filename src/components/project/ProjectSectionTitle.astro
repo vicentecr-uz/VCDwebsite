@@ -21,6 +21,7 @@ interface Props {
   sectionPath?: Array<string | number>;
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
+  contentId?: string;
   /**
    * Per-breakpoint in-page title visibility.
    * `desktop` = sidebar gutter zone (≥78.5em, derived — see docs/page-width.md).
@@ -43,6 +44,7 @@ const {
   document: documentKey,
   sectionPath,
   sectionId,
+  contentId,
   showTitle: showTitleProp,
   hideWhenSidebarVisible = false,
   intro = false,
@@ -58,7 +60,7 @@ const showTitle = {
 
 const Tag = level === 3 ? 'h3' : 'h2';
 const stackClass = projectStackClass(spacing, { precedeRelated: tightBottom });
-const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const editable = import.meta.env.DEV && documentKey && sectionPath?.length;
 const deletable = Boolean(editable);
 const rawIntroHeight = Number(introHeight);
