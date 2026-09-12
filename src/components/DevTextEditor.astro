@@ -102,7 +102,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
-  import { editsRemovedMedia, withDevEditTarget } from '../scripts/devEditTarget';
+  import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
   import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
@@ -125,6 +125,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     DEV_PATH_ATTRS,
     getDropZone,
     getSectionRoots,
+    getSectionRootsInDomOrder,
     remapSectionPaths,
     resetSectionOrderIds,
     shiftSectionOrderIds,
@@ -1801,6 +1802,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             action: 'delete',
             document: entry.documentKey,
             index: entry.index,
+            target: sectionEditTarget(entry.root),
           }),
         });
         const payload = await response.json();
@@ -1967,6 +1969,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             action: 'delete',
             document: entry.documentKey,
             index: entry.deletedIndex,
+            target: sectionEditTarget(entry.root),
           }),
         });
         const payload = await response.json();
@@ -1997,6 +2000,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         }
         const body: Record<string, unknown> = {
           action: 'convert',
+          target: sectionEditTarget(entry.root),
           document: entry.documentKey,
           index,
           type: entry.to,
@@ -3024,6 +3028,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
       const prepare = () => ({
         action: 'updateProjectDetailsRows',
+        target: sectionEditTarget(root),
         document: root.dataset.devSpacingDocument,
         index: JSON.parse(root.dataset.devSpacingPath || '[]').at(-2),
         rows: readProjectDetailsRows(root),
@@ -3806,6 +3811,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           body: JSON.stringify({
             document: change.payload.document,
             action: 'fillPlaceholder',
+            target: sectionEditTarget(change.root),
             index,
             filenames,
             ...(variants ? { variants } : {}),
@@ -5951,6 +5957,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (reorderedDocument !== 'home-intro') {
             change.payload.outline = structuredClone(getDevSectionOutline());
           }
+          let order = Array.isArray(change.payload.order)
+            ? change.payload.order.map((value) => Number(value))
+            : [];
+          const identifiedRoots = getSectionRootsInDomOrder(getDropZone(reorderedDocument))
+            .filter((root) => root.dataset.devContentId);
+          if (identifiedRoots.length) {
+            if (identifiedRoots.length !== order.length) throw new Error('A section identity is missing from the new order.');
+            change.payload.orderIds = identifiedRoots.map((root) => root.dataset.devContentId);
+            order = identifiedRoots.map((root) => sectionIndexFromRoot(root)!);
+            change.payload.order = order;
+          }
           const response = await fetch('/api/content-section-order', {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -5958,9 +5975,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           });
           const payload = await response.json();
           if (!response.ok) throw new Error(payload.error || 'Could not save section order.');
-          const order = Array.isArray(change.payload.order)
-            ? change.payload.order.map((value) => Number(value))
-            : [];
           const indexMap = buildIndexMapFromOrder(order);
           remapSectionPaths(indexMap, reorderedDocument);
           remapPathsInStates(indexMap, reorderedDocument);

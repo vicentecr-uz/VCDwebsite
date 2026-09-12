@@ -1,5 +1,10 @@
 type FieldChange = { document?: unknown; path?: unknown; target?: unknown };
 
+export function sectionEditTarget(element?: HTMLElement | null): { sectionId: string } | undefined {
+  const id = element?.closest<HTMLElement>('[data-dev-content-id]')?.dataset.devContentId;
+  return id ? { sectionId: id } : undefined;
+}
+
 export function editsRemovedMedia(edit: FieldChange, removal: FieldChange & { itemId?: unknown }): boolean {
   const edited = edit.target as { sectionId?: string; itemId?: string } | undefined;
   const removed = removal.target as { sectionId?: string } | undefined;
