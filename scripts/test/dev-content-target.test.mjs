@@ -52,6 +52,7 @@ test('rejects malformed stable targets and paths', () => {
 
 test('retains positional handling for legacy paths', () => {
   const data = document();
+  assert.deepEqual(resolveContentTarget(data, [], undefined), []);
   assert.deepEqual(resolveContentTarget(data, ['title']), ['title']);
   assert.deepEqual(resolveContentTarget(data, ['sections', 1, 'items', 0, 'src']), ['sections', 1, 'items', 0, 'src']);
 });
