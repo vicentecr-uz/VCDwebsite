@@ -8,11 +8,13 @@ const between = (a: string, b: string) => source.slice(source.indexOf(a), source
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync([
   between('    const bumpSectionPath =', '    const remapPathsInStates ='),
   between('    const reindexDevPaths =', '    /** Text entry proper'),
+  between('    const revertAllPending =', '    const detachSectionStates ='),
   between('    const detachSectionStates =', '    const revertPendingBlockConverts ='),
+  between('    const revertPendingSectionDeletes =', '    const revertPersistedMediaInserts ='),
   between('    const persistPendingSectionInserts =', '    const persistPendingBlockConverts ='),
   'let deleteSectionAt;',
   between('    const undoSectionDelete =', '    const blockParagraphs ='),
-  'return { deleteSectionAt, persistPendingSectionDeletes, persistPendingSectionInserts };',
+  'return { deleteSectionAt, persistPendingSectionDeletes, persistPendingSectionInserts, revertPendingSectionDeletes, revertAllPending };',
 ].join('\n'));
 
 function setup() {
@@ -93,6 +95,38 @@ test('deleting a section stashes its queued media edit and restores it on undo',
   expect(env.pendingSectionDeletes[0].pendingMedia).toEqual([pending]);
   await pageHistory.undo();
   expect(env.pendingMedia.get(pending.id)?.payload.path).toEqual(['sections', 1, 'images', 0]);
+});
+
+test('deleting an earlier section shifts a surviving queued media edit and undo restores its index', async () => {
+  const { deleteSectionAt, blocks, pageHistory, env } = setup();
+  const pending = {
+    id: 'caption:home-intro:2', kind: 'caption',
+    payload: { document: 'home-intro', path: ['sections', 2, 'images', 1] },
+    revert: () => {},
+  };
+  env.pendingMedia.set(pending.id, pending);
+
+  await deleteSectionAt(blocks[1]);
+  expect(env.pendingMedia.get(pending.id)?.payload.path).toEqual(['sections', 1, 'images', 1]);
+  await pageHistory.undo();
+  expect(env.pendingMedia.get(pending.id)?.payload.path).toEqual(['sections', 2, 'images', 1]);
+});
+
+test('global revert restores deleted sections before reverting their stashed media edits', async () => {
+  const { deleteSectionAt, revertPendingSectionDeletes, revertAllPending, blocks, env } = setup();
+  let reverted = false;
+  env.pendingMedia.set('crop:home-intro:1', {
+    id: 'crop:home-intro:1', kind: 'crop',
+    payload: { document: 'home-intro', path: ['sections', 1, 'images', 0] },
+    revert: () => { reverted = true; },
+  });
+
+  await deleteSectionAt(blocks[1]);
+  revertPendingSectionDeletes();
+  revertAllPending();
+  expect(reverted).toBe(true);
+  expect(env.pendingMedia.size).toBe(0);
+  expect(blocks[1].isConnected).toBe(true);
 });
 
 test('deleting an unsaved new block restores its insertion queue, content and conversion state', async () => {
