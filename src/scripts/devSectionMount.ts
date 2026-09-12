@@ -163,7 +163,7 @@ export function mountImageSection(
     projectStackClass(spacing),
     (hasWidthConstraint || maxVh || section.centered === true) && 'project-block--centered',
   ].filter(Boolean).join(' ');
-  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing));
+  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? '') }));
   block.setAttribute('data-dev-section-deletable', 'image');
   block.append(buildInlineImageFigure(section, documentKey, sectionPath));
   return block;
@@ -210,7 +210,7 @@ export function mountImageGridSection(
   grid.setAttribute('data-dev-grid-match-height', matchHeight ? 'true' : 'false');
   grid.setAttribute('data-dev-grid-layouts', JSON.stringify(layouts));
   grid.setAttribute('data-dev-grid-items', JSON.stringify(editorItems));
-  applyDataAttrs(grid, spacingDevAttrs(documentKey, sectionPath, spacing));
+  applyDataAttrs(grid, spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? '') }));
   grid.setAttribute('data-dev-section-deletable', 'imageGrid');
 
   const gridEdit = document.createElement('button');
@@ -370,7 +370,7 @@ function mountImageCarouselSection(
   block.setAttribute('data-dev-carousel-items', JSON.stringify(editorItems));
   block.setAttribute('data-dev-carousel-visible', JSON.stringify(visibleIds));
   block.setAttribute('data-dev-carousel-settings', JSON.stringify(settingsJson));
-  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing));
+  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? '') }));
   block.setAttribute('data-dev-section-deletable', 'imageCarousel');
 
   const editTrigger = document.createElement('button');

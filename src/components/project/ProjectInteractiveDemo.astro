@@ -6,12 +6,13 @@ interface Props {
   demo: unknown;
   spacing?: ProjectStackSpacing;
   sectionId?: string;
+  contentId?: string;
   documentKey?: string;
   sectionPath?: Array<string | number>;
 }
-const { demo: id, spacing = 'section', sectionId, documentKey, sectionPath } = Astro.props;
+const { demo: id, spacing = 'section', sectionId, contentId, documentKey, sectionPath } = Astro.props;
 const demo = craftDemo(id);
-const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 ---
 
 {demo && (

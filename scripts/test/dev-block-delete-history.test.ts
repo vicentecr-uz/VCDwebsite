@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { createHistory } from '../../src/lib/devHistory';
+import { sectionEditTarget } from '../../src/scripts/devEditTarget';
 
 const source = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const between = (a: string, b: string) => source.slice(source.indexOf(a), source.indexOf(b, source.indexOf(a)));
@@ -39,6 +40,7 @@ function setup() {
   const requests: any[] = [];
   let token = 0;
   const env: any = {
+    sectionEditTarget,
     window, document, Node: window.Node, HTMLElement: window.HTMLElement, CustomEvent: window.CustomEvent,
     detailsBaselines: new Map(), stageProjectDetailsRows() {},
     actionsBusy: false, savedFormatRange: null, pageHistory, textStates, spacingStates,

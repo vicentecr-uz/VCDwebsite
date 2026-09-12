@@ -83,6 +83,7 @@ interface Props {
   basePath?: (string | number)[];
   spacing?: ProjectStackSpacing;
   sectionId?: string;
+  contentId?: string;
 }
 
 const {
@@ -100,13 +101,14 @@ const {
   basePath,
   spacing = 'section',
   sectionId,
+  contentId,
 } = Astro.props;
 
 const constrained = resolveImageGridConstrained(constrainedProp);
 const itemIds = items.map((item, index) => item.id ?? `item-${index}`);
 const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(basePath);
 const stackClass = projectStackClass(spacing);
-const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing, { contentId });
 
 /** SSR paints the desktop resolution; the client swaps on resize. */
 const resolved = resolveCarouselSettings({

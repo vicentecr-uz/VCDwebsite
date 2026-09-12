@@ -80,6 +80,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
+  contentId?: string;
 }
 
 const {
@@ -93,6 +94,7 @@ const {
   basePath,
   spacing = 'section',
   sectionId,
+  contentId,
 } = Astro.props;
 
 const columns = resolveImageGridColumns(columnsProp);
@@ -112,7 +114,7 @@ const showDevEditing = import.meta.env.DEV && !!documentKey && Array.isArray(bas
 /** Single-row grids still need the editor — e.g. 3-wide desktop → 1-wide mobile. */
 const showGridEditor = showDevEditing;
 const stackClass = projectStackClass(spacing);
-const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing, { contentId });
 
 const editorItems = items.map((item, index) => ({
   id: itemIds[index],

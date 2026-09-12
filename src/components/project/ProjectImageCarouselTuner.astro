@@ -121,6 +121,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
 </DevOverlay>
 
 <script>
+  import { devEditPendingId } from '../../scripts/devEditTarget';
   import plusIcon from 'lucide-static/icons/plus.svg?raw';
   import { sizeIcon } from '../../lib/icons';
   import { applyCarouselViewportSettings } from '../../lib/projectImageCarousel';
@@ -297,11 +298,8 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
     const bp = () => draft.byViewport[selectedViewport];
 
-    const pendingIdFor = (target: HTMLElement) => {
-      const documentKey = target.dataset.devDocument || '';
-      const carouselPath = target.dataset.devCarouselPath || '[]';
-      return `carousel:${documentKey}:${carouselPath}`;
-    };
+    const pendingIdFor = (target: HTMLElement) =>
+      devEditPendingId('carousel', target);
 
     const closePanel = () => {
       const panel = tuner.closest<HTMLElement>('[data-dev-panel-key]');
@@ -547,7 +545,7 @@ import ToggleRow from '../ui/ToggleRow.astro';
 
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
         detail: {
-          id: `media-remove:${documentKey}:${target.dataset.devCarouselPath || '[]'}:${id}`,
+          id: `media-remove:${devEditPendingId('carousel', target)}:${id}`,
           kind: 'media-remove',
           payload: {
             document: documentKey,

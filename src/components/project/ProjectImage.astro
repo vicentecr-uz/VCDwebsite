@@ -74,6 +74,7 @@ interface Props {
   imgModifier?: string;
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
+  contentId?: string;
   /** Legacy single caption (all breakpoints). Prefer `captions`. */
   caption?: string;
   /** Per-breakpoint caption text. Smaller breakpoints inherit when omitted. */
@@ -109,6 +110,7 @@ const {
   hideMobile = false,
   imgModifier,
   sectionId,
+  contentId,
   caption,
   captions: captionsProp,
   captionStyle: captionStyleProp,
@@ -117,7 +119,7 @@ const {
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing, { flush });
-const spacingAttrs = spacingDevAttrs(documentKey, path, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, path, spacing, { contentId });
 
 const isLead = kind === 'lead';
 const isPlaceholder = isPlaceholderSrc(src);
