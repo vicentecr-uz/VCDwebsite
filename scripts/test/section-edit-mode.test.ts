@@ -110,6 +110,8 @@ test('section insertion and deletion keep carousel paths aligned with other sect
     textStates: [],
     spacingStates: [],
     pendingBlockConverts: [],
+    pendingMedia: new Map(),
+    pendingSectionDeletes: [],
   };
   const reindexDevPaths = new Function('env', `with (env) { ${reindexSource}; return reindexDevPaths; }`)(env) as (fromIndex: number, delta: number, documentKey: string) => void;
 
@@ -119,4 +121,34 @@ test('section insertion and deletion keep carousel paths aligned with other sect
   reindexDevPaths(1, -1, 'home-intro');
   expect(JSON.parse(spacing.getAttribute('data-dev-spacing-path')!)[1]).toBe(1);
   expect(JSON.parse(carousel.getAttribute('data-dev-carousel-path')!)[1]).toBe(1);
+});
+
+test('section insertion remaps queued media paths by document without aliasing', () => {
+  const zone = new MockZone([], 'home-intro');
+  const originalPath = ['sections', 1, 'images', 2] as Array<string | number>;
+  const pending = {
+    id: 'crop:home-intro', kind: 'crop',
+    payload: { document: 'home-intro', path: originalPath },
+  };
+  const other = {
+    id: 'caption:home', kind: 'caption',
+    payload: { document: 'home', path: ['sections', 1, 'images', 0] },
+  };
+  const nonSection = {
+    id: 'caption:home-intro:global', kind: 'caption',
+    payload: { document: 'home-intro', path: ['gallery', 1, 'images', 0] },
+  };
+  const env = {
+    DEV_PATH_ATTRS, document: { querySelectorAll: () => [zone] },
+    getDropZone: (documentKey?: string) => documentKey === 'home-intro' ? zone : null,
+    shiftSectionOrderIds: () => {}, textStates: [], spacingStates: [], pendingBlockConverts: [],
+    pendingMedia: new Map([[pending.id, pending], [other.id, other], [nonSection.id, nonSection]]), pendingSectionDeletes: [],
+  };
+  const reindexDevPaths = new Function('env', `with (env) { ${reindexSource}; return reindexDevPaths; }`)(env) as (fromIndex: number, delta: number, documentKey: string) => void;
+
+  reindexDevPaths(1, 1, 'home-intro');
+  expect(pending.payload.path).toEqual(['sections', 2, 'images', 2]);
+  expect(originalPath).toEqual(['sections', 1, 'images', 2]);
+  expect(other.payload.path).toEqual(['sections', 1, 'images', 0]);
+  expect(nonSection.payload.path).toEqual(['gallery', 1, 'images', 0]);
 });
