@@ -158,6 +158,11 @@ test('ordinary live caption painting preserves the active typing node', () => {
   expect(nodes.desktop.textContent).toBe('caret text');
 });
 
+test('closing the caption editor exits the session before restoring saved text', () => {
+  const handler = source.slice(source.indexOf("window.addEventListener('vcd:dev-edit-close'"), source.indexOf("const saveDraft =", source.indexOf("window.addEventListener('vcd:dev-edit-close'")));
+  expect(handler.indexOf('captionSession = false;')).toBeLessThan(handler.indexOf('revertToSaved();'));
+});
+
 test('position control records separately from text, while rendering adds no history', async () => {
   const { env, api, history, type, positionHandlers } = setup('panel');
   env.positionSelect.value = 'top-right';
