@@ -998,17 +998,26 @@ export function sectionOrderDevWriter() {
             send(400, { error: 'That document cannot be updated.' });
             return;
           }
+          const hasOrderIds = Object.prototype.hasOwnProperty.call(body, 'orderIds');
+          const orderIds = body.orderIds;
           const order = Array.isArray(body.order) ? body.order : [];
           const data = await readDevDocument(relativeFile);
           const sections = Array.isArray(data.sections) ? data.sections : [];
-          if (order.length !== sections.length) {
+          if (hasOrderIds && (!Array.isArray(orderIds) || orderIds.length !== sections.length
+            || orderIds.some((id) => typeof id !== 'string' || !id.trim()))) {
+            send(400, { error: 'Invalid section order IDs.' });
+            return;
+          }
+          if (!hasOrderIds && order.length !== sections.length) {
             send(400, { error: 'Section order does not match the document.' });
             return;
           }
           const used = new Set();
           const reordered = [];
-          for (const raw of order) {
-            const index = Number(raw);
+          for (const raw of (hasOrderIds ? orderIds : order)) {
+            const index = hasOrderIds
+              ? sections.findIndex((section) => section && typeof section === 'object' && section.id === raw)
+              : Number(raw);
             if (
               !Number.isInteger(index)
               || index < 0

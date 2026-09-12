@@ -1667,7 +1667,7 @@ export function contentSectionDevWriter() {
                 : body.action === 'convert'
                   ? 'convert'
                   : 'insert';
-          const index = Number(body.index);
+          let index = Number(body.index);
 
           if (!relativeFile) {
             send(400, { error: 'That section cannot be updated.' });
@@ -1679,6 +1679,20 @@ export function contentSectionDevWriter() {
           if (!Array.isArray(data.sections)) {
             send(400, { error: 'The sections list is out of date. Refresh and try again.' });
             return;
+          }
+
+          const stableSectionActions = new Set(['delete', 'convert', 'fillPlaceholder', 'updateProjectDetailsRows']);
+          if (body.target !== undefined && (action === 'insert' || action === 'restore')) {
+            send(400, { error: 'Stable targets cannot be used for section placement.' });
+            return;
+          }
+          if (body.target !== undefined && stableSectionActions.has(action)) {
+            try {
+              index = resolveContentTarget(data, ['sections', index], body.target)[1];
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'That section no longer exists.' });
+              return;
+            }
           }
 
           if (action === 'updateProjectDetailsRows') {
