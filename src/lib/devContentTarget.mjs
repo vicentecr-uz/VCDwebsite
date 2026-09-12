@@ -7,10 +7,6 @@ export const isSafeContentPath = (path) => (
   ))
 );
 
-const own = (value, key) => value !== null
-  && typeof value === 'object'
-  && Object.prototype.hasOwnProperty.call(value, key);
-
 const findUniqueId = (list, id, label) => {
   const matches = list.filter((entry) => entry && typeof entry === 'object' && entry.id === id);
   if (matches.length === 0) throw new Error(`The edited ${label} was deleted.`);
@@ -20,7 +16,7 @@ const findUniqueId = (list, id, label) => {
 
 /** Resolve a save path by stable section/item IDs when supplied. */
 export function resolveContentTarget(data, path, target) {
-  if (!isSafeContentPath(path) || path.length === 0) throw new Error('Invalid content path.');
+  if (!isSafeContentPath(path) || (path.length === 0 && target !== undefined)) throw new Error('Invalid content path.');
   // Compatibility ceiling: retain positional paths until legacy renderers migrate.
   if (target === undefined) return [...path];
   if (!target || typeof target !== 'object' || Array.isArray(target)) throw new Error('Invalid content target.');
@@ -40,7 +36,7 @@ export function resolveContentTarget(data, path, target) {
   const resolved = ['sections', data.sections.indexOf(section), ...path.slice(2)];
   if (path[2] === 'items') {
     if (typeof target.itemId !== 'string' || !target.itemId) throw new Error('An item ID is required for an items path.');
-    if (!Array.isArray(section.items)) throw new Error('The items list no longer exists. Refresh and try again.');
+    if (!Array.isArray(section.items)) throw new Error('The items list no longer exists.');
     const item = findUniqueId(section.items, target.itemId, 'item');
     resolved[3] = section.items.indexOf(item);
   }

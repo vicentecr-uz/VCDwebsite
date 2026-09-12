@@ -674,7 +674,7 @@ const applyImageWidthFlags = (target, change) => {
  */
 export const applyCropChange = (data, change) => {
   const fieldPath = change.path;
-  if (!isSafeContentPath(fieldPath) || fieldPath.length === 0) {
+  if (!isSafeContentPath(fieldPath)) {
     return { ok: false, error: 'That image is not editable.' };
   }
   let resolvedPath;
@@ -1740,6 +1740,7 @@ export function contentSectionDevWriter() {
                 action: 'removeMediaItem',
                 itemId,
                 path: fieldPath,
+                index: resolvedPath[1],
                 section,
               });
             } catch (error) {
