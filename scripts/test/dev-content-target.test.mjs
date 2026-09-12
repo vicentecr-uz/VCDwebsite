@@ -56,3 +56,10 @@ test('retains positional handling for legacy paths', () => {
   assert.deepEqual(resolveContentTarget(data, ['title']), ['title']);
   assert.deepEqual(resolveContentTarget(data, ['sections', 1, 'items', 0, 'src']), ['sections', 1, 'items', 0, 'src']);
 });
+
+test('keeps nonmedia item suffixes positional after section ID resolution', () => {
+  const data = document();
+  data.sections.push({ id: 'details', type: 'projectDetails', items: [{ value: 'one' }, { value: 'two' }] });
+  data.sections.reverse();
+  assert.deepEqual(resolveContentTarget(data, ['sections', 0, 'items', 1, 'value'], { sectionId: 'details' }), ['sections', 0, 'items', 1, 'value']);
+});

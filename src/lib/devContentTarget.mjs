@@ -35,10 +35,16 @@ export function resolveContentTarget(data, path, target) {
   }
   const resolved = ['sections', data.sections.indexOf(section), ...path.slice(2)];
   if (path[2] === 'items') {
-    if (typeof target.itemId !== 'string' || !target.itemId) throw new Error('An item ID is required for an items path.');
-    if (!Array.isArray(section.items)) throw new Error('The items list no longer exists.');
-    const item = findUniqueId(section.items, target.itemId, 'item');
-    resolved[3] = section.items.indexOf(item);
+    const mediaItems = section.type === 'imageGrid' || section.type === 'imageCarousel';
+    if (mediaItems && (typeof target.itemId !== 'string' || !target.itemId)) {
+      throw new Error('An item ID is required for a media items path.');
+    }
+    if (typeof target.itemId === 'string' && target.itemId) {
+      if (!Array.isArray(section.items)) throw new Error('The items list no longer exists.');
+      const item = findUniqueId(section.items, target.itemId, 'item');
+      resolved[3] = section.items.indexOf(item);
+    }
+    // Nonmedia repeated fields remain positional until those schemas gain IDs.
   }
   return resolved;
 }
