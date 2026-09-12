@@ -82,6 +82,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
 </DevOverlay>
 
 <script>
+  import { devEditPendingId, withDevEditTarget } from '../scripts/devEditTarget';
   import { PLACEHOLDER_IMAGE_VARIANTS } from '../lib/projectImageDefaults';
   import { getLastPointerPosition } from '../lib/lastPointer';
   import { getDropZone } from '../scripts/devSectionPaths';
@@ -659,7 +660,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
-        carousels: [{
+        carousels: [withDevEditTarget({
           document: target.documentKey,
           path: target.path,
           orientation: source.orientation === 'vertical' ? 'vertical' : 'horizontal',
@@ -671,7 +672,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
             : 'outside',
           visible: Array.isArray(source.visible) ? source.visible : itemIds,
           breakpoints: source.breakpoints ?? null,
-        }],
+        }, target.target)],
       }),
     });
     const settingsResult = await settingsResponse.json();
@@ -680,7 +681,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', {
       detail: {
-        id: `carousel:${target.documentKey}:${target.target.dataset.devCarouselPath || JSON.stringify(target.path)}`,
+        id: devEditPendingId('carousel', target.target),
       },
     }));
     window.dispatchEvent(new CustomEvent('vcd:dev-carousel-prepare-append', {
@@ -692,7 +693,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
       body: JSON.stringify({
         document: target.documentKey,
         action: 'appendMediaItems',
-        path: target.path,
+        ...withDevEditTarget({ document: target.documentKey, path: target.path }, target.target),
         ...(srcs.length ? { srcs } : { filenames }),
       }),
     });
@@ -728,7 +729,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     }
     const settingsResponse = await fetch('/api/content-batch', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ grids: [{
+      body: JSON.stringify({ grids: [withDevEditTarget({
         document: target.documentKey,
         path: target.path,
         columns,
@@ -736,16 +737,16 @@ const globeSvg = sizeIcon(globeIcon, 16);
         defaultAspectRatio: target.target.dataset.devGridDefaultAspect || '4:3',
         matchHeight: target.target.dataset.devGridMatchHeight === 'true',
         layouts,
-      }] }),
+      }, target.target)] }),
     });
     const settingsResult = await settingsResponse.json();
     if (!settingsResponse.ok) throw new Error(settingsResult.error || 'Could not save the current grid settings.');
-    const pendingId = `grid:${target.documentKey}:${target.target.dataset.devGridPath || JSON.stringify(target.path)}`;
+    const pendingId = devEditPendingId('grid', target.target);
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: pendingId } }));
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids: [pendingId] } }));
     const response = await fetch('/api/content-section', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ document: target.documentKey, action: 'appendMediaItems', path: target.path, ...(placeholder ? { placeholder: true } : srcs.length ? { srcs } : { filenames }) }),
+      body: JSON.stringify({ document: target.documentKey, action: 'appendMediaItems', ...withDevEditTarget({ document: target.documentKey, path: target.path }, target.target), ...(placeholder ? { placeholder: true } : srcs.length ? { srcs } : { filenames }) }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Could not add images to that grid.');

@@ -57,6 +57,7 @@ import {
 </DevOverlay>
 
 <script>
+  import { devEditPendingId } from '../../scripts/devEditTarget';
   import { createHistory, pageHistory, registerHistoryScope } from '../../lib/devHistory';
   import {
     BELOW_IMAGE_CAPTION_REVEALS,
@@ -265,11 +266,8 @@ import {
       positionSelect.value = activePosition(style);
     };
 
-    const pendingIdFor = (target: HTMLElement) => {
-      const documentKey = target.dataset.devDocument || '';
-      const imagePath = target.dataset.devImagePath || '[]';
-      return `caption:${documentKey}:${imagePath}`;
-    };
+    const pendingIdFor = (target: HTMLElement) =>
+      devEditPendingId('caption', target);
 
     const readTargetState = (target: HTMLElement): CaptionBaseline => {
       let captions = resolveImageCaptions({});
