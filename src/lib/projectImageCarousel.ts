@@ -297,6 +297,8 @@ function syncCaptions(carousel: Carousel): void {
     if (!Number.isFinite(slideIndex)) return;
 
     if (slide) {
+      caption.dataset.mobileBleedEligible = slide.dataset.mobileBleedEligible ?? 'false';
+      caption.dataset.mobileInset = slide.dataset.mobileInset ?? 'false';
       const width = surfaceWidthForSlide(slide);
       if (width > 0) {
         // Own image width — never retarget to the neighbour mid-fade.
