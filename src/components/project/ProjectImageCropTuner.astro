@@ -856,12 +856,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       replacementAttempt += 1;
       replacementPending = false;
       saveButton.disabled = false;
+      saveButton.textContent = 'Save changes';
       saveButton.removeAttribute('aria-busy');
+      status.removeAttribute('data-replacement-error');
     };
 
-    const setReplacementPending = (pending: boolean) => {
+    const setReplacementPending = (pending: boolean, label = 'Loading…') => {
       replacementPending = pending;
       saveButton.disabled = pending;
+      saveButton.textContent = pending ? label : 'Save changes';
       saveButton.toggleAttribute('aria-busy', pending);
       if (!pending) status.removeAttribute('data-replacement-error');
     };
@@ -2601,11 +2604,14 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
         detail: { trigger: target, panel },
       }));
-      const context = replacementContext();
-      replacementAttempt = context.attempt;
-      setReplacementPending(true);
-      if (event.detail?.file) replaceWithFile(event.detail.file);
-      else if (src) startReplacement(src, context);
+      if (event.detail?.file) {
+        replaceWithFile(event.detail.file);
+      } else if (src) {
+        const context = replacementContext();
+        replacementAttempt = context.attempt;
+        setReplacementPending(true, 'Loading…');
+        startReplacement(src, context);
+      }
     }) as EventListener);
 
     const teardownEditSession = () => {
@@ -2974,7 +2980,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const applyReplacement = (src: string, dims: { srcWidth: number; srcHeight: number }, context: ReplacementContext) => {
       if (!src || !isCurrentReplacement(context)) return;
       const beforeReplacement = snapshotViewport();
-      const undoLength = undoStack.length;
+      const undoBefore = structuredClone(undoStack);
+      const redoBefore = structuredClone(redoStack);
       pushUndo({
         src: draftSrc,
         srcWidth: draftSrcWidth,
@@ -3037,12 +3044,19 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         status.textContent = 'Image replaced — unsaved changes.';
       };
 
-      // `complete` can still reflect the previous bitmap for a tick after src
-      // assignment — prefer decode(), fall back to load.
-      void Promise.all([image.decode?.() ?? Promise.resolve(), previewImage.decode?.() ?? Promise.resolve()])
+      const ready = (node: HTMLImageElement) => {
+        if (typeof node.decode === 'function') return node.decode();
+        if (node.complete && node.naturalWidth) return Promise.resolve();
+        return new Promise<void>((resolve, reject) => {
+          node.addEventListener('load', () => resolve(), { once: true });
+          node.addEventListener('error', () => reject(new Error('Could not load the replacement image.')), { once: true });
+        });
+      };
+      void Promise.all([ready(image), ready(previewImage)])
         .then(finish, () => {
           if (isCurrentReplacement(context)) {
-            undoStack.splice(undoLength);
+            undoStack = undoBefore;
+            redoStack = redoBefore;
             applyUndoEntry(beforeReplacement);
             setReplacementError('Could not load the replacement image.');
           }
@@ -3052,7 +3066,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const startReplacement = (src: string, context: ReplacementContext) => {
       if (!src) return;
       replacementAttempt = context.attempt;
-      setReplacementPending(true);
+      setReplacementPending(true, 'Loading…');
       status.textContent = 'Loading replacement…';
       void readUploadedImageDims(src).then((dims) => {
         if (isCurrentReplacement(context)) applyReplacement(src, dims, context);
@@ -3066,6 +3080,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const replaceWithFile = (file: File | null | undefined) => {
       if (!file || !isAcceptedImageFile(file)) return;
       const context = replacementContext();
+      replacementAttempt = context.attempt;
+      setReplacementPending(true, 'Uploading…');
       void (async () => {
         try {
           status.textContent = 'Uploading…';
@@ -3078,8 +3094,6 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           }
         }
       })();
-      replacementAttempt = context.attempt;
-      setReplacementPending(true);
     };
 
     const replaceControlFrom = (event: Event) =>
@@ -3128,14 +3142,18 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       event.stopPropagation();
       const context = replacementContext();
       replacementAttempt = context.attempt;
-      replacementPending = true;
+      setReplacementPending(true, 'Loading…');
       void (async () => {
         try {
           const result = await pickReplaceFromAssetManager();
           const src = Array.isArray(result?.srcs)
             ? String(result.srcs.find(Boolean) || '')
             : '';
-          if (!src) return;
+          if (!src && isCurrentReplacement(context)) {
+            setReplacementPending(false);
+            status.textContent = 'Replacement cancelled.';
+            return;
+          }
           if (isCurrentReplacement(context)) startReplacement(src, context);
         } catch (error) {
           if (!isCurrentReplacement(context)) return;
