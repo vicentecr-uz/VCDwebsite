@@ -12,6 +12,7 @@ export const DEV_PANEL_TITLES = {
   'section-nav': 'Outline marker',
   'style-color-token': 'Edit colour token',
   'header-surface': 'Header surface',
+  'caption-shadow': 'Caption shadow',
 } as const;
 
 export type DevPanelKey = keyof typeof DEV_PANEL_TITLES;
