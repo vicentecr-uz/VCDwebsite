@@ -28,7 +28,8 @@ export function resolveContentTarget(data, path, target) {
   if (typeof target.sectionId !== 'string' || !target.sectionId) throw new Error('Invalid section ID.');
   const section = findUniqueId(data.sections, target.sectionId, 'section');
   if (Object.prototype.hasOwnProperty.call(target, 'itemId') && (
-    path[2] !== 'items' || !Number.isSafeInteger(path[3]) || path[3] < 0
+    typeof target.itemId !== 'string' || !target.itemId
+    || path[2] !== 'items' || !Number.isSafeInteger(path[3]) || path[3] < 0
   )) throw new Error('Item IDs require an items path.');
   if (path[2] === 'items' && (!Number.isSafeInteger(path[3]) || path[3] < 0)) {
     throw new Error('An items path requires an item position.');

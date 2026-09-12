@@ -48,6 +48,9 @@ test('rejects malformed stable targets and paths', () => {
   assert.throws(() => resolveContentTarget(data, ['sections', 0], { sectionId: 'first', itemId: 'a' }), /Item IDs require/);
   assert.throws(() => resolveContentTarget(data, ['sections', 1, 'items', 0], { sectionId: 'gallery' }), /item ID is required/);
   assert.throws(() => resolveContentTarget(data, ['sections', 1, 'items', 0], { sectionId: 'gallery', itemId: 'a', extra: true }), /Invalid content target/);
+  for (const itemId of [null, '', 1]) {
+    assert.throws(() => resolveContentTarget(data, ['sections', 0, 'items', 0], { sectionId: 'first', itemId }), /Item IDs require/);
+  }
 });
 
 test('retains positional handling for legacy paths', () => {
