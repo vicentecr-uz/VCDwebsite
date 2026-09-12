@@ -28,11 +28,13 @@ import {
 } from '../../lib/imageCaptions';
 import {
   imageDevEditAttrs,
+  joinMediaStyles,
   isPlaceholderSrc,
   resolveGridItemCrop,
   resolveMaxVh,
 } from '../../lib/projectImageFrame';
 import { placeholderLabelText } from '../../lib/placeholderLabel';
+import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 import {
   carouselDotAppearance,
   carouselDotGeometry,
@@ -60,6 +62,7 @@ interface Item {
   srcHeight?: number;
   /** Per-image cap as % of safe vh (`--vh-safe`) — same control as a standalone image. */
   maxVh?: number;
+  background?: string;
 }
 
 export type { CarouselOrientation, CarouselHeightMode, CarouselDotsPlacement };
@@ -147,6 +150,7 @@ const resolvedItems = items.map((item, index) => {
     isBelowCaption,
     hasCaption: imageCaptionsHaveText(captions),
     maxVh: resolveMaxVh(item),
+    background: normalizeImageBackground(item.background) ?? 'transparent',
   };
 });
 
@@ -166,6 +170,7 @@ const editorItems = resolvedItems.map((entry) => ({
   id: entry.id,
   src: projectImage(entry.item.src),
   alt: entry.item.alt ?? '',
+  background: entry.background,
 }));
 
 const blockStyle = [
@@ -257,6 +262,7 @@ const blockStyle = [
               gridDefaultAspect: defaultAspectRatio,
               hasOwnVariants: crop.hasOwnVariants,
               maxVh: entry.maxVh,
+              background: entry.background,
             })
           : {};
         return (
@@ -268,7 +274,7 @@ const blockStyle = [
               isPlaceholder && 'project-media--placeholder',
               showDevEditing && 'dev-image-edit-target',
             ]}
-            style={`${crop.style}${entry.maxVh ? `;--project-max-vh:${entry.maxVh}` : ''}`}
+            style={joinMediaStyles(crop.style, entry.maxVh ? `--project-max-vh:${entry.maxVh}` : undefined, imageBackgroundStyle(entry.background))}
             data-carousel-slide
             data-carousel-index={parked ? undefined : displayIndex}
             data-carousel-parked={parked ? 'true' : undefined}

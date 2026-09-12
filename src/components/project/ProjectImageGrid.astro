@@ -33,11 +33,13 @@ import {
 import {
   gridItemLayoutStyle,
   imageDevEditAttrs,
+  joinMediaStyles,
   isPlaceholderSrc,
   resolveGridItemCrop,
   resolveGridItemLayout,
 } from '../../lib/projectImageFrame';
 import { placeholderLabelText } from '../../lib/placeholderLabel';
+import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 
 interface Item {
   id?: string;
@@ -56,6 +58,7 @@ interface Item {
   variants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  background?: string;
   /** @deprecated Prefer layouts.mobile — kept for one-off legacy items. */
   hideOnMobile?: boolean;
 }
@@ -120,6 +123,7 @@ const editorItems = items.map((item, index) => ({
   id: itemIds[index],
   src: projectImage(item.src),
   alt: item.alt ?? '',
+  background: normalizeImageBackground(item.background) ?? 'transparent',
 }));
 ---
 
@@ -189,6 +193,7 @@ const editorItems = items.map((item, index) => ({
           captionReveal: item.captionReveal,
           gridDefaultAspect: defaultAspectRatio,
           hasOwnVariants,
+          background: normalizeImageBackground(item.background) ?? 'transparent',
         })
       : {};
     const captionNode = hasCaption ? (
@@ -214,7 +219,7 @@ const editorItems = items.map((item, index) => ({
           isPlaceholder && 'project-media--placeholder',
           showDevEditing && 'dev-image-edit-target',
         ]}
-        style={`${variantStyle};${layoutStyle}`}
+        style={joinMediaStyles(variantStyle, layoutStyle, imageBackgroundStyle(item.background))}
         data-grid-item-id={itemId}
         data-grid-hidden-desktop={resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false'}
         data-grid-hidden-tablet={resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false'}
