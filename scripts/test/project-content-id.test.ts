@@ -1,5 +1,9 @@
-import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { afterEach, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
+import { withDevEditTarget } from '../../src/scripts/devEditTarget';
+
+const originalDocument = globalThis.document;
 
 const stackSource = readFileSync(new URL('../../src/lib/projectStack.ts', import.meta.url), 'utf8');
 const start = stackSource.indexOf('export function spacingDevAttrs(');
@@ -28,7 +32,16 @@ test('production spacing metadata omits editor-only content IDs', () => {
   )(false)('new-classic', ['sections', 2], 'section', { contentId: 'content-42' })).toBeUndefined();
 });
 
-test('client mounted image roots pass section IDs into the shared metadata helper', () => {
-  const mountSource = readFileSync(new URL('../../src/scripts/devSectionMount.ts', import.meta.url), 'utf8');
-  expect(mountSource).toContain('spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? \'\') })');
+test('mounted section and nested item metadata resolve canonical IDs independently of outline anchors', () => {
+  const window = new Window();
+  globalThis.document = window.document as unknown as Document;
+  document.body.innerHTML = `<section id="outline-anchor" data-dev-content-id="content-42" data-dev-spacing-document="knife" data-dev-spacing-path='["sections",2,"spacing"]'>
+    <figure data-grid-item-id="image-7" data-dev-image-path='["sections",2,"items",0]'></figure>
+  </section>`;
+  const item = document.querySelector<HTMLElement>('figure')!;
+  const queued = withDevEditTarget<Record<string, unknown>>({ document: 'knife', path: ['sections', 2, 'items', 0] }, item);
+  expect(queued.target).toEqual({ sectionId: 'content-42', itemId: 'image-7' });
+  expect(queued.target?.sectionId).not.toBe('outline-anchor');
 });
+
+afterEach(() => { globalThis.document = originalDocument; });
