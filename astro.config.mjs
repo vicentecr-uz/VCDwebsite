@@ -43,6 +43,7 @@ import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
 import {
   assetsDevWriter,
   normalizeAssetSrc,
+  readImageDimsFromSrc,
   removeMediaItemFromDocument,
 } from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
@@ -212,7 +213,7 @@ function imageCropDevWriter() {
           }
 
           const data = await readDevDocument(targetInfo.relativeFile);
-          const result = applyCropChange(data, body);
+          const result = await applyCropChangeFromSource(data, body);
           if (!result.ok) {
             send(400, { error: result.error });
             return;
@@ -668,6 +669,15 @@ const applyImageWidthFlags = (target, change) => {
   }
   return touched;
 };
+
+export async function applyCropChangeFromSource(data, change) {
+  const validation = applyCropChange(structuredClone(data), change);
+  if (!validation.ok) return validation;
+  if (typeof change.src !== 'string') return applyCropChange(data, change);
+  const dims = await readImageDimsFromSrc(change.src);
+  if (!dims) return { ok: false, error: 'Could not read that image file. Choose the image again before saving.' };
+  return applyCropChange(data, { ...change, ...dims });
+}
 
 /**
  * Apply one image-crop mutation onto an in-memory document node.
@@ -1415,7 +1425,7 @@ function contentBatchDevWriter() {
             const data = await readDevDocument(relativeFile);
 
             for (const change of group.crops) {
-              const result = applyCropChange(data, change);
+              const result = await applyCropChangeFromSource(data, change);
               if (!result.ok) {
                 send(400, { error: result.error });
                 return;
