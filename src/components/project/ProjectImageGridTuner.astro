@@ -369,6 +369,21 @@ import Button from '../ui/Button.astro';
       }
     };
 
+    const applyMobileBleedEligibility = () => {
+      const visible = resolveVisible(itemIds, draftLayouts, 'mobile').visible;
+      const columns = Math.max(1, draftColumns.mobile);
+      editTarget.querySelectorAll<HTMLElement>('.project-image-grid__item').forEach((item) => {
+        const id = item.dataset.gridItemId || '';
+        const index = visible.indexOf(id);
+        const singletonRow = draftMatchHeight
+          && columns > 1
+          && visible.length % columns === 1
+          && index === visible.length - 1;
+        item.dataset.mobileBleedEligible = draftConstrained.mobile === 100
+          && (columns === 1 || singletonRow) ? 'true' : 'false';
+      });
+    };
+
     const applyColumnsLive = () => {
       if (!liveApply) return;
       VIEWPORTS.forEach((viewport) => {
@@ -378,6 +393,7 @@ import Button from '../ui/Button.astro';
         );
       });
       editTarget.dataset.devGridColumns = JSON.stringify(draftColumns);
+      applyMobileBleedEligibility();
     };
 
     const applyConstrainedLive = () => {
@@ -390,6 +406,7 @@ import Button from '../ui/Button.astro';
         if (key && value) editTarget.style.setProperty(key, value);
       }
       editTarget.dataset.devGridConstrained = JSON.stringify(draftConstrained);
+      applyMobileBleedEligibility();
     };
 
     const applyAspectLive = () => {
@@ -422,11 +439,13 @@ import Button from '../ui/Button.astro';
       editTarget.dataset.devGridMatchHeight = draftMatchHeight ? 'true' : 'false';
       editTarget.classList.toggle('project-image-grid--match-height', draftMatchHeight);
       refreshProjectCropCovers(editTarget);
+      applyMobileBleedEligibility();
     };
 
     const applyLayoutsLive = () => {
       if (!liveApply) return;
       editTarget.dataset.devGridLayouts = JSON.stringify(draftLayouts);
+      applyMobileBleedEligibility();
       const resolvedByViewport = Object.fromEntries(
         VIEWPORTS.map((viewport) => [viewport, resolveVisible(itemIds, draftLayouts, viewport)]),
       ) as Record<ImageViewport, { visible: string[]; overridden: boolean }>;
