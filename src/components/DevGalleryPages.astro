@@ -68,6 +68,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
    *   hoverDark?: boolean,
    *   srcWidth?: number,
    *   srcHeight?: number,
+   *   mobileInset?: boolean,
    * }} GalleryPage */
 
   type GridOrderEntry = { type: 'project'; slug: string; order: number; full: boolean };
@@ -504,6 +505,8 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
       item.dataset.devStatus = page.status;
       item.dataset.devBg = page.bg;
       item.dataset.devDark = page.dark ? 'true' : 'false';
+      item.dataset.mobileInset = page.mobileInset === true ? 'true' : 'false';
+      item.dataset.mobileBleedEligible = 'true';
       if (page.hoverImage) {
         item.dataset.devHoverImage = page.hoverImage;
         item.dataset.devHoverDark = hoverDark ? 'true' : 'false';
@@ -577,6 +580,7 @@ const eyeOffIconSvg = sizeIcon(eyeOffIcon, 16);
           hoverVariants,
           srcWidth: page.srcWidth,
           srcHeight: page.srcHeight,
+          mobileInset: page.mobileInset === true,
         }, Boolean(page.full));
         for (const [key, value] of Object.entries(editAttrs)) {
           if (value === '') cover.removeAttribute(key);
