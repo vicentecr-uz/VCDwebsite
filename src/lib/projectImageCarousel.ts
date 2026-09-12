@@ -11,6 +11,13 @@ import {
   type CarouselSettingsSource,
   type ImageViewport,
 } from './projectImageCarouselSettings';
+import {
+  applyMediaGround,
+  cropHostFor,
+  groundForBox,
+  lumaGridFor,
+  readCropVars,
+} from '../scripts/adaptiveMediaInk';
 
 type Axis = 'horizontal' | 'vertical';
 
@@ -58,6 +65,10 @@ function activeIndexFor(carousel: Carousel): number {
 
 /** Fractional position between slide offsets, for continuous dot tracking. */
 function progressFor(carousel: Carousel): number {
+  if (document.documentElement.classList.contains('is-dev-mode')) {
+    const isolated = carousel.slides.findIndex((slide) => slide.classList.contains('dev-crop-stage-host'));
+    if (isolated >= 0) return isolated;
+  }
   const position = scrollPos(carousel);
   const offsets = carousel.slides.map((slide) => slideOffset(carousel, slide));
   if (offsets.length < 2 || position <= offsets[0]) return 0;
@@ -120,6 +131,63 @@ function renderDots(carousel: Carousel): void {
 
   dotWindow.style.setProperty('--project-carousel-dot-count', span.toFixed(4));
   dotStrip.style.setProperty('--project-carousel-dot-offset', first.toFixed(4));
+}
+
+const mediaInkGeneration = new WeakMap<Carousel, number>();
+
+function clearCarouselMediaInk(dots: HTMLElement): void {
+  dots.style.removeProperty('--media-ink');
+  dots.style.removeProperty('--media-ink-subtle');
+  delete dots.dataset.mediaGround;
+}
+
+async function refreshCarouselMediaInk(carousel: Carousel): Promise<void> {
+  const generation = (mediaInkGeneration.get(carousel) || 0) + 1;
+  mediaInkGeneration.set(carousel, generation);
+  const dots = carousel.dotWindow;
+  if (!dots) return;
+
+  if (carousel.block.dataset.dotsPlacement !== 'over') {
+    clearCarouselMediaInk(dots);
+    return;
+  }
+
+  const slide = carousel.slides[carousel.active];
+  const frame = slide?.querySelector<HTMLElement>('[data-carousel-frame]');
+  const image = frame?.querySelector<HTMLImageElement>('.project-image-grid__image');
+  if (!frame || !image || !dots.getBoundingClientRect().width) {
+    clearCarouselMediaInk(dots);
+    return;
+  }
+
+  const src = image.currentSrc || image.src;
+  if (slide?.classList.contains('project-media--placeholder')) {
+    clearCarouselMediaInk(dots);
+    return;
+  }
+  const decoded = src ? await lumaGridFor(src) : null;
+  if (generation !== mediaInkGeneration.get(carousel)) return;
+  if (!decoded) {
+    clearCarouselMediaInk(dots);
+    return;
+  }
+
+  const naturalWidth = Number((decoded as HTMLImageElement).naturalWidth) || 0;
+  const naturalHeight = Number((decoded as HTMLImageElement).naturalHeight) || 0;
+  const frameRect = frame.getBoundingClientRect();
+  const background = getComputedStyle(frame).backgroundColor;
+  const ground = groundForBox(
+    dots,
+    frame,
+    decoded,
+    { width: frameRect.width, height: frameRect.height },
+    { width: naturalWidth, height: naturalHeight },
+    readCropVars(cropHostFor(frame) ?? frame, false),
+    background,
+  );
+  if (generation === mediaInkGeneration.get(carousel) && ground) {
+    applyMediaGround(dots, ground);
+  }
 }
 
 function slideForCaption(carousel: Carousel, caption: HTMLElement): HTMLElement | undefined {
@@ -304,14 +372,15 @@ function applyHeight(carousel: Carousel): void {
 
 function sync(carousel: Carousel): void {
   carousel.progress = progressFor(carousel);
-  renderDots(carousel);
   const next = activeIndexFor(carousel);
   if (next !== carousel.active) {
     carousel.active = next;
     carousel.block.dataset.activeIndex = String(next);
   }
+  renderDots(carousel);
   syncCaptions(carousel);
   applyHeight(carousel);
+  void refreshCarouselMediaInk(carousel);
 }
 
 function scrollToIndex(carousel: Carousel, index: number, smooth = true): void {
@@ -545,17 +614,22 @@ function refreshSettings(carousel: Carousel): void {
   carousel.axis = carousel.block.dataset.orientation === 'vertical' ? 'vertical' : 'horizontal';
   carousel.heightMode = carousel.block.dataset.heightMode || 'dynamic';
   collectVisible(carousel);
-  carousel.active = Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
+  const isolated = document.documentElement.classList.contains('is-dev-mode')
+    ? carousel.slides.findIndex((slide) => slide.classList.contains('dev-crop-stage-host'))
+    : -1;
+  carousel.active = isolated >= 0
+    ? isolated
+    : Math.min(carousel.active, Math.max(0, carousel.slides.length - 1));
   carousel.track.style.removeProperty('height');
   carousel.block.style.removeProperty('--project-carousel-track-port-size');
   carousel.block.dataset.activeIndex = String(carousel.active);
+  applyHeight(carousel);
+  scrollToIndex(carousel, carousel.active, false);
   carousel.progress = progressFor(carousel);
   renderDots(carousel);
   syncCaptions(carousel);
   applyHeight(carousel);
-  scrollToIndex(carousel, carousel.active, false);
-  carousel.progress = progressFor(carousel);
-  syncCaptions(carousel);
+  void refreshCarouselMediaInk(carousel);
 }
 
 function syncViewportSettings(carousel: Carousel, force = false): void {
@@ -639,17 +713,22 @@ function initCarousel(block: HTMLElement): void {
     const observer = new ResizeObserver(() => {
       syncViewportSettings(carousel);
       applyHeight(carousel);
+      void refreshCarouselMediaInk(carousel);
     });
     observer.observe(track);
     observer.observe(block);
     carousel.slides.forEach((slide) => observer.observe(slide));
   }
-  window.addEventListener('resize', () => syncViewportSettings(carousel), { passive: true });
+  window.addEventListener('resize', () => {
+    syncViewportSettings(carousel);
+    void refreshCarouselMediaInk(carousel);
+  }, { passive: true });
   block.querySelectorAll<HTMLImageElement>('img').forEach((image) => {
-    if (image.complete) return;
     image.addEventListener('load', () => {
       sync(carousel);
-    }, { once: true });
+    });
+    if (!image.complete) return;
+    void refreshCarouselMediaInk(carousel);
   });
 }
 
@@ -677,6 +756,13 @@ export function bindProjectImageCarousels(root: ParentNode = document): void {
     registry.forEach((carousel, block) => {
       if (only && block !== only) return;
       refreshSettings(carousel);
+    });
+  }) as EventListener);
+  window.addEventListener('vcd:dev-frame-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
+    const target = event.detail?.target;
+    registry.forEach((carousel) => {
+      if (target && !carousel.block.contains(target)) return;
+      void refreshCarouselMediaInk(carousel);
     });
   }) as EventListener);
   // Caption edits — recollect + resync without resetting scroll position.
