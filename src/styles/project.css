@@ -21,6 +21,20 @@
   margin-top: var(--project-stack-margin, var(--space-section));
 }
 
+/* Header wordmark baseline already contributes one spacing unit before the first stack block. */
+:is(
+  .site-header-slot ~ .project-page__main,
+  .site-header-slot ~ .project-layout > .project-page__main,
+  .site-header-slot ~ .listing-main
+) > :first-child[class*='project-stack--'],
+:is(
+  .site-header-slot ~ .project-page__main,
+  .site-header-slot ~ .project-layout > .project-page__main,
+  .site-header-slot ~ .listing-main
+) > [data-dev-project-drop-zone] > :first-child[class*='project-stack--'] {
+  margin-top: max(0px, calc(var(--project-stack-margin, 0px) - var(--space-unit)));
+}
+
 .project-page__main > .project-stack--precede-related + *,
 .project-page__main [data-dev-project-drop-zone] > .project-stack--precede-related + *,
 .listing-main [data-dev-project-drop-zone] > .project-stack--precede-related + * {
