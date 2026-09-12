@@ -64,7 +64,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
   const introHeight = intro?.introHeight as number | undefined;
 
   if (type === 'interactiveDemo') {
-    return <ProjectInteractiveDemo demo={section.demo} spacing={spacing} sectionId={section.sectionId as string | undefined} documentKey={documentKey} sectionPath={path} />;
+    return <ProjectInteractiveDemo demo={section.demo} spacing={spacing} sectionId={section.sectionId as string | undefined} contentId={section.id as string | undefined} documentKey={documentKey} sectionPath={path} />;
   }
 
   if (type === 'heroImage') {
@@ -80,6 +80,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         path={path}
         cropId={String(section.id ?? 'hero')}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
         spacing={spacing}
       />
     );
@@ -98,6 +99,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         basePath={path}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
@@ -119,6 +121,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         basePath={path}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
@@ -131,6 +134,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         pathPrefix={[...path, 'paragraphs']}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
         intro={intro !== undefined}
         introHeight={introHeight}
         introHeightPath={intro ? ['introHeight'] : undefined}
@@ -153,6 +157,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         sectionPath={path}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
@@ -167,6 +172,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         document={documentKey}
         sectionPath={path}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
         showTitle={section.showTitle as never}
         hideWhenSidebarVisible={(section.hideWhenSidebarVisible as boolean | undefined) ?? false}
         intro={intro !== undefined}
@@ -200,6 +206,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         captionReveal={section.captionReveal as never}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
@@ -225,6 +232,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         sectionPath={path}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
         speed={section.speed as number | undefined}
         logoOpacity={section.logoOpacity as number | undefined}
       />
@@ -239,6 +247,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         sectionPath={path}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
@@ -256,6 +265,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         cropId={String(section.id ?? 'placeholder')}
         spacing={spacing}
         sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
@@ -271,7 +281,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
     return (
       <section
         class:list={['project-block', projectStackClass(spacing)]}
-        {...(spacingDevAttrs(documentKey, path, spacing) ?? {})}
+        {...(spacingDevAttrs(documentKey, path, spacing, { contentId: section.id as string | undefined }) ?? {})}
       >
         <ProjectGrid variant={variant} items={getProjectGridListings(variant)} />
       </section>
@@ -306,6 +316,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       captionReveal={finaleFadeSection.captionReveal as never}
       spacing={sectionSpacing(finaleFadeSection, sections.length - 2)}
       sectionId={finaleFadeSection.sectionId as string | undefined}
+      contentId={finaleFadeSection.id as string | undefined}
     />
     <ProjectImage
       slot="target"
@@ -330,6 +341,7 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       captionReveal={finaleTargetSection.captionReveal as never}
       spacing="none"
       sectionId={finaleTargetSection.sectionId as string | undefined}
+      contentId={finaleTargetSection.id as string | undefined}
     />
   </ProjectScrollFinale>
 )}

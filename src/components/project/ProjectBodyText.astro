@@ -12,6 +12,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   /** Anchor id for section sidebar nav scrollspy. */
   sectionId?: string;
+  contentId?: string;
   intro?: boolean;
   introHeight?: number;
   introHeightPath?: Array<string | number>;
@@ -23,6 +24,7 @@ const {
   pathPrefix,
   spacing = 'section',
   sectionId,
+  contentId,
   intro = false,
   introHeight,
   introHeightPath,
@@ -30,7 +32,7 @@ const {
 const editable = import.meta.env.DEV && documentKey && pathPrefix;
 const sectionPath =
   pathPrefix?.at(-1) === 'paragraphs' ? pathPrefix.slice(0, -1) : undefined;
-const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 const stackClass = projectStackClass(spacing);
 const deletable = Boolean(editable && sectionPath);
 const rawIntroHeight = Number(introHeight);

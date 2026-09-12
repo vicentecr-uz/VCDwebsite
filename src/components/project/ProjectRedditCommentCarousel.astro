@@ -30,6 +30,7 @@ interface Props {
   sectionPath?: Array<string | number>;
   spacing?: ProjectStackSpacing;
   sectionId?: string;
+  contentId?: string;
 }
 
 const {
@@ -38,11 +39,12 @@ const {
   sectionPath,
   spacing = 'section',
   sectionId,
+  contentId,
 } = Astro.props;
 
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const stackClass = projectStackClass(spacing);
-const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing);
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 
 const COL_COUNT = 3;
 /**

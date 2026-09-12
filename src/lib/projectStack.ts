@@ -180,7 +180,7 @@ export function spacingDevAttrs(
   documentKey: string | undefined,
   sectionPath: Array<string | number> | undefined,
   spacing: ProjectStackSpacing,
-  options?: { writePath?: Array<string | number> },
+  options?: { writePath?: Array<string | number>; contentId?: string },
 ): Record<string, string> | undefined {
   if (!import.meta.env.DEV || !documentKey || !sectionPath?.length) return undefined;
   const resolved = resolveProjectStackSpacing(spacing);
@@ -189,6 +189,7 @@ export function spacingDevAttrs(
     'data-dev-spacing-path': JSON.stringify([...sectionPath, 'spacing']),
     'data-dev-spacing-value': resolved.desktop,
     'data-dev-spacing-values': JSON.stringify(resolved),
+    ...(options?.contentId ? { 'data-dev-content-id': options.contentId } : {}),
     ...(options?.writePath ? { 'data-dev-spacing-write-path': JSON.stringify(options.writePath) } : {}),
   };
 }
