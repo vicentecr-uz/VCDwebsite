@@ -134,11 +134,15 @@ test('section insertion remaps queued media paths by document without aliasing',
     id: 'caption:home', kind: 'caption',
     payload: { document: 'home', path: ['sections', 1, 'images', 0] },
   };
+  const nonSection = {
+    id: 'caption:home-intro:global', kind: 'caption',
+    payload: { document: 'home-intro', path: ['gallery', 1, 'images', 0] },
+  };
   const env = {
     DEV_PATH_ATTRS, document: { querySelectorAll: () => [zone] },
     getDropZone: (documentKey?: string) => documentKey === 'home-intro' ? zone : null,
     shiftSectionOrderIds: () => {}, textStates: [], spacingStates: [], pendingBlockConverts: [],
-    pendingMedia: new Map([[pending.id, pending], [other.id, other]]), pendingSectionDeletes: [],
+    pendingMedia: new Map([[pending.id, pending], [other.id, other], [nonSection.id, nonSection]]), pendingSectionDeletes: [],
   };
   const reindexDevPaths = new Function('env', `with (env) { ${reindexSource}; return reindexDevPaths; }`)(env) as (fromIndex: number, delta: number, documentKey: string) => void;
 
@@ -146,4 +150,5 @@ test('section insertion remaps queued media paths by document without aliasing',
   expect(pending.payload.path).toEqual(['sections', 2, 'images', 2]);
   expect(originalPath).toEqual(['sections', 1, 'images', 2]);
   expect(other.payload.path).toEqual(['sections', 1, 'images', 0]);
+  expect(nonSection.payload.path).toEqual(['gallery', 1, 'images', 0]);
 });

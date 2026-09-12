@@ -983,7 +983,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (newIdx !== undefined) state.introHeight.path[1] = newIdx;
       });
       pendingMedia.forEach((change) => {
-        if (!isPathPendingMediaChange(change) || String(change.payload.document || '') !== documentKey) return;
+        if (
+          !isPathPendingMediaChange(change)
+          || String(change.payload.document || '') !== documentKey
+          || readPendingMediaPath(change)?.[0] !== 'sections'
+        ) return;
         const path = readPendingMediaPath(change);
         if (!path || typeof path[1] !== 'number') return;
         const newIdx = indexMap[path[1]];
@@ -1040,15 +1044,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       pendingMedia.forEach((change) => {
         if (String(change.payload.document || '') !== documentKey) return;
         shiftPendingMediaPath(change, fromIndex, delta);
-      });
-      pendingSectionDeletes.forEach((entry) => {
-        if (entry.documentKey !== documentKey) return;
-        if (delta > 0) {
-          if (entry.deletedIndex >= fromIndex) entry.deletedIndex += delta;
-        } else if (entry.deletedIndex > fromIndex) {
-          entry.deletedIndex += delta;
-        }
-        entry.pendingMedia.forEach((change) => shiftPendingMediaPath(change, fromIndex, delta));
       });
     };
 
