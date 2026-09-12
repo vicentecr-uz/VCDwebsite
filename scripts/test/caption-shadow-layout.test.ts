@@ -45,5 +45,12 @@ test('caption shadow follows moved text after frame changes and CSS updates', ()
   flush();
   expect(fill.style.width).toBe('282px');
   expect(fill.style.height).toBe('122px');
+
+  document.documentElement.style.setProperty('--caption-shadow-extension', '40px');
+  window.dispatchEvent(new window.Event('vcd:caption-shadow-change'));
+  flush();
+  expect(fill.style.width).toBe('362px');
+  expect(fill.style.height).toBe('202px');
+  expect(fill.style.borderRadius).toBe('0px 25px 0px 0px');
   window.happyDOM.abort();
 });
