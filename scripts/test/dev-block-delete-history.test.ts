@@ -41,6 +41,7 @@ function setup() {
     detailsBaselines: new Map(), stageProjectDetailsRows() {},
     actionsBusy: false, savedFormatRange: null, pageHistory, textStates, spacingStates,
     pendingSectionDeletes: [], pendingSectionInserts: [], persistedMediaInserts: [], pendingBlockConverts: [],
+    pendingMedia: new Map(),
     deletableSections: [...blocks], serverSectionIds: new Map(),
     DEV_PATH_ATTRS: ['data-dev-spacing-path', 'data-dev-text-path'],
     getDropZone: (key: string) => document.querySelector(`[data-doc="${key}"]`),
@@ -76,6 +77,22 @@ test('trash deletion is an undoable command and redo deletes the same block repe
   expect(env.textStates).toHaveLength(3);
   expect(env.spacingStates).toHaveLength(3);
   expect(requests).toHaveLength(0);
+});
+
+test('deleting a section stashes its queued media edit and restores it on undo', async () => {
+  const { deleteSectionAt, blocks, pageHistory, env } = setup();
+  const pending = {
+    id: 'grid:home-intro:1', kind: 'grid',
+    payload: { document: 'home-intro', path: ['sections', 1, 'images', 0] },
+    revert: () => {},
+  };
+  env.pendingMedia.set(pending.id, pending);
+
+  await deleteSectionAt(blocks[1]);
+  expect(env.pendingMedia.size).toBe(0);
+  expect(env.pendingSectionDeletes[0].pendingMedia).toEqual([pending]);
+  await pageHistory.undo();
+  expect(env.pendingMedia.get(pending.id)?.payload.path).toEqual(['sections', 1, 'images', 0]);
 });
 
 test('deleting an unsaved new block restores its insertion queue, content and conversion state', async () => {

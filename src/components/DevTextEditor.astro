@@ -375,6 +375,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       insertBefore: ChildNode | null;
       textStates: EditableTextState[];
       spacingState: EditableSpacingState | null;
+      pendingMedia: PendingMediaChange[];
       pendingInsert?: PendingSectionInsert;
       persistedInsert?: PersistedMediaInsert;
       converts: PendingBlockConvert[];
@@ -943,6 +944,24 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return true;
     };
 
+    const isPathPendingMediaChange = (change: PendingMediaChange) =>
+      change.kind === 'crop'
+      || change.kind === 'grid'
+      || change.kind === 'carousel'
+      || change.kind === 'caption';
+    const readPendingMediaPath = (change: PendingMediaChange) => {
+      const path = change.payload.path;
+      return Array.isArray(path) ? path : null;
+    };
+    const shiftPendingMediaPath = (change: PendingMediaChange, fromIndex: number, delta: number) => {
+      if (!isPathPendingMediaChange(change)) return;
+      const path = readPendingMediaPath(change);
+      if (!path) return;
+      const nextPath = [...path];
+      if (!bumpSectionPath(nextPath, fromIndex, delta)) return;
+      change.payload = { ...change.payload, path: nextPath };
+    };
+
     const remapPathsInStates = (indexMap: Record<number, number>, documentKey: string) => {
       textStates.forEach((state) => {
         if (state.document !== documentKey) return;
@@ -962,6 +981,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (state.document !== documentKey || !state.introHeight) return;
         const newIdx = indexMap[state.introHeight.path[1] as number];
         if (newIdx !== undefined) state.introHeight.path[1] = newIdx;
+      });
+      pendingMedia.forEach((change) => {
+        if (!isPathPendingMediaChange(change) || String(change.payload.document || '') !== documentKey) return;
+        const path = readPendingMediaPath(change);
+        if (!path || typeof path[1] !== 'number') return;
+        const newIdx = indexMap[path[1]];
+        if (newIdx === undefined) return;
+        change.payload = { ...change.payload, path: ['sections', newIdx, ...path.slice(2)] };
       });
     };
 
@@ -1009,6 +1036,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         } else if (entry.index > fromIndex) {
           entry.index += delta;
         }
+      });
+      pendingMedia.forEach((change) => {
+        if (String(change.payload.document || '') !== documentKey) return;
+        shiftPendingMediaPath(change, fromIndex, delta);
+      });
+      pendingSectionDeletes.forEach((entry) => {
+        if (entry.documentKey !== documentKey) return;
+        if (delta > 0) {
+          if (entry.deletedIndex >= fromIndex) entry.deletedIndex += delta;
+        } else if (entry.deletedIndex > fromIndex) {
+          entry.deletedIndex += delta;
+        }
+        entry.pendingMedia.forEach((change) => shiftPendingMediaPath(change, fromIndex, delta));
       });
     };
 
@@ -1609,6 +1649,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (pending.spacingState) {
         spacingStates.push(pending.spacingState);
       }
+      pending.pendingMedia.forEach((change) => {
+        const path = readPendingMediaPath(change);
+        if (path && path[0] === 'sections' && typeof path[1] === 'number') {
+          change.payload = { ...change.payload, path: ['sections', pending.deletedIndex, ...path.slice(2)] };
+        }
+        pendingMedia.set(change.id, change);
+      });
       deletableSections.push(pending.root);
       mountDeleteButton(pending.root);
       syncDevModeOnSection(pending.root, document.documentElement.classList.contains('is-dev-mode'));
@@ -3191,6 +3238,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const pendingInsertIdx = pendingSectionInserts.findIndex((entry) => entry.root === element);
       const persistedInsertIdx = persistedMediaInserts.findIndex((entry) => entry.root === element);
       const converts = pendingBlockConverts.filter((entry) => entry.root === element);
+      const deletedPendingMedia = [...pendingMedia.values()].filter((change) => {
+        if (!isPathPendingMediaChange(change) || String(change.payload.document || '') !== documentKey) return false;
+        const mediaPath = readPendingMediaPath(change);
+        return mediaPath?.[0] === 'sections' && mediaPath[1] === sectionIndex;
+      });
+      deletedPendingMedia.forEach((change) => pendingMedia.delete(change.id));
       for (let i = pendingBlockConverts.length - 1; i >= 0; i -= 1) {
         if (pendingBlockConverts[i].root === element) pendingBlockConverts.splice(i, 1);
       }
@@ -3221,6 +3274,13 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         insertBefore,
         textStates: texts,
         spacingState: spacing,
+        pendingMedia: deletedPendingMedia.map((change) => {
+          const path = readPendingMediaPath(change);
+          return {
+            ...change,
+            payload: path ? { ...change.payload, path: [...path] } : { ...change.payload },
+          };
+        }),
         converts,
         ...(pendingInsertIdx >= 0 ? { pendingInsert: pendingSectionInserts.splice(pendingInsertIdx, 1)[0] } : {}),
         ...(persistedInsertIdx >= 0 ? { persistedInsert: persistedMediaInserts.splice(persistedInsertIdx, 1)[0] } : {}),
