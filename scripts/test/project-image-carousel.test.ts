@@ -196,3 +196,18 @@ for (const axis of ['horizontal', 'vertical'] as const) {
     });
   }
 }
+
+test('video dot placement follows image–video–image swipe progress and reversal', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const video = window.document.createElement('video');
+  block.querySelectorAll('[data-carousel-slide]')[1].append(video);
+  for (const [offset, expected] of [[0, 0], [25, 0.25], [50, 0.5], [100, 1], [150, 0.5], [200, 0], [150, 0.5], [100, 1], [50, 0.5]]) {
+    track.scrollLeft = offset;
+    track.dispatchEvent(new window.Event('scroll'));
+    expect(Number(block.style.getPropertyValue('--project-carousel-video-progress'))).toBe(expected);
+  }
+  video.replaceWith(window.document.createElement('img'));
+  window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
+  expect(Number(block.style.getPropertyValue('--project-carousel-video-progress'))).toBe(0);
+  block.remove();
+});

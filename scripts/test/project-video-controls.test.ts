@@ -70,6 +70,9 @@ for (const existing of [false, true]) {
     expect(video.muted).toBe(true);
     expect(video.volume).toBe(0.4);
     await settle();
+    expect(volumeInput.value).toBe('0.4');
+    expect(volumeInput.getAttribute('aria-valuetext')).toBe('40% (muted)');
+    expect(root.querySelector('media-volume-range')!.hasAttribute('mediamuted')).toBe(true);
     mute.dispatchEvent(new window.MouseEvent('click', { bubbles: true, composed: true }));
     expect(video.muted).toBe(false);
     expect(video.volume).toBe(0.4);
@@ -91,7 +94,9 @@ for (const existing of [false, true]) {
     const wheel = new window.WheelEvent('wheel', { deltaY: -50, bubbles: true, cancelable: true });
     mute.dispatchEvent(wheel);
     expect(wheel.defaultPrevented).toBe(true);
-    expect(video.volume).toBeCloseTo(0.85);
+    expect(video.volume).toBeCloseTo(0.75);
+    mute.dispatchEvent(new window.WheelEvent('wheel', { deltaY: 50, bubbles: true, cancelable: true }));
+    expect(video.volume).toBeCloseTo(0.8);
     root.remove();
   });
 }
