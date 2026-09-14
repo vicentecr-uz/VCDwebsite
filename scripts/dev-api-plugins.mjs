@@ -1,15 +1,15 @@
 // @ts-check
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createReadStream, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
-import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc } from './dev-assets.mjs';
+import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc, readMediaDimsFromSrc } from './dev-assets.mjs';
 import { PLACEHOLDER_COVER, EMPTY_COVER_FILL, isPlaceholderCoverSrc } from '../src/lib/placeholderCover.mjs';
 import { normalizeOutline } from '../src/lib/projectOutline.ts';
-import { isHeicUpload, uploadFilename } from '../src/lib/imageUpload.mjs';
+import { isHeicUpload, isAcceptedVideoFile, isVideoSrc, uploadFilename } from '../src/lib/imageUpload.mjs';
 import {
   derivativeKind,
   findOriginal,
@@ -468,7 +468,7 @@ export async function fillPlaceholderImageSection(section, documentKey, filename
     src = normalizeAssetSrc(filename);
     if (!src) throw new Error('An image file is required.');
   }
-  dims = await readImageDimsFromSrc(src);
+  dims = await readMediaDimsFromSrc(src);
 
   section.type = 'image';
   section.src = src;
@@ -689,6 +689,44 @@ export function mediaDevServer() {
           }
 
           const ext = path.extname(filePath).toLowerCase();
+          const isVideo = isVideoSrc(relative);
+          if (isVideo) {
+            const info = await stat(filePath);
+            const total = info.size;
+            const type = ext === '.webm' ? 'video/webm' : ext === '.m4v' ? 'video/x-m4v' : 'video/mp4';
+            const range = req.headers.range;
+            if (range) {
+              const match = /^bytes=(\d*)-(\d*)$/.exec(String(range));
+              if (!match || (!match[1] && !match[2])) {
+                res.statusCode = 416;
+                res.setHeader('content-range', `bytes */${total}`);
+                res.end();
+                return;
+              }
+              let start = match[1] ? Number(match[1]) : Math.max(0, total - Number(match[2]));
+              let end = match[2] ? Number(match[2]) : total - 1;
+              if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= total) {
+                res.statusCode = 416;
+                res.setHeader('content-range', `bytes */${total}`);
+                res.end();
+                return;
+              }
+              end = Math.min(end, total - 1);
+              res.statusCode = 206;
+              res.setHeader('content-range', `bytes ${start}-${end}/${total}`);
+              res.setHeader('content-length', String(end - start + 1));
+              res.setHeader('accept-ranges', 'bytes');
+              res.setHeader('content-type', type);
+              createReadStream(filePath, { start, end }).pipe(res);
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('content-length', String(total));
+            res.setHeader('accept-ranges', 'bytes');
+            res.setHeader('content-type', type);
+            createReadStream(filePath).pipe(res);
+            return;
+          }
           const widthParam = url.searchParams.get('w');
           const skipResize = !widthParam || ext === '.svg' || ext === '.gif';
 
@@ -785,12 +823,14 @@ export function uploadDevWriter() {
             const mimeType = String(file.mimeType || '');
             const filename = String(file.filename || '');
             const mime = mimeType.toLowerCase().split(';', 1)[0].trim();
-            if (!mime.startsWith('image/') && !(isHeicUpload(filename, mimeType) && !mime)) {
-              send(400, { error: 'Only image uploads are supported.' });
+            const imageUpload = mime.startsWith('image/') || (isHeicUpload(filename, mimeType) && !mime);
+            const videoUpload = isAcceptedVideoFile({ name: filename, type: mimeType });
+            if (!imageUpload && !videoUpload) {
+              send(400, { error: 'Only supported image or video uploads are allowed.' });
               return;
             }
             const data = Buffer.from(String(file.data || ''), 'base64');
-            const converted = isHeicUpload(filename, mimeType)
+            const converted = imageUpload && isHeicUpload(filename, mimeType)
               ? await convertHeicUpload(data)
               : data;
             const outputFilename = await uniqueUploadFilename(directory, uploadFilename(filename, mimeType));
