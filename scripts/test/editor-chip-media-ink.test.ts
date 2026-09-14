@@ -66,7 +66,7 @@ test('uses a standalone media frame when it is the editor target', () => {
   setRect(scope, rect(0, 0, 200, 120));
   setRect(image, rect(0, 0, 200, 120));
   setRect(chip, rect(12, 12, 60, 20));
-  assert.equal(frameForChip(chip, scope), scope);
+  assert.equal(frameForChip(chip, scope), image);
 });
 
 test('teardown is safe before the scheduled editor refresh runs', async () => {
