@@ -95,6 +95,7 @@ const buildInlineImageFigure = (
     srcWidth: Number(section.srcWidth),
     srcHeight: Number(section.srcHeight),
     constrained: section.constrained as never,
+    authoredConstrained: section.constrained as never,
     centered,
     maxVh,
     mobileInset,
