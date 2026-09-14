@@ -92,6 +92,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         <span class="tapico-crop-tuner__linked-aspect-icon" aria-hidden="true" set:html={linkedAspectAlertSvg} />
         <span id="crop-linked-aspect-tooltip" class="tapico-crop-tuner__linked-aspect-tooltip" role="tooltip"></span>
       </button>
+      <button type="button" class="tapico-crop-tuner__reset-setting" data-crop-reset-setting="aspect" hidden aria-label="Reset aspect ratio to inherited value">Reset</button>
     </SelectField>
 
     <div class="tapico-crop-tuner__pair">
@@ -130,6 +131,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         ]}
       />
     </div>
+    <button type="button" class="tapico-crop-tuner__reset-setting" data-crop-reset-setting="width" hidden aria-label="Reset width to inherited value">Reset width</button>
 
     <div class="tapico-crop-tuner__stage">
       <div class="tapico-crop-tuner__preview" data-crop-preview>
@@ -316,6 +318,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const cancelButton = tuner.querySelector<HTMLButtonElement>('[data-crop-cancel]');
     const revertButton = tuner.querySelector<HTMLButtonElement>('[data-crop-revert]');
     const resetButton = tuner.querySelector<HTMLButtonElement>('[data-crop-reset]');
+    const settingResetButtons = [...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-reset-setting]')];
     const useGridDefaultButton = tuner.querySelector<HTMLButtonElement>('[data-crop-use-grid-default]');
     const replaceDrop = tuner.querySelector<HTMLElement>('[data-crop-replace-drop]');
     const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
@@ -510,6 +513,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let targetHadOwnVariants = false;
     /** Rendered value of data-dev-image-variants, for a lossless cancel. */
     let targetVariantsAttr: string | null = null;
+    let targetAuthoredVariantsAttr: string | null = null;
     let savedSinceSelect = false;
     let savedConstrained: ConstrainedByViewport = resolveImageGridConstrained(false);
     let draftConstrained: ConstrainedByViewport = resolveImageGridConstrained(false);
@@ -706,6 +710,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       heightConstrainWrap.hidden = !supportsMaxVh(editTarget);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
       syncMobileInsetUi();
+      settingResetButtons.find((button) => button.dataset.cropResetSetting === 'width')?.toggleAttribute('hidden', selectedViewport === 'desktop');
     };
 
     const gridDefaultAspectFor = (target: HTMLElement) => {
@@ -1143,6 +1148,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         target.dataset.devImageVariants = JSON.stringify(variants);
         if (isGridTarget(target)) target.dataset.devHasOwnVariants = 'true';
       }
+      target.dataset.devImageVariantsAuthored = JSON.stringify(variants);
       if (options?.hoverVariants) {
         target.dataset.devHoverVariants = JSON.stringify(options.hoverVariants);
         target.classList.add('project-grid__cover--hover-cropped');
@@ -1770,6 +1776,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       // leaves the target byte-identical to how it was rendered.
       if (targetVariantsAttr === null) delete editTarget.dataset.devImageVariants;
       else editTarget.dataset.devImageVariants = targetVariantsAttr;
+      if (targetAuthoredVariantsAttr === null) delete editTarget.dataset.devImageVariantsAuthored;
+      else editTarget.dataset.devImageVariantsAuthored = targetAuthoredVariantsAttr;
       removeCropClipIfOwned(editedImage);
     };
 
@@ -1931,6 +1939,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       targetWasCropped = target.classList.contains('project-cropped') || isGridTarget(target);
       targetHadOwnVariants = target.dataset.devHasOwnVariants === 'true';
       targetVariantsAttr = target.dataset.devImageVariants ?? null;
+      targetAuthoredVariantsAttr = target.dataset.devImageVariantsAuthored ?? targetVariantsAttr;
       savedSinceSelect = false;
 
       selectedViewport = viewportForWidth();
@@ -2808,6 +2817,19 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
       renderDraft();
       status.textContent = 'Aspect ratio changed — unsaved changes.';
+    });
+    settingResetButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const setting = button.dataset.cropResetSetting;
+        if (selectedViewport === 'desktop') return;
+        pushUndo();
+        const parent = selectedViewport === 'tablet' ? draftVariants.desktop : draftVariants.tablet;
+        if (setting === 'aspect') draft.aspect = parent.aspect;
+        if (setting === 'width') draft.w = parent.w;
+        renderDraft();
+        status.textContent = `Reset ${setting} to inherited value — unsaved changes.`;
+      });
+      button.addEventListener('contextmenu', (event) => event.preventDefault());
     });
 
     let zoomEditing = false;
