@@ -77,6 +77,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   let units: HomeRevealUnit[] = [];
   const original = new Map<HTMLElement, SavedStyle>();
   const clones: HTMLElement[] = [];
+  const isIntroDismissed = () => home.ownerDocument?.querySelector<HTMLElement>('[data-home-intro-surface]')?.dataset.state === 'dismissed';
   const remember = (el: HTMLElement) => { if (!original.has(el)) original.set(el, { opacity: el.style.opacity, visibility: el.style.visibility, transform: el.style.transform, filter: el.style.filter }); };
   const reduceMotion = () => options.reducedMotion ?? (win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true);
   const cleanup = () => {
@@ -102,7 +103,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     } catch { cancel(); }
   };
   const prepare = () => {
-    if (disposed || armed) return preparation;
+    if (disposed || armed || isIntroDismissed()) return preparation;
     armed = true;
     const preparationGeneration = generation;
     const reduce = reduceMotion();
