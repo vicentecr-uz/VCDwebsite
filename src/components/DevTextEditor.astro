@@ -701,7 +701,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const saved = cloneSpacing(state.savedValue);
           const visualSaved = cloneSpacing(state.visualSavedValue);
           (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
-            if (current[viewport] === 'section' && saved[viewport] === 'section') {
+            if (current[viewport] === 'group' && saved[viewport] === 'group') {
               current[viewport] = 'none';
               saved[viewport] = 'none';
               visualSaved[viewport] = 'none';
@@ -718,10 +718,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           const visualSaved = cloneSpacing(state.visualSavedValue);
           (['desktop', 'tablet', 'mobile'] as const).forEach((viewport) => {
             if (current[viewport] === 'none') {
-              current[viewport] = 'section';
+              current[viewport] = 'group';
               if (saved[viewport] === 'none') {
-                saved[viewport] = 'section';
-                visualSaved[viewport] = 'section';
+                saved[viewport] = 'group';
+                visualSaved[viewport] = 'group';
               }
             }
           });
@@ -748,7 +748,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
               : element.dataset.devSpacingValue,
           );
         } catch {
-          raw = resolveProjectStackSpacing('section');
+          raw = resolveProjectStackSpacing('group');
         }
         if (!Array.isArray(path) || !Array.isArray(writePath) || !element.dataset.devSpacingDocument) return null;
         if (element.querySelector(':scope > [data-dev-spacing-control]')) return null;
@@ -2650,7 +2650,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const placement = options?.placement ?? 'before';
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
-        options?.spacing ?? (sectionIndex === 0 ? 'none' : 'section');
+        options?.spacing ?? (sectionIndex === 0 ? 'none' : 'group');
       const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
@@ -3164,7 +3164,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           root: entry.root,
           type: entry.root.dataset.devSectionDeletable || 'bodyText',
           sectionId: entry.root.id,
-          spacing: entry.root.dataset.devSpacingValue as SpacingValue || 'section',
+          spacing: entry.root.dataset.devSpacingValue as SpacingValue || 'group',
           textStates: entry.textStates,
           spacingState: entry.spacingState,
           restoreToken: entry.restoreToken,
@@ -4136,7 +4136,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const previousKind = block.state.kind;
       const previousRoot = block.section;
       const text = readPlainBlockText(block.state);
-      const spacing = (block.section.dataset.devSpacingValue || 'section') as SpacingValue;
+      const spacing = (block.section.dataset.devSpacingValue || 'group') as SpacingValue;
       const precedeRelated = block.section.classList.contains('project-stack--precede-related');
 
       if (from === 'sectionTitle' && parsed.type === 'sectionTitle') {
@@ -6738,7 +6738,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   /* Sit in the middle of the margin-top gap above the section. */
   .dev-gap-toolbar {
     position: absolute;
-    top: calc(var(--space-section) / -2);
+    top: calc(var(--space-group) / -2);
     left: 0;
     width: min(var(--page-max-width), calc(100vw - 2 * var(--space-unit)));
     z-index: 40;
@@ -7215,7 +7215,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     left: 0;
     width: min(var(--page-max-width), calc(100vw - 2 * var(--space-unit)));
     bottom: 100%;
-    height: var(--space-section);
+    height: var(--space-group);
     box-sizing: border-box;
     border: var(--dev-edit-dash);
     pointer-events: none;
@@ -7238,6 +7238,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--group::before {
     height: var(--space-group);
+  }
+
+  .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--section::before {
+    height: var(--space-section);
   }
 
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty.project-stack--major::before {
