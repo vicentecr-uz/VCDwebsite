@@ -6,6 +6,7 @@
 
 import {
   coverBoxRegionToSourceRegion,
+  CHIP_DARK_LUMA_THRESHOLD,
   isRegionDark,
   measureRenderedRegionLuma,
   measureRenderedRegion,
@@ -238,37 +239,24 @@ export function applyChipAppearance(
   luma: number | null,
   sample: RenderedRegionSample | null = null,
 ): void {
-  const ground: MediaGround = luma !== null && isRegionDark(luma) ? 'dark' : 'light';
+  const ground: MediaGround = luma !== null && isRegionDark(luma, CHIP_DARK_LUMA_THRESHOLD) ? 'dark' : 'light';
   const nearWhite = luma !== null && luma >= 0.78;
   const brightness = [nearWhite ? 0.94 : 1.06, nearWhite ? 0.88 : 1.12] as const;
   let fill: ReturnType<typeof chipContrastFill> | null = null;
-  let chosenGround = ground;
   if (sample) {
     const style = getComputedStyle(host);
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 1;
     const context = canvas.getContext('2d');
     if (context) {
-      const fillFor = (candidate: MediaGround) => {
-        context.clearRect(0, 0, 1, 1);
-        context.fillStyle = style.getPropertyValue(candidate === 'dark'
-          ? '--sys-color-on-dark-media' : '--sys-color-on-light-media').trim();
-        context.fillRect(0, 0, 1, 1);
-        const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
-        return chipContrastFill(sample.pixels, { r, g, b, a: alpha / 255 }, brightness);
-      };
-      fill = fillFor(ground);
-      if (fill.opacity) {
-        const alternative = ground === 'dark' ? 'light' : 'dark';
-        const alternativeFill = fillFor(alternative);
-        if (alternativeFill.opacity < fill.opacity) {
-          fill = alternativeFill;
-          chosenGround = alternative;
-        }
-      }
+      context.fillStyle = style.getPropertyValue(ground === 'dark'
+        ? '--sys-color-on-dark-media' : '--sys-color-on-light-media').trim();
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
+      fill = chipContrastFill(sample.pixels, { r, g, b, a: alpha / 255 }, brightness);
     }
   }
-  applyMediaGround(host, chosenGround);
+  applyMediaGround(host, ground);
   applyChipBrightness(host, luma);
   if (fill?.opacity) {
     host.style.setProperty('--chip-contrast-fill', `rgb(${fill.color} ${fill.color} ${fill.color} / ${fill.opacity})`);
