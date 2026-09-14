@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { imageVariantSettingSource, setImageVariantSetting } from '../../src/lib/imageVariantInheritance';
+import { coverWidthFraction, normalizeImageVariants } from '../../src/lib/responsiveImage';
 
 const source = readFileSync(new URL('../../src/components/project/ProjectImageCropTuner.astro', import.meta.url), 'utf8');
 const between = (start: string, end: string) => {
@@ -51,6 +53,8 @@ function setup() {
     draftSrc: 'placeholder.svg', draftSrcWidth: 1600, draftSrcHeight: 1200,
     draftVariants: { desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 } },
     draftHoverVariants: null, draft: {}, undoStack: [], redoStack: [],
+    authored: { cover: { desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 } }, hover: {}, constrained: {} },
+    imageVariantSettingSource, setImageVariantSetting, coverWidthFraction, syncAuthorship: () => {},
     isListingCover: () => false, VIEWPORTS: ['desktop'], coverW: () => 1,
     pageStage: null, previewImage: preview, editedImage: image,
     targetWasCropped: false, liveApply: false, editingSession: true,
@@ -64,6 +68,7 @@ function setup() {
     },
     replaceAssetsButton: { addEventListener: (_: string, handler: any) => handlers.set('library', handler) },
   };
+  env.resolveAuthoredDraft = () => { env.draftVariants = normalizeImageVariants(env.authored.cover, 'original'); env.draft = env.draftVariants.desktop; };
   env.snapshotViewport = () => ({ src: env.draftSrc, srcWidth: env.draftSrcWidth, srcHeight: env.draftSrcHeight });
   env.pushUndo = () => { env.undoStack.push(env.snapshotViewport()); if (env.undoStack.length > 20) env.undoStack.shift(); env.redoStack = []; };
   env.applySrcLive = (_: unknown, src: string, dims: any) => {

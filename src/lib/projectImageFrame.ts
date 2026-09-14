@@ -1,5 +1,4 @@
 import {
-  coverWidthFraction,
   imageGridItemLayoutStyle,
   normalizeImageVariants,
   responsiveImageStyle,
