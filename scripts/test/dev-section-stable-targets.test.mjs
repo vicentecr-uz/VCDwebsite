@@ -27,6 +27,26 @@ const source = () => ({ sections: [
   { id: 'details', type: 'projectDetails', rows: [{ label: 'Role', value: 'Old' }] },
 ] });
 
+test('fresh section headers preserve the existing outline without creating one', async () => {
+  for (const { input, expected } of [
+    {
+      input: [{ kind: 'section', id: 'target', label: 'Target', anchor: 'target' }],
+      expected: [{ kind: 'section', id: 'target', label: 'Target', anchor: 'target' }],
+    },
+    { input: [], expected: [] },
+    { input: undefined, expected: undefined },
+  ]) {
+    await withFixture({ ...source(), ...(input === undefined ? {} : { outline: input }) }, async (file) => {
+      const handler = middleware(contentSectionDevWriter);
+      const inserted = await post(handler, { document: 'fixture', action: 'insert', index: 1, type: 'sectionTitle', level: 2 });
+      assert.equal(inserted.status, 200);
+      assert.equal(inserted.body.section.type, 'sectionTitle');
+      const saved = JSON.parse(await readFile(file));
+      assert.deepEqual(saved.outline, expected);
+    });
+  }
+});
+
 test('existing section actions resolve stale positions by section ID', async () => {
   await withFixture(source(), async (file) => {
     const handler = middleware(contentSectionDevWriter);
