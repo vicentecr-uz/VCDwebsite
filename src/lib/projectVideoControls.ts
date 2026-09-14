@@ -28,7 +28,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
     }
   };
   video.addEventListener('volumechange', () => {
-    if (video.volume > 0) previousVolume = video.volume;
+    if (video.volume > 0 && !video.hasAttribute('data-project-video-fading')) previousVolume = video.volume;
   });
   new MutationObserver(syncMutedVolume).observe(volume, {
     attributes: true, attributeFilter: ['mediamuted', 'mediavolume'],
@@ -73,6 +73,47 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
     window.addEventListener('pointercancel', finish, { capture: true, signal: drag.listeners.signal });
   }, { capture: true });
   return syncMutedVolume;
+}
+
+function bindVideoVisibility(video: HTMLVideoElement, controller: HTMLElement): void {
+  if (typeof IntersectionObserver === 'undefined' || video.dataset.videoVisibilityBound === 'true') return;
+  video.dataset.videoVisibilityBound = 'true';
+  let fade: { volume: number; start: number; frame: number } | undefined;
+  const observer = new IntersectionObserver(([entry]) => {
+    if (entry.isIntersecting) cancelFade();
+    else if (!video.paused) startFade();
+  }, { threshold: 0 });
+  const cancelFade = () => {
+    if (fade) cancelAnimationFrame(fade.frame);
+    if (fade) video.volume = fade.volume;
+    fade = undefined;
+    video.removeAttribute('data-project-video-fading');
+  };
+  const startFade = () => {
+    if (fade || video.paused) return;
+    const volume = video.volume;
+    if (video.muted || volume <= 0) { video.pause(); return; }
+    fade = { volume, start: performance.now(), frame: 0 };
+    video.setAttribute('data-project-video-fading', '');
+    const tick = (now: number) => {
+      if (!fade || video.paused) { cancelFade(); return; }
+      if (!video.isConnected) {
+        video.pause();
+        cancelFade();
+        return;
+      }
+      const progress = Math.max(0, Math.min(1, (now - fade.start) / 300));
+      video.volume = fade.volume * (1 - progress);
+      if (progress >= 1) { video.pause(); cancelFade(); return; }
+      fade.frame = requestAnimationFrame(tick);
+    };
+    fade.frame = requestAnimationFrame(tick);
+  };
+  video.addEventListener('play', () => { observer.observe(controller); });
+  const stop = () => { observer.disconnect(); cancelFade(); };
+  video.addEventListener('pause', stop);
+  video.addEventListener('ended', stop);
+  if (!video.paused) observer.observe(controller);
 }
 
 export function enhanceProjectVideo(video: HTMLVideoElement): void {
@@ -149,6 +190,7 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   popup.append(volume);
   group.append(mute, popup);
   controller.append(play, progress, group);
+  bindVideoVisibility(video, controller);
 
   Promise.all(['media-controller', 'media-play-button', 'media-time-range', 'media-mute-button', 'media-volume-range']
     .map((name) => customElements.whenDefined(name))).then(() => {
@@ -179,6 +221,12 @@ export function bindProjectVideoControls(): void {
     for (const record of records) {
       for (const node of record.addedNodes) {
         if (node instanceof Element && node.isConnected) enhanceProjectVideos(node);
+      }
+      for (const node of record.removedNodes) {
+        if (node instanceof HTMLVideoElement && !node.isConnected) node.pause();
+        else if (node instanceof Element) node.querySelectorAll<HTMLVideoElement>('video[data-project-inline-video]').forEach((video) => {
+          if (!video.isConnected) video.pause();
+        });
       }
     }
   }).observe(document.documentElement, { childList: true, subtree: true });
