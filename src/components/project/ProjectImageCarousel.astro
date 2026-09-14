@@ -91,6 +91,7 @@ interface Props {
   contentId?: string;
   /** Render as a media cell inside an image grid. */
   nested?: boolean;
+  mobileBleedEligible?: boolean;
 }
 
 const {
@@ -110,6 +111,7 @@ const {
   sectionId,
   contentId,
   nested = false,
+  mobileBleedEligible = true,
 } = Astro.props;
 
 const constrained = resolveImageGridConstrained(constrainedProp);
@@ -293,7 +295,7 @@ const blockStyle = [
             aria-hidden={parked ? 'true' : undefined}
             {...editAttrs}
             data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
-            data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
+            data-mobile-bleed-eligible={mobileBleedEligible && constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
           >
             {/*
               Surface carries the max-height width cap so the visible image and
@@ -441,7 +443,7 @@ const blockStyle = [
             !parked && displayIndex === 0 && 'is-active',
           ]}
           data-carousel-caption
-          data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
+          data-mobile-bleed-eligible={mobileBleedEligible && constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
           data-mobile-inset={entry.item.mobileInset === true ? 'true' : 'false'}
           data-carousel-index={parked ? undefined : displayIndex}
           data-carousel-item-id={entry.id}

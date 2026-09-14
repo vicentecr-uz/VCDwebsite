@@ -712,7 +712,11 @@ export const applyCropChange = (data, change) => {
       && (section?.type === 'imageGrid' || section?.type === 'imageCarousel')
       && resolvedPath[2] === 'items'
       && Number.isInteger(resolvedPath[3]);
-    const allowed = exactImage || exactItem;
+    const nestedItem = resolvedPath.length === 6 && section?.type === 'imageGrid'
+      && resolvedPath[2] === 'items' && Number.isInteger(resolvedPath[3])
+      && section.items?.[resolvedPath[3]]?.type === 'imageCarousel'
+      && resolvedPath[4] === 'items' && Number.isInteger(resolvedPath[5]);
+    const allowed = exactImage || exactItem || nestedItem;
     if (!allowed) return { ok: false, error: 'Videos can only be placed in image blocks.' };
   }
   const hasBackground = Object.prototype.hasOwnProperty.call(change, 'background');
@@ -1933,7 +1937,7 @@ export function contentSectionDevWriter() {
               send(400, { error: error instanceof Error ? error.message : 'That image path is invalid.' });
               return;
             }
-            if (resolvedPath.length !== 4 || resolvedPath[2] !== 'items') {
+            if (resolvedPath.length !== 4 || resolvedPath[0] !== 'sections' || resolvedPath[2] !== 'items') {
               send(400, { error: 'That image cannot become a carousel.' });
               return;
             }
@@ -1959,7 +1963,8 @@ export function contentSectionDevWriter() {
               heightMode: 'dynamic',
               dotsPlacement: 'outside',
               defaultAspectRatio: grid.defaultAspectRatio || 'original',
-              spacing: 'none',
+              ...(item.mobileInset === true ? { mobileInset: true } : {}),
+              ...(item.hideOnMobile === true ? { hideOnMobile: true } : {}),
               items: [{ ...item, id: `${itemId}-slide` }],
               visible: [`${itemId}-slide`],
             };

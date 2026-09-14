@@ -372,7 +372,7 @@ import Button from '../ui/Button.astro';
     const applyMobileBleedEligibility = () => {
       const visible = resolveVisible(itemIds, draftLayouts, 'mobile').visible;
       const columns = Math.max(1, draftColumns.mobile);
-      editTarget.querySelectorAll<HTMLElement>('.project-image-grid__item').forEach((item) => {
+      editTarget.querySelectorAll<HTMLElement>(':scope > .project-image-grid__item').forEach((item) => {
         const id = item.dataset.gridItemId || '';
         const index = visible.indexOf(id);
         const singletonRow = draftMatchHeight
@@ -381,6 +381,9 @@ import Button from '../ui/Button.astro';
           && index === visible.length - 1;
         item.dataset.mobileBleedEligible = draftConstrained.mobile === 100
           && (columns === 1 || singletonRow) ? 'true' : 'false';
+        item.querySelectorAll<HTMLElement>('[data-carousel-slide], [data-carousel-caption]').forEach((slide) => {
+          slide.dataset.mobileBleedEligible = item.dataset.mobileBleedEligible === 'true' && !slide.dataset.maxVh ? 'true' : 'false';
+        });
       });
     };
 
@@ -413,8 +416,9 @@ import Button from '../ui/Button.astro';
       if (!liveApply) return;
       editTarget.dataset.devGridDefaultAspect = draftAspect;
       editTarget
-        .querySelectorAll<HTMLElement>('.project-image-grid__item')
+        .querySelectorAll<HTMLElement>(':scope > .project-image-grid__item')
         .forEach((item) => {
+          if (item.querySelector(':scope > [data-project-image-carousel]')) return;
           item.dataset.devGridDefaultAspect = draftAspect;
           if (item.dataset.devHasOwnVariants === 'true') return;
           VIEWPORTS.forEach((viewport) => {
@@ -450,7 +454,7 @@ import Button from '../ui/Button.astro';
         VIEWPORTS.map((viewport) => [viewport, resolveVisible(itemIds, draftLayouts, viewport)]),
       ) as Record<ImageViewport, { visible: string[]; overridden: boolean }>;
 
-      editTarget.querySelectorAll<HTMLElement>('[data-grid-item-id]').forEach((figure) => {
+      editTarget.querySelectorAll<HTMLElement>(':scope > [data-grid-item-id]').forEach((figure) => {
         const id = figure.dataset.gridItemId;
         if (!id) return;
         VIEWPORTS.forEach((viewport) => {
