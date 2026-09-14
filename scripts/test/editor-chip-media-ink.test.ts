@@ -95,3 +95,52 @@ test('teardown is safe before the scheduled editor refresh runs', async () => {
     assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
   }
 });
+
+
+test('brightness refresh clears a protective fill left by the previous image', async () => {
+  const { applyChipBrightness } = await import('../../src/scripts/adaptiveMediaInk');
+  const chip = document.createElement('button');
+  chip.style.setProperty('--chip-contrast-fill', 'rgb(0 0 0 / 0.8)');
+  applyChipBrightness(chip, 0.9);
+  assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), '');
+  assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
+});
+
+test('mixed backgrounds choose the text token requiring less protective fill', async () => {
+  const { applyChipBrightness, applyChipContrast, applyMediaGround } = await import('../../src/scripts/adaptiveMediaInk');
+  const chip = document.createElement('button');
+  const originalCreateElement = document.createElement.bind(document);
+  const previousStyle = globalThis.getComputedStyle;
+  Object.assign(globalThis, { getComputedStyle: () => ({
+    getPropertyValue: (name: string) => name === '--sys-color-on-dark-media' ? '#f5f5f7' : '#6d6d6d',
+  }) });
+  document.createElement = ((name: string) => {
+    const element = originalCreateElement(name);
+    if (name === 'canvas') {
+      const context = {
+        fillStyle: '', clearRect() {}, fillRect() {},
+        getImageData() {
+          return { data: new Uint8ClampedArray(this.fillStyle === '#f5f5f7'
+            ? [245, 245, 247, 255] : [109, 109, 109, 255]) };
+        },
+      };
+      Object.defineProperty(element, 'getContext', { value: () => context });
+    }
+    return element;
+  }) as typeof document.createElement;
+  try {
+    applyMediaGround(chip, 'light');
+    applyChipBrightness(chip, 0.7);
+    applyChipContrast(chip, { luma: 0.7, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) });
+    assert.equal(chip.dataset.mediaGround, 'dark');
+    assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(0 0 0 \/ 0\.[0-9]+\)$/);
+    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
+    applyMediaGround(chip, 'dark');
+    applyChipBrightness(chip, 0.01);
+    applyChipContrast(chip, { luma: 0.01, pixels: new Uint8ClampedArray([10, 10, 10, 255]) });
+    assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), '');
+  } finally {
+    document.createElement = originalCreateElement;
+    Object.assign(globalThis, { getComputedStyle: previousStyle });
+  }
+});

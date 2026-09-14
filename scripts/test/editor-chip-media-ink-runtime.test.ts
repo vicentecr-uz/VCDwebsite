@@ -16,13 +16,16 @@ mock.module('../../src/scripts/adaptiveMediaInk', () => ({
     host.style.setProperty('--chip-rest-brightness', luma !== null && luma >= 0.78 ? '0.94' : '1.06');
     host.style.setProperty('--chip-hover-brightness', luma !== null && luma >= 0.78 ? '0.88' : '1.12');
   },
+  applyChipContrast: () => {},
+  opaqueBackground: () => '#fff',
   cropHostFor: () => null,
   groundForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (
     decoded.src?.endsWith('new-image') ? 'light' : 'dark'
   ),
-  lumaForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (
-    decoded.src?.endsWith('new-image') ? 0.7 : decoded.src?.endsWith('nearwhite-image') ? 0.9 : decoded.src?.endsWith('midgray-image') ? 0.5 : 0.2
-  ),
+  sampleForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => ({
+    luma: decoded.src?.endsWith('new-image') ? 0.7 : decoded.src?.endsWith('nearwhite-image') ? 0.9 : decoded.src?.endsWith('midgray-image') ? 0.5 : 0.2,
+    pixels: new Uint8ClampedArray(),
+  }),
   groundForRegion: () => 'light',
   lumaGridFor: (src: string) => {
     lumaCalls += 1;
