@@ -14,7 +14,20 @@ import {
   measureRegionLuma,
   type NormalizedRegion,
 } from './coverLuminance';
-import { chipContrastFill } from './chipContrast';
+import { chipContrastFill, type Rgba } from './chipContrast';
+
+function composite(top: Rgba, bottom: Rgba): Rgba {
+  const topAlpha = Math.min(1, Math.max(0, top.a));
+  const bottomAlpha = Math.min(1, Math.max(0, bottom.a));
+  const alpha = topAlpha + bottomAlpha * (1 - topAlpha);
+  if (!alpha) return { r: 0, g: 0, b: 0, a: 0 };
+  return {
+    r: (top.r * topAlpha + bottom.r * bottomAlpha * (1 - topAlpha)) / alpha,
+    g: (top.g * topAlpha + bottom.g * bottomAlpha * (1 - topAlpha)) / alpha,
+    b: (top.b * topAlpha + bottom.b * bottomAlpha * (1 - topAlpha)) / alpha,
+    a: alpha,
+  };
+}
 
 export function elementRegionInCover(el: HTMLElement, coverRect: DOMRect): NormalizedRegion | null {
   const rect = el.getBoundingClientRect();
@@ -99,6 +112,18 @@ export type { NormalizedRegion };
 const decodeCache = new Map<string, Promise<HTMLImageElement | null>>();
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+const CHIP_BASE_TINT_OPACITY = 0.08;
+
+function chipBaseTint(nearWhite: boolean): Rgba {
+  const channel = nearWhite ? 0 : 255;
+  return { r: channel, g: channel, b: channel, a: CHIP_BASE_TINT_OPACITY };
+}
+
+function cssRgba(color: Rgba): string {
+  const channel = (value: number) => Number(value.toFixed(3));
+  return `rgb(${channel(color.r)} ${channel(color.g)} ${channel(color.b)} / ${color.a})`;
+}
 
 /** Cache by image src. One decode per distinct URL. */
 export async function lumaGridFor(src: string): Promise<CanvasImageSource | null> {
@@ -227,8 +252,11 @@ export function applyMediaGround(host: HTMLElement, ground: MediaGround): void {
 
 /** Six percent rest / twelve percent hover leaves near-white grounds with headroom instead of clipping to white. */
 export function applyChipBrightness(host: HTMLElement, luma: number | null): void {
-  host.style.removeProperty('--chip-contrast-fill');
   const nearWhite = luma !== null && luma >= 0.78;
+  const baseTint = chipBaseTint(nearWhite);
+  const fill = cssRgba(baseTint);
+  host.style.setProperty('--chip-contrast-fill', fill);
+  host.style.setProperty('--chip-hover-contrast-fill', fill);
   host.style.setProperty('--chip-rest-brightness', nearWhite ? '0.94' : '1.06');
   host.style.setProperty('--chip-hover-brightness', nearWhite ? '0.88' : '1.12');
   host.style.setProperty('--chip-hover-ring', nearWhite ? 'rgb(0 0 0 / 0.12)' : 'rgb(255 255 255 / 0.12)');
@@ -241,8 +269,10 @@ export function applyChipAppearance(
 ): void {
   const ground: MediaGround = luma !== null && isRegionDark(luma, CHIP_DARK_LUMA_THRESHOLD) ? 'dark' : 'light';
   const nearWhite = luma !== null && luma >= 0.78;
-  const brightness = [nearWhite ? 0.94 : 1.06, nearWhite ? 0.88 : 1.12] as const;
-  let fill: ReturnType<typeof chipContrastFill> | null = null;
+  const restBrightness = nearWhite ? 0.94 : 1.06;
+  const hoverBrightness = nearWhite ? 0.88 : 1.12;
+  const baseTint = chipBaseTint(nearWhite);
+  let fills: { rest: Rgba; hover: Rgba } | null = null;
   if (sample) {
     const style = getComputedStyle(host);
     const canvas = document.createElement('canvas');
@@ -250,16 +280,23 @@ export function applyChipAppearance(
     const context = canvas.getContext('2d');
     if (context) {
       context.fillStyle = style.getPropertyValue(ground === 'dark'
-        ? '--sys-color-on-dark-media' : '--sys-color-on-light-media').trim();
+        ? '--sys-color-on-dark-media' : '--ref-palette-grey-300').trim();
       context.fillRect(0, 0, 1, 1);
       const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
-      fill = chipContrastFill(sample.pixels, { r, g, b, a: alpha / 255 }, brightness);
+      const ink = { r, g, b, a: alpha / 255 };
+      const rest = chipContrastFill(sample.pixels, ink, [restBrightness], baseTint);
+      const hover = chipContrastFill(sample.pixels, ink, [hoverBrightness], baseTint);
+      fills = {
+        rest: composite({ r: rest.color, g: rest.color, b: rest.color, a: rest.opacity }, baseTint),
+        hover: composite({ r: hover.color, g: hover.color, b: hover.color, a: hover.opacity }, baseTint),
+      };
     }
   }
   applyMediaGround(host, ground);
   applyChipBrightness(host, luma);
-  if (fill?.opacity) {
-    host.style.setProperty('--chip-contrast-fill', `rgb(${fill.color} ${fill.color} ${fill.color} / ${fill.opacity})`);
+  if (fills) {
+    host.style.setProperty('--chip-contrast-fill', cssRgba(fills.rest));
+    host.style.setProperty('--chip-hover-contrast-fill', cssRgba(fills.hover));
   }
 }
 

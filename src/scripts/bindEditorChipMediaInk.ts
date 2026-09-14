@@ -80,6 +80,7 @@ function clearChip(chip: HTMLElement): void {
   chip.style.removeProperty('--chip-hover-brightness');
   chip.style.removeProperty('--chip-hover-ring');
   chip.style.removeProperty('--chip-contrast-fill');
+  chip.style.removeProperty('--chip-hover-contrast-fill');
 }
 
 function visible(chip: HTMLElement): boolean {
