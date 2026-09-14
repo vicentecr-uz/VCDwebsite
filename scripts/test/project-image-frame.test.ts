@@ -53,3 +53,38 @@ test('source dimensions replace prior metadata and clear when unavailable', () =
   assert.equal(target.dataset.devImageSrcHeight, undefined);
   assert.equal(target.style.getPropertyValue('--project-image-original-ratio'), '');
 });
+
+test('edit attrs preserve authored hover and width maps separately from resolved maps', async () => {
+  const { listingCoverDevEditAttrs, imageDevEditAttrs } = await import('../../src/lib/projectImageFrame');
+  const listing = listingCoverDevEditAttrs('demo', 'home', {
+    image: 'cover.jpg',
+    variants: { desktop: { aspect: '3:2' } },
+    hoverVariants: { desktop: { cx: 0.2, cy: 0.5, w: 1 } },
+  }, false);
+  assert.deepEqual(JSON.parse(listing['data-dev-hover-variants-authored']), { desktop: { cx: 0.2, cy: 0.5, w: 1 } });
+  const attrs = imageDevEditAttrs(true, {
+    documentKey: 'demo', path: ['sections', 0], cropId: 'image', variants: {},
+    constrained: { desktop: 100, tablet: 100, mobile: 100 }, authoredConstrained: { desktop: 80 },
+  });
+  assert.deepEqual(JSON.parse(attrs!['data-dev-image-constrained-authored']), { desktop: 80 });
+  const absent = imageDevEditAttrs(true, { documentKey: 'demo', path: ['sections', 0], cropId: 'image', variants: {} });
+  assert.deepEqual(JSON.parse(absent!['data-dev-image-constrained-authored']), {});
+});
+
+test('hover crops inherit the desktop crop while authored metadata stays sparse', async () => {
+  const { listingCoverDevEditAttrs } = await import('../../src/lib/projectImageFrame');
+  const attrs = listingCoverDevEditAttrs('demo', 'home', {
+    image: 'cover.jpg',
+    variants: { desktop: { aspect: '3:2' } },
+    hoverVariants: { desktop: { aspect: '16:9', cx: 0.3, cy: 0.6, w: 1.2 } },
+  }, false);
+  const resolved = JSON.parse(attrs['data-dev-hover-variants']);
+  for (const viewport of ['tablet', 'mobile']) {
+    assert.equal(resolved[viewport].cx, resolved.desktop.cx);
+    assert.equal(resolved[viewport].cy, resolved.desktop.cy);
+    assert.equal(resolved[viewport].w, resolved.desktop.w);
+  }
+  assert.deepEqual(JSON.parse(attrs['data-dev-hover-variants-authored']), {
+    desktop: { aspect: '16:9', cx: 0.3, cy: 0.6, w: 1.2 },
+  });
+});
