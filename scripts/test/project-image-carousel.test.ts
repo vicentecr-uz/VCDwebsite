@@ -168,17 +168,31 @@ test('mouse drag takeover after touch clears pending correction', () => {
   block.remove();
 });
 
-test('video playback controls keep mouse drag and arrow keys', () => {
-  const { block, track, calls } = createSnapTestCarousel('horizontal');
-  const video = window.document.createElement('video');
-  track.querySelector('[data-carousel-slide]')!.append(video);
-  const pointer = new window.Event('pointerdown', { bubbles: true });
-  Object.defineProperties(pointer, { pointerType: { value: 'mouse' }, button: { value: 0 } });
-  video.dispatchEvent(pointer);
-  expect(track.classList.contains('is-dragging')).toBe(false);
-  const arrow = new window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true });
-  video.dispatchEvent(arrow);
-  expect(arrow.defaultPrevented).toBe(false);
-  expect(calls).toHaveLength(0);
-  block.remove();
-});
+for (const axis of ['horizontal', 'vertical'] as const) {
+  for (const custom of [false, true]) {
+    test(`${axis}: ${custom ? 'custom' : 'native'} video controls keep pointer and arrow-key ownership`, () => {
+      const { block, track, calls } = createSnapTestCarousel(axis);
+      const video = window.document.createElement('video');
+      const controller = window.document.createElement('media-controller');
+      const volume = window.document.createElement('media-volume-range');
+      controller.append(video, volume);
+      track.querySelector('[data-carousel-slide]')!.append(custom ? controller : video);
+      const input = window.document.createElement('input');
+      input.type = 'range';
+      volume.attachShadow({ mode: 'open' }).append(input);
+      const control = custom ? input : video;
+      const pointer = new window.Event('pointerdown', { bubbles: true, composed: true });
+      Object.defineProperties(pointer, { pointerType: { value: 'mouse' }, button: { value: 0 } });
+      control.dispatchEvent(pointer);
+      expect(track.classList.contains('is-dragging')).toBe(false);
+      const arrow = new window.KeyboardEvent('keydown', {
+        key: axis === 'vertical' ? 'ArrowUp' : 'ArrowRight',
+        bubbles: true, composed: true, cancelable: true,
+      });
+      control.dispatchEvent(arrow);
+      expect(arrow.defaultPrevented).toBe(false);
+      expect(calls).toHaveLength(0);
+      block.remove();
+    });
+  }
+}

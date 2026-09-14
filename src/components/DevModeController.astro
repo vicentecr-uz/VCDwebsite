@@ -349,7 +349,7 @@
 
       if (!devMode || isSectionEditor() || !window.matchMedia('(hover: none)').matches) return;
 
-      if (target.closest('video[data-project-inline-video]')) return;
+      if (event.composedPath().some((node) => node instanceof HTMLElement && node.matches('video, media-controller'))) return;
       const imageTarget = target.closest<HTMLElement>('[data-dev-image-target]');
       if (imageTarget && !imageTarget.classList.contains('is-dev-image-selected')) {
         event.preventDefault();

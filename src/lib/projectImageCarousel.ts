@@ -412,6 +412,9 @@ export function restoreCarouselActiveItem(block: HTMLElement, itemId: string): b
   return true;
 }
 
+const touchesVideoControl = (event: Event) => event.composedPath().some((node) =>
+  node instanceof HTMLElement && node.matches('video, media-controller'));
+
 /** Mouse users get click-drag; touch and trackpad already work natively. */
 function bindDrag(carousel: Carousel): void {
   const { track } = carousel;
@@ -422,7 +425,7 @@ function bindDrag(carousel: Carousel): void {
 
   track.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
-    if ((event.target as HTMLElement).closest('button, a, video, [contenteditable="true"]')) return;
+    if ((event.target as HTMLElement).closest('button, a, [contenteditable="true"]') || touchesVideoControl(event)) return;
     // Crop stage owns the pointer — don't steal capture mid-pan.
     if ((event.target as HTMLElement).closest('.dev-crop-stage, .dev-crop-stage-host')) return;
     dragging = true;
@@ -714,7 +717,7 @@ function initCarousel(block: HTMLElement): void {
   });
 
   track.addEventListener('keydown', (event) => {
-    if ((event.target as HTMLElement).closest('video')) return;
+    if (touchesVideoControl(event)) return;
     const back = carousel.axis === 'vertical' ? 'ArrowUp' : 'ArrowLeft';
     const forward = carousel.axis === 'vertical' ? 'ArrowDown' : 'ArrowRight';
     if (event.key !== back && event.key !== forward) return;
