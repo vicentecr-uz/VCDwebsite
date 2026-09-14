@@ -928,7 +928,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease, backdrop-filter 0.12s ease;
 }
 
 .dev-image-edit-trigger[hidden] {
@@ -957,7 +957,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease, backdrop-filter 0.12s ease;
 }
 
 .dev-caption-add-trigger[hidden] {
@@ -996,7 +996,7 @@ html:not(.is-dev-mode) .dev-crop-stage {
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease, backdrop-filter 0.12s ease;
 }
 
 .dev-grid-edit-trigger[hidden] {
@@ -1013,23 +1013,21 @@ html:not(.is-dev-mode) .dev-crop-stage {
 
 /* Editor media chips use the same adaptive palette as cover quick actions. */
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger) {
-  --chip-surface: var(--dev-chip-surface-light);
-  background: color-mix(in srgb, var(--chip-surface) 6%, transparent);
+  background: transparent;
   color: var(--sys-color-on-light-media);
   box-shadow: none;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px) brightness(var(--chip-rest-brightness, 1.06));
 }
 
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark'] {
-  --chip-surface: var(--dev-chip-surface-dark);
   color: var(--sys-color-on-dark-media);
 }
 
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):hover,
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):focus-visible {
-  background: color-mix(in srgb, var(--chip-surface) 12%, transparent);
+  background: transparent;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-light-media) 7%, var(--ref-palette-grey-800));
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px) brightness(var(--chip-hover-brightness, 1.12));
 }
 
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark']:hover,

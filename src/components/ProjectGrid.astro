@@ -372,14 +372,14 @@ const gridCardTemplateSeed: ProjectGridItem = {
     padding: 0.45em 0.55em;
     border: 0;
     border-radius: var(--radius-control);
-    background: color-mix(in srgb, var(--chip-surface) 6%, transparent);
+    background: transparent;
     color: var(--chip-ink);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
     cursor: pointer;
     box-shadow: none;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px) brightness(var(--chip-rest-brightness, 1.06));
     text-decoration: none;
     /* opacity here matters even though the resting state is always opacity: 1 —
        the transition shorthand replaces the whole list, not merges it. The
@@ -389,6 +389,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
        an opacity entry here that transition is dropped and it snaps to 1. */
     transition:
       background-color 0.15s ease,
+      backdrop-filter 0.15s ease,
       box-shadow 0.15s ease,
       transform 0.15s ease,
       --chip-ink 0.15s ease,
@@ -410,9 +411,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__chip:focus-visible,
   .project-grid__chip[aria-pressed='true'],
   .project-grid__chip[aria-expanded='true'] {
-    background: color-mix(in srgb, var(--chip-surface) 12%, transparent);
+    background: transparent;
     box-shadow: inset 0 0 0 1px var(--chip-ring);
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px) brightness(var(--chip-hover-brightness, 1.12));
     transform: scale(1.08);
     color: var(--chip-ink);
   }
@@ -726,7 +727,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__item {
     --chip-ink: var(--chip-ink-on-light);
-    --chip-surface: var(--dev-chip-surface-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
     --chip-press: var(--chip-press-on-light);
@@ -741,7 +741,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
   /* Authored fallback before adaptiveMediaInk runs — overridden by data-media-ground. */
   .project-grid__item[data-dev-dark='true'] {
     --chip-ink: var(--chip-ink-on-dark);
-    --chip-surface: var(--dev-chip-surface-dark);
     --chip-fill: var(--chip-fill-on-dark);
     --chip-ring: var(--chip-ring-on-dark);
     --chip-press: var(--chip-press-on-dark);
@@ -755,7 +754,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
   */
   .project-grid__item[data-media-ground='light'] {
     --chip-ink: var(--chip-ink-on-light);
-    --chip-surface: var(--dev-chip-surface-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
     --chip-press: var(--chip-press-on-light);
@@ -767,7 +765,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__item[data-media-ground='dark'] {
     --chip-ink: var(--chip-ink-on-dark);
-    --chip-surface: var(--dev-chip-surface-dark);
     --chip-fill: var(--chip-fill-on-dark);
     --chip-ring: var(--chip-ring-on-dark);
     --chip-press: var(--chip-press-on-dark);
@@ -793,7 +790,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__chip[data-media-ground='light'] {
     --chip-ink: var(--chip-ink-on-light);
-    --chip-surface: var(--dev-chip-surface-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
     --chip-press: var(--chip-press-on-light);
@@ -801,7 +797,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__chip[data-media-ground='dark'] {
     --chip-ink: var(--chip-ink-on-dark);
-    --chip-surface: var(--dev-chip-surface-dark);
     --chip-fill: var(--chip-fill-on-dark);
     --chip-ring: var(--chip-ring-on-dark);
     --chip-press: var(--chip-press-on-dark);
@@ -814,7 +809,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
   */
   .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover)) {
     --chip-ink: var(--chip-ink-on-light);
-    --chip-surface: var(--dev-chip-surface-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
     --chip-press: var(--chip-press-on-light);
@@ -823,7 +817,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover))
     .project-grid__chip {
     --chip-ink: var(--chip-ink-on-light);
-    --chip-surface: var(--dev-chip-surface-light);
     --chip-fill: var(--chip-fill-on-light);
     --chip-ring: var(--chip-ring-on-light);
     --chip-press: var(--chip-press-on-light);

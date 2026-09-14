@@ -7,6 +7,7 @@ import {
   applyChipBrightness,
   applyMediaGround,
   cropHostFor,
+  groundForBox,
   lumaForBox,
   lumaGridFor,
   readCropVars,
