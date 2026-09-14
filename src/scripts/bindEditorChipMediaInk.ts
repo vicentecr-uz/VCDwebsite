@@ -90,7 +90,12 @@ function clearChip(chip: HTMLElement): void {
 }
 
 function visible(chip: HTMLElement): boolean {
-  return !chip.hidden && chip.getBoundingClientRect().width > 0;
+  if (chip.hidden) return false;
+  const rect = chip.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  return rect.right > 0 && rect.left < viewportWidth && rect.bottom > 0 && rect.top < viewportHeight;
 }
 
 export function bindEditorChipMediaInk(): () => void {
@@ -142,7 +147,7 @@ export function bindEditorChipMediaInk(): () => void {
 
   const schedule = () => {
     generation += 1;
-    cancelAnimationFrame(frameHandle);
+    if (frameHandle) return;
     frameHandle = requestAnimationFrame(() => {
       frameHandle = 0;
       if (stopped) return;
@@ -182,7 +187,9 @@ export function bindEditorChipMediaInk(): () => void {
   const onLoad = (event: Event) => {
     if ((event.target as HTMLElement | null)?.matches?.('img')) schedule();
   };
-  const onScroll = () => schedule();
+  const onCarouselScrollEnd = (event: Event) => {
+    if (event.target instanceof HTMLElement && event.target.matches('.project-image-carousel__track')) schedule();
+  };
   const onReveal = (event: Event) => {
     const target = event.target as Node | null;
     if (target instanceof HTMLElement && target.closest(`${CHIP_SELECTOR}, ${TARGET_SELECTOR}`)) schedule();
@@ -210,13 +217,19 @@ export function bindEditorChipMediaInk(): () => void {
     attributes: true,
     attributeFilter: ['src', 'srcset', 'style', 'class', 'hidden', 'data-media-ground'],
   });
-  const htmlObserver = new MutationObserver(schedule);
+  let editMode = document.documentElement.classList.contains('is-dev-mode');
+  const htmlObserver = new MutationObserver(() => {
+    const nextEditMode = document.documentElement.classList.contains('is-dev-mode');
+    if (nextEditMode === editMode) return;
+    editMode = nextEditMode;
+    schedule();
+  });
   htmlObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   document.addEventListener('load', onLoad, true);
   document.addEventListener('pointerover', onReveal, true);
   document.addEventListener('focusin', onReveal, true);
-  window.addEventListener('scroll', onScroll, true);
-  window.addEventListener('resize', onScroll);
+  document.addEventListener('scrollend', onCarouselScrollEnd, true);
+  window.addEventListener('resize', schedule);
   window.addEventListener('vcd:dev-pending-upsert', onCustom);
   window.addEventListener('vcd:dev-frame-changed', onCustom);
   schedule();
@@ -231,8 +244,8 @@ export function bindEditorChipMediaInk(): () => void {
     document.removeEventListener('load', onLoad, true);
     document.removeEventListener('pointerover', onReveal, true);
     document.removeEventListener('focusin', onReveal, true);
-    window.removeEventListener('scroll', onScroll, true);
-    window.removeEventListener('resize', onScroll);
+    document.removeEventListener('scrollend', onCarouselScrollEnd, true);
+    window.removeEventListener('resize', schedule);
     window.removeEventListener('vcd:dev-pending-upsert', onCustom);
     window.removeEventListener('vcd:dev-frame-changed', onCustom);
     knownChips.forEach(clearChip);
