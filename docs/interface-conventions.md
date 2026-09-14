@@ -9,6 +9,10 @@ Read this before changing site or dev-layer UI. Root [`AGENTS.md`](../AGENTS.md)
 - **Typography:** Hanken Grotesk, upright weights 400–900 plus 400 italic. EB Garamond is loaded only where a `Layout` explicitly requests the `serif` prop.
 - **Page ground:** Use `--color-bg` for every surface meant to read as the page: page background, `.site-header__bg`, nav panel, and menu backdrop. Never give one of these stacked surfaces a literal white; they must move together when the ground changes.
 
+## Scrollable overflow
+
+Scrollable content needs a clear edge treatment. For grouped controls, cards, and other contained UI, put the existing radius token on the actual overflow viewport and clip its contents to that rounded shape, as with the clipped areas of the Asset manager. For text-like content that continues past its edge, use a gradient alpha mask to fade the text, as with overflowing text fields. Preserve native scrolling and visible keyboard focus in both cases. Reuse the existing dev controls and styling patterns rather than introducing a new overflow abstraction. Hiding scrollbars is a local choice for a specific control; this pattern does not make it a global rule.
+
 ## Page width and viewport height
 
 Text and media use separate caps:
