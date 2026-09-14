@@ -1,5 +1,4 @@
 import {
-  coverWidthFraction,
   imageGridItemLayoutStyle,
   normalizeImageVariants,
   responsiveImageStyle,
@@ -192,6 +191,8 @@ export interface ImageDevEditContext {
   path: Array<string | number>;
   cropId: string;
   variants: ImageVariants | undefined;
+  /** Sparse authored variants, kept separate from the resolved render map. */
+  authoredVariants?: ImageVariants;
   src?: string;
   srcWidth?: number;
   srcHeight?: number;
@@ -204,6 +205,8 @@ export interface ImageDevEditContext {
   hasOwnVariants?: boolean;
   /** Standalone image block width constraint (per-breakpoint % or legacy boolean). */
   constrained?: ImageGridConstrained;
+  /** Original sparse width constraint authoring, separate from resolved CSS values. */
+  authoredConstrained?: ImageGridConstrained;
   /** Centre the constrained block in its stack column. */
   centered?: boolean;
   /** Cap rendered height at N% of the viewport (`maxVh`). */
@@ -228,31 +231,19 @@ function seedHoverVariants(
   hoverVariants: ImageVariants | undefined,
   hoverSrcAspect: number | null,
 ): Record<ImageViewport, ImageVariant> {
-  const seeded = {} as Record<ImageViewport, ImageVariant>;
-  let fallback: ImageVariant = {
-    aspect: coverVariants.desktop.aspect,
-    cx: 0.5,
-    cy: 0.5,
-    w: coverWidthFraction(coverVariants.desktop.aspect, hoverSrcAspect),
-  };
-  for (const viewport of IMAGE_VIEWPORTS) {
-    const linkedAspect = coverVariants[viewport].aspect;
-    fallback = {
-      aspect: linkedAspect,
-      cx: 0.5,
-      cy: 0.5,
-      w: coverWidthFraction(linkedAspect, hoverSrcAspect),
-    };
-    const existing = hoverVariants?.[viewport];
-    seeded[viewport] = {
-      aspect: linkedAspect,
-      cx: existing?.cx ?? fallback.cx,
-      cy: existing?.cy ?? fallback.cy,
-      w: existing?.w ?? fallback.w,
-    };
-    fallback = seeded[viewport];
-  }
-  return seeded;
+  const fallbackAspects = IMAGE_VIEWPORTS.reduce((result, viewport) => {
+    result[viewport] = coverVariants[viewport].aspect;
+    return result;
+  }, {} as Record<ImageViewport, string>);
+  const resolved = normalizeImageVariants(
+    hoverVariants,
+    fallbackAspects,
+    hoverSrcAspect ? { width: hoverSrcAspect, height: 1 } : undefined,
+  );
+  return IMAGE_VIEWPORTS.reduce((result, viewport) => {
+    result[viewport] = { ...resolved[viewport], aspect: coverVariants[viewport].aspect };
+    return result;
+  }, {} as Record<ImageViewport, ImageVariant>);
 }
 
 /** Listing-cover crop attrs — shared by ProjectGrid SSR and Gallery Manager fill. */
@@ -279,6 +270,7 @@ export function listingCoverDevEditAttrs(
     path: ['listings', grid],
     cropId: `listing-${grid}`,
     variants: seedCoverVariants,
+    authoredVariants: item.variants ?? {},
     src: item.image,
     srcWidth: Number(item.srcWidth),
     srcHeight: Number(item.srcHeight),
@@ -288,6 +280,7 @@ export function listingCoverDevEditAttrs(
   if (item.hoverImage) attrs['data-dev-hover-image-src'] = item.hoverImage;
   attrs['data-dev-listing-default-aspects'] = JSON.stringify(defaultAspects);
   attrs['data-dev-hover-variants'] = JSON.stringify(seededHoverVariants);
+  attrs['data-dev-hover-variants-authored'] = JSON.stringify(item.hoverVariants ?? {});
   return attrs;
 }
 
@@ -311,12 +304,21 @@ export function imageDevEditAttrs(
     'data-dev-image-path': JSON.stringify(context.path),
     'data-dev-crop-id': context.cropId,
     'data-dev-image-variants': JSON.stringify(context.variants ?? {}),
+    'data-dev-image-variants-authored': JSON.stringify(context.authoredVariants ?? context.variants ?? {}),
     'data-dev-captions': JSON.stringify(captions),
     'data-dev-caption-style': captionStyle,
     'data-dev-caption-position': captionPosition,
     'data-dev-caption-reveals': JSON.stringify(captionReveals),
     'data-dev-image-background': normalizeImageBackground(context.background) ?? 'transparent',
   };
+  const authoredConstrained = Object.prototype.hasOwnProperty.call(context, 'authoredConstrained')
+    ? (context.authoredConstrained === undefined
+      ? {}
+      : (context.authoredConstrained && typeof context.authoredConstrained === 'object' && !Array.isArray(context.authoredConstrained)
+        ? structuredClone(context.authoredConstrained)
+        : { desktop: resolveImageGridConstrained(context.authoredConstrained).desktop }))
+    : {};
+  attrs['data-dev-image-constrained-authored'] = JSON.stringify(authoredConstrained);
   if (context.src) attrs['data-dev-image-src'] = context.src;
   if (context.srcWidth) attrs['data-dev-image-src-width'] = String(context.srcWidth);
   if (context.srcHeight) attrs['data-dev-image-src-height'] = String(context.srcHeight);

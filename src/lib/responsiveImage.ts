@@ -278,9 +278,10 @@ const normalizeVariant = (
     aspect,
     cx: variant?.cx ?? fallback.cx,
     cy: variant?.cy ?? fallback.cy,
-    // Clamp inherited zoom to this frame's cover bound so a breakpoint that only
-    // changes `aspect` can't end up under-covering.
-    w: variant?.w ?? Math.min(fallback.w, coverWidthFraction(aspect, srcAspect)),
+    // Width is an authored property. An inherited unlocked width must survive
+    // a frame change; clamping it here would silently turn inheritance into a
+    // new local cover-fit value.
+    w: variant?.w ?? fallback.w,
   };
 };
 
@@ -310,13 +311,24 @@ export function normalizeImageVariants(
     cy: 0.5,
     w: 1,
   };
+  const inherited = { aspect: false, cx: false, cy: false, w: false };
   for (const viewport of VIEWPORTS) {
-    fallback = {
-      ...fallback,
-      aspect: aspectFor(viewport, fallback),
-      w: coverWidthFraction(aspectFor(viewport, fallback), srcAspect),
+    const authored = variants?.[viewport];
+    const authoredAspect = authored?.aspect ?? authored?.aspectRatio;
+    const aspect = authoredAspect ?? (inherited.aspect
+      ? fallback.aspect
+      : aspectFor(viewport, fallback));
+    const base: ImageVariant = {
+      aspect,
+      cx: inherited.cx ? fallback.cx : 0.5,
+      cy: inherited.cy ? fallback.cy : 0.5,
+      w: inherited.w ? fallback.w : coverWidthFraction(aspect, srcAspect),
     };
-    normalized[viewport] = normalizeVariant(variants?.[viewport], fallback, srcAspect);
+    normalized[viewport] = normalizeVariant(authored, base, srcAspect);
+    if (authoredAspect !== undefined) inherited.aspect = true;
+    if (authored?.cx !== undefined || authored?.x !== undefined) inherited.cx = true;
+    if (authored?.cy !== undefined || authored?.y !== undefined) inherited.cy = true;
+    if (authored?.w !== undefined || authored?.zoom !== undefined) inherited.w = true;
     fallback = normalized[viewport];
   }
   return normalized;
