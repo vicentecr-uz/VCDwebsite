@@ -362,11 +362,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     position: relative;
   }
 
-  /*
-    Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
-    Light covers: press darkens the fill slightly (--sys-color-srf-container-high).
-    Dark covers override outline / press fill in the global block (#154).
-  */
+  /* Cover quick actions share the adaptive surface palette; hover adds emphasis. */
   .project-grid__chip {
     display: grid;
     place-items: center;
@@ -376,13 +372,14 @@ const gridCardTemplateSeed: ProjectGridItem = {
     padding: 0.45em 0.55em;
     border: 0;
     border-radius: var(--radius-control);
-    background: transparent;
+    background: color-mix(in srgb, var(--chip-fill) 50%, transparent);
     color: var(--chip-ink);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
     cursor: pointer;
-    box-shadow: none;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip-ink) 12%, transparent);
+    backdrop-filter: blur(8px);
     text-decoration: none;
     /* opacity here matters even though the resting state is always opacity: 1 —
        the transition shorthand replaces the whole list, not merges it. The
