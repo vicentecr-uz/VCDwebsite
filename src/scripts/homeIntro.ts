@@ -120,7 +120,7 @@ export function createHomeIntroController(
     if (isInteractive(event.target)) { cursor.style.display = 'none'; return; }
     const rect = surface.getBoundingClientRect();
     cursor.style.display = 'block';
-    cursor.style.transform = `translate(${event.clientX - rect.left + 12}px, ${event.clientY - rect.top + 8}px)`;
+    cursor.style.transform = `translate(${event.clientX - rect.left}px, ${event.clientY - rect.top}px) translate(-50%, -50%)`;
   };
   const hideCursor = () => {
     const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
