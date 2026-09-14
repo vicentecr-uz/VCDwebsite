@@ -206,6 +206,8 @@ export interface ImageDevEditContext {
   hasOwnVariants?: boolean;
   /** Standalone image block width constraint (per-breakpoint % or legacy boolean). */
   constrained?: ImageGridConstrained;
+  /** Original sparse width constraint authoring, separate from resolved CSS values. */
+  authoredConstrained?: ImageGridConstrained;
   /** Centre the constrained block in its stack column. */
   centered?: boolean;
   /** Cap rendered height at N% of the viewport (`maxVh`). */
@@ -291,6 +293,7 @@ export function listingCoverDevEditAttrs(
   if (item.hoverImage) attrs['data-dev-hover-image-src'] = item.hoverImage;
   attrs['data-dev-listing-default-aspects'] = JSON.stringify(defaultAspects);
   attrs['data-dev-hover-variants'] = JSON.stringify(seededHoverVariants);
+  attrs['data-dev-hover-variants-authored'] = JSON.stringify(item.hoverVariants ?? {});
   return attrs;
 }
 
@@ -321,6 +324,14 @@ export function imageDevEditAttrs(
     'data-dev-caption-reveals': JSON.stringify(captionReveals),
     'data-dev-image-background': normalizeImageBackground(context.background) ?? 'transparent',
   };
+  const authoredConstrained = Object.prototype.hasOwnProperty.call(context, 'authoredConstrained')
+    ? (context.authoredConstrained === undefined
+      ? {}
+      : (context.authoredConstrained && typeof context.authoredConstrained === 'object' && !Array.isArray(context.authoredConstrained)
+        ? structuredClone(context.authoredConstrained)
+        : { desktop: resolveImageGridConstrained(context.authoredConstrained).desktop }))
+    : {};
+  attrs['data-dev-image-constrained-authored'] = JSON.stringify(authoredConstrained);
   if (context.src) attrs['data-dev-image-src'] = context.src;
   if (context.srcWidth) attrs['data-dev-image-src-width'] = String(context.srcWidth);
   if (context.srcHeight) attrs['data-dev-image-src-height'] = String(context.srcHeight);
