@@ -2159,7 +2159,6 @@ export function contentSectionDevWriter() {
           }
 
           data.sections.splice(index, 0, section);
-          syncOutlineForSectionMutation(data, { action: 'insert', section, index });
 
           await writeContentJson(file, data);
           send(200, { ok: true, action: 'insert', index, id: section.id, type: section.type, section });
