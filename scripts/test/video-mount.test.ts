@@ -13,6 +13,7 @@ for (const type of ['image', 'imageGrid', 'imageCarousel']) {
     const node = mountInsertedSection(section, 'demo', 0);
     const video = node.querySelector('video')!;
     expect(video.getAttribute('src')).toBe('/images/clip.webm');
+    expect(video.poster).toBe('/images/clip.webm.poster.webp');
     expect(video.controls).toBe(true);
     expect(video.playsInline).toBe(true);
     expect(video.hasAttribute('data-project-inline-video')).toBe(true);

@@ -1,5 +1,5 @@
 ---
-import { projectImage, projectImageTier } from '../../lib/images';
+import { projectImage, projectImageTier, projectVideoPoster } from '../../lib/images';
 import {
   responsiveImageStyle,
   imageGridConstrainedStyle,
@@ -131,6 +131,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, path, spacing, { contentId });
 const isLead = kind === 'lead';
 const isPlaceholder = isPlaceholderSrc(src);
 const isVideo = isVideoSrc(src);
+const videoPoster = isVideo ? projectVideoPoster(src) : undefined;
 const srcDims = imageSourceDims({ srcWidth, srcHeight });
 const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
   lead: isLead,
@@ -207,6 +208,7 @@ const editAttrs = editable
       <div class="project-crop-clip">
         {isVideo && (<video
           src={projectImage(src)}
+          poster={videoPoster}
           aria-label={alt || 'Video'}
           class="project-image__img project-inline-video"
           controls
@@ -236,6 +238,7 @@ const editAttrs = editable
       <Fragment>
       {isVideo && (<video
         src={projectImage(src)}
+        poster={videoPoster}
         aria-label={alt || 'Video'}
         class="project-image__img project-inline-video"
         controls
@@ -337,6 +340,7 @@ const editAttrs = editable
           */}
             {isVideo && (<video
               src={projectImage(src)}
+              poster={videoPoster}
               aria-label={alt || 'Video'}
               class:list={['project-media__img', 'project-inline-video', heightClass, fullHeight && 'project-media__img--full-height']}
               controls
@@ -372,6 +376,7 @@ const editAttrs = editable
         <Fragment>
         {isVideo && (<video
           src={projectImage(src)}
+          poster={videoPoster}
           aria-label={alt || 'Video'}
           class:list={['project-media__img', 'project-inline-video', heightClass, mobileShort && 'project-media__img--mobile-short', maxVh && 'project-media__img--max-vh', fullHeight && 'project-media__img--full-height']}
           controls
