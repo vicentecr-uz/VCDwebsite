@@ -86,15 +86,11 @@ test('teardown is safe before the scheduled editor refresh runs', async () => {
     applyChipBrightness(chip, luma);
     assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '1.06');
     assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '1.12');
-    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(255 255 255 / 0.12)');
-    assert.equal(chip.style.getPropertyValue('--chip-hover-outer-ring'), 'rgb(0 0 0)');
   }
   for (const luma of [0.78, 1]) {
     applyChipBrightness(chip, luma);
     assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '0.94');
     assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '0.88');
-    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
-    assert.equal(chip.style.getPropertyValue('--chip-hover-outer-ring'), 'rgb(255 255 255)');
   }
 });
 
@@ -105,7 +101,6 @@ test('brightness refresh clears a protective fill left by the previous image', a
   chip.style.setProperty('--chip-contrast-fill', 'rgb(0 0 0 / 0.8)');
   applyChipBrightness(chip, 0.9);
   assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), '');
-  assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
 });
 
 test('mid-tone and light backgrounds keep light chips even when a dark fill would be thinner', async () => {
@@ -135,12 +130,8 @@ test('mid-tone and light backgrounds keep light chips even when a dark fill woul
     applyChipAppearance(chip, 0.7, { luma: 0.7, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) });
     assert.equal(chip.dataset.mediaGround, 'light');
     assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(255 255 255 \/ 0\.[0-9]+\)$/);
-    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
-    assert.equal(chip.style.getPropertyValue('--chip-hover-outer-ring'), 'rgb(255 255 255)');
     applyChipAppearance(chip, 0.1, { luma: 0.1, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) });
     assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(0 0 0 \/ 0\.[0-9]+\)$/);
-    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(255 255 255 / 0.12)');
-    assert.equal(chip.style.getPropertyValue('--chip-hover-outer-ring'), 'rgb(0 0 0)');
     applyChipAppearance(chip, 0.5, { luma: 0.5, pixels: new Uint8ClampedArray([188, 188, 188, 255]) });
     assert.equal(chip.dataset.mediaGround, 'light');
     applyMediaGround(chip, 'dark');

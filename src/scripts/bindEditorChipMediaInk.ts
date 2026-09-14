@@ -79,8 +79,6 @@ function clearChip(chip: HTMLElement): void {
   chip.style.removeProperty('--media-ink-subtle');
   chip.style.removeProperty('--chip-rest-brightness');
   chip.style.removeProperty('--chip-hover-brightness');
-  chip.style.removeProperty('--chip-hover-ring');
-  chip.style.removeProperty('--chip-hover-outer-ring');
   chip.style.removeProperty('--chip-contrast-fill');
 }
 
