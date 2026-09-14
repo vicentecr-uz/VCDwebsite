@@ -2065,7 +2065,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       resizeObserver?.unobserve(editTarget);
       editTarget = target;
       if (makeCarouselButton) {
-        makeCarouselButton.hidden = !isGridTarget(target);
+        makeCarouselButton.hidden = !isGridTarget(target) || isCarouselItem(target);
       }
       editedImage = image;
       resizeObserver?.observe(editTarget);
@@ -3532,7 +3532,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     saveButton.addEventListener('click', saveDraft);
     makeCarouselButton?.addEventListener('click', async () => {
       const target = editTarget;
-      if (!isGridTarget(target) || makeCarouselButton.disabled) return;
+      if (!isGridTarget(target) || isCarouselItem(target) || makeCarouselButton.disabled) return;
       const documentKey = target.dataset.devDocument || '';
       let path: Array<string | number> = [];
       try { path = JSON.parse(target.dataset.devImagePath || '[]'); } catch { path = []; }
