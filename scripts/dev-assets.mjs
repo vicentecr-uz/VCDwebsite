@@ -1,12 +1,16 @@
 // @ts-check
 import { readdirSync, statSync } from 'node:fs';
+import { execFile as execFileCallback } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
+import { isVideoSrc } from '../src/lib/imageUpload.mjs';
 
 const UNASSIGNED_SLUG = '__unassigned__';
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']);
 const DEFAULT_COVER = 'black-token.svg';
+const execFile = promisify(execFileCallback);
 
 /** @param {string} relativeFile @param {unknown} data */
 async function writeProjectJson(relativeFile, data) {
@@ -475,6 +479,44 @@ export async function readImageDimsFromSrc(src) {
     if (!width || !height) return null;
     const rotated = typeof orientation === 'number' && orientation >= 5 && orientation <= 8;
     return rotated ? { srcWidth: height, srcHeight: width } : { srcWidth: width, srcHeight: height };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Natural dimensions for a canonical image or video src. Video metadata is
+ * read only here, during an authoring save; the image consumers keep their
+ * existing Sharp-only behavior.
+ * @param {string} src
+ */
+export async function readMediaDimsFromSrc(src) {
+  const value = String(src || '').trim();
+  if (value === 'placeholder.svg') {
+    try {
+      const { default: sharp } = await import('sharp');
+      const { width, height } = await sharp(path.join(process.cwd(), 'media', value)).metadata();
+      return width && height ? { srcWidth: width, srcHeight: height } : null;
+    } catch {
+      return null;
+    }
+  }
+  if (!isVideoSrc(value)) return readImageDimsFromSrc(value);
+  const filePath = resolveAssetFilePath(value);
+  if (!filePath) return null;
+  try {
+    const { stdout } = await execFile('/opt/homebrew/bin/ffprobe', [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'json',
+      filePath,
+    ], { timeout: 5000, maxBuffer: 32 * 1024 });
+    const stream = JSON.parse(stdout).streams?.[0];
+    const width = Number(stream?.width);
+    const height = Number(stream?.height);
+    if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return null;
+    return { srcWidth: width, srcHeight: height };
   } catch {
     return null;
   }
