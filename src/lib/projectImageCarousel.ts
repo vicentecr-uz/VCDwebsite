@@ -118,6 +118,10 @@ export function carouselCaptionOpacity(slideIndex: number, progress: number, fad
 function renderDots(carousel: Carousel): void {
   const { dots, dotStrip, dotWindow } = carousel;
   const count = dots.length;
+  carousel.block.style.setProperty(
+    '--project-carousel-video-progress',
+    lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4),
+  );
   if (!count || !dotStrip || !dotWindow) return;
 
   const { centre, first, span } = carouselDotGeometry(carousel.progress, count);

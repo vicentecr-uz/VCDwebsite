@@ -1,4 +1,5 @@
 import 'media-chrome';
+import type { MediaVolumeRange } from 'media-chrome';
 import playIcon from 'lucide-static/icons/play.svg?raw';
 import pauseIcon from 'lucide-static/icons/pause.svg?raw';
 import volumeIcon from 'lucide-static/icons/volume-2.svg?raw';
@@ -8,9 +9,17 @@ import { sizeIcon } from './icons';
 const icon = (source: string, slot: string, size = 28) =>
   sizeIcon(source, size).replace('<svg', `<svg slot="${slot}"`);
 
-function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: HTMLElement): void {
+function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: MediaVolumeRange): () => void {
   let previousVolume = 0.5;
   let drag: { pointerId: number; value: number | null; listeners: AbortController } | undefined;
+  const syncMutedVolume = () => queueMicrotask(() => {
+    if (!video.muted || drag) return;
+    const input = volume.shadowRoot?.querySelector('input');
+    if (!input) return;
+    input.value = String(video.volume);
+    input.setAttribute('aria-valuetext', `${Math.round(video.volume * 100)}% (muted)`);
+    volume.updateBar();
+  });
   const apply = (value: number) => {
     video.volume = Math.max(0, Math.min(1, value));
     if (video.volume > 0) {
@@ -20,6 +29,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
   };
   video.addEventListener('volumechange', () => {
     if (video.volume > 0) previousVolume = video.volume;
+    syncMutedVolume();
   });
   mute.addEventListener('mediaunmuterequest', (event) => {
     event.stopImmediatePropagation();
@@ -31,7 +41,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
     event.preventDefault();
     const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 800 : 1);
     const step = Math.max(-0.05, Math.min(0.05, pixels / 1000));
-    apply(video.volume - step);
+    apply(video.volume + step);
   }, { passive: false });
   volume.addEventListener('mediavolumerequest', (event) => {
     if (!drag) return;
@@ -49,7 +59,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
       else {
         const input = volume.shadowRoot?.querySelector('input');
         if (input) {
-          input.value = String(video.muted ? 0 : video.volume);
+          input.value = String(video.volume);
           input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
         }
       }
@@ -60,6 +70,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
     window.addEventListener('pointerup', finish, { capture: true, signal: drag.listeners.signal });
     window.addEventListener('pointercancel', finish, { capture: true, signal: drag.listeners.signal });
   }, { capture: true });
+  return syncMutedVolume;
 }
 
 export function enhanceProjectVideo(video: HTMLVideoElement): void {
@@ -98,9 +109,9 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   mute.innerHTML = `${icon(muteIcon, 'off', 18)}${['low', 'medium', 'high'].map((slot) => icon(volumeIcon, slot, 18)).join('')}`;
   const popup = document.createElement('div');
   popup.className = 'project-video-player__volume-popup';
-  const volume = document.createElement('media-volume-range');
+  const volume = document.createElement('media-volume-range') as MediaVolumeRange;
   volume.className = 'project-video-player__volume';
-  bindVolumeControls(video, mute, volume);
+  const syncMutedVolume = bindVolumeControls(video, mute, volume);
   popup.append(volume);
   group.append(mute, popup);
   controller.append(play, progress, group);
@@ -109,6 +120,7 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
     .map((name) => customElements.whenDefined(name))).then(() => {
     volume.shadowRoot?.querySelector('input')?.setAttribute('aria-orientation', 'vertical');
     video.removeAttribute('controls');
+    syncMutedVolume();
     if (video.dataset.autoplay === 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       video.play().catch(() => {});
     }
