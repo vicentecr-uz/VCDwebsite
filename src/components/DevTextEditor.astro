@@ -1740,6 +1740,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const flushPendingEditsForDocument = async (documentKey: string) => {
+      // Match Save: open tuners must stage their drafts before an append remounts the section.
+      if (!window.dispatchEvent(new Event('vcd:dev-before-save', { cancelable: true }))) {
+        throw new Error('Could not save pending edits before inserting images. Finish the current image replacement first.');
+      }
       // Keep JSON indices aligned with client reindexing before text writes.
       if (pendingSectionInserts.some((entry) => entry.documentKey === documentKey)) {
         await persistPendingSectionInserts();
@@ -1757,10 +1761,46 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         pendingMedia.delete(change.id);
       }
 
+      const pendingMediaForDocument = [...pendingMedia.values()].filter((change) =>
+        isPathPendingMediaChange(change) && String(change.payload.document || '') === documentKey,
+      );
+      if (pendingMediaForDocument.length) {
+        const response = await fetch('/api/content-batch', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            crops: pendingMediaForDocument
+              .filter((change) => change.kind === 'crop')
+              .map((change) => change.payload),
+            grids: pendingMediaForDocument
+              .filter((change) => change.kind === 'grid')
+              .map((change) => change.payload),
+            carousels: pendingMediaForDocument
+              .filter((change) => change.kind === 'carousel')
+              .map((change) => change.payload),
+            captions: pendingMediaForDocument
+              .filter((change) => change.kind === 'caption')
+              .map((change) => change.payload),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not save pending media before inserting images.');
+        const ids = pendingMediaForDocument
+          .filter((change) => pendingMedia.get(change.id) === change)
+          .map((change) => {
+            pendingMedia.delete(change.id);
+            return change.id;
+          });
+        if (ids.length) window.dispatchEvent(new CustomEvent('vcd:dev-pending-committed', { detail: { ids } }));
+      }
+
       const dirtyText = dirtyTextStates().filter((state) => state.document === documentKey);
       const dirtySpacing = dirtySpacingStates().filter((state) => state.document === documentKey);
       const dirtyIntroHeights = dirtyIntroHeightStates().filter((state) => state.document === documentKey);
-      if (!dirtyText.length && !dirtySpacing.length && !dirtyIntroHeights.length) return;
+      if (!dirtyText.length && !dirtySpacing.length && !dirtyIntroHeights.length) {
+        updateActions();
+        return;
+      }
 
       if (dirtyText.length) {
         const response = await fetch('/api/content-text', {
