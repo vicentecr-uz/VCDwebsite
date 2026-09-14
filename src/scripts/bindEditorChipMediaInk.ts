@@ -1,6 +1,5 @@
 /** Keep editor media controls on the same adaptive palette as the image below them. */
 import {
-  applyMediaGround,
   applyChipAppearance,
   cropHostFor,
   sampleForBox,
@@ -79,6 +78,7 @@ function clearChip(chip: HTMLElement): void {
   chip.style.removeProperty('--media-ink-subtle');
   chip.style.removeProperty('--chip-rest-brightness');
   chip.style.removeProperty('--chip-hover-brightness');
+  chip.style.removeProperty('--chip-hover-ring');
   chip.style.removeProperty('--chip-contrast-fill');
 }
 

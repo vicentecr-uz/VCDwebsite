@@ -231,6 +231,7 @@ export function applyChipBrightness(host: HTMLElement, luma: number | null): voi
   const nearWhite = luma !== null && luma >= 0.78;
   host.style.setProperty('--chip-rest-brightness', nearWhite ? '0.94' : '1.06');
   host.style.setProperty('--chip-hover-brightness', nearWhite ? '0.88' : '1.12');
+  host.style.setProperty('--chip-hover-ring', nearWhite ? 'rgb(0 0 0 / 0.12)' : 'rgb(255 255 255 / 0.12)');
 }
 
 export function applyChipAppearance(
