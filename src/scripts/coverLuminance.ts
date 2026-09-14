@@ -93,11 +93,30 @@ export function measureRenderedRegionLuma(
   crop: { w: number; cx: number; cy: number } | null,
   background: string,
 ): number {
-  if (!box.width || !box.height || !sourceSize.width || !sourceSize.height) return 0;
+  if (
+    !Number.isFinite(region.x) ||
+    !Number.isFinite(region.y) ||
+    !Number.isFinite(region.w) ||
+    !Number.isFinite(region.h) ||
+    region.w <= 0 ||
+    region.h <= 0 ||
+    !Number.isFinite(box.width) ||
+    !Number.isFinite(box.height) ||
+    !Number.isFinite(sourceSize.width) ||
+    !Number.isFinite(sourceSize.height) ||
+    box.width <= 0 ||
+    box.height <= 0 ||
+    sourceSize.width <= 0 ||
+    sourceSize.height <= 0
+  ) return 0;
 
-  const sampleScale = SAMPLE_LONG_EDGE / Math.max(box.width, box.height);
-  const canvasWidth = Math.max(1, Math.round(box.width * sampleScale));
-  const canvasHeight = Math.max(1, Math.round(box.height * sampleScale));
+  const regionX = region.x * box.width;
+  const regionY = region.y * box.height;
+  const regionWidth = region.w * box.width;
+  const regionHeight = region.h * box.height;
+  const sampleScale = SAMPLE_LONG_EDGE / Math.max(regionWidth, regionHeight);
+  const canvasWidth = Math.max(1, Math.round(regionWidth * sampleScale));
+  const canvasHeight = Math.max(1, Math.round(regionHeight * sampleScale));
   const canvas = document.createElement('canvas');
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
@@ -124,17 +143,22 @@ export function measureRenderedRegionLuma(
     top = (box.height - displayedHeight) / 2;
   }
 
-  const scaleX = canvasWidth / box.width;
-  const scaleY = canvasHeight / box.height;
+  const scaleX = canvasWidth / regionWidth;
+  const scaleY = canvasHeight / regionHeight;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-regionX * scaleX, -regionY * scaleY, box.width * scaleX, box.height * scaleY);
+  ctx.clip();
   ctx.drawImage(
     source,
-    left * scaleX,
-    top * scaleY,
+    (left - regionX) * scaleX,
+    (top - regionY) * scaleY,
     displayedWidth * scaleX,
     displayedHeight * scaleY,
   );
+  ctx.restore();
 
-  return canvasRegionLuma(ctx, canvasWidth, canvasHeight, region);
+  return canvasRegionLuma(ctx, canvasWidth, canvasHeight, { x: 0, y: 0, w: 1, h: 1 });
 }
 
 /**
