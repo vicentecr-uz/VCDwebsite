@@ -16,6 +16,7 @@ import {
   cropHostFor,
   groundForBox,
   lumaGridFor,
+  opaqueBackground,
   readCropVars,
 } from '../scripts/adaptiveMediaInk';
 
@@ -175,7 +176,7 @@ async function refreshCarouselMediaInk(carousel: Carousel): Promise<void> {
   const naturalWidth = Number((decoded as HTMLImageElement).naturalWidth) || 0;
   const naturalHeight = Number((decoded as HTMLImageElement).naturalHeight) || 0;
   const frameRect = frame.getBoundingClientRect();
-  const background = getComputedStyle(frame).backgroundColor;
+  const background = opaqueBackground(frame) ?? '#fff';
   const ground = groundForBox(
     dots,
     frame,

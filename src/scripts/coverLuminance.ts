@@ -8,12 +8,15 @@
 export type NormalizedRegion = { x: number; y: number; w: number; h: number };
 
 /**
- * Gallery adaptive ink — when cover titles / meta / chips flip light↔dark.
+ * Gallery adaptive ink — when cover titles / meta flip light↔dark.
  * Agents: change **only this constant** (not CSS, not ProjectGrid). Higher =
  * stay on dark ink longer over mid-tones; lower = flip to light ink sooner.
  * Wired via `isRegionDark` → `adaptiveMediaInk` → `bindGalleryMediaInk`.
  */
 export const HOVER_LUMA_THRESHOLD = 0.6;
+
+/** Chips keep a light surface through mid-tones; their protective fill supplies contrast. */
+export const CHIP_DARK_LUMA_THRESHOLD = 0.25;
 
 /** Long edge of the offscreen sample canvas, in px. Luminance only needs a
  * coarse read — this keeps the decode + pixel walk cheap. */
@@ -39,6 +42,10 @@ function canvasRegionLuma(
   if (w <= 0 || h <= 0) return 0;
 
   const { data } = ctx.getImageData(x, y, w, h);
+  return pixelsLuma(data);
+}
+
+function pixelsLuma(data: Uint8ClampedArray): number {
   let sum = 0;
   let count = 0;
   for (let i = 0; i < data.length; i += 4) {
@@ -93,16 +100,48 @@ export function measureRenderedRegionLuma(
   crop: { w: number; cx: number; cy: number } | null,
   background: string,
 ): number {
-  if (!box.width || !box.height || !sourceSize.width || !sourceSize.height) return 0;
+  return measureRenderedRegion(source, region, box, sourceSize, crop, background)?.luma ?? 0;
+}
 
-  const sampleScale = SAMPLE_LONG_EDGE / Math.max(box.width, box.height);
-  const canvasWidth = Math.max(1, Math.round(box.width * sampleScale));
-  const canvasHeight = Math.max(1, Math.round(box.height * sampleScale));
+export type RenderedRegionSample = { luma: number; pixels: Uint8ClampedArray };
+
+export function measureRenderedRegion(
+  source: CanvasImageSource,
+  region: NormalizedRegion,
+  box: { width: number; height: number },
+  sourceSize: { width: number; height: number },
+  crop: { w: number; cx: number; cy: number } | null,
+  background: string,
+): RenderedRegionSample | null {
+  if (
+    !Number.isFinite(region.x) ||
+    !Number.isFinite(region.y) ||
+    !Number.isFinite(region.w) ||
+    !Number.isFinite(region.h) ||
+    region.w <= 0 ||
+    region.h <= 0 ||
+    !Number.isFinite(box.width) ||
+    !Number.isFinite(box.height) ||
+    !Number.isFinite(sourceSize.width) ||
+    !Number.isFinite(sourceSize.height) ||
+    box.width <= 0 ||
+    box.height <= 0 ||
+    sourceSize.width <= 0 ||
+    sourceSize.height <= 0
+  ) return null;
+
+  const regionX = region.x * box.width;
+  const regionY = region.y * box.height;
+  const regionWidth = region.w * box.width;
+  const regionHeight = region.h * box.height;
+  const sampleScale = SAMPLE_LONG_EDGE / Math.max(regionWidth, regionHeight);
+  const canvasWidth = Math.max(1, Math.round(regionWidth * sampleScale));
+  const canvasHeight = Math.max(1, Math.round(regionHeight * sampleScale));
   const canvas = document.createElement('canvas');
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
   const ctx = canvas.getContext('2d');
-  if (!ctx) return 0;
+  if (!ctx) return null;
 
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
@@ -124,17 +163,23 @@ export function measureRenderedRegionLuma(
     top = (box.height - displayedHeight) / 2;
   }
 
-  const scaleX = canvasWidth / box.width;
-  const scaleY = canvasHeight / box.height;
+  const scaleX = canvasWidth / regionWidth;
+  const scaleY = canvasHeight / regionHeight;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(-regionX * scaleX, -regionY * scaleY, box.width * scaleX, box.height * scaleY);
+  ctx.clip();
   ctx.drawImage(
     source,
-    left * scaleX,
-    top * scaleY,
+    (left - regionX) * scaleX,
+    (top - regionY) * scaleY,
     displayedWidth * scaleX,
     displayedHeight * scaleY,
   );
+  ctx.restore();
 
-  return canvasRegionLuma(ctx, canvasWidth, canvasHeight, region);
+  const pixels = ctx.getImageData(0, 0, canvasWidth, canvasHeight).data;
+  return { luma: pixelsLuma(pixels), pixels };
 }
 
 /**
