@@ -1,0 +1,98 @@
+---
+import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import TextField from '../ui/TextField.astro';
+import { sizeIcon } from '../../lib/icons';
+import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
+import checkIcon from 'lucide-static/icons/check.svg?raw';
+
+interface Props {
+  src?: string;
+  alt?: string;
+  href?: string;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+const { src = '/awards/if-design-2026.png', alt = 'iF Design Award 2026', href = '', documentKey = '', sectionPath = [], spacing = 'group', sectionId, contentId } = Astro.props;
+const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
+const path = JSON.stringify([...sectionPath, 'href']);
+---
+
+<section id={sectionId} class:list={['project-block', 'project-award', projectStackClass(spacing), sectionId && 'section-block']} {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})} data-dev-section-deletable={editable ? 'award' : undefined} data-project-award data-project-award-href={href}>
+  <span class="project-award__proxy" data-dev-text-document={editable ? documentKey : undefined} data-dev-text-path={editable ? path : undefined} data-dev-text-kind={editable ? 'text' : undefined} hidden>{href}</span>
+  <div class="project-award__center">
+    <span class="project-award__control">
+      {href ? <a class="project-award__hit" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${alt} (opens in a new tab)`}><img src={src} alt={alt} loading="lazy" decoding="async" draggable="false" /></a> : <img src={src} alt={alt} loading="lazy" decoding="async" draggable="false" />}
+      {editable && <button type="button" class="dev-chip project-award__edit" data-award-edit data-dev-mode-only>Edit award</button>}
+      {editable && <form class="project-award__editor dev-surface" data-award-editor hidden>
+        <button type="button" class="dev-btn dev-btn--page" data-award-remove aria-label="Remove award link" title="Remove award link"><span aria-hidden="true" set:html={sizeIcon(trashIcon, 16)} /></button>
+        <TextField class="project-award__input" label="Award link" hideLabel inputmode="url" data-award-input placeholder="google.com" autocomplete="off" spellcheck="false" />
+        <button type="submit" class="dev-btn dev-btn--page" data-award-apply aria-label="Apply award link" title="Apply award link"><span aria-hidden="true" set:html={sizeIcon(checkIcon, 16)} /></button>
+      </form>}
+    </span>
+  </div>
+</section>
+
+<style>
+  :global(.project-award) { width: 100%; }
+  :global(.project-award__center) { display: grid; place-items: center; min-height: 8em; }
+  :global(.project-award__control) { position: relative; display: grid; place-items: center; }
+  :global(.project-award img) { display: block; width: auto; max-width: 100%; height: min(6em, 100%); object-fit: contain; opacity: .6; transition: opacity .2s ease; }
+  :global(.project-award__hit) { display: block; }
+  :global(.project-award__hit:hover img), :global(.project-award__hit:focus-visible img) { opacity: 1; }
+  :global(.project-award__edit) { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; }
+  :global(.project-award__editor) { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: .35em; padding: .25em; border-radius: 999px; z-index: 2; }
+  :global(.project-award__input) { width: min(19em, 60vw); }
+  :global(.project-award__editor .dev-btn) { flex: 0 0 auto; }
+  :global(.project-award.is-award-editing img) { opacity: .18; }
+  @media (prefers-reduced-motion: reduce) { .project-award img { transition: opacity .2s ease; } }
+</style>
+
+{editable && <script>
+  import { normalizeHref } from '../../lib/normalizeHref.mjs';
+  const initAwardEditors = () => {
+    document.querySelectorAll<HTMLElement>('[data-project-award]').forEach((root) => {
+      if (root.dataset.awardBound === 'true') return;
+      root.dataset.awardBound = 'true';
+      const edit = root.querySelector<HTMLButtonElement>('[data-award-edit]');
+      const editor = root.querySelector<HTMLFormElement>('[data-award-editor]');
+      const input = root.querySelector<HTMLInputElement>('[data-award-input]');
+      const remove = root.querySelector<HTMLButtonElement>('[data-award-remove]');
+      const proxy = root.querySelector<HTMLElement>('[data-dev-text-path]');
+      if (!edit || !editor || !input || !remove || !proxy) return;
+      const link = () => root.dataset.projectAwardHref || '';
+      const close = () => { editor.hidden = true; edit.hidden = false; root.classList.remove('is-award-editing'); };
+      const open = () => { input.value = link(); edit.hidden = true; editor.hidden = false; root.classList.add('is-award-editing'); requestAnimationFrame(() => input.focus()); };
+      const apply = (value: string) => {
+        const normalized = normalizeHref(value);
+        if (value.trim() && !normalized) { input.setCustomValidity('Enter a valid link.'); input.reportValidity(); return false; }
+        input.setCustomValidity('');
+        const next = normalized || '';
+        root.dataset.projectAwardHref = next;
+        const hit = root.querySelector<HTMLAnchorElement>('.project-award__hit');
+        if (hit) { if (next) { hit.href = next; } else { hit.replaceWith(root.querySelector('img')!.cloneNode(true)); } }
+        proxy.textContent = next;
+        proxy.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: next }));
+        close();
+        return true;
+      };
+      edit.addEventListener('click', (event) => { event.preventDefault(); open(); });
+      editor.addEventListener('submit', (event) => { event.preventDefault(); apply(input.value); });
+      remove.addEventListener('click', () => { input.value = ''; apply(''); });
+      document.addEventListener('pointerdown', (event) => { if (!editor.hidden && !root.contains(event.target as Node)) close(); });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !editor.hidden) { close(); } });
+      window.addEventListener('vcd:dev-mode-change', () => { if (!document.documentElement.classList.contains('is-dev-mode')) close(); });
+    });
+  };
+  document.addEventListener('astro:page-load', initAwardEditors);
+  window.addEventListener('vcd:dev-section-structure-changed', initAwardEditors);
+  window.addEventListener('vcd:dev-pending-reverted', () => {
+    document.querySelectorAll<HTMLElement>('[data-project-award]').forEach((root) => {
+      const proxy = root.querySelector<HTMLElement>('[data-dev-text-path]');
+      if (proxy) root.dataset.projectAwardHref = proxy.textContent ?? '';
+    });
+  });
+  initAwardEditors();
+</script>}

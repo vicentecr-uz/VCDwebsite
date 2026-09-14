@@ -10,6 +10,7 @@ import ProjectSectionTitle from './ProjectSectionTitle.astro';
 import ProjectVideo from './ProjectVideo.astro';
 import ProjectInteractiveDemo from './ProjectInteractiveDemo.astro';
 import ProjectDetails from './ProjectDetails.astro';
+import ProjectAward from './ProjectAward.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
@@ -155,6 +156,21 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       <ProjectDetails
         title={String(section.title ?? 'Project details & credits')}
         rows={rows}
+        documentKey={documentKey}
+        sectionPath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
+      />
+    );
+  }
+
+  if (type === 'award') {
+    return (
+      <ProjectAward
+        src={String(section.src ?? '/awards/if-design-2026.png')}
+        alt={String(section.alt ?? 'iF Design Award 2026')}
+        href={String(section.href ?? '')}
         documentKey={documentKey}
         sectionPath={path}
         spacing={spacing}

@@ -19,6 +19,7 @@ const MEDIA_SECTION_TYPES = new Set([
   'redditCommentCarousel',
   'placeholder',
   'projectGrid',
+  'award',
 ]);
 
 /**
