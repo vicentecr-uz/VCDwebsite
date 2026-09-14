@@ -8,12 +8,15 @@
 export type NormalizedRegion = { x: number; y: number; w: number; h: number };
 
 /**
- * Gallery adaptive ink — when cover titles / meta / chips flip light↔dark.
+ * Gallery adaptive ink — when cover titles / meta flip light↔dark.
  * Agents: change **only this constant** (not CSS, not ProjectGrid). Higher =
  * stay on dark ink longer over mid-tones; lower = flip to light ink sooner.
  * Wired via `isRegionDark` → `adaptiveMediaInk` → `bindGalleryMediaInk`.
  */
 export const HOVER_LUMA_THRESHOLD = 0.6;
+
+/** Chips keep a light surface through mid-tones; their protective fill supplies contrast. */
+export const CHIP_DARK_LUMA_THRESHOLD = 0.25;
 
 /** Long edge of the offscreen sample canvas, in px. Luminance only needs a
  * coarse read — this keeps the decode + pixel walk cheap. */

@@ -104,9 +104,9 @@ export function bindEditorChipMediaInk(): () => void {
   const resizeObserver = new ResizeObserver(() => schedule());
 
   const movingChip = (chip: HTMLElement): boolean => {
-    const scope = scopeForChip(chip);
-    return Boolean(scope && [...scope.querySelectorAll<HTMLElement>('.project-image-carousel__track')]
-      .some((track) => movingTracks.has(track)));
+    const track = chip.closest('.dev-carousel-edit-target')
+      ?.querySelector<HTMLElement>('.project-image-carousel__track');
+    return Boolean(track && movingTracks.has(track));
   };
 
   const clearMovingTracks = () => {
@@ -207,7 +207,6 @@ export function bindEditorChipMediaInk(): () => void {
       : null;
     if (!track) return;
     movingTracks.add(track);
-    generation += 1;
     if (!hasNativeScrollEnd) {
       const previous = settleTimers.get(track);
       if (previous) clearTimeout(previous);

@@ -13,7 +13,7 @@ mock.module('../../src/scripts/adaptiveMediaInk', () => ({
     host.style.setProperty('--media-ink', ground);
   },
   applyChipAppearance(host: HTMLElement, luma: number | null) {
-    host.dataset.mediaGround = luma !== null && luma < 0.6 ? 'dark' : 'light';
+    host.dataset.mediaGround = luma !== null && luma < 0.25 ? 'dark' : 'light';
     host.style.setProperty('--chip-rest-brightness', luma !== null && luma >= 0.78 ? '0.94' : '1.06');
     host.style.setProperty('--chip-hover-brightness', luma !== null && luma >= 0.78 ? '0.88' : '1.12');
   },
@@ -154,9 +154,14 @@ test('refreshes after a carousel track scrollend', async () => {
   lumaCalls = 0;
   const { image } = fixture();
   const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const carousel = document.createElement('div');
+  carousel.className = 'dev-carousel-edit-target';
+  document.body.append(carousel);
+  carousel.append(scope);
   const track = document.createElement('div');
   track.className = 'project-image-carousel__track';
-  scope.append(track);
+  carousel.append(track);
+  track.append(scope);
   image.src = 'carousel-image';
   document.documentElement.classList.add('is-dev-mode');
   const cleanup = bindEditorChipMediaInk();
@@ -176,9 +181,14 @@ test('holds carousel chips through track scrolling until scrollend', async () =>
   lumaCalls = 0;
   const { chip, image } = fixture();
   const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const carousel = document.createElement('div');
+  carousel.className = 'dev-carousel-edit-target';
+  document.body.append(carousel);
+  carousel.append(scope);
   const track = document.createElement('div');
   track.className = 'project-image-carousel__track';
-  scope.append(track);
+  carousel.append(track);
+  track.append(scope);
   image.src = 'moving-carousel-image';
   document.documentElement.classList.add('is-dev-mode');
   const cleanup = bindEditorChipMediaInk();
@@ -197,6 +207,21 @@ test('holds carousel chips through track scrolling until scrollend', async () =>
   resolveLuma('moving-carousel-image');
   await tick();
   assert.equal(chip.dataset.mediaGround, 'dark');
+  const beforeMove = chip.style.cssText;
+  track.dispatchEvent(new Event('scroll', { bubbles: true }));
+  image.src = 'new-image';
+  Object.defineProperty(chip, 'getBoundingClientRect', { configurable: true, value: () => ({ left: -100, top: 12, right: -40, bottom: 32, width: 60, height: 20 }) });
+  chip.dispatchEvent(new Event('pointerover', { bubbles: true }));
+  await tick();
+  assert.equal(chip.style.cssText, beforeMove);
+  assert.equal(lumaCalls, 2);
+  Object.defineProperty(chip, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 12, top: 12, right: 72, bottom: 32, width: 60, height: 20 }) });
+  track.dispatchEvent(new Event('scrollend', { bubbles: true }));
+  await tick();
+  assert.equal(lumaCalls, 3);
+  resolveLuma('new-image');
+  await tick();
+  assert.equal(chip.dataset.mediaGround, 'light');
   cleanup();
   document.documentElement.classList.remove('is-dev-mode');
 });
