@@ -65,6 +65,35 @@ for (const existing of [false, true]) {
     volumeInput.dispatchEvent(new window.Event('input', { bubbles: true, composed: true }));
     expect(video.volume).toBe(0.4);
     expect(video.muted).toBe(false);
+    const progress = root.querySelector('media-time-range')!;
+    let bufferedRanges = [[0, 5]];
+    Object.defineProperty(video, 'duration', { get: () => 100 });
+    Object.defineProperty(video, 'buffered', { get: () => ({
+      length: bufferedRanges.length,
+      start: (index: number) => bufferedRanges[index][0],
+      end: (index: number) => bufferedRanges[index][1],
+    }) });
+    const bufferedPaint = () => progress.style.getPropertyValue('--project-video-buffered-ranges');
+    video.dispatchEvent(new window.Event('progress'));
+    await settle();
+    expect(bufferedPaint()).toContain('var(--media-time-range-buffered-color) 5%');
+    bufferedRanges = [[0, 15], [60, 75]];
+    video.dispatchEvent(new window.Event('timeupdate'));
+    await settle();
+    expect(bufferedPaint()).toContain('var(--media-time-range-buffered-color) 15%');
+    expect(bufferedPaint()).toContain('transparent 60%');
+    expect(bufferedPaint()).toContain('var(--media-time-range-buffered-color) 75%');
+    const allSections = bufferedPaint();
+    for (const time of [0, 1, 40, 70]) {
+      video.currentTime = time;
+      video.dispatchEvent(new window.Event('seeked'));
+      await settle();
+      expect(bufferedPaint()).toBe(allSections);
+    }
+    bufferedRanges = [];
+    video.dispatchEvent(new window.Event('emptied'));
+    await settle();
+    expect(bufferedPaint()).toBe('transparent');
     const mute = root.querySelector('media-mute-button')!;
     mute.dispatchEvent(new window.MouseEvent('click', { bubbles: true, composed: true }));
     expect(video.muted).toBe(true);

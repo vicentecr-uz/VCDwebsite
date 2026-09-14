@@ -102,6 +102,24 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   const progress = document.createElement('media-time-range');
   progress.className = 'project-video-player__progress';
   progress.setAttribute('noautohide', '');
+  const syncBuffered = () => {
+    const ranges = video.buffered;
+    const duration = video.duration;
+    const stops = Number.isFinite(duration) && duration > 0
+      ? Array.from({ length: ranges.length }, (_, index) => {
+          const start = Math.max(0, Math.min(duration, ranges.start(index))) / duration * 100;
+          const end = Math.max(0, Math.min(duration, ranges.end(index))) / duration * 100;
+          return `transparent ${start}%, var(--media-time-range-buffered-color) ${start}%, var(--media-time-range-buffered-color) ${end}%, transparent ${end}%`;
+        })
+      : [];
+    const background = stops.length ? `linear-gradient(to right, ${stops.join(', ')})` : 'transparent';
+    if (progress.style.getPropertyValue('--project-video-buffered-ranges') !== background) {
+      progress.style.setProperty('--project-video-buffered-ranges', background);
+    }
+  };
+  // Show all buffered sections, including those away from the playhead.
+  ['progress', 'loadeddata', 'durationchange', 'timeupdate', 'seeked', 'emptied']
+    .forEach((eventName) => video.addEventListener(eventName, syncBuffered));
 
   const group = document.createElement('div');
   group.className = 'project-video-player__volume-group';
@@ -123,6 +141,7 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
     volume.shadowRoot?.querySelector('input')?.setAttribute('aria-orientation', 'vertical');
     video.removeAttribute('controls');
     syncMutedVolume();
+    syncBuffered();
     if (video.dataset.autoplay === 'true' && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       video.play().catch(() => {});
     }
