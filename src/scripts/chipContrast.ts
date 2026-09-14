@@ -34,6 +34,7 @@ function meetsContrast(
   fillColor: 0 | 255,
   opacity: number,
   brightness: readonly number[],
+  baseTint: Rgba,
 ): boolean {
   const pixelCount = Math.ceil(Math.max(0, pixels.length - 2) / 4);
   const allowedFailures = Math.floor(pixelCount * 0.05);
@@ -48,7 +49,8 @@ function meetsContrast(
         b: clamp(pixels[index + 2] * factor),
         a: 1,
       };
-      const filled = composite({ r: fillColor, g: fillColor, b: fillColor, a: opacity }, background);
+      const tinted = composite(baseTint, background);
+      const filled = composite({ r: fillColor, g: fillColor, b: fillColor, a: opacity }, tinted);
       if (contrast(composite(ink, filled), filled) < 4.5) {
         failingPixels += 1;
         break;
@@ -63,19 +65,20 @@ export function chipContrastFill(
   pixels: Uint8ClampedArray,
   ink: Rgba,
   brightness: readonly number[],
+  baseTint: Rgba = { r: 0, g: 0, b: 0, a: 0 },
 ): { color: 0 | 255; opacity: number } {
   const color: 0 | 255 = luminance(ink) < 0.5 ? 255 : 0;
   if (pixels.length < 3 || brightness.length === 0) return { color, opacity: 0 };
 
-  if (meetsContrast(pixels, ink, color, 0, brightness)) return { color, opacity: 0 };
+  if (meetsContrast(pixels, ink, color, 0, brightness, baseTint)) return { color, opacity: 0 };
   // Opacity 1 is the ceiling for unsupported low-contrast custom tokens; use stronger ink to improve it.
-  if (!meetsContrast(pixels, ink, color, 1, brightness)) return { color, opacity: 1 };
+  if (!meetsContrast(pixels, ink, color, 1, brightness, baseTint)) return { color, opacity: 1 };
 
   let low = 0;
   let high = 1;
   for (let step = 0; step < 10; step += 1) {
     const middle = (low + high) / 2;
-    if (meetsContrast(pixels, ink, color, middle, brightness)) high = middle;
+    if (meetsContrast(pixels, ink, color, middle, brightness, baseTint)) high = middle;
     else low = middle;
   }
   return { color, opacity: Math.min(1, Math.ceil(high * 1000) / 1000) };
