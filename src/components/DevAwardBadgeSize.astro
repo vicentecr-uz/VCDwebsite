@@ -1,0 +1,85 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import TextField from './ui/TextField.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
+---
+
+<DevOverlay storageKey="award-badge-size" panelKey="award-badge-size" defaultHidden>
+  <div data-award-badge-size>
+    <TextField label="Desktop width (px)" type="number" min="16" max="160" step="1" value="64" data-award-size="desktop" />
+    <TextField label="Tablet width (px)" type="number" min="16" max="160" step="1" value="48" data-award-size="tablet" />
+    <TextField label="Mobile width (px)" type="number" min="16" max="160" step="1" value="40" data-award-size="mobile" />
+    <PanelActions><Button emphasis="ghost" label="Reset" data-award-size-reset /></PanelActions>
+  </div>
+</DevOverlay>
+
+<style>
+  [data-award-badge-size] { display: grid; gap: var(--space-unit); }
+</style>
+
+<script>
+  const STORAGE_KEY = 'vcd:goodhome-award-size:v1';
+  const DEFAULTS = { desktop: 64, tablet: 48, mobile: 40 };
+  type Viewport = keyof typeof DEFAULTS;
+  let cleanup: (() => void) | undefined;
+
+  const init = () => {
+    cleanup?.();
+    const panel = document.querySelector<HTMLElement>('[data-award-badge-size]');
+    if (!panel) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const values = { ...DEFAULTS };
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      for (const viewport of Object.keys(DEFAULTS) as Viewport[]) {
+        if (typeof saved?.[viewport] === 'number' && Number.isFinite(saved[viewport]) && saved[viewport] >= 16 && saved[viewport] <= 160) {
+          values[viewport] = saved[viewport];
+        }
+      }
+    } catch { /* Keep defaults when browser storage is unavailable. */ }
+    const fields = [...panel.querySelectorAll<HTMLInputElement>('[data-award-size]')];
+    const apply = () => {
+      for (const viewport of Object.keys(DEFAULTS) as Viewport[]) {
+        document.documentElement.style.setProperty(`--goodhome-award-width-${viewport}`, `${values[viewport]}px`);
+      }
+    };
+    const sync = () => {
+      fields.forEach((input) => {
+        input.value = String(values[input.dataset.awardSize as Viewport]);
+        input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
+      });
+    };
+    const persist = () => {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(values)); } catch { /* Live sizing still works without storage. */ }
+    };
+    fields.forEach((input) => {
+      input.addEventListener('input', () => {
+        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) return;
+        values[input.dataset.awardSize as Viewport] = input.valueAsNumber;
+        apply();
+        persist();
+      }, { signal });
+      input.addEventListener('change', () => {
+        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) sync();
+      }, { signal });
+    });
+    panel.querySelector('[data-award-size-reset]')?.addEventListener('click', () => {
+      Object.assign(values, DEFAULTS);
+      apply();
+      sync();
+      persist();
+    }, { signal });
+    apply();
+    sync();
+    cleanup = () => {
+      controller.abort();
+      for (const viewport of Object.keys(DEFAULTS)) document.documentElement.style.removeProperty(`--goodhome-award-width-${viewport}`);
+    };
+  };
+  document.addEventListener('astro:page-load', init);
+  document.addEventListener('astro:before-swap', () => cleanup?.());
+  if (import.meta.hot) import.meta.hot.dispose(() => cleanup?.());
+  init();
+</script>

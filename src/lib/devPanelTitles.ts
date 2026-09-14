@@ -13,6 +13,7 @@ export const DEV_PANEL_TITLES = {
   'style-color-token': 'Edit colour token',
   'header-surface': 'Header surface',
   'caption-shadow': 'Caption shadow',
+  'award-badge-size': 'Award badge size',
 } as const;
 
 export type DevPanelKey = keyof typeof DEV_PANEL_TITLES;
