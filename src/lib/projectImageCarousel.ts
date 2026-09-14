@@ -465,9 +465,12 @@ function bindDrag(carousel: Carousel): void {
 function bindTouchSnap(carousel: Carousel): void {
   const { track } = carousel;
   let touching = false;
+  let pendingTouchSnap = false;
 
   const settle = () => {
     if (touching) return;
+    if (!pendingTouchSnap) return;
+    pendingTouchSnap = false;
     const index = activeIndexFor(carousel);
     const slide = carousel.slides[index];
     if (!slide) return;
@@ -478,6 +481,7 @@ function bindTouchSnap(carousel: Carousel): void {
 
   track.addEventListener('touchstart', () => {
     touching = true;
+    pendingTouchSnap = true;
   }, { passive: true });
 
   track.addEventListener('touchend', () => {
@@ -486,6 +490,14 @@ function bindTouchSnap(carousel: Carousel): void {
 
   track.addEventListener('touchcancel', () => {
     touching = false;
+  }, { passive: true });
+
+  track.addEventListener('wheel', () => {
+    pendingTouchSnap = false;
+  }, { passive: true });
+
+  track.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse') pendingTouchSnap = false;
   }, { passive: true });
 
   track.addEventListener('scrollend', settle, { passive: true });
