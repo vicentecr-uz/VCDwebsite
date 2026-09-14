@@ -228,6 +228,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
     clearPlaceholderTarget();
   };
 
+  const resetDragState = () => {
+    dragDepth = 0;
+    clearDragState();
+  };
+
   const closeMultiDropChoice = () => {
     if (multiDropChoice instanceof HTMLElement) {
       multiDropChoice.hidden = true;
@@ -331,8 +336,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const devMode = document.documentElement.classList.contains('is-dev-mode');
     if (pageDropVeil instanceof HTMLElement) pageDropVeil.hidden = !devMode;
     if (!devMode) {
-      dragDepth = 0;
-      clearDragState();
+      resetDragState();
       closeMultiDropChoice();
       if (panel instanceof HTMLElement) panel.hidden = true;
     }
@@ -830,8 +834,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
   const onDragOver = (event) => {
     if (!document.documentElement.classList.contains('is-dev-mode')) return;
     if (!isValidImageDrag(event)) {
-      dragDepth = 0;
-      clearDragState();
+      resetDragState();
       return;
     }
     prevent(event);
@@ -847,8 +850,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
 
   const onDragLeave = (event) => {
     if (event.relatedTarget instanceof Node && root.contains(event.relatedTarget)) return;
-    dragDepth = 0;
-    clearDragState();
+    resetDragState();
   };
 
   const onDrop = (event) => {
@@ -856,8 +858,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     const { clientX, clientY } = event;
     const transfer = event.dataTransfer;
     closeMultiDropChoice();
-    dragDepth = 0;
-    clearDragState();
+    resetDragState();
     if (!isValidImageDrag(event)) return;
     event.preventDefault();
     const assetSrc = transfer?.getData(ASSET_DRAG_TYPE) || '';
@@ -1107,10 +1108,8 @@ const globeSvg = sizeIcon(globeIcon, 16);
   root.addEventListener('dragover', onDragOver);
   root.addEventListener('dragleave', onDragLeave);
   root.addEventListener('drop', onDrop);
-  document.addEventListener('dragend', () => {
-    dragDepth = 0;
-    clearDragState();
-  });
+  document.addEventListener('drop', resetDragState, true);
+  document.addEventListener('dragend', resetDragState, true);
 
   window.addEventListener('vcd:dev-mode-change', syncVisibility);
 
