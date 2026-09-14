@@ -160,7 +160,7 @@ export function mountImageSection(
   documentKey: string,
   index: number,
 ): HTMLElement {
-  const spacing = (section.spacing ?? 'section') as ProjectStackSpacing;
+  const spacing = (section.spacing ?? 'group') as ProjectStackSpacing;
   const sectionPath = ['sections', index];
   const resolvedConstrained = resolveImageGridConstrained(section.constrained as never);
   const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
@@ -182,7 +182,7 @@ export function mountImageGridSection(
   documentKey: string,
   index: number,
 ): HTMLElement {
-  const spacing = (section.spacing ?? 'section') as ProjectStackSpacing;
+  const spacing = (section.spacing ?? 'group') as ProjectStackSpacing;
   const sectionPath = ['sections', index];
   const items = Array.isArray(section.items) ? section.items as MountedSection[] : [];
   const columns = resolveImageGridColumns(section.columns as never);
@@ -315,7 +315,7 @@ function mountImageCarouselSection(
   documentKey: string,
   index: number,
 ): HTMLElement {
-  const spacing = (section.spacing ?? 'section') as ProjectStackSpacing;
+  const spacing = (section.spacing ?? 'group') as ProjectStackSpacing;
   const sectionPath = ['sections', index];
   const items = Array.isArray(section.items) ? section.items as MountedSection[] : [];
   const constrained = resolveImageGridConstrained(section.constrained as never);

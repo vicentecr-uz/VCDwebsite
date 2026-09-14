@@ -44,7 +44,7 @@ export const resolveProjectStackSpacing = (spacing) => {
     : {};
   const desktop = isProjectStackSpacingValue(spacing)
     ? spacing
-    : isProjectStackSpacingValue(source.desktop) ? source.desktop : 'section';
+    : isProjectStackSpacingValue(source.desktop) ? source.desktop : 'group';
   const tablet = isProjectStackSpacingValue(source.tablet) ? source.tablet : desktop;
   const mobile = isProjectStackSpacingValue(source.mobile) ? source.mobile : tablet;
   return { desktop, tablet, mobile };
