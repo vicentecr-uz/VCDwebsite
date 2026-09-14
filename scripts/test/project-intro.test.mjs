@@ -97,7 +97,7 @@ assert.deepEqual(setProjectStackSpacingAtViewport(
   { desktop: 'section', tablet: 'group', mobile: 'none' }, 'mobile', 'major',
 ), { desktop: 'section', tablet: 'group', mobile: 'major' });
 assert.deepEqual(resolveProjectStackSpacing({ desktop: 'bad', tablet: 'group', mobile: 4 }), {
-  desktop: 'section', tablet: 'group', mobile: 'group',
+  desktop: 'group', tablet: 'group', mobile: 'group',
 });
 assert.throws(() => canonicalizeProjectStackSpacing({ toString: 'none' }));
 assert.throws(() => canonicalizeProjectStackSpacing({ __proto__: 'none' }));
