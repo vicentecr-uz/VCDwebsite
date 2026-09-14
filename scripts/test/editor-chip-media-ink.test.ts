@@ -86,11 +86,13 @@ test('teardown is safe before the scheduled editor refresh runs', async () => {
     applyChipBrightness(chip, luma);
     assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '1.06');
     assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '1.12');
+    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(255 255 255 / 0.12)');
   }
   for (const luma of [0.78, 1]) {
     applyChipBrightness(chip, luma);
     assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '0.94');
     assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '0.88');
+    assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
   }
 });
 
