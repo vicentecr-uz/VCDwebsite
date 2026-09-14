@@ -232,31 +232,19 @@ function seedHoverVariants(
   hoverVariants: ImageVariants | undefined,
   hoverSrcAspect: number | null,
 ): Record<ImageViewport, ImageVariant> {
-  const seeded = {} as Record<ImageViewport, ImageVariant>;
-  let fallback: ImageVariant = {
-    aspect: coverVariants.desktop.aspect,
-    cx: 0.5,
-    cy: 0.5,
-    w: coverWidthFraction(coverVariants.desktop.aspect, hoverSrcAspect),
-  };
-  for (const viewport of IMAGE_VIEWPORTS) {
-    const linkedAspect = coverVariants[viewport].aspect;
-    fallback = {
-      aspect: linkedAspect,
-      cx: 0.5,
-      cy: 0.5,
-      w: coverWidthFraction(linkedAspect, hoverSrcAspect),
-    };
-    const existing = hoverVariants?.[viewport];
-    seeded[viewport] = {
-      aspect: linkedAspect,
-      cx: existing?.cx ?? fallback.cx,
-      cy: existing?.cy ?? fallback.cy,
-      w: existing?.w ?? fallback.w,
-    };
-    fallback = seeded[viewport];
-  }
-  return seeded;
+  const fallbackAspects = IMAGE_VIEWPORTS.reduce((result, viewport) => {
+    result[viewport] = coverVariants[viewport].aspect;
+    return result;
+  }, {} as Record<ImageViewport, string>);
+  const resolved = normalizeImageVariants(
+    hoverVariants,
+    fallbackAspects,
+    hoverSrcAspect ? { width: hoverSrcAspect, height: 1 } : undefined,
+  );
+  return IMAGE_VIEWPORTS.reduce((result, viewport) => {
+    result[viewport] = { ...resolved[viewport], aspect: coverVariants[viewport].aspect };
+    return result;
+  }, {} as Record<ImageViewport, ImageVariant>);
 }
 
 /** Listing-cover crop attrs — shared by ProjectGrid SSR and Gallery Manager fill. */
