@@ -821,7 +821,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             </button>
             ${isIntro ? '<span class="dev-hairline dev-hairline--vertical dev-intro-height-separator" role="presentation"></span>' : ''}
             ${introHeightControl}
-            <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
+            <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu" aria-orientation="horizontal">
               <span data-dev-normal-section-menu>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="bodyText">Text section</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
@@ -1465,7 +1465,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       // Open add-menu owns the page: other gaps must not light (their host
-      // would share z-index 65 and paint over the overflowing option column).
+      // would share z-index 65 and paint over the expanded pill).
       const openMenuState = spacingStates.find(({ control }) =>
         control.classList.contains('is-menu-open'),
       );
@@ -6819,7 +6819,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     z-index: 55;
   }
 
-  /* Open add-menu hangs into the next block — sit above neighbouring 65 lifts. */
+  /* Keep the expanded pill above neighbouring section controls. */
   .dev-gap-toolbar.is-menu-open {
     z-index: 80;
   }
@@ -6956,6 +6956,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: flex;
     align-items: center;
     gap: 4px;
+    flex: 0 0 auto;
     width: max-content;
     max-width: calc(100vw - 24px);
     min-width: 0;
@@ -7068,14 +7069,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     opacity: 1;
     transition: opacity 0.15s ease;
     overflow-x: auto;
-    overscroll-behavior-x: contain;
+    overscroll-behavior: contain;
     touch-action: pan-x;
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
-  }
-
-  .dev-gap-toolbar.is-menu-open .dev-gap-toolbar__menu {
-    z-index: 2;
   }
 
   .dev-gap-toolbar:is(.is-menu-open, .is-menu-closing) > .dev-gap-toolbar__pill > :not(.dev-gap-toolbar__add):not(.dev-gap-toolbar__menu) {
@@ -7092,15 +7089,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .dev-gap-toolbar__pill,
-    .dev-gap-toolbar__menu {
-      transition: none;
-    }
-  }
-
-  /* Page emphasis, Align=Start. */
   .dev-gap-toolbar__menu button {
+    --dev-btn-hit-inset: 0;
     display: flex;
     align-items: center;
     justify-content: flex-start;
@@ -7114,6 +7104,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     text-align: left;
     white-space: nowrap;
     cursor: pointer;
+  }
+
+  .dev-gap-toolbar__menu button:focus-visible {
+    outline-offset: -2px;
   }
 
   /* Surface now lives on .dev-gap-toolbar__pill — this is just the row of
