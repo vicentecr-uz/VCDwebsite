@@ -18,7 +18,7 @@ class FakeElement {
 }
 const fakeWindow = (reduce = false) => {
   const listeners = new Map<string, Set<EventListener>>();
-  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string) { listeners.get(name)?.forEach((fn) => fn({ type: name } as Event)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string) => void; listenerCount: (name: string) => number };
+  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
 };
 const savedDocument = globalThis.document;
 afterEach(() => { Object.assign(globalThis, { document: savedDocument }); });
@@ -91,6 +91,33 @@ describe('home reveal choreography', () => {
     Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
     const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win); win.emit('resize'); await Promise.resolve();
     expect(controller.isArmed()).toBe(true); controller.destroy(); expect(win.listenerCount('resize')).toBe(0); expect(win.listenerCount('pageshow')).toBe(0);
+  });
+
+  test('does not rearm after edit mode cancels the reveal', async () => {
+    const item = new FakeElement(); const home = new FakeElement(); home.querySelectorAll = <T>() => [item] as unknown as T[];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    win.emit('vcd:dev-mode-change', { active: true });
+    expect(item.style.opacity).toBe(''); expect(controller.isArmed()).toBe(false);
+    win.emit('resize'); win.emit('orientationchange'); win.emit('resize'); await Promise.resolve();
+    expect(item.style.opacity).toBe(''); expect(controller.isArmed()).toBe(false); controller.destroy();
+  });
+
+  test('keeps a completed reveal visible through repeated resize', async () => {
+    const item = new FakeElement(); const home = new FakeElement(); home.querySelectorAll = <T>() => [item] as unknown as T[];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    controller.run(); await new Promise((resolve) => setTimeout(resolve, 0));
+    win.emit('resize'); win.emit('orientationchange'); await Promise.resolve();
+    expect(item.style.opacity).toBe(''); expect(controller.isArmed()).toBe(false); controller.destroy();
+  });
+
+  test('does not rearm a queued resize after cancellation', async () => {
+    const item = new FakeElement(); const home = new FakeElement(); home.querySelectorAll = <T>() => [item] as unknown as T[];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    win.emit('resize'); controller.cancel(); await Promise.resolve();
+    expect(item.style.opacity).toBe(''); expect(controller.isArmed()).toBe(false); controller.destroy();
   });
 
   test('clones the body-text block so its subtree styling survives line splitting', async () => {
