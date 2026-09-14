@@ -69,3 +69,101 @@ for (const axis of ['horizontal', 'vertical']) {
     block.remove();
   });
 }
+
+function createSnapTestCarousel(axis: 'horizontal' | 'vertical') {
+  const block = window.document.createElement('div');
+  block.dataset.projectImageCarousel = '';
+  block.dataset.carouselSettings = JSON.stringify({ orientation: axis });
+  block.innerHTML = `<div data-carousel-track>${[0, 1, 2].map((i) =>
+    `<div data-carousel-slide data-grid-item-id="item-${i}"></div>`).join('')}</div>`;
+  window.document.body.append(block);
+  const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  slides.forEach((slide, index) => {
+    Object.defineProperties(slide, {
+      offsetLeft: { get: () => index * 100 },
+      offsetTop: { get: () => index * 100 },
+      offsetWidth: { get: () => 100 },
+      offsetHeight: { get: () => 100 },
+    });
+  });
+  const calls: ScrollToOptions[] = [];
+  track.scrollTo = (options: ScrollToOptions) => {
+    calls.push(options);
+    track.scrollLeft = options.left ?? track.scrollLeft;
+    track.scrollTop = options.top ?? track.scrollTop;
+  };
+  bindProjectImageCarousels(block);
+  return { block, track, calls };
+}
+
+function dispatchPointerDown(track: HTMLElement): void {
+  const event = new window.Event('pointerdown') as PointerEvent;
+  Object.defineProperty(event, 'pointerType', { value: 'mouse' });
+  Object.defineProperty(event, 'button', { value: 0 });
+  track.dispatchEvent(event);
+}
+
+for (const axis of ['horizontal', 'vertical'] as const) {
+  test(`${axis}: wheel scrollend does not correct an intermediate native offset`, () => {
+    const { block, track, calls } = createSnapTestCarousel(axis);
+    if (axis === 'vertical') track.scrollTop = 47;
+    else track.scrollLeft = 47;
+    track.dispatchEvent(new window.Event('wheel'));
+    track.dispatchEvent(new window.Event('scrollend'));
+    expect(calls).toHaveLength(0);
+    block.remove();
+  });
+
+  test(`${axis}: repeated and reversed wheel swipes do not correct intermediate offsets`, () => {
+    const { block, track, calls } = createSnapTestCarousel(axis);
+    for (const [offset, delta] of [[47, 120], [147, 120], [53, -120]]) {
+      if (axis === 'vertical') track.scrollTop = offset;
+      else track.scrollLeft = offset;
+      const wheel = new window.Event('wheel');
+      Object.defineProperty(wheel, axis === 'vertical' ? 'deltaY' : 'deltaX', { value: delta });
+      track.dispatchEvent(wheel);
+      track.dispatchEvent(new window.Event('scrollend'));
+    }
+    expect(calls).toHaveLength(0);
+    block.remove();
+  });
+}
+
+test('touch snap ignores scrollend while active and corrects once after touchend', () => {
+  const { block, track, calls } = createSnapTestCarousel('horizontal');
+  track.dispatchEvent(new window.Event('touchstart'));
+  track.scrollLeft = 47;
+  track.dispatchEvent(new window.Event('scrollend'));
+  expect(calls).toHaveLength(0);
+  track.dispatchEvent(new window.Event('touchend'));
+  track.dispatchEvent(new window.Event('scrollend'));
+  expect(calls).toHaveLength(1);
+  expect(calls[0].left).toBe(0);
+  track.scrollLeft = 47;
+  track.dispatchEvent(new window.Event('scrollend'));
+  expect(calls).toHaveLength(1);
+  block.remove();
+});
+
+test('wheel takeover after touch clears pending correction', () => {
+  const { block, track, calls } = createSnapTestCarousel('horizontal');
+  track.dispatchEvent(new window.Event('touchstart'));
+  track.dispatchEvent(new window.Event('touchend'));
+  track.scrollLeft = 47;
+  track.dispatchEvent(new window.Event('wheel'));
+  track.dispatchEvent(new window.Event('scrollend'));
+  expect(calls).toHaveLength(0);
+  block.remove();
+});
+
+test('mouse drag takeover after touch clears pending correction', () => {
+  const { block, track, calls } = createSnapTestCarousel('horizontal');
+  track.dispatchEvent(new window.Event('touchstart'));
+  track.dispatchEvent(new window.Event('touchend'));
+  track.scrollLeft = 47;
+  dispatchPointerDown(track);
+  track.dispatchEvent(new window.Event('scrollend'));
+  expect(calls).toHaveLength(0);
+  block.remove();
+});
