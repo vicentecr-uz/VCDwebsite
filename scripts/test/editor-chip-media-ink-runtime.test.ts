@@ -29,6 +29,7 @@ Object.assign(globalThis, {
   window: browser,
   document: browser.document,
   HTMLElement: browser.HTMLElement,
+  Event: browser.Event,
   getComputedStyle: browser.getComputedStyle.bind(browser),
   MutationObserver: browser.MutationObserver,
   ResizeObserver: class { observe() {} unobserve() {} disconnect() {} },
@@ -53,7 +54,7 @@ function fixture(): { chip: HTMLElement; image: HTMLImageElement } {
   const chip = scope.querySelector<HTMLElement>('button')!;
   Object.defineProperty(scope, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, right: 200, bottom: 120, width: 200, height: 120 }) });
   Object.defineProperty(image, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, right: 200, bottom: 120, width: 200, height: 120 }) });
-  Object.defineProperty(chip, 'getBoundingClientRect', { value: () => ({ left: 12, top: 12, right: 72, bottom: 32, width: 60, height: 20 }) });
+  Object.defineProperty(chip, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 12, top: 12, right: 72, bottom: 32, width: 60, height: 20 }) });
   Object.defineProperty(image, 'complete', { configurable: true, value: true });
   Object.defineProperty(image, 'naturalWidth', { configurable: true, value: 100 });
   return { chip, image };
@@ -112,6 +113,62 @@ test('ignores its own chip style and ground mutations', async () => {
   await tick();
   assert.equal(chip.dataset.mediaGround, 'dark');
   assert.equal(lumaCalls, 1);
+  cleanup();
+  document.documentElement.classList.remove('is-dev-mode');
+});
+
+test('does not resample on page scroll or unrelated html class changes', async () => {
+  pending.clear();
+  lumaCalls = 0;
+  const { chip, image } = fixture();
+  image.src = 'stable-image';
+  document.documentElement.classList.add('is-dev-mode');
+  const cleanup = bindEditorChipMediaInk();
+  await tick();
+  resolveLuma('stable-image');
+  await tick();
+  const baseline = lumaCalls;
+  window.dispatchEvent(new Event('scroll'));
+  document.documentElement.classList.add('some-unrelated-state');
+  await tick();
+  assert.equal(lumaCalls, baseline);
+  assert.equal(chip.dataset.mediaGround, 'dark');
+  cleanup();
+  document.documentElement.classList.remove('is-dev-mode', 'some-unrelated-state');
+});
+
+test('refreshes after a carousel track scrollend', async () => {
+  pending.clear();
+  lumaCalls = 0;
+  const { image } = fixture();
+  const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const track = document.createElement('div');
+  track.className = 'project-image-carousel__track';
+  scope.append(track);
+  image.src = 'carousel-image';
+  document.documentElement.classList.add('is-dev-mode');
+  const cleanup = bindEditorChipMediaInk();
+  await tick();
+  resolveLuma('carousel-image');
+  await tick();
+  const baseline = lumaCalls;
+  track.dispatchEvent(new Event('scrollend', { bubbles: true }));
+  await tick();
+  assert.equal(lumaCalls, baseline + 1);
+  cleanup();
+  document.documentElement.classList.remove('is-dev-mode');
+});
+
+test('does not decode an offscreen chip', async () => {
+  pending.clear();
+  lumaCalls = 0;
+  const { chip, image } = fixture();
+  image.src = 'offscreen-image';
+  Object.defineProperty(chip, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 12, top: 900, right: 72, bottom: 920, width: 60, height: 20 }) });
+  document.documentElement.classList.add('is-dev-mode');
+  const cleanup = bindEditorChipMediaInk();
+  await tick();
+  assert.equal(lumaCalls, 0);
   cleanup();
   document.documentElement.classList.remove('is-dev-mode');
 });
