@@ -444,7 +444,6 @@ const globeSvg = sizeIcon(globeIcon, 16);
       typeActions.hidden = typedUpstream;
     }
     if (placeholderButton instanceof HTMLButtonElement) {
-      placeholderButton.hidden = hasCarouselTarget();
       placeholderButton.disabled = count > 0;
       placeholderButton.textContent = preferredType === 'imageGrid'
         ? 'Add grid placeholder'
@@ -590,7 +589,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
     closePicker();
   };
 
-  const appendToCarousel = async (filenames = [], srcs = [], target = targetedCarousel) => {
+  const appendToCarousel = async (filenames = [], srcs = [], target = targetedCarousel, placeholder = false) => {
     if (!target) throw new Error('Could not find that carousel.');
     const activeIndex = Number(target.target.dataset.activeIndex);
     const activeSlide = Number.isInteger(activeIndex)
@@ -660,7 +659,7 @@ const globeSvg = sizeIcon(globeIcon, 16);
         document: target.documentKey,
         action: 'appendMediaItems',
         ...withDevEditTarget({ document: target.documentKey, path: target.path }, target.target),
-        ...(srcs.length ? { srcs } : { filenames }),
+        ...(placeholder ? { placeholder: true } : srcs.length ? { srcs } : { filenames }),
       }),
     });
     const result = await response.json();
@@ -970,6 +969,11 @@ const globeSvg = sizeIcon(globeIcon, 16);
       try {
         if (targetedGrid) {
           await appendToGrid([], [], targetedGrid, true);
+          closePicker();
+          return;
+        }
+        if (targetedCarousel) {
+          await appendToCarousel([], [], targetedCarousel, true);
           closePicker();
           return;
         }
