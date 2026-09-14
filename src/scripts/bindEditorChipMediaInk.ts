@@ -1,15 +1,14 @@
 /** Keep editor media controls on the same adaptive palette as the image below them. */
 import {
   applyMediaGround,
-  applyChipBrightness,
+  applyChipAppearance,
   cropHostFor,
   sampleForBox,
-  applyChipContrast,
   opaqueBackground,
   lumaGridFor,
   readCropVars,
 } from './adaptiveMediaInk';
-import { isRegionDark, measureRegionLuma, type RenderedRegionSample } from './coverLuminance';
+import { measureRegionLuma, type RenderedRegionSample } from './coverLuminance';
 
 const CHIP_SELECTOR = '.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
 const TARGET_SELECTOR = '.dev-image-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
@@ -59,9 +58,7 @@ function backgroundSample(el: HTMLElement): RenderedRegionSample | null {
 
 function applySample(chip: HTMLElement, sample: RenderedRegionSample | null): void {
   const luma = sample?.luma ?? null;
-  applyMediaGround(chip, luma === null || !isRegionDark(luma) ? 'light' : 'dark');
-  applyChipBrightness(chip, luma);
-  applyChipContrast(chip, sample);
+  applyChipAppearance(chip, luma, sample);
 }
 
 function scopeForChip(chip: HTMLElement): HTMLElement | null {

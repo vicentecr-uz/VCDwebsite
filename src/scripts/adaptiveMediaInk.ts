@@ -233,37 +233,47 @@ export function applyChipBrightness(host: HTMLElement, luma: number | null): voi
   host.style.setProperty('--chip-hover-ring', nearWhite ? 'rgb(0 0 0 / 0.12)' : 'rgb(255 255 255 / 0.12)');
 }
 
-export function applyChipContrast(host: HTMLElement, sample: RenderedRegionSample | null): void {
-  if (!sample) return;
-  const style = getComputedStyle(host);
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 1;
-  const context = canvas.getContext('2d');
-  if (!context) return;
-  const brightness = [
-    Number(host.style.getPropertyValue('--chip-rest-brightness')) || 1.06,
-    Number(host.style.getPropertyValue('--chip-hover-brightness')) || 1.12,
-  ];
-  const fillFor = (ground: MediaGround) => {
-    context.clearRect(0, 0, 1, 1);
-    context.fillStyle = style.getPropertyValue(ground === 'dark'
-      ? '--sys-color-on-dark-media' : '--sys-color-on-light-media').trim();
-    context.fillRect(0, 0, 1, 1);
-    const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
-    return chipContrastFill(sample.pixels, { r, g, b, a: alpha / 255 }, brightness);
-  };
-  const ground: MediaGround = host.dataset.mediaGround === 'dark' ? 'dark' : 'light';
-  let fill = fillFor(ground);
-  if (!fill.opacity) return;
-  const alternative = ground === 'dark' ? 'light' : 'dark';
-  const alternativeFill = fillFor(alternative);
-  if (alternativeFill.opacity < fill.opacity) {
-    fill = alternativeFill;
-    applyMediaGround(host, alternative);
+export function applyChipAppearance(
+  host: HTMLElement,
+  luma: number | null,
+  sample: RenderedRegionSample | null = null,
+): void {
+  const ground: MediaGround = luma !== null && isRegionDark(luma) ? 'dark' : 'light';
+  const nearWhite = luma !== null && luma >= 0.78;
+  const brightness = [nearWhite ? 0.94 : 1.06, nearWhite ? 0.88 : 1.12] as const;
+  let fill: ReturnType<typeof chipContrastFill> | null = null;
+  let chosenGround = ground;
+  if (sample) {
+    const style = getComputedStyle(host);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d');
+    if (context) {
+      const fillFor = (candidate: MediaGround) => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = style.getPropertyValue(candidate === 'dark'
+          ? '--sys-color-on-dark-media' : '--sys-color-on-light-media').trim();
+        context.fillRect(0, 0, 1, 1);
+        const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
+        return chipContrastFill(sample.pixels, { r, g, b, a: alpha / 255 }, brightness);
+      };
+      fill = fillFor(ground);
+      if (fill.opacity) {
+        const alternative = ground === 'dark' ? 'light' : 'dark';
+        const alternativeFill = fillFor(alternative);
+        if (alternativeFill.opacity < fill.opacity) {
+          fill = alternativeFill;
+          chosenGround = alternative;
+        }
+      }
+    }
   }
-  if (!fill.opacity) return;
-  host.style.setProperty('--chip-contrast-fill', `rgb(${fill.color} ${fill.color} ${fill.color} / ${fill.opacity})`);
-  host.style.setProperty('--chip-hover-ring', `rgb(${fill.color} ${fill.color} ${fill.color} / 0.12)`);
+  applyMediaGround(host, chosenGround);
+  applyChipBrightness(host, luma);
+  if (fill?.opacity) {
+    host.style.setProperty('--chip-contrast-fill', `rgb(${fill.color} ${fill.color} ${fill.color} / ${fill.opacity})`);
+    host.style.setProperty('--chip-hover-ring', `rgb(${fill.color} ${fill.color} ${fill.color} / 0.12)`);
+  }
 }
 
 export function opaqueBackground(el: HTMLElement): string | undefined {
