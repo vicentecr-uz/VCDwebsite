@@ -1,5 +1,5 @@
 ---
-import { projectImage, projectImageTier } from '../../lib/images';
+import { projectImage, projectImageTier, projectVideoPoster } from '../../lib/images';
 import {
   imageGridConstrainedStyle,
   resolveImageGridConstrained,
@@ -252,6 +252,7 @@ const blockStyle = [
         const displayIndex = visibleIds.indexOf(id);
         const isPlaceholder = isPlaceholderSrc(item.src);
         const isVideo = isVideoSrc(item.src);
+        const videoPoster = isVideo ? projectVideoPoster(item.src) : undefined;
         const itemLabelPath = showDevEditing ? [...basePath!, 'items', itemIndex, 'alt'] : undefined;
         const editAttrs = showDevEditing
           ? imageDevEditAttrs(true, {
@@ -307,6 +308,7 @@ const blockStyle = [
               <div class="project-image-grid__frame" data-carousel-frame>
                 {isVideo ? <video
                   src={projectImage(item.src)}
+                  poster={videoPoster}
                   aria-label={item.alt || 'Video'}
                   class="project-image-grid__image project-inline-video"
                   controls

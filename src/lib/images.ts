@@ -9,6 +9,21 @@ export function projectImage(filename: string): string {
   return `/images/${filename.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+/** Generated first-frame poster for a media-backed video, when available. */
+export function projectVideoPoster(filename: string): string | undefined {
+  const value = String(filename || '');
+  if (value.startsWith('//') || /^[a-z][a-z\d+.-]*:/i.test(value)) return undefined;
+  const suffixIndex = value.search(/[?#]/);
+  const clean = suffixIndex === -1 ? value : value.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? '' : value.slice(suffixIndex);
+  if (!isVideoSrc(clean)) return undefined;
+  if (clean.startsWith('/')) {
+    if (!clean.startsWith('/images/')) return undefined;
+    return `${clean}.poster.webp${suffix}`;
+  }
+  return `${projectImage(`${clean}.poster.webp`)}${suffix}`;
+}
+
 export type ImageDisplayTier = 'original' | 'thumb' | 'preview';
 
 function isRasterImage(filename: string): boolean {

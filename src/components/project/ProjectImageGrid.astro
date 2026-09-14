@@ -1,5 +1,5 @@
 ---
-import { projectImage, projectImageTier } from '../../lib/images';
+import { projectImage, projectImageTier, projectVideoPoster } from '../../lib/images';
 import {
   imageGridColumnsStyle,
   imageGridConstrainedStyle,
@@ -197,6 +197,7 @@ const editorItems = items.map((item, index) => ({
     const captionClass = imageCaptionStyleClass(captionStyle);
     const isPlaceholder = isPlaceholderSrc(String(item.src ?? ''));
     const isVideo = isVideoSrc(String(item.src ?? ''));
+    const videoPoster = isVideo ? projectVideoPoster(String(item.src ?? '')) : undefined;
     const isNestedCarousel = item.type === 'imageCarousel' && Array.isArray(item.items);
     const itemLabelPath = showDevEditing ? [...basePath!, 'items', index, 'alt'] : undefined;
     const editAttrs = showDevEditing
@@ -288,6 +289,7 @@ const editorItems = items.map((item, index) => ({
         <div class="project-image-grid__frame">
           {isVideo ? <video
             src={projectImage(item.src)}
+            poster={videoPoster}
             aria-label={item.alt || 'Video'}
             class="project-image-grid__image project-inline-video"
             controls
