@@ -584,12 +584,18 @@ const layoutRules = [
 ];
 
 const foundationLinks = [
-  { id: 'styles-colors', label: 'Color tokens' },
   { id: 'styles-typography', label: 'Typography' },
   { id: 'styles-spacing', label: 'Spacing' },
   { id: 'styles-layout-rules', label: 'Layout rules' },
-  { id: 'styles-surface-base', label: 'Surface Base' },
 ];
+
+const hiddenSectionIds = new Set([
+  'styles-colors',
+  'styles-surface-base',
+  'styles-pending',
+  'styles-interaction',
+  'patterns',
+]);
 
 const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).map((category) => ({
   category,
@@ -619,19 +625,21 @@ const catalogSectionLinks = [
       ...componentLinks,
     ],
   },
-  {
-    label: 'Patterns',
-    children: [
-      { id: 'styles-pending', label: 'Legacy patterns' },
-      { id: 'styles-interaction', label: 'Interaction sample' },
-    ],
-  },
 ];
 
 const savedOutline = normalizeOutline(stylesNav.outline ?? []);
 const hasSavedOutline = savedOutline.length > 0 || ('outlineConfigured' in stylesNav && stylesNav.outlineConfigured === true);
 const outline = hasSavedOutline ? savedOutline : outlineFromNav(catalogSectionLinks);
-const sectionLinks = deriveNavFromOutline(outline);
+const visibleOutline = outline.filter((entry) =>
+  entry.kind === 'group'
+    ? !hiddenSectionIds.has(entry.id) && entry.label !== 'Patterns'
+    : !hiddenSectionIds.has(entry.anchor ?? entry.id),
+).map((entry) =>
+  entry.kind === 'group' && hiddenSectionIds.has(entry.anchor ?? '')
+    ? { ...entry, anchor: undefined }
+    : entry,
+);
+const sectionLinks = deriveNavFromOutline(visibleOutline);
 ---
 
 <Layout title="Design System — Vicente Cruz" serif>
@@ -641,7 +649,7 @@ const sectionLinks = deriveNavFromOutline(outline);
     data-section-nav-document="styles"
     data-section-nav-outline-only="true"
     data-section-nav={JSON.stringify(sectionLinks)}
-    data-section-outline={JSON.stringify(outline)}
+    data-section-outline={JSON.stringify(visibleOutline)}
   >
     <Header title="Design System" />
 
@@ -663,49 +671,51 @@ const sectionLinks = deriveNavFromOutline(outline);
           </p>
         </section>
 
-        <section id="styles-colors" class="section-block">
-          <h2>Color tokens</h2>
+        {hiddenSectionIds.has('styles-colors') ? null : (
+          <section id="styles-colors" class="section-block">
+            <h2>Color tokens</h2>
 
-          <h3 class="token-tier-heading">ref &middot; palette</h3>
-          <div class="token-grid">
-            {paletteTokens.map((token) => {
-              const editable = import.meta.env.DEV;
-              return (
+            <h3 class="token-tier-heading">ref &middot; palette</h3>
+            <div class="token-grid">
+              {paletteTokens.map((token) => {
+                const editable = import.meta.env.DEV;
+                return (
+                  <article class="token-card">
+                    {editable ? (
+                      <button
+                        type="button"
+                        class="token-card__swatch"
+                        style={`background:var(${token.name});`}
+                        aria-label={`Edit ${token.name}`}
+                        data-dev-edit-trigger="style-color-token"
+                        data-color-token-name={token.name}
+                        data-color-token-value={token.value}
+                        data-color-token-saved-value={token.value}
+                        disabled
+                      ></button>
+                    ) : (
+                      <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
+                    )}
+                    <p class="meta-label">{token.name}</p>
+                    <p class="meta-values" data-token-value>{token.value}</p>
+                  </article>
+                );
+              })}
+            </div>
+
+            <h3 class="token-tier-heading">sys &middot; roles</h3>
+            <div class="token-grid">
+              {roleTokens.map((token) => (
                 <article class="token-card">
-                  {editable ? (
-                    <button
-                      type="button"
-                      class="token-card__swatch"
-                      style={`background:var(${token.name});`}
-                      aria-label={`Edit ${token.name}`}
-                      data-dev-edit-trigger="style-color-token"
-                      data-color-token-name={token.name}
-                      data-color-token-value={token.value}
-                      data-color-token-saved-value={token.value}
-                      disabled
-                    ></button>
-                  ) : (
-                    <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
-                  )}
+                  <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
                   <p class="meta-label">{token.name}</p>
-                  <p class="meta-values" data-token-value>{token.value}</p>
+                  <p class="meta-values" data-token-value>{token.alias}</p>
+                  <p class="token-note">{token.role}</p>
                 </article>
-              );
-            })}
-          </div>
-
-          <h3 class="token-tier-heading">sys &middot; roles</h3>
-          <div class="token-grid">
-            {roleTokens.map((token) => (
-              <article class="token-card">
-                <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
-                <p class="meta-label">{token.name}</p>
-                <p class="meta-values" data-token-value>{token.alias}</p>
-                <p class="token-note">{token.role}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section id="styles-typography" class="section-block">
           <h2>Typography</h2>
@@ -762,20 +772,24 @@ const sectionLinks = deriveNavFromOutline(outline);
                   <span class="token-name">{rule.name}</span>
                   <span class="token-value">{rule.value}</span>
                 </div>
-                <p class="token-note">{rule.why}</p>
+                <p class="token-note">
+                  {rule.why.split('`').map((part, index) => (index % 2 === 1 ? <code>{part}</code> : part))}
+                </p>
               </article>
             ))}
           </div>
         </section>
 
-        <section id="styles-surface-base" class="section-block">
-          <h2>Surface Base</h2>
-          <div class="component-preview styles-surface-preview">
-            <div class="dev-surface styles-surface-specimen">
-              <span class="meta-label">Surface Base</span>
+        {hiddenSectionIds.has('styles-surface-base') ? null : (
+          <section id="styles-surface-base" class="section-block">
+            <h2>Surface Base</h2>
+            <div class="component-preview styles-surface-preview">
+              <div class="dev-surface styles-surface-specimen">
+                <span class="meta-label">Surface Base</span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section class="section-block">
           <div id="styles-components" class="section-block">
@@ -1044,6 +1058,7 @@ const sectionLinks = deriveNavFromOutline(outline);
           ))}
         </section>
 
+        {!hiddenSectionIds.has('styles-pending') && (
         <section id="styles-pending" class="section-block">
           <h2>Legacy patterns</h2>
           <p class="section-note">
@@ -1064,7 +1079,9 @@ const sectionLinks = deriveNavFromOutline(outline);
             ))}
           </div>
         </section>
+        )}
 
+        {!hiddenSectionIds.has('styles-interaction') && (
         <section id="styles-interaction" class="section-block">
           <h2>Interaction sample</h2>
           <article class="rule-card">
@@ -1074,6 +1091,7 @@ const sectionLinks = deriveNavFromOutline(outline);
             </p>
           </article>
         </section>
+        )}
       </main>
     </div>
 
@@ -1142,7 +1160,8 @@ const sectionLinks = deriveNavFromOutline(outline);
   }
 
   .intro-copy code,
-  .meta-values code {
+  .meta-values code,
+  .token-note code {
     font-size: 0.92em;
     font-family: ui-monospace, monospace;
   }
@@ -1156,6 +1175,7 @@ const sectionLinks = deriveNavFromOutline(outline);
   .meta-values,
   .meta-values code,
   .intro-copy code,
+  .token-note code,
   .token-value,
   .token-name,
   .token-note,
