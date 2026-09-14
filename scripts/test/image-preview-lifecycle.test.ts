@@ -4,6 +4,7 @@ import { createImagePreviewUpgrade } from '../../src/lib/imagePreviewUpgrade';
 // Exercise cancellation and instance ownership without simulating browser interaction.
 const frames = new Map<number, FrameRequestCallback>();
 const timers = new Map<number, () => void>();
+const timerDelays = new Map<number, number>();
 const images: TestImage[] = [];
 const observers: TestObserver[] = [];
 let nextId = 0;
@@ -62,8 +63,13 @@ const overrides = {
   window: {
     innerWidth: 800,
     innerHeight: 600,
-    setTimeout(callback: () => void) { const id = ++nextId; timers.set(id, callback); return id; },
-    clearTimeout(id: number) { timers.delete(id); },
+    setTimeout(callback: () => void, ms: number) {
+      const id = ++nextId;
+      timerDelays.set(id, ms);
+      timers.set(id, () => { timers.delete(id); timerDelays.delete(id); callback(); });
+      return id;
+    },
+    clearTimeout(id: number) { timers.delete(id); timerDelays.delete(id); },
   },
   requestAnimationFrame(callback: FrameRequestCallback) { const id = ++nextId; frames.set(id, callback); return id; },
   cancelAnimationFrame(id: number) { frames.delete(id); },
@@ -77,9 +83,9 @@ const fixture = (preview: string) => {
   return { image, root: { querySelectorAll: () => [image] } as unknown as ParentNode };
 };
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
-const runNextTimer = () => {
-  const entry = [...timers.entries()].at(-1) as [number, () => void] | undefined;
-  assert.ok(entry, 'expected a pending timer');
+const runTimer = (ms: number) => {
+  const entry = [...timers.entries()].find(([id]) => timerDelays.get(id) === ms);
+  assert.ok(entry, `expected a pending ${ms}ms timer`);
   entry[1]();
 };
 const previewImages = (src: string) => images.filter((image) => image.src === src);
@@ -223,17 +229,27 @@ try {
   retryRecovery.bind(retry.root);
   images.at(-1)!.onload!();
   await flush();
-  retryRecovery.open();
   const firstAttempt = previewImages('/retry.webp').at(-1)!;
   firstAttempt.onerror!();
   assert.equal(recoveryFailures, 1, 'preview failure callback runs immediately');
-  runNextTimer();
+  observers.at(-1)!.emit({ isIntersecting: true, target: retry.image });
+  await flush();
+  assert.equal(previewImages('/retry.webp').length, 1, 'observer cannot bypass backoff');
+  retry.image.top = 900;
+  runTimer(1000);
+  await flush();
+  assert.equal(previewImages('/retry.webp').length, 1, 'retry waits while offscreen');
+  retry.image.top = 20;
+  observers.at(-1)!.emit({ isIntersecting: true, target: retry.image });
   await flush();
   const secondAttempt = previewImages('/retry.webp').at(-1)!;
   assert.notEqual(secondAttempt, firstAttempt, 'preview retry starts after backoff');
   secondAttempt.onload!();
   await flush();
   assert.equal(retry.image.dataset.imagePreviewUpgrading, undefined, 'successful retry clears upgrading state');
+  assert.equal(timers.size, 0, 'successful fetch clears watchdog before the reveal gate opens');
+  retryRecovery.open();
+  assert.ok(retry.image.clone, 'successful retry reaches the reveal');
   retryRecovery.destroy();
 
   const exhausted = fixture('/exhausted.webp');
@@ -245,7 +261,7 @@ try {
   for (let attempt = 0; attempt < 3; attempt++) {
     previewImages('/exhausted.webp').at(-1)!.onerror!();
     if (attempt < 2) {
-      runNextTimer();
+      runTimer(attempt === 0 ? 1000 : 2000);
       await flush();
     }
   }
@@ -265,11 +281,14 @@ try {
   await flush();
   lateRecovery.open();
   const lateRequest = previewImages('/late-timeout.webp').at(-1)!;
-  const lateLoad = lateRequest.onload!;
-  runNextTimer();
-  lateLoad();
+  let completeLateDecode!: () => void;
+  lateRequest.decode = () => new Promise((resolve) => { completeLateDecode = resolve; });
+  lateRequest.onload!();
+  runTimer(15000);
+  completeLateDecode();
   await flush();
   assert.equal(late.image.src, '/thumb.webp', 'timed-out late completion cannot upgrade the image');
+  assert.equal(late.image.clone, undefined, 'timed-out decode cannot begin a stale reveal');
   lateRecovery.destroy();
 
   const canceledRetry = fixture('/canceled-retry.webp');
@@ -294,9 +313,12 @@ try {
   destroyingRecovery.open();
   previewImages('/callback-destroy.webp').at(-1)!.onerror!();
   assert.equal(callbackDestroy.image.dataset.imagePreviewUpgrading, undefined, 'callback destruction clears the failed attempt');
+  assert.equal(timers.size, 0, 'onError destruction cannot schedule a retry');
   destroyingRecovery.destroy();
 
-  console.log('image-preview-lifecycle: passed (instance isolation, reset during decode/reveal, failure, disposal)');
+  await flush();
+  assert.equal(timers.size, 0);
+  console.log('image-preview-lifecycle: passed (isolation, recovery, bounded retries, stale decode, cancellation, disposal)');
 } finally {
   for (const [key, descriptor] of Object.entries(originals)) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);

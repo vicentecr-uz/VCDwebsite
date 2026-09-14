@@ -215,7 +215,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       cancelTimer(timeout);
       thumb.onload = thumb.onerror = null;
       preloads.delete(thumb);
-      if (signal.aborted || !preview || !img.isConnected || img.getAttribute('data-image-preview') !== preview) return;
+      if (!preview || !current(img, preview)) return;
       thumbReady.add(img);
       queuePreviewFetch(img);
     };
@@ -312,12 +312,12 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       if (!current(img, preview) || previewStates.get(img) !== attemptState) return;
       delete img.dataset.imagePreviewUpgrading;
       options.onError?.(img);
-      if (signal.aborted || !current(img, preview)) return;
+      if (!current(img, preview) || previewStates.get(img) !== attemptState) return;
       if (attemptState.attempts >= MAX_PREVIEW_ATTEMPTS) {
         attemptState.exhausted = true;
         return;
       }
-      // Keep retries bounded; a later backoff/viewport policy can replace this ceiling.
+      // Three attempts cap background traffic; persistent failures need an explicit retry UI.
       const delay = attemptState.attempts === 1 ? 1000 : 2000;
       attemptState.retryTimer = later(() => {
         attemptState.retryTimer = undefined;
@@ -329,6 +329,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     watchdog = later(fail, PREVIEW_TIMEOUT_MS);
     hi.onload = () => {
       void decodeImage(hi, preview).then(() => {
+        if (!hi.complete || !hi.naturalWidth) { fail(); return; }
         if (!settle() || !current(img, preview) || previewStates.get(img) !== attemptState) return;
         previewLoaded.set(img, preview);
         delete img.dataset.imagePreviewUpgrading;
