@@ -1,22 +1,26 @@
 <script>
   import { bindCaptionMediaInk } from '../scripts/bindCaptionMediaInk';
   import { bindGalleryHoverFill } from '../scripts/clampGalleryHoverFill';
+  import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
   import { bindGalleryMediaInk } from '../scripts/bindGalleryMediaInk';
   import { bindMobileGalleryReveal } from '../scripts/mobileGalleryReveal';
 
   let teardownGallery: (() => void) | undefined;
   let teardownHoverFill: (() => void) | undefined;
   let teardownCaptions: (() => void) | undefined;
+  let teardownEditorChips: (() => void) | undefined;
   let teardownMobileReveal: (() => void) | undefined;
 
   function mount() {
     teardownGallery?.();
     teardownHoverFill?.();
     teardownCaptions?.();
+    teardownEditorChips?.();
     teardownMobileReveal?.();
     teardownGallery = bindGalleryMediaInk();
     teardownHoverFill = bindGalleryHoverFill();
     teardownCaptions = bindCaptionMediaInk();
+    teardownEditorChips = bindEditorChipMediaInk();
     teardownMobileReveal = bindMobileGalleryReveal();
   }
 
@@ -26,10 +30,12 @@
     teardownGallery?.();
     teardownHoverFill?.();
     teardownCaptions?.();
+    teardownEditorChips?.();
     teardownMobileReveal?.();
     teardownGallery = undefined;
     teardownHoverFill = undefined;
     teardownCaptions = undefined;
+    teardownEditorChips = undefined;
     teardownMobileReveal = undefined;
   });
 </script>
