@@ -172,6 +172,16 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       </button>
     </div>
 
+    <div class="dev-field" data-crop-background-wrap>
+      <label class="dev-field__label" for="crop-background">Background</label>
+      <div class="dev-field__value tapico-crop-tuner__background-value">
+        <input id="crop-background" class="dev-field__input" type="text" maxlength="9" autocomplete="off" spellcheck="false" placeholder="None" data-crop-background />
+        <button type="button" class="tapico-crop-tuner__background-swatch" aria-label="Choose image background colour" data-crop-background-swatch></button>
+        <Button emphasis="ghost" label="None" data-crop-background-none />
+      </div>
+      <color-picker data-crop-background-picker label-title="Colour" label-hue="Hue" label-saturation="Saturation" label-lightness="Lightness" label-opacity="Opacity" label-ok="Done"></color-picker>
+    </div>
+
     <!-- Removed from the panel per Anto (2026-08-25) — wheel/pinch already
          zoom directly on the image. The input stays as the tuner's internal
          zoom-state store; a lot of the drag/wheel/pinch logic below reads
@@ -232,6 +242,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { projectImage } from '../../lib/images';
+  import 'color-dialog-box';
+  import { normalizeImageBackground } from '../../lib/imageBackground.mjs';
   import { isAcceptedImageFile } from '../../lib/imageUpload.mjs';
   import { isPlaceholderSrc, syncImageSourceDims, syncPlaceholderState } from '../../lib/projectImageFrame';
   import { cancelImagePreviewUpgrade } from '../../lib/imagePreviewUpgrade';
@@ -266,6 +278,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const preview = tuner.querySelector<HTMLElement>('[data-crop-preview]');
     const previewImage = tuner.querySelector<HTMLImageElement>('[data-crop-image]');
     const previewPlaceholderLabel = preview?.querySelector<HTMLElement>('.project-media__placeholder-label-text');
+    const backgroundWrap = tuner.querySelector<HTMLElement>('[data-crop-background-wrap]');
+    const backgroundInput = tuner.querySelector<HTMLInputElement>('[data-crop-background]');
+    const backgroundSwatch = tuner.querySelector<HTMLButtonElement>('[data-crop-background-swatch]');
+    const backgroundNone = tuner.querySelector<HTMLButtonElement>('[data-crop-background-none]');
+    const backgroundPicker = tuner.querySelector<HTMLElement>('[data-crop-background-picker]');
     const aspectRatioSelect = tuner.querySelector<HTMLSelectElement>('[data-crop-aspect-ratio]');
     const linkedAspectHint = tuner.querySelector<HTMLButtonElement>('[data-crop-linked-aspect-hint]');
     const linkedAspectTooltip = linkedAspectHint?.querySelector<HTMLElement>('[role="tooltip"]');
@@ -494,6 +511,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let savedMobileInset = false;
     let draftMobileInset = false;
     let sourceRevision = 0;
+    let replacementSession = 0;
+    let replacementAttempt = 0;
+    let replacementPending = false;
+    let savedBackground = 'transparent';
+    let draftBackground = 'transparent';
 
     const isGridTarget = (target: HTMLElement) => target.classList.contains('project-image-grid__item');
     const isListingCover = (target: HTMLElement) => Boolean(target.dataset.devListingCover);
@@ -832,6 +854,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       allLocks: Record<ImageViewport, boolean>;
       maxVhValue: number | undefined;
       mobileInset: boolean;
+      background: string;
       cropped: boolean;
       ownVariants: boolean;
       hoverCropped: boolean;
@@ -856,6 +879,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       variants: state.allCover, hover: state.allHover, constrained: state.allConstrained,
       maxVh: state.maxVhValue, mobileInset: state.mobileInset,
       coverSrc: state.coverSrc, hoverSrc: state.hoverSrc,
+      background: state.background,
     });
     const GESTURE_UNDO_CAP = 20;
 
@@ -885,6 +909,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         allLocks: structuredClone(constrainByViewport),
         maxVhValue: draftMaxVh,
         mobileInset: draftMobileInset,
+        background: draftBackground,
         cropped: editTarget.classList.contains('project-cropped') || isGridTarget(editTarget),
         ownVariants: editTarget.dataset.devHasOwnVariants === 'true',
         hoverCropped: editTarget.classList.contains('project-grid__cover--hover-cropped'),
@@ -912,7 +937,32 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       pushUndo(extra);
     };
 
+    const invalidateReplacement = () => {
+      replacementAttempt += 1;
+      replacementPending = false;
+      saveButton.disabled = false;
+      saveButton.textContent = 'Save changes';
+      saveButton.removeAttribute('aria-busy');
+      status.removeAttribute('data-replacement-error');
+    };
+
+    const setReplacementPending = (pending: boolean, label = 'Loading…') => {
+      replacementPending = pending;
+      saveButton.disabled = pending;
+      saveButton.textContent = pending ? label : 'Save changes';
+      if (pending) saveButton.setAttribute('aria-busy', 'true');
+      else saveButton.removeAttribute('aria-busy');
+      status.removeAttribute('data-replacement-error');
+    };
+
+    const setReplacementError = (message: string) => {
+      setReplacementPending(false);
+      status.dataset.replacementError = 'true';
+      status.textContent = message;
+    };
+
     const applyUndoEntry = (entry: CropUndoEntry) => {
+      invalidateReplacement();
       const vp = entry.selectedViewport;
       selectedViewport = vp;
       activeSlot = entry.activeSlot;
@@ -928,6 +978,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftConstrained = structuredClone(entry.allConstrained);
       draftMaxVh = entry.maxVhValue;
       draftMobileInset = entry.mobileInset;
+      draftBackground = entry.background;
+      applyBackgroundLive(editTarget, draftBackground);
       draftSrc = entry.src;
       draftSrcWidth = entry.srcWidth;
       draftSrcHeight = entry.srcHeight;
@@ -1106,6 +1158,37 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           .find((img) => !img.closest('.dev-crop-ghost'))
         ?? null
       );
+    };
+
+    const closeBackgroundPicker = () => {
+      backgroundPicker?.shadowRoot?.querySelector<HTMLDialogElement>('dialog')?.close();
+      backgroundPicker?.removeAttribute('open');
+    };
+
+    const syncBackgroundControl = () => {
+      if (backgroundWrap) backgroundWrap.hidden = isListingCover(editTarget);
+      if (isListingCover(editTarget)) return;
+      if (backgroundInput) {
+        backgroundInput.value = draftBackground === 'transparent' ? '' : draftBackground;
+        backgroundInput.removeAttribute('aria-invalid');
+      }
+      if (backgroundSwatch) backgroundSwatch.style.backgroundColor = draftBackground;
+      if (backgroundNone) {
+        backgroundNone.setAttribute('aria-pressed', String(draftBackground === 'transparent'));
+        backgroundNone.classList.toggle('is-selected', draftBackground === 'transparent');
+      }
+      const clip = preview.querySelector<HTMLElement>('.tapico-crop-tuner__preview-clip');
+      if (clip) clip.style.backgroundColor = draftBackground;
+      previewImage.style.backgroundColor = draftBackground;
+      if (pageStage) pageStage.ghostImg.style.backgroundColor = draftBackground;
+    };
+
+    const applyBackgroundLive = (target: HTMLElement, value: string) => {
+      if (isListingCover(target)) return;
+      const background = normalizeImageBackground(value) ?? 'transparent';
+      target.dataset.devImageBackground = background;
+      target.style.setProperty('--project-image-background', background);
+      if (target === editTarget) syncBackgroundControl();
     };
 
     const applySrcLive = (
@@ -1426,6 +1509,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
       if (isStandaloneMedia(target) || isCarouselItem(target)) applyFrameFlagsLive(target, { constrained: state.allConstrained, maxVh: state.maxVhValue });
       applyMobileInsetLive(target, state.mobileInset);
+      applyBackgroundLive(target, state.background);
       appliedSnapshots.set(target, structuredClone(state));
       for (const slot of listing ? ['cover', 'hover'] as const : ['cover'] as const) {
         const src = slot === 'cover' ? state.coverSrc : state.hoverSrc;
@@ -1442,6 +1526,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         draftConstrained = { ...state.allConstrained };
         savedMaxVh = draftMaxVh = state.maxVhValue;
         savedMobileInset = draftMobileInset = state.mobileInset;
+        savedBackground = draftBackground = state.background;
+        syncBackgroundControl();
         savedSrc = draftSrc = listing && activeSlot === 'hover' ? state.hoverSrc : state.coverSrc;
         savedSrcWidth = draftSrcWidth = state.srcWidth;
         savedSrcHeight = draftSrcHeight = state.srcHeight;
@@ -1476,6 +1562,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             id, kind: 'crop', payload: {
               document: target.dataset.devDocument, path: JSON.parse(target.dataset.devImagePath || '[]'),
               ...(slot === 'cover' ? {
+                ...(!isListingCover(target) ? { background: state.background } : {}),
                 ...(clearVariants ? { clearVariants: true } : { variants: structuredClone(state.allCover) }),
                 ...(state.coverSrc ? { src: state.coverSrc, srcWidth: state.coverWidth, srcHeight: state.coverHeight } : {}),
                 ...(isStandaloneMedia(target) ? { constrained: { ...state.allConstrained }, centered: imageHasWidthConstraint(state.allConstrained) } : {}),
@@ -1498,6 +1585,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const saveDraft = () => {
+      if (replacementPending) {
+        status.textContent = 'Wait for the image replacement to finish.';
+        return false;
+      }
       const target = editTarget;
       const beforeState = openingSnapshot ? structuredClone(openingSnapshot) : snapshotViewport();
       const documentKey = target.dataset.devDocument;
@@ -1591,6 +1682,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }
       applyMobileInsetLive(target, stagedMobileInset);
       savedMobileInset = stagedMobileInset;
+      savedBackground = draftBackground;
       savedSinceSelect = true;
       if (isGridTarget(target) && persistCrop) {
         target.dataset.devHasOwnVariants = 'true';
@@ -1605,6 +1697,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           payload: {
             document: documentKey,
             path: imagePath,
+            ...(!isListingCover(target) ? { background: draftBackground } : {}),
             ...(persistCrop ? { variants: stagedVariants } : {}),
             ...(persistCrop && stagedHoverVariants ? { hoverVariants: stagedHoverVariants } : {}),
             ...(isListingCover(target)
@@ -1643,6 +1736,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       clearAllStacks();
       draftDirty = false;
       closePanel();
+      return true;
     };
 
     const refreshCover = () => {
@@ -1680,6 +1774,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
      * and then cancelling without touching anything is a no-op.
      */
     const revertToSaved = () => {
+      invalidateReplacement();
       const target = editTarget;
       if (!target) return;
       if (openingSnapshot) {
@@ -1702,6 +1797,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftConstrained = { ...savedConstrained };
       draftMaxVh = savedMaxVh;
       draftMobileInset = savedMobileInset;
+      draftBackground = savedBackground;
+      applyBackgroundLive(target, draftBackground);
+      syncBackgroundControl();
       const srcNeedsRestore = Boolean(savedSrc) && draftSrc !== savedSrc;
       draftSrc = savedSrc;
       draftSrcWidth = savedSrcWidth;
@@ -1802,6 +1900,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     };
 
     const selectTarget = (target: HTMLElement, live: boolean) => {
+      replacementSession += 1;
+      invalidateReplacement();
       const preserveLiveApply = editingSession && live && target === editTarget && liveApply;
       const preserveLocalHistory = editingSession && live && target === editTarget;
       if (!preserveLocalHistory) clearAllStacks();
@@ -1852,11 +1952,16 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : draftCoverVariants;
       savedConstrained = isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false);
       draftConstrained = { ...savedConstrained };
+      closeBackgroundPicker();
+      savedBackground = normalizeImageBackground(target.dataset.devImageBackground) ?? 'transparent';
       savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
       draftMaxVh = savedMaxVh;
       savedMobileInset = target.dataset.mobileInset === 'true'
         || target.closest<HTMLElement>('.project-grid__item')?.dataset.mobileInset === 'true';
       draftMobileInset = savedMobileInset;
+      draftBackground = savedBackground;
+      applyBackgroundLive(target, draftBackground);
+      syncBackgroundControl();
       saved = { ...savedVariants[selectedViewport] };
       draft = { ...saved };
       savedSrc = stagedSource?.src ?? readTargetSrc(editedImage) ?? baseline.src;
@@ -2522,6 +2627,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const ghostImg = document.createElement('img');
       ghostImg.alt = '';
       ghostImg.draggable = false;
+      ghostImg.style.backgroundColor = draftBackground;
       ghostImg.src = editedImage.src || editedImage.currentSrc;
       ghost.append(ghostImg);
 
@@ -2585,7 +2691,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       // Only the image/crop panel — caption/grid opens must not hijack this target.
       const panel = event.detail?.panel as HTMLElement | undefined;
       const trigger = event.detail?.trigger as HTMLElement | undefined;
-      if (!panel || panel.dataset.devPanelKey !== 'image') return;
+      if (!panel || panel !== tuner.closest('[data-dev-panel-key="image"]')) return;
       const target = trigger?.closest<HTMLElement>('[data-dev-image-target]')
         // Gallery crop chip sits on the --end rail (sibling of the cover target).
         ?? trigger?.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]')
@@ -2593,7 +2699,35 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       if (target) selectTarget(target, true);
     }) as EventListener);
 
+    window.addEventListener('vcd:dev-image-replace', ((event: CustomEvent<{
+      target?: HTMLElement;
+      file?: File;
+      src?: string;
+    }>) => {
+      if (event.defaultPrevented) return;
+      const target = event.detail?.target;
+      const src = event.detail?.src;
+      if (!(target instanceof HTMLElement) || !target.matches('[data-dev-image-target]')) return;
+      if (!event.detail?.file && !src) return;
+      const panel = tuner.closest<HTMLElement>('[data-dev-panel-key="image"]');
+      if (!panel) return;
+      event.preventDefault();
+      panel.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', {
+        detail: { trigger: target, panel },
+      }));
+      if (event.detail?.file) {
+        replaceWithFile(event.detail.file);
+      } else if (src) {
+        const context = replacementContext();
+        replacementAttempt = context.attempt;
+        setReplacementPending(true, 'Loading…');
+        startReplacement(src, context);
+      }
+    }) as EventListener);
+
     const teardownEditSession = () => {
+      closeBackgroundPicker();
       unregisterHistoryScope?.();
       unregisterHistoryScope = null;
       unmountPageStage();
@@ -2853,6 +2987,33 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       syncDraftDirty();
     });
 
+    const changeBackground = (value: string) => {
+      const background = value.trim() ? normalizeImageBackground(value) : 'transparent';
+      if (!background) {
+        backgroundInput?.setAttribute('aria-invalid', 'true');
+        status.textContent = 'Enter a hex colour, or choose None.';
+        return;
+      }
+      if (background !== draftBackground) {
+        pushUndo();
+        draftBackground = background;
+        applyBackgroundLive(editTarget, background);
+        syncDraftDirty();
+      } else syncBackgroundControl();
+    };
+    backgroundInput?.addEventListener('change', () => changeBackground(backgroundInput.value));
+    backgroundNone?.addEventListener('click', () => {
+      changeBackground('transparent');
+      closeBackgroundPicker();
+    });
+    backgroundSwatch?.addEventListener('click', () => {
+      backgroundPicker?.setAttribute('hex', draftBackground === 'transparent' ? '#ffffffff' : `${draftBackground}ff`);
+      backgroundPicker?.setAttribute('open', 'true');
+    });
+    backgroundPicker?.addEventListener('update-color', ((event: CustomEvent<{ hex?: string }>) => {
+      if (event.detail?.hex) changeBackground(event.detail.hex);
+    }) as EventListener);
+
     const readFileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -2899,8 +3060,57 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       }));
     });
 
-    const applyReplacement = (src: string, dims?: { srcWidth?: number; srcHeight?: number }) => {
-      if (!src) return;
+    type ReplacementContext = {
+      target: HTMLElement;
+      slot: 'cover' | 'hover';
+      session: number;
+      source: number;
+      attempt: number;
+    };
+
+    const replacementContext = (): ReplacementContext => ({
+      target: editTarget,
+      slot: activeSlot,
+      session: replacementSession,
+      source: sourceRevision,
+      attempt: replacementAttempt + 1,
+    });
+
+    const isCurrentReplacement = (context: ReplacementContext) => (
+      replacementPending
+      && context.attempt === replacementAttempt
+      && context.session === replacementSession
+      && context.source === sourceRevision
+      && context.target === editTarget
+      && context.slot === activeSlot
+    );
+
+    const readUploadedImageDims = (src: string) => new Promise<{ srcWidth: number; srcHeight: number }>((resolve, reject) => {
+      const image = new Image();
+      const fail = () => reject(new Error('Could not load the replacement image.'));
+      image.addEventListener('error', fail, { once: true });
+      image.addEventListener('load', () => {
+        if (!image.naturalWidth || !image.naturalHeight) {
+          fail();
+          return;
+        }
+        const finish = () => resolve({ srcWidth: image.naturalWidth, srcHeight: image.naturalHeight });
+        if (typeof image.decode === 'function') void image.decode().then(finish, fail);
+        else finish();
+      }, { once: true });
+      image.src = projectImage(src);
+      if (image.complete && image.naturalWidth) {
+        const finish = () => resolve({ srcWidth: image.naturalWidth, srcHeight: image.naturalHeight });
+        if (typeof image.decode === 'function') void image.decode().then(finish, fail);
+        else finish();
+      }
+    });
+
+    const applyReplacement = (src: string, dims: { srcWidth: number; srcHeight: number }, context: ReplacementContext) => {
+      if (!src || !isCurrentReplacement(context)) return;
+      const beforeReplacement = snapshotViewport();
+      const undoBefore = structuredClone(undoStack);
+      const redoBefore = structuredClone(redoStack);
       pushUndo({
         src: draftSrc,
         srcWidth: draftSrcWidth,
@@ -2914,22 +3124,19 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draftSrcHeight = dims?.srcHeight;
 
       const url = projectImage(src);
-      const replacementTarget = editTarget;
+      const replacementTarget = context.target;
       const image = applySrcLive(replacementTarget, src, dims) ?? editedImage;
-      const replacementRevision = sourceRevision;
+      context.source = sourceRevision;
       previewImage.src = url;
       if (pageStage) pageStage.ghostImg.src = url;
 
       const finish = () => {
         if (
-          replacementRevision !== sourceRevision
-          || editTarget !== replacementTarget
+          !isCurrentReplacement(context)
           || draftSrc !== src
           || image.getAttribute('src') !== url
         ) return;
-        const nextDims = dims?.srcWidth && dims?.srcHeight
-          ? dims
-          : readTargetDims(image);
+        const nextDims = dims;
         if (nextDims.srcWidth && nextDims.srcHeight) {
           draftSrcWidth = nextDims.srcWidth;
           draftSrcHeight = nextDims.srcHeight;
@@ -2962,33 +3169,58 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         } else if (editingSession) {
           mountPageStage();
         }
+        setReplacementPending(false);
         status.textContent = 'Image replaced — unsaved changes.';
       };
 
-      // `complete` can still reflect the previous bitmap for a tick after src
-      // assignment — prefer decode(), fall back to load.
-      const ready = (img: HTMLImageElement) => {
-        if (typeof img.decode === 'function') {
-          return img.decode().then(() => undefined, () => undefined);
-        }
-        if (img.complete && img.naturalWidth) return Promise.resolve();
-        return new Promise<void>((resolve) => {
-          img.addEventListener('load', () => resolve(), { once: true });
-          img.addEventListener('error', () => resolve(), { once: true });
+      const ready = (node: HTMLImageElement) => {
+        if (typeof node.decode === 'function') return node.decode();
+        if (node.complete && node.naturalWidth) return Promise.resolve();
+        return new Promise<void>((resolve, reject) => {
+          node.addEventListener('load', () => resolve(), { once: true });
+          node.addEventListener('error', () => reject(new Error('Could not load the replacement image.')), { once: true });
         });
       };
-      void Promise.all([ready(image), ready(previewImage)]).then(finish);
+      void Promise.all([ready(image), ready(previewImage)])
+        .then(finish, () => {
+          if (isCurrentReplacement(context)) {
+            undoStack = undoBefore;
+            redoStack = redoBefore;
+            applyUndoEntry(beforeReplacement);
+            setReplacementError('Could not load the replacement image.');
+          }
+        });
+    };
+
+    const startReplacement = (src: string, context: ReplacementContext) => {
+      if (!src) return;
+      replacementAttempt = context.attempt;
+      setReplacementPending(true, 'Loading…');
+      status.textContent = 'Loading replacement…';
+      void readUploadedImageDims(src).then((dims) => {
+        if (isCurrentReplacement(context)) applyReplacement(src, dims, context);
+      }, (error) => {
+        if (isCurrentReplacement(context)) {
+          setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
+        }
+      });
     };
 
     const replaceWithFile = (file: File | null | undefined) => {
       if (!file || !isAcceptedImageFile(file)) return;
+      const context = replacementContext();
+      replacementAttempt = context.attempt;
+      setReplacementPending(true, 'Uploading…');
       void (async () => {
         try {
           status.textContent = 'Uploading…';
           const src = await uploadReplaceFile(file);
-          applyReplacement(src);
+          if (!isCurrentReplacement(context)) return;
+          startReplacement(src, context);
         } catch (error) {
-          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+          if (isCurrentReplacement(context)) {
+            setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
+          }
         }
       })();
     };
@@ -3037,17 +3269,29 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
     replaceAssetsButton.addEventListener('click', (event) => {
       event.stopPropagation();
+      const context = replacementContext();
+      replacementAttempt = context.attempt;
+      setReplacementPending(true, 'Loading…');
       void (async () => {
         try {
           const result = await pickReplaceFromAssetManager();
           const src = Array.isArray(result?.srcs)
             ? String(result.srcs.find(Boolean) || '')
             : '';
-          if (!src) return;
-          applyReplacement(src);
+          if (!src && isCurrentReplacement(context)) {
+            setReplacementPending(false);
+            status.textContent = 'Replacement cancelled.';
+            return;
+          }
+          if (isCurrentReplacement(context)) startReplacement(src, context);
         } catch (error) {
-          if (error instanceof Error && error.message === 'cancelled') return;
-          status.textContent = error instanceof Error ? error.message : 'Could not replace the image.';
+          if (!isCurrentReplacement(context)) return;
+          setReplacementPending(false);
+          if (error instanceof Error && error.message === 'cancelled') {
+            status.textContent = 'Replacement cancelled.';
+            return;
+          }
+          setReplacementError(error instanceof Error ? error.message : 'Could not replace the image.');
         }
       })();
     });
@@ -3076,8 +3320,15 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     saveButton.addEventListener('click', saveDraft);
-    window.addEventListener('vcd:dev-before-save', () => {
-      if (editingSession) { syncDraftDirty(); if (draftDirty) saveDraft(); }
+    window.addEventListener('vcd:dev-before-save', (event) => {
+      if (!editingSession) return;
+      if (replacementPending) {
+        event.preventDefault();
+        status.textContent = 'Wait for the image replacement to finish.';
+        return;
+      }
+      syncDraftDirty();
+      if (draftDirty) saveDraft();
     });
     window.addEventListener('vcd:dev-has-draft', ((event: CustomEvent<{ dirty?: boolean }>) => {
       if (editingSession) { syncDraftDirty(); if (draftDirty && event.detail) event.detail.dirty = true; }
@@ -3174,6 +3425,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             path: imagePath,
             clearVariants: true,
             mobileInset: draftMobileInset,
+            background: draftBackground,
           },
           revert: () => {
             applyVariantsToTarget(target, baseline.variants);
@@ -3239,6 +3491,52 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </script>
 
 <style>
+  .tapico-crop-tuner__background-value {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .tapico-crop-tuner__background-value input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .tapico-crop-tuner__background-swatch {
+    position: relative;
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    border: 1px solid var(--sys-color-outline-variant);
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+
+  .tapico-crop-tuner__background-swatch::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  [data-crop-background-wrap][hidden] {
+    display: none;
+  }
+
+  color-picker[data-crop-background-picker] {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: visible;
+    --font: var(--font-sans);
+    --bg-primary: var(--sys-color-srf);
+    --bg-secondary: var(--sys-color-srf-container-low);
+    --bg-header: var(--sys-color-srf-container-high);
+    --border-color-primary: var(--sys-color-outline-variant);
+    --border-color-secondary: var(--sys-color-on-srf);
+    --txt-color-primary: var(--sys-color-on-srf);
+  }
+
+
   /* Width + height caps read as one decision, so they share a row. Collapses
      to nothing when both children are hidden — an empty flex item would still
      take the parent column's gap. */
@@ -3596,6 +3894,17 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
     border: 0;
+  }
+
+  .tapico-crop-tuner__status[data-replacement-error="true"] {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    color: var(--sys-color-error);
+    white-space: normal;
   }
 
 </style>
