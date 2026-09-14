@@ -105,16 +105,19 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   const syncBuffered = () => {
     const ranges = video.buffered;
     const duration = video.duration;
-    const stops = Number.isFinite(duration) && duration > 0
+    const rects = Number.isFinite(duration) && duration > 0
       ? Array.from({ length: ranges.length }, (_, index) => {
           const start = Math.max(0, Math.min(duration, ranges.start(index))) / duration * 100;
           const end = Math.max(0, Math.min(duration, ranges.end(index))) / duration * 100;
-          return `transparent ${start}%, var(--media-time-range-buffered-color) ${start}%, var(--media-time-range-buffered-color) ${end}%, transparent ${end}%`;
-        })
+          return end > start
+            ? `<rect x="${start}%" width="${end - start}%" height="100%" rx="3" fill="white"/>`
+            : '';
+        }).filter(Boolean)
       : [];
-    const background = stops.length ? `linear-gradient(to right, ${stops.join(', ')})` : 'transparent';
-    if (progress.style.getPropertyValue('--project-video-buffered-ranges') !== background) {
-      progress.style.setProperty('--project-video-buffered-ranges', background);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">${rects.join('')}</svg>`;
+    const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+    if (progress.style.getPropertyValue('--project-video-buffered-ranges') !== mask) {
+      progress.style.setProperty('--project-video-buffered-ranges', mask);
     }
   };
   // Show all buffered sections, including those away from the playhead.

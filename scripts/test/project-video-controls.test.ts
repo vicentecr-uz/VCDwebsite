@@ -73,16 +73,17 @@ for (const existing of [false, true]) {
       start: (index: number) => bufferedRanges[index][0],
       end: (index: number) => bufferedRanges[index][1],
     }) });
-    const bufferedPaint = () => progress.style.getPropertyValue('--project-video-buffered-ranges');
+    const bufferedPaint = () => decodeURIComponent(progress.style.getPropertyValue('--project-video-buffered-ranges'));
     video.dispatchEvent(new window.Event('progress'));
     await settle();
-    expect(bufferedPaint()).toContain('var(--media-time-range-buffered-color) 5%');
+    expect(bufferedPaint()).toContain('width="5%"');
+    expect(bufferedPaint()).toContain('rx="3"');
     bufferedRanges = [[0, 15], [60, 75]];
     video.dispatchEvent(new window.Event('timeupdate'));
     await settle();
-    expect(bufferedPaint()).toContain('var(--media-time-range-buffered-color) 15%');
-    expect(bufferedPaint()).toContain('transparent 60%');
-    expect(bufferedPaint()).toContain('var(--media-time-range-buffered-color) 75%');
+    expect(bufferedPaint()).toContain('width="15%"');
+    expect(bufferedPaint()).toContain('x="60%"');
+    expect(bufferedPaint().match(/<rect /g)).toHaveLength(2);
     const allSections = bufferedPaint();
     for (const time of [0, 1, 40, 70]) {
       video.currentTime = time;
@@ -93,7 +94,7 @@ for (const existing of [false, true]) {
     bufferedRanges = [];
     video.dispatchEvent(new window.Event('emptied'));
     await settle();
-    expect(bufferedPaint()).toBe('transparent');
+    expect(bufferedPaint()).not.toContain('<rect ');
     const mute = root.querySelector('media-mute-button')!;
     mute.dispatchEvent(new window.MouseEvent('click', { bubbles: true, composed: true }));
     expect(video.muted).toBe(true);
