@@ -6,7 +6,7 @@
     const html = document.documentElement;
     const leaseKey = '__vcdDevAuthoringLease';
     const lease = ((window as Window & { [leaseKey]?: { id: string; timer: ReturnType<typeof setInterval> | null; active: boolean; pageLifecycleInstalled?: boolean } })[leaseKey]
-      ??= { id: `dev-${crypto.randomUUID()}`, timer: null, active: false });
+      ??= { id: `dev-${crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`, timer: null, active: false });
     const sendAuthoring = (active: boolean, beacon = false) => {
       const body = JSON.stringify({ id: lease.id, active });
       if (!active && beacon) {
