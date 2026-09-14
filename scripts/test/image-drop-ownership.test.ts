@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { Window } from 'happy-dom';
 
 const source = readFileSync(new URL('../../src/components/DevImageDrop.astro', import.meta.url), 'utf8');
 const between = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
@@ -131,6 +132,58 @@ test('moving from a page gap onto a cover clears page drop feedback', () => {
   expect(h.dataset.devImageDrag).toBeUndefined();
   expect(h.pageDropVeil.dataset.active).toBeUndefined();
   expect(h.env.dragDepth).toBe(0);
+});
+
+test('a child drop that stops propagation still clears page feedback', () => {
+  const browser = new Window();
+  const document = browser.document;
+  const pageDropVeil = document.createElement('div');
+  pageDropVeil.dataset.active = 'true';
+  document.documentElement.dataset.devImageDrag = 'true';
+  document.body.append(pageDropVeil);
+  const cleanupScript = between('  const clearDragState =', '  const closeMultiDropChoice =');
+  const registrationScript = between(
+    '  const root = document;',
+    "  window.addEventListener('vcd:dev-mode-change'",
+  );
+  let pageInsertionCalls = 0;
+  const runtime = new Function('env', `with (env) {
+    let dragDepth = 1;
+    ${cleanupScript}
+    ${registrationScript}
+    return { getDragDepth: () => dragDepth };
+  }`)({
+    document,
+    window: browser,
+    pageDropVeil,
+    HTMLElement: browser.HTMLElement,
+    clearCarouselDropTarget: () => {},
+    clearPlaceholderTarget: () => {},
+    onDragEnter: () => {},
+    onDragOver: () => {},
+    onDragLeave: () => {},
+    onDrop: () => {
+      pageInsertionCalls += 1;
+    },
+  });
+  let childDropCalls = 0;
+  const child = document.createElement('div');
+  child.addEventListener('drop', (event) => {
+    childDropCalls += 1;
+    event.stopPropagation();
+  });
+  document.body.append(child);
+
+  child.dispatchEvent(new browser.Event('drop', { bubbles: true }));
+
+  expect(childDropCalls).toBe(1);
+  expect(pageInsertionCalls).toBe(0);
+  expect(runtime.getDragDepth()).toBe(0);
+  expect(pageDropVeil.dataset.active).toBeUndefined();
+  expect(document.documentElement.dataset.devImageDrag).toBeUndefined();
+
+  document.body.dispatchEvent(new browser.Event('drop', { bubbles: true }));
+  expect(pageInsertionCalls).toBe(1);
 });
 
 test('below a single real section appends before the trailing spacing sentinel', () => {
