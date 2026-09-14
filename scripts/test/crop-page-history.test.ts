@@ -17,6 +17,7 @@ const restore = new Function('env', `with (env) { ${script}; return applyPageCro
   applyVariantsToTarget: (target: any, variants: any) => { target.dataset.devImageVariants = JSON.stringify(variants); },
   pageImageFor: () => null,
   applySrcLive: () => {},
+  applyMobileInsetLive: (target: any, inset: boolean) => { target.dataset.mobileInset = String(inset); },
   applyBackgroundLive: (target: any, background: string) => { target.dataset.devImageBackground = background; },
   appliedSnapshots: new Map(),
   stagedSources: new Map(),
@@ -36,7 +37,7 @@ const target = (id: string, ...classes: string[]) => {
   };
 };
 const crop = (zoom: number, cropped = true) => ({
-  background: 'transparent', cropped, ownVariants: true, allCover: { desktop: { aspect: '3:2', cx: 0.5, cy: 0.5, w: zoom } },
+  mobileInset: false, background: 'transparent', cropped, ownVariants: true, allCover: { desktop: { aspect: '3:2', cx: 0.5, cy: 0.5, w: zoom } },
   allHover: null, allConstrained: {}, coverSrc: '', hoverSrc: '',
 });
 
@@ -123,4 +124,14 @@ test('background control tracks a reversible change and rejects invalid colour i
   expect(history).toHaveLength(2);
   expect(env.draftBackground).toBe('transparent');
   expect(env.status.textContent).toContain('hex colour');
+});
+
+test('page history restores mobile inset and background together', () => {
+  const image = target('combined', 'project-image-grid__item');
+  restore(image, { ...crop(0.8), mobileInset: true, background: '#123456' });
+  expect(image.dataset.mobileInset).toBe('true');
+  expect(image.dataset.devImageBackground).toBe('#123456');
+  restore(image, crop(0.8));
+  expect(image.dataset.mobileInset).toBe('false');
+  expect(image.dataset.devImageBackground).toBe('transparent');
 });

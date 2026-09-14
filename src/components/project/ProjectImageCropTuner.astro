@@ -2,6 +2,7 @@
 import DevOverlay from '../DevOverlay.astro';
 import ViewportSelector from '../ui/ViewportSelector.astro';
 import SelectField from '../ui/SelectField.astro';
+import SegmentedControl from '../ui/SegmentedControl.astro';
 import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
 import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
@@ -27,6 +28,23 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 >
   <div class="tapico-crop-tuner" data-project-image-crop-tuner>
     <ViewportSelector dataAttr="data-crop-viewport" />
+
+    <SegmentedControl label="Mobile image width" data-crop-mobile-inset hidden>
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Inset"
+        data-crop-mobile-inset-value="true"
+        aria-pressed="false"
+      />
+      <Button
+        emphasis="ghost"
+        width="fill"
+        label="Full bleed"
+        data-crop-mobile-inset-value="false"
+        aria-pressed="false"
+      />
+    </SegmentedControl>
 
     <SelectField
       label="Aspect ratio"
@@ -275,6 +293,10 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const viewportButtons = [
       ...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-viewport]'),
     ];
+    const mobileInsetControl = tuner.querySelector<HTMLElement>('[data-crop-mobile-inset]');
+    const mobileInsetButtons = [
+      ...tuner.querySelectorAll<HTMLButtonElement>('[data-crop-mobile-inset-value]'),
+    ];
     const zoomInput = tuner.querySelector<HTMLInputElement>('[data-crop-zoom]');
     const zoomOutput = tuner.querySelector<HTMLOutputElement>('[data-crop-zoom-output]');
     const readout = tuner.querySelector<HTMLElement>('[data-crop-readout]');
@@ -304,6 +326,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       !heightConstrainWrap ||
       !maxVhSelect ||
       !viewportButtons.length ||
+      !mobileInsetControl ||
+      mobileInsetButtons.length !== 2 ||
       !zoomInput ||
       !zoomOutput ||
       !readout ||
@@ -484,6 +508,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     let draftConstrained: ConstrainedByViewport = resolveImageGridConstrained(false);
     let savedMaxVh: number | undefined;
     let draftMaxVh: number | undefined;
+    let savedMobileInset = false;
+    let draftMobileInset = false;
     let sourceRevision = 0;
     let replacementSession = 0;
     let replacementAttempt = 0;
@@ -582,6 +608,12 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         if (flags.maxVh) target.dataset.maxVh = String(flags.maxVh);
         else delete target.dataset.maxVh;
         target.dataset.devMaxVh = flags.maxVh ? String(flags.maxVh) : '';
+        const rawConstrained = target.closest<HTMLElement>('[data-project-image-carousel]')?.dataset.devCarouselConstrained;
+        let constrained = flags.constrained;
+        if (rawConstrained) {
+          try { constrained = resolveImageGridConstrained(JSON.parse(rawConstrained) as never); } catch { /* keep draft */ }
+        }
+        target.dataset.mobileBleedEligible = constrained.mobile === 100 && !flags.maxVh ? 'true' : 'false';
         setMaxVhVar(target, flags.maxVh);
         announceFrameChange(target);
         window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', {
@@ -594,6 +626,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       applyConstrainedStyle(target, flags.constrained);
       target.classList.toggle('project-media--constrained', hasConstraint);
       target.dataset.devConstrained = JSON.stringify(flags.constrained);
+      target.dataset.mobileBleedEligible = flags.constrained.mobile === 100 && !flags.maxVh ? 'true' : 'false';
       target.dataset.devCentered = hasConstraint ? 'true' : 'false';
       const hasMaxVh = !!flags.maxVh;
       target.classList.toggle('project-media--max-vh', hasMaxVh);
@@ -612,12 +645,60 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       announceFrameChange(target);
     };
 
+    const mobileBleedEligible = (target: HTMLElement) => {
+      if (isStandaloneMedia(target)) {
+        return draftConstrained.mobile === 100 && !draftMaxVh;
+      }
+      if (isCarouselItem(target)) {
+        const raw = target.closest<HTMLElement>('[data-project-image-carousel]')?.dataset.devCarouselConstrained;
+        let constrained = resolveImageGridConstrained(false);
+        if (raw) {
+          try { constrained = resolveImageGridConstrained(JSON.parse(raw) as never); } catch { /* use default */ }
+        }
+        return constrained.mobile === 100 && !draftMaxVh;
+      }
+      const owner = target.dataset.mobileBleedEligible
+        ? target
+        : target.closest<HTMLElement>('.project-grid__item');
+      if (owner?.dataset.mobileBleedEligible === 'true') {
+        const listing = target.closest<HTMLElement>('.project-grid--work, .project-grid--play');
+        if (listing && window.innerWidth > 480 && window.innerWidth <= 640) return false;
+        return true;
+      }
+      if (owner?.dataset.mobileBleedEligible === 'false') return false;
+      return false;
+    };
+
+    const applyMobileInsetLive = (target: HTMLElement, inset: boolean) => {
+      target.dataset.mobileInset = String(inset);
+      const owner = target.closest<HTMLElement>('.project-grid__item');
+      if (owner && owner !== target) owner.dataset.mobileInset = String(inset);
+      announceFrameChange(target);
+      const carousel = target.closest('[data-project-image-carousel]');
+      if (carousel) {
+        window.dispatchEvent(new CustomEvent('vcd:carousel-refresh', {
+          detail: { block: carousel },
+        }));
+      }
+    };
+
+    const syncMobileInsetUi = () => {
+      const visible = selectedViewport === 'mobile' && mobileBleedEligible(editTarget);
+      mobileInsetControl.hidden = !visible;
+      mobileInsetButtons.forEach((button) => {
+        const active = button.dataset.cropMobileInsetValue === String(draftMobileInset);
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    };
+
     const syncWidthConstrainUi = () => {
       const show = isStandaloneMedia(editTarget);
       widthConstrainWrap.hidden = !show;
       widthConstrainSelect.value = String(draftConstrained[selectedViewport]);
       heightConstrainWrap.hidden = !supportsMaxVh(editTarget);
       maxVhSelect.value = draftMaxVh ? String(draftMaxVh) : '';
+      syncMobileInsetUi();
     };
 
     const gridDefaultAspectFor = (target: HTMLElement) => {
@@ -772,6 +853,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       allConstrained: ConstrainedByViewport;
       allLocks: Record<ImageViewport, boolean>;
       maxVhValue: number | undefined;
+      mobileInset: boolean;
       background: string;
       cropped: boolean;
       ownVariants: boolean;
@@ -795,7 +877,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const appliedSnapshots = new Map<HTMLElement, CropUndoEntry>();
     const semanticCrop = (state: CropUndoEntry) => JSON.stringify({
       variants: state.allCover, hover: state.allHover, constrained: state.allConstrained,
-      background: state.background, maxVh: state.maxVhValue, coverSrc: state.coverSrc, hoverSrc: state.hoverSrc,
+      maxVh: state.maxVhValue, mobileInset: state.mobileInset,
+      coverSrc: state.coverSrc, hoverSrc: state.hoverSrc,
+      background: state.background,
     });
     const GESTURE_UNDO_CAP = 20;
 
@@ -824,6 +908,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         allConstrained: structuredClone(draftConstrained),
         allLocks: structuredClone(constrainByViewport),
         maxVhValue: draftMaxVh,
+        mobileInset: draftMobileInset,
         background: draftBackground,
         cropped: editTarget.classList.contains('project-cropped') || isGridTarget(editTarget),
         ownVariants: editTarget.dataset.devHasOwnVariants === 'true',
@@ -892,6 +977,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         ? draftHoverVariants : draftCoverVariants;
       draftConstrained = structuredClone(entry.allConstrained);
       draftMaxVh = entry.maxVhValue;
+      draftMobileInset = entry.mobileInset;
       draftBackground = entry.background;
       applyBackgroundLive(editTarget, draftBackground);
       draftSrc = entry.src;
@@ -916,6 +1002,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           maxVh: draftMaxVh,
         });
       }
+      applyMobileInsetLive(editTarget, draftMobileInset);
       if (entry.coverSrc) applySrcLive(editTarget, entry.coverSrc, { srcWidth: entry.coverWidth, srcHeight: entry.coverHeight }, 'cover');
       if (isListingCover(editTarget) && entry.hoverSrc) applySrcLive(editTarget, entry.hoverSrc, undefined, 'hover');
       if (entry.cropped) beginLiveEdits();
@@ -959,6 +1046,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       variants: Record<ImageViewport, CropState>;
       constrained: ConstrainedByViewport;
       maxVh: number | undefined;
+      mobileInset: boolean;
       cropped: boolean;
       src: string;
       srcWidth?: number;
@@ -1015,6 +1103,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         variants: readAppliedVariants(target),
         constrained: isStandaloneMedia(target) ? readConstrainedFromTarget(target) : resolveImageGridConstrained(false),
         maxVh: supportsMaxVh(target) ? readMaxVh(target) : undefined,
+        mobileInset: target.dataset.mobileInset === 'true'
+          || target.closest<HTMLElement>('.project-grid__item')?.dataset.mobileInset === 'true',
         cropped: target.classList.contains('project-cropped') || isGridTarget(target),
         src: image ? readTargetSrc(image) : '',
         ...dims,
@@ -1366,6 +1456,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         ? draft.aspect
         : formatAspectRatio(draft.aspect);
       readout.textContent = `${ratioLabel} · shows ${Math.round(draft.w * 100)}% of width · centre ${draft.cx.toFixed(3)}, ${draft.cy.toFixed(3)}`;
+      syncMobileInsetUi();
       // Frame edits reshape the clip; keep the on-page surface glued to it.
       syncPageStageBox();
     };
@@ -1417,6 +1508,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         }
       }
       if (isStandaloneMedia(target) || isCarouselItem(target)) applyFrameFlagsLive(target, { constrained: state.allConstrained, maxVh: state.maxVhValue });
+      applyMobileInsetLive(target, state.mobileInset);
       applyBackgroundLive(target, state.background);
       appliedSnapshots.set(target, structuredClone(state));
       for (const slot of listing ? ['cover', 'hover'] as const : ['cover'] as const) {
@@ -1433,6 +1525,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         savedConstrained = { ...state.allConstrained };
         draftConstrained = { ...state.allConstrained };
         savedMaxVh = draftMaxVh = state.maxVhValue;
+        savedMobileInset = draftMobileInset = state.mobileInset;
         savedBackground = draftBackground = state.background;
         syncBackgroundControl();
         savedSrc = draftSrc = listing && activeSlot === 'hover' ? state.hoverSrc : state.coverSrc;
@@ -1474,6 +1567,11 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
                 ...(state.coverSrc ? { src: state.coverSrc, srcWidth: state.coverWidth, srcHeight: state.coverHeight } : {}),
                 ...(isStandaloneMedia(target) ? { constrained: { ...state.allConstrained }, centered: imageHasWidthConstraint(state.allConstrained) } : {}),
                 ...(supportsMaxVh(target) ? { maxVh: state.maxVhValue ?? 0 } : {}),
+                ...(target.dataset.mobileInset !== undefined
+                  || target.dataset.mobileBleedEligible === 'true'
+                  || target.closest<HTMLElement>('.project-grid__item')?.dataset.mobileBleedEligible === 'true'
+                  ? { mobileInset: state.mobileInset }
+                  : {}),
               } : {
                 slot: 'hoverImage',
                 ...(state.hoverSrc ? { src: state.hoverSrc } : { clearHoverImage: true }),
@@ -1520,6 +1618,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       const stagedVariants = isListingCover(target) ? stagedCoverVariants : structuredClone(draftVariants);
       const stagedConstrained = draftConstrained;
       const stagedMaxVh = draftMaxVh;
+      const stagedMobileInset = draftMobileInset;
       const standalone = isStandaloneMedia(target);
       const carouselItem = isCarouselItem(target);
       const persistCrop = targetWasCropped || liveApply;
@@ -1530,6 +1629,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
           maxVh: savedMaxVh,
+          mobileInset: savedMobileInset,
           cropped: targetWasCropped,
           src: savedSrc,
           ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
@@ -1580,6 +1680,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         savedConstrained = { ...stagedConstrained };
         savedMaxVh = stagedMaxVh;
       }
+      applyMobileInsetLive(target, stagedMobileInset);
+      savedMobileInset = stagedMobileInset;
       savedBackground = draftBackground;
       savedSinceSelect = true;
       if (isGridTarget(target) && persistCrop) {
@@ -1616,6 +1718,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
               }
               : {}),
             ...(carouselItem ? { maxVh: stagedMaxVh ?? 0 } : {}),
+            ...(mobileBleedEligible(target) || target.dataset.mobileInset !== undefined
+              ? { mobileInset: stagedMobileInset }
+              : {}),
           },
           revert: () => applyPageCrop(target, pageBaselines.get(target) ?? beforeState),
         },
@@ -1691,6 +1796,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       draft = { ...saved };
       draftConstrained = { ...savedConstrained };
       draftMaxVh = savedMaxVh;
+      draftMobileInset = savedMobileInset;
       draftBackground = savedBackground;
       applyBackgroundLive(target, draftBackground);
       syncBackgroundControl();
@@ -1736,6 +1842,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           maxVh: savedMaxVh,
         });
       }
+      applyMobileInsetLive(target, savedMobileInset);
       syncWidthConstrainUi();
       liveApply = false;
       clearAllStacks();
@@ -1849,6 +1956,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       savedBackground = normalizeImageBackground(target.dataset.devImageBackground) ?? 'transparent';
       savedMaxVh = supportsMaxVh(target) ? readMaxVh(target) : undefined;
       draftMaxVh = savedMaxVh;
+      savedMobileInset = target.dataset.mobileInset === 'true'
+        || target.closest<HTMLElement>('.project-grid__item')?.dataset.mobileInset === 'true';
+      draftMobileInset = savedMobileInset;
       draftBackground = savedBackground;
       applyBackgroundLive(target, draftBackground);
       syncBackgroundControl();
@@ -2663,6 +2773,21 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       });
     });
 
+    mobileInsetButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        if (selectedViewport !== 'mobile' || !mobileBleedEligible(editTarget)) return;
+        const next = button.dataset.cropMobileInsetValue === 'true';
+        if (next === draftMobileInset) return;
+        pushUndo();
+        draftMobileInset = next;
+        applyMobileInsetLive(editTarget, draftMobileInset);
+        renderDraft();
+        status.textContent = next
+          ? 'Mobile image inset — unsaved changes.'
+          : 'Mobile image full bleed — unsaved changes.';
+      });
+    });
+
     aspectRatioSelect.addEventListener('change', () => {
       pushUndo();
       beginLiveEdits();
@@ -2840,6 +2965,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
         : percent === 'text'
           ? `Width matched to text on ${selectedViewport} — unsaved changes.`
           : `Width constrained to ${percent}% on ${selectedViewport} — unsaved changes.`;
+      syncMobileInsetUi();
       syncDraftDirty();
     });
 
@@ -2857,6 +2983,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = draftMaxVh
         ? `Height constrained to ${draftMaxVh}% view height — unsaved changes.`
         : 'Full height — unsaved changes.';
+      syncMobileInsetUi();
       syncDraftDirty();
     });
 
@@ -3267,6 +3394,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
           maxVh: savedMaxVh,
+          mobileInset: savedMobileInset,
           cropped: targetWasCropped,
           src: savedSrc,
           ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),
@@ -3296,6 +3424,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             document: documentKey,
             path: imagePath,
             clearVariants: true,
+            mobileInset: draftMobileInset,
             background: draftBackground,
           },
           revert: () => {
@@ -3343,6 +3472,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
           variants: structuredClone(savedVariants),
           constrained: savedConstrained,
           maxVh: savedMaxVh,
+          mobileInset: savedMobileInset,
           cropped: targetWasCropped,
           src: savedSrc,
           ...(savedSrcWidth ? { srcWidth: savedSrcWidth } : {}),

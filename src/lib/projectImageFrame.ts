@@ -208,6 +208,8 @@ export interface ImageDevEditContext {
   centered?: boolean;
   /** Cap rendered height at N% of the viewport (`maxVh`). */
   maxVh?: MaxVhPercent;
+  /** Opt a full-width mobile image back into the page gutter. */
+  mobileInset?: boolean;
   background?: string;
 }
 
@@ -264,6 +266,7 @@ export function listingCoverDevEditAttrs(
     hoverVariants?: ImageVariants;
     srcWidth?: unknown;
     srcHeight?: unknown;
+    mobileInset?: boolean;
   },
   full: boolean,
 ): Record<string, string> {
@@ -280,6 +283,7 @@ export function listingCoverDevEditAttrs(
     srcWidth: Number(item.srcWidth),
     srcHeight: Number(item.srcHeight),
     hasOwnVariants: hasCropVariants(item.variants),
+    mobileInset: item.mobileInset,
   }) ?? {};
   if (item.hoverImage) attrs['data-dev-hover-image-src'] = item.hoverImage;
   attrs['data-dev-listing-default-aspects'] = JSON.stringify(defaultAspects);
@@ -337,6 +341,7 @@ export function imageDevEditAttrs(
   } else {
     attrs['data-dev-max-vh'] = '';
   }
+  attrs['data-mobile-inset'] = context.mobileInset === true ? 'true' : 'false';
 
   return attrs;
 }

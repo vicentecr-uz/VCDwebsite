@@ -60,6 +60,7 @@ interface Item {
   variants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  mobileInset?: boolean;
   /** Per-image cap as % of safe vh (`--vh-safe`) — same control as a standalone image. */
   maxVh?: number;
   background?: string;
@@ -262,6 +263,7 @@ const blockStyle = [
               gridDefaultAspect: defaultAspectRatio,
               hasOwnVariants: crop.hasOwnVariants,
               maxVh: entry.maxVh,
+              mobileInset: item.mobileInset,
               background: entry.background,
             })
           : {};
@@ -284,6 +286,8 @@ const blockStyle = [
             aria-label={parked ? undefined : `${displayIndex + 1} of ${visibleCount}`}
             aria-hidden={parked ? 'true' : undefined}
             {...editAttrs}
+            data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
+            data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
           >
             {/*
               Surface carries the max-height width cap so the visible image and
@@ -423,6 +427,8 @@ const blockStyle = [
             !parked && displayIndex === 0 && 'is-active',
           ]}
           data-carousel-caption
+          data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
+          data-mobile-inset={entry.item.mobileInset === true ? 'true' : 'false'}
           data-carousel-index={parked ? undefined : displayIndex}
           data-carousel-item-id={entry.id}
           data-carousel-parked={parked ? 'true' : undefined}

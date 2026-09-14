@@ -26,11 +26,14 @@
     return Number.isFinite(value) ? value : fallback;
   };
 
-  const readSettings = (): CaptionShadowSettings => ({
-    x: readPx('--caption-shadow-x', FALLBACKS.x),
-    y: readPx('--caption-shadow-y', FALLBACKS.y),
-    radius: readPx('--caption-shadow-radius', FALLBACKS.radius),
-  });
+  const readSettings = (): CaptionShadowSettings => {
+    const extension = Math.max(0, readPx('--caption-shadow-extension', 24));
+    return {
+      x: readPx('--caption-shadow-x', FALLBACKS.x) + extension,
+      y: readPx('--caption-shadow-y', FALLBACKS.y) + extension,
+      radius: readPx('--caption-shadow-radius', FALLBACKS.radius),
+    };
+  };
 
   const ensureShadow = (caption: HTMLElement) => {
     if (
@@ -202,6 +205,11 @@
   }
   window.addEventListener('load', layoutAllShadows);
   window.addEventListener('resize', scheduleLayout);
+  window.addEventListener('vcd:dev-frame-changed', scheduleLayout);
+  window.addEventListener('vcd:caption-shadow-change', scheduleLayout);
+  if (import.meta.hot) {
+    import.meta.hot.on('vite:afterUpdate', scheduleLayout);
+  }
 
   const observer = new MutationObserver((records) => {
     const relevant = records.some((record) => {
@@ -225,6 +233,13 @@
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['data-caption-position', 'data-caption-style', 'data-media-ground', 'class'],
+    attributeFilter: [
+      'data-caption-position',
+      'data-caption-style',
+      'data-media-ground',
+      'data-mobile-inset',
+      'data-mobile-bleed-eligible',
+      'class',
+    ],
   });
 </script>

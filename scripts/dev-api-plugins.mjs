@@ -180,6 +180,7 @@ export function listingCardForGrid(grid, listing, previous = {}) {
   }
   const href = String(listing.href ?? previous.href ?? '').trim();
   if (href) base.href = href;
+  if ((listing.mobileInset ?? previous.mobileInset) === true) base.mobileInset = true;
   // Crop data lives on the listing card; settings saves omit it — keep prior.
   const variants = listing.variants ?? previous.variants;
   if (variants && typeof variants === 'object' && !Array.isArray(variants)) {
@@ -1113,6 +1114,7 @@ function coverForGalleryPage(data, grid) {
     dark: Boolean(listing.dark),
     full: Boolean(listing.full),
     subtitle: String(grid === 'play' ? (listing.meta || '') : (listing.year || '')),
+    mobileInset: listing.mobileInset === true,
     hoverImage: String(listing.hoverImage || ''),
     order: Number.isFinite(order) ? order : Number.POSITIVE_INFINITY,
     variants,

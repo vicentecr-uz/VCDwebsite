@@ -27,6 +27,7 @@ export type ProjectGridItem = {
   hoverVariants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  mobileInset?: boolean;
 };
 
 interface Props {
@@ -91,6 +92,35 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   .project-grid__item--full {
     grid-column: span 2;
+  }
+
+  @media (max-width: 40em) {
+    .project-grid {
+      width: calc(100% + 2 * var(--page-gutter));
+      margin-inline: calc(-1 * var(--page-gutter));
+    }
+
+    .project-grid--home .project-grid__item[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] .project-grid__cover {
+      width: calc(100% - 2 * var(--page-gutter));
+      margin-inline: auto;
+    }
+
+    .project-grid--home .project-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-grid__meta {
+      padding: var(--page-gutter);
+    }
+  }
+
+  @media (max-width: 480px) {
+    .project-grid--work .project-grid__item[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] .project-grid__cover,
+    .project-grid--play .project-grid__item[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] .project-grid__cover {
+      width: calc(100% - 2 * var(--page-gutter));
+      margin-inline: auto;
+    }
+
+    .project-grid--work .project-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-grid__meta,
+    .project-grid--play .project-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-grid__meta {
+      padding: var(--page-gutter);
+    }
   }
 
   .project-grid--home .project-grid__item--full .project-grid__cover:not(.project-cropped) {
