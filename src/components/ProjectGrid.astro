@@ -362,11 +362,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     position: relative;
   }
 
-  /*
-    Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
-    Light covers: press darkens the fill slightly (--sys-color-srf-container-high).
-    Dark covers override outline / press fill in the global block (#154).
-  */
+  /* Shared container surface for icon quick actions; the card editor is labelled. */
   .project-grid__chip {
     display: grid;
     place-items: center;
@@ -376,13 +372,13 @@ const gridCardTemplateSeed: ProjectGridItem = {
     padding: 0.45em 0.55em;
     border: 0;
     border-radius: var(--radius-control);
-    background: transparent;
-    color: var(--chip-ink);
+    background: var(--sys-color-srf);
+    color: var(--sys-color-on-srf);
     font: inherit;
     font-size: 0.75rem;
     line-height: 1;
     cursor: pointer;
-    box-shadow: none;
+    box-shadow: var(--dev-surface-shadow);
     text-decoration: none;
     /* opacity here matters even though the resting state is always opacity: 1 —
        the transition shorthand replaces the whole list, not merges it. The
@@ -394,8 +390,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
       background-color 0.15s ease,
       box-shadow 0.15s ease,
       transform 0.15s ease,
-      --chip-ink 0.15s ease,
       opacity var(--dev-suppress-duration) ease;
+  }
+
+  .project-grid__chip[data-dev-project-settings] {
+    padding: 0.45em 0.65em;
   }
 
   .project-grid__chip-icon {
@@ -409,26 +408,19 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__chip:focus-visible,
   .project-grid__chip[aria-pressed='true'],
   .project-grid__chip[aria-expanded='true'] {
-    background: var(--chip-fill);
-    box-shadow: inset 0 0 0 1px var(--chip-ring);
-    backdrop-filter: blur(8px);
+    background: var(--sys-color-srf-container-low);
+    box-shadow: var(--dev-surface-shadow);
     transform: scale(1.08);
-    color: var(--chip-ink);
+    color: var(--sys-color-on-srf);
   }
 
-  /*
-    Pressed and latched promote to --chip-press (darker than the ring on dark;
-    on light the press fill darkens while the ring stays). These selectors must
-    stay *after* the hover group — a latched chip is also hovered, and the last
-    equal-specificity rule wins.
-  */
+  /* Keep pressed and latched fill after hover so the active state wins. */
   .project-grid__chip:active,
   .project-grid__chip[aria-pressed='true'],
   .project-grid__chip[aria-expanded='true'] {
-    background: var(--chip-press);
-    box-shadow: inset 0 0 0 1px var(--chip-ring);
-    backdrop-filter: blur(8px);
-    color: var(--chip-ink);
+    background: var(--sys-color-srf-container-high);
+    box-shadow: var(--dev-surface-shadow);
+    color: var(--sys-color-on-srf);
   }
 
   .project-grid__status-menu {
@@ -663,28 +655,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     pointer-events: auto;
   }
 
-  /*
-    Chip contrast — two palettes, chosen by what is *currently under the chip*.
-
-    Both grounds carry a 1px inset ring a step *away* from their own fill —
-    lighter on dark, darker on light — so the chip reads as a shape rather
-    than a floating glyph either way.
-
-    Naming: variants are named for the GROUND they sit on, not the ink —
-    `on-dark` is the white-icon set, because it sits on a dark ground. Same
-    convention as Material's `onSurface`. `dark` / `hoverDark` in the content
-    JSON also describe the ground, not the text.
-
-    Light — ring a step *darker* than its fill: fill #e7e7e9, ring #d4d4d7 (the
-    click fill nudged 7% toward --sys-color-on-srf; used raw it is 1.05:1 and
-    vanishes). Dark — ring a step *lighter* than its fill: hover fill is the
-    translucent black overlay (reads as ring-only on dark covers); ring
-    #4c4c4c (22% toward --sys-color-srf). Press fill is a step darker (#353535,
-    12% toward --sys-color-srf) with the same lighter ring.
-
-    Both steps are deliberately slight; the ring defines the shape rather than
-    outlining it.
-  */
+  /* Typography contrast adapts title and subtitle ink to each cover ground. */
   @property --title-ink {
     syntax: '<color>';
     inherits: true;
@@ -705,29 +676,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     inherits: true;
     initial-value: #aeaeaf;
   }
-  @property --chip-ink {
-    syntax: '<color>';
-    inherits: true;
-    initial-value: #6d6d6d;
-  }
-
-  .project-grid {
-    --chip-ink-on-light: var(--sys-color-on-light-media);
-    --chip-fill-on-light: color-mix(in srgb, var(--ref-palette-grey-900) 92%, transparent);
-    --chip-ring-on-light: color-mix(in srgb, var(--sys-color-on-light-media) 7%, var(--ref-palette-grey-800));
-    --chip-press-on-light: color-mix(in srgb, var(--ref-palette-grey-800) 92%, transparent);
-
-    --chip-ink-on-dark: var(--sys-color-on-dark-media);
-    --chip-fill-on-dark: rgb(0 0 0 / 0.58);
-    --chip-ring-on-dark: color-mix(in srgb, var(--sys-color-on-dark-media) 22%, #1a1a1a);
-    --chip-press-on-dark: color-mix(in srgb, var(--sys-color-on-dark-media) 12%, #1a1a1a);
-  }
-
   .project-grid__item {
-    --chip-ink: var(--chip-ink-on-light);
-    --chip-fill: var(--chip-fill-on-light);
-    --chip-ring: var(--chip-ring-on-light);
-    --chip-press: var(--chip-press-on-light);
     --title-ink: var(--sys-color-on-light-media);
     --subtitle-ink: var(--sys-color-on-light-media-subtle);
     --title-ink-hover: var(--title-ink);
@@ -738,23 +687,15 @@ const gridCardTemplateSeed: ProjectGridItem = {
 
   /* Authored fallback before adaptiveMediaInk runs — overridden by data-media-ground. */
   .project-grid__item[data-dev-dark='true'] {
-    --chip-ink: var(--chip-ink-on-dark);
-    --chip-fill: var(--chip-fill-on-dark);
-    --chip-ring: var(--chip-ring-on-dark);
-    --chip-press: var(--chip-press-on-dark);
     --title-ink: var(--sys-color-on-dark-media);
     --subtitle-ink: var(--sys-color-on-dark-media-subtle);
   }
 
   /*
     Measured ground (bindGalleryMediaInk) — item carries meta fallback for
-    first paint; meta and each chip override with their own sample.
+    first paint; meta overrides with its own sample.
   */
   .project-grid__item[data-media-ground='light'] {
-    --chip-ink: var(--chip-ink-on-light);
-    --chip-fill: var(--chip-fill-on-light);
-    --chip-ring: var(--chip-ring-on-light);
-    --chip-press: var(--chip-press-on-light);
     --title-ink: var(--sys-color-on-light-media);
     --subtitle-ink: var(--sys-color-on-light-media-subtle);
     --title-ink-hover: var(--title-ink);
@@ -762,10 +703,6 @@ const gridCardTemplateSeed: ProjectGridItem = {
   }
 
   .project-grid__item[data-media-ground='dark'] {
-    --chip-ink: var(--chip-ink-on-dark);
-    --chip-fill: var(--chip-fill-on-dark);
-    --chip-ring: var(--chip-ring-on-dark);
-    --chip-press: var(--chip-press-on-dark);
     --title-ink: var(--sys-color-on-dark-media);
     --subtitle-ink: var(--sys-color-on-dark-media-subtle);
     --title-ink-hover: var(--title-ink);
@@ -786,40 +723,11 @@ const gridCardTemplateSeed: ProjectGridItem = {
     --subtitle-ink-hover: var(--subtitle-ink);
   }
 
-  .project-grid__chip[data-media-ground='light'] {
-    --chip-ink: var(--chip-ink-on-light);
-    --chip-fill: var(--chip-fill-on-light);
-    --chip-ring: var(--chip-ring-on-light);
-    --chip-press: var(--chip-press-on-light);
-  }
-
-  .project-grid__chip[data-media-ground='dark'] {
-    --chip-ink: var(--chip-ink-on-dark);
-    --chip-fill: var(--chip-fill-on-dark);
-    --chip-ring: var(--chip-ring-on-dark);
-    --chip-press: var(--chip-press-on-dark);
-  }
-
   /*
     Forced hover with no hover image: base fades out and the page background
-    is the ground — chips and meta need on-light / on-page palette even when
-    they carry their own data-media-ground from the faded base cover.
+    is the ground — meta needs the on-page palette even when it carries its
+    own data-media-ground from the faded base cover.
   */
-  .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover)) {
-    --chip-ink: var(--chip-ink-on-light);
-    --chip-fill: var(--chip-fill-on-light);
-    --chip-ring: var(--chip-ring-on-light);
-    --chip-press: var(--chip-press-on-light);
-  }
-
-  .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover))
-    .project-grid__chip {
-    --chip-ink: var(--chip-ink-on-light);
-    --chip-fill: var(--chip-fill-on-light);
-    --chip-ring: var(--chip-ring-on-light);
-    --chip-press: var(--chip-press-on-light);
-  }
-
   .project-grid__item:has(.project-grid__cover.is-dev-hover-forced:not(.project-grid__cover--has-hover))
     .project-grid__meta {
     --title-ink: var(--title-ink-on-page);
