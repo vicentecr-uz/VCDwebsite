@@ -36,6 +36,7 @@ import {
   type CarouselSettingsSource,
 } from '../lib/projectImageCarouselSettings';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../lib/projectStack';
+import { imageBackgroundStyle, normalizeImageBackground } from '../lib/imageBackground.mjs';
 
 export type MountedSection = Record<string, unknown>;
 
@@ -83,6 +84,7 @@ const buildInlineImageFigure = (
   const centered = section.centered === true || hasWidthConstraint;
   const maxVh = resolveMaxVh(section);
   const mobileInset = section.mobileInset === true;
+  const background = normalizeImageBackground(section.background) ?? 'transparent';
   const editAttrs = imageDevEditAttrs(true, {
     documentKey,
     path: sectionPath,
@@ -95,6 +97,7 @@ const buildInlineImageFigure = (
     centered,
     maxVh,
     mobileInset,
+    background,
   });
 
   const figure = document.createElement('figure');
@@ -110,6 +113,7 @@ const buildInlineImageFigure = (
     normalized ? responsiveImageStyle(normalized, srcDims) : undefined,
     maxVhStyle(maxVh),
     imageGridConstrainedStyle(resolvedConstrained),
+    imageBackgroundStyle(background),
   ) ?? '';
   applyDataAttrs(figure, editAttrs);
   figure.dataset.mobileInset = mobileInset ? 'true' : 'false';
@@ -194,6 +198,7 @@ export function mountImageGridSection(
     id: itemIds[itemIndex],
     src: projectImage(String(item.src ?? '')),
     alt: String(item.alt ?? ''),
+    background: normalizeImageBackground(item.background) ?? 'transparent',
   }));
 
   const grid = document.createElement('div');
@@ -258,6 +263,7 @@ export function mountImageGridSection(
       gridDefaultAspect: defaultAspectRatio,
       hasOwnVariants,
       mobileInset: item.mobileInset === true,
+      background: normalizeImageBackground(item.background) ?? 'transparent',
     });
 
     const figure = document.createElement('figure');
@@ -267,7 +273,7 @@ export function mountImageGridSection(
       'dev-image-edit-target',
       placeholder && 'project-media--placeholder',
     ].filter(Boolean).join(' ');
-    figure.style.cssText = `${variantStyle};${layoutStyle}`;
+    figure.style.cssText = joinMediaStyles(variantStyle, layoutStyle, imageBackgroundStyle(item.background)) ?? '';
     figure.setAttribute('data-grid-item-id', itemId);
     figure.setAttribute('data-grid-hidden-desktop', resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false');
     figure.setAttribute('data-grid-hidden-tablet', resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false');
@@ -444,6 +450,7 @@ function mountImageCarouselSection(
       hasOwnVariants,
       maxVh,
       mobileInset,
+      background: normalizeImageBackground(item.background) ?? 'transparent',
     });
 
     const figure = document.createElement('figure');
@@ -454,7 +461,7 @@ function mountImageCarouselSection(
       placeholder && 'project-media--placeholder',
       'dev-image-edit-target',
     ].filter(Boolean).join(' ');
-    figure.style.cssText = `${variantStyle}${maxVh ? `;--project-max-vh:${maxVh}` : ''}`;
+    figure.style.cssText = joinMediaStyles(variantStyle, maxVhStyle(maxVh), imageBackgroundStyle(item.background)) ?? '';
     figure.setAttribute('data-carousel-slide', '');
     if (!parked) figure.setAttribute('data-carousel-index', String(displayIndex));
     if (parked) figure.setAttribute('data-carousel-parked', 'true');

@@ -25,6 +25,7 @@ import {
   type ImageCaptions,
 } from './imageCaptions';
 import { PLACEHOLDER_IMAGE_VARIANTS } from './projectImageDefaults';
+import { normalizeImageBackground } from './imageBackground.mjs';
 
 export function isPlaceholderSrc(src: string): boolean {
   return src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
@@ -209,6 +210,7 @@ export interface ImageDevEditContext {
   maxVh?: MaxVhPercent;
   /** Opt a full-width mobile image back into the page gutter. */
   mobileInset?: boolean;
+  background?: string;
 }
 
 /** Per-viewport default frame aspects for gallery listing covers (seed only). */
@@ -313,6 +315,7 @@ export function imageDevEditAttrs(
     'data-dev-caption-style': captionStyle,
     'data-dev-caption-position': captionPosition,
     'data-dev-caption-reveals': JSON.stringify(captionReveals),
+    'data-dev-image-background': normalizeImageBackground(context.background) ?? 'transparent',
   };
   if (context.src) attrs['data-dev-image-src'] = context.src;
   if (context.srcWidth) attrs['data-dev-image-src-width'] = String(context.srcWidth);

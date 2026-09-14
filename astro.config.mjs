@@ -43,6 +43,7 @@ import { branchUpdateDevWriter } from './scripts/dev-branch-update.mjs';
 import {
   assetsDevWriter,
   normalizeAssetSrc,
+  readImageDimsFromSrc,
   removeMediaItemFromDocument,
 } from './scripts/dev-assets.mjs';
 import { contentHmrGate, suppressContentHmr } from './scripts/content-hmr-gate.mjs';
@@ -61,6 +62,7 @@ import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './sr
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
+import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
 
 const isSafePathPart = (part) => (
   (typeof part === 'string' || typeof part === 'number') &&
@@ -211,7 +213,7 @@ function imageCropDevWriter() {
           }
 
           const data = await readDevDocument(targetInfo.relativeFile);
-          const result = applyCropChange(data, body);
+          const result = await applyCropChangeFromSource(data, body);
           if (!result.ok) {
             send(400, { error: result.error });
             return;
@@ -673,6 +675,15 @@ const applyImageWidthFlags = (target, change) => {
   return touched;
 };
 
+export async function applyCropChangeFromSource(data, change) {
+  const validation = applyCropChange(structuredClone(data), change);
+  if (!validation.ok) return validation;
+  if (typeof change.src !== 'string') return applyCropChange(data, change);
+  const dims = await readImageDimsFromSrc(change.src);
+  if (!dims) return { ok: false, error: 'Could not read that image file. Choose the image again before saving.' };
+  return applyCropChange(data, { ...change, ...dims });
+}
+
 /**
  * Apply one image-crop mutation onto an in-memory document node.
  * @returns {{ ok: true } | { ok: false, error: string }}
@@ -696,6 +707,9 @@ export const applyCropChange = (data, change) => {
 
   const requestedSrc = typeof change.src === 'string' ? normalizeAssetSrc(change.src) : '';
   if (isDerivativeToken(requestedSrc)) return { ok: false, error: 'Reload this editor before saving the image: its original file reference is missing.' };
+  const hasBackground = Object.prototype.hasOwnProperty.call(change, 'background');
+  const background = hasBackground ? normalizeImageBackground(change.background) : undefined;
+  if (hasBackground && background === null) return { ok: false, error: 'Use a supported hex background colour or transparent.' };
 
   if (change.clearVariants === true) {
     delete target.variants;
@@ -823,12 +837,16 @@ export const applyCropChange = (data, change) => {
       }
     }
     delete target.crop;
-  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc
+  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground
     && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
 
   applyImageWidthFlags(target, change);
+  if (hasBackground) {
+    if (background === 'transparent') delete target.background;
+    else target.background = background;
+  }
   return { ok: true };
 };
 
@@ -1416,7 +1434,7 @@ function contentBatchDevWriter() {
             const data = await readDevDocument(relativeFile);
 
             for (const change of group.crops) {
-              const result = applyCropChange(data, change);
+              const result = await applyCropChangeFromSource(data, change);
               if (!result.ok) {
                 send(400, { error: result.error });
                 return;
