@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { webcrypto } from 'node:crypto';
 
 const source = readFileSync(new URL('../../src/components/DevModeController.astro', import.meta.url), 'utf8');
 const leaseSource = source.slice(source.indexOf('const leaseKey ='), source.indexOf('const sendAuthoring ='));
@@ -7,7 +8,7 @@ const createLease = new Function('window', 'crypto', `${new Bun.Transpiler({ loa
 
 test('Edit mode creates and reuses its authoring lease on HTTP LAN origins', () => {
   const window = {};
-  const lanCrypto = { getRandomValues: crypto.getRandomValues.bind(crypto) };
+  const lanCrypto = { getRandomValues: webcrypto.getRandomValues.bind(webcrypto) };
   const lease = createLease(window, lanCrypto);
   expect(lease.id).toMatch(/^dev-[0-9a-f]{32}$/);
   expect(lease.active).toBe(false);
