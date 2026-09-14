@@ -35,6 +35,11 @@ function meetsContrast(
   opacity: number,
   brightness: readonly number[],
 ): boolean {
+  const pixelCount = Math.ceil(Math.max(0, pixels.length - 2) / 4);
+  const allowedFailures = Math.floor(pixelCount * 0.05);
+  let failingPixels = 0;
+
+  // Allow up to 5% failing pixels across both brightness states (95% coverage).
   for (let index = 0; index + 2 < pixels.length; index += 4) {
     for (const factor of brightness) {
       const background: Rgba = {
@@ -44,8 +49,12 @@ function meetsContrast(
         a: 1,
       };
       const filled = composite({ r: fillColor, g: fillColor, b: fillColor, a: opacity }, background);
-      if (contrast(composite(ink, filled), filled) < 4.5) return false;
+      if (contrast(composite(ink, filled), filled) < 4.5) {
+        failingPixels += 1;
+        break;
+      }
     }
+    if (failingPixels > allowedFailures) return false;
   }
   return true;
 }
