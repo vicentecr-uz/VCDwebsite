@@ -65,6 +65,24 @@ for (const existing of [false, true]) {
     volumeInput.dispatchEvent(new window.Event('input', { bubbles: true, composed: true }));
     expect(video.volume).toBe(0.4);
     expect(video.muted).toBe(false);
+    for (const range of root.querySelectorAll('media-time-range, media-volume-range')) {
+      const input = range.shadowRoot!.querySelector('input')!;
+      const matches = input.matches.bind(input);
+      let keyboardFocus = false;
+      input.matches = (selector: string) => selector === ':focus-visible' ? keyboardFocus : matches(selector);
+      input.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true, composed: true }));
+      expect(range.hasAttribute('data-video-keyboard-focus')).toBe(false);
+      keyboardFocus = true;
+      input.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true, composed: true }));
+      expect(range.hasAttribute('data-video-keyboard-focus')).toBe(true);
+      input.dispatchEvent(new window.PointerEvent('pointerdown', { button: 1, bubbles: true, composed: true }));
+      expect(range.hasAttribute('data-video-keyboard-focus')).toBe(false);
+      input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, composed: true }));
+      expect(range.hasAttribute('data-video-keyboard-focus')).toBe(true);
+      input.dispatchEvent(new window.FocusEvent('focusout', { bubbles: true, composed: true }));
+      expect(range.hasAttribute('data-video-keyboard-focus')).toBe(false);
+      input.matches = matches;
+    }
     const progress = root.querySelector('media-time-range')!;
     let bufferedRanges = [[0, 5]];
     Object.defineProperty(video, 'duration', { get: () => 100 });
