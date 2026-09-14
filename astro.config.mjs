@@ -635,24 +635,10 @@ const applyImageWidthFlags = (target, change) => {
     else delete target.constrained;
     touched = true;
   } else if (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained)) {
-    const requestedConstrained = change.constrained;
-    /** @type {Record<string, number>} */
-    const constrained = {};
-    for (const viewport of IMAGE_VIEWPORTS) {
-      const value = normalizeConstrainValue(requestedConstrained[viewport]);
-      constrained[viewport] = value === null ? 100 : value;
-    }
-    const uniform = (match) => [...IMAGE_VIEWPORTS].every((v) => constrained[v] === match);
-    if (uniform(100)) {
-      delete target.constrained;
-    } else if (uniform(80)) {
-      // Legacy scalar shorthand: `true` still reads back as 80.
-      target.constrained = true;
-    } else if (uniform('text')) {
-      target.constrained = 'text';
-    } else {
-      target.constrained = constrained;
-    }
+    const constrained = Object.fromEntries(Object.entries(change.constrained)
+      .map(([viewport, value]) => [viewport, normalizeConstrainValue(value)]));
+    if (Object.keys(constrained).length) target.constrained = constrained;
+    else delete target.constrained;
     touched = true;
   }
   if (typeof change.centered === 'boolean') {
@@ -711,6 +697,60 @@ export const applyCropChange = (data, change) => {
   const background = hasBackground ? normalizeImageBackground(change.background) : undefined;
   if (hasBackground && background === null) return { ok: false, error: 'Use a supported hex background colour or transparent.' };
 
+  const parseVariantBlob = (blob) => {
+    /** @type {Record<string, Partial<{ aspect: string, cx: number, cy: number, w: number }>>} */
+    const variants = {};
+    if (Array.isArray(blob) || blob === null || typeof blob !== 'object') {
+      return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+    }
+    for (const [viewport, requested] of Object.entries(blob)) {
+      if (!IMAGE_VIEWPORTS.has(viewport) || requested === null || typeof requested !== 'object' || Array.isArray(requested)) {
+        return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+      }
+      const next = {};
+      for (const key of Object.keys(requested)) {
+        if (!['aspect', 'cx', 'cy', 'w'].includes(key)) {
+          return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(requested, 'aspect')) {
+        if (typeof requested.aspect !== 'string' || !isAllowedAspectRatio(requested.aspect)) {
+          return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+        }
+        next.aspect = requested.aspect;
+      }
+      for (const key of ['cx', 'cy', 'w']) {
+        if (!Object.prototype.hasOwnProperty.call(requested, key)) continue;
+        const value = requested[key];
+        if (typeof value !== 'number' || !Number.isFinite(value) || (key === 'w' && value <= 0)) {
+          return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
+        }
+        next[key] = clampRound(value, key === 'w' ? 0.0001 : -100, 100, 6);
+      }
+      variants[viewport] = next;
+    }
+    if (!Object.keys(variants).length) {
+      return { ok: false, error: 'No crop data was provided.' };
+    }
+    return { ok: true, variants };
+  };
+
+  const hasVariants = Object.prototype.hasOwnProperty.call(change, 'variants');
+  const hasHoverVariants = Object.prototype.hasOwnProperty.call(change, 'hoverVariants');
+  const parsedVariants = hasVariants ? parseVariantBlob(change.variants) : null;
+  const parsedHoverVariants = hasHoverVariants ? parseVariantBlob(change.hoverVariants) : null;
+  if (parsedVariants && !parsedVariants.ok) return parsedVariants;
+  if (parsedHoverVariants && !parsedHoverVariants.ok) return parsedHoverVariants;
+  if (Object.prototype.hasOwnProperty.call(change, 'constrained') && typeof change.constrained !== 'boolean') {
+    const widths = change.constrained;
+    if (!widths || typeof widths !== 'object' || Array.isArray(widths)
+      || Object.entries(widths).some(([viewport, value]) => !IMAGE_VIEWPORTS.has(viewport)
+        || !(value === 'text' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value)))
+        || normalizeConstrainValue(value) === null)) {
+      return { ok: false, error: 'Use supported viewports and image widths.' };
+    }
+  }
+
   if (change.clearVariants === true) {
     delete target.variants;
     delete target.crop;
@@ -759,57 +799,6 @@ export const applyCropChange = (data, change) => {
     }
   }
 
-  const parseVariantBlob = (blob) => {
-    /** @type {Record<string, Partial<{ aspect: string, cx: number, cy: number, w: number }>>} */
-    const variants = {};
-    if (Array.isArray(blob) || blob === null || typeof blob !== 'object') {
-      return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
-    }
-    for (const [viewport, requested] of Object.entries(blob)) {
-      if (!IMAGE_VIEWPORTS.has(viewport) || requested === null || typeof requested !== 'object' || Array.isArray(requested)) {
-        return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
-      }
-      const next = {};
-      for (const key of Object.keys(requested)) {
-        if (!['aspect', 'cx', 'cy', 'w'].includes(key)) {
-          return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
-        }
-      }
-      if (Object.prototype.hasOwnProperty.call(requested, 'aspect')) {
-        if (typeof requested.aspect !== 'string' || !isAllowedAspectRatio(requested.aspect)) {
-          return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
-        }
-        next.aspect = requested.aspect;
-      }
-      for (const key of ['cx', 'cy', 'w']) {
-        if (!Object.prototype.hasOwnProperty.call(requested, key)) continue;
-        const value = requested[key];
-        if (typeof value !== 'number' || !Number.isFinite(value) || (key === 'w' && value <= 0)) {
-          return { ok: false, error: 'Use supported viewports, aspect ratios and crop values.' };
-        }
-        next[key] = clampRound(value, key === 'w' ? 0.0001 : -100, key === 'w' ? 100 : 100, 6);
-      }
-      if (!Object.keys(next).length) {
-        variants[viewport] = {};
-        continue;
-      }
-      variants[viewport] = next;
-    }
-    if (!Object.keys(variants).length) {
-      return { ok: false, error: 'No crop data was provided.' };
-    }
-    return { ok: true, variants };
-  };
-
-  const requestedHoverVariants = change.hoverVariants && typeof change.hoverVariants === 'object'
-    ? change.hoverVariants
-    : null;
-  const requestedVariants = Object.prototype.hasOwnProperty.call(change, 'variants')
-    && change.variants !== null
-    && typeof change.variants === 'object'
-    && !Array.isArray(change.variants)
-    ? change.variants
-    : null;
   const hasWidthFlags = typeof change.constrained === 'boolean'
     || (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained))
     || typeof change.centered === 'boolean'
@@ -817,44 +806,41 @@ export const applyCropChange = (data, change) => {
     || typeof change.max80 === 'boolean'
     || typeof change.mobileInset === 'boolean';
 
-  if (requestedHoverVariants) {
-    const parsed = parseVariantBlob(requestedHoverVariants);
-    if (!parsed.ok) return parsed;
-    target.hoverVariants ||= {};
-    for (const [viewport, next] of Object.entries(parsed.variants)) {
-      const prev = target.hoverVariants[viewport] ?? {};
-      target.hoverVariants[viewport] = { ...prev, ...next };
+  const applyVariants = (key, variants) => {
+    target[key] ||= {};
+    for (const [viewport, next] of Object.entries(variants)) {
+      if (Object.keys(next).length) target[key][viewport] = next;
+      else delete target[key][viewport];
     }
-    // Linked aspect: hover aspect change updates cover frame too.
-    target.variants ||= {};
-    for (const [viewport, next] of Object.entries(parsed.variants)) {
-        if (next.aspect !== undefined) {
-          target.variants[viewport] ||= {};
-          target.variants[viewport].aspect = next.aspect;
-        }
-    }
+    if (!Object.keys(target[key]).length) delete target[key];
     delete target.crop;
-  }
-
-  if (requestedVariants) {
-    const parsed = parseVariantBlob(requestedVariants);
-    if (!parsed.ok) return parsed;
-
-    target.variants ||= {};
-    for (const [viewport, next] of Object.entries(parsed.variants)) {
-      if (!Object.keys(next).length) delete target.variants[viewport];
-      else target.variants[viewport] = { ...(target.variants[viewport] ?? {}), ...next };
+  };
+  const syncAspect = (key, viewport, aspect) => {
+    if (aspect !== undefined) {
+      target[key] ||= {};
+      target[key][viewport] ||= {};
+      target[key][viewport].aspect = aspect;
+    } else if (target[key]?.[viewport]) {
+      delete target[key][viewport].aspect;
+      if (!Object.keys(target[key][viewport]).length) delete target[key][viewport];
+      if (!Object.keys(target[key]).length) delete target[key];
     }
-    // Linked aspect: cover aspect change updates hover when hoverVariants exist.
-    if (target.hoverVariants && typeof target.hoverVariants === 'object') {
-      for (const [viewport, next] of Object.entries(parsed.variants)) {
-        if (target.hoverVariants[viewport]) {
-          if (next.aspect !== undefined) target.hoverVariants[viewport].aspect = next.aspect;
-        }
+  };
+
+  if (parsedHoverVariants) {
+    applyVariants('hoverVariants', parsedHoverVariants.variants);
+    for (const [viewport, next] of Object.entries(parsedHoverVariants.variants)) {
+      if (!Object.prototype.hasOwnProperty.call(parsedVariants?.variants ?? {}, viewport)) {
+        syncAspect('variants', viewport, next.aspect);
       }
     }
-    delete target.crop;
-  } else if (!requestedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground
+  }
+  if (parsedVariants) {
+    applyVariants('variants', parsedVariants.variants);
+    for (const [viewport, next] of Object.entries(parsedVariants.variants)) {
+      if (target.hoverVariants?.[viewport]) syncAspect('hoverVariants', viewport, next.aspect);
+    }
+  } else if (!parsedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground
     && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
