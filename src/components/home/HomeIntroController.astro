@@ -39,6 +39,19 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
   <span class="home-intro-surface__cursor" data-home-intro-cursor aria-hidden="true">Okay</span>
 </section>
 
+<script is:inline>
+  try {
+    if (sessionStorage.getItem('vcd:home-intro-seen') === 'true') {
+      const surface = document.getElementById('home-intro-surface');
+      if (surface) {
+        surface.dataset.state = 'dismissed';
+        surface.hidden = true;
+        surface.inert = true;
+      }
+    }
+  } catch {}
+</script>
+
 <script>
   import { bindHomeIntro } from '../../scripts/homeIntro';
   bindHomeIntro();
