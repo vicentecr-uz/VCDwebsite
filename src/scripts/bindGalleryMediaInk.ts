@@ -8,7 +8,9 @@ import {
   applyMediaGround,
   cropHostFor,
   groundForBox,
-  lumaForBox,
+  sampleForBox,
+  applyChipContrast,
+  opaqueBackground,
   lumaGridFor,
   readCropVars,
   type MediaGround,
@@ -149,7 +151,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       );
       const chipCrop = cropFor(hover);
       const metaCrop = cropFor(metaUsesHoverBitmap);
-      const background = item.dataset.devBg || getComputedStyle(cover).backgroundColor;
+      const background = item.dataset.devBg || opaqueBackground(cover) || '#fff';
 
       let metaGround = metaFallback;
       if (!metaPlaceholder && metaDecoded) {
@@ -177,9 +179,11 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           const frame = { width: coverRect.width, height: coverRect.height };
           const source = { width: naturalWidth, height: naturalHeight };
           for (const chip of chips) {
-            const chipLuma = lumaForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
+            const sample = sampleForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
+            const chipLuma = sample?.luma ?? null;
             applyMediaGround(chip, chipLuma === null ? metaGround : isRegionDark(chipLuma) ? 'dark' : 'light');
             applyChipBrightness(chip, chipLuma ?? (metaGround === 'light' ? 0.78 : null));
+            applyChipContrast(chip, sample);
           }
         }
       }

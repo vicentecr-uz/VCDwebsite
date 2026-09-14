@@ -3,11 +3,13 @@ import {
   applyMediaGround,
   applyChipBrightness,
   cropHostFor,
-  lumaForBox,
+  sampleForBox,
+  applyChipContrast,
+  opaqueBackground,
   lumaGridFor,
   readCropVars,
 } from './adaptiveMediaInk';
-import { isRegionDark, measureRegionLuma } from './coverLuminance';
+import { isRegionDark, measureRegionLuma, type RenderedRegionSample } from './coverLuminance';
 
 const CHIP_SELECTOR = '.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
 const TARGET_SELECTOR = '.dev-image-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
@@ -39,26 +41,7 @@ export function frameForChip(chip: HTMLElement, scope: HTMLElement): HTMLElement
   return best;
 }
 
-function opaqueBackground(el: HTMLElement): string | undefined {
-  let current: HTMLElement | null = el;
-  while (current) {
-    const background = getComputedStyle(current).backgroundColor;
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    const context = canvas.getContext('2d');
-    if (context) {
-      context.fillStyle = background;
-      context.fillRect(0, 0, 1, 1);
-      const alpha = context.getImageData(0, 0, 1, 1).data[3];
-      if (alpha === 255) return background;
-    }
-    current = current.parentElement;
-  }
-  return undefined;
-}
-
-function backgroundLuma(el: HTMLElement): number | null {
+function backgroundSample(el: HTMLElement): RenderedRegionSample | null {
   const background = opaqueBackground(el.parentElement ?? el);
   if (!background) return null;
   const canvas = document.createElement('canvas');
@@ -68,12 +51,17 @@ function backgroundLuma(el: HTMLElement): number | null {
   if (!context) return null;
   context.fillStyle = background;
   context.fillRect(0, 0, 1, 1);
-  return measureRegionLuma(canvas, { x: 0, y: 0, w: 1, h: 1 });
+  return {
+    luma: measureRegionLuma(canvas, { x: 0, y: 0, w: 1, h: 1 }),
+    pixels: context.getImageData(0, 0, 1, 1).data,
+  };
 }
 
-function applySample(chip: HTMLElement, luma: number | null): void {
+function applySample(chip: HTMLElement, sample: RenderedRegionSample | null): void {
+  const luma = sample?.luma ?? null;
   applyMediaGround(chip, luma === null || !isRegionDark(luma) ? 'light' : 'dark');
   applyChipBrightness(chip, luma);
+  applyChipContrast(chip, sample);
 }
 
 function scopeForChip(chip: HTMLElement): HTMLElement | null {
@@ -95,6 +83,7 @@ function clearChip(chip: HTMLElement): void {
   chip.style.removeProperty('--chip-rest-brightness');
   chip.style.removeProperty('--chip-hover-brightness');
   chip.style.removeProperty('--chip-hover-ring');
+  chip.style.removeProperty('--chip-contrast-fill');
 }
 
 function visible(chip: HTMLElement): boolean {
@@ -123,33 +112,35 @@ export function bindEditorChipMediaInk(): () => void {
       const image = frame ? imageIn(frame) : null;
       const source = image?.currentSrc || image?.src;
       if (!frame || !image || !source || image.hidden || !image.complete || !image.naturalWidth) {
-        applySample(chip, backgroundLuma(chip));
+        applySample(chip, backgroundSample(chip));
         return;
       }
       const decoded = await lumaGridFor(source);
       if (stopped || gen !== generation) return;
       if (!decoded) {
-        applySample(chip, backgroundLuma(chip));
+        applySample(chip, backgroundSample(chip));
         return;
       }
       const frameRect = frame.getBoundingClientRect();
       const sourceWidth = Number((decoded as HTMLImageElement).naturalWidth) || 0;
       const sourceHeight = Number((decoded as HTMLImageElement).naturalHeight) || 0;
-      let luma: number | null;
+      let sample: ReturnType<typeof sampleForBox> = null;
       try {
-        luma = lumaForBox(
+        sample = sampleForBox(
           chip,
           frame,
           decoded,
           { width: frameRect.width, height: frameRect.height },
           { width: sourceWidth, height: sourceHeight },
           readCropVars(cropHostFor(frame) ?? frame, false),
-          opaqueBackground(frame),
-        ) ?? backgroundLuma(chip);
+          opaqueBackground(frame) ?? '#fff',
+        ) ?? backgroundSample(chip);
       } catch {
-        luma = backgroundLuma(chip);
+        sample = backgroundSample(chip);
       }
-      if (gen === generation && !stopped) applySample(chip, luma);
+      if (gen === generation && !stopped) {
+        applySample(chip, sample);
+      }
     }));
   };
 

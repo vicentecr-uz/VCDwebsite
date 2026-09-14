@@ -9,7 +9,7 @@ const lightInk: Rgba = { r: 245, g: 245, b: 245, a: 1 };
 function independentContrast(pixel: [number, number, number], ink: Rgba, fill: 0 | 255, opacity: number, factor: number): number {
   const background = pixel.map((channel) => Math.min(255, channel * factor));
   const surface = background.map((channel) => fill * opacity + channel * (1 - opacity));
-  const text = surface.map((channel) => ink.r * ink.a + channel * (1 - ink.a));
+  const text = surface.map((channel, index) => [ink.r, ink.g, ink.b][index] * ink.a + channel * (1 - ink.a));
   const luminance = (value: number) => {
     const encoded = value / 255;
     return encoded <= 0.04045 ? encoded / 12.92 : ((encoded + 0.055) / 1.055) ** 2.4;
@@ -37,10 +37,17 @@ test('protects mixed backgrounds with the least neutral fill opacity', () => {
   assert.ok(independentContrast([0, 0, 0], darkInk, result.color, Math.max(0, result.opacity - 0.003), 1) < 4.5);
 });
 
-test('checks rest and hover brightness states and supports alpha ink', () => {
-  const result = chipContrastFill(new Uint8ClampedArray([109, 109, 109, 255]), { ...darkInk, a: 0.8 }, [1.06, 1.12]);
-  assert.equal(result.color, 255);
+test('checks both brightness states for coloured backgrounds and alpha ink', () => {
+  const ink = { ...lightInk, b: 247, a: 0.8 };
+  const pixels: [number, number, number][] = [[170, 100, 40], [109, 109, 109]];
+  const result = chipContrastFill(new Uint8ClampedArray(pixels.flatMap(pixel => [...pixel, 255])), ink, [1.06, 1.12]);
+  assert.equal(result.color, 0);
   assert.ok(Number.isFinite(result.opacity) && result.opacity >= 0 && result.opacity <= 1);
+  for (const pixel of pixels) {
+    for (const factor of [1.06, 1.12]) {
+      assert.ok(independentContrast(pixel, ink, result.color, result.opacity, factor) >= 4.5);
+    }
+  }
 });
 
 test('returns a bounded ceiling when full fill cannot meet contrast', () => {
