@@ -150,9 +150,11 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   const onDismissed = () => { dismissPending = true; void (preparation ?? Promise.resolve()).then(() => { if (dismissPending) runNow(); }); };
   const onModeChange = (event: Event) => { if ((event as CustomEvent<{ active?: boolean }>).detail?.active) cancel(); };
   const rebuildBeforeDismissal = () => {
+    if (!armed) return;
     if (running || dismissPending) { cancel(); return; }
     cancel();
-    void Promise.resolve().then(() => { if (!disposed) prepare(); });
+    const rebuildGeneration = generation;
+    void Promise.resolve().then(() => { if (!disposed && rebuildGeneration === generation) prepare(); });
   };
   const onResize = rebuildBeforeDismissal;
   const onOrientationChange = rebuildBeforeDismissal;
