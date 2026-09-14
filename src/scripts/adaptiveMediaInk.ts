@@ -6,11 +6,15 @@
 
 import {
   coverBoxRegionToSourceRegion,
+  CHIP_DARK_LUMA_THRESHOLD,
   isRegionDark,
   measureRenderedRegionLuma,
+  measureRenderedRegion,
+  type RenderedRegionSample,
   measureRegionLuma,
   type NormalizedRegion,
 } from './coverLuminance';
+import { chipContrastFill } from './chipContrast';
 
 export function elementRegionInCover(el: HTMLElement, coverRect: DOMRect): NormalizedRegion | null {
   const rect = el.getBoundingClientRect();
@@ -55,6 +59,19 @@ export function lumaForBox(
     ? cropFrameRegionToSourceRegion(region, frame, source, crop)
     : coverBoxRegionToSourceRegion(region, frame, source);
   return measureRegionLuma(decoded, sourceRegion);
+}
+
+export function sampleForBox(
+  el: HTMLElement,
+  cover: HTMLElement,
+  decoded: CanvasImageSource,
+  frame: { width: number; height: number },
+  source: { width: number; height: number },
+  crop: { w: number; cx: number; cy: number } | null,
+  background: string,
+): RenderedRegionSample | null {
+  const region = elementRegionInCover(el, cover.getBoundingClientRect());
+  return region ? measureRenderedRegion(decoded, region, frame, source, crop, background) : null;
 }
 
 export function cropHostFor(cover: HTMLElement): HTMLElement | null {
@@ -210,8 +227,57 @@ export function applyMediaGround(host: HTMLElement, ground: MediaGround): void {
 
 /** Six percent rest / twelve percent hover leaves near-white grounds with headroom instead of clipping to white. */
 export function applyChipBrightness(host: HTMLElement, luma: number | null): void {
+  host.style.removeProperty('--chip-contrast-fill');
   const nearWhite = luma !== null && luma >= 0.78;
   host.style.setProperty('--chip-rest-brightness', nearWhite ? '0.94' : '1.06');
   host.style.setProperty('--chip-hover-brightness', nearWhite ? '0.88' : '1.12');
   host.style.setProperty('--chip-hover-ring', nearWhite ? 'rgb(0 0 0 / 0.12)' : 'rgb(255 255 255 / 0.12)');
+}
+
+export function applyChipAppearance(
+  host: HTMLElement,
+  luma: number | null,
+  sample: RenderedRegionSample | null = null,
+): void {
+  const ground: MediaGround = luma !== null && isRegionDark(luma, CHIP_DARK_LUMA_THRESHOLD) ? 'dark' : 'light';
+  const nearWhite = luma !== null && luma >= 0.78;
+  const brightness = [nearWhite ? 0.94 : 1.06, nearWhite ? 0.88 : 1.12] as const;
+  let fill: ReturnType<typeof chipContrastFill> | null = null;
+  if (sample) {
+    const style = getComputedStyle(host);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.fillStyle = style.getPropertyValue(ground === 'dark'
+        ? '--sys-color-on-dark-media' : '--sys-color-on-light-media').trim();
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b, alpha] = context.getImageData(0, 0, 1, 1).data;
+      fill = chipContrastFill(sample.pixels, { r, g, b, a: alpha / 255 }, brightness);
+    }
+  }
+  applyMediaGround(host, ground);
+  applyChipBrightness(host, luma);
+  if (fill?.opacity) {
+    host.style.setProperty('--chip-contrast-fill', `rgb(${fill.color} ${fill.color} ${fill.color} / ${fill.opacity})`);
+  }
+}
+
+export function opaqueBackground(el: HTMLElement): string | undefined {
+  let current: HTMLElement | null = el;
+  while (current) {
+    const background = getComputedStyle(current).backgroundColor;
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext('2d');
+    if (context) {
+      context.fillStyle = background;
+      context.fillRect(0, 0, 1, 1);
+      const alpha = context.getImageData(0, 0, 1, 1).data[3];
+      if (alpha === 255) return background;
+    }
+    current = current.parentElement;
+  }
+  return undefined;
 }

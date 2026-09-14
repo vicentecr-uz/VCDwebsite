@@ -12,17 +12,20 @@ mock.module('../../src/scripts/adaptiveMediaInk', () => ({
     host.dataset.mediaGround = ground;
     host.style.setProperty('--media-ink', ground);
   },
-  applyChipBrightness(host: HTMLElement, luma: number | null) {
+  applyChipAppearance(host: HTMLElement, luma: number | null) {
+    host.dataset.mediaGround = luma !== null && luma < 0.25 ? 'dark' : 'light';
     host.style.setProperty('--chip-rest-brightness', luma !== null && luma >= 0.78 ? '0.94' : '1.06');
     host.style.setProperty('--chip-hover-brightness', luma !== null && luma >= 0.78 ? '0.88' : '1.12');
   },
+  opaqueBackground: () => '#fff',
   cropHostFor: () => null,
   groundForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (
     decoded.src?.endsWith('new-image') ? 'light' : 'dark'
   ),
-  lumaForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (
-    decoded.src?.endsWith('new-image') ? 0.7 : decoded.src?.endsWith('nearwhite-image') ? 0.9 : decoded.src?.endsWith('midgray-image') ? 0.5 : 0.2
-  ),
+  sampleForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => ({
+    luma: decoded.src?.endsWith('new-image') ? 0.7 : decoded.src?.endsWith('nearwhite-image') ? 0.9 : decoded.src?.endsWith('midgray-image') ? 0.5 : 0.2,
+    pixels: new Uint8ClampedArray(),
+  }),
   groundForRegion: () => 'light',
   lumaGridFor: (src: string) => {
     lumaCalls += 1;
@@ -151,9 +154,14 @@ test('refreshes after a carousel track scrollend', async () => {
   lumaCalls = 0;
   const { image } = fixture();
   const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const carousel = document.createElement('div');
+  carousel.className = 'dev-carousel-edit-target';
+  document.body.append(carousel);
+  carousel.append(scope);
   const track = document.createElement('div');
   track.className = 'project-image-carousel__track';
-  scope.append(track);
+  carousel.append(track);
+  track.append(scope);
   image.src = 'carousel-image';
   document.documentElement.classList.add('is-dev-mode');
   const cleanup = bindEditorChipMediaInk();
@@ -164,6 +172,56 @@ test('refreshes after a carousel track scrollend', async () => {
   track.dispatchEvent(new Event('scrollend', { bubbles: true }));
   await tick();
   assert.equal(lumaCalls, baseline + 1);
+  cleanup();
+  document.documentElement.classList.remove('is-dev-mode');
+});
+
+test('holds carousel chips through track scrolling until scrollend', async () => {
+  pending.clear();
+  lumaCalls = 0;
+  const { chip, image } = fixture();
+  const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const carousel = document.createElement('div');
+  carousel.className = 'dev-carousel-edit-target';
+  document.body.append(carousel);
+  carousel.append(scope);
+  const track = document.createElement('div');
+  track.className = 'project-image-carousel__track';
+  carousel.append(track);
+  track.append(scope);
+  image.src = 'moving-carousel-image';
+  document.documentElement.classList.add('is-dev-mode');
+  const cleanup = bindEditorChipMediaInk();
+  await tick();
+  assert.equal(lumaCalls, 1);
+  track.dispatchEvent(new Event('scroll', { bubbles: true }));
+  chip.dispatchEvent(new Event('pointerover', { bubbles: true }));
+  await tick();
+  resolveLuma('moving-carousel-image');
+  await tick();
+  assert.equal(chip.dataset.mediaGround, undefined);
+  assert.equal(lumaCalls, 1);
+  track.dispatchEvent(new Event('scrollend', { bubbles: true }));
+  await tick();
+  assert.equal(lumaCalls, 2);
+  resolveLuma('moving-carousel-image');
+  await tick();
+  assert.equal(chip.dataset.mediaGround, 'dark');
+  const beforeMove = chip.style.cssText;
+  track.dispatchEvent(new Event('scroll', { bubbles: true }));
+  image.src = 'new-image';
+  Object.defineProperty(chip, 'getBoundingClientRect', { configurable: true, value: () => ({ left: -100, top: 12, right: -40, bottom: 32, width: 60, height: 20 }) });
+  chip.dispatchEvent(new Event('pointerover', { bubbles: true }));
+  await tick();
+  assert.equal(chip.style.cssText, beforeMove);
+  assert.equal(lumaCalls, 2);
+  Object.defineProperty(chip, 'getBoundingClientRect', { configurable: true, value: () => ({ left: 12, top: 12, right: 72, bottom: 32, width: 60, height: 20 }) });
+  track.dispatchEvent(new Event('scrollend', { bubbles: true }));
+  await tick();
+  assert.equal(lumaCalls, 3);
+  resolveLuma('new-image');
+  await tick();
+  assert.equal(chip.dataset.mediaGround, 'light');
   cleanup();
   document.documentElement.classList.remove('is-dev-mode');
 });

@@ -8,12 +8,13 @@ import {
   applyMediaGround,
   cropHostFor,
   groundForBox,
-  lumaForBox,
+  sampleForBox,
+  applyChipAppearance,
+  opaqueBackground,
   lumaGridFor,
   readCropVars,
   type MediaGround,
 } from './adaptiveMediaInk';
-import { isRegionDark } from './coverLuminance';
 
 function isPlaceholderSrc(src: string | undefined, cover: HTMLElement): boolean {
   if (!src) return true;
@@ -149,7 +150,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
       );
       const chipCrop = cropFor(hover);
       const metaCrop = cropFor(metaUsesHoverBitmap);
-      const background = item.dataset.devBg || getComputedStyle(cover).backgroundColor;
+      const background = item.dataset.devBg || opaqueBackground(cover) || '#fff';
 
       let metaGround = metaFallback;
       if (!metaPlaceholder && metaDecoded) {
@@ -177,9 +178,10 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           const frame = { width: coverRect.width, height: coverRect.height };
           const source = { width: naturalWidth, height: naturalHeight };
           for (const chip of chips) {
-            const chipLuma = lumaForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
-            applyMediaGround(chip, chipLuma === null ? metaGround : isRegionDark(chipLuma) ? 'dark' : 'light');
-            applyChipBrightness(chip, chipLuma ?? (metaGround === 'light' ? 0.78 : null));
+            const sample = sampleForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
+            const chipLuma = sample?.luma ?? null;
+            const appearanceLuma = chipLuma ?? (metaGround === 'light' ? 0.78 : 0);
+            applyChipAppearance(chip, appearanceLuma, sample);
           }
         }
       }

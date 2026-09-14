@@ -1,13 +1,13 @@
 /** Keep editor media controls on the same adaptive palette as the image below them. */
 import {
-  applyMediaGround,
-  applyChipBrightness,
+  applyChipAppearance,
   cropHostFor,
-  lumaForBox,
+  sampleForBox,
+  opaqueBackground,
   lumaGridFor,
   readCropVars,
 } from './adaptiveMediaInk';
-import { isRegionDark, measureRegionLuma } from './coverLuminance';
+import { measureRegionLuma, type RenderedRegionSample } from './coverLuminance';
 
 const CHIP_SELECTOR = '.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
 const TARGET_SELECTOR = '.dev-image-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
@@ -39,26 +39,7 @@ export function frameForChip(chip: HTMLElement, scope: HTMLElement): HTMLElement
   return best;
 }
 
-function opaqueBackground(el: HTMLElement): string | undefined {
-  let current: HTMLElement | null = el;
-  while (current) {
-    const background = getComputedStyle(current).backgroundColor;
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 1;
-    const context = canvas.getContext('2d');
-    if (context) {
-      context.fillStyle = background;
-      context.fillRect(0, 0, 1, 1);
-      const alpha = context.getImageData(0, 0, 1, 1).data[3];
-      if (alpha === 255) return background;
-    }
-    current = current.parentElement;
-  }
-  return undefined;
-}
-
-function backgroundLuma(el: HTMLElement): number | null {
+function backgroundSample(el: HTMLElement): RenderedRegionSample | null {
   const background = opaqueBackground(el.parentElement ?? el);
   if (!background) return null;
   const canvas = document.createElement('canvas');
@@ -68,12 +49,15 @@ function backgroundLuma(el: HTMLElement): number | null {
   if (!context) return null;
   context.fillStyle = background;
   context.fillRect(0, 0, 1, 1);
-  return measureRegionLuma(canvas, { x: 0, y: 0, w: 1, h: 1 });
+  return {
+    luma: measureRegionLuma(canvas, { x: 0, y: 0, w: 1, h: 1 }),
+    pixels: context.getImageData(0, 0, 1, 1).data,
+  };
 }
 
-function applySample(chip: HTMLElement, luma: number | null): void {
-  applyMediaGround(chip, luma === null || !isRegionDark(luma) ? 'light' : 'dark');
-  applyChipBrightness(chip, luma);
+function applySample(chip: HTMLElement, sample: RenderedRegionSample | null): void {
+  const luma = sample?.luma ?? null;
+  applyChipAppearance(chip, luma, sample);
 }
 
 function scopeForChip(chip: HTMLElement): HTMLElement | null {
@@ -95,6 +79,7 @@ function clearChip(chip: HTMLElement): void {
   chip.style.removeProperty('--chip-rest-brightness');
   chip.style.removeProperty('--chip-hover-brightness');
   chip.style.removeProperty('--chip-hover-ring');
+  chip.style.removeProperty('--chip-contrast-fill');
 }
 
 function visible(chip: HTMLElement): boolean {
@@ -112,44 +97,61 @@ export function bindEditorChipMediaInk(): () => void {
   let stopped = false;
   const knownChips = new Set<HTMLElement>();
   const observedScopes = new Set<HTMLElement>();
+  const movingTracks = new Set<HTMLElement>();
+  const settleTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+  const hasNativeScrollEnd = 'onscrollend' in window || 'onscrollend' in document;
   const resizeObserver = new ResizeObserver(() => schedule());
+
+  const movingChip = (chip: HTMLElement): boolean => {
+    const track = chip.closest('.dev-carousel-edit-target')
+      ?.querySelector<HTMLElement>('.project-image-carousel__track');
+    return Boolean(track && movingTracks.has(track));
+  };
+
+  const clearMovingTracks = () => {
+    settleTimers.forEach((timer) => clearTimeout(timer));
+    settleTimers.clear();
+    movingTracks.clear();
+  };
 
   const refresh = async (chips: HTMLElement[], gen: number) => {
     await Promise.all(chips.map(async (chip) => {
-      if (stopped || gen !== generation || !chip.isConnected || !visible(chip)) return;
+      if (stopped || gen !== generation || movingChip(chip) || !chip.isConnected || !visible(chip)) return;
       const scope = scopeForChip(chip);
       if (!scope) return;
       const frame = frameForChip(chip, scope);
       const image = frame ? imageIn(frame) : null;
       const source = image?.currentSrc || image?.src;
       if (!frame || !image || !source || image.hidden || !image.complete || !image.naturalWidth) {
-        applySample(chip, backgroundLuma(chip));
+        applySample(chip, backgroundSample(chip));
         return;
       }
       const decoded = await lumaGridFor(source);
-      if (stopped || gen !== generation) return;
+      if (stopped || gen !== generation || movingChip(chip)) return;
       if (!decoded) {
-        applySample(chip, backgroundLuma(chip));
+        applySample(chip, backgroundSample(chip));
         return;
       }
       const frameRect = frame.getBoundingClientRect();
       const sourceWidth = Number((decoded as HTMLImageElement).naturalWidth) || 0;
       const sourceHeight = Number((decoded as HTMLImageElement).naturalHeight) || 0;
-      let luma: number | null;
+      let sample: ReturnType<typeof sampleForBox> = null;
       try {
-        luma = lumaForBox(
+        sample = sampleForBox(
           chip,
           frame,
           decoded,
           { width: frameRect.width, height: frameRect.height },
           { width: sourceWidth, height: sourceHeight },
           readCropVars(cropHostFor(frame) ?? frame, false),
-          opaqueBackground(frame),
-        ) ?? backgroundLuma(chip);
+          opaqueBackground(frame) ?? '#fff',
+        ) ?? backgroundSample(chip);
       } catch {
-        luma = backgroundLuma(chip);
+        sample = backgroundSample(chip);
       }
-      if (gen === generation && !stopped) applySample(chip, luma);
+      if (gen === generation && !stopped && !movingChip(chip)) {
+        applySample(chip, sample);
+      }
     }));
   };
 
@@ -168,7 +170,10 @@ export function bindEditorChipMediaInk(): () => void {
       }
       const chips = [...document.querySelectorAll<HTMLElement>(CHIP_SELECTOR)].filter(visible);
       knownChips.forEach((chip) => {
-        if (!chips.includes(chip)) {
+        if (!chip.isConnected) {
+          clearChip(chip);
+          knownChips.delete(chip);
+        } else if (!movingChip(chip) && !chips.includes(chip)) {
           clearChip(chip);
           knownChips.delete(chip);
         }
@@ -195,8 +200,29 @@ export function bindEditorChipMediaInk(): () => void {
   const onLoad = (event: Event) => {
     if ((event.target as HTMLElement | null)?.matches?.('img')) schedule();
   };
+  const onCarouselScroll = (event: Event) => {
+    const track = event.target instanceof HTMLElement && event.target.matches('.project-image-carousel__track')
+      ? event.target
+      : null;
+    if (!track) return;
+    movingTracks.add(track);
+    if (!hasNativeScrollEnd) {
+      const previous = settleTimers.get(track);
+      if (previous) clearTimeout(previous);
+      settleTimers.set(track, setTimeout(() => {
+        settleTimers.delete(track);
+        movingTracks.delete(track);
+        schedule();
+      }, 160));
+    }
+  };
   const onCarouselScrollEnd = (event: Event) => {
-    if (event.target instanceof HTMLElement && event.target.matches('.project-image-carousel__track')) schedule();
+    if (!(event.target instanceof HTMLElement) || !event.target.matches('.project-image-carousel__track')) return;
+    const timer = settleTimers.get(event.target);
+    if (timer) clearTimeout(timer);
+    settleTimers.delete(event.target);
+    movingTracks.delete(event.target);
+    schedule();
   };
   const onReveal = (event: Event) => {
     const target = event.target as Node | null;
@@ -230,12 +256,19 @@ export function bindEditorChipMediaInk(): () => void {
     const nextEditMode = document.documentElement.classList.contains('is-dev-mode');
     if (nextEditMode === editMode) return;
     editMode = nextEditMode;
+    if (!nextEditMode) {
+      clearMovingTracks();
+      document.removeEventListener('scroll', onCarouselScroll, true);
+    } else {
+      document.addEventListener('scroll', onCarouselScroll, true);
+    }
     schedule();
   });
   htmlObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   document.addEventListener('load', onLoad, true);
   document.addEventListener('pointerover', onReveal, true);
   document.addEventListener('focusin', onReveal, true);
+  if (editMode) document.addEventListener('scroll', onCarouselScroll, true);
   document.addEventListener('scrollend', onCarouselScrollEnd, true);
   window.addEventListener('resize', schedule);
   window.addEventListener('vcd:dev-pending-upsert', onCustom);
@@ -252,10 +285,12 @@ export function bindEditorChipMediaInk(): () => void {
     document.removeEventListener('load', onLoad, true);
     document.removeEventListener('pointerover', onReveal, true);
     document.removeEventListener('focusin', onReveal, true);
+    document.removeEventListener('scroll', onCarouselScroll, true);
     document.removeEventListener('scrollend', onCarouselScrollEnd, true);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('vcd:dev-pending-upsert', onCustom);
     window.removeEventListener('vcd:dev-frame-changed', onCustom);
+    clearMovingTracks();
     knownChips.forEach(clearChip);
     knownChips.clear();
   };
