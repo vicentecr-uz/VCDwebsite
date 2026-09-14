@@ -1,6 +1,7 @@
 // @ts-check
 import { execFile as execFileCb } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -9,6 +10,17 @@ const execFile = promisify(execFileCb);
 const git = async (cwd, ...args) => {
   const { stdout } = await execFile('git', args, { cwd });
   return stdout.trim();
+};
+
+const readUpdateStatus = async (cwd) => {
+  try { return JSON.parse(await readFile(path.join(cwd, '.dev-session/branch-sync.status'), 'utf8')); } catch { return null; }
+};
+
+const hasGitOperation = async (cwd) => {
+  for (const name of ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'sequencer']) {
+    try { await access(path.resolve(cwd, await git(cwd, 'rev-parse', '--git-path', name))); return true; } catch {}
+  }
+  return false;
 };
 
 export async function branchUpdateState(cwd = process.cwd()) {
@@ -39,6 +51,8 @@ export async function branchUpdateState(cwd = process.cwd()) {
     return { branch, revision, mainRevision: null, behind, ahead, clean: false, available: false };
   }
 
+  const update = await readUpdateStatus(cwd);
+  const gitBusy = await hasGitOperation(cwd);
   return {
     branch,
     revision,
@@ -46,7 +60,8 @@ export async function branchUpdateState(cwd = process.cwd()) {
     behind,
     ahead,
     clean,
-    available: branch === 'main' && behind > 0 && ahead === 0 && clean,
+    available: branch === 'main' && behind > 0 && !gitBusy,
+    update,
   };
 }
 
@@ -55,14 +70,33 @@ export async function requestBranchUpdate(cwd = process.cwd(), authoringActive =
 
   const state = await branchUpdateState(cwd);
   if (state.branch !== 'main') throw new Error('Updates are available only on main.');
-  if (!state.clean) throw new Error('Publish or revert local files before updating.');
-  if (state.ahead > 0) throw new Error('Local main is ahead of origin/main.');
+  if (await hasGitOperation(cwd)) throw new Error('Finish the current Git operation before updating.');
   if (!state.behind) throw new Error('Already up to date.');
 
   const sessionDir = path.join(cwd, '.dev-session');
   await mkdir(sessionDir, { recursive: true });
-  await writeFile(path.join(sessionDir, 'branch-sync.request'), `${new Date().toISOString()}\n`);
-  return state;
+  const requestLock = path.join(sessionDir, 'branch-sync.request-lock');
+  try { await mkdir(requestLock); } catch (error) {
+    if (error.code === 'EEXIST') throw new Error('An update is already in progress.');
+    throw error;
+  }
+  const requestId = randomUUID();
+  const temporary = path.join(sessionDir, `branch-sync.${requestId}.tmp`);
+  try {
+    for (const name of ['branch-sync.request', 'branch-sync.lock']) {
+      let exists = false;
+      try { await access(path.join(sessionDir, name)); exists = true; } catch {}
+      if (exists) throw new Error('An update is already in progress.');
+    }
+    await writeFile(temporary, JSON.stringify({ id: requestId, state: 'pending', message: 'Queued.' }) + '\n');
+    await rename(temporary, path.join(sessionDir, 'branch-sync.status'));
+    await writeFile(temporary, JSON.stringify({ id: requestId }) + '\n');
+    await rename(temporary, path.join(sessionDir, 'branch-sync.request'));
+    return { ...state, requestId };
+  } finally {
+    await rm(temporary, { force: true });
+    await rm(requestLock, { recursive: true });
+  }
 }
 
 export function branchUpdateDevWriter({ authoringActive = () => false } = {}) {
