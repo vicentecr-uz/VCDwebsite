@@ -98,11 +98,26 @@ export function bindEditorChipMediaInk(): () => void {
   let stopped = false;
   const knownChips = new Set<HTMLElement>();
   const observedScopes = new Set<HTMLElement>();
+  const movingTracks = new Set<HTMLElement>();
+  const settleTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+  const hasNativeScrollEnd = 'onscrollend' in window || 'onscrollend' in document;
   const resizeObserver = new ResizeObserver(() => schedule());
+
+  const movingChip = (chip: HTMLElement): boolean => {
+    const scope = scopeForChip(chip);
+    return Boolean(scope && [...scope.querySelectorAll<HTMLElement>('.project-image-carousel__track')]
+      .some((track) => movingTracks.has(track)));
+  };
+
+  const clearMovingTracks = () => {
+    settleTimers.forEach((timer) => clearTimeout(timer));
+    settleTimers.clear();
+    movingTracks.clear();
+  };
 
   const refresh = async (chips: HTMLElement[], gen: number) => {
     await Promise.all(chips.map(async (chip) => {
-      if (stopped || gen !== generation || !chip.isConnected || !visible(chip)) return;
+      if (stopped || gen !== generation || movingChip(chip) || !chip.isConnected || !visible(chip)) return;
       const scope = scopeForChip(chip);
       if (!scope) return;
       const frame = frameForChip(chip, scope);
@@ -113,7 +128,7 @@ export function bindEditorChipMediaInk(): () => void {
         return;
       }
       const decoded = await lumaGridFor(source);
-      if (stopped || gen !== generation) return;
+      if (stopped || gen !== generation || movingChip(chip)) return;
       if (!decoded) {
         applySample(chip, backgroundSample(chip));
         return;
@@ -135,7 +150,7 @@ export function bindEditorChipMediaInk(): () => void {
       } catch {
         sample = backgroundSample(chip);
       }
-      if (gen === generation && !stopped) {
+      if (gen === generation && !stopped && !movingChip(chip)) {
         applySample(chip, sample);
       }
     }));
@@ -156,7 +171,10 @@ export function bindEditorChipMediaInk(): () => void {
       }
       const chips = [...document.querySelectorAll<HTMLElement>(CHIP_SELECTOR)].filter(visible);
       knownChips.forEach((chip) => {
-        if (!chips.includes(chip)) {
+        if (!chip.isConnected) {
+          clearChip(chip);
+          knownChips.delete(chip);
+        } else if (!movingChip(chip) && !chips.includes(chip)) {
           clearChip(chip);
           knownChips.delete(chip);
         }
@@ -183,8 +201,30 @@ export function bindEditorChipMediaInk(): () => void {
   const onLoad = (event: Event) => {
     if ((event.target as HTMLElement | null)?.matches?.('img')) schedule();
   };
+  const onCarouselScroll = (event: Event) => {
+    const track = event.target instanceof HTMLElement && event.target.matches('.project-image-carousel__track')
+      ? event.target
+      : null;
+    if (!track) return;
+    movingTracks.add(track);
+    generation += 1;
+    if (!hasNativeScrollEnd) {
+      const previous = settleTimers.get(track);
+      if (previous) clearTimeout(previous);
+      settleTimers.set(track, setTimeout(() => {
+        settleTimers.delete(track);
+        movingTracks.delete(track);
+        schedule();
+      }, 160));
+    }
+  };
   const onCarouselScrollEnd = (event: Event) => {
-    if (event.target instanceof HTMLElement && event.target.matches('.project-image-carousel__track')) schedule();
+    if (!(event.target instanceof HTMLElement) || !event.target.matches('.project-image-carousel__track')) return;
+    const timer = settleTimers.get(event.target);
+    if (timer) clearTimeout(timer);
+    settleTimers.delete(event.target);
+    movingTracks.delete(event.target);
+    schedule();
   };
   const onReveal = (event: Event) => {
     const target = event.target as Node | null;
@@ -218,12 +258,19 @@ export function bindEditorChipMediaInk(): () => void {
     const nextEditMode = document.documentElement.classList.contains('is-dev-mode');
     if (nextEditMode === editMode) return;
     editMode = nextEditMode;
+    if (!nextEditMode) {
+      clearMovingTracks();
+      document.removeEventListener('scroll', onCarouselScroll, true);
+    } else {
+      document.addEventListener('scroll', onCarouselScroll, true);
+    }
     schedule();
   });
   htmlObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
   document.addEventListener('load', onLoad, true);
   document.addEventListener('pointerover', onReveal, true);
   document.addEventListener('focusin', onReveal, true);
+  if (editMode) document.addEventListener('scroll', onCarouselScroll, true);
   document.addEventListener('scrollend', onCarouselScrollEnd, true);
   window.addEventListener('resize', schedule);
   window.addEventListener('vcd:dev-pending-upsert', onCustom);
@@ -240,10 +287,12 @@ export function bindEditorChipMediaInk(): () => void {
     document.removeEventListener('load', onLoad, true);
     document.removeEventListener('pointerover', onReveal, true);
     document.removeEventListener('focusin', onReveal, true);
+    document.removeEventListener('scroll', onCarouselScroll, true);
     document.removeEventListener('scrollend', onCarouselScrollEnd, true);
     window.removeEventListener('resize', schedule);
     window.removeEventListener('vcd:dev-pending-upsert', onCustom);
     window.removeEventListener('vcd:dev-frame-changed', onCustom);
+    clearMovingTracks();
     knownChips.forEach(clearChip);
     knownChips.clear();
   };
