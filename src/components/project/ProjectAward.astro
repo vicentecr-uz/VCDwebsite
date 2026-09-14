@@ -1,6 +1,9 @@
 ---
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
+import { normalizeHref } from '../../lib/normalizeHref.mjs';
+import { projectImage } from '../../lib/images';
 import TextField from '../ui/TextField.astro';
+import Button from '../ui/Button.astro';
 import { sizeIcon } from '../../lib/icons';
 import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
 import checkIcon from 'lucide-static/icons/check.svg?raw';
@@ -15,84 +18,58 @@ interface Props {
   sectionId?: string;
   contentId?: string;
 }
-const { src = '/awards/if-design-2026.png', alt = 'iF Design Award 2026', href = '', documentKey = '', sectionPath = [], spacing = 'group', sectionId, contentId } = Astro.props;
+const {
+  src = '/awards/if-design-2026.png', alt = 'iF Design Award 2026', href = '',
+  documentKey = '', sectionPath = [], spacing = 'group', sectionId, contentId,
+} = Astro.props;
 const editable = import.meta.env.DEV && Boolean(documentKey && sectionPath.length);
-const path = JSON.stringify([...sectionPath, 'href']);
+const safeHref = normalizeHref(href) || undefined;
 ---
 
-<section id={sectionId} class:list={['project-block', 'project-award', projectStackClass(spacing), sectionId && 'section-block']} {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})} data-dev-section-deletable={editable ? 'award' : undefined} data-project-award data-project-award-href={href}>
-  <span class="project-award__proxy" data-dev-text-document={editable ? documentKey : undefined} data-dev-text-path={editable ? path : undefined} data-dev-text-kind={editable ? 'text' : undefined} hidden>{href}</span>
-  <div class="project-award__center">
-    <span class="project-award__control">
-      {href ? <a class="project-award__hit" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${alt} (opens in a new tab)`}><img src={src} alt={alt} loading="lazy" decoding="async" draggable="false" /></a> : <img src={src} alt={alt} loading="lazy" decoding="async" draggable="false" />}
-      {editable && <button type="button" class="dev-chip project-award__edit" data-award-edit data-dev-mode-only>Edit award</button>}
-      {editable && <form class="project-award__editor dev-surface" data-award-editor hidden>
-        <button type="button" class="dev-btn dev-btn--page" data-award-remove aria-label="Remove award link" title="Remove award link"><span aria-hidden="true" set:html={sizeIcon(trashIcon, 16)} /></button>
-        <TextField class="project-award__input" label="Award link" hideLabel inputmode="url" data-award-input placeholder="google.com" autocomplete="off" spellcheck="false" />
-        <button type="submit" class="dev-btn dev-btn--page" data-award-apply aria-label="Apply award link" title="Apply award link"><span aria-hidden="true" set:html={sizeIcon(checkIcon, 16)} /></button>
-      </form>}
-    </span>
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-award', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
+  data-dev-section-deletable={editable ? 'award' : undefined}
+  data-project-award
+>
+  {editable && <span
+    class="project-award__proxy" hidden
+    data-dev-text-document={documentKey}
+    data-dev-text-path={JSON.stringify([...sectionPath, 'href'])}
+    data-dev-text-kind="text"
+  >{safeHref || ''}</span>}
+  <div class="project-award__control">
+    <a class="project-award__hit" href={safeHref} target={safeHref ? '_blank' : undefined} rel={safeHref ? 'noopener noreferrer' : undefined}>
+      <img src={projectImage(src)} alt={alt} width="4612" height="2362" loading="lazy" decoding="async" draggable="false" />
+    </a>
+    {editable && <button type="button" class="dev-image-edit-trigger project-award__edit" data-award-edit data-dev-mode-only aria-expanded="false">Edit award</button>}
+    {editable && <form class="project-award__editor dev-surface" data-award-editor aria-label="Edit award link" hidden>
+      <Button emphasis="soft" label="" data-award-remove aria-label="Remove link" title="Remove link">
+        <span slot="icon" set:html={sizeIcon(trashIcon, 16)} />
+      </Button>
+      <TextField class="project-award__input" label="Link URL" hideLabel inputmode="url" data-award-input placeholder="google.com" autocomplete="off" spellcheck="false" />
+      <Button type="submit" emphasis="filled" label="" aria-label="Apply link" title="Apply link">
+        <span slot="icon" set:html={sizeIcon(checkIcon, 16)} />
+      </Button>
+    </form>}
   </div>
 </section>
 
-<style>
-  :global(.project-award) { width: 100%; }
-  :global(.project-award__center) { display: grid; place-items: center; min-height: 8em; }
-  :global(.project-award__control) { position: relative; display: grid; place-items: center; }
-  :global(.project-award img) { display: block; width: auto; max-width: 100%; height: min(6em, 100%); object-fit: contain; opacity: .6; transition: opacity .2s ease; }
-  :global(.project-award__hit) { display: block; }
-  :global(.project-award__hit:hover img), :global(.project-award__hit:focus-visible img) { opacity: 1; }
-  :global(.project-award__edit) { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); white-space: nowrap; }
-  :global(.project-award__editor) { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; gap: .35em; padding: .25em; border-radius: 999px; z-index: 2; }
-  :global(.project-award__input) { width: min(19em, 60vw); }
-  :global(.project-award__editor .dev-btn) { flex: 0 0 auto; }
-  :global(.project-award.is-award-editing img) { opacity: .18; }
-  @media (prefers-reduced-motion: reduce) { .project-award img { transition: opacity .2s ease; } }
+<style is:global>
+  .project-award { display: grid; place-items: center; width: 100%; }
+  .project-award__control { position: relative; display: grid; place-items: center; width: 100%; min-height: 8em; }
+  .project-award__hit { position: relative; display: block; max-width: 100%; }
+  .project-award__hit[href]::after { content: ''; position: absolute; inset: -8px; }
+  .project-award__hit img { display: block; height: 6em; width: auto; max-width: 100%; object-fit: contain; opacity: .6; transition: opacity .2s ease; }
+  .project-award__hit:hover img, .project-award__hit:focus-visible img { opacity: 1; }
+  .project-award__edit, .project-award__editor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  .project-award__edit { right: auto; opacity: 1; pointer-events: auto; white-space: nowrap; }
+  .project-award__edit::after { content: ''; position: absolute; inset: -8px; }
+  .project-award__editor { display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content; align-items: center; gap: 4px; padding: 6px; width: min(22em, calc(100vw - 32px)); box-sizing: border-box; border-radius: 12px; z-index: 5; }
+  .project-award__input { width: 100%; min-width: 0; overflow: hidden; }
+  .project-award__editor .dev-btn { padding: 8px; width: var(--dev-control-height); min-width: var(--dev-control-height); min-height: var(--dev-control-height); }
+  .project-award__editor[hidden], .project-award__edit[hidden],
+  html:not(.is-dev-mode) .project-award__editor, html:not(.is-dev-mode) .project-award__edit,
+  html.show-section-nav-editor .project-award__editor, html.show-section-nav-editor .project-award__edit { display: none; }
 </style>
-
-{editable && <script>
-  import { normalizeHref } from '../../lib/normalizeHref.mjs';
-  const initAwardEditors = () => {
-    document.querySelectorAll<HTMLElement>('[data-project-award]').forEach((root) => {
-      if (root.dataset.awardBound === 'true') return;
-      root.dataset.awardBound = 'true';
-      const edit = root.querySelector<HTMLButtonElement>('[data-award-edit]');
-      const editor = root.querySelector<HTMLFormElement>('[data-award-editor]');
-      const input = root.querySelector<HTMLInputElement>('[data-award-input]');
-      const remove = root.querySelector<HTMLButtonElement>('[data-award-remove]');
-      const proxy = root.querySelector<HTMLElement>('[data-dev-text-path]');
-      if (!edit || !editor || !input || !remove || !proxy) return;
-      const link = () => root.dataset.projectAwardHref || '';
-      const close = () => { editor.hidden = true; edit.hidden = false; root.classList.remove('is-award-editing'); };
-      const open = () => { input.value = link(); edit.hidden = true; editor.hidden = false; root.classList.add('is-award-editing'); requestAnimationFrame(() => input.focus()); };
-      const apply = (value: string) => {
-        const normalized = normalizeHref(value);
-        if (value.trim() && !normalized) { input.setCustomValidity('Enter a valid link.'); input.reportValidity(); return false; }
-        input.setCustomValidity('');
-        const next = normalized || '';
-        root.dataset.projectAwardHref = next;
-        const hit = root.querySelector<HTMLAnchorElement>('.project-award__hit');
-        if (hit) { if (next) { hit.href = next; } else { hit.replaceWith(root.querySelector('img')!.cloneNode(true)); } }
-        proxy.textContent = next;
-        proxy.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: next }));
-        close();
-        return true;
-      };
-      edit.addEventListener('click', (event) => { event.preventDefault(); open(); });
-      editor.addEventListener('submit', (event) => { event.preventDefault(); apply(input.value); });
-      remove.addEventListener('click', () => { input.value = ''; apply(''); });
-      document.addEventListener('pointerdown', (event) => { if (!editor.hidden && !root.contains(event.target as Node)) close(); });
-      document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !editor.hidden) { close(); } });
-      window.addEventListener('vcd:dev-mode-change', () => { if (!document.documentElement.classList.contains('is-dev-mode')) close(); });
-    });
-  };
-  document.addEventListener('astro:page-load', initAwardEditors);
-  window.addEventListener('vcd:dev-section-structure-changed', initAwardEditors);
-  window.addEventListener('vcd:dev-pending-reverted', () => {
-    document.querySelectorAll<HTMLElement>('[data-project-award]').forEach((root) => {
-      const proxy = root.querySelector<HTMLElement>('[data-dev-text-path]');
-      if (proxy) root.dataset.projectAwardHref = proxy.textContent ?? '';
-    });
-  });
-  initAwardEditors();
-</script>}

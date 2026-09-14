@@ -8,6 +8,7 @@ import ProjectSectionNavEditor from '../components/project/ProjectSectionNavEdit
 import ProjectCaptionShadow from '../components/project/ProjectCaptionShadow.astro';
 import ProjectImage from '../components/project/ProjectImage.astro';
 import ProjectImageGrid from '../components/project/ProjectImageGrid.astro';
+import ProjectAward from '../components/project/ProjectAward.astro';
 import ProjectDetails from '../components/project/ProjectDetails.astro';
 import ProjectBodyText from '../components/project/ProjectBodyText.astro';
 import ProjectSectionTitle from '../components/project/ProjectSectionTitle.astro';
@@ -210,6 +211,18 @@ const componentCatalog: ComponentEntry[] = [
     usedOn: ['Tapico'],
     checklist: 'Column count per breakpoint; captions match ProjectImage (overlay or below); match-height equalizes below-slot whitespace across the row; grid tuner in Dev Mode.',
     preview: 'image-grid',
+  },
+  {
+    id: 'component-project-award',
+    name: 'ProjectAward',
+    category: 'project-content',
+    purpose: 'Centered award badge with a link.',
+    classRef: '.project-award',
+    source: 'src/components/project/ProjectAward.astro',
+    props: 'src?, alt?, href?, spacing?',
+    usedOn: [],
+    checklist: 'Original badge colors; Edit award opens a centered link bar.',
+    preview: 'project-award',
   },
   {
     id: 'component-project-details',
@@ -850,6 +863,9 @@ const sectionLinks = deriveNavFromOutline(outline);
                       )}
                       {component.preview === 'image-lead' && (
                         <ProjectImage src={previewHero} alt="ProjectImage lead preview" kind="lead" />
+                      )}
+                      {component.preview === 'project-award' && (
+                        <ProjectAward href="https://ifdesign.com/en/winner-ranking/project/goodhome-painting-tools/768056" spacing="none" />
                       )}
                       {component.preview === 'project-details' && (
                         <ProjectDetails title="Project details & credits" rows={[
