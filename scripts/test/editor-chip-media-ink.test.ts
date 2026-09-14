@@ -97,12 +97,13 @@ test('teardown is safe before the scheduled editor refresh runs', async () => {
 });
 
 
-test('brightness refresh clears a protective fill left by the previous image', async () => {
+test('brightness refresh replaces a protective fill with the baseline tint', async () => {
   const { applyChipBrightness } = await import('../../src/scripts/adaptiveMediaInk');
   const chip = document.createElement('button');
   chip.style.setProperty('--chip-contrast-fill', 'rgb(0 0 0 / 0.8)');
   applyChipBrightness(chip, 0.9);
-  assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), '');
+  assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), 'rgb(0 0 0 / 0.08)');
+  assert.equal(chip.style.getPropertyValue('--chip-hover-contrast-fill'), 'rgb(0 0 0 / 0.08)');
 });
 
 test('mid-tone and light backgrounds keep light chips even when a dark fill would be thinner', async () => {
@@ -133,12 +134,12 @@ test('mid-tone and light backgrounds keep light chips even when a dark fill woul
     assert.equal(chip.dataset.mediaGround, 'light');
     assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(255 255 255 \/ 0\.[0-9]+\)$/);
     applyChipAppearance(chip, 0.1, { luma: 0.1, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) });
-    assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(0 0 0 \/ 0\.[0-9]+\)$/);
+    assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\([0-9]+(?:\.[0-9]+)? [0-9]+(?:\.[0-9]+)? [0-9]+(?:\.[0-9]+)? \/ 0\.[0-9]+\)$/);
     applyChipAppearance(chip, 0.5, { luma: 0.5, pixels: new Uint8ClampedArray([188, 188, 188, 255]) });
     assert.equal(chip.dataset.mediaGround, 'light');
     applyMediaGround(chip, 'dark');
     applyChipAppearance(chip, 0.01, { luma: 0.01, pixels: new Uint8ClampedArray([10, 10, 10, 255]) });
-    assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), '');
+    assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), 'rgb(255 255 255 / 0.08)');
   } finally {
     document.createElement = originalCreateElement;
     Object.assign(globalThis, { getComputedStyle: previousStyle });
