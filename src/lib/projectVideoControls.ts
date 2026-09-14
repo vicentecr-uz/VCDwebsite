@@ -84,7 +84,7 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   const play = document.createElement('media-play-button');
   play.className = 'project-video-player__play';
   play.setAttribute('noautohide', '');
-  play.innerHTML = `${icon(playIcon, 'play')}${icon(pauseIcon, 'pause')}`;
+  play.innerHTML = `${icon(playIcon, 'play')}${icon(pauseIcon, 'pause')}`.replaceAll('fill="none"', 'fill="currentColor"');
 
   const progress = document.createElement('media-time-range');
   progress.className = 'project-video-player__progress';
