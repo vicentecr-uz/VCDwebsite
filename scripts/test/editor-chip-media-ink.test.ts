@@ -107,7 +107,7 @@ test('brightness refresh clears a protective fill left by the previous image', a
 });
 
 test('mixed backgrounds choose the text token requiring less protective fill', async () => {
-  const { applyChipBrightness, applyChipContrast, applyMediaGround } = await import('../../src/scripts/adaptiveMediaInk');
+  const { applyChipAppearance, applyMediaGround } = await import('../../src/scripts/adaptiveMediaInk');
   const chip = document.createElement('button');
   const originalCreateElement = document.createElement.bind(document);
   const previousStyle = globalThis.getComputedStyle;
@@ -130,15 +130,75 @@ test('mixed backgrounds choose the text token requiring less protective fill', a
   }) as typeof document.createElement;
   try {
     applyMediaGround(chip, 'light');
-    applyChipBrightness(chip, 0.7);
-    applyChipContrast(chip, { luma: 0.7, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) });
+    applyChipAppearance(chip, 0.7, { luma: 0.7, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) });
     assert.equal(chip.dataset.mediaGround, 'dark');
     assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(0 0 0 \/ 0\.[0-9]+\)$/);
     assert.equal(chip.style.getPropertyValue('--chip-hover-ring'), 'rgb(0 0 0 / 0.12)');
     applyMediaGround(chip, 'dark');
-    applyChipBrightness(chip, 0.01);
-    applyChipContrast(chip, { luma: 0.01, pixels: new Uint8ClampedArray([10, 10, 10, 255]) });
+    applyChipAppearance(chip, 0.01, { luma: 0.01, pixels: new Uint8ClampedArray([10, 10, 10, 255]) });
     assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), '');
+  } finally {
+    document.createElement = originalCreateElement;
+    Object.assign(globalThis, { getComputedStyle: previousStyle });
+  }
+});
+
+test('computes token contrast before clearing the previous fill', async () => {
+  const { applyChipAppearance } = await import('../../src/scripts/adaptiveMediaInk');
+  const chip = document.createElement('button');
+  chip.style.setProperty('--chip-contrast-fill', 'rgb(0 0 0 / 0.8)');
+  const originalCreateElement = document.createElement.bind(document);
+  const previousStyle = globalThis.getComputedStyle;
+  const events: string[] = [];
+  Object.assign(globalThis, {
+    getComputedStyle: () => ({
+      getPropertyValue: (name: string) => {
+        events.push(`read:${name}`);
+        return name === '--sys-color-on-dark-media' ? '#f5f5f7' : '#6d6d6d';
+      },
+    }),
+  });
+  document.createElement = ((name: string) => {
+    const element = originalCreateElement(name);
+    if (name === 'canvas') {
+      const context = {
+        fillStyle: '', clearRect() {}, fillRect() {},
+        getImageData() {
+          return { data: new Uint8ClampedArray(this.fillStyle === '#f5f5f7'
+            ? [245, 245, 247, 255] : [109, 109, 109, 255]) };
+        },
+      };
+      Object.defineProperty(element, 'getContext', { value: () => context });
+    }
+    return element;
+  }) as typeof document.createElement;
+  const originalSet = chip.style.setProperty.bind(chip.style);
+  const originalRemove = chip.style.removeProperty.bind(chip.style);
+  chip.style.setProperty = ((name: string, value: string) => {
+    events.push(`set:${name}`);
+    originalSet(name, value);
+  }) as typeof chip.style.setProperty;
+  chip.style.removeProperty = ((name: string) => {
+    events.push(`remove:${name}`);
+    return originalRemove(name);
+  }) as typeof chip.style.removeProperty;
+  try {
+    const sample = { luma: 0.7, pixels: new Uint8ClampedArray([0, 0, 0, 255, 255, 255, 255, 255]) };
+    applyChipAppearance(chip, sample.luma, sample);
+    const firstMutation = events.findIndex((event) => event.startsWith('set:') || event.startsWith('remove:'));
+    assert.ok(firstMutation >= 0);
+    assert.ok(events.slice(0, firstMutation).every((event) => event.startsWith('read:')));
+    assert.equal(events.filter((event) => event.startsWith('read:')).length, 2);
+    assert.equal(events.slice(firstMutation).filter((event) => event.startsWith('read:')).length, 0);
+    assert.match(chip.style.getPropertyValue('--chip-contrast-fill'), /^rgb\(0 0 0 \/ 0\.[0-9]+\)$/);
+    const firstFill = chip.style.getPropertyValue('--chip-contrast-fill');
+    const beforeRepeat = events.length;
+    applyChipAppearance(chip, sample.luma, sample);
+    const repeatEvents = events.slice(beforeRepeat);
+    const repeatMutation = repeatEvents.findIndex((event) => event.startsWith('set:') || event.startsWith('remove:'));
+    assert.ok(repeatMutation >= 0);
+    assert.equal(repeatEvents.slice(repeatMutation).filter((event) => event.startsWith('read:')).length, 0);
+    assert.equal(chip.style.getPropertyValue('--chip-contrast-fill'), firstFill);
   } finally {
     document.createElement = originalCreateElement;
     Object.assign(globalThis, { getComputedStyle: previousStyle });

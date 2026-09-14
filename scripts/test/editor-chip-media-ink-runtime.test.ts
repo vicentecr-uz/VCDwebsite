@@ -12,11 +12,11 @@ mock.module('../../src/scripts/adaptiveMediaInk', () => ({
     host.dataset.mediaGround = ground;
     host.style.setProperty('--media-ink', ground);
   },
-  applyChipBrightness(host: HTMLElement, luma: number | null) {
+  applyChipAppearance(host: HTMLElement, luma: number | null) {
+    host.dataset.mediaGround = luma !== null && luma < 0.6 ? 'dark' : 'light';
     host.style.setProperty('--chip-rest-brightness', luma !== null && luma >= 0.78 ? '0.94' : '1.06');
     host.style.setProperty('--chip-hover-brightness', luma !== null && luma >= 0.78 ? '0.88' : '1.12');
   },
-  applyChipContrast: () => {},
   opaqueBackground: () => '#fff',
   cropHostFor: () => null,
   groundForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (

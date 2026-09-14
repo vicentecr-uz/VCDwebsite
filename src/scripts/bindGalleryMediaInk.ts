@@ -9,13 +9,12 @@ import {
   cropHostFor,
   groundForBox,
   sampleForBox,
-  applyChipContrast,
+  applyChipAppearance,
   opaqueBackground,
   lumaGridFor,
   readCropVars,
   type MediaGround,
 } from './adaptiveMediaInk';
-import { isRegionDark } from './coverLuminance';
 
 function isPlaceholderSrc(src: string | undefined, cover: HTMLElement): boolean {
   if (!src) return true;
@@ -181,9 +180,8 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           for (const chip of chips) {
             const sample = sampleForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
             const chipLuma = sample?.luma ?? null;
-            applyMediaGround(chip, chipLuma === null ? metaGround : isRegionDark(chipLuma) ? 'dark' : 'light');
-            applyChipBrightness(chip, chipLuma ?? (metaGround === 'light' ? 0.78 : null));
-            applyChipContrast(chip, sample);
+            const appearanceLuma = chipLuma ?? (metaGround === 'light' ? 0.78 : 0);
+            applyChipAppearance(chip, appearanceLuma, sample);
           }
         }
       }
