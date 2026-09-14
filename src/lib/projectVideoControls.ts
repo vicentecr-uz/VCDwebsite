@@ -134,6 +134,17 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   popup.className = 'project-video-player__volume-popup';
   const volume = document.createElement('media-volume-range') as MediaVolumeRange;
   volume.className = 'project-video-player__volume';
+  [progress, volume].forEach((control) => {
+    const syncKeyboardFocus = (event: FocusEvent) => {
+      const target = event.composedPath()[0];
+      control.toggleAttribute('data-video-keyboard-focus', target instanceof Element && target.matches(':focus-visible'));
+    };
+    // Shadow range inputs cannot expose :focus-visible to selectors outside their host.
+    control.addEventListener('focusin', syncKeyboardFocus);
+    control.addEventListener('focusout', () => control.removeAttribute('data-video-keyboard-focus'));
+    control.addEventListener('pointerdown', () => control.removeAttribute('data-video-keyboard-focus'), { capture: true });
+    control.addEventListener('keydown', () => control.setAttribute('data-video-keyboard-focus', ''));
+  });
   const syncMutedVolume = bindVolumeControls(video, mute, volume);
   popup.append(volume);
   group.append(mute, popup);
