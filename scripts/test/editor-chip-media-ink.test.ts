@@ -78,3 +78,18 @@ test('teardown is safe before the scheduled editor refresh runs', async () => {
   assert.equal(document.querySelector('[data-media-ground]'), null);
   document.documentElement.classList.remove('is-dev-mode');
 });
+
+ test('brightness helper brightens dark and mid-tone samples, but darkens near-white samples', async () => {
+  const { applyChipBrightness } = await import('../../src/scripts/adaptiveMediaInk');
+  const chip = document.createElement('button');
+  for (const luma of [0.05, 0.5, 0.77]) {
+    applyChipBrightness(chip, luma);
+    assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '1.06');
+    assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '1.12');
+  }
+  for (const luma of [0.78, 1]) {
+    applyChipBrightness(chip, luma);
+    assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '0.94');
+    assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '0.88');
+  }
+});
