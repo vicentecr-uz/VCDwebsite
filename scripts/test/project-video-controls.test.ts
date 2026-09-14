@@ -23,7 +23,7 @@ const source = readFileSync(new URL('../../src/lib/projectVideoControls.ts', imp
 const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;\n/gm, '').replaceAll('export function', 'function'));
 const svg = (name: string) => readFileSync(new URL(`../../node_modules/lucide-static/icons/${name}.svg`, import.meta.url), 'utf8');
 const env = { sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
-const { enhanceProjectVideo } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo }; }`)(env);
+const { enhanceProjectVideo, bindVideoVisibility } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo, bindVideoVisibility }; }`)(env);
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
 
 for (const existing of [false, true]) {
@@ -150,3 +150,107 @@ for (const existing of [false, true]) {
     root.remove();
   });
 }
+
+
+test('leaving the viewport fades before pausing and preserves manual pause and replay volume', () => {
+  const previousObserver = globalThis.IntersectionObserver;
+  const previousFrame = globalThis.requestAnimationFrame;
+  const previousCancel = globalThis.cancelAnimationFrame;
+  const previousPerformance = globalThis.performance;
+  let now = 1000;
+  let nextFrame = 0;
+  const frames = new Map<number, FrameRequestCallback>();
+  let notify: (entries: Array<{ isIntersecting: boolean }>) => void;
+  let observing = false;
+  Object.assign(globalThis, {
+    IntersectionObserver: class {
+      constructor(callback: typeof notify) { notify = callback; }
+      observe() { observing = true; }
+      disconnect() { observing = false; }
+    },
+    requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame: (id: number) => frames.delete(id),
+  });
+  Object.defineProperty(globalThis, 'performance', { configurable: true, value: { now: () => now } });
+  const controller = window.document.createElement('div');
+  const video = window.document.createElement('video');
+  let paused = true;
+  let pauses = 0;
+  Object.defineProperty(video, 'paused', { get: () => paused });
+  video.pause = () => { paused = true; pauses += 1; video.dispatchEvent(new window.Event('pause')); };
+  const play = () => { paused = false; video.dispatchEvent(new window.Event('play')); };
+  const frame = (elapsed: number) => {
+    now += elapsed;
+    const callbacks = [...frames.values()];
+    frames.clear();
+    callbacks.forEach((callback) => callback(now));
+  };
+  controller.append(video);
+  window.document.body.append(controller);
+  try {
+    video.volume = 0.8;
+    bindVideoVisibility(video, controller);
+    expect(observing).toBe(false);
+    play();
+    expect(observing).toBe(true);
+    notify!([{ isIntersecting: true }]);
+    expect(paused).toBe(false);
+    notify!([{ isIntersecting: false }]);
+    expect(paused).toBe(false);
+    frame(150);
+    expect(video.volume).toBeCloseTo(0.4);
+    expect(paused).toBe(false);
+    frame(150);
+    expect(paused).toBe(true);
+    expect(video.volume).toBeCloseTo(0.8);
+    expect(observing).toBe(false);
+    expect(frames.size).toBe(0);
+    expect(pauses).toBe(1);
+    notify!([{ isIntersecting: true }]);
+    expect(paused).toBe(true);
+
+    play();
+    notify!([{ isIntersecting: false }]);
+    frame(100);
+    notify!([{ isIntersecting: true }]);
+    expect(paused).toBe(false);
+    expect(video.volume).toBeCloseTo(0.8);
+    expect(frames.size).toBe(0);
+    notify!([{ isIntersecting: false }]);
+    frame(100);
+    video.pause();
+    expect(paused).toBe(true);
+    expect(video.volume).toBeCloseTo(0.8);
+    expect(frames.size).toBe(0);
+
+    play();
+    video.pause();
+    expect(paused).toBe(true);
+    expect(video.volume).toBeCloseTo(0.8);
+    expect(frames.size).toBe(0);
+    video.muted = true;
+    play();
+    notify!([{ isIntersecting: false }]);
+    expect(paused).toBe(true);
+    expect(video.muted).toBe(true);
+    expect(video.volume).toBeCloseTo(0.8);
+    video.muted = false;
+    video.volume = 0;
+    play();
+    notify!([{ isIntersecting: false }]);
+    expect(paused).toBe(true);
+    expect(video.volume).toBe(0);
+    video.volume = 0.8;
+    play();
+    notify!([{ isIntersecting: false }]);
+    controller.remove();
+    frame(100);
+    expect(paused).toBe(true);
+    expect(video.volume).toBeCloseTo(0.8);
+    expect(observing).toBe(false);
+  } finally {
+    controller.remove();
+    Object.assign(globalThis, { IntersectionObserver: previousObserver, requestAnimationFrame: previousFrame, cancelAnimationFrame: previousCancel });
+    Object.defineProperty(globalThis, 'performance', { configurable: true, value: previousPerformance });
+  }
+});
