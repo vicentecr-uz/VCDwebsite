@@ -6699,13 +6699,22 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     position: absolute;
     top: calc(var(--space-section) / -2);
     left: 0;
-    right: 0;
+    width: min(var(--page-max-width), calc(100vw - 2 * var(--space-unit)));
     z-index: 40;
     display: flex;
     align-items: center;
     justify-content: center;
     transform: translateY(-50%);
     pointer-events: none;
+  }
+
+  [data-dev-spacing-document]:is(
+    .project-block--centered,
+    .project-image-grid,
+    .project-image-carousel
+  ) > .dev-gap-toolbar {
+    left: 50%;
+    transform: translate(-50%, -50%);
   }
 
   /* The control stays mounted so a section reorder can restore it without
@@ -7281,6 +7290,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     on the block. Mirrors .dev-section-drag-handle in DevSectionReorderEditor.
   */
   @media (max-width: 40em) {
+    .dev-gap-toolbar,
     .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty::before {
       width: min(var(--page-max-width), calc(100vw - 4rem));
     }
