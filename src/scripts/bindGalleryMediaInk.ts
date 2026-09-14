@@ -168,6 +168,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
         if (chipPlaceholder || !chipDecoded) {
           for (const chip of chips) {
             applyMediaGround(chip, chipFallback);
+            applyChipBrightness(chip, chipFallback === 'light' ? 0.78 : null);
           }
         } else {
           const naturalWidth = Number((chipDecoded as HTMLImageElement).naturalWidth) || 0;
@@ -177,7 +178,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           for (const chip of chips) {
             const chipLuma = lumaForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
             applyMediaGround(chip, chipLuma === null ? metaGround : isRegionDark(chipLuma) ? 'dark' : 'light');
-            applyChipBrightness(chip, chipLuma);
+            applyChipBrightness(chip, chipLuma ?? (metaGround === 'light' ? 0.78 : null));
           }
         }
       }
