@@ -7,6 +7,7 @@ SESSION_DIR="$ROOT/.dev-session"
 PID_FILE="$SESSION_DIR/branch-sync.pid"
 LOG_FILE="$SESSION_DIR/branch-sync.log"
 REQUEST_FILE="$SESSION_DIR/branch-sync.request"
+STATUS_FILE="$SESSION_DIR/branch-sync.status"
 LAUNCHD_LABEL="com.vcruzdesigns.vcdwebsite.branch-sync"
 
 INTERVAL="${BRANCH_SYNC_INTERVAL:-60}"
@@ -50,128 +51,108 @@ remove_launchd_job() {
   done
 }
 
-sync_once() {
-  if ! git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') not a git repo — skip"
+write_update_status() {
+  [[ -n "$request_id" ]] || return 0
+  if [[ "$1" == succeeded || "$1" == failed ]]; then request_finished=1; fi
+  "$BUN" -e 'const [file,id,state,message]=process.argv.slice(1); const fs=require("node:fs"); fs.writeFileSync(file+".tmp", JSON.stringify({id,state,message})+"\n"); fs.renameSync(file+".tmp",file);' "$STATUS_FILE" "$request_id" "$1" "$2"
+}
+
+sync_once() (
+  mkdir -p "$SESSION_DIR"
+  local request_finished=0
+  local lock="$SESSION_DIR/branch-sync.lock" request_id="" active_request="$SESSION_DIR/branch-sync.active"
+  if ! mkdir "$lock" 2>/dev/null; then
+    echo "Update already running."
     return 0
   fi
-
-  local branch upstream
-  branch="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
-  if [[ -z "$branch" ]]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') detached HEAD — skip"
-    return 0
+  trap 'if [[ -n "$request_id" && "$request_finished" -eq 0 ]]; then write_update_status failed "Update interrupted. Check the sync log before retrying."; fi; rmdir "$lock" 2>/dev/null || true' EXIT
+  if [[ -f "$REQUEST_FILE" ]]; then
+    mv "$REQUEST_FILE" "$active_request"
+    request_id="$("$BUN" -e 'try { console.log(JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).id || "") } catch {}' "$active_request")"
+    rm -f "$active_request"
+    write_update_status running "Updating…"
   fi
-
-  if ! upstream="$(git -C "$ROOT" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $branch has no upstream — skip"
-    return 0
+  local branch upstream behind incoming_paths dependencies_changed=0 astro_stopped=0
+  local failure="" result=0
+  branch="$(git -C "$ROOT" branch --show-current)"
+  if [[ -z "$branch" ]] || ! upstream="$(git -C "$ROOT" rev-parse --abbrev-ref '@{upstream}' 2>/dev/null)"; then
+    write_update_status failed "The checkout has no active upstream branch."
+    return 1
   fi
-
   if ! git -C "$ROOT" fetch origin "$branch" 2>&1; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') fetch failed for $branch"
-    return 0
+    write_update_status failed "Could not fetch the update. Your files are unchanged."
+    return 1
   fi
-
-  local behind ahead merge_base incoming_paths requires_restart=0 dependencies_changed=0 astro_stopped=0
-  behind="$(git -C "$ROOT" rev-list --count HEAD.."$upstream" 2>/dev/null || echo 0)"
-  ahead="$(git -C "$ROOT" rev-list --count "$upstream"..HEAD 2>/dev/null || echo 0)"
-
+  behind="$(git -C "$ROOT" rev-list --count HEAD.."$upstream")"
   if [[ "$behind" -eq 0 ]]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') $branch up to date ($upstream)"
+    echo "$branch up to date ($upstream)"
+    write_update_status succeeded "Already up to date."
     return 0
   fi
-
-  merge_base="$(git -C "$ROOT" merge-base HEAD "$upstream")"
-  incoming_paths="$(git -C "$ROOT" diff --name-only "$merge_base" "$upstream")"
-  while IFS= read -r path; do
-    [[ -z "$path" ]] && continue
-    if [[ "$path" == package.json || "$path" == bun.lock || "$path" == bun.lockb ]]; then
-      dependencies_changed=1
-      requires_restart=1
-    elif [[ "$path" == src/content/* || "$path" == media/* || "$path" == docs/* || "$path" == *.md || "$path" == .github/* || "$path" == .codex/* || "$path" == .cursor/* || "$path" == .claude/* ]]; then
-      :
-    else
-      requires_restart=1
-    fi
-  done <<<"$incoming_paths"
-
-  if [[ "$requires_restart" -eq 1 ]] && astro_running; then
+  incoming_paths="$(git -C "$ROOT" diff --name-only "$(git -C "$ROOT" merge-base HEAD "$upstream")" "$upstream")"
+  if grep -Eq '^(package.json|bun.lock|bun.lockb)$' <<<"$incoming_paths"; then dependencies_changed=1; fi
+  if astro_running; then
     local state
     if ! state="$(curl --silent --show-error --fail --max-time 2 "$STATE_URL" 2>/dev/null)" || [[ "$state" != '{"editing":false,"clients":0}' ]]; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') runtime update deferred (authoring session active or state unavailable)"
+      echo "Update deferred (authoring session active or state unavailable)."
+      write_update_status failed "Another Edit tab is active or the editor is unavailable. Try again after closing Edit mode."
       return 0
     fi
-    # The state query is intentionally not a distributed lock; upgrade to an atomic lease if this race matters.
+    # Lease checks precede shutdown; stopping Astro prevents writes during draft restoration.
     if ! bash "$SESSION_SCRIPT" stop-astro; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') could not stop Astro — deferring runtime update"
-      return 0
+      write_update_status failed "Could not stop the dev server. Your files are unchanged."
+      return 1
     fi
     astro_stopped=1
   fi
 
-  echo "$(date '+%Y-%m-%d %H:%M:%S') $branch behind $upstream by $behind (ahead $ahead) — pulling"
-
-  if [[ "$ahead" -eq 0 ]]; then
-    if git -C "$ROOT" merge --ff-only "$upstream" 2>&1; then
-      echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forwarded $branch"
-      if [[ "$dependencies_changed" -eq 1 ]]; then
-        if ! "$BUN" install --frozen-lockfile 2>&1; then
-          echo "$(date '+%Y-%m-%d %H:%M:%S') dependency install failed"
-          if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; fi
-          return 1
-        fi
-      fi
-      if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
-      reload_if_changed "$incoming_paths"
-    else
-      echo "$(date '+%Y-%m-%d %H:%M:%S') fast-forward failed for $branch"
-      if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
-    fi
-    return 0
+  if ! "$BUN" "$ROOT/scripts/branch-sync-drafts.mjs" "$ROOT" "$upstream"; then
+    failure="Update cancelled. See the recovery details in the sync log."
+    if [[ -f "$SESSION_DIR/branch-sync.error" ]]; then failure="$(cat "$SESSION_DIR/branch-sync.error")"; fi
+    result=1
+  elif [[ "$dependencies_changed" -eq 1 ]] && ! "$BUN" install --frozen-lockfile --cwd "$ROOT"; then
+    failure="Files were updated and drafts restored, but dependency installation failed."
+    result=1
   fi
-
-  if git -C "$ROOT" pull --rebase --autostash origin "$branch" 2>&1; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') rebased $branch onto $upstream"
-    if [[ "$dependencies_changed" -eq 1 ]]; then
-      if ! "$BUN" install --frozen-lockfile 2>&1; then
-        echo "$(date '+%Y-%m-%d %H:%M:%S') dependency install failed"
-        if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
-        return 1
+  if [[ "$astro_stopped" -eq 1 ]]; then
+    if ! bash "$SESSION_SCRIPT" start-astro; then
+      failure="${failure:+$failure }Could not restart the dev server."
+      result=1
+    else
+      local ready=0 attempt
+      for attempt in {1..100}; do
+        if curl --silent --fail --max-time 1 "$STATE_URL" >/dev/null; then ready=1; break; fi
+        sleep 0.2
+      done
+      if [[ "$ready" -eq 0 ]]; then
+        failure="${failure:+$failure }The dev server did not become ready."
+        result=1
       fi
     fi
-  else
-    echo "$(date '+%Y-%m-%d %H:%M:%S') pull --rebase failed for $branch (resolve manually)"
-    git -C "$ROOT" rebase --abort 2>/dev/null || true
-    if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
+  fi
+  if [[ "$result" -ne 0 ]]; then
+    write_update_status failed "$failure"
+    echo "$failure"
     return 1
   fi
-  if [[ "$astro_stopped" -eq 1 ]] && ! bash "$SESSION_SCRIPT" start-astro; then echo "$(date '+%Y-%m-%d %H:%M:%S') Astro restart failed"; return 1; fi
-  reload_if_changed "$incoming_paths"
-}
+  write_update_status succeeded "Update complete."
+)
 
 astro_running() {
   bash "$SESSION_SCRIPT" astro-running >/dev/null 2>&1
-}
-
-reload_if_changed() {
-  [[ "$DAEMON_MODE" == 1 ]] || return 0
-  if grep -qx 'scripts/branch-sync.sh' <<<"$1"; then
-    exec env BRANCH_SYNC_DAEMON=1 BRANCH_SYNC_INTERVAL="$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon
-  fi
-  return 0
 }
 
 daemon_loop() {
   DAEMON_MODE=1
   mkdir -p "$SESSION_DIR"
   echo "$(date '+%Y-%m-%d %H:%M:%S') branch sync started (interval ${INTERVAL}s, pid $$)" >>"$LOG_FILE"
-
+  local script_revision
+  script_revision="$(git hash-object "$ROOT/scripts/branch-sync.sh")"
   while true; do
-    rm -f "$REQUEST_FILE"
-    {
-      sync_once
-    } >>"$LOG_FILE" 2>&1 || true
+    bash "$ROOT/scripts/branch-sync.sh" once >>"$LOG_FILE" 2>&1 || true
+    if [[ "$(git hash-object "$ROOT/scripts/branch-sync.sh")" != "$script_revision" ]]; then
+      exec env BRANCH_SYNC_DAEMON=1 BRANCH_SYNC_INTERVAL="$INTERVAL" "$ROOT/scripts/branch-sync.sh" _daemon
+    fi
     local elapsed=0
     while [[ "$elapsed" -lt "$INTERVAL" ]]; do
       if [[ -f "$REQUEST_FILE" ]]; then

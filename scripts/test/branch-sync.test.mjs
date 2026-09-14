@@ -41,6 +41,8 @@ function makeFixture() {
   const script = path.join(scripts, 'branch-sync.sh');
   copyFileSync(productionScript, script);
   chmodSync(script, 0o755);
+  copyFileSync(path.resolve(import.meta.dirname, '../branch-sync-drafts.mjs'), path.join(scripts, 'branch-sync-drafts.mjs'));
+  writeFileSync(path.join(work, '.git/info/exclude'), 'scripts/\n.dev-session/\n');
   const log = path.join(root, 'session.log');
   const session = path.join(scripts, 'fake-session.sh');
   writeFileSync(session, `#!/usr/bin/env bash
@@ -71,10 +73,10 @@ function sessionLog(fixture) {
   return existsSync(fixture.log) ? readFileSync(fixture.log, 'utf8').trim().split('\n').filter(Boolean).map((line) => line.split('|')) : [];
 }
 
-async function runOnce(fixture, { astro = 'off', stateUrl } = {}) {
+async function runOnce(fixture, { astro = 'off', stateUrl, bunBinary = bun } = {}) {
   const proc = Bun.spawn([fixture.script, 'once'], {
     cwd: fixture.work,
-    env: { ...process.env, ASTRO_RUNNING: astro, BRANCH_SYNC_BUN: bun, BRANCH_SYNC_DAEMON: '0', BRANCH_SYNC_SESSION_SCRIPT: fixture.session, BRANCH_SYNC_SESSION_LOG: fixture.log, BRANCH_SYNC_REPO: fixture.work, ...(stateUrl ? { BRANCH_SYNC_STATE_URL: stateUrl } : {}) },
+    env: { ...process.env, ASTRO_RUNNING: astro, BRANCH_SYNC_BUN: bunBinary, BRANCH_SYNC_DAEMON: '0', BRANCH_SYNC_SESSION_SCRIPT: fixture.session, BRANCH_SYNC_SESSION_LOG: fixture.log, BRANCH_SYNC_REPO: fixture.work, ...(stateUrl ? { BRANCH_SYNC_STATE_URL: stateUrl } : {}) },
     stdin: 'ignore',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -129,12 +131,12 @@ async function waitFor(predicate, message) {
   throw new Error(message);
 }
 
-await scenario('1. content update while editing advances HEAD without stop/start', async () => {
+await scenario('1. content update while editing defers without stop/start', async () => {
   const fixture = makeFixture();
   try {
     addIncoming(fixture, 'src/content/project.json');
     await withStateServer({ editing: true, clients: 1 }, async (stateUrl) => assert.equal((await runOnce(fixture, { astro: 'on', stateUrl })).code, 0));
-    assert.notEqual(git(fixture.work, 'rev-parse', 'HEAD'), fixture.oldHead);
+    assert.equal(git(fixture.work, 'rev-parse', 'HEAD'), fixture.oldHead);
     assert.deepEqual(sessionLog(fixture).map(([action]) => action).filter((action) => action !== 'astro-running'), []);
   } finally { fixture.close(); }
 });
@@ -231,6 +233,129 @@ await scenario('7. manual request wakes the daemon before its interval', async (
     daemon.kill();
     fixture.close();
   }
+});
+
+function snapshotDrafts(fixture) {
+  return {
+    head: git(fixture.work, 'rev-parse', 'HEAD'),
+    status: git(fixture.work, 'status', '--porcelain'),
+    staged: git(fixture.work, 'diff', '--cached', '--binary'),
+    unstaged: git(fixture.work, 'diff', '--binary'),
+    untracked: git(fixture.work, 'ls-files', '--others', '--exclude-standard', '-z').split('\0').filter(Boolean)
+      .map((file) => [file, readFileSync(path.join(fixture.work, file)).toString('base64')]),
+  };
+}
+
+function queueRequest(fixture, id) {
+  mkdirSync(path.join(fixture.work, '.dev-session'), { recursive: true });
+  writeFileSync(path.join(fixture.work, '.dev-session/branch-sync.request'), JSON.stringify({ id }));
+}
+
+await scenario('8. dirty tracked and new binary files survive an update without local commits', async () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(path.join(fixture.work, 'README.md'), 'draft\n');
+    writeFileSync(path.join(fixture.work, 'new image.bin'), Buffer.from([0, 255, 128, 10]));
+    const before = snapshotDrafts(fixture);
+    addIncoming(fixture, 'remote.txt');
+    assert.equal((await runOnce(fixture)).code, 0);
+    const after = snapshotDrafts(fixture);
+    assert.notEqual(after.head, before.head);
+    assert.deepEqual({ ...after, head: before.head }, before);
+    assert.equal(git(fixture.work, 'stash', 'list'), '');
+  } finally { fixture.close(); }
+});
+
+await scenario('9. local commits plus staged and unstaged drafts survive the rebase', async () => {
+  const fixture = makeFixture();
+  try {
+    writeFileSync(path.join(fixture.work, 'local.txt'), 'local commit\n');
+    git(fixture.work, 'add', 'local.txt'); git(fixture.work, 'commit', '-m', 'local content');
+    writeFileSync(path.join(fixture.work, 'README.md'), 'staged\n');
+    git(fixture.work, 'add', 'README.md');
+    writeFileSync(path.join(fixture.work, 'README.md'), 'staged and unstaged\n');
+    const before = snapshotDrafts(fixture);
+    addIncoming(fixture, 'remote.txt');
+    assert.equal((await runOnce(fixture)).code, 0);
+    assert.deepEqual({ ...snapshotDrafts(fixture), head: before.head }, before);
+    assert.equal(git(fixture.work, 'rev-list', '--count', 'origin/main..HEAD'), '1');
+    assert.equal(readFileSync(path.join(fixture.work, 'local.txt'), 'utf8'), 'local commit\n');
+  } finally { fixture.close(); }
+});
+
+for (const conflict of ['rebase', 'stash', 'untracked']) {
+  await scenario(`10. ${conflict} conflict restores the exact prior revision, index, drafts and new files`, async () => {
+    const fixture = makeFixture();
+    try {
+      if (conflict === 'rebase') {
+        writeFileSync(path.join(fixture.work, 'README.md'), 'local committed version\n');
+        git(fixture.work, 'add', 'README.md'); git(fixture.work, 'commit', '-m', 'local content');
+      }
+      writeFileSync(path.join(fixture.work, 'README.md'), 'local unsaved version\n');
+      if (conflict === 'rebase') git(fixture.work, 'add', 'README.md');
+      writeFileSync(path.join(fixture.work, 'new.txt'), 'new draft\n');
+      const before = snapshotDrafts(fixture);
+      addIncoming(fixture, conflict === 'untracked' ? 'new.txt' : 'README.md', 'remote version\n');
+      queueRequest(fixture, `conflict-${conflict}`);
+      await withStateServer({ editing: false, clients: 0 }, async (stateUrl) => {
+        assert.equal((await runOnce(fixture, { astro: 'on', stateUrl })).code, 1);
+      });
+      assert.deepEqual(snapshotDrafts(fixture), before);
+      assert.equal(git(fixture.work, 'stash', 'list'), '');
+      const state = JSON.parse(readFileSync(path.join(fixture.work, '.dev-session/branch-sync.status'), 'utf8'));
+      assert.equal(state.id, `conflict-${conflict}`);
+      assert.equal(state.state, 'failed');
+      assert.match(state.message, /previous revision and drafts were restored/);
+      assert.equal(sessionLog(fixture).at(-1)[0], 'start-astro');
+      assert.equal(existsSync(path.join(fixture.work, '.dev-session/branch-sync.lock')), false);
+    } finally { fixture.close(); }
+  });
+}
+
+await scenario('11. a concurrent sync cannot mutate the checkout or consume its queued request', async () => {
+  const fixture = makeFixture();
+  try {
+    addIncoming(fixture, 'remote.txt');
+    queueRequest(fixture, 'locked');
+    mkdirSync(path.join(fixture.work, '.dev-session/branch-sync.lock'));
+    assert.equal((await runOnce(fixture)).code, 0);
+    assert.equal(git(fixture.work, 'rev-parse', 'HEAD'), fixture.oldHead);
+    assert.equal(existsSync(path.join(fixture.work, '.dev-session/branch-sync.request')), true);
+  } finally { fixture.close(); }
+});
+
+await scenario('12. request succeeds only after the server is restarted and ready', async () => {
+  const fixture = makeFixture();
+  try {
+    addIncoming(fixture, 'remote.txt');
+    queueRequest(fixture, 'ready');
+    await withStateServer({ editing: false, clients: 0 }, async (stateUrl) => {
+      assert.equal((await runOnce(fixture, { astro: 'on', stateUrl })).code, 0);
+    });
+    const state = JSON.parse(readFileSync(path.join(fixture.work, '.dev-session/branch-sync.status'), 'utf8'));
+    assert.equal(state.id, 'ready'); assert.equal(state.state, 'succeeded');
+    assert.equal(sessionLog(fixture).at(-1)[0], 'start-astro');
+  } finally { fixture.close(); }
+});
+
+await scenario('13. dependency failure reports failure after restoring drafts and restarting Astro', async () => {
+  const fixture = makeFixture();
+  try {
+    const wrapper = path.join(fixture.root, 'bun-install-fails.sh');
+    writeFileSync(wrapper, '#!/bin/bash\nif [[ "$1" == install ]]; then exit 1; fi\nexec $HOME/.bun/bin/bun "$@"\n');
+    chmodSync(wrapper, 0o755);
+    writeFileSync(path.join(fixture.work, 'README.md'), 'unpublished draft\n');
+    const before = snapshotDrafts(fixture);
+    addIncoming(fixture, 'package.json', '{}\n');
+    queueRequest(fixture, 'install-failure');
+    await withStateServer({ editing: false, clients: 0 }, async (stateUrl) => {
+      assert.equal((await runOnce(fixture, { astro: 'on', stateUrl, bunBinary: wrapper })).code, 1);
+    });
+    assert.deepEqual({ ...snapshotDrafts(fixture), head: before.head }, before);
+    const state = JSON.parse(readFileSync(path.join(fixture.work, '.dev-session/branch-sync.status'), 'utf8'));
+    assert.equal(state.state, 'failed'); assert.match(state.message, /dependency installation failed/);
+    assert.equal(sessionLog(fixture).at(-1)[0], 'start-astro');
+  } finally { fixture.close(); }
 });
 
 if (failures.length > 0) throw new Error(`${failures.length} branch-sync scenario(s) failed`);
