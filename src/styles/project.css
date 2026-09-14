@@ -919,20 +919,16 @@ html:not(.is-dev-mode) .dev-crop-stage {
   right: 0.75em;
   z-index: 2;
   border: 0;
-  /* Plain radius: small chip + box-shadow + backdrop-filter fights Hyperellipse layer mode. */
+  /* Plain radius keeps this compact control out of Hyperellipse layer mode. */
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--sys-color-srf-container-low) 92%, transparent);
-  backdrop-filter: blur(8px);
   padding: 0.45em 0.65em;
-  color: var(--sys-color-on-srf);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
-  box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease, backdrop-filter 0.12s ease, box-shadow 0.12s ease;
 }
 
 .dev-image-edit-trigger[hidden] {
@@ -954,18 +950,14 @@ html:not(.is-dev-mode) .dev-crop-stage {
   z-index: 2;
   border: 0;
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--sys-color-srf-container-low) 92%, transparent);
-  backdrop-filter: blur(8px);
   padding: 0.45em 0.65em;
-  color: var(--sys-color-on-srf);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
-  box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease, backdrop-filter 0.12s ease, box-shadow 0.12s ease;
 }
 
 .dev-caption-add-trigger[hidden] {
@@ -997,18 +989,14 @@ html:not(.is-dev-mode) .dev-crop-stage {
   z-index: 3;
   border: 0;
   border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--sys-color-srf-container-low) 92%, transparent);
-  backdrop-filter: blur(8px);
   padding: 0.45em 0.65em;
-  color: var(--sys-color-on-srf);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
-  box-shadow: 0 0.25em 0.8em rgb(0 0 0 / 0.08);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.12s ease;
+  transition: opacity 0.15s ease, background-color 0.12s ease, backdrop-filter 0.12s ease, box-shadow 0.12s ease;
 }
 
 .dev-grid-edit-trigger[hidden] {
@@ -1023,9 +1011,35 @@ html:not(.is-dev-mode) .dev-crop-stage {
   pointer-events: auto;
 }
 
-/* Press feedback — chips already cast a shadow, so darken the fill instead. */
+/* Editor media chips use the same adaptive palette as cover quick actions. */
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger) {
+  background: transparent;
+  color: var(--sys-color-on-light-media);
+  box-shadow: none;
+  backdrop-filter: blur(8px) brightness(var(--chip-rest-brightness, 1.06));
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark'] {
+  color: var(--sys-color-on-dark-media);
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):hover,
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):focus-visible {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--chip-hover-ring, rgb(255 255 255 / 0.12));
+  backdrop-filter: blur(8px) brightness(var(--chip-hover-brightness, 1.12));
+}
+
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):active {
-  background: color-mix(in srgb, var(--sys-color-srf-container-high) 92%, transparent);
+  background: color-mix(in srgb, var(--ref-palette-grey-800) 92%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-light-media) 7%, var(--ref-palette-grey-800));
+  backdrop-filter: blur(8px);
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark']:active {
+  background: color-mix(in srgb, var(--sys-color-on-dark-media) 12%, #1a1a1a);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-dark-media) 22%, #1a1a1a);
+  backdrop-filter: blur(8px);
 }
 
 /*
