@@ -20,7 +20,7 @@ assert.match(editor, /preferredType: type/);
 assert.match(picker, /label="Add image placeholder"/);
 assert.match(picker, /'Add grid placeholder'/);
 assert.match(picker, /'Add carousel placeholder'/);
-assert.match(picker, /placeholderButton\.hidden = hasCarouselTarget\(\)/);
+assert.doesNotMatch(picker, /placeholderButton\.hidden = hasCarouselTarget\(\)/);
 assert.match(picker, /: 'Add image placeholder';/);
 assert.match(config, /'placeholderImageGrid'/);
 assert.match(config, /'placeholderImageCarousel'/);
@@ -124,6 +124,49 @@ test('content writer appends one grid placeholder and preserves explicit visibil
     assert.equal((await result.done).status, 400);
     assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), saved);
     assert.equal(JSON.stringify(saved), unchanged);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('content writer appends one carousel placeholder and preserves settings and explicit lists', async () => {
+  const previous = process.cwd();
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-media-placeholder-'));
+  const directory = path.join(root, 'src/content/projects');
+  const file = path.join(directory, 'fixture.json');
+  await mkdir(directory, { recursive: true });
+  const source = {
+    sections: [{
+      type: 'imageCarousel', id: 'carousel', orientation: 'vertical', heightMode: 'tallest',
+      maxHeightVh: 75, scrollPinned: true, dotsPlacement: 'over',
+      items: [{ id: 'existing', src: 'one.jpg', alt: '' }, { id: 'existing-two', src: 'two.jpg', alt: '' }],
+      visible: ['existing'],
+      breakpoints: { mobile: { visible: ['existing-two'] } },
+    }],
+  };
+  await writeFile(file, JSON.stringify(source));
+  process.chdir(root);
+  try {
+    let handler;
+    contentSectionDevWriter().configureServer({ middlewares: { use(_path, next) { handler = next; } } });
+    const result = response();
+    await handler(request({ document: 'fixture', action: 'appendMediaItems', path: ['sections', 0], placeholder: true }), result, () => {});
+    const appended = await result.done;
+    assert.equal(appended.status, 200);
+    const saved = JSON.parse(await readFile(file, 'utf8'));
+    const section = saved.sections[0];
+    const items = section.items;
+    assert.equal(items.length, 3);
+    assert.equal(section.orientation, 'vertical');
+    assert.equal(section.heightMode, 'tallest');
+    assert.equal(section.maxHeightVh, 75);
+    assert.equal(section.scrollPinned, true);
+    assert.equal(section.dotsPlacement, 'over');
+    assert.equal(items[2].src, 'placeholder.svg');
+    assert.equal(items[2].alt, 'Placeholder');
+    assert.deepEqual(section.visible, ['existing', items[2].id]);
+    assert.deepEqual(section.breakpoints.mobile.visible, ['existing-two', items[2].id]);
   } finally {
     process.chdir(previous);
     await rm(root, { recursive: true, force: true });
