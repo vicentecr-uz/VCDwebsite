@@ -260,7 +260,8 @@ export function applyChipAppearance(
   applyChipBrightness(host, luma);
   if (fill?.opacity) {
     host.style.setProperty('--chip-contrast-fill', `rgb(${fill.color} ${fill.color} ${fill.color} / ${fill.opacity})`);
-    host.style.setProperty('--chip-hover-ring', `rgb(${fill.color} ${fill.color} ${fill.color} / 0.12)`);
+    const ring = 255 - fill.color;
+    host.style.setProperty('--chip-hover-ring', `rgb(${ring} ${ring} ${ring} / 0.12)`);
   }
 }
 
