@@ -55,8 +55,13 @@ Object.assign(globalThis, {
   document: fixtureDocument,
 });
 
-const fixtureWindow = () => {
+const fixtureWindow = (storage?: Storage) => {
   const listeners = new Map<string, Set<EventListener>>();
+  const defaultStorage = new Map<string, string>();
+  const sessionStorage = storage ?? {
+    getItem: (key: string) => defaultStorage.get(key) ?? null,
+    setItem: (key: string, value: string) => { defaultStorage.set(key, value); },
+  };
   return {
     addEventListener(name: string, fn: EventListener) {
       if (!listeners.has(name)) listeners.set(name, new Set());
@@ -71,6 +76,7 @@ const fixtureWindow = () => {
     scrollTo() {},
     getSelection: () => ({ isCollapsed: true }),
     matchMedia: () => ({ matches: false }),
+    sessionStorage,
   } as unknown as Window & { emit: (type: string, detail?: Record<string, unknown>) => void };
 };
 
@@ -133,6 +139,15 @@ describe('home intro controller', () => {
     expect(f.home.inert).toBe(false);
   });
 
+  test('same-tab replacement skips the intro while a fresh tab shows it', () => {
+    const first = fixture();
+    first.controller.teardown();
+    const replacement = createHomeIntroController(first.surface, first.home, first.root, first.win);
+    controllers.push(replacement);
+    expect(replacement.getState()).toBe('dismissed');
+    expect(fixture().controller.getState()).toBe('active');
+  });
+
   test('pointerdown alone never dismisses; the later click starts the exit', async () => {
     const f = fixture();
     let completed = 0;
@@ -171,6 +186,8 @@ describe('home intro controller', () => {
     const f = fixture();
     f.controller.teardown();
     const replacement = createHomeIntroController(f.surface, f.home, f.root, f.win, { durationMs: 200 });
+    replacement.reset();
+    controllers.push(replacement);
     replacement.dismiss();
     await waitFor(130);
     expect(replacement.getState()).toBe('dismissing');
@@ -186,12 +203,31 @@ describe('home intro controller', () => {
     expect(f.controller.getState()).toBe('editing');
   });
 
-  test('persisted pageshow restores active after pagehide during dismissal', async () => {
+  test('persisted pageshow keeps the intro dismissed after pagehide during dismissal', async () => {
     const f = fixture();
     f.okay.emit('click');
     f.win.emit('pagehide');
     await waitForExit();
     f.win.emit('pageshow', { persisted: true });
+    expect(f.controller.getState()).toBe('dismissed');
+    expect(f.home.inert).toBe(false);
+    expect(fixtureDocument.body.style.overflow).toBe('');
+  });
+
+  test('storage failures preserve first-load behavior without throwing', () => {
+    const storage = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } } as unknown as Storage;
+    const surface = new FixtureElement();
+    const home = new FixtureElement();
+    const root = new FixtureElement();
+    const win = fixtureWindow(storage);
+    const controller = createHomeIntroController(surface, home, root, win);
+    controllers.push(controller);
+    expect(controller.getState()).toBe('active');
+  });
+
+  test('reset replays a seen intro without clearing the tab marker', () => {
+    const f = fixture();
+    f.controller.reset();
     expect(f.controller.getState()).toBe('active');
   });
 
