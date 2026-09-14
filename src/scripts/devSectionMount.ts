@@ -83,6 +83,7 @@ const buildInlineImageFigure = (
   const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
   const centered = section.centered === true || hasWidthConstraint;
   const maxVh = resolveMaxVh(section);
+  const mobileInset = section.mobileInset === true;
   const background = normalizeImageBackground(section.background) ?? 'transparent';
   const editAttrs = imageDevEditAttrs(true, {
     documentKey,
@@ -95,6 +96,7 @@ const buildInlineImageFigure = (
     constrained: section.constrained as never,
     centered,
     maxVh,
+    mobileInset,
     background,
   });
 
@@ -114,6 +116,8 @@ const buildInlineImageFigure = (
     imageBackgroundStyle(background),
   ) ?? '';
   applyDataAttrs(figure, editAttrs);
+  figure.dataset.mobileInset = mobileInset ? 'true' : 'false';
+  figure.dataset.mobileBleedEligible = !maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false';
 
   const img = document.createElement('img');
   img.src = projectImage(src);
@@ -230,6 +234,13 @@ export function mountImageGridSection(
 
   items.forEach((item, itemIndex) => {
     const itemId = itemIds[itemIndex];
+    const mobileVisibleIndex = resolvedLayouts.mobile.visible.indexOf(itemId);
+    const mobileBleedEligible = constrained.mobile === 100 && (
+      columns.mobile === 1
+      || (matchHeight && columns.mobile > 1
+        && resolvedLayouts.mobile.visible.length % columns.mobile === 1
+        && mobileVisibleIndex === resolvedLayouts.mobile.visible.length - 1)
+    );
     const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(
       {
         src: String(item.src ?? ''),
@@ -251,6 +262,7 @@ export function mountImageGridSection(
       srcHeight: Number(item.srcHeight),
       gridDefaultAspect: defaultAspectRatio,
       hasOwnVariants,
+      mobileInset: item.mobileInset === true,
       background: normalizeImageBackground(item.background) ?? 'transparent',
     });
 
@@ -267,6 +279,8 @@ export function mountImageGridSection(
     figure.setAttribute('data-grid-hidden-tablet', resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false');
     figure.setAttribute('data-grid-hidden-mobile', resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false');
     applyDataAttrs(figure, editAttrs);
+    figure.dataset.mobileInset = item.mobileInset === true ? 'true' : 'false';
+    figure.dataset.mobileBleedEligible = mobileBleedEligible ? 'true' : 'false';
 
     const img = document.createElement('img');
     img.src = projectImage(String(item.src ?? ''));
@@ -422,6 +436,7 @@ function mountImageCarouselSection(
       defaultAspectRatio,
     );
     const maxVh = resolveMaxVh(item);
+    const mobileInset = item.mobileInset === true;
     const placeholder = isPlaceholderSrc(String(item.src ?? ''));
     const editAttrs = imageDevEditAttrs(true, {
       documentKey,
@@ -434,6 +449,7 @@ function mountImageCarouselSection(
       gridDefaultAspect: defaultAspectRatio,
       hasOwnVariants,
       maxVh,
+      mobileInset,
       background: normalizeImageBackground(item.background) ?? 'transparent',
     });
 
@@ -455,6 +471,8 @@ function mountImageCarouselSection(
     if (!parked) figure.setAttribute('aria-label', `${displayIndex + 1} of ${visibleCount}`);
     if (parked) figure.setAttribute('aria-hidden', 'true');
     applyDataAttrs(figure, editAttrs);
+    figure.dataset.mobileInset = mobileInset ? 'true' : 'false';
+    figure.dataset.mobileBleedEligible = constrained.mobile === 100 && !maxVh ? 'true' : 'false';
 
     const surface = document.createElement('div');
     surface.className = 'project-image-carousel__surface';

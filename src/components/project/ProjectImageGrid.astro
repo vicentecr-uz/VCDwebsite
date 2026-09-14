@@ -58,6 +58,7 @@ interface Item {
   variants?: ImageVariants;
   srcWidth?: number;
   srcHeight?: number;
+  mobileInset?: boolean;
   background?: string;
   /** @deprecated Prefer layouts.mobile — kept for one-off legacy items. */
   hideOnMobile?: boolean;
@@ -164,6 +165,13 @@ const editorItems = items.map((item, index) => ({
   )}
   {items.map((item, index) => {
     const itemId = itemIds[index];
+    const mobileVisibleIndex = resolvedLayouts.mobile.visible.indexOf(itemId);
+    const mobileBleedEligible = constrained.mobile === 100 && (
+      columns.mobile === 1
+      || (matchHeight && columns.mobile > 1
+        && resolvedLayouts.mobile.visible.length % columns.mobile === 1
+        && mobileVisibleIndex === resolvedLayouts.mobile.visible.length - 1)
+    );
     const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(item, defaultAspectRatio);
     const layoutStyle = gridItemLayoutStyle(itemId, resolvedLayouts);
     const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
@@ -193,6 +201,7 @@ const editorItems = items.map((item, index) => ({
           captionReveal: item.captionReveal,
           gridDefaultAspect: defaultAspectRatio,
           hasOwnVariants,
+          mobileInset: item.mobileInset,
           background: normalizeImageBackground(item.background) ?? 'transparent',
         })
       : {};
@@ -225,6 +234,8 @@ const editorItems = items.map((item, index) => ({
         data-grid-hidden-tablet={resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false'}
         data-grid-hidden-mobile={resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false'}
         {...editAttrs}
+        data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
+        data-mobile-bleed-eligible={mobileBleedEligible ? 'true' : 'false'}
       >
         <div class="project-image-grid__frame">
           <img

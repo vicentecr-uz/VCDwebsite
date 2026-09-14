@@ -465,6 +465,9 @@ import ToggleRow from '../ui/ToggleRow.astro';
         if (key && value) target.style.setProperty(key, value);
       }
       target.dataset.devCarouselConstrained = JSON.stringify(values);
+      target.querySelectorAll<HTMLElement>('[data-carousel-slide]').forEach((slide) => {
+        slide.dataset.mobileBleedEligible = values.mobile === 100 && !slide.dataset.maxVh ? 'true' : 'false';
+      });
     };
 
     const applyConstrainedLive = () => {

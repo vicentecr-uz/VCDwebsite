@@ -72,6 +72,7 @@ interface Props {
   maxVh?: MaxVhPercent | number;
   /** @deprecated use `maxVh: 80` */
   max80?: boolean;
+  mobileInset?: boolean;
   fullHeight?: boolean;
   hideMobile?: boolean;
   imgModifier?: string;
@@ -110,6 +111,7 @@ const {
   background: backgroundProp,
   maxVh: maxVhProp,
   max80 = false,
+  mobileInset = false,
   fullHeight = false,
   hideMobile = false,
   imgModifier,
@@ -173,6 +175,7 @@ const editAttrs = editable
       captionPosition: captionPositionProp,
       captionReveal,
       ...(isLead ? {} : { constrained: constrainedProp, centered, maxVh }),
+      mobileInset,
     })
   : {};
 ---
@@ -193,6 +196,8 @@ const editAttrs = editable
     {...editAttrs}
     {...(spacingAttrs ?? {})}
     data-dev-section-deletable={editable ? 'image' : undefined}
+    data-mobile-inset={mobileInset ? 'true' : 'false'}
+    data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
   >
     {hasCrop ? (
       <div class="project-crop-clip">
@@ -296,6 +301,8 @@ const editAttrs = editable
       ]}
       style={joinMediaStyles(mediaStyle, imageBackgroundStyle(background))}
       {...editAttrs}
+      data-mobile-inset={mobileInset ? 'true' : 'false'}
+      data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
     >
       {hasCrop ? (
         <div class="project-crop-clip">

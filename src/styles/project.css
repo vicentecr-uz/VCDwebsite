@@ -1268,6 +1268,48 @@ h3.project-section-title {
   width: var(--project-image-grid-width, 80%);
 }
 
+/* Full-column media reaches the viewport edge on narrow phones. The width
+   helper opts in only when that breakpoint is saved as full width. */
+@media (max-width: 40em) {
+  .project-image,
+  .project-image-grid,
+  .project-image-carousel,
+  .project-media:not(.project-media--max-vh) {
+    --project-full-media-width: calc(100% + 2 * var(--page-gutter));
+    max-width: none;
+  }
+
+  .project-image {
+    width: var(--project-full-media-width);
+    margin-inline: calc(-1 * var(--page-gutter));
+  }
+
+  .project-media[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] {
+    width: 100%;
+    margin-inline: auto;
+  }
+
+  .project-image-grid,
+  .project-media:not(.project-media--max-vh) {
+    margin-inline: calc((100% - var(--project-image-grid-width, 100%)) / 2);
+  }
+
+  .project-image-carousel {
+    margin-inline: calc((100% - var(--project-image-carousel-width, 100%)) / 2);
+  }
+
+  .project-image[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] {
+    width: 100%;
+    margin-inline: auto;
+  }
+
+  .project-image-grid__item[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] .project-image-grid__frame,
+  .project-image-carousel__slide[data-mobile-inset='true'][data-mobile-bleed-eligible='true'] .project-image-carousel__surface {
+    width: calc(100% - 2 * var(--page-gutter));
+    margin-inline: auto;
+  }
+}
+
 @media (max-width: 991px) {
   .project-media {
     --project-image-grid-width: var(--project-image-grid-width-tablet, var(--project-image-grid-width-desktop, 100%));
@@ -1400,6 +1442,7 @@ h3.project-section-title {
 
 /* ── Image captions ─────────────────────────────────────────── */
 :root {
+  --caption-shadow-extension: 24px;
   --caption-shadow-x: -7px;
   --caption-shadow-y: -7px;
   --caption-shadow-radius: 25px;
@@ -1581,6 +1624,33 @@ h3.project-section-title {
 
 :is(.project-media, .project-image).project-media--max-vh.project-cropped:has(> .project-caption--below) > .project-crop-clip {
   max-height: calc(var(--project-max-vh, 80) * var(--vh-safe, 1svh));
+}
+
+@media (max-width: 40em) {
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) {
+    max-width: none;
+  }
+
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .project-caption--below,
+  .project-image-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-caption--below {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    padding-inline: var(--page-gutter);
+  }
+
+  :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .project-caption:not(.project-caption--below),
+  .project-image-grid__item[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-caption:not(.project-caption--below),
+  .project-image-carousel__slide[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-caption:not(.project-caption--below) {
+    margin: var(--page-gutter);
+    max-width: min(75%, calc(100% - 2 * var(--page-gutter)));
+  }
+
+  .project-image-carousel__caption[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) {
+    box-sizing: border-box;
+    padding-inline: var(--page-gutter);
+  }
 }
 
 /*
