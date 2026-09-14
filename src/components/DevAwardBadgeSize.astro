@@ -1,21 +1,25 @@
 ---
 import DevOverlay from './DevOverlay.astro';
-import TextField from './ui/TextField.astro';
+import Field from './ui/Field.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
 import Button from './ui/Button.astro';
 import PanelActions from './ui/PanelActions.astro';
 ---
 
 <DevOverlay storageKey="award-badge-size" panelKey="award-badge-size" defaultHidden>
   <div data-award-badge-size>
-    <TextField label="Desktop width (px)" type="number" min="16" max="160" step="1" value="64" data-award-size="desktop" />
-    <TextField label="Tablet width (px)" type="number" min="16" max="160" step="1" value="48" data-award-size="tablet" />
-    <TextField label="Mobile width (px)" type="number" min="16" max="160" step="1" value="40" data-award-size="mobile" />
+    <ViewportSelector dataAttr="data-award-viewport" />
+    <Field label="Width" labelFor="award-badge-width">
+      <output slot="labelAccessory" for="award-badge-width" data-award-size-readout>64px</output>
+      <input id="award-badge-width" class="award-badge-size__range" type="range" min="16" max="160" step="1" value="64" data-award-size />
+    </Field>
     <PanelActions><Button emphasis="ghost" label="Reset" data-award-size-reset /></PanelActions>
   </div>
 </DevOverlay>
 
 <style>
   [data-award-badge-size] { display: grid; gap: var(--space-unit); }
+  .award-badge-size__range { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
 </style>
 
 <script>
@@ -39,32 +43,45 @@ import PanelActions from './ui/PanelActions.astro';
         }
       }
     } catch { /* Keep defaults when browser storage is unavailable. */ }
-    const fields = [...panel.querySelectorAll<HTMLInputElement>('[data-award-size]')];
+    const field = panel.querySelector<HTMLInputElement>('[data-award-size]');
+    const readout = panel.querySelector<HTMLOutputElement>('[data-award-size-readout]');
+    const viewportButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-award-viewport]')];
+    if (!field || !readout || !viewportButtons.length) return;
+    const actualViewport = (): Viewport => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
+    let selected = actualViewport();
     const apply = () => {
       for (const viewport of Object.keys(DEFAULTS) as Viewport[]) {
         document.documentElement.style.setProperty(`--goodhome-award-width-${viewport}`, `${values[viewport]}px`);
       }
     };
     const sync = () => {
-      fields.forEach((input) => {
-        input.value = String(values[input.dataset.awardSize as Viewport]);
-        input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
+      field.value = String(values[selected]);
+      readout.textContent = `${values[selected]}px`;
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.awardViewport === selected;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
       });
     };
     const persist = () => {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(values)); } catch { /* Live sizing still works without storage. */ }
     };
-    fields.forEach((input) => {
-      input.addEventListener('input', () => {
-        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) return;
-        values[input.dataset.awardSize as Viewport] = input.valueAsNumber;
-        apply();
-        persist();
-      }, { signal });
-      input.addEventListener('change', () => {
-        if (!input.validity.valid || !Number.isFinite(input.valueAsNumber)) sync();
-      }, { signal });
-    });
+    viewportButtons.forEach((button) => button.addEventListener('click', () => {
+      const viewport = button.dataset.awardViewport as Viewport;
+      if (!Object.hasOwn(DEFAULTS, viewport)) return;
+      selected = viewport;
+      sync();
+    }, { signal }));
+    field.addEventListener('input', () => {
+      if (!field.validity.valid || !Number.isFinite(field.valueAsNumber)) return;
+      values[selected] = field.valueAsNumber;
+      readout.textContent = `${values[selected]}px`;
+      apply();
+      persist();
+    }, { signal });
+    field.addEventListener('change', () => {
+      if (!field.validity.valid || !Number.isFinite(field.valueAsNumber)) sync();
+    }, { signal });
     panel.querySelector('[data-award-size-reset]')?.addEventListener('click', () => {
       Object.assign(values, DEFAULTS);
       apply();
