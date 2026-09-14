@@ -241,14 +241,10 @@ export function resolveDevFieldTarget(slug, _viewId, fieldPath) {
 
 const DEFAULT_IMAGE_VARIANTS = {
   desktop: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
-  tablet: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
-  mobile: { aspect: 'original', cx: 0.5, cy: 0.5, w: 1 },
 };
 
 export const PLACEHOLDER_IMAGE_VARIANTS = {
   desktop: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
-  tablet: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
-  mobile: { aspect: '4:3', cx: 0.5, cy: 0.5, w: 1 },
 };
 
 const STATIC_EDITABLE_DOCUMENTS = new Map([
