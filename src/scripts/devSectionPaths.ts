@@ -7,6 +7,7 @@ export const DEV_PATH_ATTRS = [
   'data-dev-image-path',
   'data-dev-grid-path',
   'data-dev-carousel-path',
+  'data-dev-item-path',
 ] as const;
 
 export const SECTION_ORDER_ID_ATTR = 'data-dev-section-order-id';

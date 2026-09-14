@@ -3532,11 +3532,13 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     saveButton.addEventListener('click', saveDraft);
     makeCarouselButton?.addEventListener('click', async () => {
       const target = editTarget;
-      if (!isGridTarget(target)) return;
+      if (!isGridTarget(target) || makeCarouselButton.disabled) return;
       const documentKey = target.dataset.devDocument || '';
       let path: Array<string | number> = [];
       try { path = JSON.parse(target.dataset.devImagePath || '[]'); } catch { path = []; }
       if (!documentKey || path.length !== 4) return;
+      makeCarouselButton.disabled = true;
+      const identity = withDevEditTarget({ document: documentKey, path }, target).target;
       try {
         commitDraftSettings();
         await new Promise<void>((resolve, reject) => {
@@ -3551,17 +3553,20 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
             document: documentKey,
             action: 'convertGridItemToCarousel',
             path,
-            target: withDevEditTarget({ document: documentKey, path }, target).target,
+            target: identity,
           }),
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not make this image a carousel.');
-        closePanel();
+        if (editTarget === target) closePanel();
+        window.dispatchEvent(new Event('vcd:dev-content-written'));
         window.dispatchEvent(new CustomEvent('vcd:dev-grid-media-appended', {
           detail: { documentKey, index: payload.index, section: payload.section },
         }));
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not make this image a carousel.';
+      } finally {
+        makeCarouselButton.disabled = false;
       }
     });
     window.addEventListener('vcd:dev-before-save', (event) => {
