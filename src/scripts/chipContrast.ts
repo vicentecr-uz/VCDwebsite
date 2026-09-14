@@ -11,8 +11,10 @@ function luminance({ r, g, b }: Rgba): number {
 }
 
 function contrast(a: Rgba, b: Rgba): number {
-  const lighter = Math.max(luminance(a), luminance(b));
-  const darker = Math.min(luminance(a), luminance(b));
+  const aLuminance = luminance(a);
+  const bLuminance = luminance(b);
+  const lighter = Math.max(aLuminance, bLuminance);
+  const darker = Math.min(aLuminance, bLuminance);
   return (lighter + 0.05) / (darker + 0.05);
 }
 
@@ -57,6 +59,7 @@ export function chipContrastFill(
   if (pixels.length < 3 || brightness.length === 0) return { color, opacity: 0 };
 
   if (meetsContrast(pixels, ink, color, 0, brightness)) return { color, opacity: 0 };
+  // Opacity 1 is the ceiling for unsupported low-contrast custom tokens; use stronger ink to improve it.
   if (!meetsContrast(pixels, ink, color, 1, brightness)) return { color, opacity: 1 };
 
   let low = 0;
