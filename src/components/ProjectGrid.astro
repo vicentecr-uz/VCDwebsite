@@ -362,11 +362,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     position: relative;
   }
 
-  /*
-    Match section drag-handle / delete: icon-only at rest; fill + scale on hover.
-    Light covers: press darkens the fill slightly (--sys-color-srf-container-high).
-    Dark covers override outline / press fill in the global block (#154).
-  */
+  /* Cover quick actions share the adaptive surface palette; hover adds emphasis. */
   .project-grid__chip {
     display: grid;
     place-items: center;
@@ -383,6 +379,7 @@ const gridCardTemplateSeed: ProjectGridItem = {
     line-height: 1;
     cursor: pointer;
     box-shadow: none;
+    backdrop-filter: blur(8px) brightness(var(--chip-rest-brightness, 1.06));
     text-decoration: none;
     /* opacity here matters even though the resting state is always opacity: 1 —
        the transition shorthand replaces the whole list, not merges it. The
@@ -392,10 +389,15 @@ const gridCardTemplateSeed: ProjectGridItem = {
        an opacity entry here that transition is dropped and it snaps to 1. */
     transition:
       background-color 0.15s ease,
+      backdrop-filter 0.15s ease,
       box-shadow 0.15s ease,
       transform 0.15s ease,
       --chip-ink 0.15s ease,
       opacity var(--dev-suppress-duration) ease;
+  }
+
+  .project-grid__chip[data-dev-project-settings] {
+    padding: 0.45em 0.65em;
   }
 
   .project-grid__chip-icon {
@@ -409,9 +411,9 @@ const gridCardTemplateSeed: ProjectGridItem = {
   .project-grid__chip:focus-visible,
   .project-grid__chip[aria-pressed='true'],
   .project-grid__chip[aria-expanded='true'] {
-    background: var(--chip-fill);
-    box-shadow: inset 0 0 0 1px var(--chip-ring);
-    backdrop-filter: blur(8px);
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--chip-hover-ring, rgb(255 255 255 / 0.12));
+    backdrop-filter: blur(8px) brightness(var(--chip-hover-brightness, 1.12));
     transform: scale(1.08);
     color: var(--chip-ink);
   }

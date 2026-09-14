@@ -4,13 +4,16 @@
  */
 
 import {
+  applyChipBrightness,
   applyMediaGround,
   cropHostFor,
   groundForBox,
+  lumaForBox,
   lumaGridFor,
   readCropVars,
   type MediaGround,
 } from './adaptiveMediaInk';
+import { isRegionDark } from './coverLuminance';
 
 function isPlaceholderSrc(src: string | undefined, cover: HTMLElement): boolean {
   if (!src) return true;
@@ -39,7 +42,12 @@ function applyFallbackGround(
   ground: MediaGround,
 ): void {
   applyMediaGround(item, ground);
-  inkTargets(item, cover).forEach((el) => applyMediaGround(el, ground));
+  inkTargets(item, cover).forEach((el) => {
+    applyMediaGround(el, ground);
+    if (el.classList.contains('project-grid__chip')) {
+      applyChipBrightness(el, ground === 'light' ? 0.78 : null);
+    }
+  });
 }
 
 function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void } {
@@ -120,6 +128,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           if (meta) applyMediaGround(meta, metaFallback);
           for (const chip of chips) {
             applyMediaGround(chip, chipFallback);
+            applyChipBrightness(chip, chipFallback === 'light' ? 0.78 : null);
           }
         }
         return;
@@ -160,6 +169,7 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
         if (chipPlaceholder || !chipDecoded) {
           for (const chip of chips) {
             applyMediaGround(chip, chipFallback);
+            applyChipBrightness(chip, chipFallback === 'light' ? 0.78 : null);
           }
         } else {
           const naturalWidth = Number((chipDecoded as HTMLImageElement).naturalWidth) || 0;
@@ -167,10 +177,9 @@ function bindItem(item: HTMLElement): { cleanup: () => void; refresh: () => void
           const frame = { width: coverRect.width, height: coverRect.height };
           const source = { width: naturalWidth, height: naturalHeight };
           for (const chip of chips) {
-            applyMediaGround(
-              chip,
-              groundForBox(chip, cover, chipDecoded, frame, source, chipCrop, background) ?? metaGround,
-            );
+            const chipLuma = lumaForBox(chip, cover, chipDecoded, frame, source, chipCrop, background);
+            applyMediaGround(chip, chipLuma === null ? metaGround : isRegionDark(chipLuma) ? 'dark' : 'light');
+            applyChipBrightness(chip, chipLuma ?? (metaGround === 'light' ? 0.78 : null));
           }
         }
       }

@@ -32,17 +32,29 @@ export function groundForBox(
   crop: { w: number; cx: number; cy: number } | null,
   background?: string,
 ): MediaGround | null {
+  const luma = lumaForBox(el, cover, decoded, frame, source, crop, background);
+  return luma === null ? null : isRegionDark(luma) ? 'dark' : 'light';
+}
+
+export function lumaForBox(
+  el: HTMLElement,
+  cover: HTMLElement,
+  decoded: CanvasImageSource,
+  frame: { width: number; height: number },
+  source: { width: number; height: number },
+  crop: { w: number; cx: number; cy: number } | null,
+  background?: string,
+): number | null {
   const coverRect = cover.getBoundingClientRect();
   const region = elementRegionInCover(el, coverRect);
   if (!region) return null;
   if (background) {
-    const luma = measureRenderedRegionLuma(decoded, region, frame, source, crop, background);
-    return isRegionDark(luma) ? 'dark' : 'light';
+    return measureRenderedRegionLuma(decoded, region, frame, source, crop, background);
   }
   const sourceRegion = crop
     ? cropFrameRegionToSourceRegion(region, frame, source, crop)
     : coverBoxRegionToSourceRegion(region, frame, source);
-  return groundForRegion(decoded, sourceRegion);
+  return measureRegionLuma(decoded, sourceRegion);
 }
 
 export function cropHostFor(cover: HTMLElement): HTMLElement | null {
@@ -194,4 +206,12 @@ export function applyMediaGround(host: HTMLElement, ground: MediaGround): void {
       ? 'var(--sys-color-on-dark-media-subtle)'
       : 'var(--sys-color-on-light-media-subtle)',
   );
+}
+
+/** Six percent rest / twelve percent hover leaves near-white grounds with headroom instead of clipping to white. */
+export function applyChipBrightness(host: HTMLElement, luma: number | null): void {
+  const nearWhite = luma !== null && luma >= 0.78;
+  host.style.setProperty('--chip-rest-brightness', nearWhite ? '0.94' : '1.06');
+  host.style.setProperty('--chip-hover-brightness', nearWhite ? '0.88' : '1.12');
+  host.style.setProperty('--chip-hover-ring', nearWhite ? 'rgb(0 0 0 / 0.12)' : 'rgb(255 255 255 / 0.12)');
 }
