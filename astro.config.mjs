@@ -1593,6 +1593,7 @@ const INSERTABLE_SECTION_TYPES = new Set([
   'bodyText',
   'sectionTitle',
   'projectDetails',
+  'award',
   'image',
   'imageGrid',
   'imageCarousel',
@@ -2195,6 +2196,16 @@ export function contentSectionDevWriter() {
               id,
               title: 'Project details & credits',
               rows: [{ label: 'Role', value: '' }],
+              spacing: insertSpacing,
+            };
+          } else if (type === 'award') {
+            const id = `award-${Date.now().toString(36)}`;
+            section = {
+              type: 'award',
+              id,
+              src: '/awards/if-design-2026.png',
+              alt: 'iF Design Award 2026',
+              href: '',
               spacing: insertSpacing,
             };
           } else if (type === 'image') {

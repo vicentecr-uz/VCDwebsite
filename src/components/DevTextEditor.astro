@@ -106,6 +106,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 <div class="dev-text-format-sel" data-dev-text-format-sel hidden></div>
 
 <script>
+  import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
+  import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
   import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
@@ -186,7 +188,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     currentValue: number;
   }
 
-  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'projectDetails' | 'image' | 'imageGrid' | 'imageCarousel';
+  type InsertableSectionType = 'bodyText' | 'sectionTitle' | 'projectDetails' | 'award' | 'image' | 'imageGrid' | 'imageCarousel';
 
   type SpacingOption = { value: SpacingValue; label: string; title: string };
 
@@ -283,19 +285,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   let editorAbortController: AbortController | null = null;
   let branchUpdatePollTimer: ReturnType<typeof setInterval> | null = null;
 
-  /** http(s), in-page path, hash, mailto — also the shape we persist. */
-  const SAFE_HREF = /^(https?:\/\/|\/|#|mailto:)/i;
-  /** google.com, vcruzdesigns.com, www.foo.co.uk/path — no scheme, no spaces. */
-  const BARE_HOST = /^(?:[\w-]+\.)+[a-z]{2,}(?:[/:?#].*)?$/i;
-
-  const normalizeHref = (raw: string): string | null => {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    if (SAFE_HREF.test(trimmed)) return trimmed;
-    if (BARE_HOST.test(trimmed)) return `https://${trimmed}`;
-    return null;
-  };
-
   const applySpacingClass = (element: HTMLElement, spacing: SpacingMap) => {
     const active = spacing[currentSpacingViewport()];
     const desktopClasses = projectStackClass(spacing).split(/\s+/)
@@ -353,6 +342,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
     if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !emphasisStyleField || !formatInline) return;
+    bindProjectAwardEditors();
 
     editorAbortController?.abort();
     editorAbortController = new AbortController();
@@ -818,6 +808,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="bodyText">Text section</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="award">Award</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="image">Image</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
                 <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
@@ -2286,6 +2277,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         return { root: section, textElement: title, textKind: 'text' as const, textPath: [...sectionPath, 'title'] };
       }
 
+      if (type === 'award') {
+        const section = document.createElement('section');
+        section.className = spacingClass ? `project-block project-award ${spacingClass}${introClass}` : `project-block project-award${introClass}`;
+        section.dataset.devSpacingDocument = documentKey;
+        section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
+        section.dataset.devSpacingValue = spacing;
+        section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
+        section.dataset.devSectionDeletable = 'award';
+        section.dataset.projectAward = '';
+        section.dataset.projectAwardHref = '';
+        section.innerHTML = `<span class="project-award__proxy" hidden data-dev-text-document="${documentKey}" data-dev-text-path='${JSON.stringify([...sectionPath, 'href'])}' data-dev-text-kind="text"></span><div class="project-award__center"><span class="project-award__control"><img src="/awards/if-design-2026.png" alt="iF Design Award 2026" draggable="false"><button type="button" class="dev-btn dev-btn--page project-award__edit" data-award-edit data-dev-mode-only>Edit award</button><form class="project-award__editor dev-surface" data-award-editor hidden><button type="button" class="dev-btn dev-btn--page" data-award-remove aria-label="Remove award link">×</button><input class="project-award__input" data-award-input aria-label="Award link" placeholder="google.com" autocomplete="off"><button type="submit" class="dev-btn dev-btn--page" data-award-apply aria-label="Apply award link">✓</button></form></span></div>`;
+        return { root: section, textElement: section.querySelector<HTMLElement>('[data-dev-text-path]')!, textKind: 'text' as const, textPath: [...sectionPath, 'href'] };
+      }
+
       if (type === 'sectionTitle') {
         const wrapper = document.createElement('div');
         wrapper.className = spacingClass
@@ -2727,7 +2732,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             type,
             id: sectionId,
             sectionId,
-            title: type === 'projectDetails' ? 'Project details & credits' : 'Section title',
+            title: type === 'projectDetails' ? 'Project details & credits' : type === 'award' ? 'Award' : 'Section title',
           },
           ...(type === 'sectionTitle' ? { outlineEntries: [] } : {}),
         },
@@ -2928,7 +2933,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             }));
             return;
           }
-          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'projectDetails') return;
+          if (type !== 'bodyText' && type !== 'sectionTitle' && type !== 'projectDetails' && type !== 'award') return;
           dismissGapToolbarAfterAddChoice();
           const intro = button.dataset.devSectionIntro === 'true';
           insertSectionAt(state, type, intro ? { intro: true, spacing: 'related' } : undefined);
