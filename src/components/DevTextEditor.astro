@@ -70,6 +70,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         data-dev-emphasis-style
         value="default"
         options={[
+          { value: 'emphasis', label: 'Emphasis' },
           { value: 'default', label: 'Default' },
           { value: 'subtle', label: 'Subtle' },
         ]}
@@ -4909,12 +4910,18 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     };
 
     const syncEmphasisStyle = () => {
-      const active = Boolean(savedFormatRange && markCoversRange(savedFormatRange, 'subtle'));
-      emphasisStyleSelect.value = active
+      if (!savedFormatRange) {
+        emphasisStyleSelect.value = 'default';
+        return;
+      }
+      emphasisStyleSelect.value = markCoversRange(savedFormatRange, 'subtle')
         ? 'subtle'
-        : 'default';
+        : markCoversRange(savedFormatRange, 'emphasis')
+          ? 'emphasis'
+          : 'default';
     };
 
+    type EmphasisTone = 'emphasis' | 'default' | 'subtle';
     type InlineMarks = {
       emphasis: boolean;
       subtle: boolean;
@@ -4930,7 +4937,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       selected: boolean;
     };
 
-    const applyEmphasisMark = (range: Range, subtle: boolean) => {
+    const applyEmphasisMark = (range: Range, tone: EmphasisTone) => {
       const startElement = range.startContainer instanceof Element
         ? range.startContainer
         : range.startContainer.parentElement;
@@ -4997,7 +5004,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const selectedAtoms = atoms.filter((atom) => atom.selected);
       if (!selectedAtoms.length) return null;
       selectedAtoms.forEach((atom) => {
-        atom.marks = { ...atom.marks, subtle };
+        atom.marks = {
+          ...atom.marks,
+          emphasis: tone === 'emphasis',
+          subtle: tone === 'subtle',
+        };
       });
 
       const keyFor = (atom: InlineAtom) => JSON.stringify({
@@ -5062,7 +5073,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!restoreFormatRange() || !savedFormatRange || savedFormatRange.collapsed) return;
       const block = findParagraphState(savedFormatRange.commonAncestorContainer)?.element;
       if (!block) return;
-      const range = applyEmphasisMark(savedFormatRange, value === 'subtle');
+      if (value !== 'emphasis' && value !== 'default' && value !== 'subtle') return;
+      const range = applyEmphasisMark(savedFormatRange, value);
       if (!range) return;
       const selection = window.getSelection();
       selection?.removeAllRanges();
