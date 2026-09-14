@@ -11,7 +11,7 @@ import {
 
 const CHIP_SELECTOR = '.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
 const TARGET_SELECTOR = '.dev-image-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
-const FRAME_SELECTOR = '.project-image-grid__frame, .project-crop-clip, .project-media, .project-image';
+const FRAME_SELECTOR = '.project-image-grid__frame, .project-crop-clip, .project-media > img, .project-image > img';
 
 function intersectionArea(a: DOMRect, b: DOMRect): number {
   return Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left))
@@ -25,14 +25,7 @@ export function frameForChip(chip: HTMLElement, scope: HTMLElement): HTMLElement
     ...(scope.matches(FRAME_SELECTOR) ? [scope] : []),
     ...scope.querySelectorAll<HTMLElement>(FRAME_SELECTOR),
   ]
-    .filter((frame) => {
-      if (frame === chip || frame.getBoundingClientRect().width <= 0) return false;
-      if (frame.matches('.project-media, .project-image')) {
-        const image = imageIn(frame);
-        return !image || intersectionArea(chipRect, image.getBoundingClientRect()) > 0;
-      }
-      return true;
-    });
+    .filter((frame) => frame.getBoundingClientRect().width > 0);
   let best: HTMLElement | null = null;
   let bestArea = 0;
   for (const frame of candidates) {
@@ -161,7 +154,12 @@ export function bindEditorChipMediaInk(): () => void {
         return;
       }
       const chips = [...document.querySelectorAll<HTMLElement>(CHIP_SELECTOR)].filter(visible);
-      knownChips.clear();
+      knownChips.forEach((chip) => {
+        if (!chips.includes(chip)) {
+          clearChip(chip);
+          knownChips.delete(chip);
+        }
+      });
       chips.forEach((chip) => knownChips.add(chip));
       const scopes = new Set(chips.map(scopeForChip).filter((scope): scope is HTMLElement => Boolean(scope)));
       observedScopes.forEach((scope) => {
