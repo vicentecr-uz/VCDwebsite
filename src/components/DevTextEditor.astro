@@ -3017,7 +3017,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (!baseline) return;
       let id = detailsPendingIds.get(root);
       if (!id) {
-        id = `project-details:${crypto.randomUUID()}`;
+        id = `project-details:${crypto.randomUUID?.() ?? Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
         detailsPendingIds.set(root, id);
       }
       const current = detailsSnapshot(root);
