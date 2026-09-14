@@ -7,6 +7,7 @@ import PanelActions from '../ui/PanelActions.astro';
 import Button from '../ui/Button.astro';
 import alignCenterVerticalIcon from 'lucide-static/icons/align-center-vertical.svg?raw';
 import alignCenterHorizontalIcon from 'lucide-static/icons/align-center-horizontal.svg?raw';
+import maximizeIcon from 'lucide-static/icons/maximize.svg?raw';
 import lockIcon from 'lucide-static/icons/lock.svg?raw';
 import monitorIcon from 'lucide-static/icons/monitor.svg?raw';
 import globeIcon from 'lucide-static/icons/globe.svg?raw';
@@ -15,6 +16,7 @@ import { sizeIcon } from '../../lib/icons';
 
 const alignXSvg = sizeIcon(alignCenterVerticalIcon, 14);
 const alignYSvg = sizeIcon(alignCenterHorizontalIcon, 14);
+const maximizeSvg = sizeIcon(maximizeIcon, 14);
 const lockSvg = sizeIcon(lockIcon, 14);
 const monitorSvg = sizeIcon(monitorIcon, 16);
 const globeSvg = sizeIcon(globeIcon, 16);
@@ -155,6 +157,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       </button>
       <button type="button" data-crop-center-y aria-label="Centre vertically">
         <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={alignYSvg} />
+      </button>
+      <button type="button" data-crop-fit aria-label="Fit to frame">
+        <span class="tapico-crop-tuner__icon" aria-hidden="true" set:html={maximizeSvg} />
       </button>
       <button
         type="button"
@@ -303,6 +308,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const status = tuner.querySelector<HTMLElement>('[data-crop-status]');
     const centerXButton = tuner.querySelector<HTMLButtonElement>('[data-crop-center-x]');
     const centerYButton = tuner.querySelector<HTMLButtonElement>('[data-crop-center-y]');
+    const fitButton = tuner.querySelector<HTMLButtonElement>('[data-crop-fit]');
     const constraintButton = tuner.querySelector<HTMLButtonElement>('[data-crop-constraint]');
     const constraintState = tuner.querySelector<HTMLElement>('[data-crop-constraint-state]');
     const constraintIcon = tuner.querySelector<HTMLElement>('[data-crop-constraint-icon]');
@@ -334,6 +340,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       !status ||
       !centerXButton ||
       !centerYButton ||
+      !fitButton ||
       !constraintButton ||
       !constraintState ||
       !constraintIcon ||
@@ -2929,6 +2936,22 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       status.textContent = 'Centred vertically — unsaved changes.';
     });
 
+    fitButton.addEventListener('click', () => {
+      pushUndo();
+      beginLiveEdits();
+      constrainByViewport = {
+        ...constrainByViewport,
+        [selectedViewport]: false,
+      };
+      writeConstraints(constrainByViewport);
+      draft.cx = 0.5;
+      draft.cy = 0.5;
+      draft.w = Math.max(1, frameAspectOf(draft.aspect) / srcAspect());
+      renderConstraint();
+      renderDraft();
+      status.textContent = 'Fit to frame — unsaved changes.';
+    });
+
     constraintButton.addEventListener('click', () => {
       pushUndo();
       beginLiveEdits();
@@ -3821,7 +3844,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 
   .tapico-crop-tuner__toolbar {
     display: grid;
-    grid-template-columns: 2.4em 2.4em 1fr;
+    grid-template-columns: repeat(3, 2.4em) 1fr;
     gap: 0.4em;
   }
 
