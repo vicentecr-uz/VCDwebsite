@@ -12,9 +12,16 @@ mock.module('../../src/scripts/adaptiveMediaInk', () => ({
     host.dataset.mediaGround = ground;
     host.style.setProperty('--media-ink', ground);
   },
+  applyChipBrightness(host: HTMLElement, luma: number | null) {
+    host.style.setProperty('--chip-rest-brightness', luma !== null && luma >= 0.78 ? '0.94' : '1.06');
+    host.style.setProperty('--chip-hover-brightness', luma !== null && luma >= 0.78 ? '0.88' : '1.12');
+  },
   cropHostFor: () => null,
   groundForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (
     decoded.src?.endsWith('new-image') ? 'light' : 'dark'
+  ),
+  lumaForBox: (_chip: HTMLElement, _frame: HTMLElement, decoded: { src?: string }) => (
+    decoded.src?.endsWith('new-image') ? 0.7 : decoded.src?.endsWith('nearwhite-image') ? 0.9 : decoded.src?.endsWith('midgray-image') ? 0.5 : 0.2
   ),
   groundForRegion: () => 'light',
   lumaGridFor: (src: string) => {
@@ -81,6 +88,8 @@ test('rejects a stale decode after the image source changes', async () => {
   resolveLuma('new-image');
   await tick();
   assert.equal(chip.dataset.mediaGround, 'light');
+  assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '1.06');
+  assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '1.12');
   assert.equal(lumaCalls, 2);
   cleanup();
   document.documentElement.classList.remove('is-dev-mode');
@@ -169,6 +178,26 @@ test('does not decode an offscreen chip', async () => {
   const cleanup = bindEditorChipMediaInk();
   await tick();
   assert.equal(lumaCalls, 0);
+  cleanup();
+  document.documentElement.classList.remove('is-dev-mode');
+});
+
+test('brightens ordinary grounds and darkens near-white grounds', async () => {
+  pending.clear();
+  const { chip, image } = fixture();
+  image.src = 'midgray-image';
+  document.documentElement.classList.add('is-dev-mode');
+  const cleanup = bindEditorChipMediaInk();
+  await tick();
+  resolveLuma('midgray-image');
+  await tick();
+  assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '1.06');
+  image.src = 'nearwhite-image';
+  await tick();
+  resolveLuma('nearwhite-image');
+  await tick();
+  assert.equal(chip.style.getPropertyValue('--chip-rest-brightness'), '0.94');
+  assert.equal(chip.style.getPropertyValue('--chip-hover-brightness'), '0.88');
   cleanup();
   document.documentElement.classList.remove('is-dev-mode');
 });

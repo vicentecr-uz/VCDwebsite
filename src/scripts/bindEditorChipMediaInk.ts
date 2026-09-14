@@ -1,13 +1,13 @@
 /** Keep editor media controls on the same adaptive palette as the image below them. */
 import {
   applyMediaGround,
+  applyChipBrightness,
   cropHostFor,
-  groundForBox,
-  groundForRegion,
+  lumaForBox,
   lumaGridFor,
   readCropVars,
-  type MediaGround,
 } from './adaptiveMediaInk';
+import { isRegionDark, measureRegionLuma } from './coverLuminance';
 
 const CHIP_SELECTOR = '.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger';
 const TARGET_SELECTOR = '.dev-image-edit-target, .dev-grid-edit-target, .dev-carousel-edit-target';
@@ -58,7 +58,7 @@ function opaqueBackground(el: HTMLElement): string | undefined {
   return undefined;
 }
 
-function backgroundGround(el: HTMLElement): MediaGround | null {
+function backgroundLuma(el: HTMLElement): number | null {
   const background = opaqueBackground(el.parentElement ?? el);
   if (!background) return null;
   const canvas = document.createElement('canvas');
@@ -68,7 +68,12 @@ function backgroundGround(el: HTMLElement): MediaGround | null {
   if (!context) return null;
   context.fillStyle = background;
   context.fillRect(0, 0, 1, 1);
-  return groundForRegion(canvas, { x: 0, y: 0, w: 1, h: 1 });
+  return measureRegionLuma(canvas, { x: 0, y: 0, w: 1, h: 1 });
+}
+
+function applySample(chip: HTMLElement, luma: number | null): void {
+  applyMediaGround(chip, luma === null || !isRegionDark(luma) ? 'light' : 'dark');
+  applyChipBrightness(chip, luma);
 }
 
 function scopeForChip(chip: HTMLElement): HTMLElement | null {
@@ -87,6 +92,8 @@ function clearChip(chip: HTMLElement): void {
   delete chip.dataset.mediaGround;
   chip.style.removeProperty('--media-ink');
   chip.style.removeProperty('--media-ink-subtle');
+  chip.style.removeProperty('--chip-rest-brightness');
+  chip.style.removeProperty('--chip-hover-brightness');
 }
 
 function visible(chip: HTMLElement): boolean {
@@ -115,21 +122,21 @@ export function bindEditorChipMediaInk(): () => void {
       const image = frame ? imageIn(frame) : null;
       const source = image?.currentSrc || image?.src;
       if (!frame || !image || !source || image.hidden || !image.complete || !image.naturalWidth) {
-        applyMediaGround(chip, backgroundGround(chip) ?? 'light');
+        applySample(chip, backgroundLuma(chip));
         return;
       }
       const decoded = await lumaGridFor(source);
       if (stopped || gen !== generation) return;
       if (!decoded) {
-        applyMediaGround(chip, backgroundGround(chip) ?? 'light');
+        applySample(chip, backgroundLuma(chip));
         return;
       }
       const frameRect = frame.getBoundingClientRect();
       const sourceWidth = Number((decoded as HTMLImageElement).naturalWidth) || 0;
       const sourceHeight = Number((decoded as HTMLImageElement).naturalHeight) || 0;
-      let ground: MediaGround;
+      let luma: number | null;
       try {
-        ground = groundForBox(
+        luma = lumaForBox(
           chip,
           frame,
           decoded,
@@ -137,11 +144,11 @@ export function bindEditorChipMediaInk(): () => void {
           { width: sourceWidth, height: sourceHeight },
           readCropVars(cropHostFor(frame) ?? frame, false),
           opaqueBackground(frame),
-        ) ?? backgroundGround(chip) ?? 'light';
+        ) ?? backgroundLuma(chip);
       } catch {
-        ground = backgroundGround(chip) ?? 'light';
+        luma = backgroundLuma(chip);
       }
-      if (gen === generation && !stopped) applyMediaGround(chip, ground);
+      if (gen === generation && !stopped) applySample(chip, luma);
     }));
   };
 
