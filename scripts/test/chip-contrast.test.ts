@@ -59,3 +59,30 @@ test('handles empty samples and a shared brightness factor', () => {
   assert.deepEqual(chipContrastFill(new Uint8ClampedArray(), lightInk, [1.06]), { color: 0, opacity: 0 });
   assert.deepEqual(chipContrastFill(new Uint8ClampedArray([20, 20, 20, 255]), lightInk, [1.06]), { color: 0, opacity: 0 });
 });
+
+test('tolerates five percent outliers but protects larger difficult regions in either theme', () => {
+  for (const [ink, ordinary, difficult] of [
+    [darkInk, 245, 109],
+    [lightInk, 20, 245],
+  ] as const) {
+    const sample = (outliers: number) => new Uint8ClampedArray(Array.from({ length: 100 }, (_, index) => {
+      const channel = index < outliers ? difficult : ordinary;
+      return [channel, channel, channel, 255];
+    }).flat());
+    assert.equal(chipContrastFill(sample(5), ink, [1.06, 1.12]).opacity, 0);
+    const result = chipContrastFill(sample(6), ink, [1.06, 1.12]);
+    assert.ok(result.opacity > 0);
+    for (const factor of [1.06, 1.12]) {
+      assert.ok(independentContrast([difficult, difficult, difficult], ink, result.color, result.opacity, factor) >= 4.5);
+    }
+  }
+});
+
+test('counts each outlier once across brightness states and rounds the allowance down', () => {
+  const sample = (count: number) => new Uint8ClampedArray(Array.from({ length: count }, (_, index) => {
+    const channel = index === 0 ? 109 : 245;
+    return [channel, channel, channel, 255];
+  }).flat());
+  assert.equal(chipContrastFill(sample(20), darkInk, [1.06, 1.12]).opacity, 0);
+  assert.ok(chipContrastFill(sample(19), darkInk, [1.06, 1.12]).opacity > 0);
+});
