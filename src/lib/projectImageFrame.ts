@@ -192,6 +192,8 @@ export interface ImageDevEditContext {
   path: Array<string | number>;
   cropId: string;
   variants: ImageVariants | undefined;
+  /** Sparse authored variants, kept separate from the resolved render map. */
+  authoredVariants?: ImageVariants;
   src?: string;
   srcWidth?: number;
   srcHeight?: number;
@@ -279,6 +281,7 @@ export function listingCoverDevEditAttrs(
     path: ['listings', grid],
     cropId: `listing-${grid}`,
     variants: seedCoverVariants,
+    authoredVariants: item.variants ?? {},
     src: item.image,
     srcWidth: Number(item.srcWidth),
     srcHeight: Number(item.srcHeight),
@@ -311,6 +314,7 @@ export function imageDevEditAttrs(
     'data-dev-image-path': JSON.stringify(context.path),
     'data-dev-crop-id': context.cropId,
     'data-dev-image-variants': JSON.stringify(context.variants ?? {}),
+    'data-dev-image-variants-authored': JSON.stringify(context.authoredVariants ?? context.variants ?? {}),
     'data-dev-captions': JSON.stringify(captions),
     'data-dev-caption-style': captionStyle,
     'data-dev-caption-position': captionPosition,
