@@ -919,15 +919,12 @@ html:not(.is-dev-mode) .dev-crop-stage {
   right: 0.75em;
   z-index: 2;
   border: 0;
-  /* Plain radius: small chip follows the container surface treatment. */
+  /* Plain radius keeps this compact control out of Hyperellipse layer mode. */
   border-radius: var(--radius-control);
-  background: var(--sys-color-srf);
   padding: 0.45em 0.65em;
-  color: var(--sys-color-on-srf);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
-  box-shadow: var(--dev-surface-shadow);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -953,13 +950,10 @@ html:not(.is-dev-mode) .dev-crop-stage {
   z-index: 2;
   border: 0;
   border-radius: var(--radius-control);
-  background: var(--sys-color-srf);
   padding: 0.45em 0.65em;
-  color: var(--sys-color-on-srf);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
-  box-shadow: var(--dev-surface-shadow);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -995,13 +989,10 @@ html:not(.is-dev-mode) .dev-crop-stage {
   z-index: 3;
   border: 0;
   border-radius: var(--radius-control);
-  background: var(--sys-color-srf);
   padding: 0.45em 0.65em;
-  color: var(--sys-color-on-srf);
   font: inherit;
   font-size: 0.75rem;
   line-height: 1;
-  box-shadow: var(--dev-surface-shadow);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -1020,9 +1011,40 @@ html:not(.is-dev-mode) .dev-crop-stage {
   pointer-events: auto;
 }
 
-/* Press feedback — darken the chip surface instead. */
+/* Editor media chips use the same adaptive palette as cover quick actions. */
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger) {
+  background: transparent;
+  color: var(--sys-color-on-light-media);
+  box-shadow: none;
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark'] {
+  color: var(--sys-color-on-dark-media);
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):hover,
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):focus-visible {
+  background: color-mix(in srgb, var(--ref-palette-grey-900) 92%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-light-media) 7%, var(--ref-palette-grey-800));
+  backdrop-filter: blur(8px);
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark']:hover,
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark']:focus-visible {
+  background: rgb(0 0 0 / 0.58);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-dark-media) 22%, #1a1a1a);
+}
+
 :is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger):active {
-  background: var(--sys-color-srf-container-high);
+  background: color-mix(in srgb, var(--ref-palette-grey-800) 92%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-light-media) 7%, var(--ref-palette-grey-800));
+  backdrop-filter: blur(8px);
+}
+
+:is(.dev-image-edit-trigger, .dev-caption-add-trigger, .dev-grid-edit-trigger)[data-media-ground='dark']:active {
+  background: color-mix(in srgb, var(--sys-color-on-dark-media) 12%, #1a1a1a);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sys-color-on-dark-media) 22%, #1a1a1a);
+  backdrop-filter: blur(8px);
 }
 
 /*
