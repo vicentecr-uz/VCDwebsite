@@ -171,6 +171,36 @@ test('refreshes after a carousel track scrollend', async () => {
   document.documentElement.classList.remove('is-dev-mode');
 });
 
+test('holds carousel chips through track scrolling until scrollend', async () => {
+  pending.clear();
+  lumaCalls = 0;
+  const { chip, image } = fixture();
+  const scope = image.closest<HTMLElement>('.dev-image-edit-target')!;
+  const track = document.createElement('div');
+  track.className = 'project-image-carousel__track';
+  scope.append(track);
+  image.src = 'moving-carousel-image';
+  document.documentElement.classList.add('is-dev-mode');
+  const cleanup = bindEditorChipMediaInk();
+  await tick();
+  assert.equal(lumaCalls, 1);
+  track.dispatchEvent(new Event('scroll', { bubbles: true }));
+  chip.dispatchEvent(new Event('pointerover', { bubbles: true }));
+  await tick();
+  resolveLuma('moving-carousel-image');
+  await tick();
+  assert.equal(chip.dataset.mediaGround, undefined);
+  assert.equal(lumaCalls, 1);
+  track.dispatchEvent(new Event('scrollend', { bubbles: true }));
+  await tick();
+  assert.equal(lumaCalls, 2);
+  resolveLuma('moving-carousel-image');
+  await tick();
+  assert.equal(chip.dataset.mediaGround, 'dark');
+  cleanup();
+  document.documentElement.classList.remove('is-dev-mode');
+});
+
 test('does not decode an offscreen chip', async () => {
   pending.clear();
   lumaCalls = 0;
