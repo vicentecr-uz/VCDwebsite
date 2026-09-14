@@ -241,6 +241,37 @@
   );
 }
 
+/* Videos share the media frame but stay uncropped and preserve their own ratio. */
+.project-inline-video {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain !important;
+  transform: none !important;
+}
+
+.project-cropped > video[data-project-inline-video],
+.project-cropped > .project-crop-clip > video[data-project-inline-video] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}
+
+.project-image-grid__frame > video[data-project-inline-video] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Replacement and drop tooling can retain the generic image trigger. */
+.dev-image-edit-target:has(video[data-project-inline-video]) [data-dev-edit-trigger='image'] {
+  display: none !important;
+}
+
 /* Image fills travel with the visual media frame and its animated bitmap. */
 .project-crop-clip,
 .project-image__img,

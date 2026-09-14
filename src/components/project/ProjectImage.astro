@@ -40,6 +40,7 @@ import {
 } from '../../lib/projectImageFrame';
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
+import { isVideoSrc } from '../../lib/imageUpload.mjs';
 
 interface Props {
   src: string;
@@ -129,6 +130,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, path, spacing, { contentId });
 
 const isLead = kind === 'lead';
 const isPlaceholder = isPlaceholderSrc(src);
+const isVideo = isVideoSrc(src);
 const srcDims = imageSourceDims({ srcWidth, srcHeight });
 const { hasCrop, normalized } = resolveInlineImageCrop(src, suppliedVariants, {
   lead: isLead,
@@ -203,13 +205,22 @@ const editAttrs = editable
   >
     {hasCrop ? (
       <div class="project-crop-clip">
-        <img
+        {isVideo && (<video
+          src={projectImage(src)}
+          aria-label={alt || 'Video'}
+          class="project-image__img project-inline-video"
+          controls
+          playsinline
+          preload="metadata"
+          data-project-inline-video
+        />)}
+        {!isVideo && (<img
           src={projectImageTier(src, 'thumb')}
           data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
           alt={alt}
           class="project-image__img"
           loading={resolvedLoading}
-        />
+        />)}
         {isPlaceholder && (
           <span class="project-media__placeholder-label" aria-hidden="true">
             <span
@@ -222,13 +233,24 @@ const editAttrs = editable
         )}
       </div>
     ) : (
-      <img
+      <Fragment>
+      {isVideo && (<video
+        src={projectImage(src)}
+        aria-label={alt || 'Video'}
+        class="project-image__img project-inline-video"
+        controls
+        playsinline
+        preload="metadata"
+        data-project-inline-video
+      />)}
+      {!isVideo && (<img
         src={projectImageTier(src, 'thumb')}
         data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
         alt={alt}
         class="project-image__img"
         loading={resolvedLoading}
-      />
+      />)}
+      </Fragment>
     )}
     {isPlaceholder && !hasCrop && (
       <span class="project-media__placeholder-label" aria-hidden="true">
@@ -313,7 +335,16 @@ const editAttrs = editable
             by JS and drawn with object-fit:fill. A CSS max-height would clamp
             that box and stretch the pixels. The height cap belongs on the clip.
           */}
-          <img
+            {isVideo && (<video
+              src={projectImage(src)}
+              aria-label={alt || 'Video'}
+              class:list={['project-media__img', 'project-inline-video', heightClass, fullHeight && 'project-media__img--full-height']}
+              controls
+              playsinline
+              preload="metadata"
+              data-project-inline-video
+            />)}
+            {!isVideo && (<img
             src={projectImageTier(src, 'thumb')}
             data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
             alt={alt}
@@ -325,7 +356,7 @@ const editAttrs = editable
               imgModifier && `project-media__img--${imgModifier}`,
             ]}
             loading={resolvedLoading}
-          />
+          />)}
           {isPlaceholder && (
             <span class="project-media__placeholder-label" aria-hidden="true">
               <span
@@ -338,7 +369,17 @@ const editAttrs = editable
           )}
         </div>
       ) : (
-        <img
+        <Fragment>
+        {isVideo && (<video
+          src={projectImage(src)}
+          aria-label={alt || 'Video'}
+          class:list={['project-media__img', 'project-inline-video', heightClass, mobileShort && 'project-media__img--mobile-short', maxVh && 'project-media__img--max-vh', fullHeight && 'project-media__img--full-height']}
+          controls
+          playsinline
+          preload="metadata"
+          data-project-inline-video
+        />)}
+        {!isVideo && (<img
           src={projectImageTier(src, 'thumb')}
           data-image-preview={isPlaceholder ? undefined : projectImageTier(src, 'preview')}
           alt={alt}
@@ -351,7 +392,8 @@ const editAttrs = editable
             imgModifier && `project-media__img--${imgModifier}`,
           ]}
           loading={resolvedLoading}
-        />
+        />)}
+        </Fragment>
       )}
       {isPlaceholder && !hasCrop && (
         <span class="project-media__placeholder-label" aria-hidden="true">

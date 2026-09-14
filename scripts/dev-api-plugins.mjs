@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { execFile as execFileCallback } from 'node:child_process';
 import { promisify } from 'node:util';
+import { pipeline } from 'node:stream/promises';
 import path from 'node:path';
 import { suppressContentHmr } from './content-hmr-gate.mjs';
 import { normalizeAssetSrc, assetUrlFromSrc, readImageDimsFromSrc, readMediaDimsFromSrc } from './dev-assets.mjs';
@@ -469,6 +470,7 @@ export async function fillPlaceholderImageSection(section, documentKey, filename
     if (!src) throw new Error('An image file is required.');
   }
   dims = await readMediaDimsFromSrc(src);
+  if (!dims && isVideoSrc(src)) throw new Error('Could not read that video file. Ensure it is valid and ffprobe is installed.');
 
   section.type = 'image';
   section.src = src;
@@ -645,7 +647,7 @@ export function mediaDevServer() {
     apply: 'serve',
     configureServer(server) {
       server.middlewares.use('/images', async (req, res, next) => {
-        if (req.method !== 'GET') {
+        if (req.method !== 'GET' && req.method !== 'HEAD') {
           next();
           return;
         }
@@ -654,6 +656,10 @@ export function mediaDevServer() {
         if (!relative || relative.includes('..')) {
           res.statusCode = 400;
           res.end('Bad request');
+          return;
+        }
+        if (req.method === 'HEAD' && !isVideoSrc(relative)) {
+          next();
           return;
         }
         const mediaDir = path.join(process.cwd(), 'media');
@@ -703,8 +709,9 @@ export function mediaDevServer() {
                 res.end();
                 return;
               }
-              let start = match[1] ? Number(match[1]) : Math.max(0, total - Number(match[2]));
-              let end = match[2] ? Number(match[2]) : total - 1;
+              const suffix = !match[1] && match[2] ? Number(match[2]) : 0;
+              let start = match[1] ? Number(match[1]) : Math.max(0, total - suffix);
+              let end = match[2] && match[1] ? Number(match[2]) : total - 1;
               if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || start >= total) {
                 res.statusCode = 416;
                 res.setHeader('content-range', `bytes */${total}`);
@@ -717,14 +724,22 @@ export function mediaDevServer() {
               res.setHeader('content-length', String(end - start + 1));
               res.setHeader('accept-ranges', 'bytes');
               res.setHeader('content-type', type);
-              createReadStream(filePath, { start, end }).pipe(res);
+              if (req.method === 'HEAD') {
+                res.end();
+                return;
+              }
+              try { await pipeline(createReadStream(filePath, { start, end }), res); } catch { /* client disconnected */ }
               return;
             }
             res.statusCode = 200;
             res.setHeader('content-length', String(total));
             res.setHeader('accept-ranges', 'bytes');
             res.setHeader('content-type', type);
-            createReadStream(filePath).pipe(res);
+            if (req.method === 'HEAD') {
+              res.end();
+              return;
+            }
+            try { await pipeline(createReadStream(filePath), res); } catch { /* client disconnected */ }
             return;
           }
           const widthParam = url.searchParams.get('w');

@@ -1,5 +1,5 @@
 // @ts-check
-import { readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { execFile as execFileCallback } from 'node:child_process';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
@@ -11,6 +11,7 @@ const UNASSIGNED_SLUG = '__unassigned__';
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.svg', '.avif']);
 const DEFAULT_COVER = 'black-token.svg';
 const execFile = promisify(execFileCallback);
+const FFMPEG_PROBE = existsSync('/opt/homebrew/bin/ffprobe') ? '/opt/homebrew/bin/ffprobe' : 'ffprobe';
 
 /** @param {string} relativeFile @param {unknown} data */
 async function writeProjectJson(relativeFile, data) {
@@ -505,16 +506,18 @@ export async function readMediaDimsFromSrc(src) {
   const filePath = resolveAssetFilePath(value);
   if (!filePath) return null;
   try {
-    const { stdout } = await execFile('/opt/homebrew/bin/ffprobe', [
+    const { stdout } = await execFile(FFMPEG_PROBE, [
       '-v', 'error',
       '-select_streams', 'v:0',
-      '-show_entries', 'stream=width,height',
+      '-show_entries', 'stream=width,height:stream_tags=rotate:stream_side_data=rotation',
       '-of', 'json',
       filePath,
     ], { timeout: 5000, maxBuffer: 32 * 1024 });
     const stream = JSON.parse(stdout).streams?.[0];
-    const width = Number(stream?.width);
-    const height = Number(stream?.height);
+    let width = Number(stream?.width);
+    let height = Number(stream?.height);
+    const rotation = Number(stream?.tags?.rotate ?? stream?.side_data_list?.[0]?.rotation);
+    if (Number.isFinite(rotation) && Math.abs(rotation) % 180 === 90) [width, height] = [height, width];
     if (!Number.isInteger(width) || width <= 0 || !Number.isInteger(height) || height <= 0) return null;
     return { srcWidth: width, srcHeight: height };
   } catch {

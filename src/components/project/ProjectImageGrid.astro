@@ -40,6 +40,7 @@ import {
 } from '../../lib/projectImageFrame';
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
+import { isVideoSrc } from '../../lib/imageUpload.mjs';
 
 interface Item {
   id?: string;
@@ -184,6 +185,7 @@ const editorItems = items.map((item, index) => ({
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
     const isPlaceholder = isPlaceholderSrc(item.src);
+    const isVideo = isVideoSrc(item.src);
     const itemLabelPath = showDevEditing ? [...basePath!, 'items', index, 'alt'] : undefined;
     const editAttrs = showDevEditing
       ? imageDevEditAttrs(true, {
@@ -239,13 +241,21 @@ const editorItems = items.map((item, index) => ({
         data-mobile-bleed-eligible={mobileBleedEligible ? 'true' : 'false'}
       >
         <div class="project-image-grid__frame">
-          <img
+          {isVideo ? <video
+            src={projectImage(item.src)}
+            aria-label={item.alt || 'Video'}
+            class="project-image-grid__image project-inline-video"
+            controls
+            playsinline
+            preload="metadata"
+            data-project-inline-video
+          /> : <img
             src={projectImageTier(item.src, 'thumb')}
             data-image-preview={isPlaceholder ? undefined : projectImageTier(item.src, 'preview')}
             alt={item.alt ?? ''}
             class="project-image-grid__image"
             loading="eager"
-          />
+          />}
           {isPlaceholder && (
             <span class="project-media__placeholder-label" aria-hidden="true">
               <span

@@ -1,3 +1,5 @@
+import { isVideoSrc } from './imageUpload.mjs';
+
 /** Public /images path with encoded filename segments. Source lives in `media/`. */
 export function projectImage(filename: string): string {
   if (filename.startsWith('/')) {
@@ -16,6 +18,7 @@ function isRasterImage(filename: string): boolean {
 
 function shouldUseOriginalTier(filename: string): boolean {
   if (!filename || filename.startsWith('/')) return true;
+  if (isVideoSrc(filename)) return true;
   const base = filename.split('/').pop() ?? filename;
   if (base === 'placeholder.svg' || base === 'black-token.svg') return true;
   if (filename.includes('black-token')) return true;

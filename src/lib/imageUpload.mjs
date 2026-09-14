@@ -1,5 +1,16 @@
 const HEIC_EXTENSIONS = new Set(['.heic', '.heif']);
 const HEIC_MIME_TYPES = new Set(['image/heic', 'image/heif']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.m4v']);
+
+export function isVideoSrc(src) {
+  return VIDEO_EXTENSIONS.has(imageExtension(String(src || '').split(/[?#]/, 1)[0]));
+}
+
+export function isAcceptedVideoFile(file) {
+  if (!file || !isVideoSrc(file.name)) return false;
+  const mime = String(file.type || '').toLowerCase().split(';', 1)[0].trim();
+  return !mime || ['video/mp4', 'video/webm', 'video/x-m4v'].includes(mime);
+}
 
 export function imageExtension(filename) {
   const value = String(filename || '').toLowerCase();

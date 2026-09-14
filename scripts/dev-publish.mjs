@@ -62,6 +62,8 @@ const RENDERING_PATHS = [
   'scripts/collect-shipped-assets.mjs',
   'scripts/image-derivatives.mjs',
   'src/lib/images.ts',
+  'src/lib/imageUpload.mjs',
+  'src/lib/inlineVideo.ts',
 ];
 
 /**

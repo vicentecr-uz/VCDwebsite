@@ -37,6 +37,7 @@ function setup(options: { placeholder?: boolean; preventReplacement?: boolean; c
       alert: (message: string) => calls.push(['alert', message]),
     },
     getDropZone: () => new Element(),
+    isAcceptedVideoFile: (file: { type?: string }) => file.type?.startsWith('video/'),
     isAcceptedImageFile: (file: { type?: string }) => file.type?.startsWith('image/'),
     zoneForElement: (element: InstanceType<typeof Element>) => element.cover ? null : element,
     beginTransaction: (_documentKey: string, element?: InstanceType<typeof Element>) => ({
