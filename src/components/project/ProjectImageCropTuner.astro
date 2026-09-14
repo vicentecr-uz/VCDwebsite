@@ -3659,6 +3659,24 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       closePanel();
     });
 
+    window.addEventListener('vcd:dev-media-source-changed', ((event: CustomEvent<{
+      target: HTMLElement; src: string; srcWidth: number; srcHeight: number;
+    }>) => {
+      const { target, src, srcWidth, srcHeight } = event.detail;
+      const id = pendingIdFor(target, 'cover');
+      diskBaselines.delete(id);
+      appliedSnapshots.delete(target);
+      pageBaselines.delete(target);
+      stagedSources.set(id, { src, srcWidth, srcHeight });
+      if (editTarget === target) {
+        savedSrc = draftSrc = src;
+        savedSrcWidth = draftSrcWidth = srcWidth;
+        savedSrcHeight = draftSrcHeight = srcHeight;
+        const image = pageImageFor(target);
+        if (image) editedImage = image;
+      }
+    }) as EventListener);
+
     window.addEventListener('vcd:dev-pending-committed', ((event: CustomEvent<{ ids?: string[] }>) => {
       const ids = event.detail?.ids;
       for (const [target, snapshot] of appliedSnapshots) {

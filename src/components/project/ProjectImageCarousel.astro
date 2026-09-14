@@ -35,6 +35,7 @@ import {
 } from '../../lib/projectImageFrame';
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
+import { isVideoSrc } from '../../lib/imageUpload.mjs';
 import {
   carouselDotAppearance,
   carouselDotGeometry,
@@ -245,6 +246,7 @@ const blockStyle = [
         const parked = !visibleIds.includes(id);
         const displayIndex = visibleIds.indexOf(id);
         const isPlaceholder = isPlaceholderSrc(item.src);
+        const isVideo = isVideoSrc(item.src);
         const itemLabelPath = showDevEditing ? [...basePath!, 'items', itemIndex, 'alt'] : undefined;
         const editAttrs = showDevEditing
           ? imageDevEditAttrs(true, {
@@ -298,13 +300,21 @@ const blockStyle = [
             */}
             <div class="project-image-carousel__surface">
               <div class="project-image-grid__frame" data-carousel-frame>
-                <img
+                {isVideo ? <video
+                  src={projectImage(item.src)}
+                  aria-label={item.alt || 'Video'}
+                  class="project-image-grid__image project-inline-video"
+                  controls
+                  playsinline
+                  preload="metadata"
+                  data-project-inline-video
+                /> : <img
                   src={projectImageTier(item.src, 'thumb')}
                   data-image-preview={isPlaceholder ? undefined : projectImageTier(item.src, 'preview')}
                   alt={item.alt ?? ''}
                   class="project-image-grid__image"
                   loading="eager"
-                />
+                />}
                 {isPlaceholder && (
                   <span class="project-media__placeholder-label" aria-hidden="true">
                     <span

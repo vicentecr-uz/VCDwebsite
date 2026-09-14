@@ -667,10 +667,9 @@ export async function applyCropChangeFromSource(data, change) {
   const validation = applyCropChange(structuredClone(data), change);
   if (!validation.ok) return validation;
   if (typeof change.src !== 'string') return applyCropChange(data, change);
-  const source = change.src === 'placeholder.svg' ? 'placeholder.svg' : change.src;
-  const dims = await readMediaDimsFromSrc(source);
+  const dims = await readMediaDimsFromSrc(change.src);
   if (!dims) {
-    const message = isVideoSrc(source)
+    const message = isVideoSrc(change.src)
       ? 'Could not read that video file. Ensure it exists and ffprobe is installed, then choose the video again.'
       : 'Could not read that image file. Choose the image again before saving.';
     return { ok: false, error: message };
@@ -704,10 +703,16 @@ export const applyCropChange = (data, change) => {
     : '';
   if (isDerivativeToken(requestedSrc)) return { ok: false, error: 'Reload this editor before saving the image: its original file reference is missing.' };
   if (isVideoSrc(requestedSrc)) {
-    const first = Array.isArray(fieldPath) ? fieldPath[0] : '';
-    const sectionIndex = Array.isArray(fieldPath) && fieldPath[1];
-    const section = first === 'sections' && Number.isInteger(sectionIndex) ? data.sections?.[sectionIndex] : null;
-    const allowed = section && ['image', 'imageGrid', 'imageCarousel'].includes(String(section.type || ''));
+    const sectionIndex = resolvedPath[0] === 'sections' ? resolvedPath[1] : null;
+    const section = resolvedPath[0] === 'sections' && Number.isInteger(sectionIndex)
+      ? data.sections?.[sectionIndex]
+      : null;
+    const exactImage = resolvedPath.length === 2 && section?.type === 'image';
+    const exactItem = resolvedPath.length === 4
+      && (section?.type === 'imageGrid' || section?.type === 'imageCarousel')
+      && resolvedPath[2] === 'items'
+      && Number.isInteger(resolvedPath[3]);
+    const allowed = exactImage || exactItem;
     if (!allowed) return { ok: false, error: 'Videos can only be placed in image blocks.' };
   }
   const hasBackground = Object.prototype.hasOwnProperty.call(change, 'background');

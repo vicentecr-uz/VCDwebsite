@@ -37,6 +37,8 @@ import {
 } from '../lib/projectImageCarouselSettings';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../lib/projectStack';
 import { imageBackgroundStyle, normalizeImageBackground } from '../lib/imageBackground.mjs';
+import { isVideoSrc } from '../lib/imageUpload.mjs';
+import { createInlineVideo } from '../lib/inlineVideo';
 
 export type MountedSection = Record<string, unknown>;
 
@@ -58,7 +60,8 @@ const appendEditTriggers = (target: HTMLElement) => {
   image.hidden = true;
   image.textContent = 'Edit image';
 
-  target.append(caption, image);
+  target.append(caption);
+  target.append(image);
 };
 
 const applyDataAttrs = (element: HTMLElement, attrs: Record<string, string> | undefined) => {
@@ -79,6 +82,7 @@ const buildInlineImageFigure = (
   const { hasCrop, normalized } = resolveInlineImageCrop(src, variants, { srcDims });
   const cropId = String(section.id ?? 'image');
   const placeholder = isPlaceholderSrc(src);
+  const video = isVideoSrc(src);
   const resolvedConstrained = resolveImageGridConstrained(section.constrained as never);
   const hasWidthConstraint = imageHasWidthConstraint(resolvedConstrained);
   const centered = section.centered === true || hasWidthConstraint;
@@ -121,16 +125,22 @@ const buildInlineImageFigure = (
   figure.dataset.mobileInset = mobileInset ? 'true' : 'false';
   figure.dataset.mobileBleedEligible = !maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false';
 
-  const img = document.createElement('img');
-  img.src = projectImage(src);
-  img.alt = String(section.alt ?? '');
+  const img = video
+    ? createInlineVideo(projectImage(src), String(section.alt ?? ''))
+    : document.createElement('img');
+  if (!video) img.src = projectImage(src);
   img.className = [
     'project-media__img',
     // Cropped frames size the bitmap via the crop CSS; the img-level max-vh
     // class would clamp and letterbox it (uncropped images still need it).
     maxVh && !hasCrop && 'project-media__img--max-vh',
   ].filter(Boolean).join(' ');
-  img.loading = 'lazy';
+  if (video) {
+    img.classList.add('project-inline-video');
+  } else {
+    (img as HTMLImageElement).alt = String(section.alt ?? '');
+    (img as HTMLImageElement).loading = 'lazy';
+  }
   if (hasCrop) {
     const clip = document.createElement('div');
     clip.className = 'project-crop-clip';
@@ -254,6 +264,7 @@ export function mountImageGridSection(
     );
     const layoutStyle = gridItemLayoutStyle(itemId, resolvedLayouts);
     const placeholder = isPlaceholderSrc(String(item.src ?? ''));
+    const video = isVideoSrc(String(item.src ?? ''));
     const editAttrs = imageDevEditAttrs(true, {
       documentKey,
       path: [...sectionPath, 'items', itemIndex],
@@ -285,11 +296,17 @@ export function mountImageGridSection(
     figure.dataset.mobileInset = item.mobileInset === true ? 'true' : 'false';
     figure.dataset.mobileBleedEligible = mobileBleedEligible ? 'true' : 'false';
 
-    const img = document.createElement('img');
-    img.src = projectImage(String(item.src ?? ''));
-    img.alt = String(item.alt ?? '');
+    const img = video
+      ? createInlineVideo(projectImage(String(item.src ?? '')), String(item.alt ?? ''))
+      : document.createElement('img');
+    if (!video) img.src = projectImage(String(item.src ?? ''));
     img.className = 'project-image-grid__image';
-    img.loading = 'lazy';
+    if (video) {
+      img.classList.add('project-inline-video');
+    } else {
+      (img as HTMLImageElement).alt = String(item.alt ?? '');
+      (img as HTMLImageElement).loading = 'lazy';
+    }
 
     const frame = document.createElement('div');
     frame.className = 'project-image-grid__frame';
@@ -441,6 +458,7 @@ function mountImageCarouselSection(
     const maxVh = resolveMaxVh(item);
     const mobileInset = item.mobileInset === true;
     const placeholder = isPlaceholderSrc(String(item.src ?? ''));
+    const video = isVideoSrc(String(item.src ?? ''));
     const editAttrs = imageDevEditAttrs(true, {
       documentKey,
       path: [...sectionPath, 'items', itemIndex],
@@ -485,11 +503,17 @@ function mountImageCarouselSection(
     frame.className = 'project-image-grid__frame';
     frame.setAttribute('data-carousel-frame', '');
 
-    const img = document.createElement('img');
-    img.src = projectImage(String(item.src ?? ''));
-    img.alt = String(item.alt ?? '');
+    const img = video
+      ? createInlineVideo(projectImage(String(item.src ?? '')), String(item.alt ?? ''))
+      : document.createElement('img');
+    if (!video) img.src = projectImage(String(item.src ?? ''));
     img.className = 'project-image-grid__image';
-    img.loading = displayIndex === 0 ? 'eager' : 'lazy';
+    if (video) {
+      img.classList.add('project-inline-video');
+    } else {
+      (img as HTMLImageElement).alt = String(item.alt ?? '');
+      (img as HTMLImageElement).loading = displayIndex === 0 ? 'eager' : 'lazy';
+    }
     frame.append(img);
     if (placeholder) {
       appendPlaceholderLabel(frame, {
