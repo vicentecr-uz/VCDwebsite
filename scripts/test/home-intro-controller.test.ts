@@ -227,8 +227,13 @@ describe('home intro controller', () => {
 
   test('reset replays a seen intro without clearing the tab marker', () => {
     const f = fixture();
-    f.controller.reset();
-    expect(f.controller.getState()).toBe('active');
+    f.controller.teardown();
+    const replacement = createHomeIntroController(f.surface, f.home, f.root, f.win);
+    controllers.push(replacement);
+    expect(replacement.getState()).toBe('dismissed');
+    replacement.reset();
+    expect(replacement.getState()).toBe('active');
+    expect(f.win.sessionStorage.getItem('vcd:home-intro-seen')).toBe('true');
   });
 
   test('empty surface remains active and teardown is repeatable', () => {

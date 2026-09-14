@@ -19,7 +19,7 @@ class FakeElement {
 }
 const fakeWindow = (reduce = false) => {
   const listeners = new Map<string, Set<EventListener>>();
-  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
+  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail, ...(name === 'pageshow' ? detail as object : {}) } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
 };
 const savedDocument = globalThis.document;
 let introSurface: FakeElement | null = null;
