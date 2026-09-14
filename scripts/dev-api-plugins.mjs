@@ -384,7 +384,7 @@ export async function buildImageSection(documentKey, filenames) {
     id,
     src: filenames[0],
     alt: '',
-    spacing: 'section',
+    spacing: 'group',
     ...(await readImageDimsFromSrc(filenames[0]) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   };
@@ -400,7 +400,7 @@ export async function buildImageSectionFromSrcs(srcs) {
     id,
     src,
     alt: '',
-    spacing: 'section',
+    spacing: 'group',
     ...(await readImageDimsFromSrc(src) ?? {}),
     variants: structuredClone(DEFAULT_IMAGE_VARIANTS),
   };
@@ -415,7 +415,7 @@ export const buildPlaceholderItem = (id) => ({
 
 export function buildPlaceholderImageSection() {
   const id = `placeholder-${Date.now().toString(36)}`;
-  return { type: 'image', id, spacing: 'section', ...buildPlaceholderItem(id) };
+  return { type: 'image', id, spacing: 'group', ...buildPlaceholderItem(id) };
 }
 
 export function buildPlaceholderImageGridSection() {
@@ -426,7 +426,7 @@ export function buildPlaceholderImageGridSection() {
   ];
   const visible = items.map((item) => item.id);
   return {
-    type: 'imageGrid', id, columns: 2, defaultAspectRatio: '4:3', spacing: 'section', items,
+    type: 'imageGrid', id, columns: 2, defaultAspectRatio: '4:3', spacing: 'group', items,
     layouts: { desktop: { visible: [...visible] }, mobile: { visible: [...visible] } },
   };
 }
@@ -439,7 +439,7 @@ export function buildPlaceholderImageCarouselSection() {
   ];
   return {
     type: 'imageCarousel', id, orientation: 'horizontal', heightMode: 'dynamic', dotsPlacement: 'outside',
-    defaultAspectRatio: 'original', spacing: 'section', items, visible: items.map((item) => item.id),
+    defaultAspectRatio: 'original', spacing: 'group', items, visible: items.map((item) => item.id),
   };
 }
 
@@ -512,7 +512,7 @@ export async function buildImageGridSection(documentKey, filenames) {
     id,
     columns: Math.min(2, Math.max(1, filenames.length)),
     defaultAspectRatio: '4:3',
-    spacing: 'section',
+    spacing: 'group',
     items,
     layouts: {
       desktop: { visible: [...visible] },
@@ -539,7 +539,7 @@ export async function buildImageGridSectionFromSrcs(srcs) {
     id,
     columns: Math.min(2, Math.max(1, tokens.length)),
     defaultAspectRatio: '4:3',
-    spacing: 'section',
+    spacing: 'group',
     items,
     layouts: {
       desktop: { visible: [...visible] },
@@ -564,7 +564,7 @@ export async function buildImageCarouselSection(documentKey, filenames) {
     heightMode: 'dynamic',
     dotsPlacement: 'outside',
     defaultAspectRatio: 'original',
-    spacing: 'section',
+    spacing: 'group',
     items,
     visible: items.map((item) => item.id),
   };
@@ -589,7 +589,7 @@ export async function buildImageCarouselSectionFromSrcs(srcs) {
     heightMode: 'dynamic',
     dotsPlacement: 'outside',
     defaultAspectRatio: 'original',
-    spacing: 'section',
+    spacing: 'group',
     items,
     visible: items.map((item) => item.id),
   };

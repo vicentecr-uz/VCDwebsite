@@ -131,7 +131,7 @@ export function reorderProjectStackSpacings(
 }
 
 export function projectStackClass(
-  spacing: ProjectStackSpacing = 'section',
+  spacing: ProjectStackSpacing = 'group',
   options?: { precedeRelated?: boolean; flush?: boolean },
 ): string {
   const resolved = resolveProjectStackSpacing(spacing);
@@ -151,7 +151,7 @@ export function resolveProjectSpacing(
 ): ProjectStackSpacing {
   if (spacing) return spacing;
   if (tightTop) return 'related';
-  return 'section';
+  return 'group';
 }
 
 /**
