@@ -6,11 +6,13 @@ export function sectionEditTarget(element?: HTMLElement | null): { sectionId: st
 }
 
 export function editsRemovedMedia(edit: FieldChange, removal: FieldChange & { itemId?: unknown }): boolean {
-  const edited = edit.target as { sectionId?: string; itemId?: string } | undefined;
-  const removed = removal.target as { sectionId?: string } | undefined;
+  const edited = edit.target as { sectionId?: string; itemId?: string; itemIds?: string[] } | undefined;
+  const removed = removal.target as { sectionId?: string; itemIds?: string[] } | undefined;
+  const samePath = Array.isArray(edited?.itemIds) && Array.isArray(removed?.itemIds)
+    ? JSON.stringify(edited.itemIds) === JSON.stringify(removed.itemIds)
+    : edited?.itemId === removal.itemId;
   return Boolean(edit.document === removal.document && edited?.sectionId
-    && edited.sectionId === removed?.sectionId && edited.itemId
-    && edited.itemId === removal.itemId);
+    && edited.sectionId === removed?.sectionId && samePath);
 }
 
 export function devEditPendingId(kind: 'crop' | 'caption' | 'grid' | 'carousel', element: HTMLElement): string {
@@ -36,14 +38,26 @@ export function withDevEditTarget<T extends FieldChange>(change: T, element?: HT
     : [...document.querySelectorAll<HTMLElement>('[data-dev-content-id]')].find(matchesSection);
   // Legacy renderers remain positional until they expose canonical content IDs.
   if (!root?.dataset.devContentId) return change;
-  const target: { sectionId: string; itemId?: string } = { sectionId: root.dataset.devContentId };
+  const target: { sectionId: string; itemId?: string; itemIds?: string[] } = { sectionId: root.dataset.devContentId };
   if (path[2] === 'items' && typeof path[3] === 'number') {
     const item = element?.closest<HTMLElement>('[data-grid-item-id]')
-      ?? [...root.querySelectorAll<HTMLElement>('[data-grid-item-id][data-dev-image-path]')].find((candidate) => {
-        const itemPath = JSON.parse(candidate.dataset.devImagePath || '[]');
-        return itemPath[2] === 'items' && itemPath[3] === path[3];
+      ?? [...root.querySelectorAll<HTMLElement>('[data-grid-item-id][data-dev-image-path], [data-grid-item-id][data-dev-carousel-path]')].find((candidate) => {
+        const itemPath = JSON.parse(candidate.dataset.devImagePath || candidate.dataset.devCarouselPath || '[]');
+        return itemPath.length === path.length && itemPath.every((part, index) => part === path[index]);
       });
-    if (item && root.contains(item)) target.itemId = item.dataset.gridItemId;
+    if (item && root.contains(item)) {
+      const ids: string[] = [];
+      let current: HTMLElement | null = item;
+      while (current && current !== root) {
+        const id = current.dataset.gridItemId;
+        if (id) ids.unshift(id);
+        current = current.parentElement?.closest<HTMLElement>('[data-grid-item-id]') ?? null;
+      }
+      const expectedDepth = path.filter((part, index) => index >= 2 && part === 'items').length;
+      const scopedIds = ids.slice(-expectedDepth);
+      if (scopedIds.length > 1) target.itemIds = scopedIds;
+      else target.itemId = scopedIds[0];
+    }
   }
   return { ...change, target };
 }
