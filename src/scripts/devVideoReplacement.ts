@@ -56,7 +56,7 @@ export function applyMediaSource(target: HTMLElement, state: Source) {
       media.classList.add('project-media__img--max-vh');
     }
   }
-  previous.replaceWith(media);
+  (previous.closest('[data-project-video-controller]') ?? previous).replaceWith(media);
   target.dataset.devImageSrc = state.src;
   syncImageSourceDims(target, state);
   syncPlaceholderState(target, state.src);

@@ -93,8 +93,15 @@ test('undo after Save stages restoration, and discard restores the saved video',
 
 test('video can be replaced by an image and both replacements undo in order', async () => {
   const h = setup(); h.replace('demo.mp4'); await h.finish();
+  const video = h.target.querySelector('video')!;
+  const controller = h.document.createElement('media-controller');
+  controller.setAttribute('data-project-video-controller', '');
+  video.replaceWith(controller);
+  controller.append(video);
+  controller.append(h.document.createElement('media-mute-button'));
   h.replace('still.png'); await h.finish();
   expect(h.target.querySelector('video')).toBeNull();
+  expect(h.target.querySelector('media-controller')).toBeNull();
   expect(h.target.querySelector('img')?.getAttribute('src')).toBe('/images/still.png');
   h.history[1].undo();
   expect(h.target.dataset.devImageSrc).toBe('demo.mp4');
