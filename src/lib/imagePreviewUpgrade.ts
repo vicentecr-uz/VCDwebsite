@@ -31,6 +31,13 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   const thumbPreloaded = new WeakSet<HTMLImageElement>();
   const thumbReady = new WeakSet<HTMLImageElement>();
   const previewLoaded = new WeakMap<HTMLImageElement, string>();
+  const previewStates = new WeakMap<HTMLImageElement, {
+    source: string;
+    attempts: number;
+    retryReady: boolean;
+    exhausted: boolean;
+    retryTimer?: number;
+  }>();
   const previewQueue = new Set<HTMLImageElement>();
   let previewQueueScheduled = false;
 
@@ -38,6 +45,15 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
   const SWAP_MARGIN_PX = 200;
   const REVEAL_DURATION_MS = 500;
+  const THUMB_TIMEOUT_MS = 4000;
+  const PREVIEW_TIMEOUT_MS = 15000;
+  const MAX_PREVIEW_ATTEMPTS = 3;
+
+  function cancelTimer(id: number | undefined): void {
+    if (id === undefined) return;
+    window.clearTimeout(id);
+    timers.delete(id);
+  }
 
   function previewMatchesCurrent(preview: string, img: HTMLImageElement): boolean {
     try {
@@ -65,6 +81,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
   function cancel(img: HTMLImageElement): void {
     cleanupCandidate(img);
     previewLoaded.delete(img);
+    const state = previewStates.get(img);
+    cancelTimer(state?.retryTimer);
+    previewStates.delete(img);
     const clone = revealClones.get(img);
     if (clone) {
       clone.remove();
@@ -188,18 +207,24 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     thumbPreloaded.add(img);
     const thumb = new Image();
     preloads.add(thumb);
-    thumb.onload = () => {
-      thumb.onload = thumb.onerror = null;
-      void decodeImage(thumb).then(() => {
-        preloads.delete(thumb);
-        if (signal.aborted) return;
-        thumbReady.add(img);
-        queuePreviewFetch(img);
-      });
-    };
-    thumb.onerror = () => {
+    const preview = img.getAttribute('data-image-preview');
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cancelTimer(timeout);
       thumb.onload = thumb.onerror = null;
       preloads.delete(thumb);
+      if (signal.aborted || !preview || !img.isConnected || img.getAttribute('data-image-preview') !== preview) return;
+      thumbReady.add(img);
+      queuePreviewFetch(img);
+    };
+    const timeout = later(finish, THUMB_TIMEOUT_MS);
+    thumb.onload = () => {
+      void decodeImage(thumb).then(finish);
+    };
+    thumb.onerror = () => {
+      finish();
     };
     thumb.src = img.getAttribute('src') || img.currentSrc || img.src;
   }
@@ -218,6 +243,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
           previewQueue.delete(img);
           return false;
         }
+        const preview = img.getAttribute('data-image-preview');
+        const state = preview && previewStates.get(img);
+        if (state && state.source === preview && (!state.retryReady || state.exhausted)) return false;
         return true;
       })
       .sort((a, b) => {
@@ -234,6 +262,9 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
 
   function queuePreviewFetch(img: HTMLImageElement): void {
     if (signal.aborted || !thumbReady.has(img) || !isIntersectingWithMargin(img, SWAP_MARGIN_PX)) return;
+    const preview = img.getAttribute('data-image-preview');
+    const state = preview && previewStates.get(img);
+    if (state && state.source === preview && (!state.retryReady || state.exhausted)) return;
     previewQueue.add(img);
     if (previewQueueScheduled) return;
     previewQueueScheduled = true;
@@ -253,26 +284,60 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     }
 
     if (img.dataset.imagePreviewUpgrading === 'true') return;
+    let state = previewStates.get(img);
+    if (!state || state.source !== preview) {
+      state = { source: preview, attempts: 0, retryReady: true, exhausted: false };
+      previewStates.set(img, state);
+    }
+    const attemptState = state;
+    if (!attemptState.retryReady || attemptState.exhausted || attemptState.attempts >= MAX_PREVIEW_ATTEMPTS) return;
+    attemptState.retryReady = false;
+    attemptState.attempts += 1;
     img.dataset.imagePreviewUpgrading = 'true';
 
     const hi = new Image();
     preloads.add(hi);
-    hi.onload = () => {
+    let attemptSettled = false;
+    let watchdog: number | undefined;
+    const settle = () => {
+      if (attemptSettled) return false;
+      attemptSettled = true;
+      cancelTimer(watchdog);
       hi.onload = hi.onerror = null;
-      void decodeImage(hi).then(() => {
-        preloads.delete(hi);
-        if (!current(img, preview)) return;
+      preloads.delete(hi);
+      return true;
+    };
+    const fail = () => {
+      if (!settle()) return;
+      if (!current(img, preview) || previewStates.get(img) !== attemptState) return;
+      delete img.dataset.imagePreviewUpgrading;
+      options.onError?.(img);
+      if (signal.aborted || !current(img, preview)) return;
+      if (attemptState.attempts >= MAX_PREVIEW_ATTEMPTS) {
+        attemptState.exhausted = true;
+        return;
+      }
+      // Keep retries bounded; a later backoff/viewport policy can replace this ceiling.
+      const delay = attemptState.attempts === 1 ? 1000 : 2000;
+      attemptState.retryTimer = later(() => {
+        attemptState.retryTimer = undefined;
+        if (signal.aborted || !current(img, preview) || previewStates.get(img) !== attemptState) return;
+        attemptState.retryReady = true;
+        queuePreviewFetch(img);
+      }, delay);
+    };
+    watchdog = later(fail, PREVIEW_TIMEOUT_MS);
+    hi.onload = () => {
+      void decodeImage(hi, preview).then(() => {
+        if (!settle() || !current(img, preview) || previewStates.get(img) !== attemptState) return;
         previewLoaded.set(img, preview);
         delete img.dataset.imagePreviewUpgrading;
+        attemptState.retryReady = true;
         trySwap(img);
       });
     };
     hi.onerror = () => {
-      hi.onload = hi.onerror = null;
-      preloads.delete(hi);
-      if (!current(img, preview)) return;
-      delete img.dataset.imagePreviewUpgrading;
-      options.onError?.(img);
+      fail();
     };
     hi.src = preview;
   }

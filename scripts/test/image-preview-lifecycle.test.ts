@@ -20,8 +20,10 @@ class TestImage extends EventTarget {
   style: Record<string, string> = {};
   className = '';
   alt = '';
-  src = '/thumb.webp';
-  currentSrc = '';
+  private _src = '/thumb.webp';
+  get src() { return this._src; }
+  set src(value: string) { this._src = value; this.currentSrc = new URL(value, 'https://demo.test/').href; }
+  currentSrc = 'https://demo.test/thumb.webp';
   complete = true;
   naturalWidth = 1200;
   naturalHeight = 800;
@@ -75,6 +77,12 @@ const fixture = (preview: string) => {
   return { image, root: { querySelectorAll: () => [image] } as unknown as ParentNode };
 };
 const flush = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+const runNextTimer = () => {
+  const entry = [...timers.entries()].at(-1) as [number, () => void] | undefined;
+  assert.ok(entry, 'expected a pending timer');
+  entry[1]();
+};
+const previewImages = (src: string) => images.filter((image) => image.src === src);
 
 try {
   const a = fixture('/a.webp');
@@ -187,6 +195,107 @@ try {
   await flush();
   assert.equal(revealing.image.src, '/new.webp', 'old reveal completion cannot overwrite replacement');
   revealReplacement.destroy();
+
+  let recoveryFailures = 0;
+  const thumbError = fixture('/thumb-error.webp');
+  const thumbRecovery = createImagePreviewUpgrade({ onError: () => recoveryFailures++ });
+  thumbRecovery.bind(thumbError.root);
+  images.at(-1)!.onerror!();
+  await flush();
+  thumbRecovery.open();
+  assert.equal(previewImages('/thumb-error.webp').length, 1, 'thumbnail errors release preview loading');
+  thumbRecovery.destroy();
+
+  const stalledThumb = fixture('/stalled-thumb.webp');
+  const stalledRecovery = createImagePreviewUpgrade();
+  stalledRecovery.bind(stalledThumb.root);
+  const stalledThumbPreload = images.at(-1)!;
+  stalledThumbPreload.decode = () => new Promise(() => {});
+  stalledThumbPreload.onload!();
+  for (const callback of [...timers.values()]) callback();
+  await flush();
+  stalledRecovery.open();
+  assert.equal(previewImages('/stalled-thumb.webp').length, 1, 'stalled thumbnail decode falls back after its watchdog');
+  stalledRecovery.destroy();
+
+  const retry = fixture('/retry.webp');
+  const retryRecovery = createImagePreviewUpgrade({ onError: () => recoveryFailures++ });
+  retryRecovery.bind(retry.root);
+  images.at(-1)!.onload!();
+  await flush();
+  retryRecovery.open();
+  const firstAttempt = previewImages('/retry.webp').at(-1)!;
+  firstAttempt.onerror!();
+  assert.equal(recoveryFailures, 1, 'preview failure callback runs immediately');
+  runNextTimer();
+  await flush();
+  const secondAttempt = previewImages('/retry.webp').at(-1)!;
+  assert.notEqual(secondAttempt, firstAttempt, 'preview retry starts after backoff');
+  secondAttempt.onload!();
+  await flush();
+  assert.equal(retry.image.dataset.imagePreviewUpgrading, undefined, 'successful retry clears upgrading state');
+  retryRecovery.destroy();
+
+  const exhausted = fixture('/exhausted.webp');
+  const exhaustedRecovery = createImagePreviewUpgrade({ onError: () => recoveryFailures++ });
+  exhaustedRecovery.bind(exhausted.root);
+  images.at(-1)!.onload!();
+  await flush();
+  exhaustedRecovery.open();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    previewImages('/exhausted.webp').at(-1)!.onerror!();
+    if (attempt < 2) {
+      runNextTimer();
+      await flush();
+    }
+  }
+  const requestCount = previewImages('/exhausted.webp').length;
+  observers.at(-1)!.emit({ isIntersecting: true, target: exhausted.image });
+  observers.at(-1)!.emit({ isIntersecting: true, target: exhausted.image });
+  await flush();
+  assert.equal(previewImages('/exhausted.webp').length, requestCount, 'observer events cannot exceed retry cap');
+  assert.equal(requestCount, 3, 'preview retries stop at three total attempts');
+  assert.equal(exhausted.image.src, '/thumb.webp', 'exhaustion retains the thumbnail');
+  exhaustedRecovery.destroy();
+
+  const late = fixture('/late-timeout.webp');
+  const lateRecovery = createImagePreviewUpgrade({ onError: () => recoveryFailures++ });
+  lateRecovery.bind(late.root);
+  images.at(-1)!.onload!();
+  await flush();
+  lateRecovery.open();
+  const lateRequest = previewImages('/late-timeout.webp').at(-1)!;
+  const lateLoad = lateRequest.onload!;
+  runNextTimer();
+  lateLoad();
+  await flush();
+  assert.equal(late.image.src, '/thumb.webp', 'timed-out late completion cannot upgrade the image');
+  lateRecovery.destroy();
+
+  const canceledRetry = fixture('/canceled-retry.webp');
+  const canceledRecovery = createImagePreviewUpgrade();
+  canceledRecovery.bind(canceledRetry.root);
+  images.at(-1)!.onload!();
+  await flush();
+  canceledRecovery.open();
+  previewImages('/canceled-retry.webp').at(-1)!.onerror!();
+  const timersBeforeCancel = timers.size;
+  assert.ok(timersBeforeCancel > 0, 'failed attempt schedules retry backoff');
+  canceledRecovery.cancel(canceledRetry.image as unknown as HTMLImageElement);
+  assert.equal(timers.size, timersBeforeCancel - 1, 'cancel clears pending retry work');
+  canceledRecovery.destroy();
+
+  const callbackDestroy = fixture('/callback-destroy.webp');
+  let destroyingRecovery: ReturnType<typeof createImagePreviewUpgrade>;
+  destroyingRecovery = createImagePreviewUpgrade({ onError: () => destroyingRecovery.destroy() });
+  destroyingRecovery.bind(callbackDestroy.root);
+  images.at(-1)!.onload!();
+  await flush();
+  destroyingRecovery.open();
+  previewImages('/callback-destroy.webp').at(-1)!.onerror!();
+  assert.equal(callbackDestroy.image.dataset.imagePreviewUpgrading, undefined, 'callback destruction clears the failed attempt');
+  destroyingRecovery.destroy();
+
   console.log('image-preview-lifecycle: passed (instance isolation, reset during decode/reveal, failure, disposal)');
 } finally {
   for (const [key, descriptor] of Object.entries(originals)) {
