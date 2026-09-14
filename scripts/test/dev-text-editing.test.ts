@@ -12,7 +12,7 @@ const toneScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
   return applyEmphasisMark;
 `);
 
-function applyTone(markup: string, subtle: boolean) {
+function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle') {
   const window = new Window();
   const document = window.document;
   const paragraph = document.createElement('p');
@@ -26,7 +26,7 @@ function applyTone(markup: string, subtle: boolean) {
     HTMLAnchorElement: window.HTMLAnchorElement, HTMLBRElement: window.HTMLBRElement,
     Node: window.Node, Text: window.Text,
   });
-  apply(range, subtle);
+  apply(range, tone);
   return paragraph.innerHTML;
 }
 
@@ -126,17 +126,19 @@ test('native undo input leaves browser-owned empty and soft-line nodes intact', 
   expect(window.getSelection().anchorNode).toBe(element.lastChild);
 });
 
-test('text tone preserves legacy emphasis weight while toggling subtle colour', () => {
-  expect(applyTone('<span class="text-emphasis">Legacy</span> plain', true))
-    .toBe('<span class="text-subtle"><span class="text-emphasis">Legacy</span></span> plain');
-  expect(applyTone('<span class="text-subtle"><span class="text-emphasis">Legacy</span></span> plain', false))
+test('text tone replaces existing emphasis and subtle marks for each tone', () => {
+  expect(applyTone('<span class="text-emphasis">Legacy</span> plain', 'subtle'))
+    .toBe('<span class="text-subtle">Legacy</span> plain');
+  expect(applyTone('<span class="text-subtle">Legacy</span> plain', 'emphasis'))
     .toBe('<span class="text-emphasis">Legacy</span> plain');
+  expect(applyTone('<span class="text-subtle"><span class="text-emphasis">Legacy</span></span> plain', 'default'))
+    .toBe('Legacy plain');
 });
 
 test('text tone preserves inline marks, link attributes, and unselected tones', () => {
   const markup = '<span class="text-emphasis"><strong><em><u><a href="/legacy" class="is-underline-off">Legacy</a></u></em></strong></span> <span class="text-subtle"><span class="text-emphasis">quiet</span></span> tail';
-  expect(applyTone(markup, true)).toBe(
-    '<a class="is-underline-off" href="/legacy"><span class="text-subtle"><span class="text-emphasis"><strong><em><u>Legacy</u></em></strong></span></span></a> <span class="text-subtle"><span class="text-emphasis">quiet</span></span> tail',
+  expect(applyTone(markup, 'subtle')).toBe(
+    '<a class="is-underline-off" href="/legacy"><span class="text-subtle"><strong><em><u>Legacy</u></em></strong></span></a> <span class="text-subtle"><span class="text-emphasis">quiet</span></span> tail',
   );
 });
 
