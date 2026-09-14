@@ -71,6 +71,11 @@ import Button from '../../ui/Button.astro';
 
     apply(readStored(), false);
     openWhenActive(document.documentElement.classList.contains('is-dev-mode'));
+    const requestPreviewMode = () => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-mode-request', { detail: { active: true } }));
+    };
+    if (document.readyState === 'complete') requestAnimationFrame(requestPreviewMode);
+    else window.addEventListener('load', requestPreviewMode, { once: true });
   };
 
   document
