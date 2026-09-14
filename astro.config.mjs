@@ -712,7 +712,11 @@ export const applyCropChange = (data, change) => {
       && (section?.type === 'imageGrid' || section?.type === 'imageCarousel')
       && resolvedPath[2] === 'items'
       && Number.isInteger(resolvedPath[3]);
-    const allowed = exactImage || exactItem;
+    const nestedItem = resolvedPath.length === 6 && section?.type === 'imageGrid'
+      && resolvedPath[2] === 'items' && Number.isInteger(resolvedPath[3])
+      && section.items?.[resolvedPath[3]]?.type === 'imageCarousel'
+      && resolvedPath[4] === 'items' && Number.isInteger(resolvedPath[5]);
+    const allowed = exactImage || exactItem || nestedItem;
     if (!allowed) return { ok: false, error: 'Videos can only be placed in image blocks.' };
   }
   const hasBackground = Object.prototype.hasOwnProperty.call(change, 'background');
@@ -1714,6 +1718,8 @@ export function contentSectionDevWriter() {
                 ? 'appendMediaItems'
               : body.action === 'removeMediaItem'
                 ? 'removeMediaItem'
+              : body.action === 'convertGridItemToCarousel'
+                ? 'convertGridItemToCarousel'
               : body.action === 'updateProjectDetailsRows'
                 ? 'updateProjectDetailsRows'
                 : body.action === 'convert'
@@ -1919,6 +1925,57 @@ export function contentSectionDevWriter() {
                 error: error instanceof Error ? error.message : 'Could not add images to that media block.',
               });
             }
+            return;
+          }
+
+          if (action === 'convertGridItemToCarousel') {
+            const fieldPath = Array.isArray(body.path) ? body.path : [];
+            let resolvedPath;
+            try {
+              resolvedPath = resolveContentTarget(data, fieldPath, body.target);
+            } catch (error) {
+              send(400, { error: error instanceof Error ? error.message : 'That image path is invalid.' });
+              return;
+            }
+            if (resolvedPath.length !== 4 || resolvedPath[0] !== 'sections' || resolvedPath[2] !== 'items') {
+              send(400, { error: 'That image cannot become a carousel.' });
+              return;
+            }
+            const grid = data.sections?.[resolvedPath[1]];
+            const item = grid?.type === 'imageGrid' ? grid.items?.[resolvedPath[3]] : null;
+            if (!item || typeof item !== 'object' || Array.isArray(item)) {
+              send(400, { error: 'That image is no longer in this grid.' });
+              return;
+            }
+            if (item.type === 'imageCarousel') {
+              send(400, { error: 'That image is already a carousel.' });
+              return;
+            }
+            const itemId = String(item.id || '');
+            if (!itemId) {
+              send(400, { error: 'That grid image has no stable ID.' });
+              return;
+            }
+            grid.items[resolvedPath[3]] = {
+              type: 'imageCarousel',
+              id: itemId,
+              orientation: 'horizontal',
+              heightMode: 'dynamic',
+              dotsPlacement: 'outside',
+              defaultAspectRatio: grid.defaultAspectRatio || 'original',
+              ...(item.mobileInset === true ? { mobileInset: true } : {}),
+              ...(item.hideOnMobile === true ? { hideOnMobile: true } : {}),
+              items: [{ ...item, id: `${itemId}-slide` }],
+              visible: [`${itemId}-slide`],
+            };
+            await writeContentJson(file, data);
+            send(200, {
+              ok: true,
+              action: 'convertGridItemToCarousel',
+              path: fieldPath,
+              index: resolvedPath[1],
+              section: data.sections[resolvedPath[1]],
+            });
             return;
           }
 

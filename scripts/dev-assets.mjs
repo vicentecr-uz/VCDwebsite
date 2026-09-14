@@ -242,73 +242,47 @@ export function stripAssetRefsFromDocument(data, targetSrc) {
 
   const matches = (value) => normalizeAssetSrc(String(value || '')) === target;
 
-  if (Array.isArray(data.sections)) {
-    const nextSections = [];
-    for (const section of data.sections) {
-      if (!section || typeof section !== 'object' || Array.isArray(section)) {
-        nextSections.push(section);
-        continue;
-      }
-      /** @type {Record<string, unknown>} */
-      const node = /** @type {Record<string, unknown>} */ (section);
-      const type = String(node.type || '');
-
-      if ((type === 'image' || type === 'placeholder') && matches(node.src)) {
+  const stripItems = (node) => {
+    if (!Array.isArray(node.items)) return;
+    const removedIds = new Set();
+    node.items = node.items.filter((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
+      if (item.type === 'imageCarousel' && Array.isArray(item.items)) {
+        const before = removed;
+        stripItems(item);
+        if (removed === before || item.items.length) return true;
+      } else if (matches(item.src)) {
         removed += 1;
-        continue;
+      } else {
+        return true;
       }
-
-      if ((type === 'imageGrid' || type === 'imageCarousel') && Array.isArray(node.items)) {
-        const before = node.items.length;
-        const kept = node.items.filter((item) => {
-          if (!item || typeof item !== 'object' || Array.isArray(item)) return true;
-          return !matches(/** @type {Record<string, unknown>} */ (item).src);
-        });
-        const removedIds = new Set(
-          node.items
-            .filter((item) => {
-              if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
-              return matches(/** @type {Record<string, unknown>} */ (item).src);
-            })
-            .map((item) => String(/** @type {Record<string, unknown>} */ (item).id || '')),
-        );
-        if (kept.length !== before) {
-          removed += before - kept.length;
-          node.items = kept;
-          if (Array.isArray(node.visible)) {
-            node.visible = node.visible.filter((id) => !removedIds.has(String(id)));
-            if (!node.visible.length) delete node.visible;
-          }
-          if (node.layouts && typeof node.layouts === 'object' && !Array.isArray(node.layouts)) {
-            for (const layout of Object.values(/** @type {Record<string, unknown>} */ (node.layouts))) {
-              if (!layout || typeof layout !== 'object' || Array.isArray(layout)) continue;
-              const visible = /** @type {Record<string, unknown>} */ (layout).visible;
-              if (!Array.isArray(visible)) continue;
-              /** @type {Record<string, unknown>} */ (layout).visible = visible.filter(
-                (id) => !removedIds.has(String(id)),
-              );
-            }
-          }
-          if (
-            node.breakpoints
-            && typeof node.breakpoints === 'object'
-            && !Array.isArray(node.breakpoints)
-          ) {
-            for (const bp of Object.values(/** @type {Record<string, unknown>} */ (node.breakpoints))) {
-              if (!bp || typeof bp !== 'object' || Array.isArray(bp)) continue;
-              const visible = /** @type {Record<string, unknown>} */ (bp).visible;
-              if (!Array.isArray(visible)) continue;
-              /** @type {Record<string, unknown>} */ (bp).visible = visible.filter(
-                (id) => !removedIds.has(String(id)),
-              );
-            }
-          }
-        }
-      }
-
-      nextSections.push(node);
+      removedIds.add(String(item.id || ''));
+      return false;
+    });
+    if (!removedIds.size) return;
+    if (Array.isArray(node.visible)) {
+      node.visible = node.visible.filter((id) => !removedIds.has(String(id)));
+      if (!node.visible.length) delete node.visible;
     }
-    data.sections = nextSections;
+    for (const settings of [node.layouts, node.breakpoints]) {
+      if (!settings || typeof settings !== 'object' || Array.isArray(settings)) continue;
+      for (const override of Object.values(settings)) {
+        if (!override || typeof override !== 'object' || !Array.isArray(override.visible)) continue;
+        override.visible = override.visible.filter((id) => !removedIds.has(String(id)));
+      }
+    }
+  };
+
+  if (Array.isArray(data.sections)) {
+    data.sections = data.sections.filter((node) => {
+      if (!node || typeof node !== 'object' || Array.isArray(node)) return true;
+      if ((node.type === 'image' || node.type === 'placeholder') && matches(node.src)) {
+        removed += 1;
+        return false;
+      }
+      if (node.type === 'imageGrid' || node.type === 'imageCarousel') stripItems(node);
+      return true;
+    });
   }
 
   if (data.listings && typeof data.listings === 'object' && !Array.isArray(data.listings)) {

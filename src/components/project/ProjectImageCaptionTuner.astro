@@ -550,6 +550,21 @@ import {
       refreshProjectCropCovers(target.closest('.project-image-grid') ?? target);
     };
 
+    window.addEventListener('vcd:dev-media-captions-mount', ((event: CustomEvent<{ root: HTMLElement }>) => {
+      const root = event.detail?.root;
+      if (!root) return;
+      const targets = [...root.querySelectorAll<HTMLElement>('[data-dev-image-target]')];
+      if (root.matches('[data-dev-image-target]')) targets.unshift(root);
+      targets.forEach((target) => {
+        const captions = resolveImageCaptions({ captions: JSON.parse(target.dataset.devCaptions || '{}') });
+        if (!imageCaptionsHaveText(captions)) return;
+        const style = resolveImageCaptionStyle(target.dataset.devCaptionStyle);
+        applyCaptionsToTarget(target, captions, style,
+          resolveImageCaptionPosition(target.dataset.devCaptionPosition, style),
+          resolveImageCaptionReveals(JSON.parse(target.dataset.devCaptionReveals || '{}')));
+      });
+    }) as EventListener);
+
     /** Drop an empty caption shell once the user leaves the editor (not while typing). */
     const removeEmptyCaptionHost = (target: HTMLElement | null) => {
       if (!target) return false;

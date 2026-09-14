@@ -3821,7 +3821,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const { documentKey, index, section, activeItemId } = event.detail ?? {};
       if (!documentKey || typeof index !== 'number' || !section) return;
       const root = replaceMediaSectionInPlace(section, documentKey, index);
-      if (root && activeItemId) restoreCarouselActiveItem(root, activeItemId);
+      if (root && activeItemId) {
+        const carousels = root.matches('[data-project-image-carousel]') ? [root]
+          : [...root.querySelectorAll<HTMLElement>('[data-project-image-carousel]')];
+        carousels.some((carousel) => restoreCarouselActiveItem(carousel, activeItemId));
+      }
     }) as EventListener, { signal: editorSignal });
 
     window.addEventListener('vcd:dev-grid-media-appended', ((event: CustomEvent<{

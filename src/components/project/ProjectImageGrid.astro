@@ -41,10 +41,11 @@ import {
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 import { isVideoSrc } from '../../lib/imageUpload.mjs';
+import ProjectImageCarousel from './ProjectImageCarousel.astro';
 
 interface Item {
   id?: string;
-  src: string;
+  src?: string;
   alt?: string;
   /** Legacy single caption (all breakpoints). Prefer `captions`. */
   caption?: string;
@@ -63,6 +64,16 @@ interface Item {
   background?: string;
   /** @deprecated Prefer layouts.mobile — kept for one-off legacy items. */
   hideOnMobile?: boolean;
+  type?: string;
+  items?: Item[];
+  orientation?: 'horizontal' | 'vertical';
+  heightMode?: 'dynamic' | 'tallest';
+  maxHeightVh?: number;
+  scrollPinned?: boolean;
+  dotsPlacement?: 'outside' | 'over' | 'hidden';
+  visible?: string[];
+  breakpoints?: Record<string, unknown>;
+  defaultAspectRatio?: string;
 }
 
 interface Props {
@@ -123,7 +134,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, basePath, spacing, { contentId
 
 const editorItems = items.map((item, index) => ({
   id: itemIds[index],
-  src: projectImage(item.src),
+  src: projectImage(String(item.src ?? item.items?.[0]?.src ?? '')),
   alt: item.alt ?? '',
   background: normalizeImageBackground(item.background) ?? 'transparent',
 }));
@@ -173,7 +184,7 @@ const editorItems = items.map((item, index) => ({
         && resolvedLayouts.mobile.visible.length % columns.mobile === 1
         && mobileVisibleIndex === resolvedLayouts.mobile.visible.length - 1)
     );
-    const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(item, defaultAspectRatio);
+    const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop({ ...item, src: String(item.src ?? '') }, defaultAspectRatio);
     const layoutStyle = gridItemLayoutStyle(itemId, resolvedLayouts);
     const captions = resolveImageCaptions({ caption: item.caption, captions: item.captions });
     const captionStyle = resolveImageCaptionStyle(item.captionStyle);
@@ -184,8 +195,9 @@ const editorItems = items.map((item, index) => ({
       : resolveImageCaptionReveals(item.captionReveal);
     const hasCaption = imageCaptionsHaveText(captions);
     const captionClass = imageCaptionStyleClass(captionStyle);
-    const isPlaceholder = isPlaceholderSrc(item.src);
-    const isVideo = isVideoSrc(item.src);
+    const isPlaceholder = isPlaceholderSrc(String(item.src ?? ''));
+    const isVideo = isVideoSrc(String(item.src ?? ''));
+    const isNestedCarousel = item.type === 'imageCarousel' && Array.isArray(item.items);
     const itemLabelPath = showDevEditing ? [...basePath!, 'items', index, 'alt'] : undefined;
     const editAttrs = showDevEditing
       ? imageDevEditAttrs(true, {
@@ -223,6 +235,39 @@ const editorItems = items.map((item, index) => ({
         <span class="project-image-grid__caption-bp project-image-grid__caption-bp--mobile" data-caption-bp="mobile">{captions.mobile}</span>
       </span>
     ) : null;
+    if (isNestedCarousel) {
+      return (
+        <div
+          class="project-image-grid__item"
+          style={joinMediaStyles(layoutStyle, imageBackgroundStyle(item.background))}
+          data-grid-item-id={itemId}
+          data-dev-item-path={showDevEditing ? JSON.stringify([...basePath!, 'items', index]) : undefined}
+          data-grid-hidden-desktop={resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false'}
+          data-grid-hidden-tablet={resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false'}
+          data-grid-hidden-mobile={resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false'}
+          data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
+          data-mobile-bleed-eligible={mobileBleedEligible ? 'true' : 'false'}
+        >
+          <ProjectImageCarousel
+            items={item.items! as never}
+            orientation={item.orientation}
+            heightMode={item.heightMode}
+            maxHeightVh={item.maxHeightVh}
+            scrollPinned={item.scrollPinned}
+            dotsPlacement={item.dotsPlacement}
+            visible={item.visible}
+            breakpoints={item.breakpoints as never}
+            defaultAspectRatio={item.defaultAspectRatio ?? defaultAspectRatio}
+            constrained={{ desktop: 100, tablet: 100, mobile: 100 }}
+            document={documentKey}
+            basePath={showDevEditing ? [...basePath!, 'items', index] : undefined}
+            spacing="none"
+            nested
+            mobileBleedEligible={mobileBleedEligible}
+          />
+        </div>
+      );
+    }
     return (
       <figure
         class:list={[

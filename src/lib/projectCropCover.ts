@@ -30,6 +30,12 @@ function readAspectNum(frame: HTMLElement, image: HTMLImageElement | null): numb
 }
 
 function gridItemFrame(item: HTMLElement): HTMLElement {
+  const carousel = item.querySelector<HTMLElement>(':scope > [data-project-image-carousel]');
+  if (carousel) {
+    const slides = [...carousel.querySelectorAll<HTMLElement>('[data-carousel-slide]:not([data-carousel-parked="true"])')];
+    const slide = slides[Number(carousel.dataset.activeIndex) || 0];
+    return slide?.querySelector<HTMLElement>('.project-image-carousel__surface') ?? slide ?? item;
+  }
   return item.querySelector<HTMLElement>(':scope > .project-image-grid__frame') ?? item;
 }
 
@@ -40,7 +46,7 @@ function clearBelowSlotMinHeights(grid: HTMLElement): void {
 }
 
 function clearMatchHeightItemSizing(grid: HTMLElement): void {
-  grid.querySelectorAll<HTMLElement>('.project-image-grid__item').forEach((item) => {
+  grid.querySelectorAll<HTMLElement>(':scope > .project-image-grid__item').forEach((item) => {
     item.style.removeProperty('width');
     item.style.removeProperty('flex');
   });
@@ -84,7 +90,7 @@ export function layoutMatchHeightGrids(root: ParentNode = document): void {
     const totalWidth = grid.clientWidth;
     if (!totalWidth) return;
 
-    const items = [...grid.querySelectorAll<HTMLElement>('.project-image-grid__item')]
+    const items = [...grid.querySelectorAll<HTMLElement>(':scope > .project-image-grid__item')]
       .filter((item) => getComputedStyle(item).display !== 'none')
       .sort((a, b) => {
         const orderA = Number.parseFloat(getComputedStyle(a).order) || 0;
