@@ -771,7 +771,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const docKey = element.dataset.devSpacingDocument || '';
         const supportsIntro = docKey === 'home' || docKey === 'home-intro' || docKey === 'work' || docKey === 'play' || docKey === 'about';
         const introMenuItem = supportsIntro
-          ? '<button type="button" class="dev-surface" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro text</button><button type="button" class="dev-surface" role="menuitem" data-dev-section-type="sectionTitle" data-dev-section-intro="true">Intro heading</button>'
+          ? '<button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="bodyText" data-dev-section-intro="true">Intro text</button><button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sectionTitle" data-dev-section-intro="true">Intro heading</button>'
           : '';
         const isIntro = element.dataset.devIntro === 'true';
         const introHeightControl = isIntro
@@ -824,17 +824,17 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             </button>
             ${isIntro ? '<span class="dev-hairline dev-hairline--vertical dev-intro-height-separator" role="presentation"></span>' : ''}
             ${introHeightControl}
-          </div>
-          <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu">
-            <span data-dev-normal-section-menu>
-              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="bodyText">Text section</button>
-              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
-              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
-              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="image">Image</button>
-              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
-              <button type="button" class="dev-surface" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
-            </span>
-            <span data-dev-intro-section-menu>${introMenuItem}</span>
+            <div class="dev-gap-toolbar__menu" data-dev-section-menu hidden role="menu" aria-orientation="horizontal">
+              <span data-dev-normal-section-menu>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="bodyText">Text section</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="sectionTitle">Section header</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="projectDetails">Project details &amp; credits</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="image">Image</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageGrid">Grid</button>
+                <button type="button" class="dev-btn dev-btn--page" role="menuitem" data-dev-section-type="imageCarousel">Carousel</button>
+              </span>
+              <span data-dev-intro-section-menu>${introMenuItem}</span>
+            </div>
           </div>
         `;
 
@@ -1242,6 +1242,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (!pillUp) return false;
         return isPointerOverToolbarHitbox(state, x, y);
       });
+      const target = event.target;
+      const menu = target instanceof Element
+        ? target.closest<HTMLElement>('.dev-gap-toolbar__menu')
+        : null;
+      if (menu && menu.scrollWidth > menu.clientWidth) {
+        if (event instanceof WheelEvent && event.deltaX === 0 && !event.shiftKey) {
+          event.preventDefault();
+        }
+        return;
+      }
       if (held) event.preventDefault();
     };
 
@@ -1458,7 +1468,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       // Open add-menu owns the page: other gaps must not light (their host
-      // would share z-index 65 and paint over the overflowing option column).
+      // would share z-index 65 and paint over the expanded pill).
       const openMenuState = spacingStates.find(({ control }) =>
         control.classList.contains('is-menu-open'),
       );
@@ -5342,11 +5352,14 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
             || control.classList.contains('is-near-spacing'),
           )
         ) {
+          const openMenuState = spacingStates.find(({ control }) =>
+            control.classList.contains('is-menu-open'));
           event.preventDefault();
           event.stopPropagation();
           closeSectionMenus();
           clearGapProximityAll();
           suppressGapProximity = true;
+          openMenuState?.addButton.focus({ preventScroll: true });
           return;
         }
 
@@ -6823,7 +6836,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     pointer-events: auto;
   }
 
-  .dev-gap-toolbar.is-dev-empty-add > .dev-gap-toolbar__pill > :not(.dev-gap-toolbar__add) {
+  .dev-gap-toolbar.is-dev-empty-add:not(.is-menu-open) > .dev-gap-toolbar__pill > :not(.dev-gap-toolbar__add):not(.dev-gap-toolbar__menu) {
     display: none;
   }
 
@@ -6857,7 +6870,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     z-index: 55;
   }
 
-  /* Open add-menu hangs into the next block — sit above neighbouring 65 lifts. */
+  /* Keep the expanded pill above neighbouring section controls. */
   .dev-gap-toolbar.is-menu-open {
     z-index: 80;
   }
@@ -6907,7 +6920,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   .is-dev-mode .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__pill,
   .is-dev-mode [data-dev-spacing-document].is-dev-spacing-dirty > .dev-gap-toolbar > .dev-gap-toolbar__pill,
   .is-dev-mode [data-dev-spacing-document].is-dev-intro-height-dirty > .dev-gap-toolbar > .dev-gap-toolbar__pill,
-  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__pill:focus-within, > .dev-gap-toolbar__menu:focus-within)
+  .is-dev-mode .dev-gap-toolbar:has(> .dev-gap-toolbar__pill:focus-within)
     > .dev-gap-toolbar__pill {
     opacity: 1;
     pointer-events: auto;
@@ -6991,11 +7004,16 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
      as one surface, matching Figma. Previously two separate floating
      elements at Anto's request; reversed 2026-08-25. */
   .dev-gap-toolbar__pill {
+    --dev-gap-pill-padding: 6px;
     display: flex;
     align-items: center;
     gap: 4px;
-    padding: 6px;
-    border-radius: 12px;
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: calc(100vw - 24px);
+    min-width: 0;
+    padding: var(--dev-gap-pill-padding);
+    border-radius: calc(var(--dev-radius-control) + var(--dev-gap-pill-padding));
   }
 
   .dev-gap-toolbar__pill > .dev-hairline--vertical {
@@ -7005,6 +7023,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   .dev-gap-toolbar__menu [data-dev-normal-section-menu],
   .dev-gap-toolbar__menu [data-dev-intro-section-menu] {
     display: contents;
+  }
+
+  .dev-gap-toolbar__menu [data-dev-normal-section-menu][hidden],
+  .dev-gap-toolbar__menu [data-dev-intro-section-menu][hidden] {
+    display: none;
   }
 
   .dev-intro-height-control {
@@ -7053,6 +7076,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     justify-content: center;
     box-sizing: border-box;
     width: 72px;
+    flex: 0 0 auto;
     padding: 8px;
     border: 0;
     min-height: var(--dev-control-height);
@@ -7086,30 +7110,35 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     background: var(--comp-button-ghost-container-pressed);
   }
 
-  /* Master: menu has no surface of its own — a bare column, each option
-     uses the shared .dev-surface base. */
+  /* The menu shares the pill surface and lays its options out in one row. */
   .dev-gap-toolbar__menu {
-    position: absolute;
-    top: calc(100% + 0.35em);
-    left: 50%;
-    z-index: 1;
     display: flex;
-    flex-direction: column;
+    flex: 1 1 auto;
+    flex-direction: row;
     gap: 4px;
-    min-width: 10em;
-    transform: translateX(-50%);
+    min-width: 0;
+    max-width: 100%;
     opacity: 1;
     transition: opacity 0.15s ease;
+    border-radius: var(--dev-radius-control);
+    overflow-x: auto;
+    scrollbar-width: none;
+    overscroll-behavior: contain;
+    touch-action: pan-x;
     /* Parent toolbar is pointer-events: none; re-enable so menu items are clickable. */
     pointer-events: auto;
   }
 
-  .dev-gap-toolbar.is-menu-open > .dev-gap-toolbar__menu {
-    z-index: 2;
+  .dev-gap-toolbar__menu::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dev-gap-toolbar:is(.is-menu-open, .is-menu-closing) > .dev-gap-toolbar__pill > :not(.dev-gap-toolbar__add):not(.dev-gap-toolbar__menu) {
+    display: none;
   }
 
   .dev-gap-toolbar.is-menu-closing > .dev-gap-toolbar__pill,
-  .dev-gap-toolbar.is-menu-closing > .dev-gap-toolbar__menu {
+  .dev-gap-toolbar.is-menu-closing .dev-gap-toolbar__menu {
     opacity: 0 !important;
     pointer-events: none !important;
   }
@@ -7118,38 +7147,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     display: none;
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .dev-gap-toolbar__pill,
-    .dev-gap-toolbar__menu {
-      transition: none;
-    }
-  }
-
-  /* Page emphasis, Align=Start. */
   .dev-gap-toolbar__menu button {
+    --dev-btn-hit-inset: 0;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     gap: 8px;
-    width: 100%;
+    flex: 0 0 auto;
+    width: auto;
     min-width: var(--dev-control-min-width);
     min-height: var(--dev-control-height);
     box-sizing: border-box;
     padding: 8px;
-    border-radius: var(--dev-radius-control);
-    color: var(--comp-button-label);
-    font: var(--dev-text-label);
-    text-align: left;
+    text-align: center;
     white-space: nowrap;
     cursor: pointer;
   }
 
-  .dev-gap-toolbar__menu button:hover {
-    background: var(--comp-button-page-container-hover);
-  }
-
-  .dev-gap-toolbar__menu button:active {
-    background: var(--comp-button-page-container-pressed);
+  .dev-gap-toolbar__menu button:focus-visible {
+    outline-offset: -2px;
   }
 
   /* Surface now lives on .dev-gap-toolbar__pill — this is just the row of
