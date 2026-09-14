@@ -89,6 +89,9 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  /** Render as a media cell inside an image grid. */
+  nested?: boolean;
+  mobileBleedEligible?: boolean;
 }
 
 const {
@@ -107,6 +110,8 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  nested = false,
+  mobileBleedEligible = true,
 } = Astro.props;
 
 const constrained = resolveImageGridConstrained(constrainedProp);
@@ -184,11 +189,11 @@ const blockStyle = [
 ---
 
 <div
-  id={sectionId}
+  id={!nested ? sectionId : undefined}
   class:list={[
     'project-image-carousel',
-    stackClass,
-    sectionId && 'section-block',
+    !nested && stackClass,
+    !nested && sectionId && 'section-block',
     showDevEditing && 'dev-carousel-edit-target',
   ]}
   style={blockStyle}
@@ -211,8 +216,8 @@ const blockStyle = [
   data-dev-carousel-items={showDevEditing ? JSON.stringify(editorItems) : undefined}
   data-dev-carousel-visible={showDevEditing ? JSON.stringify(visibleIds) : undefined}
   data-dev-carousel-settings={showDevEditing ? JSON.stringify(settingsJson) : undefined}
-  {...(spacingAttrs ?? {})}
-  data-dev-section-deletable={showDevEditing ? 'imageCarousel' : undefined}
+  {...(!nested ? (spacingAttrs ?? {}) : {})}
+  data-dev-section-deletable={showDevEditing && !nested ? 'imageCarousel' : undefined}
 >
   {showDevEditing && (
     <button
@@ -290,7 +295,7 @@ const blockStyle = [
             aria-hidden={parked ? 'true' : undefined}
             {...editAttrs}
             data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
-            data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
+            data-mobile-bleed-eligible={mobileBleedEligible && constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
           >
             {/*
               Surface carries the max-height width cap so the visible image and
@@ -438,7 +443,7 @@ const blockStyle = [
             !parked && displayIndex === 0 && 'is-active',
           ]}
           data-carousel-caption
-          data-mobile-bleed-eligible={constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
+          data-mobile-bleed-eligible={mobileBleedEligible && constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
           data-mobile-inset={entry.item.mobileInset === true ? 'true' : 'false'}
           data-carousel-index={parked ? undefined : displayIndex}
           data-carousel-item-id={entry.id}

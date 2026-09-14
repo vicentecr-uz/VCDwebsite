@@ -240,6 +240,8 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       </div>
     </div>
 
+    <button type="button" class="dev-btn dev-btn--ghost" data-crop-make-carousel hidden>Make carousel</button>
+
     <PanelActions>
       <Button emphasis="ghost" label="Cancel" data-crop-cancel />
       <Button emphasis="ghost" label="Reset" hidden data-crop-reset />
@@ -255,7 +257,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
 </DevOverlay>
 
 <script>
-  import { devEditPendingId } from '../../scripts/devEditTarget';
+  import { devEditPendingId, withDevEditTarget } from '../../scripts/devEditTarget';
   import {
     imageGridConstrainedStyle,
     imageHasWidthConstraint,
@@ -341,6 +343,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     const replaceDrop = tuner.querySelector<HTMLElement>('[data-crop-replace-drop]');
     const replaceChooseButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-choose]');
     const replaceAssetsButton = tuner.querySelector<HTMLButtonElement>('[data-crop-replace-assets]');
+    const makeCarouselButton = tuner.querySelector<HTMLButtonElement>('[data-crop-make-carousel]');
     const replaceFileInput = tuner.querySelector<HTMLInputElement>('[data-crop-replace-file]');
     const initialTarget = document.querySelector<HTMLElement>('[data-dev-image-target]');
     const initialImage = initialTarget?.querySelector<HTMLImageElement>('img');
@@ -2061,6 +2064,9 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       unmountPageStage();
       resizeObserver?.unobserve(editTarget);
       editTarget = target;
+      if (makeCarouselButton) {
+        makeCarouselButton.hidden = !isGridTarget(target) || isCarouselItem(target);
+      }
       editedImage = image;
       resizeObserver?.observe(editTarget);
 
@@ -3524,6 +3530,45 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     });
 
     saveButton.addEventListener('click', saveDraft);
+    makeCarouselButton?.addEventListener('click', async () => {
+      const target = editTarget;
+      if (!isGridTarget(target) || isCarouselItem(target) || makeCarouselButton.disabled) return;
+      const documentKey = target.dataset.devDocument || '';
+      let path: Array<string | number> = [];
+      try { path = JSON.parse(target.dataset.devImagePath || '[]'); } catch { path = []; }
+      if (!documentKey || path.length !== 4) return;
+      makeCarouselButton.disabled = true;
+      const identity = withDevEditTarget({ document: documentKey, path }, target).target;
+      try {
+        commitDraftSettings();
+        await new Promise<void>((resolve, reject) => {
+          window.dispatchEvent(new CustomEvent('vcd:dev-flush-pending-edits', {
+            detail: { documentKey, resolve, reject },
+          }));
+        });
+        const response = await fetch('/api/content-section', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            document: documentKey,
+            action: 'convertGridItemToCarousel',
+            path,
+            target: identity,
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Could not make this image a carousel.');
+        if (editTarget === target) closePanel();
+        window.dispatchEvent(new Event('vcd:dev-content-written'));
+        window.dispatchEvent(new CustomEvent('vcd:dev-grid-media-appended', {
+          detail: { documentKey, index: payload.index, section: payload.section },
+        }));
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not make this image a carousel.';
+      } finally {
+        makeCarouselButton.disabled = false;
+      }
+    });
     window.addEventListener('vcd:dev-before-save', (event) => {
       if (!editingSession) return;
       if (replacementPending) {

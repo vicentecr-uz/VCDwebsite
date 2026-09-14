@@ -90,6 +90,7 @@ const buildInlineImageFigure = (
   const mobileInset = section.mobileInset === true;
   const background = normalizeImageBackground(section.background) ?? 'transparent';
   const editAttrs = imageDevEditAttrs(true, {
+    ...section,
     documentKey,
     path: sectionPath,
     cropId,
@@ -208,7 +209,7 @@ export function mountImageGridSection(
   const resolvedLayouts = resolveGridItemLayout(itemIds, layouts);
   const editorItems = items.map((item, itemIndex) => ({
     id: itemIds[itemIndex],
-    src: projectImage(String(item.src ?? '')),
+    src: projectImage(String(item.src ?? (item.items as MountedSection[] | undefined)?.[0]?.src ?? '')),
     alt: String(item.alt ?? ''),
     background: normalizeImageBackground(item.background) ?? 'transparent',
   }));
@@ -253,6 +254,21 @@ export function mountImageGridSection(
         && resolvedLayouts.mobile.visible.length % columns.mobile === 1
         && mobileVisibleIndex === resolvedLayouts.mobile.visible.length - 1)
     );
+    if (item.type === 'imageCarousel' && Array.isArray(item.items)) {
+      const cell = document.createElement('div');
+      cell.className = 'project-image-grid__item';
+      cell.style.cssText = gridItemLayoutStyle(itemId, resolvedLayouts);
+      cell.setAttribute('data-grid-item-id', itemId);
+      cell.dataset.devItemPath = JSON.stringify([...sectionPath, 'items', itemIndex]);
+      cell.dataset.mobileInset = item.mobileInset === true ? 'true' : 'false';
+      cell.setAttribute('data-grid-hidden-desktop', resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false');
+      cell.setAttribute('data-grid-hidden-tablet', resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false');
+      cell.setAttribute('data-grid-hidden-mobile', resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false');
+      cell.dataset.mobileBleedEligible = mobileBleedEligible ? 'true' : 'false';
+      cell.append(mountImageCarouselSection(item, documentKey, [...sectionPath, 'items', itemIndex], true, mobileBleedEligible));
+      grid.append(cell);
+      return;
+    }
     const { hasOwnVariants, variants, style: variantStyle } = resolveGridItemCrop(
       {
         src: String(item.src ?? ''),
@@ -266,6 +282,7 @@ export function mountImageGridSection(
     const placeholder = isPlaceholderSrc(String(item.src ?? ''));
     const video = isVideoSrc(String(item.src ?? ''));
     const editAttrs = imageDevEditAttrs(true, {
+      ...item,
       documentKey,
       path: [...sectionPath, 'items', itemIndex],
       cropId: itemId,
@@ -333,10 +350,12 @@ export function mountImageGridSection(
 function mountImageCarouselSection(
   section: MountedSection,
   documentKey: string,
-  index: number,
+  indexOrPath: number | Array<string | number>,
+  nested = false,
+  mobileBleedEligible = true,
 ): HTMLElement {
   const spacing = (section.spacing ?? 'group') as ProjectStackSpacing;
-  const sectionPath = ['sections', index];
+  const sectionPath = Array.isArray(indexOrPath) ? indexOrPath : ['sections', indexOrPath];
   const items = Array.isArray(section.items) ? section.items as MountedSection[] : [];
   const constrained = resolveImageGridConstrained(section.constrained as never);
   const defaultAspectRatio = String(section.defaultAspectRatio ?? 'original');
@@ -384,7 +403,7 @@ function mountImageCarouselSection(
   const block = document.createElement('div');
   block.className = [
     'project-image-carousel',
-    projectStackClass(spacing),
+    !nested && projectStackClass(spacing),
     'dev-carousel-edit-target',
   ].filter(Boolean).join(' ');
   block.style.cssText = [
@@ -410,8 +429,10 @@ function mountImageCarouselSection(
   block.setAttribute('data-dev-carousel-items', JSON.stringify(editorItems));
   block.setAttribute('data-dev-carousel-visible', JSON.stringify(visibleIds));
   block.setAttribute('data-dev-carousel-settings', JSON.stringify(settingsJson));
-  applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? '') }));
-  block.setAttribute('data-dev-section-deletable', 'imageCarousel');
+  if (!nested) {
+    applyDataAttrs(block, spacingDevAttrs(documentKey, sectionPath, spacing, { contentId: String(section.id ?? '') }));
+    block.setAttribute('data-dev-section-deletable', 'imageCarousel');
+  }
 
   const editTrigger = document.createElement('button');
   editTrigger.type = 'button';
@@ -460,6 +481,7 @@ function mountImageCarouselSection(
     const placeholder = isPlaceholderSrc(String(item.src ?? ''));
     const video = isVideoSrc(String(item.src ?? ''));
     const editAttrs = imageDevEditAttrs(true, {
+      ...item,
       documentKey,
       path: [...sectionPath, 'items', itemIndex],
       cropId: id,
@@ -494,7 +516,7 @@ function mountImageCarouselSection(
     if (parked) figure.setAttribute('aria-hidden', 'true');
     applyDataAttrs(figure, editAttrs);
     figure.dataset.mobileInset = mobileInset ? 'true' : 'false';
-    figure.dataset.mobileBleedEligible = constrained.mobile === 100 && !maxVh ? 'true' : 'false';
+    figure.dataset.mobileBleedEligible = mobileBleedEligible && constrained.mobile === 100 && !maxVh ? 'true' : 'false';
 
     const surface = document.createElement('div');
     surface.className = 'project-image-carousel__surface';
@@ -633,6 +655,7 @@ export function syncDevModeOnSection(root: HTMLElement, devMode: boolean) {
 }
 
 export function initMountedSectionCovers(root: HTMLElement) {
+  window.dispatchEvent(new CustomEvent('vcd:dev-media-captions-mount', { detail: { root } }));
   bindProjectCropCovers(root);
   bindProjectImageCarousels(root);
   bindAllPlaceholderLabels(root);
