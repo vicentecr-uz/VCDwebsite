@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { defineConfig } from 'astro/config';
+import { normalizeHref } from './src/lib/normalizeHref.mjs';
 
 import tailwindcss from '@tailwindcss/vite';
 import {
@@ -584,7 +585,16 @@ function contentTextDevWriter() {
                 send(400, { error: 'An editable text field no longer exists.' });
                 return;
               }
-              target[field] = change.value;
+              if (target.type === 'award' && field === 'href') {
+                const href = normalizeHref(change.value);
+                if (change.value.trim() && !href) {
+                  send(400, { error: 'Enter a valid award link.' });
+                  return;
+                }
+                target[field] = href || '';
+              } else {
+                target[field] = change.value;
+              }
             }
 
             await writeDevDocument(relativeFile, data);
@@ -1523,7 +1533,16 @@ function contentBatchDevWriter() {
                 send(400, { error: 'An editable text field no longer exists.' });
                 return;
               }
-              target[field] = change.value;
+              if (target.type === 'award' && field === 'href') {
+                const href = normalizeHref(change.value);
+                if (change.value.trim() && !href) {
+                  send(400, { error: 'Enter a valid award link.' });
+                  return;
+                }
+                target[field] = href || '';
+              } else {
+                target[field] = change.value;
+              }
             }
             for (const change of group.spacing) {
               let resolvedPath;

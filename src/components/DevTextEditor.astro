@@ -12,6 +12,7 @@ import heading2Icon from 'lucide-static/icons/heading-2.svg?raw';
 import { sizeIcon } from '../lib/icons';
 import SelectField from './ui/SelectField.astro';
 import TextField from './ui/TextField.astro';
+import ProjectAward from './project/ProjectAward.astro';
 
 const publishWarnSvg = sizeIcon(triangleAlertIcon, 16);
 const formatBoldSvg = sizeIcon(boldIcon, 16);
@@ -24,6 +25,8 @@ const formatPilcrowSvg = sizeIcon(pilcrowIcon, 16);
 const formatHeading1Svg = sizeIcon(heading1Icon, 16);
 const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 ---
+
+<template data-award-template><ProjectAward documentKey="award-template" sectionPath={['sections', 0]} spacing="group" /></template>
 
 <div class="dev-text-action-stack">
   <div class="dev-text-actions dev-surface" data-dev-text-actions hidden>
@@ -342,12 +345,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
     if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !emphasisStyleField || !formatInline) return;
-    bindProjectAwardEditors();
 
     editorAbortController?.abort();
     editorAbortController = new AbortController();
     const editorSignal = editorAbortController.signal;
     installHistoryShortcuts(editorSignal);
+    bindProjectAwardEditors(editorSignal);
     if (branchUpdatePollTimer) clearInterval(branchUpdatePollTimer);
     branchUpdatePollTimer = null;
 
@@ -2094,7 +2097,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           if (!state.element.isConnected) throw new Error('Restore this section before restoring its text.');
           renderValue(state, value);
           textHistoryValues.set(state, structuredClone(value));
-          if (state.element.isConnected) {
+          if (state.element.isConnected && !state.element.hidden) {
             state.element.focus({ preventScroll: true });
             const range = document.createRange();
             range.selectNodeContents(state.element);
@@ -2278,17 +2281,20 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       }
 
       if (type === 'award') {
-        const section = document.createElement('section');
-        section.className = spacingClass ? `project-block project-award ${spacingClass}${introClass}` : `project-block project-award${introClass}`;
+        const template = document.querySelector<HTMLTemplateElement>('[data-award-template]')!;
+        const section = template.content.firstElementChild!.cloneNode(true) as HTMLElement;
+        section.className = `project-block project-award ${spacingClass}`;
         section.dataset.devSpacingDocument = documentKey;
         section.dataset.devSpacingPath = JSON.stringify([...sectionPath, 'spacing']);
         section.dataset.devSpacingValue = spacing;
         section.dataset.devSpacingValues = JSON.stringify(resolveProjectStackSpacing(spacing));
-        section.dataset.devSectionDeletable = 'award';
-        section.dataset.projectAward = '';
-        section.dataset.projectAwardHref = '';
-        section.innerHTML = `<span class="project-award__proxy" hidden data-dev-text-document="${documentKey}" data-dev-text-path='${JSON.stringify([...sectionPath, 'href'])}' data-dev-text-kind="text"></span><div class="project-award__center"><span class="project-award__control"><img src="/awards/if-design-2026.png" alt="iF Design Award 2026" draggable="false"><button type="button" class="dev-btn dev-btn--page project-award__edit" data-award-edit data-dev-mode-only>Edit award</button><form class="project-award__editor dev-surface" data-award-editor hidden><button type="button" class="dev-btn dev-btn--page" data-award-remove aria-label="Remove award link">×</button><input class="project-award__input" data-award-input aria-label="Award link" placeholder="google.com" autocomplete="off"><button type="submit" class="dev-btn dev-btn--page" data-award-apply aria-label="Apply award link">✓</button></form></span></div>`;
-        return { root: section, textElement: section.querySelector<HTMLElement>('[data-dev-text-path]')!, textKind: 'text' as const, textPath: [...sectionPath, 'href'] };
+        const proxy = section.querySelector<HTMLElement>('[data-dev-text-path]')!;
+        proxy.dataset.devTextDocument = documentKey;
+        proxy.dataset.devTextPath = JSON.stringify([...sectionPath, 'href']);
+        const input = section.querySelector<HTMLInputElement>('[data-award-input]')!;
+        input.id = `award-link-${crypto.randomUUID()}`;
+        section.querySelector<HTMLLabelElement>('label')!.htmlFor = input.id;
+        return { root: section, textElement: proxy, textKind: 'text' as const, textPath: [...sectionPath, 'href'] };
       }
 
       if (type === 'sectionTitle') {
@@ -2657,7 +2663,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const insertIndex = placement === 'after' ? sectionIndex + 1 : sectionIndex;
       const newSpacing: SpacingValue =
         options?.spacing ?? (sectionIndex === 0 ? 'none' : 'group');
-      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : 'body'}-${Date.now().toString(36)}`;
+      const sectionId = `${type === 'sectionTitle' ? 'title' : type === 'projectDetails' ? 'details' : type === 'award' ? 'award' : 'body'}-${Date.now().toString(36)}`;
 
       closeSectionMenus();
       reindexDevPaths(insertIndex, 1, documentKey);
@@ -2681,7 +2687,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         document: documentKey,
         path: built.textPath,
         kind: built.textKind,
-        savedValue: built.textKind === 'paragraphs' ? [''] : 'Section title',
+        savedValue: built.textKind === 'paragraphs' ? [''] : type === 'award' ? '' : 'Section title',
       };
       if (type === 'projectDetails') {
         registerTextStates(built.root);
@@ -2689,7 +2695,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         textStates.push(textState);
         bindTextState(textState);
       }
-      if (isDevContentEditing()) {
+      if (isDevContentEditing() && type !== 'award') {
         built.textElement.setAttribute(
           'contenteditable',
           built.textKind === 'paragraphs' ? 'true' : 'plaintext-only',
@@ -2741,6 +2747,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       syncPageTopSpacingControls();
       updateActions();
       requestAnimationFrame(() => {
+        if (type === 'award') {
+          built.root.querySelector<HTMLButtonElement>('[data-award-edit]')?.focus({ preventScroll: true });
+          return;
+        }
         built.textElement.focus();
         if (built.textKind === 'paragraphs') {
           const first = built.textElement.querySelector<HTMLElement>(':scope > p, :scope > div');
@@ -5399,7 +5409,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const setEditingEnabled = (enabled: boolean) => {
       textStates.forEach(({ element, kind }) => {
         if (!enabled && document.activeElement === element) element.blur();
-        if (enabled) {
+        if (enabled && !element.hidden) {
           element.setAttribute('contenteditable', kind === 'paragraphs' ? 'true' : 'plaintext-only');
           element.setAttribute('spellcheck', 'true');
         } else {
