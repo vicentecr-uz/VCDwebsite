@@ -29,7 +29,9 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
   };
   video.addEventListener('volumechange', () => {
     if (video.volume > 0) previousVolume = video.volume;
-    syncMutedVolume();
+  });
+  new MutationObserver(syncMutedVolume).observe(volume, {
+    attributes: true, attributeFilter: ['mediamuted', 'mediavolume'],
   });
   mute.addEventListener('mediaunmuterequest', (event) => {
     event.stopImmediatePropagation();

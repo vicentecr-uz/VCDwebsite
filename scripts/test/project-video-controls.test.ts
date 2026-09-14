@@ -70,6 +70,8 @@ for (const existing of [false, true]) {
     expect(video.muted).toBe(true);
     expect(video.volume).toBe(0.4);
     await settle();
+    root.querySelector('media-volume-range')!.setAttribute('mediamuted', '');
+    await settle();
     expect(volumeInput.value).toBe('0.4');
     expect(volumeInput.getAttribute('aria-valuetext')).toBe('40% (muted)');
     expect(root.querySelector('media-volume-range')!.hasAttribute('mediamuted')).toBe(true);
