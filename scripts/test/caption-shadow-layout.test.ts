@@ -31,20 +31,20 @@ test('caption shadow follows moved text after frame changes and CSS updates', ()
   });
   window.dispatchEvent(new window.Event('load'));
   const fill = caption.querySelector<HTMLElement>('.project-caption-shadow__fill')!;
-  expect(fill.style.width).toBe('210px');
-  expect(fill.style.height).toBe('50px');
+  expect(fill.style.width).toBe('258px');
+  expect(fill.style.height).toBe('98px');
 
   inset = 32;
   window.dispatchEvent(new window.Event('vcd:dev-frame-changed'));
   flush();
-  expect(fill.style.width).toBe('250px');
-  expect(fill.style.height).toBe('90px');
+  expect(fill.style.width).toBe('298px');
+  expect(fill.style.height).toBe('138px');
 
   inset = 48;
   hotHandlers.get('vite:afterUpdate')?.();
   flush();
-  expect(fill.style.width).toBe('282px');
-  expect(fill.style.height).toBe('122px');
+  expect(fill.style.width).toBe('330px');
+  expect(fill.style.height).toBe('170px');
 
   document.documentElement.style.setProperty('--caption-shadow-extension', '40px');
   window.dispatchEvent(new window.Event('vcd:caption-shadow-change'));
