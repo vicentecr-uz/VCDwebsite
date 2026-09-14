@@ -52,6 +52,7 @@ for (const existing of [false, true]) {
     const controller = root.querySelector('media-controller')! as any;
     expect(root.querySelectorAll('media-controller')).toHaveLength(1);
     expect(root.querySelectorAll('media-play-button')).toHaveLength(1);
+    expect(root.querySelector('media-play-button svg')?.getAttribute('fill')).toBe('currentColor');
     expect(controller.media).toBe(video);
     expect(video.controls).toBe(false);
     expect(video.volume).toBe(0.5);
