@@ -172,6 +172,8 @@ test('inherited pan is clamped when a smaller breakpoint changes aspect', () => 
   h.open();
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
   expect(h.pending.at(-1).payload.variants.mobile).toEqual({ aspect: '16:9', cx: 0.5 });
+  expect(h.target.style.getPropertyValue('--project-content-w-desktop')).toBe('0.5625');
+  expect(h.target.style.getPropertyValue('--project-content-w-mobile')).toBe('1');
 });
 
 test('cropped inline videos use the project source crop rectangle', () => {
