@@ -33,7 +33,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 {navMenu ? (
   <div class="header-menu-backdrop" aria-hidden="true"></div>
   <div class="site-header-slot">
-  <div class="site-header__chrome-fill" aria-hidden="true"></div>
   <header class="site-header site-header--nav-menu">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
@@ -152,7 +151,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   </div>
 ) : (
   <div class="site-header-slot">
-  <div class="site-header__chrome-fill" aria-hidden="true"></div>
   <header class="site-header">
     <div class="site-header__bg" aria-hidden="true"></div>
     <div class="site-header__row">
@@ -236,7 +234,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // 'flow' | 'docked' | 'riding' — riding = absolute at the spot it was
     // released, scrolling away with the page until it docks or reaches home.
     let mode: 'flow' | 'docked' | 'riding' = 'flow';
-    let headerHeight = header.offsetHeight;
+    const headerChromeHeight = () => {
+      const value = Number.parseFloat(getComputedStyle(header).getPropertyValue('--header-chrome-height'));
+      return Number.isFinite(value) && value > 0 ? value : 100;
+    };
+    const logicalHeaderRect = () => {
+      const rect = header.getBoundingClientRect();
+      const extension = headerChromeHeight();
+      return {
+        top: rect.top + extension,
+        bottom: rect.bottom,
+        height: Math.max(0, rect.height - extension),
+        left: rect.left,
+        width: rect.width,
+      };
+    };
+    let headerHeight = Math.max(0, header.offsetHeight - headerChromeHeight());
     let viewportWidth = document.documentElement.clientWidth;
     let ticking = false;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
@@ -263,7 +276,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // The slot claims the header's flow height no matter where the header
     // itself is (flow / fixed / absolute), so the page below never jumps.
     const syncSlot = () => {
-      headerHeight = header.offsetHeight;
+      headerHeight = Math.max(0, header.offsetHeight - headerChromeHeight());
       if (headerSlot instanceof HTMLElement) {
         headerSlot.style.height = `${headerHeight}px`;
       }
@@ -297,14 +310,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       header.style.width = `${geoWidth}px`;
     };
 
-    const syncChromeFillOffset = () => {
-      if (!(headerSlot instanceof HTMLElement)) return;
-      headerSlot.style.setProperty(
-        '--header-dock-offset',
-        `${-headerSlot.getBoundingClientRect().top}px`,
-      );
-    };
-
     const clearGeo = () => {
       header.style.removeProperty('left');
       header.style.removeProperty('width');
@@ -315,13 +320,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       // Capture the offset BEFORE switching modes, so the slide starts from
       // exactly where the header is visually sitting. Works from riding
       // (absolute) or from a partially-scrolled-out flow position.
-      const slideFrom = slide ? Math.max(0, -header.getBoundingClientRect().top) : null;
+      const slideFrom = slide ? Math.max(0, -logicalHeaderRect().top) : null;
       if (offscreenTimer !== null) {
         clearTimeout(offscreenTimer);
         offscreenTimer = null;
       }
       header.classList.remove('is-scrolled-hidden');
-      if (next === 'docked') syncChromeFillOffset();
       mode = next;
       header.classList.toggle('is-docked', mode === 'docked');
       header.classList.toggle('is-riding', mode === 'riding');
@@ -331,7 +335,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       header.style.transform = '';
       if (mode === 'docked') {
         // Fixed at the viewport top, box pinned to its flow x/width.
-        header.style.top = '';
+        header.style.top = `${-headerChromeHeight()}px`;
         applyGeo();
         if (slide && slideFrom !== null) {
           // Menu opened while partially hidden: dock (fixed, top 0) but start
@@ -365,7 +369,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         // ALREADY at the correct x-offset in the content column — so left must
         // be 0, not the viewport-relative geoLeft (that would double-count the
         // gutter and shove it right). Width still comes from the flow measure.
-        header.style.top = `${window.scrollY}px`;
+        header.style.top = `${window.scrollY - headerChromeHeight()}px`;
         header.style.left = '0';
         header.style.width = `${geoWidth}px`;
       } else {
@@ -381,7 +385,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     header.addEventListener('header:trigger-open', () => {
       // Riding is always at or above the viewport top (it docks the moment its
       // top comes back down to 0), so both cases are "not fully in place".
-      if (mode === 'riding' || header.getBoundingClientRect().top < 0) {
+      if (mode === 'riding' || logicalHeaderRect().top < 0) {
         setMode('docked', false, true);
       }
     });
@@ -402,7 +406,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     /** Commit width only while fully off-screen; the next fade masks the swap. */
     const syncHeaderWidth = (probeEdge: number, initialize = false) => {
       if (!adaptivePageColumnsEnabled || !siteWrapper) return;
-      const headerRect = header.getBoundingClientRect();
+      const headerRect = logicalHeaderRect();
       if (!initialize && (mode !== 'flow' || headerRect.bottom > 0)) return;
 
       const blocks = Array.from(document.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)).filter(
@@ -435,8 +439,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const update = () => {
       const y = window.scrollY;
-      if (mode === 'docked') syncChromeFillOffset();
-      const headerRect = header.getBoundingClientRect();
+      const headerRect = logicalHeaderRect();
       // Once the flow header is fully off-screen, keep its next reveal width
       // current using the docked footprint. Never write while it is visible.
       if (mode === 'flow' && headerRect.bottom <= 0) {
@@ -514,7 +517,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           anchorY = y;
         }
       } else if (mode === 'riding') {
-        const rect = header.getBoundingClientRect();
+        const rect = logicalHeaderRect();
         if (trend === 'up' && rect.top >= 0) {
           // Rode back down and its top reached the viewport top: dock, no fade.
           setMode('docked');
@@ -528,7 +531,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
             header.classList.add('is-scrolled-hidden');
             offscreenTimer = setTimeout(() => {
               offscreenTimer = null;
-              if (mode === 'riding' && header.getBoundingClientRect().bottom <= 0) {
+              if (mode === 'riding' && logicalHeaderRect().bottom <= 0) {
                 setMode('flow');
                 header.classList.add('is-scrolled-hidden');
               }
@@ -540,7 +543,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           header.classList.remove('is-scrolled-hidden');
         }
       } else if (trend === 'up' && anchorY - y > REVEAL_PX) {
-        const rect = header.getBoundingClientRect();
+        const rect = logicalHeaderRect();
         if (rect.bottom <= 0 && y > headerHeight) {
           // Fully off-screen: dock + fade in at full height. Small threshold
           // stays here so a stray 1px nudge deep in the page doesn't flash it.
@@ -556,7 +559,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
 
       if (mode !== 'riding') {
-        header.classList.toggle('is-scrolled-hidden', mode === 'flow' && header.getBoundingClientRect().bottom <= 0);
+        header.classList.toggle('is-scrolled-hidden', mode === 'flow' && logicalHeaderRect().bottom <= 0);
       }
 
       lastY = y;
@@ -582,7 +585,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     void document.fonts?.ready.then(() => syncHeaderWidth(headerHeight));
-    syncHeaderWidth(header.getBoundingClientRect().bottom, true);
+    syncHeaderWidth(logicalHeaderRect().bottom, true);
 
     window.addEventListener('resize', () => {
       const nextViewportWidth = document.documentElement.clientWidth;
@@ -597,7 +600,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       // current scroll mode and vertical geometry. Width changes can update the
       // clean in-flow measurement without swapping riding/docked positions.
       captureGeo();
-      syncChromeFillOffset();
       if (mode === 'docked') applyGeo();
       else if (mode === 'riding') {
         header.style.left = '0';
@@ -1469,29 +1471,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      below never jumps when the header docks (fixed) or rides (absolute). */
   .site-header-slot {
     position: relative;
-  }
-
-  .site-header__chrome-fill {
-    position: absolute;
-    z-index: 50;
-    top: calc(var(--header-dock-offset, 0px) - max(env(safe-area-inset-top, 0px), 100px));
-    left: calc(-1 * var(--page-gutter, 0px));
-    right: calc(-1 * var(--page-gutter, 0px));
-    height: max(env(safe-area-inset-top, 0px), 100px);
-    background-color: var(--sys-color-srf);
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.35s ease, visibility 0s linear 0.35s;
-  }
-
-  .site-header-slot:has(> .site-header.is-docked:not(.is-scrolled-hidden)) > .site-header__chrome-fill {
-    opacity: 1;
-    visibility: visible;
-    transition-delay: 0s;
+    display: flow-root;
   }
 
   .site-header {
+    --header-chrome-height: max(env(safe-area-inset-top, 0px), 100px);
     --header-menu-link-size: 1.2em;
     background-color: var(--sys-color-srf);
 
@@ -1520,6 +1504,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     /* Above mid-page sections (25). Below format bar (90+). */
     z-index: 50;
     padding: var(--space-unit) 0;
+    padding-top: calc(var(--space-unit) + var(--header-chrome-height));
+    margin-top: calc(-1 * var(--header-chrome-height));
     transition: opacity 0.35s ease;
   }
 
@@ -1528,13 +1514,15 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
      no gutter formula, no measurement, no inset shift. */
   .site-header.is-docked {
     position: fixed;
-    top: 0;
+    top: calc(-1 * var(--header-chrome-height));
+    margin-top: 0;
   }
 
   /* Riding: absolute at the release spot (inline top = scrollY), so it
      scrolls away with the page. Same unset left/right — flow geometry kept. */
   .site-header.is-riding {
     position: absolute;
+    margin-top: 0;
   }
 
   .site-header.is-scrolled-hidden {
@@ -1544,7 +1532,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .site-header__bg {
     position: absolute;
-    inset-block: calc(-1 * max(env(safe-area-inset-top, 0px), 100px)) 0;
+    inset: 0;
     /* Full viewport, not the content column — inherit --page-gutter from
        #site-wrapper (percentage already resolved there, so no 100vw scrollbar). */
     left: calc(-1 * var(--page-gutter, 0px));
@@ -1553,7 +1541,6 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     z-index: 0;
     pointer-events: none;
     opacity: 1;
-    transition: opacity 0.48s cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so

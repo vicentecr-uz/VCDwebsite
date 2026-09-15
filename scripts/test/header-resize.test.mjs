@@ -9,7 +9,7 @@ assert.ok(start >= 0 && end > start, 'resize callback should remain discoverable
 const callbackBody = source.slice(start + marker.length, end);
 
 function createHarness({ width = 800, mode = 'flow' } = {}) {
-  const calls = { syncHeaderWidth: 0, syncSlot: 0, menuSizes: 0, captureGeo: 0, chromeOffset: 0, applyGeo: 0 };
+  const calls = { syncHeaderWidth: 0, syncSlot: 0, menuSizes: 0, captureGeo: 0, applyGeo: 0 };
   const header = { style: { left: 'original-left', width: 'original-width', top: '123px', opacity: '0.4' } };
   const state = { width, mode, geoWidth: 640 };
   const document = {
@@ -18,7 +18,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
   };
   const runSource = [
     'document', 'header', 'mode', 'headerHeight', 'calls',
-    'syncHeaderWidth', 'syncSlot', 'syncMenuSurfaceInlineSize', 'syncChromeFillOffset', 'applyGeo',
+    'syncHeaderWidth', 'syncSlot', 'syncMenuSurfaceInlineSize', 'applyGeo',
   ];
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
     let viewportWidth = ${width};
@@ -41,7 +41,6 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
       () => { calls.syncHeaderWidth += 1; },
       () => { calls.syncSlot += 1; },
       () => {},
-      () => { calls.chromeOffset += 1; },
       () => { calls.applyGeo += 1; header.style.left = 'captured-left'; header.style.width = '777px'; },
     );
   };
@@ -51,7 +50,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
 {
   const harness = createHarness({ mode: 'riding' });
   harness.execute(800);
-  assert.deepEqual(harness.calls, { syncHeaderWidth: 0, syncSlot: 0, menuSizes: 0, captureGeo: 0, chromeOffset: 0, applyGeo: 0 });
+  assert.deepEqual(harness.calls, { syncHeaderWidth: 0, syncSlot: 0, menuSizes: 0, captureGeo: 0, applyGeo: 0 });
   assert.equal(harness.header.style.top, '123px');
   assert.equal(harness.header.style.opacity, '0.4');
 }
@@ -59,7 +58,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
 {
   const harness = createHarness({ mode: 'docked' });
   harness.execute(960);
-  assert.deepEqual(harness.calls, { syncHeaderWidth: 1, syncSlot: 1, menuSizes: 1, captureGeo: 1, chromeOffset: 1, applyGeo: 1 });
+  assert.deepEqual(harness.calls, { syncHeaderWidth: 1, syncSlot: 1, menuSizes: 1, captureGeo: 1, applyGeo: 1 });
   assert.equal(harness.header.style.left, 'captured-left');
   assert.equal(harness.header.style.width, '777px');
   assert.equal(harness.header.style.top, '123px');
@@ -68,7 +67,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
 {
   const harness = createHarness({ mode: 'riding' });
   harness.execute(960);
-  assert.deepEqual(harness.calls, { syncHeaderWidth: 1, syncSlot: 1, menuSizes: 1, captureGeo: 1, chromeOffset: 1, applyGeo: 0 });
+  assert.deepEqual(harness.calls, { syncHeaderWidth: 1, syncSlot: 1, menuSizes: 1, captureGeo: 1, applyGeo: 0 });
   assert.equal(harness.header.style.left, '0');
   assert.equal(harness.header.style.width, '777px');
   assert.equal(harness.header.style.top, '123px');
