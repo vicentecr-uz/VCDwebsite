@@ -474,13 +474,14 @@ function bindDrag(carousel: Carousel): void {
       track.style.setProperty('--project-carousel-rubberband-y', '0px');
     }
   };
-  const cancelMomentum = (restore = true) => {
+  const cancelMomentum = (restore = true, clearVisual = true) => {
     settleGeneration += 1;
     if (settleFrame) {
       cancelAnimationFrame(settleFrame);
       settleFrame = 0;
     }
     if (restore) restoreSnap();
+    if (clearVisual) clearRubberband(false);
   };
   const scrollBounds = () => carousel.axis === 'vertical'
     ? Math.max(0, track.scrollHeight - track.clientHeight)
@@ -504,7 +505,7 @@ function bindDrag(carousel: Carousel): void {
     else track.scrollLeft = bounded;
   };
   const settleTo = (target: number, initialVelocity: number) => {
-    cancelMomentum(false);
+    cancelMomentum(false, false);
     track.style.scrollSnapType = 'none';
     target = clampScroll(target);
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -522,6 +523,7 @@ function bindDrag(carousel: Carousel): void {
     const frame = (now: number) => {
       if (generation !== settleGeneration || !track.isConnected) {
         restoreSnap();
+        clearRubberband(false);
         settleFrame = 0;
         return;
       }
@@ -568,7 +570,6 @@ function bindDrag(carousel: Carousel): void {
       return;
     }
     cancelMomentum(false);
-    clearRubberband(false);
     dragging = true;
     pointerId = event.pointerId;
     moved = 0;

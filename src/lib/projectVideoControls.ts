@@ -10,7 +10,7 @@ import { resolveVideoAudio, type ResolvedVideoAudio } from './videoAudio';
 const viewportForVideo = () => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
 
 function readVideoAudio(video: HTMLVideoElement): ResolvedVideoAudio {
-  const target = video.closest<HTMLElement>('[data-dev-image-target]');
+  const target = video.closest<HTMLElement>('[data-dev-image-target], [data-video-audio]');
   try {
     const raw = target?.dataset.devVideoAudio || target?.dataset.videoAudio;
     return resolveVideoAudio(raw ? JSON.parse(raw) : undefined);
