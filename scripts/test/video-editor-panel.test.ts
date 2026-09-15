@@ -128,6 +128,27 @@ test('desktop aspect edits cascade while explicit mobile overrides survive until
   expect(h.pending.at(-1).payload.variants.mobile).toEqual({});
 });
 
+test('dragging an inherited mobile crop saves the resolved width', () => {
+  const h = setup();
+  h.open();
+  const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
+  aspect.value = '1:1';
+  aspect.dispatchEvent(new h.win.Event('change'));
+  (h.document.querySelector('[data-video-viewport="mobile"]') as HTMLButtonElement).click();
+  const preview = h.document.querySelector('[data-video-preview]') as HTMLVideoElement;
+  Object.defineProperty(preview, 'clientWidth', { configurable: true, value: 100 });
+  Object.defineProperty(preview, 'clientHeight', { configurable: true, value: 100 });
+  preview.setPointerCapture = () => {};
+  const down = new h.win.Event('pointerdown') as any;
+  Object.assign(down, { button: 0, pointerId: 9, clientX: 50, clientY: 50 });
+  preview.dispatchEvent(down);
+  const move = new h.win.Event('pointermove') as any;
+  Object.assign(move, { pointerId: 9, clientX: 55, clientY: 50 });
+  preview.dispatchEvent(move);
+  (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
+  expect(h.pending.at(-1).payload.variants.mobile.w).toBeCloseTo(0.5625);
+});
+
 test('cropped inline videos use the project source crop rectangle', () => {
   expect(projectStyles).toContain('.project-cropped > video[data-project-inline-video]');
   expect(projectStyles).toContain('width: calc(100% / var(--project-content-w, 1));');
