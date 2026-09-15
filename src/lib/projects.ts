@@ -76,11 +76,12 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
   { eager: true },
 );
 
-export type PageDocumentKey = 'home' | 'home-intro' | 'work' | 'play' | 'about';
+export type PageDocumentKey = 'home' | 'home-intro' | 'work' | 'play' | 'about' | 'styles';
 
 export type PageDocument = {
   subtitle?: string;
   introHeight?: number;
+  introParagraphs?: string[];
   trailingSpacing?: ProjectStackSpacing;
   sections: Array<Record<string, unknown>>;
   outline?: Array<Record<string, unknown>>;

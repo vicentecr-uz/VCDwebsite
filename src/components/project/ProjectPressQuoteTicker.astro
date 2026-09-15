@@ -278,6 +278,11 @@ const loopItems = [...items, ...items];
     }
   };
 
+  const desiredPressTickerSets = (viewportWidth: number, columnGap: number, loopWidth: number) => {
+    if (viewportWidth <= 0 || loopWidth <= 0) return 2;
+    return Math.max(2, Math.ceil((viewportWidth + columnGap) / loopWidth) + 1);
+  };
+
   const initPressQuoteTicker = (root: HTMLElement) => {
     const host = root as TickerRoot;
     // HMR / astro:page-load can reuse the node after the old rAF was torn down.
@@ -388,15 +393,39 @@ const loopItems = [...items, ...items];
     };
 
     const measure = () => {
+      const sourceCount = Number(root.dataset.pressTickerCount) || 0;
       const tickerItems = [...track.querySelectorAll<HTMLElement>('[data-press-ticker-item]')];
-      const half = Math.floor(tickerItems.length / 2);
-      if (half < 1) {
+      if (sourceCount < 1 || tickerItems.length < sourceCount * 2) {
         loopWidth = 0;
         return;
       }
       const first = tickerItems[0].offsetLeft;
-      const mid = tickerItems[half].offsetLeft;
+      const mid = tickerItems[sourceCount].offsetLeft;
       loopWidth = Math.max(0, mid - first);
+      if (loopWidth <= 0) {
+        phase = wrapPhase(phase);
+        return;
+      }
+
+      const computedGap = getComputedStyle(track).columnGap || getComputedStyle(track).gap;
+      const columnGap = Number.parseFloat(computedGap) || 0;
+      const desiredSets = desiredPressTickerSets(viewport.clientWidth, columnGap, loopWidth);
+      const desiredGeneratedCount = sourceCount * (desiredSets - 2);
+      const generatedItems = [...track.querySelectorAll<HTMLElement>('[data-press-ticker-generated]')];
+      if (generatedItems.length < desiredGeneratedCount) {
+        const sourceItems = tickerItems
+          .filter((item) => !item.hasAttribute('data-press-ticker-generated'))
+          .slice(0, sourceCount);
+        for (let index = generatedItems.length; index < desiredGeneratedCount; index += 1) {
+          const clone = sourceItems[index % sourceCount].cloneNode(true) as HTMLElement;
+          clone.dataset.pressTickerGenerated = 'true';
+          clone.setAttribute('aria-hidden', 'true');
+          clone.querySelectorAll<HTMLAnchorElement>('a').forEach((link) => { link.tabIndex = -1; });
+          track.appendChild(clone);
+        }
+      } else if (generatedItems.length > desiredGeneratedCount) {
+        generatedItems.slice(desiredGeneratedCount).forEach((item) => item.remove());
+      }
       phase = wrapPhase(phase);
     };
 
@@ -691,6 +720,7 @@ const loopItems = [...items, ...items];
       window.clearTimeout(wheelIdleTimer);
       io.disconnect();
       ro.disconnect();
+      track.querySelectorAll<HTMLElement>('[data-press-ticker-generated]').forEach((item) => item.remove());
       ac.abort();
       viewport.classList.remove('is-dragging');
       delete host[PAUSED_KEY];
