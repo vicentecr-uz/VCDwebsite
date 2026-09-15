@@ -35,7 +35,10 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
       </div>
     </div>
   </div>
-  <button type="button" class="home-intro-surface__okay" data-home-intro-okay>Enter</button>
+  <button type="button" class="home-intro-surface__okay" data-home-intro-okay>
+    <span class="home-intro-surface__okay-desktop">Enter</span>
+    <span class="home-intro-surface__okay-touch">Tap to enter</span>
+  </button>
   <span class="home-intro-surface__cursor" data-home-intro-cursor aria-hidden="true">Enter</span>
 </section>
 
@@ -128,12 +131,26 @@ const introTranslateY = (revealConfig.intro as typeof revealConfig.intro & { tra
     display: none;
   }
 
-  #home-intro-surface[data-state='active'] .home-intro-surface__okay {
-    opacity: 0;
-  }
+  .home-intro-surface__okay-touch { display: none; }
 
   #home-intro-surface[data-state='active'] .home-intro-surface__okay:focus-visible {
     opacity: 1;
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    #home-intro-surface[data-state='active'] .home-intro-surface__okay {
+      opacity: 0;
+    }
+  }
+
+  @media (hover: none), (pointer: coarse) {
+    #home-intro-surface[data-state='active'] .home-intro-surface__okay {
+      bottom: calc(var(--space-unit) + env(safe-area-inset-bottom));
+      opacity: 1;
+    }
+
+    .home-intro-surface__okay-desktop { display: none; }
+    .home-intro-surface__okay-touch { display: inline; }
   }
 
   @media (hover: hover) and (pointer: fine) {
