@@ -4,6 +4,7 @@ import ViewportSelector from './ui/ViewportSelector.astro';
 import SelectField from './ui/SelectField.astro';
 import SegmentedControl from './ui/SegmentedControl.astro';
 import PanelActions from './ui/PanelActions.astro';
+import Field from './ui/Field.astro';
 import Button from './ui/Button.astro';
 import { sizeIcon } from '../lib/icons';
 import volume2Icon from 'lucide-static/icons/volume-2.svg?raw';
@@ -26,18 +27,15 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
           { value: '2:3', label: '2:3' }, { value: '10:16', label: '10:16' }, { value: '9:16', label: '9:16' },
         ] },
       ]} />
-      <SegmentedControl label="Audio" data-video-audio-control>
-        <Button emphasis="ghost" width="fill" label="" aria-label="Off" data-video-audio="false"><span slot="icon" set:html={sizeIcon(volumeXIcon, 14)} /></Button>
-        <Button emphasis="ghost" width="fill" label="" aria-label="On" data-video-audio="true"><span slot="icon" set:html={sizeIcon(volume2Icon, 14)} /></Button>
-      </SegmentedControl>
+      <Field label="Audio" class="dev-video-editor__audio-field">
+        <SegmentedControl label="Audio" data-video-audio-control>
+          <Button emphasis="ghost" width="fill" label="" aria-label="Off" data-video-audio="false"><span slot="icon" set:html={sizeIcon(volumeXIcon, 14)} /></Button>
+          <Button emphasis="ghost" width="fill" label="" aria-label="On" data-video-audio="true"><span slot="icon" set:html={sizeIcon(volume2Icon, 14)} /></Button>
+        </SegmentedControl>
+      </Field>
     </div>
     <div class="dev-video-editor__preview" data-video-preview-wrap>
       <video muted playsinline preload="metadata" data-video-preview></video>
-    </div>
-    <div class="dev-field">
-      <label class="dev-field__label" for="video-zoom">Zoom</label>
-      <output data-video-zoom-readout>100%</output>
-      <input id="video-zoom" class="dev-video-editor__range" type="range" min="0.1" max="1" step="0.005" value="1" data-video-zoom />
     </div>
     <div class="dev-field">
       <span class="dev-field__label">Replace video</span>
@@ -60,9 +58,10 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
 <style>
   .dev-video-editor { display: grid; gap: var(--space-unit); }
   .dev-video-editor__settings { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-unit); }
+  .dev-video-editor__audio-field :global(.dev-segmented) { height: var(--dev-control-height); min-height: var(--dev-control-height); box-sizing: border-box; align-items: stretch; }
+  .dev-video-editor__audio-field :global(.dev-segmented .dev-btn) { min-height: 0; height: 100%; }
   .dev-video-editor__preview { display: grid; place-items: center; overflow: hidden; background: var(--sys-color-srf-2); }
   .dev-video-editor__preview video { display: block; width: 100%; object-fit: contain; touch-action: none; }
-  .dev-video-editor__range { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
   .dev-video-editor__status { min-height: 1.4em; margin: 0; }
 </style>
 
@@ -105,8 +104,6 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const preview = editor?.querySelector<HTMLVideoElement>('[data-video-preview]');
     const previewWrap = editor?.querySelector<HTMLElement>('[data-video-preview-wrap]');
     const aspect = editor?.querySelector<HTMLSelectElement>('[data-video-aspect]');
-    const zoom = editor?.querySelector<HTMLInputElement>('[data-video-zoom]');
-    const zoomReadout = editor?.querySelector<HTMLOutputElement>('[data-video-zoom-readout]');
     const save = editor?.querySelector<HTMLButtonElement>('[data-video-save]');
     const reset = editor?.querySelector<HTMLButtonElement>('[data-video-reset]');
     const cancel = editor?.querySelector<HTMLButtonElement>('[data-video-cancel]');
@@ -116,7 +113,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const replaceChoose = editor?.querySelector<HTMLButtonElement>('[data-video-replace-choose]');
     const replaceFile = editor?.querySelector<HTMLInputElement>('[data-video-replace-file]');
     const replaceDrop = editor?.querySelector<HTMLElement>('[data-video-replace-drop]');
-    if (!editor || !overlay || !preview || !previewWrap || !aspect || !zoom || !zoomReadout || !save || !reset || !cancel || !status) return;
+    if (!editor || !overlay || !preview || !previewWrap || !aspect || !save || !reset || !cancel || !status) return;
 
     let target: HTMLElement | null = null;
     let selected: Viewport = viewportForWidth();
@@ -186,9 +183,6 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       preview.style.objectFit = 'fill';
       preview.style.objectPosition = '50% 50%';
       preview.style.transform = `translate(${rendered.cx * -100}%, ${rendered.cy * -100}%)`;
-      zoom.value = String(variant.w);
-      zoom.max = String(maxW);
-      zoomReadout.textContent = `${Math.round(100 / Math.max(0.1, variant.w))}%`;
       aspect.value = variant.aspect;
       audioButtons.forEach((button) => {
         const active = draftAudio[selected] === (button.dataset.videoAudio === 'true');
@@ -278,9 +272,17 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       }
     }) as EventListener, { capture: true, signal });
     viewportButtons.forEach((button) => button.addEventListener('click', () => { selected = button.dataset.videoViewport as Viewport; apply(); }, { signal }));
-    aspect.addEventListener('change', () => { variants[selected].aspect = aspect.value; apply(); }, { signal });
+    aspect.addEventListener('change', () => {
+      const variant = variants[selected];
+      variant.aspect = aspect.value;
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      variant.w = coverWidthFraction(variant.aspect, dims ? dims.width / dims.height : null);
+      const bounds = cropBounds(variant, dims);
+      variant.cx = clamp(variant.cx, bounds.x, 1 - bounds.x);
+      variant.cy = clamp(variant.cy, bounds.y, 1 - bounds.y);
+      apply();
+    }, { signal });
     audioButtons.forEach((button) => button.addEventListener('click', () => { audio[selected] = button.dataset.videoAudio === 'true'; apply(); }, { signal }));
-    zoom.addEventListener('input', () => { variants[selected].w = Number(zoom.value); apply(); }, { signal });
     preview.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;
       drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
@@ -300,7 +302,6 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     preview.addEventListener('pointerup', (event) => { if (drag?.pointerId === event.pointerId) drag = null; }, { signal });
     preview.addEventListener('pointercancel', (event) => { if (drag?.pointerId === event.pointerId) drag = null; }, { signal });
     preview.addEventListener('lostpointercapture', (event) => { if (drag?.pointerId === (event as PointerEvent).pointerId) drag = null; }, { signal });
-    preview.addEventListener('wheel', (event) => { event.preventDefault(); variants[selected].w = clamp(variants[selected].w + event.deltaY / 1000, 0.1, 1); apply(); }, { passive: false, signal });
     save.addEventListener('click', stage, { signal });
     reset.addEventListener('click', resetState, { signal });
     cancel.addEventListener('click', () => close(false), { signal });

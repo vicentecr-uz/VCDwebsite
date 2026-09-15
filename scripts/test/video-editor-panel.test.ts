@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
 import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction } from '../../src/lib/responsiveImage';
 import { imageSourceDims } from '../../src/lib/projectImageFrame';
+const projectStyles = readFileSync(new URL('../../src/styles/project.css', import.meta.url)).toString();
 
 const source = readFileSync(new URL('../../src/components/DevVideoEditor.astro', import.meta.url))
   .toString().split('<script>')[1].split('</script>')[0]
@@ -64,10 +65,10 @@ test('opening a video applies shared crop geometry and cancel restores the targe
   h.open();
   expect(h.document.querySelector('[data-dev-panel-key="video"]')?.hidden).toBe(false);
   expect(h.target.classList.contains('project-cropped')).toBe(true);
-  const zoom = h.document.querySelector('[data-video-zoom]') as HTMLInputElement;
-  zoom.value = '0.5';
-  zoom.dispatchEvent(new h.win.Event('input'));
-  expect((h.document.querySelector('[data-video-preview]') as HTMLVideoElement).style.width).toContain('0.5');
+  const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
+  aspect.value = '1:1';
+  aspect.dispatchEvent(new h.win.Event('change'));
+  expect(JSON.parse(h.target.dataset.devImageVariants!).desktop.w).toBeCloseTo(0.5625);
   const preview = h.document.querySelector('[data-video-preview]') as HTMLVideoElement;
   Object.defineProperty(preview, 'clientWidth', { configurable: true, value: 100 });
   Object.defineProperty(preview, 'clientHeight', { configurable: true, value: 100 });
@@ -92,13 +93,20 @@ test('opening a video applies shared crop geometry and cancel restores the targe
 test('save history updates the pending crop payload on undo and redo', () => {
   const h = setup();
   h.open();
-  const zoom = h.document.querySelector('[data-video-zoom]') as HTMLInputElement;
-  zoom.value = '0.5';
-  zoom.dispatchEvent(new h.win.Event('input'));
+  const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
+  aspect.value = '1:1';
+  aspect.dispatchEvent(new h.win.Event('change'));
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
-  expect(h.pending.at(-1).payload.variants.desktop.w).toBe(0.5);
+  expect(h.pending.at(-1).payload.variants.desktop.w).toBeCloseTo(0.5625);
   h.history[0].undo();
   expect(h.pending.at(-1).payload.variants.desktop.w).toBe(1);
   h.history[0].redo();
-  expect(h.pending.at(-1).payload.variants.desktop.w).toBe(0.5);
+  expect(h.pending.at(-1).payload.variants.desktop.w).toBeCloseTo(0.5625);
+});
+
+test('cropped inline videos use the project source crop rectangle', () => {
+  expect(projectStyles).toContain('.project-cropped > video[data-project-inline-video]');
+  expect(projectStyles).toContain('width: calc(100% / var(--project-content-w, 1));');
+  expect(projectStyles).toContain('transform: translate(');
+  expect(projectStyles).not.toContain('object-fit: contain !important');
 });
