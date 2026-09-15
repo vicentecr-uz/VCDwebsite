@@ -604,12 +604,14 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
 }));
 
 /** Match page render order (grouped by category), not raw catalog order. */
-const componentLinks = catalogByCategory.flatMap(({ items }) =>
-  items.map((component) => ({
+const pageBlockLinks = catalogByCategory
+  .filter(({ category }) => category !== 'ui-primitives')
+  .flatMap(({ items }) => items.map((component) => ({ id: component.id, label: component.name })));
+const devComponentLinks =
+  catalogByCategory.find(({ category }) => category === 'ui-primitives')?.items.map((component) => ({
     id: component.id,
     label: component.name,
-  })),
-);
+  })) ?? [];
 
 const catalogSectionLinks = [
   { id: 'styles-intro', label: 'Design system' },
@@ -619,11 +621,15 @@ const catalogSectionLinks = [
     children: foundationLinks,
   },
   {
-    label: 'Components',
+    label: 'Page Blocks',
     children: [
       { id: 'styles-components', label: 'Overview' },
-      ...componentLinks,
+      ...pageBlockLinks,
     ],
+  },
+  {
+    label: 'Dev Components',
+    children: devComponentLinks,
   },
 ];
 
@@ -662,13 +668,10 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
 
       <main id="main-content" class="styles-main" data-section-nav-main>
         <section id="styles-intro" class="styles-intro section-block">
-          <p class="intro-copy">
-            This page is the single source of truth for site components, tokens, and signed-off patterns.
-            <strong>Tapico</strong> (<a href="/tapico" class="project-inline-link">/tapico</a>) is the reference
-            case study; <strong>Home</strong>, <strong>Work</strong>, and <strong>Play</strong> define the vetted
-            portfolio grid. Other project routes are legacy Webflow migrations — do not copy their markup when
-            building or porting content.
-          </p>
+          <ProjectBodyText
+            paragraphs={[`This page is the single source of truth for site components, tokens, and signed-off patterns. <strong>Tapico</strong> (<a href="/tapico" class="project-inline-link">/tapico</a>) is the reference case study; <strong>Home</strong>, <strong>Work</strong>, and <strong>Play</strong> define the vetted portfolio grid. Other project routes are legacy Webflow migrations — do not copy their markup when building or porting content.`]}
+            spacing="none"
+          />
         </section>
 
         {hiddenSectionIds.has('styles-colors') ? null : (
@@ -793,17 +796,22 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
 
         <section class="section-block">
           <div id="styles-components" class="section-block">
-            <h2>Component library</h2>
-            <p class="section-note">
-              {componentCatalog.length} signed-off components and patterns across site chrome, portfolio listings,
-              and project pages (vetted on Home/Work/Play + Tapico). Each is built for reuse on future case studies.
-              Cards show a live preview, source file, props, and where it is used today.
-            </p>
+            <h2>Page Blocks</h2>
+            <ProjectBodyText
+              paragraphs={[`${componentCatalog.length} signed-off components and patterns across site chrome, portfolio listings, and project pages (vetted on Home/Work/Play + Tapico). Each is built for reuse on future case studies. Cards show a live preview, source file, props, and where it is used today.`]}
+              spacing="none"
+            />
           </div>
 
           {catalogByCategory.map(({ category, label, items }) => (
             <div class="component-group">
-              <h3 class="component-group__title">{label}</h3>
+              {category === 'ui-primitives' ? (
+                <h2 id="styles-dev-components" class="component-group__title component-group__title--major">
+                  Dev Components
+                </h2>
+              ) : (
+                <h3 class="component-group__title">{label}</h3>
+              )}
               <div class="stack">
                 {items.map((component) => (
                   <article id={component.id} class="component-card section-block">
@@ -1163,7 +1171,6 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
     font-size: 1.1rem;
   }
 
-  .intro-copy,
   .section-note,
   .token-note,
   .component-card__head p,
@@ -1172,14 +1179,12 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
     font-family: var(--font-mono);
   }
 
-  .intro-copy,
   .section-note {
     max-width: 62ch;
     line-height: 1.55;
     color: color-mix(in srgb, var(--sys-color-on-srf) 85%, transparent);
   }
 
-  .intro-copy code,
   .meta-values code,
   .token-note code {
     font-size: 0.92em;
@@ -1194,7 +1199,6 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
      lowers min-content, so the tracks can actually shrink. */
   .meta-values,
   .meta-values code,
-  .intro-copy code,
   .token-note code,
   .token-value,
   .token-name,
@@ -1488,6 +1492,14 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
     line-height: var(--text-heading-2-leading);
     letter-spacing: var(--text-heading-2-tracking);
     color: var(--sys-color-on-srf-variant);
+  }
+
+  .component-group__title--major {
+    font-weight: var(--text-heading-1-weight);
+    font-size: var(--text-heading-1-size);
+    line-height: var(--text-heading-1-leading);
+    letter-spacing: var(--text-heading-1-tracking);
+    color: var(--sys-color-on-srf);
   }
 
   .component-group:first-of-type .component-group__title {
