@@ -713,6 +713,10 @@ media-volume-range:not(:defined) { display: none; }
 }
 
 .project-image-carousel__track {
+  --project-carousel-drag-tension: 20;
+  --project-carousel-drag-threshold: 4px;
+  --project-carousel-spring-back: 260ms;
+  --project-carousel-rubberband-duration: var(--project-carousel-spring-back);
   display: flex;
   /* Follow-each-image: top-align — the block's top edge can't move with the
      page, so shrinking from the bottom is the only honest direction. */
@@ -821,7 +825,7 @@ media-volume-range:not(:defined) { display: none; }
 }
 
 .project-image-carousel__track.is-rubberband-settling .project-image-carousel__slide {
-  transition: translate 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: translate var(--project-carousel-rubberband-duration, 260ms) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .project-image-carousel__track.is-dragging .project-image-carousel__slide {
