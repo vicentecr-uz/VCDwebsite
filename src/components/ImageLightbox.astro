@@ -13,8 +13,8 @@
     const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]');
     const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]');
     const error = dialog.querySelector<HTMLElement>('[data-image-lightbox-error]');
-    const inputModeSelect = viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]');
     if (!viewer || !image || !error) return () => {};
+    const inputModeSelect = viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]');
     type View = { x: number; y: number; scale: number; rotation: number };
     type Gesture = 'drag' | 'pan' | 'pinch' | 'rotate' | 'blocked' | null;
     const fit = (): View => ({ x: 0, y: 0, scale: 1, rotation: 0 });
@@ -28,6 +28,7 @@
       return Math.abs(delta) <= 20 ? upright + delta * .1 : rotation;
     };
     const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isInteractiveControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('select,button,input,textarea,[contenteditable="true"],[contenteditable="plaintext-only"]'));
     let view = fit();
     let start = fit();
     let velocity = fit();
@@ -61,6 +62,7 @@
     let wheelInputMode: 'mouse' | 'trackpad' | null = null;
     let coarseBurstSamples = 0;
     let coarseBurstSign = 0;
+    let coarseBurstMagnitude = 0;
     let coarseBurstRegular = true;
     let burstStrongTrackpad = false;
     let wheelTimer: number | null = null;
@@ -149,7 +151,7 @@
     };
     const reset = () => {
       stopSpring(); clearWheel(); releasePointers();
-      view = fit(); gesture = null; feedback = null; nativeGesture = false; nativeZoomPoint = null; pointerRotationTarget = null;
+      view = fit(); gesture = null; feedback = null; nativeGesture = false; nativeZoomPoint = null; lastPointer = null; nativeUntil = 0; pointerRotationTarget = null;
       render();
     };
     const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
@@ -243,6 +245,7 @@
       if (target && target === event.target && !document.documentElement.classList.contains('is-dev-mode')) { event.preventDefault(); open(target, true); }
     };
     const onDialogClick = (event: MouseEvent) => {
+      if (isInteractiveControl(event.target)) return;
       if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
     };
     const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
@@ -257,7 +260,7 @@
       render();
     };
     const onKey = (event: KeyboardEvent) => {
-      if (!dialog.open || closeTimer !== null || event.defaultPrevented) return;
+      if (!dialog.open || closeTimer !== null || event.defaultPrevented || isInteractiveControl(event.target)) return;
       restoreKeyboardFocus = true;
       viewer.setAttribute('data-keyboard-focus', '');
       if (event.key === 'Escape') { event.preventDefault(); dismiss(); return; }
@@ -275,7 +278,7 @@
       return lastPointer ?? centre();
     };
     const onPointerDown = (event: PointerEvent) => {
-      if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture) return;
+      if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture || isInteractiveControl(event.target)) return;
       stopSpring(); clearWheel(); pointerRotationTarget = null;
       viewer.removeAttribute('data-keyboard-focus');
       viewer.classList.add('is-dragging');
@@ -390,7 +393,7 @@
           mouseBurstEvidence = 0;
         } else if (wheelInputMode === 'mouse') {
           autoWheelConfidence = 'mouse'; mouseBurstEvidence = 0;
-        } else if (wheelInputMode === 'trackpad' && coarseBurstSamples > 0 && coarseBurstRegular) {
+        } else if (wheelInputMode === 'trackpad' && coarseBurstSamples >= 3 && coarseBurstRegular) {
           mouseBurstEvidence += 1;
           if (mouseBurstEvidence >= 2) { autoWheelConfidence = 'mouse'; mouseBurstEvidence = 0; }
         }
@@ -403,14 +406,14 @@
       return event.deltaMode !== 0 || isCoarseWheel(event) ? 'mouse' : 'trackpad';
     };
     const onWheel = (event: WheelEvent) => {
-      if (!dialog.open || closeTimer !== null) return;
+      if (!dialog.open || closeTimer !== null || isInteractiveControl(event.target)) return;
       event.preventDefault();
       const pinch = event.ctrlKey || event.metaKey;
       if (pointers.size || nativeGesture || (pinch && performance.now() < nativeUntil)) return;
       stopSpring(); moved = true;
       if (!wheelInputMode) {
         wheelInputMode = pinch ? 'trackpad' : inputMode === 'auto' ? autoWheelConfidence ?? detectWheelMode(event) : inputMode;
-        coarseBurstSamples = 0; coarseBurstSign = 0; coarseBurstRegular = true; burstStrongTrackpad = false;
+        coarseBurstSamples = 0; coarseBurstSign = 0; coarseBurstMagnitude = 0; coarseBurstRegular = true; burstStrongTrackpad = false;
         if (inputMode === 'auto' && wheelInputMode === 'mouse' && !autoWheelConfidence) autoWheelConfidence = 'mouse';
       }
       if (inputMode === 'auto') {
@@ -425,8 +428,10 @@
         } else if (wheelInputMode === 'trackpad') {
           // Deliberate limit: one coarse vertical event cannot identify a device, so retained confidence wins until the burst ends.
           const sign = Math.sign(event.deltaY);
+          const magnitude = Math.abs(event.deltaY);
           if (coarseBurstSign && sign !== coarseBurstSign) coarseBurstRegular = false;
-          coarseBurstSign = sign; coarseBurstSamples += 1;
+          if (coarseBurstMagnitude && Math.abs(magnitude - coarseBurstMagnitude) > Math.max(4, coarseBurstMagnitude * .2)) coarseBurstRegular = false;
+          coarseBurstSign = sign; coarseBurstMagnitude ||= magnitude; coarseBurstSamples += 1;
         }
       }
       if (wheelPinch !== pinch) {
@@ -546,5 +551,6 @@
   .image-lightbox__viewer.is-dragging, .image-lightbox__viewer.is-dragging .image-lightbox__image { cursor: grabbing; }
   .image-lightbox__error { position: absolute; margin: 0; }
   .image-lightbox__input-mode { position: absolute; right: max(1rem, 10vw); bottom: max(1rem, calc(var(--vh-safe, 1svh) * 10)); }
+  @media (hover: none) and (pointer: coarse) { .image-lightbox__input-mode { display: none; } }
   @media (max-width: 40em) { .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); } }
 </style>
