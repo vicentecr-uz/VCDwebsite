@@ -111,15 +111,23 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const next = stripZoomSettings(authored);
     let resolved = normalizeImageVariants(next, 'original', dims) as Record<Viewport, Variant>;
     for (const viewport of ['desktop', 'tablet', 'mobile'] as const) {
-      const variant = next[viewport];
-      if (!variant || (variant.cx === undefined && variant.cy === undefined && variant.x === undefined && variant.y === undefined)) continue;
-      const bounds = cropBounds(resolved[viewport], dims);
-      const cx = clamp(resolved[viewport].cx, bounds.x, 1 - bounds.x);
-      const cy = clamp(resolved[viewport].cy, bounds.y, 1 - bounds.y);
-      if (variant.cx !== undefined || variant.x !== undefined) variant.cx = cx;
-      if (variant.cy !== undefined || variant.y !== undefined) variant.cy = cy;
-      delete variant.x;
-      delete variant.y;
+      const resolvedVariant = resolved[viewport];
+      const bounds = cropBounds(resolvedVariant, dims);
+      const cx = clamp(resolvedVariant.cx, bounds.x, 1 - bounds.x);
+      const cy = clamp(resolvedVariant.cy, bounds.y, 1 - bounds.y);
+      const variant = next[viewport] ?? {};
+      const hasLocalVariant = Boolean(next[viewport]);
+      const hasLocalX = variant.cx !== undefined || variant.x !== undefined;
+      const hasLocalY = variant.cy !== undefined || variant.y !== undefined;
+      if (hasLocalX && variant.cx !== cx) variant.cx = cx;
+      if (hasLocalY && variant.cy !== cy) variant.cy = cy;
+      if (!hasLocalX && cx !== resolvedVariant.cx) variant.cx = cx;
+      if (!hasLocalY && cy !== resolvedVariant.cy) variant.cy = cy;
+      if (!hasLocalVariant && Object.keys(variant).length) next[viewport] = variant;
+      if (next[viewport]) {
+        delete next[viewport].x;
+        delete next[viewport].y;
+      }
       resolved = normalizeImageVariants(next, 'original', dims) as Record<Viewport, Variant>;
     }
     return { authored: next, resolved };
