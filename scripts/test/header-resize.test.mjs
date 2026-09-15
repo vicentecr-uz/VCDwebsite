@@ -7,6 +7,9 @@ assert.match(source, /if \(mode !== 'docked'\) setMode\('docked'\)/);
 assert.match(source, /header\.classList\.remove\('is-scrolled-hidden'\)/);
 assert.match(source, /if \(mode !== 'flow'\) setMode\('flow'\)/);
 assert.match(source, /--header-chrome-height/);
+assert.match(source, /--header-chrome-height: 0px/);
+assert.match(source, /header\.style\.width = '100%'/);
+assert.match(source, /box-sizing: border-box/);
 const marker = "window.addEventListener('resize', () => {";
 const start = source.indexOf(marker);
 const end = source.indexOf('\n    });', start);
@@ -22,7 +25,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
     querySelectorAll: () => ({ forEach: () => { calls.menuSizes += 1; } }),
   };
   const runSource = [
-    'document', 'header', 'mode', 'headerHeight', 'calls',
+    'window', 'document', 'header', 'mode', 'headerHeight', 'calls',
     'syncMobileHeaderMode', 'syncHeaderWidth', 'syncSlot', 'syncMenuSurfaceInlineSize', 'applyGeo',
   ];
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
@@ -38,6 +41,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
   const execute = (nextWidth) => {
     document.documentElement.clientWidth = nextWidth;
     run(
+      { innerWidth: nextWidth },
       document,
       header,
       state.mode,
