@@ -111,7 +111,7 @@ function dispatchPointerDown(track: HTMLElement): void {
   track.dispatchEvent(event);
 }
 
-function dispatchMousePointer(track: HTMLElement, type: string, pointerId = 1, clientX = 0, clientY = 0) {
+function dispatchMousePointer(track: HTMLElement, type: string, pointerId = 1, clientX = 0, clientY = 0, timeStamp?: number) {
   const event = new window.Event(type, { bubbles: true, cancelable: true }) as PointerEvent;
   Object.defineProperties(event, {
     pointerType: { value: 'mouse' },
@@ -120,8 +120,29 @@ function dispatchMousePointer(track: HTMLElement, type: string, pointerId = 1, c
     clientX: { value: clientX },
     clientY: { value: clientY },
   });
+  if (timeStamp !== undefined) Object.defineProperty(event, 'timeStamp', { value: timeStamp });
   track.dispatchEvent(event);
   return event;
+}
+
+function withQueuedAnimationFrames(run: (queue: Array<FrameRequestCallback>, base: number) => void): void {
+  const original = globalThis.requestAnimationFrame;
+  const queue: Array<FrameRequestCallback> = [];
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    queue.push(callback);
+    return queue.length;
+  }) as typeof requestAnimationFrame;
+  try {
+    run(queue, performance.now() + 1);
+  } finally {
+    globalThis.requestAnimationFrame = original;
+  }
+}
+
+function flushAnimationFrames(queue: Array<FrameRequestCallback>, base: number): void {
+  for (let frame = 1; frame <= 100 && queue.length; frame += 1) {
+    queue.shift()!(base + frame * 16);
+  }
 }
 
 test('mouse image drag cancels native image dragging for an accepted pointerdown', () => {
@@ -193,6 +214,61 @@ test('cancelled mouse drag clears carousel drag state and snap override', () => 
   dispatchMousePointer(track, 'pointercancel', 14, 94);
   expect(track.classList.contains('is-dragging')).toBe(false);
   expect(track.style.scrollSnapType).toBe('');
+  block.remove();
+});
+
+test('mouse release carries velocity toward the next real slide before settling', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 16, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 16, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 16, 0, 0, 111);
+    expect(track.style.scrollSnapType).toBe('none');
+    flushAnimationFrames(queue, base);
+    expect(track.scrollLeft).toBe(200);
+    expect(track.style.scrollSnapType).toBe('');
+  });
+  block.remove();
+});
+
+test('stale mouse release velocity does not carry momentum', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 17, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 17, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 17, 0, 0, 401);
+    flushAnimationFrames(queue, base);
+    expect(track.scrollLeft).toBe(100);
+  });
+  block.remove();
+});
+
+test('mouse release clamps momentum to the carousel edge and wheel interrupts it', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue) => {
+    track.scrollLeft = 200;
+    dispatchMousePointer(track, 'pointerdown', 18, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 18, -100, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 18, -100, 0, 111);
+    expect(track.style.scrollSnapType).toBe('none');
+    track.dispatchEvent(new window.Event('wheel'));
+    expect(track.style.scrollSnapType).toBe('');
+    queue.length = 0;
+  });
+  expect(track.scrollLeft).toBeGreaterThanOrEqual(200);
+  block.remove();
+});
+
+test('vertical mouse release carries velocity along the vertical axis', () => {
+  const { block, track } = createSnapTestCarousel('vertical');
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 19, 0, 100, 1);
+    dispatchMousePointer(track, 'pointermove', 19, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 19, 0, 0, 111);
+    flushAnimationFrames(queue, base);
+    expect(track.scrollTop).toBe(200);
+    expect(track.style.scrollSnapType).toBe('');
+  });
   block.remove();
 });
 
