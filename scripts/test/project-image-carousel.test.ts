@@ -79,6 +79,12 @@ function createSnapTestCarousel(axis: 'horizontal' | 'vertical') {
     `<div data-carousel-slide data-grid-item-id="item-${i}"></div>`).join('')}</div>`;
   window.document.body.append(block);
   const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  Object.defineProperties(track, {
+    scrollWidth: { configurable: true, value: 300 },
+    clientWidth: { configurable: true, value: 100 },
+    scrollHeight: { configurable: true, value: 300 },
+    clientHeight: { configurable: true, value: 100 },
+  });
   const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
   slides.forEach((slide, index) => {
     Object.defineProperties(slide, {
