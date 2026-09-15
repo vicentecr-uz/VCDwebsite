@@ -19,7 +19,10 @@
     const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
     const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
     const angleDelta = (a: number, b: number) => ((a - b + 540) % 360) - 180;
-    const rotationDelta = (delta: number) => Math.abs(delta) > 8 ? delta - Math.sign(delta) * 8 : 0;
+    const snapRotation = (rotation: number) => {
+      const upright = Math.round(rotation / 360) * 360;
+      return Math.abs(rotation - upright) <= 10 ? upright : rotation;
+    };
     const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
     let view = fit();
     let start = fit();
@@ -236,7 +239,7 @@
         const nextAngle = angle(a,b);
         rotationTravel += angleDelta(nextAngle,startAngle);
         startAngle = nextAngle;
-        view = { ...pan, scale: nextScale, rotation: start.rotation + (reducedMotion() ? 0 : rotationDelta(rotationTravel)) };
+        view = { ...pan, scale: nextScale, rotation: snapRotation(start.rotation + (reducedMotion() ? 0 : rotationTravel)) };
         if (nextScale >= 1) clampPan();
       } else if (gesture === 'drag' || gesture === 'pan') {
         view.x = start.x + event.clientX - startPoint.x;
@@ -312,7 +315,7 @@
       if (!nativeGesture || pointers.size) return;
       const ratio = event.scale ?? 1;
       if (!Number.isFinite(ratio) || ratio <= 0) return;
-      view.rotation = start.rotation + (reducedMotion() ? 0 : rotationDelta(event.rotation ?? 0));
+      view.rotation = snapRotation(start.rotation + (reducedMotion() ? 0 : (event.rotation ?? 0)));
       zoom(start.scale * ratio, centre(), allowUnderzoom ? .65 : 1);
     };
     const onGestureEnd = (event: Event) => {

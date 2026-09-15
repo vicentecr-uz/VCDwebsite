@@ -313,3 +313,32 @@ test('Safari inward pinch can reverse and return to fit without closing', () => 
   f.gesture('gesturechange',.95); expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);
   f.gesture('gestureend',.95); f.settleSpring(); expect(f.dialog.open).toBe(true);
 });
+
+test('rotation snaps within ten degrees of upright while preserving zoom, but not at sideways or upside down', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart');
+  for (const degrees of [-10,-1,0,1,10,350,359,360,370]) {
+    f.gesture('gesturechange',2,degrees);
+    const upright=Math.round(degrees/360)*360;
+    expect(f.image.style.transform).toContain(`rotate(${upright}deg)`);
+    expect(f.image.style.transform).toContain('scale(2)');
+  }
+  for (const degrees of [-11,11,90,180]) {
+    f.gesture('gesturechange',2,degrees);
+    expect(f.image.style.transform).toContain(`rotate(${degrees}deg)`);
+  }
+  f.gesture('gesturechange',2,8); f.gesture('gestureend',2,8);
+  expect(f.image.style.transform).toContain('rotate(0deg)');
+  expect(f.image.style.transform).toContain('scale(2)');
+});
+
+test('touch rotation snaps back to upright when fingers return inside the snap zone', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
+  f.pointer('pointermove',2,600,480);
+  expect(f.image.style.transform).not.toContain('rotate(0deg)');
+  f.pointer('pointermove',2,600,420);
+  expect(f.image.style.transform).toContain('rotate(0deg)');
+  f.pointer('pointerup',2,600,420); f.pointer('pointerup',1,400,400);
+  expect(f.image.style.transform).toContain('rotate(0deg)');
+  expect(f.dialog.open).toBe(true);
+});
