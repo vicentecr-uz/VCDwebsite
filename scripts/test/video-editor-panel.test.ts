@@ -79,6 +79,10 @@ test('opening a video applies shared crop geometry and cancel restores the targe
   Object.assign(move, { pointerId: 7, clientX: 60, clientY: 50 });
   preview.dispatchEvent(move);
   expect(JSON.parse(h.target.dataset.devImageVariants!).desktop.cx).toBeLessThan(0.5);
+  const firstX = JSON.parse(h.target.dataset.devImageVariants!).desktop.cx;
+  Object.assign(move, { clientX: 65 });
+  preview.dispatchEvent(move);
+  expect(JSON.parse(h.target.dataset.devImageVariants!).desktop.cx).toBeLessThan(firstX);
   (h.document.querySelector('[data-video-cancel]') as HTMLButtonElement).click();
   expect(h.target.className).toBe(baseline.className);
   expect(h.target.getAttribute('style')).toBe(baseline.style);
