@@ -18,7 +18,7 @@ function setup(initialVariants: Record<string, unknown> = {}) {
     <div data-dev-panel-key="video" hidden>
       <div data-dev-video-editor>
         <button data-video-viewport="desktop"></button><button data-video-viewport="tablet"></button><button data-video-viewport="mobile"></button>
-        <select data-video-aspect><option value="original">Original</option><option value="1:1">1:1</option><option value="2:3">2:3</option></select><button data-video-aspect-reset></button>
+        <select data-video-aspect><option value="original">Original</option><option value="1:1">1:1</option><option value="2:3">2:3</option><option value="16:9">16:9</option></select><button data-video-aspect-reset></button>
         <button data-video-audio="false"></button><button data-video-audio="true"></button>
         <div data-video-preview-wrap><video data-video-preview></video></div>
         <output data-video-zoom-readout></output><input data-video-zoom type="range" min="0.1" max="1" value="1">
@@ -165,6 +165,13 @@ test('existing zoom settings are cleaned for fill while cancel restores the raw 
   cancelled.open();
   (cancelled.document.querySelector('[data-video-cancel]') as HTMLButtonElement).click();
   expect(cancelled.target.dataset.devImageVariants).toBe(JSON.stringify(initial));
+});
+
+test('inherited pan is clamped when a smaller breakpoint changes aspect', () => {
+  const h = setup({ desktop: { aspect: '1:1', cx: 0.3, cy: 0.5 }, mobile: { aspect: '16:9' } });
+  h.open();
+  (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
+  expect(h.pending.at(-1).payload.variants.mobile).toEqual({ aspect: '16:9', cx: 0.5 });
 });
 
 test('cropped inline videos use the project source crop rectangle', () => {
