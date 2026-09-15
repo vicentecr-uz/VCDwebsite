@@ -30,18 +30,36 @@ const scriptGraph = async (source, seen = new Set()) => {
 for (const demo of CRAFT_DEMOS) {
   const html = await readFile(path.join(dist, 'preview', demo.id, 'index.html'), 'utf8');
   const nodes = allNodes(parseHtml(html));
-  assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 1, `${demo.id}: one visible demo title`);
+  const isProgressiveImage = demo.id === 'progressive-image';
+  if (isProgressiveImage) {
+    assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 0, `${demo.id}: no visible demo title`);
+  } else {
+    assert.equal(nodes.filter((node) => node.tagName === 'h1').length, 1, `${demo.id}: one visible demo title`);
+  }
   const panels = nodes.filter((node) => attr(node, 'class')?.split(/\s+/).includes('dev-panel'));
-  assert.equal(panels.length, 1, `${demo.id}: one shared DevPanel`);
-  assert.ok(attr(panels[0], 'class').split(/\s+/).includes('dev-surface'), `${demo.id}: the shared base surface`);
-  const panelNodes = allNodes(panels[0]);
-  const header = panelNodes.find((node) => node.tagName === 'header');
-  const headerElements = header?.childNodes.filter((node) => node.tagName);
-  assert.equal(headerElements?.length, 1, `${demo.id}: title-only header`);
-  assert.equal(headerElements[0].tagName, 'h1');
-  assert.equal(text(headerElements[0]).trim(), demo.title);
-  const reset = nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
+  let panelNodes = [];
+  if (isProgressiveImage) {
+    assert.equal(panels.length, 0, `${demo.id}: no DevPanel`);
+  } else {
+    assert.equal(panels.length, 1, `${demo.id}: one shared DevPanel`);
+    assert.ok(attr(panels[0], 'class').split(/\s+/).includes('dev-surface'), `${demo.id}: the shared base surface`);
+    panelNodes = allNodes(panels[0]);
+    const header = panelNodes.find((node) => node.tagName === 'header');
+    const headerElements = header?.childNodes.filter((node) => node.tagName);
+    assert.equal(headerElements?.length, 1, `${demo.id}: title-only header`);
+    assert.equal(headerElements[0].tagName, 'h1');
+    assert.equal(text(headerElements[0]).trim(), demo.title);
+  }
+  const reset = isProgressiveImage
+    ? nodes.find((node) => node.tagName === 'button' && attr(node, 'aria-label') === 'Reset')
+    : nodes.find((node) => node.tagName === 'button' && text(node).trim() === 'Reset');
   assert.ok(reset, `${demo.id}: Reset`);
+  if (isProgressiveImage) {
+    const controls = nodes.find((node) => attr(node, 'role') === 'group' && attr(node, 'aria-label') === 'Image loading');
+    assert.ok(controls, `${demo.id}: image loading controls`);
+    assert.ok(allNodes(controls).some((node) => node.tagName === 'button' && text(node).trim() === 'Load'), `${demo.id}: Load`);
+    assert.ok(allNodes(controls).includes(reset), `${demo.id}: Reset sits in image loading controls`);
+  }
   assert.equal(panelNodes.includes(reset), false, `${demo.id}: Reset sits outside the panel`);
   const instance = nodes.find((node) => /^vcd-.+-demo$/.test(node.tagName ?? ''));
   assert.ok(instance && allNodes(instance).includes(reset), `${demo.id}: Reset stays within its demo lifecycle`);
