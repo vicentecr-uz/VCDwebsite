@@ -26,7 +26,9 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
           { value: '5:6', label: '5:6' }, { value: '4:5', label: '4:5' }, { value: '3:4', label: '3:4' },
           { value: '2:3', label: '2:3' }, { value: '10:16', label: '10:16' }, { value: '9:16', label: '9:16' },
         ] },
-      ]} />
+      ]}>
+        <Button slot="labelAccessory" emphasis="ghost" label="Reset" data-video-aspect-reset />
+      </SelectField>
       <Field label="Audio" class="dev-video-editor__audio-field">
         <SegmentedControl label="Audio" data-video-audio-control>
           <Button emphasis="ghost" width="fill" label="" aria-label="Off" data-video-audio="false"><span slot="icon" set:html={sizeIcon(volumeXIcon, 14)} /></Button>
@@ -73,7 +75,8 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
   import { projectImage } from '../lib/images';
   import { isAcceptedVideoFile, isVideoSrc } from '../lib/imageUpload.mjs';
   import { resolveVideoAudio, type ResolvedVideoAudio } from '../lib/videoAudio';
-  import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction, type ImageViewport } from '../lib/responsiveImage';
+  import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction, type ImageViewport, type ImageVariants } from '../lib/responsiveImage';
+  import { imageVariantsSavePayload, resetImageVariantSetting, setImageVariantSetting } from '../lib/imageVariantInheritance';
   import { imageSourceDims } from '../lib/projectImageFrame';
   import { pageHistory } from '../lib/devHistory';
 
@@ -86,7 +89,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     let raw: Record<string, Partial<Variant>> = {};
     try { raw = JSON.parse(target.dataset.devImageVariants || '{}'); } catch { /* use defaults */ }
     const dims = imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight });
-    return normalizeImageVariants(raw, 'original', dims) as Record<Viewport, Variant>;
+    return { authored: raw as ImageVariants, resolved: normalizeImageVariants(raw, 'original', dims) as Record<Viewport, Variant> };
   };
   const variantPayload = (variants: Record<Viewport, Variant>) => Object.fromEntries(
     VIEWPORTS.map((viewport) => [viewport, variants[viewport]]),
@@ -107,6 +110,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const preview = editor?.querySelector<HTMLVideoElement>('[data-video-preview]');
     const previewWrap = editor?.querySelector<HTMLElement>('[data-video-preview-wrap]');
     const aspect = editor?.querySelector<HTMLSelectElement>('[data-video-aspect]');
+    const aspectReset = editor?.querySelector<HTMLButtonElement>('[data-video-aspect-reset]');
     const save = editor?.querySelector<HTMLButtonElement>('[data-video-save]');
     const reset = editor?.querySelector<HTMLButtonElement>('[data-video-reset]');
     const cancel = editor?.querySelector<HTMLButtonElement>('[data-video-cancel]');
@@ -116,12 +120,14 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const replaceChoose = editor?.querySelector<HTMLButtonElement>('[data-video-replace-choose]');
     const replaceFile = editor?.querySelector<HTMLInputElement>('[data-video-replace-file]');
     const replaceDrop = editor?.querySelector<HTMLElement>('[data-video-replace-drop]');
-    if (!editor || !overlay || !preview || !previewWrap || !aspect || !save || !reset || !cancel || !status) return;
+    if (!editor || !overlay || !preview || !previewWrap || !aspect || !aspectReset || !save || !reset || !cancel || !status) return;
 
     let target: HTMLElement | null = null;
     let selected: Viewport = viewportForWidth();
     let variants = {} as Record<Viewport, Variant>;
     let savedVariants = {} as Record<Viewport, Variant>;
+    let authoredVariants = {} as ImageVariants;
+    let savedAuthoredVariants = {} as ImageVariants;
     let audio = resolveVideoAudio(undefined);
     let savedAudio = { ...audio };
     let baselineStyle: string | null = null;
@@ -158,7 +164,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       preview.removeAttribute('style');
       previewWrap.removeAttribute('style');
     };
-    const apply = (subject: HTMLElement | null = target, draftVariants = variants, draftAudio = audio) => {
+    const apply = (subject: HTMLElement | null = target, draftVariants = variants, draftAudio = audio, draftAuthored = authoredVariants) => {
       if (!subject || !subject.isConnected) return;
       const variant = draftVariants[selected];
       const dims = imageSourceDims({ srcWidth: subject.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: subject.dataset.devImageSrcHeight || preview.videoHeight });
@@ -168,7 +174,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       const css = responsiveImageStyle(normalized, dims);
       subject.style.cssText += `;${css}`;
       subject.classList.add('project-cropped', 'project-responsive-image');
-      subject.dataset.devImageVariants = JSON.stringify(variantPayload(draftVariants));
+      subject.dataset.devImageVariants = JSON.stringify(imageVariantsSavePayload(draftAuthored));
       subject.dataset.devVideoAudio = JSON.stringify(draftAudio);
       subject.dataset.videoAudio = JSON.stringify(draftAudio);
       const rendered = normalized[selected];
@@ -187,6 +193,8 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       preview.style.objectPosition = '50% 50%';
       preview.style.transform = `translate(${rendered.cx * -100}%, ${rendered.cy * -100}%)`;
       aspect.value = variant.aspect;
+      const localAspect = draftAuthored[selected]?.aspect ?? draftAuthored[selected]?.aspectRatio;
+      aspectReset.hidden = selected === 'desktop' || localAspect === undefined;
       audioButtons.forEach((button) => {
         const active = draftAudio[selected] === (button.dataset.videoAudio === 'true');
         button.classList.toggle('is-active', active);
@@ -208,7 +216,10 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       baselineAudio = target.dataset.devVideoAudio;
       baselineVideoAudio = target.dataset.videoAudio;
       staged = false;
-      variants = readVariants(target);
+      const initial = readVariants(target);
+      authoredVariants = initial.authored;
+      savedAuthoredVariants = structuredClone(authoredVariants);
+      variants = initial.resolved;
       savedVariants = structuredClone(variants);
       try { audio = resolveVideoAudio(JSON.parse(target.dataset.devVideoAudio || target.dataset.videoAudio || '{}')); } catch { audio = resolveVideoAudio(undefined); }
       savedAudio = { ...audio };
@@ -226,11 +237,11 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       JSON.stringify(variantPayload(left)) === JSON.stringify(variantPayload(right))
       && JSON.stringify(leftAudio) === JSON.stringify(rightAudio)
     );
-    const pendingPayload = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio) => {
+    const pendingPayload = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants) => {
       const identity = withDevEditTarget({ document: subject.dataset.devDocument, path: JSON.parse(subject.dataset.devImagePath || '[]') }, subject);
       return {
         ...identity,
-        variants: variantPayload(draftVariants),
+        variants: imageVariantsSavePayload(draftAuthored),
         audio: Object.values(draftAudio).every(Boolean) ? true : draftAudio,
         ...(subject.dataset.devImageSrc ? {
           src: subject.dataset.devImageSrc,
@@ -239,27 +250,27 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
         } : {}),
       };
     };
-    const upsertPending = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio, revert?: () => void) => {
+    const upsertPending = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants = authoredVariants, revert?: () => void) => {
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-        detail: { id: devEditPendingId('crop', subject), kind: 'crop', payload: pendingPayload(subject, draftVariants, draftAudio), revert },
+        detail: { id: devEditPendingId('crop', subject), kind: 'crop', payload: pendingPayload(subject, draftVariants, draftAudio, draftAuthored), revert },
       }));
     };
     const stage = () => {
       if (!target) return;
       const editedTarget = target;
-      const before = { variants: savedVariants, audio: savedAudio };
-      const after = { variants: structuredClone(variants), audio: { ...audio } };
-      upsertPending(editedTarget, after.variants, after.audio, () => apply(editedTarget, before.variants, before.audio));
+      const before = { variants: savedVariants, authored: savedAuthoredVariants, audio: savedAudio };
+      const after = { variants: structuredClone(variants), authored: structuredClone(authoredVariants), audio: { ...audio } };
+      upsertPending(editedTarget, after.variants, after.audio, after.authored, () => apply(editedTarget, before.variants, before.audio, before.authored));
       pageHistory.push({
         label: 'Edit video',
-        undo: () => { apply(editedTarget, before.variants, before.audio); upsertPending(editedTarget, before.variants, before.audio); },
-        redo: () => { apply(editedTarget, after.variants, after.audio); upsertPending(editedTarget, after.variants, after.audio); },
+        undo: () => { apply(editedTarget, before.variants, before.audio, before.authored); upsertPending(editedTarget, before.variants, before.audio, before.authored); },
+        redo: () => { apply(editedTarget, after.variants, after.audio, after.authored); upsertPending(editedTarget, after.variants, after.audio, after.authored); },
       });
       staged = true;
       status.textContent = 'Saved';
       close(true);
     };
-    const resetState = () => { variants = structuredClone(savedVariants); audio = { ...savedAudio }; apply(); };
+    const resetState = () => { variants = structuredClone(savedVariants); authoredVariants = structuredClone(savedAuthoredVariants); audio = { ...savedAudio }; apply(); };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
       const panel = event.detail?.panel;
@@ -284,6 +295,14 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       const bounds = cropBounds(variant, dims);
       variant.cx = clamp(variant.cx, bounds.x, 1 - bounds.x);
       variant.cy = clamp(variant.cy, bounds.y, 1 - bounds.y);
+      authoredVariants = setImageVariantSetting(authoredVariants, selected, 'aspect', variant);
+      authoredVariants = setImageVariantSetting(authoredVariants, selected, 'crop', variant);
+      apply();
+    }, { signal });
+    aspectReset.addEventListener('click', () => {
+      authoredVariants = resetImageVariantSetting(authoredVariants, selected, 'aspect');
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      variants = normalizeImageVariants(authoredVariants, 'original', dims) as Record<Viewport, Variant>;
       apply();
     }, { signal });
     audioButtons.forEach((button) => button.addEventListener('click', () => { audio[selected] = button.dataset.videoAudio === 'true'; apply(); }, { signal }));
@@ -300,6 +319,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       if (event.pointerId !== drag.pointerId) return;
       variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth), bounds.x, 1 - bounds.x);
       variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight), bounds.y, 1 - bounds.y);
+      authoredVariants = setImageVariantSetting(authoredVariants, selected, 'crop', variant);
       drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
       apply();
     }, { signal });

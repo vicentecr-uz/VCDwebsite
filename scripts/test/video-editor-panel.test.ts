@@ -3,6 +3,7 @@ import { Window } from 'happy-dom';
 import { readFileSync } from 'node:fs';
 import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction } from '../../src/lib/responsiveImage';
 import { imageSourceDims } from '../../src/lib/projectImageFrame';
+import { imageVariantsSavePayload, resetImageVariantSetting, setImageVariantSetting } from '../../src/lib/imageVariantInheritance';
 const projectStyles = readFileSync(new URL('../../src/styles/project.css', import.meta.url)).toString();
 
 const source = readFileSync(new URL('../../src/components/DevVideoEditor.astro', import.meta.url))
@@ -10,14 +11,14 @@ const source = readFileSync(new URL('../../src/components/DevVideoEditor.astro',
   .replace(/^\s*import .*?;\s*$/gm, '');
 const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 
-function setup() {
+function setup(initialVariants: Record<string, unknown> = {}) {
   const win = new Window({ url: 'http://localhost/' });
   const { document } = win;
   document.body.innerHTML = `
     <div data-dev-panel-key="video" hidden>
       <div data-dev-video-editor>
         <button data-video-viewport="desktop"></button><button data-video-viewport="tablet"></button><button data-video-viewport="mobile"></button>
-        <select data-video-aspect><option value="original">Original</option><option value="1:1">1:1</option></select>
+        <select data-video-aspect><option value="original">Original</option><option value="1:1">1:1</option><option value="2:3">2:3</option></select><button data-video-aspect-reset></button>
         <button data-video-audio="false"></button><button data-video-audio="true"></button>
         <div data-video-preview-wrap><video data-video-preview></video></div>
         <output data-video-zoom-readout></output><input data-video-zoom type="range" min="0.1" max="1" value="1">
@@ -28,6 +29,7 @@ function setup() {
     <div data-dev-panel-key="image"></div>
     <figure class="dev-image-edit-target" data-dev-image-target data-dev-document="test" data-dev-image-path="[&quot;sections&quot;,0]" data-dev-image-src="demo.mp4" data-dev-image-src-width="1920" data-dev-image-src-height="1080"><video></video></figure>`;
   const target = document.querySelector('[data-dev-image-target]') as HTMLElement;
+  if (Object.keys(initialVariants).length) target.dataset.devImageVariants = JSON.stringify(initialVariants);
   const preview = document.querySelector('[data-video-preview]') as HTMLVideoElement;
   Object.defineProperty(preview, 'videoWidth', { configurable: true, value: 1920 });
   Object.defineProperty(preview, 'videoHeight', { configurable: true, value: 1080 });
@@ -47,7 +49,8 @@ function setup() {
         return out;
       }, {});
     },
-    normalizeImageVariants, responsiveImageStyle, imageSourceDims,
+    normalizeImageVariants, responsiveImageStyle, coverWidthFraction, imageSourceDims,
+    imageVariantsSavePayload, resetImageVariantSetting, setImageVariantSetting,
     coverWidthFraction,
     pageHistory: { push: (entry: any) => history.push(entry) },
   };
@@ -99,9 +102,24 @@ test('save history updates the pending crop payload on undo and redo', () => {
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
   expect(h.pending.at(-1).payload.variants.desktop.w).toBeCloseTo(0.5625);
   h.history[0].undo();
-  expect(h.pending.at(-1).payload.variants.desktop.w).toBe(1);
+  expect(h.pending.at(-1).payload.variants).toEqual({ desktop: {}, tablet: {}, mobile: {} });
   h.history[0].redo();
   expect(h.pending.at(-1).payload.variants.desktop.w).toBeCloseTo(0.5625);
+});
+
+test('desktop aspect edits cascade while explicit mobile overrides survive until reset', () => {
+  const h = setup({ mobile: { aspect: '2:3' } });
+  h.open();
+  const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
+  aspect.value = '1:1';
+  aspect.dispatchEvent(new h.win.Event('change'));
+  (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
+  expect(h.pending.at(-1).payload.variants).toEqual({ desktop: { aspect: '1:1', cx: 0.5, cy: 0.5, w: 0.5625 }, tablet: {}, mobile: { aspect: '2:3' } });
+  h.open();
+  (h.document.querySelector('[data-video-viewport="mobile"]') as HTMLButtonElement).click();
+  expect(aspect.value).toBe('2:3');
+  (h.document.querySelector('[data-video-aspect-reset]') as HTMLButtonElement).click();
+  expect(aspect.value).toBe('1:1');
 });
 
 test('cropped inline videos use the project source crop rectangle', () => {
