@@ -44,6 +44,7 @@ test('inactivity hiding is touch-only, while keyboard popup access stays global'
   for (const rule of inactive) {
     expect(rule.media).toBe('(hover: none), (pointer: coarse)');
     expect(rule.style.getPropertyValue('pointer-events')).toBe('none');
+    expect(rule.style.getPropertyValue('transition-delay')).toBe('0s');
   }
   const hover = rules.filter((rule) => rule.selector.includes('.project-video-player__controller:hover .project-video-player__'));
   expect(hover.length).toBeGreaterThan(0);
