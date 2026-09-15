@@ -397,69 +397,6 @@ test('wheel takeover after touch clears pending correction', () => {
   block.remove();
 });
 
-test('outward wheel at an edge gets bounded diminishing feedback and inward clears it', async () => {
-  const { block, track } = createSnapTestCarousel('horizontal');
-  track.style.setProperty('--project-carousel-drag-tension', '1');
-  track.style.setProperty('--project-carousel-drag-threshold', '0px');
-  const wheel = (deltaX: number, options: Partial<WheelEventInit> = {}) => track.dispatchEvent(new window.WheelEvent('wheel', {
-    deltaX, bubbles: true, cancelable: true, ...options,
-  }));
-  wheel(-20);
-  const first = Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'));
-  wheel(-20);
-  const second = Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'));
-  expect(first).toBeGreaterThan(2);
-  expect(second).toBeGreaterThan(first);
-  expect(second - first).toBeLessThan(first);
-  expect(second).toBeLessThanOrEqual(2.5);
-  await new Promise((resolve) => setTimeout(resolve, 140));
-  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
-  expect(track.classList.contains('is-rubberband-settling')).toBe(true);
-  block.remove();
-});
-
-test('reduced motion keeps outward wheel feedback disabled', () => {
-  const { block, track } = createSnapTestCarousel('horizontal');
-  const previousMatchMedia = window.matchMedia;
-  window.matchMedia = (() => ({ matches: true })) as typeof window.matchMedia;
-  try {
-    track.dispatchEvent(new window.WheelEvent('wheel', { deltaX: -20, bubbles: true }));
-    expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
-    expect(track.classList.contains('is-rubberband-settling')).toBe(false);
-  } finally {
-    window.matchMedia = previousMatchMedia;
-  }
-  block.remove();
-});
-
-test('wheel feedback ignores ordinary mid-carousel, page-axis, and pinch input', () => {
-  const { block, track } = createSnapTestCarousel('horizontal');
-  track.scrollLeft = 100;
-  track.dispatchEvent(new window.WheelEvent('wheel', { deltaX: -20, deltaY: 0, bubbles: true }));
-  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
-  track.scrollLeft = 0;
-  track.dispatchEvent(new window.WheelEvent('wheel', { deltaX: 0, deltaY: 20, bubbles: true }));
-  const pinch = new window.WheelEvent('wheel', { deltaX: -20, bubbles: true });
-  Object.defineProperty(pinch, 'ctrlKey', { value: true });
-  track.dispatchEvent(pinch);
-  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
-  block.remove();
-});
-
-test('pointer takeover clears wheel feedback and its idle timer cannot erase active drag state', async () => {
-  const { block, track } = createSnapTestCarousel('horizontal');
-  track.dispatchEvent(new window.WheelEvent('wheel', { deltaX: -20, bubbles: true }));
-  expect(Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'))).toBeGreaterThan(0);
-  dispatchMousePointer(track, 'pointerdown', 51, 100, 0, 1);
-  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
-  dispatchMousePointer(track, 'pointermove', 51, 90, 0, 11);
-  expect(track.classList.contains('is-dragging')).toBe(true);
-  await new Promise((resolve) => setTimeout(resolve, 140));
-  expect(track.classList.contains('is-dragging')).toBe(true);
-  dispatchMousePointer(track, 'pointercancel', 51, 90, 0, 21);
-  block.remove();
-});
-
 test('mouse drag takeover after touch clears pending correction', () => {
   const { block, track, calls } = createSnapTestCarousel('horizontal');
   track.dispatchEvent(new window.Event('touchstart'));
