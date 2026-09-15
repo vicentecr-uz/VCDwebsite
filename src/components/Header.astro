@@ -235,6 +235,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // released, scrolling away with the page until it docks or reaches home.
     let mode: 'flow' | 'docked' | 'riding' = 'flow';
     let headerHeight = header.offsetHeight;
+    let viewportWidth = document.documentElement.clientWidth;
     let ticking = false;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -572,23 +573,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     syncHeaderWidth(header.getBoundingClientRect().bottom, true);
 
     window.addEventListener('resize', () => {
+      const nextViewportWidth = document.documentElement.clientWidth;
+      if (nextViewportWidth === viewportWidth) return;
+      viewportWidth = nextViewportWidth;
       syncHeaderWidth(headerHeight);
       syncSlot();
       document
         .querySelectorAll<HTMLElement>('.header-trigger')
         .forEach(syncMenuSurfaceInlineSize);
-      // Re-measure horizontal geometry from a clean flow layout. If the header
-      // is out of flow, briefly restore it to flow to read the true values.
-      if (mode === 'flow') {
-        captureGeo();
-      } else {
-        const prevMode = mode;
-        header.style.transition = 'none';
-        header.style.visibility = 'hidden';
-        setMode('flow');
-        captureGeo();
-        setMode(prevMode);
-        header.style.visibility = '';
+      // Height-only resizes (including Safari's address-bar movement) keep the
+      // current scroll mode and vertical geometry. Width changes can update the
+      // clean in-flow measurement without swapping riding/docked positions.
+      captureGeo();
+      if (mode === 'docked') applyGeo();
+      else if (mode === 'riding') {
+        header.style.left = '0';
+        header.style.width = `${geoWidth}px`;
       }
     });
   }
@@ -1460,6 +1460,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .site-header {
     --header-menu-link-size: 1.2em;
+    background-color: var(--sys-color-srf);
 
     /* Hanken Grotesk, read from the font's own tables (unitsPerEm 1000):
        cap height 697, ascender 1000, descender 303, line gap 0. The hhea,
