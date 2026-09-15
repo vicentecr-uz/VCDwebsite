@@ -6,7 +6,7 @@ const authoringComponents = new Set([
   'DevAssetManager.astro',
   'DevAwardBlockSize.astro',
   'DevVideoEditor.astro',
-  'DevCarouselDragTool.astro',
+  'dev/DevCarouselDragTool.astro',
   'DevGalleryPages.astro',
   'DevGalleryReorder.astro',
   'DevImageDrop.astro',
