@@ -1,173 +1,166 @@
-import { describe, expect, test } from 'bun:test';
-import { Window } from 'happy-dom';
+import { afterEach, expect, test } from 'bun:test';
+import { Window, BrowserErrorCaptureEnum } from 'happy-dom';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import {
-  clampImageScale,
-  distance,
-  midpoint,
-  panForPointer,
-  panForPinch,
-  pinchScale,
-  syncLightboxImage,
-  IMAGE_LIGHTBOX_MAX_SCALE,
-} from '../../src/lib/imageLightbox';
+import * as geometry from '../../src/lib/imageLightbox';
 
-const lightboxScript = readFileSync(resolve(import.meta.dir, '../../src/components/ImageLightbox.astro'), 'utf8')
-  .match(/<script>([\s\S]*?)<\/script>/)?.[1] ?? '';
+const script = readFileSync(new URL('../../src/components/ImageLightbox.astro', import.meta.url), 'utf8')
+  .match(/<script>([\s\S]*?)<\/script>/)![1];
+const source = script.slice(0, script.indexOf('  const disposers'))
+  .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '');
+const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
+const cleanups: (() => void)[] = [];
+afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-const installBinding = (window: Window) => {
-  const pending = new Map<number, () => void>();
-  let nextTimer = 1;
-  window.setTimeout = ((callback: TimerHandler) => {
-    const id = nextTimer++;
-    pending.set(id, callback as () => void);
-    return id;
+function fixture() {
+  const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
+  const document = window.document;
+  document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
+    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><p data-image-lightbox-error hidden></p></div>
+    <button data-image-lightbox-zoom-in>Zoom in</button><button data-image-lightbox-zoom-out>Zoom out</button>
+    <button data-image-lightbox-reset>Reset</button><button data-image-lightbox-close>Close</button></dialog>`;
+  const original = document.querySelector<HTMLImageElement>('#source')!;
+  const dialog = document.querySelector('dialog')!;
+  const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]')!;
+  const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]')!;
+  let now = 0;
+  let nextId = 0;
+  const timers = new Map<number, { at: number; callback: () => void }>();
+  const frames = new Map<number, FrameRequestCallback>();
+  window.setTimeout = ((callback: () => void, delay: number) => {
+    const id = ++nextId; timers.set(id, { at: now + delay, callback }); return id;
   }) as typeof window.setTimeout;
-  window.clearTimeout = ((id: number) => { pending.delete(id); }) as typeof window.clearTimeout;
-  (window as any).flushLightboxTimers = () => {
-    const timers = [...pending.values()];
-    pending.clear();
-    timers.forEach((callback) => callback());
+  window.clearTimeout = ((id: number) => timers.delete(id)) as typeof window.clearTimeout;
+  const raf = (callback: FrameRequestCallback) => { const id = ++nextId; frames.set(id, callback); return id; };
+  const captured = new Set<number>();
+  viewer.setPointerCapture = (id: number) => { captured.add(id); };
+  viewer.hasPointerCapture = (id: number) => captured.has(id);
+  viewer.releasePointerCapture = (id: number) => { captured.delete(id); };
+  dialog.showModal = () => dialog.setAttribute('open', '');
+  dialog.close = () => dialog.removeAttribute('open');
+  Object.defineProperties(viewer, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+  Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
+  viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
+  const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
+    requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id) };
+  const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
+  const dispose = bind(dialog);
+  cleanups.push(dispose);
+  const frame = () => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach((callback) => callback(now)); };
+  const tick = (ms: number) => {
+    now += ms;
+    for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); }
   };
-  window.requestAnimationFrame = (callback: FrameRequestCallback) => { callback(0); return 1; };
-  const source = lightboxScript
-    .replace(/import\s+\{[\s\S]*?\}\s+from\s+'\.\.\/lib\/imageLightbox';/, '')
-    .replace('import.meta.hot?.dispose(() => disposers.forEach((dispose) => dispose()));', '');
-  const transpiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
-  const run = new Function('window', 'document', 'MutationObserver', 'requestAnimationFrame', 'Element', transpiled);
-  run(window, window.document, window.MutationObserver, window.requestAnimationFrame, window.Element);
-  return { pending };
-};
+  const click = (target: Element = original, options = {}) => target.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, ...options }));
+  const button = (name: string) => dialog.querySelector<HTMLButtonElement>(`[data-image-lightbox-${name}]`)!;
+  const pointer = (type: string, id: number, x = 400, y = 400, button = 0) =>
+    viewer.dispatchEvent(new window.PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', pointerId: id, clientX: x, clientY: y, button }));
+  return { window, document, original, dialog, viewer, image, click, button, pointer, frame, tick, frames, timers, captured, dispose };
+}
 
-const imageFixture = () => {
-  const window = new Window();
-  const { document } = window;
-  const dialog = document.createElement('dialog');
-  dialog.dataset.imageLightbox = '';
-  dialog.innerHTML = `
-    <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="-1">
-      <img data-image-lightbox-image alt="" />
-      <p data-image-lightbox-error hidden>Image could not be loaded.</p>
-    </div>
-    <button data-image-lightbox-zoom-out></button>
-    <button data-image-lightbox-reset></button>
-    <button data-image-lightbox-zoom-in></button>
-    <button data-image-lightbox-close></button>`;
-  const source = document.createElement('img');
-  source.alt = 'Source';
-  source.dataset.imageOriginal = '/images/source.jpg';
-  source.setAttribute('role', 'button');
-  source.tabIndex = 0;
-  const link = document.createElement('a');
-  link.href = '/elsewhere';
-  link.append(source);
-  document.body.append(dialog, source);
-  (dialog as any).showModal = () => dialog.setAttribute('open', '');
-  (dialog as any).close = () => dialog.removeAttribute('open');
-  return { window, document, dialog, source, link };
-};
-
-describe('image lightbox geometry', () => {
-  test('clamps desktop and pinch zoom to the V0 ceiling', () => {
-    expect(clampImageScale(0)).toBe(1);
-    expect(clampImageScale(2.5)).toBe(2.5);
-    expect(clampImageScale(99)).toBe(IMAGE_LIGHTBOX_MAX_SCALE);
-    expect(pinchScale(2, 100, 300)).toBe(IMAGE_LIGHTBOX_MAX_SCALE);
+for (const key of ['Enter', ' ']) {
+  test(`${key}: opens original only on activation, then fades before restoring focus`, () => {
+    const f = fixture();
+    expect(f.image.hasAttribute('src')).toBe(false);
+    const event = new f.window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    f.original.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(f.dialog.open).toBe(true);
+    expect(f.image.getAttribute('src')).toBe('/images/study.jpg');
+    expect(f.document.activeElement).toBe(f.viewer);
+    expect(f.dialog.classList.contains('is-visible')).toBe(false);
+    f.frame(); f.frame();
+    expect(f.dialog.classList.contains('is-visible')).toBe(true);
+    f.click(f.button('close'));
+    f.tick(199);
+    expect(f.dialog.open).toBe(true);
+    expect(f.image.hasAttribute('src')).toBe(true);
+    f.tick(1);
+    expect(f.dialog.open).toBe(false);
+    expect(f.image.hasAttribute('src')).toBe(false);
+    expect(f.document.activeElement).toBe(f.original);
   });
+}
 
-  test('keeps pinch midpoint and single pointer pan calculations deterministic', () => {
-    expect(midpoint({ x: 10, y: 30 }, { x: 50, y: 70 })).toEqual({ x: 30, y: 50 });
-    expect(distance({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5);
-    expect(panForPointer({ x: 4, y: -2 }, { x: 10, y: 10 }, { x: 35, y: 25 }))
-      .toEqual({ x: 29, y: 13 });
-    expect(panForPinch(
-      { x: 0, y: 0 },
-      { x: 400, y: 300 },
-      { x: 450, y: 350 },
-      1,
-      2,
-      { x: 400, y: 300 },
-    )).toEqual({ x: 50, y: 50 });
-  });
+test('links, editable/hidden content, cancelled events and Edit mode do not open', () => {
+  const f = fixture();
+  for (const attrs of ['href="/other"', 'contenteditable="plaintext-only"', 'aria-hidden="true"', 'class="dev-crop-stage"']) {
+    const parent = f.document.createElement(attrs.startsWith('href') ? 'a' : 'div');
+    const parsed = f.document.createElement('div'); parsed.innerHTML = `<${parent.tagName.toLowerCase()} ${attrs}></${parent.tagName.toLowerCase()}>`;
+    const wrapper = parsed.firstElementChild!;
+    f.original.replaceWith(wrapper); wrapper.append(f.original);
+    f.click(); expect(f.dialog.open).toBe(false);
+    wrapper.replaceWith(f.original);
+  }
+  const cancelled = new f.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  cancelled.preventDefault(); f.original.dispatchEvent(cancelled);
+  expect(f.dialog.open).toBe(false);
+  f.document.documentElement.classList.add('is-dev-mode');
+  f.click(); expect(f.dialog.open).toBe(false);
+  f.document.documentElement.classList.remove('is-dev-mode');
+  f.click(); expect(f.dialog.open).toBe(true);
+});
 
-  test('syncs live image eligibility and removes it for placeholders', () => {
-    const image = new Window().document.createElement('img');
-    image.alt = 'Study';
-    syncLightboxImage(image, '/images/study.jpg');
-    expect(image.dataset.imageOriginal).toBe('/images/study.jpg');
-    expect(image.getAttribute('role')).toBe('button');
-    expect(image.tabIndex).toBe(0);
-    expect(image.getAttribute('aria-label')).toBe('Open image: Study');
-    syncLightboxImage(image, '/images/placeholder.svg');
-    expect(image.hasAttribute('data-image-original')).toBe(false);
-    expect(image.hasAttribute('role')).toBe(false);
-    expect(image.hasAttribute('tabindex')).toBe(false);
-  });
+test('closing before entry paint and reopening cannot apply stale frames or source cleanup', () => {
+  const f = fixture(); f.click(); f.click(f.button('close'));
+  f.frame(); f.frame();
+  expect(f.dialog.classList.contains('is-visible')).toBe(false);
+  f.original.dataset.imageOriginal = '/images/new.jpg';
+  f.click(); f.tick(200); f.frame(); f.frame();
+  expect(f.dialog.open).toBe(true);
+  expect(f.image.getAttribute('src')).toBe('/images/new.jpg');
+  expect(f.dialog.classList.contains('is-visible')).toBe(true);
+});
 
-  test('opens from click and keyboard, loads source on demand, and restores focus after close', () => {
-    const { window, document, dialog, source } = imageFixture();
-    installBinding(window);
-    expect(dialog.open).toBe(false);
-    expect(dialog.querySelector('[data-image-lightbox-image]')?.getAttribute('src')).toBe(null);
+test('pinch stays centred, clamps scale/pan, and release cannot dismiss', () => {
+  const f = fixture(); f.click();
+  f.pointer('pointerdown', 1, 400, 400); f.pointer('pointerdown', 2, 600, 400);
+  f.pointer('pointermove', 1, 300, 400); f.pointer('pointermove', 2, 700, 400);
+  expect(f.image.style.transform).toBe('translate3d(0px, 0px, 0) scale(2)');
+  f.pointer('pointerup', 2, 700, 400);
+  f.pointer('pointermove', 1, 5000, 400);
+  expect(f.image.style.transform).toBe('translate3d(400px, 0px, 0) scale(2)');
+  f.pointer('pointerup', 1); f.click(f.viewer); f.tick(200);
+  expect(f.dialog.open).toBe(true);
+  expect(f.captured.size).toBe(0);
+  f.click(f.button('reset'));
+  for (let i = 0; i < 10; i++) f.click(f.button('zoom-in'));
+  expect(f.image.style.transform).toContain('scale(4)');
+  expect(f.button('zoom-in').disabled).toBe(true);
+});
 
-    source.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    const modalImage = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]')!;
-    expect(dialog.open).toBe(true);
-    expect(modalImage.src).toContain('/images/source.jpg');
-    dialog.querySelector<HTMLButtonElement>('[data-image-lightbox-close]')!.click();
-    (window as any).flushLightboxTimers();
-    expect(dialog.open).toBe(false);
-    expect(modalImage.getAttribute('src')).toBe(null);
-    expect(document.activeElement).toBe(source);
+test('cancelled pointer and two-finger tap do not dismiss; next plain tap can dismiss', () => {
+  const f = fixture(); f.click();
+  f.pointer('pointerdown', 1); f.pointer('pointerdown', 2);
+  f.pointer('pointercancel', 1); f.pointer('pointerup', 2);
+  f.click(f.viewer); f.tick(200); expect(f.dialog.open).toBe(true);
+  f.pointer('pointerdown', 3); f.pointer('pointerup', 3);
+  f.click(f.viewer); f.tick(200); expect(f.dialog.open).toBe(false);
+});
 
-    source.focus();
-    source.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(dialog.open).toBe(true);
-  });
+test('keyboard users can zoom and pan; reset returns to fit', () => {
+  const f = fixture(); f.click(); f.click(f.button('zoom-in'));
+  f.viewer.dispatchEvent(new f.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+  expect(f.image.style.transform).toBe('translate3d(-40px, 0px, 0) scale(1.5)');
+  f.click(f.button('reset'));
+  expect(f.image.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)');
+});
 
-  test('keeps excluded links and cancelled events closed', () => {
-    const fixture = imageFixture();
-    installBinding(fixture.window);
-    fixture.link.append(fixture.source);
-    fixture.source.dispatchEvent(new fixture.window.MouseEvent('click', { bubbles: true, cancelable: true }));
-    expect(fixture.dialog.open).toBe(false);
-    fixture.link.dispatchEvent(new fixture.window.MouseEvent('click', { bubbles: true }));
-    expect(fixture.dialog.open).toBe(false);
-    const cancelled = new fixture.window.MouseEvent('click', { bubbles: true, cancelable: true });
-    cancelled.preventDefault();
-    fixture.source.dispatchEvent(cancelled);
-    expect(fixture.dialog.open).toBe(false);
-  });
+test('image errors keep dismissal usable; Escape, pagehide and disposal clean up', () => {
+  const f = fixture(); f.click();
+  f.image.dispatchEvent(new f.window.Event('error'));
+  expect(f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!.hidden).toBe(false);
+  f.dialog.dispatchEvent(new f.window.Event('cancel', { cancelable: true })); f.tick(200);
+  expect(f.dialog.open).toBe(false);
+  f.click(); f.window.dispatchEvent(new f.window.Event('pagehide'));
+  expect(f.dialog.open).toBe(false); expect(f.timers.size).toBe(0); expect(f.frames.size).toBe(0);
+  f.click(); f.dispose(); f.click(); f.frame(); f.tick(200);
+  expect(f.dialog.open).toBe(false);
+});
 
-  test('does not let a stale close timer clear a reopened image', () => {
-    const { window, dialog, source } = imageFixture();
-    const { pending } = installBinding(window);
-    source.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    const close = dialog.querySelector<HTMLButtonElement>('[data-image-lightbox-close]')!;
-    close.click();
-    source.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    expect(dialog.open).toBe(true);
-    expect(pending.size).toBe(0);
-    expect(dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]')?.getAttribute('src'))
-      .toContain('/images/source.jpg');
-  });
-
-  test('keeps a pinch session open and does not treat its release as backdrop dismissal', () => {
-    const { window, dialog, source } = imageFixture();
-    installBinding(window);
-    source.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]')!;
-    const pointer = (type: string, id: number, x: number, y: number) => {
-      const event = new window.PointerEvent(type, { bubbles: true, pointerId: id, clientX: x, clientY: y });
-      viewer.dispatchEvent(event);
-    };
-    pointer('pointerdown', 1, 100, 100);
-    pointer('pointerdown', 2, 200, 100);
-    pointer('pointermove', 2, 300, 100);
-    pointer('pointerup', 1, 100, 100);
-    pointer('pointerup', 2, 300, 100);
-    viewer.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-    expect(dialog.open).toBe(true);
-  });
+test('live source helper removes placeholder actions and uses the new original', () => {
+  const f = fixture(); geometry.syncLightboxImage(f.original, '/images/placeholder.svg');
+  expect(f.original.hasAttribute('tabindex')).toBe(false); f.click(); expect(f.dialog.open).toBe(false);
+  geometry.syncLightboxImage(f.original, '/images/replacement.jpg');
+  f.click(); expect(f.image.getAttribute('src')).toBe('/images/replacement.jpg');
+  expect(geometry.clampImageScale(Infinity)).toBe(1);
 });

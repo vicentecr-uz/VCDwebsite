@@ -303,14 +303,15 @@ test('readiness trace detail distinguishes resource completion from timeout rele
 });
 
 test('visible mode exposes content while stalled, then marks the normal fade boundary once without entry tween', async () => {
-  const fonts = deferred();
-  const f = fixture({ visible: true, fonts: fonts.promise });
+  const image = new ImageFixture();
+  const f = fixture({ visible: true, images: [image] });
   await f.paint();
   assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.readinessMarker.hidden, true);
   assert.equal(f.upgrades, 0);
   assert.equal(f.tweens.length, 0);
-  fonts.resolve();
+  image.load();
+  image.decoded.resolve();
   await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
@@ -358,7 +359,7 @@ test('visible readiness marker remains dev-only in Layout output', () => {
   assert.match(layout, /dev-transition[^\n]*visible/);
 });
 
-test('fonts and visible decoded thumbnails gate reveal; offscreen images never gate it', async () => {
+test('visible decoded thumbnails gate reveal; fonts and offscreen images do not', async () => {
   const fonts = deferred();
   const visible = new ImageFixture();
   const offscreen = new ImageFixture(false);
@@ -368,7 +369,6 @@ test('fonts and visible decoded thumbnails gate reveal; offscreen images never g
   visible.load();
   await flush();
   assert.equal(visible.decodeCalls, 1);
-  fonts.resolve();
   await flush();
   assert.equal(f.tweens.length, 0);
   visible.decoded.resolve();
@@ -657,18 +657,12 @@ test('the no-JavaScript CSS safety reveal remains available after five seconds',
   assert.match(css, /@keyframes transition-overlay-reveal\s*\{\s*to\s*\{\s*opacity: 0;/);
 });
 
-
 for (const initialController of [false, true]) {
   test(`${initialController ? 'inline' : 'deferred'} reveal does not hide text for a stalled font`, async () => {
     const fonts = deferred();
     const f = fixture({ initialController, fonts: fonts.promise });
     await f.paint();
-    await f.advance(499);
-    assert.equal(Number(f.overlay.style.opacity), 1);
-    assert.equal(f.tweens.length, 0);
-    await f.advance(1);
     await f.paint();
-    assert.ok(f.marks.some((mark) => mark.name === 'vcd:font-wait-timeout'));
     if (initialController) {
       assert.equal(Number(f.overlay.style.opacity), 0);
       await f.advance(250);
