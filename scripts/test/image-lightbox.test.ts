@@ -393,3 +393,18 @@ test('staggered finger release and remaining-finger movement cannot strand resis
     expect(f.dialog.open).toBe(true);
   }
 });
+
+test('dismissal scale follows drag and pinch progress, reverses, and returns to full size', () => {
+  const f=fixture(); f.click();
+  const scale=()=>Number(/scale\(([^)]+)\)/.exec(f.image.style.transform)![1]);
+  f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,466,400);
+  expect(scale()).toBeCloseTo(.96);
+  f.pointer('pointermove',1,550,400); expect(scale()).toBeCloseTo(.92);
+  f.pointer('pointermove',1,400,400); expect(scale()).toBe(1);
+  f.pointer('pointerup',1,400,400); f.settleSpring(); expect(scale()).toBe(1);
+  f.pointer('pointerdown',2,400,400); f.pointer('pointerdown',3,600,400);
+  f.pointer('pointermove',2,420,400); f.pointer('pointermove',3,580,400);
+  expect(scale()).toBeCloseTo(.8 * .936);
+  f.pointer('pointercancel',2,420,400); f.pointer('pointerup',3,580,400);
+  f.settleSpring(); expect(scale()).toBe(1); expect(f.dialog.open).toBe(true);
+});
