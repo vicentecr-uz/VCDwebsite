@@ -56,6 +56,11 @@ test('inactivity hiding is touch-only, while keyboard popup access stays global'
   expect(coarseDots.some((rule) => rule.style.getPropertyValue('--project-carousel-controls-presence') === '0')).toBe(true);
   expect(coarseDots.some((rule) => rule.selector.includes('[data-carousel-current]') && rule.selector.includes(':not([userinactive])') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
   expect(coarseDots.some((rule) => rule.selector.includes('[data-carousel-current]') && rule.selector.includes('[mediapaused]') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
+  const nativeFallback = rules.filter((rule) => rule.selector.includes('video[data-project-inline-video][controls]'));
+  expect(nativeFallback.length).toBeGreaterThan(0);
+  expect(nativeFallback.every((rule) => rule.style.position === 'absolute')).toBe(true);
+  expect(nativeFallback.every((rule) => rule.style.width === '100%' && rule.style.height === '100%')).toBe(true);
+  expect(nativeFallback.every((rule) => rule.style.objectFit === 'cover' && rule.style.transform === 'none')).toBe(true);
 });
 
 for (const existing of [false, true]) {
