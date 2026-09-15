@@ -252,7 +252,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let headerHeight = Math.max(0, header.offsetHeight - headerChromeHeight());
     let viewportWidth = document.documentElement.clientWidth;
     let ticking = false;
+    let updateFrame: number | null = null;
     let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
+    let mobileHeader = false;
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
@@ -378,6 +380,29 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
     };
 
+    const syncMobileHeaderMode = () => {
+      const isMobile = window.innerWidth <= 767;
+      if (isMobile) {
+        if (updateFrame !== null) {
+          cancelAnimationFrame(updateFrame);
+          updateFrame = null;
+        }
+        if (offscreenTimer !== null) {
+          clearTimeout(offscreenTimer);
+          offscreenTimer = null;
+        }
+        if (mode !== 'docked') setMode('docked');
+        header.classList.remove('is-scrolled-hidden');
+        header.style.opacity = '';
+        header.style.pointerEvents = '';
+        header.style.transform = '';
+      } else if (mobileHeader) {
+        if (mode !== 'flow') setMode('flow');
+        header.classList.remove('is-scrolled-hidden');
+      }
+      mobileHeader = isMobile;
+    };
+
     // The menu needs a whole header under it, so opening while the header is
     // half scrolled out slides it down to docked. This has to hang off the
     // open itself, not off a scroll frame: hovering the wordmark with the page
@@ -438,7 +463,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const update = () => {
+      updateFrame = null;
       const y = window.scrollY;
+      if (window.innerWidth <= 767) {
+        syncMobileHeaderMode();
+        lastY = y;
+        ticking = false;
+        return;
+      }
       const headerRect = logicalHeaderRect();
       // Once the flow header is fully off-screen, keep its next reveal width
       // current using the docked footprint. Never write while it is visible.
@@ -572,7 +604,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       'scroll',
       () => {
         if (!ticking) {
-          requestAnimationFrame(update);
+          updateFrame = requestAnimationFrame(update);
           ticking = true;
         }
       },
@@ -585,12 +617,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
 
     void document.fonts?.ready.then(() => syncHeaderWidth(headerHeight));
+    syncMobileHeaderMode();
+    syncSlot();
+    captureGeo();
     syncHeaderWidth(logicalHeaderRect().bottom, true);
 
     window.addEventListener('resize', () => {
       const nextViewportWidth = document.documentElement.clientWidth;
       if (nextViewportWidth === viewportWidth) return;
       viewportWidth = nextViewportWidth;
+      syncMobileHeaderMode();
       syncHeaderWidth(headerHeight);
       syncSlot();
       document
