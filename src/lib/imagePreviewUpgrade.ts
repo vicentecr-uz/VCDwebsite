@@ -396,6 +396,7 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
     clone.setAttribute('data-preview-reveal', '');
     clone.alt = '';
     clone.setAttribute('aria-hidden', 'true');
+    for (const attribute of ['data-image-original', 'tabindex', 'role', 'aria-label']) clone.removeAttribute(attribute);
     clone.src = preview;
 
     for (const attr of ['sizes', 'srcset', 'width', 'height', 'decoding'] as const) {

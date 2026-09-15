@@ -246,17 +246,8 @@
   display: block;
   width: 100%;
   height: auto;
-  object-fit: contain !important;
-  transform: none !important;
-}
-
-.project-cropped > video[data-project-inline-video],
-.project-cropped > .project-crop-clip > video[data-project-inline-video] {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-width: none;
+  object-fit: contain;
+  transform: none;
 }
 
 .project-image-grid__frame > video[data-project-inline-video] {
@@ -268,10 +259,6 @@
 }
 
 /* Replacement and drop tooling can retain the generic image trigger. */
-.dev-image-edit-target:has(video[data-project-inline-video]) [data-dev-edit-trigger='image'] {
-  display: none !important;
-}
-
 .project-video-player {
   position: relative;
   width: 100%;
@@ -315,6 +302,44 @@
 .project-cropped .project-video-player__controller > video,
 .project-image-grid__frame > .project-video-player__controller > video {
   height: 100%;
+}
+
+.project-cropped > video[data-project-inline-video],
+.project-cropped > .project-crop-clip > video[data-project-inline-video],
+.project-cropped > .project-video-player__controller > video[data-project-inline-video],
+.project-cropped > .project-crop-clip > .project-video-player__controller > video[data-project-inline-video],
+.project-image-grid__item .project-image-grid__frame > video[data-project-inline-video],
+.project-image-grid__item .project-image-grid__frame > .project-video-player__controller > video[data-project-inline-video] {
+  position: absolute;
+  inset: auto;
+  top: 50%;
+  left: 50%;
+  width: calc(100% / var(--project-content-w, 1));
+  height: auto;
+  max-width: none;
+  object-fit: fill;
+  transform: translate(
+    calc(var(--project-content-cx, 0.5) * -100%),
+    calc(var(--project-content-cy, 0.5) * -100%)
+  );
+}
+
+/* SSR fallback: keep native controls aligned to the frame until enhancement
+   removes [controls]. The enhanced player below retains the authored crop. */
+.project-cropped > video[data-project-inline-video][controls],
+.project-cropped > .project-crop-clip > video[data-project-inline-video][controls],
+.project-cropped > .project-video-player__controller > video[data-project-inline-video][controls],
+.project-cropped > .project-crop-clip > .project-video-player__controller > video[data-project-inline-video][controls],
+.project-image-grid__item .project-image-grid__frame > video[data-project-inline-video][controls],
+.project-image-grid__item .project-image-grid__frame > .project-video-player__controller > video[data-project-inline-video][controls] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
+  transform: none;
 }
 
 .project-video-player__video { object-fit: cover; }
@@ -364,6 +389,14 @@
   bottom: 3px;
   width: auto;
   height: 32px;
+}
+
+.project-video-player__controller[data-project-video-audio-off] .project-video-player__volume-group {
+  display: none;
+}
+
+.project-video-player__controller[data-project-video-audio-off] .project-video-player__progress {
+  right: 16px;
 }
 
 .project-video-player__progress::part(progress),
@@ -428,14 +461,6 @@
   --media-range-bar-color: var(--media-time-range-buffered-color);
 }
 
-.project-video-player__volume-group:hover .project-video-player__volume-popup,
-.project-video-player__volume-group:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-popup,
-.project-video-player__volume-group:has([data-volume-dragging]) .project-video-player__volume-popup {
-  visibility: visible;
-  opacity: 1;
-}
-
-.project-video-player__controller:hover .project-video-player__play,
 .project-video-player__controller:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__play,
 .project-video-player__play[mediapaused] {
   opacity: 1;
@@ -443,8 +468,6 @@
   transition-delay: 0s;
 }
 
-.project-video-player__controller:hover .project-video-player__progress,
-.project-video-player__controller:hover .project-video-player__volume-group,
 .project-video-player__controller:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__progress,
 .project-video-player__controller:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-group,
 .project-video-player__volume-group:has([data-volume-dragging]) {
@@ -452,9 +475,45 @@
   transition-delay: 0s;
 }
 
-@media (hover: none) {
-  .project-video-player__progress,
-  .project-video-player__volume-group { opacity: 1; }
+.project-video-player__volume-group:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-popup,
+.project-video-player__volume-group:has([data-volume-dragging]) .project-video-player__volume-popup {
+  visibility: visible;
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .project-video-player__volume-group:hover .project-video-player__volume-popup {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .project-video-player__controller:hover .project-video-player__play,
+  .project-video-player__controller:hover .project-video-player__progress,
+  .project-video-player__controller:hover .project-video-player__volume-group {
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  /* Media Chrome owns touch inactivity; keep custom controls in that lifecycle. */
+  .project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__play,
+  .project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__progress,
+  .project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__volume-group {
+    opacity: 0;
+    pointer-events: none;
+    transition-delay: 0s;
+  }
+
+  .project-video-player__controller:not([userinactive]) .project-video-player__play,
+  .project-video-player__controller:not([userinactive]) .project-video-player__progress,
+  .project-video-player__controller:not([userinactive]) .project-video-player__volume-group,
+  .project-video-player__controller[mediapaused] .project-video-player__play {
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
 }
 
 media-play-button:not(:defined),
@@ -673,6 +732,10 @@ media-volume-range:not(:defined) { display: none; }
 }
 
 .project-image-carousel__track {
+  --project-carousel-drag-tension: 20;
+  --project-carousel-drag-threshold: 4px;
+  --project-carousel-spring-back: 260ms;
+  --project-carousel-rubberband-duration: var(--project-carousel-spring-back);
   display: flex;
   /* Follow-each-image: top-align — the block's top edge can't move with the
      page, so shrinking from the bottom is the only honest direction. */
@@ -699,6 +762,7 @@ media-volume-range:not(:defined) { display: none; }
   */
   height: auto;
   flex-shrink: 0;
+  translate: var(--project-carousel-rubberband-x, 0px) var(--project-carousel-rubberband-y, 0px);
 }
 
 /* Pin-to-tallest: shorter slides sit in the leftover space on both sides. */
@@ -764,6 +828,14 @@ media-volume-range:not(:defined) { display: none; }
 
 .project-image-carousel__track.is-dragging {
   cursor: grabbing;
+}
+
+.project-image-carousel__track.is-rubberband-settling {
+  transition: translate var(--project-carousel-rubberband-duration, 260ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.project-image-carousel__track.is-dragging {
+  transition: none;
 }
 
 .project-image-carousel__slide[data-carousel-parked='true'],
@@ -862,16 +934,31 @@ media-volume-range:not(:defined) { display: none; }
   initial-value: 0;
 }
 
-.project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller:hover) .project-image-carousel__dots,
 .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller :is(:focus-visible, [data-video-keyboard-focus])) .project-image-carousel__dots,
 .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__volume-group [data-volume-dragging]) .project-image-carousel__dots {
   --project-carousel-controls-presence: 1;
   transition-delay: 0s;
 }
 
-@media (hover: none) {
-  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over'] .project-image-carousel__dots {
+@media (hover: hover) and (pointer: fine) {
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller:hover) .project-image-carousel__dots {
     --project-carousel-controls-presence: 1;
+    transition-delay: 0s;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over'] .project-image-carousel__dots {
+    --project-carousel-controls-presence: 0;
+    transition-delay: 0s;
+  }
+
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-image-carousel__slide[data-carousel-current] .project-video-player__controller:not([userinactive])) .project-image-carousel__dots,
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-image-carousel__slide[data-carousel-current] .project-video-player__controller[mediapaused]) .project-image-carousel__dots,
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller :is(:focus-visible, [data-video-keyboard-focus])) .project-image-carousel__dots,
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__volume-group [data-volume-dragging]) .project-image-carousel__dots {
+    --project-carousel-controls-presence: 1;
+    transition-delay: 0s;
   }
 }
 
@@ -1907,14 +1994,6 @@ h3.project-section-title {
   /* Bleed the bitmap by 1px to cover mobile video rasterization seams. */
   :is(.project-cropped, .project-image-grid__item)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-video-player__controller {
     overflow: hidden;
-  }
-
-  :is(.project-cropped, .project-image-grid__item)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) .project-video-player__controller > video {
-    top: -1px;
-    left: -1px;
-    width: calc(100% + 2px);
-    max-width: none;
-    height: calc(100% + 2px);
   }
 
   :is(.project-media, .project-image)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .project-caption--below,

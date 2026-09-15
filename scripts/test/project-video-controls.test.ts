@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { sizeIcon } from '../../src/lib/icons';
+import { resolveVideoAudio } from '../../src/lib/videoAudio';
 
 const window = new Window({ url: 'http://localhost:4322' });
 for (const key of ['window', 'document', 'Node', 'Element', 'HTMLElement', 'HTMLVideoElement', 'HTMLMediaElement', 'DocumentFragment', 'EventTarget', 'Event', 'CustomEvent', 'MutationObserver', 'ResizeObserver', 'customElements', 'localStorage', 'navigator', 'DOMParser']) {
@@ -20,11 +21,48 @@ window.CSSStyleSheet.prototype.insertRule = function(rule: string, index?: numbe
 };
 await import('media-chrome');
 const source = readFileSync(new URL('../../src/lib/projectVideoControls.ts', import.meta.url), 'utf8');
+const projectStyle = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;\n/gm, '').replaceAll('export function', 'function'));
 const svg = (name: string) => readFileSync(new URL(`../../node_modules/lucide-static/icons/${name}.svg`, import.meta.url), 'utf8');
-const env = { sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
+const env = { resolveVideoAudio, sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
 const { enhanceProjectVideo, bindVideoVisibility } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo, bindVideoVisibility }; }`)(env);
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
+
+test('inactivity hiding is touch-only, while keyboard popup access stays global', () => {
+  const sheet = new window.CSSStyleSheet();
+  sheet.replaceSync(projectStyle);
+  const rules: { selector: string; media: string; style: CSSStyleDeclaration }[] = [];
+  const visit = (list: CSSRuleList, media = '') => {
+    for (const rule of list as any) {
+      if (rule.selectorText) rules.push({ selector: rule.selectorText, media, style: rule.style });
+      if (rule.cssRules) visit(rule.cssRules, rule.conditionText || media);
+    }
+  };
+  visit(sheet.cssRules as unknown as CSSRuleList);
+  const inactive = rules.filter((rule) => rule.selector.includes('.project-video-player__controller[userinactive]'));
+  expect(inactive.length).toBeGreaterThan(0);
+  for (const rule of inactive) {
+    expect(rule.media).toBe('(hover: none), (pointer: coarse)');
+    expect(rule.style.getPropertyValue('pointer-events')).toBe('none');
+    expect(rule.style.getPropertyValue('transition-delay')).toBe('0s');
+  }
+  const hover = rules.filter((rule) => rule.selector.includes('.project-video-player__controller:hover .project-video-player__'));
+  expect(hover.length).toBeGreaterThan(0);
+  expect(hover.every((rule) => rule.media === '(hover: hover) and (pointer: fine)')).toBe(true);
+  expect(rules.some((rule) => !rule.media && rule.selector.includes('.project-video-player__volume-group:has(:focus-visible') && rule.style.opacity === '1')).toBe(true);
+  const dotHover = rules.filter((rule) => rule.selector.includes('.project-image-carousel') && rule.selector.includes('controller:hover'));
+  expect(dotHover.length).toBeGreaterThan(0);
+  expect(dotHover.every((rule) => rule.media === '(hover: hover) and (pointer: fine)')).toBe(true);
+  const coarseDots = rules.filter((rule) => rule.selector.includes('.project-image-carousel') && rule.media === '(hover: none), (pointer: coarse)');
+  expect(coarseDots.some((rule) => rule.style.getPropertyValue('--project-carousel-controls-presence') === '0')).toBe(true);
+  expect(coarseDots.some((rule) => rule.selector.includes('[data-carousel-current]') && rule.selector.includes(':not([userinactive])') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
+  expect(coarseDots.some((rule) => rule.selector.includes('[data-carousel-current]') && rule.selector.includes('[mediapaused]') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
+  const nativeFallback = rules.filter((rule) => rule.selector.includes('video[data-project-inline-video][controls]'));
+  expect(nativeFallback.length).toBeGreaterThan(0);
+  expect(nativeFallback.every((rule) => rule.style.position === 'absolute')).toBe(true);
+  expect(nativeFallback.every((rule) => rule.style.width === '100%' && rule.style.height === '100%')).toBe(true);
+  expect(nativeFallback.every((rule) => rule.style.objectFit === 'cover' && rule.style.transform === 'none')).toBe(true);
+});
 
 for (const existing of [false, true]) {
   test(`${existing ? 'standalone' : 'inline'} video shares one functioning controller`, async () => {

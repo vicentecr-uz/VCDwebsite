@@ -112,17 +112,25 @@ class ContainerFixture {
     style: Record<string, string> = {},
   ) { this.style = style; }
   getBoundingClientRect() { return this.rect; }
+  contains(element: ImageFixture) {
+    for (let current: ContainerFixture | null = element.parentElement; current; current = current.parentElement) {
+      if (current === this) return true;
+    }
+    return false;
+  }
 }
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
   const overlay = Object.assign(new Target(), { dataset: {}, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
   const readinessMarker = { hidden: true };
+  const homeIntro = options.homeIntro ? Object.assign(new ContainerFixture(), { hidden: options.homeIntro.state === 'dismissed', dataset: { state: options.homeIntro.state ?? 'active' } }) : null;
+  for (const image of options.homeIntro?.images ?? []) image.parentElement = homeIntro;
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
@@ -130,7 +138,8 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     getElementById: (id: string) => id === 'transition-readiness-marker'
       ? (options.noReadinessMarker ? null : readinessMarker)
       : (options.noOverlay ? null : overlay),
-    querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {} : null,
+    querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {}
+      : selector === '[data-home-intro-surface]' ? homeIntro : null,
     querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
       ? (options.images ?? []).filter((image) => image.preview)
       : selector === 'a' ? anchors : [],
@@ -248,7 +257,9 @@ test('cached content still gets one opaque paint; both fades use the approved va
   assert.equal(f.timers.size, 0);
   const entry = f.tweens[0];
   entry.finish();
+  assert.equal(f.overlay.hidden, true);
   f.click();
+  assert.equal(f.overlay.hidden, false);
   for (const tween of f.tweens) {
     assert.equal(tween.vars.duration, 0.25);
     assert.equal(tween.vars.ease, 'power1.out');
@@ -263,6 +274,7 @@ test('early initial controller reveals once and deferred module adopts its state
   await f.paint();
   await f.advance(250);
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(f.overlay.hidden, true);
   assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.overlay.style.transition ?? '', '');
   assert.equal(f.tweens.length, 0);
@@ -295,7 +307,7 @@ test('browser trace marks are emitted without the DEV readiness marker', async (
 });
 
 test('readiness trace detail distinguishes resource completion from timeout release', async () => {
-  const f = fixture({ fonts: deferred().promise });
+  const f = fixture({ images: [new ImageFixture()] });
   await f.paint();
   await f.advance(4000);
   const readinessMark = f.marks.find((mark) => mark.name === 'vcd:readiness-satisfied');
@@ -303,14 +315,15 @@ test('readiness trace detail distinguishes resource completion from timeout rele
 });
 
 test('visible mode exposes content while stalled, then marks the normal fade boundary once without entry tween', async () => {
-  const fonts = deferred();
-  const f = fixture({ visible: true, fonts: fonts.promise });
+  const image = new ImageFixture();
+  const f = fixture({ visible: true, images: [image] });
   await f.paint();
   assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.readinessMarker.hidden, true);
   assert.equal(f.upgrades, 0);
   assert.equal(f.tweens.length, 0);
-  fonts.resolve();
+  image.load();
+  image.decoded.resolve();
   await f.paint();
   assert.equal(f.readinessMarker.hidden, false);
   assert.equal(f.upgrades, 1);
@@ -320,8 +333,8 @@ test('visible mode exposes content while stalled, then marks the normal fade bou
   assert.equal(f.upgrades, 1);
 });
 
-test('visible mode fallback marks readiness after four seconds', async () => {
-  const f = fixture({ visible: true, fonts: deferred().promise });
+test('visible mode media fallback marks readiness after four seconds', async () => {
+  const f = fixture({ visible: true, images: [new ImageFixture()] });
   await f.paint();
   await f.advance(3999);
   assert.equal(f.readinessMarker.hidden, true);
@@ -358,7 +371,7 @@ test('visible readiness marker remains dev-only in Layout output', () => {
   assert.match(layout, /dev-transition[^\n]*visible/);
 });
 
-test('fonts and visible decoded thumbnails gate reveal; offscreen images never gate it', async () => {
+test('visible decoded thumbnails gate reveal; fonts and offscreen images do not', async () => {
   const fonts = deferred();
   const visible = new ImageFixture();
   const offscreen = new ImageFixture(false);
@@ -368,7 +381,6 @@ test('fonts and visible decoded thumbnails gate reveal; offscreen images never g
   visible.load();
   await flush();
   assert.equal(visible.decodeCalls, 1);
-  fonts.resolve();
   await flush();
   assert.equal(f.tweens.length, 0);
   visible.decoded.resolve();
@@ -404,6 +416,45 @@ test('only visible progressive thumbnails participate in readiness geometry', as
   await flush();
   assert.equal(f.tweens.length, 1);
 });
+
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} readiness ignores visible media behind an active home intro`, async () => {
+    const introImage = new ImageFixture();
+    const underlyingImage = new ImageFixture();
+    const f = fixture({ initialController, homeIntro: { images: [introImage] }, images: [introImage, underlyingImage] });
+    await f.paint();
+    assert.equal(introImage.count('load'), 1);
+    assert.equal(underlyingImage.count('load') + underlyingImage.count('error'), 0);
+    introImage.load();
+    introImage.decoded.resolve();
+    await f.paint();
+    await f.paint();
+    await f.advance(250);
+    assert.equal(f.upgrades, 1);
+  });
+
+  test(`${initialController ? 'inline' : 'deferred'} readiness still gates on images inside an active home intro`, async () => {
+    const introImage = new ImageFixture();
+    const f = fixture({ initialController, homeIntro: { images: [introImage] }, images: [introImage] });
+    await f.paint();
+    assert.equal(f.upgrades, 0);
+    introImage.load();
+    introImage.decoded.resolve();
+    await f.paint();
+    await f.paint();
+    await f.advance(250);
+    assert.equal(f.upgrades, 1);
+  });
+
+  test(`${initialController ? 'inline' : 'deferred'} readiness restores all media gates after intro dismissal`, async () => {
+    const introImage = new ImageFixture();
+    const underlyingImage = new ImageFixture();
+    const f = fixture({ initialController, homeIntro: { state: 'dismissed', images: [introImage] }, images: [introImage, underlyingImage] });
+    await f.paint();
+    assert.equal(introImage.count('load'), 1);
+    assert.equal(underlyingImage.count('load'), 1);
+  });
+}
 
 test('four-second fallback releases stalled fonts/media and removes losing listeners', async () => {
   const stalled = new ImageFixture();
@@ -655,4 +706,36 @@ test('the no-JavaScript CSS safety reveal remains available after five seconds',
   const css = readFileSync(new URL('../../src/styles/global.css', import.meta.url), 'utf8');
   assert.match(css, /#transition-overlay\s*\{[^}]*opacity: 1;[^}]*animation: transition-overlay-reveal[^;]* 5s forwards;/);
   assert.match(css, /@keyframes transition-overlay-reveal\s*\{\s*to\s*\{\s*opacity: 0;/);
+});
+
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} reveal does not hide text for a stalled font`, async () => {
+    const fonts = deferred();
+    const f = fixture({ initialController, fonts: fonts.promise });
+    await f.paint();
+    await f.paint();
+    if (initialController) {
+      assert.equal(Number(f.overlay.style.opacity), 0);
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      assert.equal(f.tweens.length, 1);
+      f.tweens[0].finish();
+      assert.equal(Number(f.overlay.style.opacity), 0);
+    }
+    const reveals = f.upgrades;
+    fonts.resolve();
+    await f.paint();
+    assert.equal(f.upgrades, reveals);
+  });
+}
+
+test('navigation during the inline fade keeps the outgoing veil visible', async () => {
+  const f = fixture({ initialController: true });
+  await f.paint();
+  await f.paint();
+  f.click();
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, false);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'cancelled');
 });

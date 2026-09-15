@@ -19,6 +19,14 @@ import {
   opaqueBackground,
   readCropVars,
 } from '../scripts/adaptiveMediaInk';
+import dragTuningConfig from './carouselDragTuning.json';
+import {
+  carouselRubberbandGive,
+  normalizeCarouselDragTuning,
+  type CarouselDragTuning,
+} from './carouselDragTuning';
+
+const DEFAULT_DRAG_TUNING = normalizeCarouselDragTuning(dragTuningConfig);
 
 type Axis = 'horizontal' | 'vertical';
 
@@ -122,10 +130,14 @@ function renderDots(carousel: Carousel): void {
     '--project-carousel-video-progress',
     lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4),
   );
+  const activeIndex = Math.min(Math.max(Math.round(carousel.progress), 0), Math.max(carousel.slides.length - 1, 0));
+  carousel.slides.forEach((slide, index) => {
+    if (index === activeIndex) slide.dataset.carouselCurrent = 'true';
+    else delete slide.dataset.carouselCurrent;
+  });
   if (!count || !dotStrip || !dotWindow) return;
 
   const { centre, first, span } = carouselDotGeometry(carousel.progress, count);
-  const activeIndex = Math.round(carousel.progress);
 
   dots.forEach((dot, index) => {
     const { activeness, scale } = carouselDotAppearance(index, carousel.progress, centre);
@@ -423,46 +435,235 @@ const touchesVideoControl = (event: Event) => event.composedPath().some((node) =
 function bindDrag(carousel: Carousel): void {
   const { track } = carousel;
   let dragging = false;
+  let pointerId: number | null = null;
   let start = 0;
   let startScroll = 0;
   let moved = 0;
+  let suppressClick = false;
+  let lastSample: { position: number; time: number } | null = null;
+  let releaseVelocity = 0;
+  let settleFrame = 0;
+  let settleGeneration = 0;
+  let rubberbandTimer = 0;
+  let gestureTuning = DEFAULT_DRAG_TUNING;
+
+  const scroll = () => scrollPos(carousel);
+  const eventTime = (event: Event) => {
+    const stamp = Number(event.timeStamp);
+    return Number.isFinite(stamp) && stamp > 0 ? stamp : performance.now();
+  };
+  const restoreSnap = () => track.style.removeProperty('scroll-snap-type');
+  const clearRubberband = (animate = true) => {
+    if (rubberbandTimer) {
+      window.clearTimeout(rubberbandTimer);
+      rubberbandTimer = 0;
+    }
+    track.classList.toggle('is-rubberband-settling', animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    track.style.setProperty('--project-carousel-rubberband-duration', `${gestureTuning.springBackMs}ms`);
+    track.style.setProperty('--project-carousel-rubberband-x', '0px');
+    track.style.setProperty('--project-carousel-rubberband-y', '0px');
+    if (animate) {
+      rubberbandTimer = window.setTimeout(() => {
+        track.classList.remove('is-rubberband-settling');
+        rubberbandTimer = 0;
+      }, gestureTuning.springBackMs);
+    } else {
+      track.classList.remove('is-rubberband-settling');
+    }
+  };
+  const applyRubberband = (raw: number) => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      track.style.setProperty('--project-carousel-rubberband-x', '0px');
+      track.style.setProperty('--project-carousel-rubberband-y', '0px');
+      return;
+    }
+    const bounded = clampScroll(raw);
+    const overflow = raw - bounded;
+    const amount = carouselRubberbandGive(overflow, gestureTuning);
+    if (carousel.axis === 'vertical') {
+      track.style.setProperty('--project-carousel-rubberband-x', '0px');
+      track.style.setProperty('--project-carousel-rubberband-y', `${-amount}px`);
+    } else {
+      track.style.setProperty('--project-carousel-rubberband-x', `${-amount}px`);
+      track.style.setProperty('--project-carousel-rubberband-y', '0px');
+    }
+  };
+  const cancelMomentum = (restore = true, clearVisual = true) => {
+    settleGeneration += 1;
+    if (settleFrame) {
+      cancelAnimationFrame(settleFrame);
+      settleFrame = 0;
+    }
+    if (restore) restoreSnap();
+    if (clearVisual) clearRubberband(false);
+  };
+  const scrollBounds = () => carousel.axis === 'vertical'
+    ? Math.max(0, track.scrollHeight - track.clientHeight)
+    : Math.max(0, track.scrollWidth - track.clientWidth);
+  const nearestSlideOffset = (projected: number) => {
+    const visible = carousel.slides
+      .map((slide) => slideOffset(carousel, slide))
+      .filter((offset, index) => carousel.slides[index].offsetWidth || carousel.slides[index].offsetHeight);
+    if (!visible.length) return scroll();
+    const maxScroll = scrollBounds();
+    const bounded = Math.min(Math.max(projected, 0), maxScroll);
+    return Math.min(
+      maxScroll,
+      Math.max(0, visible.reduce((best, offset) => Math.abs(offset - bounded) < Math.abs(best - bounded) ? offset : best, visible[0])),
+    );
+  };
+  const clampScroll = (value: number) => Math.min(scrollBounds(), Math.max(0, value));
+  const readDragTuning = (): CarouselDragTuning => {
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(track) : track.style;
+    const raw = {
+      tension: Number.parseFloat(style.getPropertyValue('--project-carousel-drag-tension')),
+      dragThreshold: Number.parseFloat(style.getPropertyValue('--project-carousel-drag-threshold')),
+      springBackMs: Number.parseFloat(style.getPropertyValue('--project-carousel-spring-back')),
+    };
+    return normalizeCarouselDragTuning({
+      tension: Number.isFinite(raw.tension) ? raw.tension : DEFAULT_DRAG_TUNING.tension,
+      dragThreshold: Number.isFinite(raw.dragThreshold) ? raw.dragThreshold : DEFAULT_DRAG_TUNING.dragThreshold,
+      springBackMs: Number.isFinite(raw.springBackMs) ? raw.springBackMs : DEFAULT_DRAG_TUNING.springBackMs,
+    });
+  };
+  const writeScroll = (value: number) => {
+    const bounded = clampScroll(value);
+    if (carousel.axis === 'vertical') track.scrollTop = bounded;
+    else track.scrollLeft = bounded;
+  };
+  const settleTo = (target: number, initialVelocity: number) => {
+    cancelMomentum(false, false);
+    track.style.scrollSnapType = 'none';
+    target = clampScroll(target);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      writeScroll(target);
+      restoreSnap();
+      settleFrame = 0;
+      return;
+    }
+    const generation = settleGeneration;
+    let position = scroll();
+    let velocity = initialVelocity;
+    let previousTime = performance.now();
+    const startedAt = previousTime;
+    const omega = 0.02;
+    const frame = (now: number) => {
+      if (generation !== settleGeneration || !track.isConnected) {
+        restoreSnap();
+        clearRubberband(false);
+        settleFrame = 0;
+        return;
+      }
+      const elapsed = Math.min(32, Math.max(1, now - previousTime));
+      previousTime = now;
+      const acceleration = (omega * omega * (target - position)) - (2 * omega * velocity);
+      velocity += acceleration * elapsed;
+      position += velocity * elapsed;
+      writeScroll(position);
+      position = scroll();
+      if ((Math.abs(target - position) <= 0.5 && Math.abs(velocity) <= 0.01)
+        || now - startedAt >= 1000) {
+        writeScroll(target);
+        restoreSnap();
+        settleFrame = 0;
+        return;
+      }
+      settleFrame = requestAnimationFrame(frame);
+    };
+    settleFrame = requestAnimationFrame(frame);
+  };
+
+  track.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+
+  track.addEventListener('dragstart', (event) => {
+    if (dragging && pointerId !== null) event.preventDefault();
+  });
 
   track.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
-    if ((event.target as HTMLElement).closest('button, a, [contenteditable="true"]') || touchesVideoControl(event)) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, [contenteditable="true"]') || touchesVideoControl(event)) {
+      cancelMomentum();
+      return;
+    }
     // Crop stage owns the pointer — don't steal capture mid-pan.
-    if ((event.target as HTMLElement).closest('.dev-crop-stage, .dev-crop-stage-host')) return;
+    if (target.closest('.dev-crop-stage, .dev-crop-stage-host')) {
+      cancelMomentum();
+      return;
+    }
+    cancelMomentum(false);
+    gestureTuning = readDragTuning();
+    track.style.setProperty('--project-carousel-rubberband-duration', `${gestureTuning.springBackMs}ms`);
     dragging = true;
+    pointerId = event.pointerId;
     moved = 0;
+    suppressClick = false;
     start = carousel.axis === 'vertical' ? event.clientY : event.clientX;
     startScroll = scrollPos(carousel);
+    lastSample = { position: startScroll, time: eventTime(event) };
+    releaseVelocity = 0;
     track.classList.add('is-dragging');
     track.style.scrollSnapType = 'none';
   });
 
   track.addEventListener('pointermove', (event) => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== pointerId) return;
     const current = carousel.axis === 'vertical' ? event.clientY : event.clientX;
     const delta = start - current;
     moved = Math.max(moved, Math.abs(delta));
     if (moved > 3 && !track.hasPointerCapture(event.pointerId)) {
       track.setPointerCapture(event.pointerId);
     }
-    if (carousel.axis === 'vertical') track.scrollTop = startScroll + delta;
-    else track.scrollLeft = startScroll + delta;
+    const raw = startScroll + delta;
+    writeScroll(raw);
+    applyRubberband(raw);
+    const sample = { position: scroll(), time: eventTime(event) };
+    if (lastSample) {
+      const elapsed = sample.time - lastSample.time;
+      if (elapsed > 0 && elapsed <= 150) releaseVelocity = (sample.position - lastSample.position) / elapsed;
+      else if (elapsed > 150) releaseVelocity = 0;
+    }
+    lastSample = sample;
   });
 
-  const endDrag = (event: PointerEvent) => {
-    if (!dragging) return;
+  const endDrag = (event: PointerEvent, allowMomentum: boolean) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    const didMove = moved > 3;
+    const releaseStamp = eventTime(event);
+    const velocity = lastSample && releaseStamp - lastSample.time > 150 ? 0 : releaseVelocity;
     dragging = false;
+    pointerId = null;
+    lastSample = null;
     track.classList.remove('is-dragging');
-    track.style.removeProperty('scroll-snap-type');
+    clearRubberband(true);
     if (track.hasPointerCapture(event.pointerId)) track.releasePointerCapture(event.pointerId);
-    if (moved > 3) scrollToIndex(carousel, activeIndexFor(carousel));
+    if (didMove) {
+      suppressClick = true;
+      if (allowMomentum) {
+        const projected = scroll() + velocity * 180;
+        settleTo(nearestSlideOffset(projected), velocity);
+      } else {
+        restoreSnap();
+      }
+      window.setTimeout(() => { suppressClick = false; }, 0);
+    } else restoreSnap();
   };
 
-  track.addEventListener('pointerup', endDrag);
-  track.addEventListener('pointercancel', endDrag);
+  track.addEventListener('pointerup', (event) => endDrag(event, true));
+  track.addEventListener('pointercancel', (event) => endDrag(event, false));
+  track.addEventListener('lostpointercapture', (event) => endDrag(event, false));
+  track.addEventListener('pointerleave', (event) => {
+    if (dragging && event.pointerId === pointerId && !track.hasPointerCapture(event.pointerId)) endDrag(event, false);
+  });
+  track.addEventListener('wheel', cancelMomentum, { passive: true });
+  track.addEventListener('touchstart', cancelMomentum, { passive: true });
+  window.addEventListener('resize', cancelMomentum, { passive: true });
+  window.addEventListener('pagehide', cancelMomentum, { passive: true });
 }
 
 /**
@@ -688,6 +889,9 @@ function initCarousel(block: HTMLElement): void {
     viewport,
   };
   collectVisible(carousel);
+  track.style.setProperty('--project-carousel-drag-tension', String(DEFAULT_DRAG_TUNING.tension));
+  track.style.setProperty('--project-carousel-drag-threshold', `${DEFAULT_DRAG_TUNING.dragThreshold}px`);
+  track.style.setProperty('--project-carousel-spring-back', `${DEFAULT_DRAG_TUNING.springBackMs}ms`);
 
   registry.set(block, carousel);
   block.dataset.activeIndex = '0';

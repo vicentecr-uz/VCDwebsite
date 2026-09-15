@@ -41,6 +41,7 @@ import {
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 import { isVideoSrc } from '../../lib/imageUpload.mjs';
+import type { VideoAudioSetting } from '../../lib/videoAudio';
 import ProjectImageCarousel from './ProjectImageCarousel.astro';
 
 interface Item {
@@ -74,6 +75,7 @@ interface Item {
   visible?: string[];
   breakpoints?: Record<string, unknown>;
   defaultAspectRatio?: string;
+  audio?: VideoAudioSetting;
 }
 
 interface Props {
@@ -137,6 +139,7 @@ const editorItems = items.map((item, index) => ({
   src: projectImage(String(item.src ?? item.items?.[0]?.src ?? '')),
   alt: item.alt ?? '',
   background: normalizeImageBackground(item.background) ?? 'transparent',
+  audio: item.audio,
 }));
 ---
 
@@ -219,6 +222,7 @@ const editorItems = items.map((item, index) => ({
           hasOwnVariants,
           mobileInset: item.mobileInset,
           background: normalizeImageBackground(item.background) ?? 'transparent',
+          videoAudio: item.audio,
         })
       : {};
     const captionNode = hasCaption ? (
@@ -285,6 +289,7 @@ const editorItems = items.map((item, index) => ({
         {...editAttrs}
         data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
         data-mobile-bleed-eligible={mobileBleedEligible ? 'true' : 'false'}
+        data-video-audio={item.audio !== undefined ? JSON.stringify(item.audio) : undefined}
       >
         <div class="project-image-grid__frame">
           {isVideo ? <video
@@ -299,7 +304,11 @@ const editorItems = items.map((item, index) => ({
           /> : <img
             src={projectImageTier(item.src, 'thumb')}
             data-image-preview={isPlaceholder ? undefined : projectImageTier(item.src, 'preview')}
+            data-image-original={isPlaceholder ? undefined : projectImage(item.src)}
             alt={item.alt ?? ''}
+            role={isPlaceholder ? undefined : 'button'}
+            tabindex={isPlaceholder ? undefined : '0'}
+            aria-label={isPlaceholder ? undefined : `Open image: ${item.alt || 'image'}`}
             class="project-image-grid__image"
             loading="eager"
           />}
@@ -338,7 +347,7 @@ const editorItems = items.map((item, index) => ({
             data-dev-mode-only
             hidden
           >
-            Edit image
+            {isVideo ? 'Edit video' : 'Edit image'}
           </button>
         )}
       </figure>

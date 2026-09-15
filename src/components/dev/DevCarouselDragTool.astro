@@ -1,0 +1,79 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import '../../styles/project.css';
+import ProjectImageCarousel from '../project/ProjectImageCarousel.astro';
+import project from '../../content/projects/goodhome-painting-tools.json';
+import tuning from '../../lib/carouselDragTuning.json';
+import { CAROUSEL_DRAG_TUNING_DEFAULTS } from '../../lib/carouselDragTuning';
+
+const carousel = project.sections.find((section) => section.type === 'imageCarousel');
+if (!carousel || carousel.type !== 'imageCarousel') throw new Error('GoodHome carousel fixture is missing.');
+---
+
+<Layout title="Carousel drag tuning (dev)">
+  <main class="carousel-tuning-page">
+    <header class="carousel-tuning-page__intro">
+      <p class="carousel-tuning-page__eyebrow">Interaction lab</p>
+      <h1>Carousel drag</h1>
+    </header>
+    <ProjectImageCarousel items={carousel.items} orientation="horizontal" dotsPlacement="over" spacing="group" />
+    <aside class="carousel-tuning" data-carousel-tuning data-carousel-defaults={JSON.stringify(CAROUSEL_DRAG_TUNING_DEFAULTS)} aria-label="Carousel drag tuning controls">
+      <h2>Mouse drag</h2>
+      <label>Tension <output data-value="tension"></output><input data-control="tension" type="range" min="1" max="80" step="1" value={tuning.tension} /></label>
+      <label>Drag threshold <output data-value="dragThreshold"></output><input data-control="dragThreshold" type="range" min="0" max="40" step="1" value={tuning.dragThreshold} /></label>
+      <label>Spring back <output data-value="springBackMs"></output><input data-control="springBackMs" type="range" min="80" max="600" step="10" value={tuning.springBackMs} /></label>
+      <div class="carousel-tuning__actions"><button type="button" data-save>Save</button><button type="button" data-reset>Reset</button></div>
+      <p data-status aria-live="polite"></p>
+    </aside>
+  </main>
+</Layout>
+
+<script>
+  const root = document.querySelector<HTMLElement>('[data-carousel-tuning]');
+  const defaults = JSON.parse(root?.dataset.carouselDefaults || '{}');
+  const track = document.querySelector<HTMLElement>('[data-carousel-track]');
+  const status = root?.querySelector<HTMLElement>('[data-status]');
+  const controls = [...root?.querySelectorAll<HTMLInputElement>('[data-control]') ?? []];
+  const read = () => Object.fromEntries(controls.map((input) => [input.dataset.control, Number(input.value)]));
+  const apply = (value) => {
+    controls.forEach((input) => {
+      const next = value[input.dataset.control];
+      if (typeof next === 'number') input.value = String(next);
+      root?.querySelector<HTMLOutputElement>(`[data-value="${input.dataset.control}"]`)?.replaceChildren(`${input.value}${input.dataset.control === 'springBackMs' ? ' ms' : input.dataset.control === 'dragThreshold' ? ' px' : ''}`);
+    });
+    const draft = read();
+    track?.style.setProperty('--project-carousel-drag-tension', String(draft.tension));
+    track?.style.setProperty('--project-carousel-drag-threshold', `${draft.dragThreshold}px`);
+    track?.style.setProperty('--project-carousel-spring-back', `${draft.springBackMs}ms`);
+  };
+  controls.forEach((input) => input.addEventListener('input', () => apply(read())));
+  root?.querySelector('[data-reset]')?.addEventListener('click', () => { apply(defaults); if (status) status.textContent = 'Reset to defaults'; });
+  const save = root?.querySelector<HTMLButtonElement>('[data-save]');
+  save?.addEventListener('click', async () => {
+    save.disabled = true;
+    if (status) status.textContent = 'Saving…';
+    try {
+      const response = await fetch('/api/carousel-drag-tuning', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(read()) });
+      const result = await response.json().catch(() => ({}));
+      if (status) status.textContent = response.ok ? `Saved · ${result.path}` : (result.error || 'Save failed');
+    } catch {
+      if (status) status.textContent = 'Save failed';
+    } finally {
+      save.disabled = false;
+    }
+  });
+  apply(read());
+</script>
+
+<style>
+  .carousel-tuning-page { display: grid; gap: calc(var(--space-unit) * 2); }
+  .carousel-tuning-page__intro { display: grid; gap: .5rem; }
+  .carousel-tuning-page__intro h1, .carousel-tuning-page__intro p { margin: 0; }
+  .carousel-tuning-page__eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+  .carousel-tuning { position: fixed; right: var(--space-unit); bottom: var(--space-unit); z-index: 100; display: grid; gap: .6rem; width: min(20rem, calc(100vw - 2 * var(--space-unit))); padding: var(--space-unit); background: var(--sys-color-srf); color: var(--sys-color-on-srf); border-radius: var(--radius-sm, .5rem); box-shadow: var(--shadow-md, 0 4px 20px rgb(0 0 0 / .16)); }
+  .carousel-tuning h2, .carousel-tuning p { margin: 0; }
+  .carousel-tuning label { display: grid; grid-template-columns: 1fr auto; gap: .25rem; font-size: .8rem; }
+  .carousel-tuning input { grid-column: 1 / -1; width: 100%; }
+  .carousel-tuning__actions { display: flex; gap: .5rem; }
+  .carousel-tuning button { padding: .35rem .6rem; font: inherit; cursor: pointer; }
+</style>
