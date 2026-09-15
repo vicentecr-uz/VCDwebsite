@@ -231,6 +231,7 @@
     const onError = () => { if (dialog.open) error.hidden = false; };
     const onLoad = () => { if (dialog.open && closeTimer === null) { if (!feedback) clampPan(); render(); } };
     const zoom = (nextScale: number, point: Point, minimum = 1) => {
+      if (nextScale > 1) { allowUnderzoom = false; minimum = 1; }
       const next = clamp(nextScale, minimum, IMAGE_LIGHTBOX_MAX_SCALE);
       const pan = panForPinch(view, point, point, view.scale, next, centre());
       view = { ...view, ...pan, scale: next };
@@ -282,7 +283,9 @@
       pointers.set(event.pointerId, pointFor(event));
       if (gesture === 'pinch' && pointers.size === 2) {
         const [a,b] = [...pointers.values()];
-        const nextScale = clamp(start.scale * distance(a,b) / startDistance, allowUnderzoom ? .65 : 1, IMAGE_LIGHTBOX_MAX_SCALE);
+        const requestedScale = start.scale * distance(a,b) / startDistance;
+        if (requestedScale > 1) allowUnderzoom = false;
+        const nextScale = clamp(requestedScale, allowUnderzoom ? .65 : 1, IMAGE_LIGHTBOX_MAX_SCALE);
         const pan = panForPinch(start, startMidpoint, midpoint(a,b), start.scale, nextScale, centre());
         const nextAngle = angle(a,b);
         rotationTravel += angleDelta(nextAngle,startAngle);

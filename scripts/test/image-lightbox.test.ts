@@ -408,3 +408,36 @@ test('dismissal scale follows drag and pinch progress, reverses, and returns to 
   f.pointer('pointercancel',2,420,400); f.pointer('pointerup',3,580,400);
   f.settleSpring(); expect(scale()).toBe(1); expect(f.dialog.open).toBe(true);
 });
+
+test('zooming in and back out cannot become pinch dismissal or a remaining-finger dismissal drag', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
+  f.pointer('pointermove',1,300,400); f.pointer('pointermove',2,700,400);
+  f.pointer('pointermove',1,480,400); f.pointer('pointermove',2,520,400);
+  expect(f.image.style.transform).toContain('scale(1)');
+  expect(Number(f.image.style.opacity)).toBe(1);
+  f.pointer('pointerup',2,520,400);
+  f.pointer('pointermove',1,1000,400); f.pointer('pointerup',1,1000,400);
+  f.settleSpring(); expect(f.dialog.open).toBe(true);
+  f.pointer('pointerdown',3,400,400); f.pointer('pointermove',3,600,400); f.pointer('pointerup',3,600,400);
+  f.tick(150); expect(f.dialog.open).toBe(false);
+});
+
+test('trackpad wheel pinch must end before a separate inward pinch can dismiss', () => {
+  const f=fixture(); f.click();
+  f.wheel(-100,true);
+  for(let i=0;i<8;i++) f.wheel(100,true);
+  expect(f.image.style.transform).toContain('scale(1)');
+  f.tick(160); f.tick(150); expect(f.dialog.open).toBe(true);
+  f.wheel(100,true); f.wheel(100,true); f.tick(160); f.tick(150);
+  expect(f.dialog.open).toBe(false);
+});
+
+test('Safari zooming out stops at fit until a new gesture begins', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart');
+  f.gesture('gesturechange',2); f.gesture('gesturechange',.5);
+  expect(f.image.style.transform).toContain('scale(1)');
+  f.gesture('gestureend',.5); f.tick(150); expect(f.dialog.open).toBe(true);
+  f.gesture('gesturestart'); f.gesture('gesturechange',.7); f.gesture('gestureend',.7);
+  f.tick(150); expect(f.dialog.open).toBe(false);
+});
