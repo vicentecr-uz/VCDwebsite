@@ -300,6 +300,23 @@ test('auto wheel mode stays locked for one burst and resets after inactivity', (
   expect(f.image.style.transform).toContain('translate3d(-1px, -2px, 0)');
 });
 
+test('auto mode retains trackpad confidence for a fast vertical burst', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart'); f.gesture('gestureend'); f.tick(300);
+  f.key('+'); f.wheel(100);
+  expect(f.image.style.transform).toContain('translate3d(0px, -100px, 0)');
+  expect(f.image.style.transform).toContain('scale(1.5)');
+});
+
+test('auto mode promotes repeated coarse bursts to mouse at the next burst', () => {
+  const f=fixture(); f.click(); f.key('+'); f.wheel(2); f.tick(200);
+  f.wheel(100); f.wheel(100); f.tick(200);
+  f.wheel(100); f.wheel(100); f.tick(200);
+  const before = f.image.style.transform;
+  f.wheel(-100);
+  expect(f.image.style.transform).not.toBe(before);
+  expect(Number(/scale\(([^)]+)\)/.exec(f.image.style.transform)![1])).toBeGreaterThan(1.8);
+});
+
 test('trackpad pinch wheel ends after inactivity and supports underzoom dismissal', () => {
   const f=fixture(); f.click();
   for(let i=0;i<8;i++)f.wheel(200,true);
