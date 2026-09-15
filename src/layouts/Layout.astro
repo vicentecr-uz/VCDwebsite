@@ -212,7 +212,12 @@ const showDevTools = import.meta.env.DEV;
           const viewport = document.documentElement;
           return rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || viewport.clientHeight) && rect.left < (innerWidth || viewport.clientWidth);
         };
-        const images = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible);
+        const readinessImages = (images) => {
+          const intro = document.querySelector('[data-home-intro-surface]');
+          if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
+          return images.filter((image) => intro.contains(image));
+        };
+        const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
         const imageReady = images.map((image) => new Promise((resolve) => {
           if (image.complete) { resolve(); return; }
           const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); resolve(); };
@@ -414,7 +419,12 @@ const showDevTools = import.meta.env.DEV;
         const waits: Promise<unknown>[] = [];
         void Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined);
         let thumbIndex = 0;
-        const readinessImages = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+        const readinessImagesFor = (images: HTMLImageElement[]) => {
+          const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
+          if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
+          return images.filter((image) => intro.contains(image));
+        };
+        const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
         for (const img of readinessImages) {
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
