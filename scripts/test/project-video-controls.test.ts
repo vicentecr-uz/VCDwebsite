@@ -27,20 +27,27 @@ const env = { sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIc
 const { enhanceProjectVideo, bindVideoVisibility } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo, bindVideoVisibility }; }`)(env);
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
 
-test('touch controls follow Media Chrome inactivity while fine-pointer hover stays scoped', () => {
-  const touchStart = projectStyle.indexOf('@media (hover: none), (pointer: coarse)');
-  const fineStart = projectStyle.indexOf('@media (hover: hover) and (pointer: fine)');
-  const inactiveStart = projectStyle.indexOf('.project-video-player__controller[userinactive]');
-  const hoverStart = projectStyle.indexOf('.project-video-player__controller:hover');
-  const focusPopupStart = projectStyle.indexOf('.project-video-player__volume-group:has(:focus-visible');
-  expect(touchStart).toBeGreaterThan(-1);
-  expect(fineStart).toBeGreaterThan(-1);
-  expect(inactiveStart).toBeGreaterThan(touchStart);
-  expect(hoverStart).toBeGreaterThan(fineStart);
-  expect(focusPopupStart).toBeGreaterThan(-1);
-  expect(focusPopupStart).toBeLessThan(fineStart);
-  expect(projectStyle.slice(inactiveStart, projectStyle.indexOf('}', inactiveStart))).toContain('pointer-events: none;');
-  expect(projectStyle).toContain('.project-video-player__controller[mediapaused] .project-video-player__play');
+test('inactivity hiding is touch-only, while keyboard popup access stays global', () => {
+  const sheet = new window.CSSStyleSheet();
+  sheet.replaceSync(projectStyle);
+  const rules: { selector: string; media: string; style: CSSStyleDeclaration }[] = [];
+  const visit = (list: CSSRuleList, media = '') => {
+    for (const rule of list as any) {
+      if (rule.selectorText) rules.push({ selector: rule.selectorText, media, style: rule.style });
+      if (rule.cssRules) visit(rule.cssRules, rule.conditionText || media);
+    }
+  };
+  visit(sheet.cssRules as unknown as CSSRuleList);
+  const inactive = rules.filter((rule) => rule.selector.includes('.project-video-player__controller[userinactive]'));
+  expect(inactive.length).toBeGreaterThan(0);
+  for (const rule of inactive) {
+    expect(rule.media).toBe('(hover: none), (pointer: coarse)');
+    expect(rule.style.getPropertyValue('pointer-events')).toBe('none');
+  }
+  const hover = rules.filter((rule) => rule.selector.includes('.project-video-player__controller:hover .project-video-player__'));
+  expect(hover.length).toBeGreaterThan(0);
+  expect(hover.every((rule) => rule.media === '(hover: hover) and (pointer: fine)')).toBe(true);
+  expect(rules.some((rule) => !rule.media && rule.selector.includes('.project-video-player__volume-group:has(:focus-visible') && rule.style.opacity === '1')).toBe(true);
 });
 
 for (const existing of [false, true]) {

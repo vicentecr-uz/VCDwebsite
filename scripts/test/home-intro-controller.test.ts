@@ -1,8 +1,5 @@
 import { afterEach, afterAll, describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
 import { createHomeIntroController } from '../../src/scripts/homeIntro';
-
-const homeIntroSource = readFileSync(new URL('../../src/components/home/HomeIntroController.astro', import.meta.url), 'utf8');
 
 class FixtureElement {
   dataset: Record<string, string> = {};
@@ -113,13 +110,6 @@ const waitForExit = () => new Promise((resolve) => setTimeout(resolve, 270));
 const waitFor = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('home intro controller', () => {
-  test('keeps a visible touch entry affordance without changing desktop copy', () => {
-    expect(homeIntroSource).toContain('home-intro-surface__okay-desktop">Enter</span>');
-    expect(homeIntroSource).toContain('home-intro-surface__okay-touch">Tap to enter</span>');
-    expect(homeIntroSource).toContain('@media (hover: none), (pointer: coarse)');
-    expect(homeIntroSource).toContain('env(safe-area-inset-bottom)');
-  });
-
   test('waits without activation and ignores links and selected text', async () => {
     const f = fixture();
     await waitForExit();

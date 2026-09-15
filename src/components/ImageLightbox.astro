@@ -13,15 +13,16 @@ import Button from './ui/Button.astro';
         <Button label="Close" emphasis="ghost" data-image-lightbox-close />
       </div>
     </header>
-    <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="-1">
+    <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="0" role="group" aria-label="Image viewer" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight">
       <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
-      <p class="image-lightbox__error" data-image-lightbox-error hidden>Image could not be loaded.</p>
+      <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
     </div>
   </div>
 </dialog>
 
 <script>
   import {
+    IMAGE_LIGHTBOX_MAX_SCALE,
     clampImageScale,
     distance,
     midpoint,
@@ -55,6 +56,7 @@ import Button from './ui/Button.astro';
     let openerObserver: MutationObserver | null = null;
     let closeTimer: number | null = null;
     let session = 0;
+    let revealFrame = 0;
 
     const clampPan = (next: Point): Point => {
       const maxX = Math.max(0, ((image.offsetWidth * scale) - viewer.clientWidth) / 2);
@@ -68,12 +70,14 @@ import Button from './ui/Button.astro';
     const render = () => {
       pan = clampPan(pan);
       image.style.transform = `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`;
-      zoomIn.disabled = scale >= 4;
+      zoomIn.disabled = scale >= IMAGE_LIGHTBOX_MAX_SCALE;
       zoomOut.disabled = scale <= 1;
       reset.disabled = scale === 1 && pan.x === 0 && pan.y === 0;
     };
 
     const resetView = () => {
+      pointers.clear();
+      singlePointerStart = null;
       scale = 1;
       pan = { x: 0, y: 0 };
       render();
@@ -97,6 +101,7 @@ import Button from './ui/Button.astro';
     const dismiss = (immediate = false) => {
       if (!dialog.open) return;
       const currentSession = ++session;
+      cancelAnimationFrame(revealFrame);
       dialog.classList.remove('is-visible');
       if (immediate) {
         finishDismiss();
@@ -111,10 +116,12 @@ import Button from './ui/Button.astro';
     const open = (target: HTMLImageElement) => {
       const source = target.dataset.imageOriginal;
       if (!source || document.documentElement.classList.contains('is-dev-mode')) return;
-      if (typeof dialog.showModal !== 'function') return;
+      if (typeof dialog.showModal !== 'function' || !dialog.isConnected) return;
       if (closeTimer !== null) window.clearTimeout(closeTimer);
       closeTimer = null;
       session += 1;
+      gestureMoved = false;
+      cancelAnimationFrame(revealFrame);
       opener = target;
       image.alt = target.alt;
       image.src = source;
@@ -127,8 +134,10 @@ import Button from './ui/Button.astro';
       });
       openerObserver.observe(document.body, { childList: true, subtree: true });
       const openSession = session;
-      requestAnimationFrame(() => {
-        if (dialog.open && openSession === session) dialog.classList.add('is-visible');
+      revealFrame = requestAnimationFrame(() => {
+        revealFrame = requestAnimationFrame(() => {
+          if (dialog.open && openSession === session) dialog.classList.add('is-visible');
+        });
       });
       viewer.focus({ preventScroll: true });
     };
@@ -137,14 +146,14 @@ import Button from './ui/Button.astro';
       const target = event.target instanceof Element
         ? event.target.closest<HTMLImageElement>('img[data-image-original]')
         : null;
-      if (!target || target.closest('a,button,input,textarea,select,[contenteditable="true"], [aria-hidden="true"], [data-preview-reveal]')) return null;
+      if (!target || target.closest('a,button,input,textarea,select,[role="link"],[contenteditable="true"],[contenteditable="plaintext-only"],[inert],[aria-hidden="true"],[data-preview-reveal]')) return null;
       if (target.closest('[data-crop-image], .dev-crop-stage, .dev-crop-stage-host, [data-home-intro-surface]')) return null;
       if (target.closest('[data-carousel-track].is-dragging')) return null;
       return target;
     };
 
     const onDocumentClick = (event: MouseEvent) => {
-      if (event.defaultPrevented) return;
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
       const target = eligibleImage(event);
       if (target) open(target);
     };
@@ -154,9 +163,9 @@ import Button from './ui/Button.astro';
       const target = event.target instanceof Element
         ? event.target.closest<HTMLImageElement>('img[data-image-original]')
         : null;
-      if (!target || target !== event.target) return;
+      if (!target || target !== event.target || !eligibleImage(event) || document.documentElement.classList.contains('is-dev-mode')) return;
       event.preventDefault();
-      if (eligibleImage(event)) open(target);
+      open(target);
     };
 
     const onDialogClick = (event: MouseEvent) => {
@@ -170,8 +179,9 @@ import Button from './ui/Button.astro';
 
     const pointFor = (event: PointerEvent): Point => ({ x: event.clientX, y: event.clientY });
     const onPointerDown = (event: PointerEvent) => {
-      if (!dialog.open) return;
-      gestureMoved = false;
+      if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2) return;
+      if (!pointers.size) gestureMoved = false;
+      else gestureMoved = true;
       viewer.setPointerCapture?.(event.pointerId);
       const point = pointFor(event);
       pointers.set(event.pointerId, point);
@@ -201,12 +211,15 @@ import Button from './ui/Button.astro';
       } else if (scale > 1 && singlePointerStart) {
         pan = panForPointer(singlePanStart, singlePointerStart, pointFor(event));
       }
-      gestureMoved = true;
+      gestureMoved ||= pointers.size > 1 || (singlePointerStart !== null && distance(singlePointerStart, pointFor(event)) > 3);
       render();
       event.preventDefault();
     };
     const onPointerUp = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return;
+      if (event.type !== 'pointerup') gestureMoved = true;
       pointers.delete(event.pointerId);
+      if (viewer.hasPointerCapture?.(event.pointerId)) viewer.releasePointerCapture(event.pointerId);
       if (pointers.size === 1) {
         const [remaining] = [...pointers.values()];
         singlePointerStart = remaining;
@@ -215,6 +228,19 @@ import Button from './ui/Button.astro';
         singlePointerStart = null;
       }
       event.preventDefault();
+    };
+
+    const onViewerKeydown = (event: KeyboardEvent) => {
+      if (scale <= 1) return;
+      const steps: Record<string, Point> = {
+        ArrowLeft: { x: 40, y: 0 }, ArrowRight: { x: -40, y: 0 },
+        ArrowUp: { x: 0, y: 40 }, ArrowDown: { x: 0, y: -40 },
+      };
+      const step = steps[event.key];
+      if (!step) return;
+      event.preventDefault();
+      pan = { x: pan.x + step.x, y: pan.y + step.y };
+      render();
     };
 
     document.addEventListener('click', onDocumentClick);
@@ -230,6 +256,9 @@ import Button from './ui/Button.astro';
     viewer.addEventListener('pointermove', onPointerMove);
     viewer.addEventListener('pointerup', onPointerUp);
     viewer.addEventListener('pointercancel', onPointerUp);
+    viewer.addEventListener('lostpointercapture', onPointerUp);
+    viewer.addEventListener('keydown', onViewerKeydown);
+    window.addEventListener('resize', render);
     const onPageHide = () => dismiss(true);
     window.addEventListener('pagehide', onPageHide);
     window.addEventListener('vcd:dev-mode-change', onClose);
@@ -251,6 +280,9 @@ import Button from './ui/Button.astro';
       viewer.removeEventListener('pointermove', onPointerMove);
       viewer.removeEventListener('pointerup', onPointerUp);
       viewer.removeEventListener('pointercancel', onPointerUp);
+      viewer.removeEventListener('lostpointercapture', onPointerUp);
+      viewer.removeEventListener('keydown', onViewerKeydown);
+      window.removeEventListener('resize', render);
       window.removeEventListener('pagehide', onPageHide);
       window.removeEventListener('vcd:dev-mode-change', onClose);
     };
