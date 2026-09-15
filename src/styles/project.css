@@ -264,7 +264,6 @@
   width: 100%;
   aspect-ratio: var(--project-video-aspect-ratio, 16 / 9);
   overflow: hidden;
-  background: #000;
 }
 
 .project-video-player__controller {
@@ -302,6 +301,15 @@
 .project-cropped .project-video-player__controller > video,
 .project-image-grid__frame > .project-video-player__controller > video {
   height: 100%;
+}
+
+/* Extend the bitmap by 1px so fractional zoom cannot expose the frame edge. */
+.project-video-player > .project-video-player__controller > video {
+  top: -1px;
+  left: -1px;
+  width: calc(100% + 2px);
+  max-width: none;
+  height: calc(100% + 2px);
 }
 
 .project-cropped > video[data-project-inline-video],

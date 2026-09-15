@@ -109,3 +109,27 @@ test('media append and remove report and use the resolved section index', async 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('styles intro paragraphs save and reload without changing its outline', async () => {
+  const previous = process.cwd();
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-content-styles-'));
+  const directory = path.join(root, 'src/content/pages');
+  const file = path.join(directory, 'styles.json');
+  const outline = [{ kind: 'section', id: 'styles-components', label: 'Page Blocks', anchor: 'styles-components' }];
+  await mkdir(directory, { recursive: true });
+  await writeFile(file, JSON.stringify({ introParagraphs: ['Original intro'], outline }));
+  process.chdir(root);
+  try {
+    const text = writer('content-text-dev-writer');
+    const result = response();
+    await text(request({ changes: [{ document: 'styles', path: ['introParagraphs'], value: ['Updated intro', 'Second paragraph'] }] }), result, () => {});
+    assert.equal((await result.done).status, 200);
+    const saved = JSON.parse(await readFile(file, 'utf8'));
+    assert.deepEqual(saved.introParagraphs, ['Updated intro', 'Second paragraph']);
+    assert.deepEqual(saved.outline, outline);
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).introParagraphs, saved.introParagraphs);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
+});

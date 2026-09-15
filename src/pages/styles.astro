@@ -29,14 +29,16 @@ import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
 import Badge from '../components/ui/Badge.astro';
 import Hairline from '../components/ui/Hairline.astro';
-import stylesNav from '../content/pages/styles.json';
 import {
   deriveNavFromOutline,
   normalizeOutline,
   outlineFromNav,
 } from '../lib/projectOutline';
+import { loadPageDocument } from '../lib/projects';
 import globalCssSource from '../styles/global.css?raw';
 import '../styles/project.css';
+
+const stylesNav = loadPageDocument('styles');
 
 /** Shared preview assets (Tapico) */
 const previewHero = 'Tapico White Hero Center Crop.jpg';
@@ -115,7 +117,6 @@ type ComponentEntry = {
   source: string;
   props: string;
   usedOn: string[];
-  checklist: string;
   preview: PreviewKey;
 };
 
@@ -137,7 +138,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/Header.astro',
     props: 'title?, navMenu? (default true)',
     usedOn: ['All pages'],
-    checklist: 'Wordmark kerning pairs, menu open/close, active route state.',
     preview: 'header',
   },
   {
@@ -149,7 +149,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/Footer.astro',
     props: '(none)',
     usedOn: ['All pages'],
-    checklist: 'Hover tone stays subtle; year updates automatically.',
     preview: 'footer',
   },
   {
@@ -161,7 +160,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/SectionSidebarNav.astro',
     props: 'sectionLinks, ariaLabel?, enableEasingDevPanel?',
     usedOn: ['/styles', '/about', '/tapico'],
-    checklist: 'Click scroll offset, active section highlight, mobile hide.',
     preview: 'sidebar-nav',
   },
   {
@@ -173,7 +171,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ProjectGrid.astro',
     props: 'items[] (title, image, hoverImage?, bg, dark, subtitle?, href?, full?), variant? (home | work | play)',
     usedOn: ['Home', 'Work', 'Play'],
-    checklist: '2-col desktop; featured full-width on home/work; titles always visible ≤768px; optional hoverImage fades in on desktop hover (no zoom); play placeholders when href omitted. Not legacy case-study media grids.',
     preview: 'project-grid',
   },
   {
@@ -185,7 +182,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ProjectLayout.astro',
     props: 'title, description, outline?, sectionLinks?, sectionNavDocument?',
     usedOn: ['Tapico'],
-    checklist: 'Title prop matches header wordmark; description feeds meta. Other case studies are legacy Webflow migrations — rebuild with signed-off components only.',
     preview: 'project-layout',
   },
   {
@@ -197,7 +193,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectImage.astro',
     props: 'src, alt?, kind? (lead | inline), variants?, caption?, captions?, captionReveal?, captionStyle?, captionPosition?, constrained?, maxVh?, spacing?',
     usedOn: ['Tapico'],
-    checklist: 'Lead crop focal point; overlay caption reveal defaults (hover desktop, always touch); Below image style is always visible under media; Dev Mode crop + caption tuners.',
     preview: 'image-lead',
   },
   {
@@ -209,7 +204,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectImageGrid.astro',
     props: 'items[], columns?, defaultAspectRatio?, matchHeight?, constrained?, layouts?, document?, basePath?, spacing?',
     usedOn: ['Tapico'],
-    checklist: 'Column count per breakpoint; captions match ProjectImage (overlay or below); match-height equalizes below-slot whitespace across the row; grid tuner in Dev Mode.',
     preview: 'image-grid',
   },
   {
@@ -221,7 +215,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectAward.astro',
     props: 'src?, alt?, href?, spacing?',
     usedOn: [],
-    checklist: 'Original badge colors; Edit award opens a centered link bar.',
     preview: 'project-award',
   },
   {
@@ -233,7 +226,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectDetails.astro',
     props: 'title, rows, spacing?',
     usedOn: [],
-    checklist: 'Columns on desktop; labels above values on mobile.',
     preview: 'project-details',
   },
   {
@@ -245,7 +237,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectBodyText.astro',
     props: 'paragraphs[], documentKey?, pathPrefix?, spacing?, sectionId?',
     usedOn: ['Tapico'],
-    checklist: 'Comfortable line length; stack gap from spacing prop; inline HTML allowed in paragraphs.',
     preview: 'body-text',
   },
   {
@@ -257,7 +248,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectSectionTitle.astro',
     props: 'title, spacing?, tightBottom? (default true → related after), level? (2 | 3 — 3 renders as Heading 2), showTitle?, hideWhenSidebarVisible?',
     usedOn: ['Tapico'],
-    checklist: 'Default precede-related so body after a heading sits at --space-unit; per-breakpoint show/hide when sidebar is active.',
     preview: 'section-title',
   },
   {
@@ -269,7 +259,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectPressQuoteTicker.astro',
     props: 'items[] (quote, logoSrc, logoAlt, href, name?), documentKey?, sectionPath?, spacing?, speed?, logoOpacity?',
     usedOn: ['Tapico'],
-    checklist: 'Seamless loop; logo opacity; pause on hover/focus; links open in new tab.',
     preview: 'press-quote-ticker',
   },
   {
@@ -281,7 +270,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectRedditCommentCarousel.astro',
     props: 'items[] (author, paragraphs[], score, avatarSrc?, href?, theme?), documentKey?, sectionPath?, spacing?',
     usedOn: ['Tapico'],
-    checklist: 'Three-column stagger; wheel scroll passes through to page; infinite loop per column.',
     preview: 'reddit-comment-carousel',
   },
   {
@@ -293,7 +281,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/project/ProjectVideo.astro',
     props: 'src, poster?, alt?, autoplay? (default false), aspectRatio? (default "16:9"), spacing?',
     usedOn: [],
-    checklist: 'Centre play button fades on play / reappears on hover; seek and mute controls align along the bottom; hover or focus mute reveals vertical volume; reduced-motion disables autoplay and all transitions; missing src renders an empty black block only.',
     preview: 'video',
   },
   {
@@ -305,7 +292,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/Button.astro',
     props: 'emphasis? (ghost | soft | filled | page | danger, default soft), label, type?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'All five emphasis variants render in both themes; hover/pressed states use comp-button tokens; focus-visible ring; disabled state.',
     preview: 'ui-button',
   },
   {
@@ -317,7 +303,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/SegmentedControl.astro',
     props: 'label, ...rest (children passed via default slot)',
     usedOn: ['ViewportSelector', 'Edit carousel Direction', 'Gallery manager', 'Section title visibility'],
-    checklist: 'Concentric border radius with slotted Ghost buttons; role="group" with aria-label; Ghost + selected paints Page via the segmented override; hover on unselected mixes toward Page; renders correctly in both themes.',
     preview: 'ui-segmented-control',
   },
   {
@@ -329,7 +314,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/ViewportSelector.astro',
     props: 'label? (default "Display width"), dataAttr (required), selected? (desktop | tablet | mobile, default desktop), class, ...rest on the group',
     usedOn: ['Edit image', 'Edit caption', 'Edit grid', 'Edit carousel'],
-    checklist: 'Ghost unselected, Desktop selected (Page via CSS); fill segments in one row; dataAttr lands on each button; renders correctly in both themes.',
     preview: 'ui-viewport-selector',
   },
   {
@@ -341,7 +325,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/DevOverlay.astro',
     props: 'title? (override only), titleSuffix?, layout? (portrait | landscape, default portrait), embedded?, storageKey?, panelKey?, defaultHidden?, defaultMinimized?, showMinimize?, ...rest (body via default slot; header from panelKey via DevPanelTitle)',
     usedOn: ['Gallery manager', 'Asset manager', 'Log issue', 'Crop / grid / caption tuners', 'Project settings'],
-    checklist: 'Portrait 352px + vertical resize + snap-to-minimize; landscape 597px (min 344) + all-edge resize; 18px radius; body clips to the inner corner on resize; no native resize glyph; renders correctly in both themes.',
     preview: 'ui-dev-panel',
   },
   {
@@ -353,7 +336,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/DevPanelTitle.astro, src/lib/devPanelTitles.ts',
     props: 'panelKey?, suffix?, title? (override only)',
     usedOn: ['DevOverlay header on every live dev panel'],
-    checklist: 'Title typography matches dev-overlay__title; known panelKey resolves from DEV_PANEL_TITLES; suffix appends em dash label; override wins for catalog dummies.',
     preview: 'ui-dev-panel-title',
   },
   {
@@ -365,7 +347,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/Field.astro',
     props: 'label, ...rest (value content via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Label uses on-srf-variant, value box uses field/container and on-srf; renders correctly in both themes.',
     preview: 'ui-field',
   },
   {
@@ -377,7 +358,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/TextField.astro',
     props: 'label, value?, placeholder?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Input is chromeless (Field supplies background/radius); disabled state dims; renders correctly in both themes.',
     preview: 'ui-text-field',
   },
   {
@@ -389,7 +369,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/TextArea.astro',
     props: 'label, value?, placeholder?, disabled?, rows? (default 3), ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Chromeless textarea (Field supplies background/radius); field-sizing: content grows with typed text; native vertical resize handle; disabled state dims; renders correctly in both themes.',
     preview: 'ui-text-area',
   },
   {
@@ -401,7 +380,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/SelectField.astro',
     props: 'label, options ({ value, label }[]), value?, disabled?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Chromeless select (Field supplies background/radius); native OS dropdown chrome left as-is; disabled state dims; renders correctly in both themes.',
     preview: 'ui-select-field',
   },
   {
@@ -413,7 +391,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/ToggleRow.astro',
     props: 'label, checked?, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Unchecked stroke uses outline-variant; checked fill uses button/filled/container; renders correctly in both themes.',
     preview: 'ui-toggle-row',
   },
   {
@@ -425,7 +402,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/PanelActions.astro',
     props: '...rest (Button instances via default slot)',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'Right-aligned row, 8px gap, 8px padding-top, no divider (Figma Panel Actions has none); renders correctly in both themes.',
     preview: 'ui-panel-actions',
   },
   {
@@ -437,7 +413,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/Badge.astro',
     props: 'label, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'soft/container fill, 5px radius (literal, no token), Type/Dev/Badge; renders correctly in both themes.',
     preview: 'ui-badge',
   },
   {
@@ -449,7 +424,6 @@ const componentCatalog: ComponentEntry[] = [
     source: 'src/components/ui/Hairline.astro',
     props: 'orientation, ...rest',
     usedOn: ['Not yet adopted — Stage 1 primitive'],
-    checklist: 'sys.color.outline fill (binding, not the description’s outline-variant); renders correctly in both themes.',
     preview: 'ui-hairline',
   },
 ];
@@ -584,12 +558,18 @@ const layoutRules = [
 ];
 
 const foundationLinks = [
-  { id: 'styles-colors', label: 'Color tokens' },
   { id: 'styles-typography', label: 'Typography' },
   { id: 'styles-spacing', label: 'Spacing' },
   { id: 'styles-layout-rules', label: 'Layout rules' },
-  { id: 'styles-surface-base', label: 'Surface Base' },
 ];
+
+const hiddenSectionIds = new Set([
+  'styles-colors',
+  'styles-surface-base',
+  'styles-pending',
+  'styles-interaction',
+  'patterns',
+]);
 
 const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).map((category) => ({
   category,
@@ -598,12 +578,14 @@ const catalogByCategory = (Object.keys(categoryLabels) as ComponentCategory[]).m
 }));
 
 /** Match page render order (grouped by category), not raw catalog order. */
-const componentLinks = catalogByCategory.flatMap(({ items }) =>
-  items.map((component) => ({
+const pageBlockLinks = catalogByCategory
+  .filter(({ category }) => category !== 'ui-primitives')
+  .flatMap(({ items }) => items.map((component) => ({ id: component.id, label: component.name })));
+const devComponentLinks =
+  catalogByCategory.find(({ category }) => category === 'ui-primitives')?.items.map((component) => ({
     id: component.id,
     label: component.name,
-  })),
-);
+  })) ?? [];
 
 const catalogSectionLinks = [
   { id: 'styles-intro', label: 'Design system' },
@@ -613,35 +595,41 @@ const catalogSectionLinks = [
     children: foundationLinks,
   },
   {
-    label: 'Components',
+    label: 'Page Blocks',
     children: [
       { id: 'styles-components', label: 'Overview' },
-      ...componentLinks,
+      ...pageBlockLinks,
     ],
   },
   {
-    label: 'Patterns',
-    children: [
-      { id: 'styles-pending', label: 'Legacy patterns' },
-      { id: 'styles-interaction', label: 'Interaction sample' },
-    ],
+    label: 'Dev Components',
+    children: devComponentLinks,
   },
 ];
 
 const savedOutline = normalizeOutline(stylesNav.outline ?? []);
 const hasSavedOutline = savedOutline.length > 0 || ('outlineConfigured' in stylesNav && stylesNav.outlineConfigured === true);
 const outline = hasSavedOutline ? savedOutline : outlineFromNav(catalogSectionLinks);
-const sectionLinks = deriveNavFromOutline(outline);
+const visibleOutline = outline.filter((entry) =>
+  entry.kind === 'group'
+    ? !hiddenSectionIds.has(entry.id) && entry.label !== 'Patterns'
+    : !hiddenSectionIds.has(entry.anchor ?? entry.id),
+).map((entry) =>
+  entry.kind === 'group' && hiddenSectionIds.has(entry.anchor ?? '')
+    ? { ...entry, anchor: undefined }
+    : entry,
+);
+const sectionLinks = deriveNavFromOutline(visibleOutline);
 ---
 
-<Layout title="Design System — Vicente Cruz" serif>
+<Layout title="Design System — Vicente Cruz">
   <div
     class="styles-page"
     data-section-nav-root
     data-section-nav-document="styles"
     data-section-nav-outline-only="true"
     data-section-nav={JSON.stringify(sectionLinks)}
-    data-section-outline={JSON.stringify(outline)}
+    data-section-outline={JSON.stringify(visibleOutline)}
   >
     <Header title="Design System" />
 
@@ -654,58 +642,59 @@ const sectionLinks = deriveNavFromOutline(outline);
 
       <main id="main-content" class="styles-main" data-section-nav-main>
         <section id="styles-intro" class="styles-intro section-block">
-          <p class="intro-copy">
-            This page is the single source of truth for site components, tokens, and signed-off patterns.
-            <strong>Tapico</strong> (<a href="/tapico" class="project-inline-link">/tapico</a>) is the reference
-            case study; <strong>Home</strong>, <strong>Work</strong>, and <strong>Play</strong> define the vetted
-            portfolio grid. Other project routes are legacy Webflow migrations — do not copy their markup when
-            building or porting content.
-          </p>
+          <ProjectBodyText
+            paragraphs={stylesNav.introParagraphs ?? []}
+            documentKey="styles"
+            pathPrefix={['introParagraphs']}
+            spacing="none"
+          />
         </section>
 
-        <section id="styles-colors" class="section-block">
-          <h2>Color tokens</h2>
+        {hiddenSectionIds.has('styles-colors') ? null : (
+          <section id="styles-colors" class="section-block">
+            <h2>Color tokens</h2>
 
-          <h3 class="token-tier-heading">ref &middot; palette</h3>
-          <div class="token-grid">
-            {paletteTokens.map((token) => {
-              const editable = import.meta.env.DEV;
-              return (
+            <h3 class="token-tier-heading">ref &middot; palette</h3>
+            <div class="token-grid">
+              {paletteTokens.map((token) => {
+                const editable = import.meta.env.DEV;
+                return (
+                  <article class="token-card">
+                    {editable ? (
+                      <button
+                        type="button"
+                        class="token-card__swatch"
+                        style={`background:var(${token.name});`}
+                        aria-label={`Edit ${token.name}`}
+                        data-dev-edit-trigger="style-color-token"
+                        data-color-token-name={token.name}
+                        data-color-token-value={token.value}
+                        data-color-token-saved-value={token.value}
+                        disabled
+                      ></button>
+                    ) : (
+                      <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
+                    )}
+                    <p class="meta-label">{token.name}</p>
+                    <p class="meta-values" data-token-value>{token.value}</p>
+                  </article>
+                );
+              })}
+            </div>
+
+            <h3 class="token-tier-heading">sys &middot; roles</h3>
+            <div class="token-grid">
+              {roleTokens.map((token) => (
                 <article class="token-card">
-                  {editable ? (
-                    <button
-                      type="button"
-                      class="token-card__swatch"
-                      style={`background:var(${token.name});`}
-                      aria-label={`Edit ${token.name}`}
-                      data-dev-edit-trigger="style-color-token"
-                      data-color-token-name={token.name}
-                      data-color-token-value={token.value}
-                      data-color-token-saved-value={token.value}
-                      disabled
-                    ></button>
-                  ) : (
-                    <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
-                  )}
+                  <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
                   <p class="meta-label">{token.name}</p>
-                  <p class="meta-values" data-token-value>{token.value}</p>
+                  <p class="meta-values" data-token-value>{token.alias}</p>
+                  <p class="token-note">{token.role}</p>
                 </article>
-              );
-            })}
-          </div>
-
-          <h3 class="token-tier-heading">sys &middot; roles</h3>
-          <div class="token-grid">
-            {roleTokens.map((token) => (
-              <article class="token-card">
-                <div class="token-card__swatch" style={`background:var(${token.name});`}></div>
-                <p class="meta-label">{token.name}</p>
-                <p class="meta-values" data-token-value>{token.alias}</p>
-                <p class="token-note">{token.role}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section id="styles-typography" class="section-block">
           <h2>Typography</h2>
@@ -762,40 +751,51 @@ const sectionLinks = deriveNavFromOutline(outline);
                   <span class="token-name">{rule.name}</span>
                   <span class="token-value">{rule.value}</span>
                 </div>
-                <p class="token-note">{rule.why}</p>
+                <p class="token-note">
+                  {rule.why.split('`').map((part, index) => (index % 2 === 1 ? <code>{part}</code> : part))}
+                </p>
               </article>
             ))}
           </div>
         </section>
 
-        <section id="styles-surface-base" class="section-block">
-          <h2>Surface Base</h2>
-          <div class="component-preview styles-surface-preview">
-            <div class="dev-surface styles-surface-specimen">
-              <span class="meta-label">Surface Base</span>
+        {hiddenSectionIds.has('styles-surface-base') ? null : (
+          <section id="styles-surface-base" class="section-block">
+            <h2>Surface Base</h2>
+            <div class="component-preview styles-surface-preview">
+              <div class="dev-surface styles-surface-specimen">
+                <span class="meta-label">Surface Base</span>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section class="section-block">
           <div id="styles-components" class="section-block">
-            <h2>Component library</h2>
-            <p class="section-note">
-              {componentCatalog.length} signed-off components and patterns across site chrome, portfolio listings,
-              and project pages (vetted on Home/Work/Play + Tapico). Each is built for reuse on future case studies.
-              Cards show a live preview, source file, props, and where it is used today.
-            </p>
+            <h2>Page Blocks</h2>
+            <ProjectBodyText
+              paragraphs={[`${componentCatalog.length} signed-off components and patterns across site chrome, portfolio listings, and project pages (vetted on Home/Work/Play + Tapico). Each is built for reuse on future case studies. Cards show a live preview, source file, props, and where it is used today.`]}
+              spacing="none"
+            />
           </div>
 
           {catalogByCategory.map(({ category, label, items }) => (
             <div class="component-group">
-              <h3 class="component-group__title">{label}</h3>
+              {category === 'ui-primitives' ? (
+                <h2 id="styles-dev-components" class="component-group__title component-group__title--major">
+                  Dev Components
+                </h2>
+              ) : (
+                <h3 class="component-group__title">{label}</h3>
+              )}
               <div class="stack">
                 {items.map((component) => (
                   <article id={component.id} class="component-card section-block">
                     <div class="component-card__head">
                       <h4>{component.name}</h4>
-                      <p>{component.purpose}</p>
+                      <div class="project-body-text">
+                        <p>{component.purpose}</p>
+                      </div>
                     </div>
 
                     <div class="component-meta-grid">
@@ -815,13 +815,9 @@ const sectionLinks = deriveNavFromOutline(outline);
                         <p class="meta-label">Used on</p>
                         <p class="meta-values">{component.usedOn.join(', ')}</p>
                       </div>
-                      <div class="component-meta-grid__full">
-                        <p class="meta-label">QA checklist</p>
-                        <p class="meta-values">{component.checklist}</p>
-                      </div>
                     </div>
 
-                    <div class="component-preview">
+                    <div class:list={['component-preview', { 'component-preview--video': component.preview === 'video' }]}>
                       {component.preview === 'header' && (
                         <p class="preview-note">Rendered at the top of this page.</p>
                       )}
@@ -905,16 +901,11 @@ const sectionLinks = deriveNavFromOutline(outline);
                         <ProjectRedditCommentCarousel items={previewRedditComments} />
                       )}
                       {component.preview === 'video' && (
-                        <>
-                          <ProjectVideo src="sample.mp4" alt="ProjectVideo player preview" spacing="none" />
-                          <p class="preview-note">
-                            JSON shape: <code>type: "video"</code> with <code>src</code>, <code>poster?</code>,{' '}
-                            <code>alt?</code>, <code>autoplay?</code>, <code>aspectRatio?</code>,{' '}
-                            <code>spacing?</code>. Video files live in <code>public/videos/</code> —{' '}
-                            <code>sample.mp4</code> isn't in the repo yet, so this preview shows the player
-                            chrome over a black frame (no video to decode) until one is added.
-                          </p>
-                        </>
+                        <ProjectVideo
+                          src="/images/DJI_20240617_171949_018_video-3.mp4"
+                          alt="New Classic utility knife video demo"
+                          spacing="none"
+                        />
                       )}
                       {component.preview === 'ui-button' && (
                         <div style="background: var(--sys-color-srf); border-radius: var(--radius-control); padding: 1em; display: flex; flex-wrap: wrap; gap: 0.75em;">
@@ -1044,6 +1035,7 @@ const sectionLinks = deriveNavFromOutline(outline);
           ))}
         </section>
 
+        {!hiddenSectionIds.has('styles-pending') && (
         <section id="styles-pending" class="section-block">
           <h2>Legacy patterns</h2>
           <p class="section-note">
@@ -1064,7 +1056,9 @@ const sectionLinks = deriveNavFromOutline(outline);
             ))}
           </div>
         </section>
+        )}
 
+        {!hiddenSectionIds.has('styles-interaction') && (
         <section id="styles-interaction" class="section-block">
           <h2>Interaction sample</h2>
           <article class="rule-card">
@@ -1074,6 +1068,7 @@ const sectionLinks = deriveNavFromOutline(outline);
             </p>
           </article>
         </section>
+        )}
       </main>
     </div>
 
@@ -1085,6 +1080,14 @@ const sectionLinks = deriveNavFromOutline(outline);
 </Layout>
 
 <style>
+  @font-face {
+    font-family: 'Paper Mono';
+    src: url('/fonts/paper-mono/PaperMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+
   .styles-page {
     min-height: 100dvh;
     display: flex;
@@ -1097,6 +1100,11 @@ const sectionLinks = deriveNavFromOutline(outline);
     display: flex;
     flex-direction: column;
     gap: 2.5em;
+  }
+
+  .styles-intro > :global(.project-block--text),
+  #styles-components > :global(.project-block--text) {
+    width: 100%;
   }
 
   .styles-layout {
@@ -1121,12 +1129,15 @@ const sectionLinks = deriveNavFromOutline(outline);
     line-height: 1.1;
   }
 
-  h1 {
-    font-size: clamp(1.9rem, 2.4vw, 2.6rem);
+  h2 {
+    font-weight: var(--text-heading-1-weight);
+    font-size: var(--text-heading-1-size);
+    line-height: var(--text-heading-1-leading);
+    letter-spacing: var(--text-heading-1-tracking);
   }
 
-  h2 {
-    font-size: clamp(1.3rem, 1.7vw, 1.8rem);
+  h1 {
+    font-size: clamp(1.9rem, 2.4vw, 2.6rem);
   }
 
   h3,
@@ -1134,17 +1145,14 @@ const sectionLinks = deriveNavFromOutline(outline);
     font-size: 1.1rem;
   }
 
-  .intro-copy,
-  .section-note {
-    max-width: 62ch;
-    line-height: 1.55;
-    color: color-mix(in srgb, var(--sys-color-on-srf) 85%, transparent);
+  .meta-values {
+    font-family: var(--font-mono);
   }
 
-  .intro-copy code,
-  .meta-values code {
+  .meta-values code,
+  .token-note code {
     font-size: 0.92em;
-    font-family: ui-monospace, monospace;
+    font-family: var(--font-mono);
   }
 
   /* This page prints technical strings — file paths, prop lists, CSS values —
@@ -1155,14 +1163,13 @@ const sectionLinks = deriveNavFromOutline(outline);
      lowers min-content, so the tracks can actually shrink. */
   .meta-values,
   .meta-values code,
-  .intro-copy code,
+  .token-note code,
   .token-value,
   .token-name,
   .token-note,
   .meta-label,
   .section-note,
   .preview-note,
-  .component-card__head p,
   .component-card__head h4,
   .component-group__title {
     overflow-wrap: anywhere;
@@ -1423,7 +1430,7 @@ const sectionLinks = deriveNavFromOutline(outline);
   }
 
   .token-value {
-    font-family: var(--font-serif);
+    font-family: var(--font-mono);
     color: color-mix(in srgb, var(--sys-color-on-srf) 70%, transparent);
   }
 
@@ -1443,10 +1450,19 @@ const sectionLinks = deriveNavFromOutline(outline);
     margin-top: 0.5em;
     padding-top: 0.5em;
     border-top: 1px solid var(--sys-color-outline-variant);
-    font-size: 0.85rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-weight: var(--text-heading-2-weight);
+    font-size: var(--text-heading-2-size);
+    line-height: var(--text-heading-2-leading);
+    letter-spacing: var(--text-heading-2-tracking);
     color: var(--sys-color-on-srf-variant);
+  }
+
+  .component-group__title--major {
+    font-weight: var(--text-heading-1-weight);
+    font-size: var(--text-heading-1-size);
+    line-height: var(--text-heading-1-leading);
+    letter-spacing: var(--text-heading-1-tracking);
+    color: var(--sys-color-on-srf);
   }
 
   .component-group:first-of-type .component-group__title {
@@ -1464,13 +1480,6 @@ const sectionLinks = deriveNavFromOutline(outline);
   .component-card__head h4 {
     font-size: 1.05rem;
     font-weight: 700;
-  }
-
-  .component-card__head p {
-    margin-top: 0.35em;
-    line-height: 1.45;
-    color: color-mix(in srgb, var(--sys-color-on-srf) 82%, transparent);
-    max-width: 56ch;
   }
 
   .component-meta-grid {
@@ -1516,6 +1525,10 @@ const sectionLinks = deriveNavFromOutline(outline);
   .component-preview :global(.project-block) {
     padding-top: 1em;
     padding-bottom: 1em;
+  }
+
+  .component-preview--video :global(.project-block) {
+    padding-bottom: 0;
   }
 
   .component-preview :global(.project-image__img) {
