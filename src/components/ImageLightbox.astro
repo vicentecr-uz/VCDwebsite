@@ -163,6 +163,7 @@ import Button from './ui/Button.astro';
       if ((event.target === dialog || event.target === viewer) && !gestureMoved) dismiss();
     };
     const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
+    const onClose = () => dismiss();
     const onError = () => { error.hidden = false; };
     const onZoomIn = () => { scale = clampImageScale(scale + 0.5); render(); };
     const onZoomOut = () => { scale = clampImageScale(scale - 0.5); if (scale === 1) pan = { x: 0, y: 0 }; render(); };
@@ -221,7 +222,7 @@ import Button from './ui/Button.astro';
     dialog.addEventListener('click', onDialogClick);
     dialog.addEventListener('cancel', onCancel);
     image.addEventListener('error', onError);
-    close.addEventListener('click', dismiss);
+    close.addEventListener('click', onClose);
     zoomIn.addEventListener('click', onZoomIn);
     zoomOut.addEventListener('click', onZoomOut);
     reset.addEventListener('click', resetView);
@@ -231,7 +232,7 @@ import Button from './ui/Button.astro';
     viewer.addEventListener('pointercancel', onPointerUp);
     const onPageHide = () => dismiss(true);
     window.addEventListener('pagehide', onPageHide);
-    window.addEventListener('vcd:dev-mode-change', dismiss);
+    window.addEventListener('vcd:dev-mode-change', onClose);
     render();
 
     return () => {
@@ -242,7 +243,7 @@ import Button from './ui/Button.astro';
       dialog.removeEventListener('click', onDialogClick);
       dialog.removeEventListener('cancel', onCancel);
       image.removeEventListener('error', onError);
-      close.removeEventListener('click', dismiss);
+      close.removeEventListener('click', onClose);
       zoomIn.removeEventListener('click', onZoomIn);
       zoomOut.removeEventListener('click', onZoomOut);
       reset.removeEventListener('click', resetView);
@@ -251,7 +252,7 @@ import Button from './ui/Button.astro';
       viewer.removeEventListener('pointerup', onPointerUp);
       viewer.removeEventListener('pointercancel', onPointerUp);
       window.removeEventListener('pagehide', onPageHide);
-      window.removeEventListener('vcd:dev-mode-change', dismiss);
+      window.removeEventListener('vcd:dev-mode-change', onClose);
     };
   };
 
@@ -275,7 +276,8 @@ import Button from './ui/Button.astro';
   }
   .image-lightbox.is-visible { opacity: 1; }
   :global(html:has(dialog[data-image-lightbox][open])) { overflow: hidden; }
-  .image-lightbox::backdrop { background: color-mix(in srgb, var(--color-bg, Canvas) 58%, transparent); }
+  .image-lightbox::backdrop { background: color-mix(in srgb, var(--color-bg, Canvas) 58%, transparent); opacity: 0; transition: opacity .2s ease; }
+  .image-lightbox.is-visible::backdrop { opacity: 1; }
   .image-lightbox__panel { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; padding: var(--space-unit, 1rem); background: transparent; }
   .image-lightbox__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-unit, 1rem); }
   .image-lightbox__title { margin: 0; font: inherit; }
@@ -283,5 +285,4 @@ import Button from './ui/Button.astro';
   .image-lightbox__viewer { display: grid; place-items: center; min-height: 0; overflow: hidden; touch-action: none; }
   .image-lightbox__image { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; user-select: none; will-change: transform; }
   .image-lightbox__error { margin: 0; }
-  @media (prefers-reduced-motion: reduce) { .image-lightbox__image { transition: none; } }
 </style>
