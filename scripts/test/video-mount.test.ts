@@ -18,10 +18,13 @@ for (const type of ['image', 'imageGrid', 'imageCarousel']) {
     expect(video.playsInline).toBe(true);
     expect(video.hasAttribute('data-project-inline-video')).toBe(true);
     expect(node.querySelector('img')).toBeNull();
-    expect(node.querySelector('[data-dev-edit-trigger="image"]')).not.toBeNull();
+    const editTrigger = node.querySelector('[data-dev-edit-trigger="image"]') as HTMLElement;
+    expect(editTrigger).not.toBeNull();
+    expect(editTrigger.textContent).toBe('Edit video');
     expect(projectImageTier('clip.webm', 'thumb')).toBe('/images/clip.webm');
   });
 }
+
 
 
 for (const type of ['image', 'imageGrid', 'imageCarousel']) {
