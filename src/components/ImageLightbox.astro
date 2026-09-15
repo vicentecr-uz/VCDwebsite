@@ -80,7 +80,8 @@
       const amount = progress();
       armed = amount >= 1 && (gesture === 'drag' || gesture === 'pinch' || nativeGesture || wheelPinch === true);
       image.classList.toggle('is-armed', armed);
-      image.style.transform = `translate3d(${view.x}px, ${view.y}px, 0) rotate(${view.rotation}deg) scale(${view.scale})`;
+      const dismissScale = reducedMotion() ? 1 : 1 - .08 * clamp(amount, 0, 1);
+      image.style.transform = `translate3d(${view.x}px, ${view.y}px, 0) rotate(${view.rotation}deg) scale(${view.scale * dismissScale})`;
       image.style.opacity = String(armed ? .1 : 1 - .3 * clamp(amount, 0, 1));
       image.style.filter = `blur(${reducedMotion() ? 0 : 3 * clamp(amount, 0, 1)}px)`;
     };
