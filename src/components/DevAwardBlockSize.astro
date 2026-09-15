@@ -87,6 +87,7 @@ import awardBlockSize from '../lib/awardBlockSize.json';
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', String(active));
       });
+      if (previewActive) applyPreview();
     };
     const setSaving = (next: boolean) => {
       saving = next;
@@ -124,9 +125,12 @@ import awardBlockSize from '../lib/awardBlockSize.json';
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(values),
+          signal,
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'Could not save award block size.');
+        if (signal.aborted) return;
+        Object.assign(defaults, values);
         status.textContent = `Saved ${payload.path || 'src/lib/awardBlockSize.json'}`;
       } catch (error) {
         status.textContent = error instanceof Error ? error.message : 'Could not save award block size.';
@@ -141,6 +145,11 @@ import awardBlockSize from '../lib/awardBlockSize.json';
       if (event.detail?.panel === overlay) clearPreview();
     }) as EventListener, { signal });
 
+    const visibilityObserver = new MutationObserver(() => {
+      if (overlay.hidden) clearPreview();
+      else applyPreview();
+    });
+    visibilityObserver.observe(overlay, { attributes: true, attributeFilter: ['hidden', 'class'] });
     sync();
     if (new URLSearchParams(window.location.search).get('award-size') === '1') {
       overlay.hidden = false;
@@ -148,6 +157,7 @@ import awardBlockSize from '../lib/awardBlockSize.json';
     }
     cleanup = () => {
       controller.abort();
+      visibilityObserver.disconnect();
       clearPreview();
     };
   };
