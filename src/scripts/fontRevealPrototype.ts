@@ -189,12 +189,12 @@ export function startFontRevealPrototype(): FontRevealPrototype | null {
   let wrapped: WrappedText[] = [];
   let frame = 0;
   let finished = false;
-  const finish = (restoreGlyphs = true) => {
+  const finish = () => {
     if (finished) return;
     finished = true;
     controller.abort();
     if (frame) cancelAnimationFrame(frame);
-    if (restoreGlyphs) unwrap(wrapped);
+    unwrap(wrapped);
     delete root.dataset[rootFlag];
     window.removeEventListener('pagehide', onAbort);
     window.removeEventListener('vcd:dev-mode-change', onDevModeChange);
@@ -225,9 +225,8 @@ export function startFontRevealPrototype(): FontRevealPrototype | null {
       if (controller.signal.aborted || root.classList.contains('is-dev-mode')) return;
       const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
       const currentCaptures = captures.filter((capture) => capture.node.isConnected && capture.node.parentNode === capture.parent && capture.node.data === capture.value && visible(capture.parent));
-      if (!currentCaptures.length || reducedMotion) { finish(false); return; }
+      if (!currentCaptures.length || reducedMotion) { finish(); return; }
       const shuffled: GlyphRecord[] = [];
-      const nextWrapped: WrappedText[] = [];
       let plannedGlyphs = 0;
       for (const capture of currentCaptures) {
         const segments = splitGraphemes(capture.value);
@@ -245,12 +244,11 @@ export function startFontRevealPrototype(): FontRevealPrototype | null {
           shuffled.push({ span, family: capture.family });
         }
         capture.node.parentNode.replaceChild(fragment, capture.node);
-        nextWrapped.push({ original: capture.node, spans });
+        wrapped.push({ original: capture.node, spans });
         plannedGlyphs += segments.length;
       }
-      wrapped = nextWrapped;
       glyphs = shuffleGlyphs(shuffled);
-      if (!glyphs.length) { finish(true); return; }
+      if (!glyphs.length) { finish(); return; }
       root.dataset[rootFlag] = 'running';
       const schedule = scheduleGlyphReveal(glyphs.length);
       const started = performance.now();
@@ -262,7 +260,7 @@ export function startFontRevealPrototype(): FontRevealPrototype | null {
           setFamily(glyphs[revealed].span, glyphs[revealed].family);
           revealed += 1;
         }
-        if (revealed >= glyphs.length || elapsed >= durationMs) finish(true);
+        if (revealed >= glyphs.length || elapsed >= durationMs) finish();
         else frame = requestAnimationFrame(tick);
       };
       frame = requestAnimationFrame(tick);
