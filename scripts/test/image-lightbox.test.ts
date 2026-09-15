@@ -144,6 +144,14 @@ test('pinch stays centred, clamps scale/pan, and release cannot dismiss', () => 
   expect(f.image.style.transform).toContain('scale(4)');
 });
 
+test('off-centre pinch keeps its focal translation on the first zoom step', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,200,400); f.pointer('pointerdown',2,400,400);
+  f.pointer('pointermove',1,190,400); f.pointer('pointermove',2,410,400);
+  expect(f.image.style.transform).toContain('scale(1.1)');
+  expect(Number(/translate3d\(([-\d.e+]+)px/.exec(f.image.style.transform)![1])).not.toBe(0);
+});
+
 test('cancelled pointer and two-finger tap do not dismiss; next plain tap can dismiss', () => {
   const f = fixture(); f.click();
   f.pointer('pointerdown', 1); f.pointer('pointerdown', 2);
@@ -307,6 +315,48 @@ test('input mode select keeps native pointer, keyboard and wheel interaction', (
   select.dispatchEvent(wheelEvent);
   expect(wheelEvent.defaultPrevented).toBe(false);
   expect(f.image.style.transform).toContain('scale(1)');
+});
+
+test('trackpad swipe from fit dismisses only after the idle boundary', () => {
+  const f=fixture(); const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true })); f.click();
+  f.wheel(100); f.wheel(100);
+  expect(Number(f.image.style.opacity)).toBe(.1);
+  expect(f.dialog.open).toBe(true);
+  f.tick(159); expect(f.dialog.open).toBe(true);
+  f.tick(1); expect(f.dialog.open).toBe(true);
+  f.tick(149); expect(f.dialog.open).toBe(true);
+  f.tick(1); expect(f.dialog.open).toBe(false);
+});
+
+test('trackpad swipe below threshold springs home at idle', () => {
+  const f=fixture(); const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true })); f.click();
+  f.wheel(40); f.tick(160); f.settleSpring();
+  expect(f.dialog.open).toBe(true);
+  expect(f.image.style.transform).toContain('translate3d(0px, 0px, 0)');
+});
+
+test('trackpad swipe reverses before idle and does not dismiss', () => {
+  const f=fixture(); const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true })); f.click();
+  f.wheel(100); f.wheel(-80);
+  expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);
+  f.tick(160); f.settleSpring(); expect(f.dialog.open).toBe(true);
+});
+
+test('trackpad pan started zoomed cannot dismiss after returning to fit in one burst', () => {
+  const f=fixture(); const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true })); f.click(); f.key('+');
+  f.wheel(100, true); f.wheel(100); f.tick(160); f.settleSpring();
+  expect(f.dialog.open).toBe(true);
+});
+
+test('zoomed trackpad pan never dismisses', () => {
+  const f=fixture(); const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true })); f.click(); f.key('+');
+  f.wheel(300); f.tick(160); f.settleSpring();
+  expect(f.dialog.open).toBe(true);
 });
 
 test('auto wheel mode stays locked for one burst and resets after inactivity', () => {
