@@ -29,6 +29,7 @@
     let velocity = fit();
     let lastSample = 0;
     let opener: HTMLImageElement | null = null;
+    let restoreKeyboardFocus = false;
     let gesture: Gesture = null;
     let feedback: 'drag' | 'pinch' | null = null;
     let moved = false;
@@ -128,7 +129,11 @@
       error.hidden = true;
       reset();
       const target = opener; opener = null;
-      if (target?.isConnected) target.focus({ preventScroll: true });
+      if (target?.isConnected) {
+        target.focus({ preventScroll: true });
+        // Pointer dismissal must not leave a clipped focus outline on a carousel image.
+        if (!restoreKeyboardFocus) target.blur();
+      }
     };
     const dismiss = (immediate = false) => {
       if (!dialog.open) return;
@@ -141,7 +146,7 @@
       if (immediate) { finishDismiss(); return; }
       closeTimer = window.setTimeout(() => { if (session === closingSession) finishDismiss(); }, 150);
     };
-    const open = (target: HTMLImageElement) => {
+    const open = (target: HTMLImageElement, keyboard = false) => {
       if (!target.dataset.imageOriginal || document.documentElement.classList.contains('is-dev-mode') || !dialog.isConnected || typeof dialog.showModal !== 'function') return;
       if (closeTimer !== null) window.clearTimeout(closeTimer);
       closeTimer = null;
@@ -149,6 +154,7 @@
       cancelAnimationFrame(revealFrame);
       reset(); moved = false; nativeUntil = 0;
       opener = target;
+      restoreKeyboardFocus = keyboard;
       image.style.removeProperty('transition');
       image.style.backgroundColor = getComputedStyle(target).getPropertyValue('--project-image-background').trim() || 'transparent';
       image.alt = target.alt; image.src = target.dataset.imageOriginal;
@@ -176,7 +182,7 @@
     const onDocumentKey = (event: KeyboardEvent) => {
       if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
       const target = eligibleImage(event);
-      if (target && target === event.target && !document.documentElement.classList.contains('is-dev-mode')) { event.preventDefault(); open(target); }
+      if (target && target === event.target && !document.documentElement.classList.contains('is-dev-mode')) { event.preventDefault(); open(target, true); }
     };
     const onDialogClick = (event: MouseEvent) => {
       if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
@@ -193,6 +199,7 @@
     };
     const onKey = (event: KeyboardEvent) => {
       if (!dialog.open || closeTimer !== null || event.defaultPrevented) return;
+      restoreKeyboardFocus = true;
       viewer.setAttribute('data-keyboard-focus', '');
       if (event.key === 'Escape') { event.preventDefault(); dismiss(); return; }
       if (event.key === '0') { event.preventDefault(); reset(); return; }

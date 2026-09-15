@@ -342,3 +342,13 @@ test('touch rotation snaps back to upright when fingers return inside the snap z
   expect(f.image.style.transform).toContain('rotate(0deg)');
   expect(f.dialog.open).toBe(true);
 });
+
+test('pointer dismissal clears the returned image focus, while keyboard dismissal preserves it', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointerup',1,400,400);
+  f.click(f.viewer); f.tick(150);
+  expect(f.dialog.open).toBe(false);
+  expect(f.document.activeElement).not.toBe(f.original);
+  f.click(); f.key('Escape'); f.tick(150);
+  expect(f.document.activeElement).toBe(f.original);
+});
