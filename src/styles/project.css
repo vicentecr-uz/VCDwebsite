@@ -728,7 +728,7 @@ media-volume-range:not(:defined) { display: none; }
   overflow-x: auto;
   overflow-y: hidden;
   scroll-snap-type: x mandatory;
-  overscroll-behavior-x: contain;
+  overscroll-behavior-x: none;
   /*
     Leave touch-action at auto so a vertical finger swipe can scroll the page.
     pan-x locked the gesture to the carousel and forced users to start off-image
@@ -743,6 +743,7 @@ media-volume-range:not(:defined) { display: none; }
   */
   height: auto;
   flex-shrink: 0;
+  translate: var(--project-carousel-rubberband-x, 0px) var(--project-carousel-rubberband-y, 0px);
 }
 
 /* Pin-to-tallest: shorter slides sit in the leftover space on both sides. */
@@ -810,6 +811,14 @@ media-volume-range:not(:defined) { display: none; }
   cursor: grabbing;
 }
 
+.project-image-carousel__track.is-rubberband-settling {
+  transition: translate var(--project-carousel-rubberband-duration, 260ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.project-image-carousel__track.is-dragging {
+  transition: none;
+}
+
 .project-image-carousel__slide[data-carousel-parked='true'],
 .project-image-carousel__dot[data-carousel-parked='true'],
 .project-image-carousel__caption[data-carousel-parked='true'] {
@@ -821,11 +830,6 @@ media-volume-range:not(:defined) { display: none; }
   align-self: flex-start;
   scroll-snap-align: start;
   scroll-snap-stop: always;
-  translate: var(--project-carousel-rubberband-x, 0px) var(--project-carousel-rubberband-y, 0px);
-}
-
-.project-image-carousel__track.is-rubberband-settling .project-image-carousel__slide {
-  transition: translate var(--project-carousel-rubberband-duration, 260ms) cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .project-image-carousel__track.is-dragging .project-image-carousel__slide {
@@ -858,7 +862,7 @@ media-volume-range:not(:defined) { display: none; }
   overflow-x: hidden;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
-  overscroll-behavior-y: contain;
+  overscroll-behavior-y: none;
   overscroll-behavior-x: auto;
   /* Y-scrollport still needs an explicit bound. */
   height: var(--project-carousel-track-size, auto);
