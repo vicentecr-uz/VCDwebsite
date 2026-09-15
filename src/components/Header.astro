@@ -386,6 +386,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         if (updateFrame !== null) {
           cancelAnimationFrame(updateFrame);
           updateFrame = null;
+          ticking = false;
         }
         if (offscreenTimer !== null) {
           clearTimeout(offscreenTimer);
@@ -465,6 +466,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const update = () => {
       updateFrame = null;
       const y = window.scrollY;
+      document.documentElement.classList.toggle('is-page-top', y <= 8);
       if (window.innerWidth <= 767) {
         syncMobileHeaderMode();
         lastY = y;
