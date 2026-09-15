@@ -2,6 +2,7 @@
   <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="0" role="group" aria-label="Image viewer" aria-keyshortcuts="Escape + - 0 ArrowUp ArrowDown ArrowLeft ArrowRight">
     <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
     <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
+    <label class="image-lightbox__input-mode"> <span class="sr-only">Input mode</span><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label>
   </div>
 </dialog>
 
@@ -12,9 +13,10 @@
     const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]');
     const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]');
     const error = dialog.querySelector<HTMLElement>('[data-image-lightbox-error]');
+    const inputModeSelect = viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]');
     if (!viewer || !image || !error) return () => {};
     type View = { x: number; y: number; scale: number; rotation: number };
-    type Gesture = 'drag' | 'pan' | 'pinch' | 'blocked' | null;
+    type Gesture = 'drag' | 'pan' | 'pinch' | 'rotate' | 'blocked' | null;
     const fit = (): View => ({ x: 0, y: 0, scale: 1, rotation: 0 });
     const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
     const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
@@ -42,10 +44,19 @@
     let startDistance = 1;
     let startAngle = 0;
     let rotationTravel = 0;
+    let lastPointer: Point | null = null;
+    let nativeZoomPoint: Point | null = null;
     const pointers = new Map<number, Point>();
     let nativeGesture = false;
     let nativeUntil = 0;
     let wheelPinch: boolean | null = null;
+    type InputMode = 'auto' | 'mouse' | 'trackpad';
+    const inputModeStorageKey = 'vcd:image-lightbox-input-mode';
+    const validInputMode = (value: string | null): InputMode => value === 'mouse' || value === 'trackpad' ? value : 'auto';
+    let inputMode: InputMode = 'auto';
+    try { inputMode = validInputMode(localStorage.getItem(inputModeStorageKey)); } catch {}
+    if (inputModeSelect) inputModeSelect.value = inputMode;
+    let wheelInputMode: 'mouse' | 'trackpad' | null = null;
     let wheelTimer: number | null = null;
     let closeTimer: number | null = null;
     let revealFrame = 0;
@@ -122,6 +133,7 @@
       if (wheelTimer !== null) window.clearTimeout(wheelTimer);
       wheelTimer = null;
       wheelPinch = null;
+      wheelInputMode = null;
     };
     const releasePointers = () => {
       const ids = [...pointers.keys()];
@@ -131,7 +143,7 @@
     };
     const reset = () => {
       stopSpring(); clearWheel(); releasePointers();
-      view = fit(); gesture = null; feedback = null; nativeGesture = false; pointerRotationTarget = null;
+      view = fit(); gesture = null; feedback = null; nativeGesture = false; nativeZoomPoint = null; pointerRotationTarget = null;
       render();
     };
     const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
@@ -252,15 +264,19 @@
       const step = steps[event.key];
       if (step && view.scale > 1) { event.preventDefault(); view.x += step.x; view.y += step.y; clampPan(); render(); }
     };
-    const pointFor = (event: PointerEvent): Point => ({ x: event.clientX, y: event.clientY });
+    const pointFor = (event: { clientX?: number; clientY?: number }): Point => {
+      if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) return { x: event.clientX as number, y: event.clientY as number };
+      return lastPointer ?? centre();
+    };
     const onPointerDown = (event: PointerEvent) => {
       if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture) return;
       stopSpring(); clearWheel(); pointerRotationTarget = null;
       viewer.removeAttribute('data-keyboard-focus');
       viewer.classList.add('is-dragging');
+      lastPointer = pointFor(event);
       if (!pointers.size) {
         moved = false; start = { ...view }; startPoint = pointFor(event);
-        gesture = view.scale <= 1 ? 'drag' : 'pan'; feedback = gesture === 'drag' ? 'drag' : null;
+        gesture = event.altKey ? 'rotate' : view.scale <= 1 ? 'drag' : 'pan'; feedback = gesture === 'drag' ? 'drag' : null;
       } else {
         moved = true;
         if (gesture === 'drag' && distance(view,start) > 3) { view = { ...fit(), rotation: start.rotation }; render(); }
@@ -278,6 +294,7 @@
       event.preventDefault();
     };
     const onPointerMove = (event: PointerEvent) => {
+      lastPointer = pointFor(event);
       if (!pointers.has(event.pointerId) || closeTimer !== null) return;
       const previous = { ...view };
       pointers.set(event.pointerId, pointFor(event));
@@ -299,6 +316,8 @@
         view.y = start.y + event.clientY - startPoint.y;
         if (gesture === 'drag') view.rotation = start.rotation + (reducedMotion() ? 0 : clamp(view.x / threshold() * 12, -12, 12));
         else clampPan();
+      } else if (gesture === 'rotate') {
+        if (!reducedMotion()) updateRotation(start.rotation + (event.clientX - startPoint.x) * .5);
       }
       moved ||= pointers.size > 1 || distance(startPoint,pointFor(event)) > 3;
       const now = performance.now();
@@ -324,6 +343,13 @@
         else render();
       }
     };
+    const finishRotation = () => {
+      feedback = null;
+      const upright = uprightRotation(rawRotation);
+      const rotation = Math.abs(rawRotation - upright) <= 20 ? upright : rawRotation;
+      velocity.x = 0; velocity.y = 0; velocity.scale = 0;
+      if (view.rotation !== rotation) springHome({ ...view, rotation }); else render();
+    };
     const onPointerUp = (event: PointerEvent) => {
       if (!pointers.has(event.pointerId)) return;
       const cancelled = event.type !== 'pointerup';
@@ -338,6 +364,8 @@
         start = { ...view }; startPoint = [...pointers.values()][0] || {x:0,y:0};
       } else if (!pointers.size && ending === 'drag') {
         if (!cancelled && armed) dismiss(); else springHome({ ...fit(), rotation: start.rotation });
+      } else if (!pointers.size && ending === 'rotate') {
+        finishRotation();
       }
       if (!pointers.size) {
         if (pointerRotationTarget !== null && closeTimer === null) {
@@ -353,22 +381,39 @@
       const pinch = wheelPinch; clearWheel();
       if (pinch) finishPinch(false);
     };
+    const detectWheelMode = (event: WheelEvent): 'mouse' | 'trackpad' => {
+      if (event.deltaMode !== 0 || event.deltaX !== 0 || !Number.isInteger(event.deltaY) || Math.abs(event.deltaY) < 40) return 'trackpad';
+      return 'mouse';
+    };
     const onWheel = (event: WheelEvent) => {
       if (!dialog.open || closeTimer !== null) return;
       event.preventDefault();
-      if (pointers.size || nativeGesture || (event.ctrlKey && performance.now() < nativeUntil)) return;
+      const pinch = event.ctrlKey || event.metaKey;
+      if (pointers.size || nativeGesture || (pinch && performance.now() < nativeUntil)) return;
       stopSpring(); moved = true;
-      if (wheelPinch !== event.ctrlKey) {
-        clearWheel(); wheelPinch = event.ctrlKey;
-        allowUnderzoom = event.ctrlKey && view.scale <= 1;
-        feedback = event.ctrlKey ? 'pinch' : null;
+      if (!wheelInputMode) wheelInputMode = pinch ? 'trackpad' : inputMode === 'auto' ? detectWheelMode(event) : inputMode;
+      if (wheelPinch !== pinch) {
+        wheelPinch = pinch;
+        allowUnderzoom = pinch && view.scale <= 1;
+        feedback = pinch ? 'pinch' : null;
         beginRotation();
       }
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewer.clientHeight : 1;
       const delta = clamp(event.deltaY * units, -100, 100);
-      zoom(view.scale * Math.exp(-delta * (event.ctrlKey ? .005 : .002)), {x:event.clientX,y:event.clientY}, allowUnderzoom ? .65 : 1);
+      if (pinch || wheelInputMode === 'mouse') {
+        zoom(view.scale * Math.exp(-delta * (pinch ? .005 : .002)), pointFor(event), allowUnderzoom ? .65 : 1);
+      } else {
+        view.x -= (event.deltaX || 0) * units;
+        view.y -= event.deltaY * units;
+        clampPan(); render();
+      }
       if (wheelTimer !== null) window.clearTimeout(wheelTimer);
       wheelTimer = window.setTimeout(finishWheel,160);
+    };
+    const onInputModeChange = () => {
+      inputMode = validInputMode(inputModeSelect?.value ?? 'auto');
+      try { localStorage.setItem(inputModeStorageKey, inputMode); } catch {}
+      clearWheel(); feedback = null; allowUnderzoom = false;
     };
     type NativeGesture = Event & {scale?: number; rotation?: number; clientX?: number; clientY?: number};
     const onGestureStart = (event: NativeGesture) => {
@@ -377,6 +422,7 @@
       if (pointers.size) return;
       stopSpring(); clearWheel(); nativeGesture = true; moved = true;
       start = {...view}; allowUnderzoom = view.scale <= 1; feedback = 'pinch';
+      nativeZoomPoint = pointFor(event);
       beginRotation();
     };
     const onGestureChange = (event: NativeGesture) => {
@@ -386,13 +432,14 @@
       const ratio = event.scale ?? 1;
       if (!Number.isFinite(ratio) || ratio <= 0) return;
       if (!reducedMotion()) updateRotation(start.rotation + (event.rotation ?? 0));
-      zoom(start.scale * ratio, centre(), allowUnderzoom ? .65 : 1);
+      zoom(start.scale * ratio, nativeZoomPoint ?? pointFor(event), allowUnderzoom ? .65 : 1);
     };
     const onGestureEnd = (event: Event) => {
       if (!dialog.open) return;
       event.preventDefault();
       if (!nativeGesture) return;
       nativeGesture = false; nativeUntil = performance.now()+250;
+      nativeZoomPoint = null;
       finishPinch(false);
     };
     const onResize = () => { if (!dialog.open || closeTimer !== null) return; if (!feedback) clampPan(); render(); };
@@ -413,6 +460,7 @@
     viewer.addEventListener('gesturestart',onGestureStart,{passive:false});
     viewer.addEventListener('gesturechange',onGestureChange,{passive:false});
     viewer.addEventListener('gestureend',onGestureEnd,{passive:false});
+    inputModeSelect?.addEventListener('change', onInputModeChange);
     window.addEventListener('resize',onResize);
     window.addEventListener('pagehide',onPageHide);
     window.addEventListener('vcd:dev-mode-change',onPageHide);
@@ -436,6 +484,7 @@
       viewer.removeEventListener('gesturestart',onGestureStart);
       viewer.removeEventListener('gesturechange',onGestureChange);
       viewer.removeEventListener('gestureend',onGestureEnd);
+      inputModeSelect?.removeEventListener('change', onInputModeChange);
       window.removeEventListener('resize',onResize);
       window.removeEventListener('pagehide',onPageHide);
       window.removeEventListener('vcd:dev-mode-change',onPageHide);
@@ -451,12 +500,13 @@
   :global(html:has(dialog[data-image-lightbox][open])) { overflow: hidden; }
   .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-backdrop-opacity, 90%), transparent); opacity: 0; transition: opacity 150ms ease; }
   .image-lightbox.is-visible::backdrop { opacity: 1; }
-  .image-lightbox__viewer { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; box-sizing: border-box; width: 100%; height: 100%; min-height: 0; padding: var(--space-unit, 1rem); overflow: hidden; touch-action: none; outline: 0; }
+  .image-lightbox__viewer { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; box-sizing: border-box; width: 100%; height: 100%; min-height: 0; padding: calc(var(--vh-safe, 1svh) * 10) 10vw; overflow: hidden; touch-action: none; outline: 0; }
   .image-lightbox__viewer:focus { outline: 0; }
   .image-lightbox__viewer[data-keyboard-focus] { outline: 1px solid color-mix(in srgb, currentColor 35%, transparent); outline-offset: -1rem; }
-  .image-lightbox__image { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(var(--vh-safe, 1svh) * 100 - var(--space-unit, 1rem) * 2); object-fit: contain; transform-origin: center; user-select: none; will-change: transform; cursor: grab; }
+  .image-lightbox__image { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(var(--vh-safe, 1svh) * 80); object-fit: contain; transform-origin: center; user-select: none; will-change: transform; cursor: grab; }
   .image-lightbox__image.is-armed, .image-lightbox__image.is-settling { transition: opacity 150ms ease; }
   .image-lightbox__viewer.is-dragging, .image-lightbox__viewer.is-dragging .image-lightbox__image { cursor: grabbing; }
   .image-lightbox__error { position: absolute; margin: 0; }
+  .image-lightbox__input-mode { position: absolute; right: max(1rem, 10vw); bottom: max(1rem, calc(var(--vh-safe, 1svh) * 10)); }
   @media (max-width: 40em) { .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); } }
 </style>
