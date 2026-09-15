@@ -1,0 +1,287 @@
+---
+import Button from './ui/Button.astro';
+---
+
+<dialog class="image-lightbox" data-image-lightbox aria-labelledby="image-lightbox-title">
+  <div class="image-lightbox__panel">
+    <header class="image-lightbox__header">
+      <h2 id="image-lightbox-title" class="image-lightbox__title">Image</h2>
+      <div class="image-lightbox__controls">
+        <Button label="Zoom out" emphasis="ghost" data-image-lightbox-zoom-out />
+        <Button label="Reset zoom" emphasis="ghost" data-image-lightbox-reset />
+        <Button label="Zoom in" emphasis="ghost" data-image-lightbox-zoom-in />
+        <Button label="Close" emphasis="ghost" data-image-lightbox-close />
+      </div>
+    </header>
+    <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="-1">
+      <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
+      <p class="image-lightbox__error" data-image-lightbox-error hidden>Image could not be loaded.</p>
+    </div>
+  </div>
+</dialog>
+
+<script>
+  import {
+    clampImageScale,
+    distance,
+    midpoint,
+    panForPinch,
+    panForPointer,
+    pinchScale,
+    type Point,
+  } from '../lib/imageLightbox';
+
+  const bindImageLightbox = (dialog: HTMLDialogElement) => {
+    const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]');
+    const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]');
+    const error = dialog.querySelector<HTMLElement>('[data-image-lightbox-error]');
+    const zoomIn = dialog.querySelector<HTMLButtonElement>('[data-image-lightbox-zoom-in]');
+    const zoomOut = dialog.querySelector<HTMLButtonElement>('[data-image-lightbox-zoom-out]');
+    const reset = dialog.querySelector<HTMLButtonElement>('[data-image-lightbox-reset]');
+    const close = dialog.querySelector<HTMLButtonElement>('[data-image-lightbox-close]');
+    if (!viewer || !image || !error || !zoomIn || !zoomOut || !reset || !close) return () => {};
+
+    let opener: HTMLElement | null = null;
+    let scale = 1;
+    let pan: Point = { x: 0, y: 0 };
+    const pointers = new Map<number, Point>();
+    let pinchStartDistance = 0;
+    let pinchStartScale = 1;
+    let pinchStartMidpoint: Point = { x: 0, y: 0 };
+    let pinchStartPan: Point = { x: 0, y: 0 };
+    let singlePointerStart: Point | null = null;
+    let singlePanStart: Point = { x: 0, y: 0 };
+    let gestureMoved = false;
+    let openerObserver: MutationObserver | null = null;
+    let closeTimer: number | null = null;
+    let session = 0;
+
+    const clampPan = (next: Point): Point => {
+      const maxX = Math.max(0, ((image.offsetWidth * scale) - viewer.clientWidth) / 2);
+      const maxY = Math.max(0, ((image.offsetHeight * scale) - viewer.clientHeight) / 2);
+      return {
+        x: Math.min(maxX, Math.max(-maxX, next.x)),
+        y: Math.min(maxY, Math.max(-maxY, next.y)),
+      };
+    };
+
+    const render = () => {
+      pan = clampPan(pan);
+      image.style.transform = `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`;
+      zoomIn.disabled = scale >= 4;
+      zoomOut.disabled = scale <= 1;
+      reset.disabled = scale === 1 && pan.x === 0 && pan.y === 0;
+    };
+
+    const resetView = () => {
+      scale = 1;
+      pan = { x: 0, y: 0 };
+      render();
+    };
+
+    const finishDismiss = () => {
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      closeTimer = null;
+      if (dialog.open) dialog.close();
+      openerObserver?.disconnect();
+      pointers.clear();
+      image.removeAttribute('src');
+      image.alt = '';
+      error.hidden = true;
+      resetView();
+      const target = opener;
+      opener = null;
+      if (target?.isConnected) target.focus({ preventScroll: true });
+    };
+
+    const dismiss = (immediate = false) => {
+      if (!dialog.open) return;
+      const currentSession = ++session;
+      dialog.classList.remove('is-visible');
+      if (immediate) {
+        finishDismiss();
+        return;
+      }
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      closeTimer = window.setTimeout(() => {
+        if (currentSession === session) finishDismiss();
+      }, 200);
+    };
+
+    const open = (target: HTMLImageElement) => {
+      const source = target.dataset.imageOriginal;
+      if (!source || document.documentElement.classList.contains('is-dev-mode')) return;
+      if (typeof dialog.showModal !== 'function') return;
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      closeTimer = null;
+      session += 1;
+      opener = target;
+      image.alt = target.alt;
+      image.src = source;
+      error.hidden = true;
+      resetView();
+      if (!dialog.open) dialog.showModal();
+      openerObserver?.disconnect();
+      openerObserver = new MutationObserver(() => {
+        if (opener && !opener.isConnected) dismiss();
+      });
+      openerObserver.observe(document.body, { childList: true, subtree: true });
+      const openSession = session;
+      requestAnimationFrame(() => {
+        if (dialog.open && openSession === session) dialog.classList.add('is-visible');
+      });
+      viewer.focus({ preventScroll: true });
+    };
+
+    const eligibleImage = (event: Event): HTMLImageElement | null => {
+      const target = event.target instanceof Element
+        ? event.target.closest<HTMLImageElement>('img[data-image-original]')
+        : null;
+      if (!target || target.closest('a,button,input,textarea,select,[contenteditable="true"], [aria-hidden="true"], [data-preview-reveal]')) return null;
+      if (target.closest('[data-crop-image], .dev-crop-stage, .dev-crop-stage-host, [data-home-intro-surface]')) return null;
+      if (target.closest('[data-carousel-track].is-dragging')) return null;
+      return target;
+    };
+
+    const onDocumentClick = (event: MouseEvent) => {
+      if (event.defaultPrevented) return;
+      const target = eligibleImage(event);
+      if (target) open(target);
+    };
+
+    const onDocumentKeydown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
+      const target = event.target instanceof Element
+        ? event.target.closest<HTMLImageElement>('img[data-image-original]')
+        : null;
+      if (!target || target !== event.target) return;
+      event.preventDefault();
+      if (eligibleImage(event)) open(target);
+    };
+
+    const onDialogClick = (event: MouseEvent) => {
+      if ((event.target === dialog || event.target === viewer) && !gestureMoved) dismiss();
+    };
+    const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
+    const onError = () => { error.hidden = false; };
+    const onZoomIn = () => { scale = clampImageScale(scale + 0.5); render(); };
+    const onZoomOut = () => { scale = clampImageScale(scale - 0.5); if (scale === 1) pan = { x: 0, y: 0 }; render(); };
+
+    const pointFor = (event: PointerEvent): Point => ({ x: event.clientX, y: event.clientY });
+    const onPointerDown = (event: PointerEvent) => {
+      if (!dialog.open) return;
+      gestureMoved = false;
+      viewer.setPointerCapture?.(event.pointerId);
+      const point = pointFor(event);
+      pointers.set(event.pointerId, point);
+      if (pointers.size === 1) {
+        singlePointerStart = point;
+        singlePanStart = { ...pan };
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchStartDistance = distance(a, b);
+        pinchStartScale = scale;
+        pinchStartMidpoint = midpoint(a, b);
+        pinchStartPan = { ...pan };
+      }
+      event.preventDefault();
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, pointFor(event));
+      if (pointers.size >= 2) {
+        const [a, b] = [...pointers.values()];
+        const nextScale = pinchScale(pinchStartScale, pinchStartDistance, distance(a, b));
+        const nextMidpoint = midpoint(a, b);
+        const rect = viewer.getBoundingClientRect();
+        const centre = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+        pan = panForPinch(pinchStartPan, pinchStartMidpoint, nextMidpoint, pinchStartScale, nextScale, centre);
+        scale = nextScale;
+      } else if (scale > 1 && singlePointerStart) {
+        pan = panForPointer(singlePanStart, singlePointerStart, pointFor(event));
+      }
+      gestureMoved = true;
+      render();
+      event.preventDefault();
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      pointers.delete(event.pointerId);
+      if (pointers.size === 1) {
+        const [remaining] = [...pointers.values()];
+        singlePointerStart = remaining;
+        singlePanStart = { ...pan };
+      } else if (!pointers.size) {
+        singlePointerStart = null;
+      }
+      event.preventDefault();
+    };
+
+    document.addEventListener('click', onDocumentClick);
+    document.addEventListener('keydown', onDocumentKeydown);
+    dialog.addEventListener('click', onDialogClick);
+    dialog.addEventListener('cancel', onCancel);
+    image.addEventListener('error', onError);
+    close.addEventListener('click', dismiss);
+    zoomIn.addEventListener('click', onZoomIn);
+    zoomOut.addEventListener('click', onZoomOut);
+    reset.addEventListener('click', resetView);
+    viewer.addEventListener('pointerdown', onPointerDown);
+    viewer.addEventListener('pointermove', onPointerMove);
+    viewer.addEventListener('pointerup', onPointerUp);
+    viewer.addEventListener('pointercancel', onPointerUp);
+    const onPageHide = () => dismiss(true);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('vcd:dev-mode-change', dismiss);
+    render();
+
+    return () => {
+      dismiss(true);
+      openerObserver?.disconnect();
+      document.removeEventListener('click', onDocumentClick);
+      document.removeEventListener('keydown', onDocumentKeydown);
+      dialog.removeEventListener('click', onDialogClick);
+      dialog.removeEventListener('cancel', onCancel);
+      image.removeEventListener('error', onError);
+      close.removeEventListener('click', dismiss);
+      zoomIn.removeEventListener('click', onZoomIn);
+      zoomOut.removeEventListener('click', onZoomOut);
+      reset.removeEventListener('click', resetView);
+      viewer.removeEventListener('pointerdown', onPointerDown);
+      viewer.removeEventListener('pointermove', onPointerMove);
+      viewer.removeEventListener('pointerup', onPointerUp);
+      viewer.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('vcd:dev-mode-change', dismiss);
+    };
+  };
+
+  const disposers = [...document.querySelectorAll<HTMLDialogElement>('[data-image-lightbox]')].map(bindImageLightbox);
+  import.meta.hot?.dispose(() => disposers.forEach((dispose) => dispose()));
+</script>
+
+<style>
+  .image-lightbox {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    max-width: none;
+    height: calc(var(--vh-safe, 1svh) * 100);
+    max-height: none;
+    color: var(--color-ink, CanvasText);
+    background: transparent;
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+  .image-lightbox.is-visible { opacity: 1; }
+  :global(html:has(dialog[data-image-lightbox][open])) { overflow: hidden; }
+  .image-lightbox::backdrop { background: color-mix(in srgb, var(--color-bg, Canvas) 58%, transparent); }
+  .image-lightbox__panel { display: grid; grid-template-rows: auto minmax(0, 1fr); height: 100%; padding: var(--space-unit, 1rem); background: transparent; }
+  .image-lightbox__header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-unit, 1rem); }
+  .image-lightbox__title { margin: 0; font: inherit; }
+  .image-lightbox__controls { display: flex; flex-wrap: wrap; gap: calc(var(--space-unit, 1rem) * .5); }
+  .image-lightbox__viewer { display: grid; place-items: center; min-height: 0; overflow: hidden; touch-action: none; }
+  .image-lightbox__image { max-width: 100%; max-height: 100%; object-fit: contain; transform-origin: center; user-select: none; will-change: transform; }
+  .image-lightbox__error { margin: 0; }
+  @media (prefers-reduced-motion: reduce) { .image-lightbox__image { transition: none; } }
+</style>
