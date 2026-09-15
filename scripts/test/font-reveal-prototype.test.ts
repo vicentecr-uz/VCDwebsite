@@ -85,7 +85,9 @@ test('restores original text and removes state on abort during the animation', a
     const original = fixture.first;
     const prototype = startFontRevealPrototype()!;
     await settle();
+    expect(fixture.text.querySelectorAll('span')).toHaveLength(5);
     prototype.abort();
+    expect(fixture.text.childNodes[1]).toBe(fixture.second);
     expect(fixture.text.textContent).toBe(`${'a'.repeat(1300)}hello`);
     expect(fixture.text.childNodes[0]).toBe(original);
     expect(fixture.dom.document.documentElement.dataset.fontRevealPrototype).toBeUndefined();
@@ -117,4 +119,16 @@ test('stalled fonts can be aborted without leaving listeners or fallback state',
   } finally {
     restoreGlobals();
   }
+});
+
+ test('reduced motion leaves original text nodes and no temporary glyphs', async () => {
+  const fixture = setupDom(async () => [{}], 'hold');
+  try {
+    Object.assign(globalThis, { matchMedia: () => ({ matches: true }) });
+    startFontRevealPrototype();
+    await settle();
+    expect(fixture.text.childNodes[1]).toBe(fixture.second);
+    expect(fixture.text.querySelectorAll('span')).toHaveLength(0);
+    expect(fixture.dom.document.documentElement.dataset.fontRevealPrototype).toBeUndefined();
+  } finally { restoreGlobals(); }
 });
