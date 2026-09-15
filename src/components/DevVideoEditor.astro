@@ -60,8 +60,8 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
 <style>
   .dev-video-editor { display: grid; gap: var(--space-unit); }
   .dev-video-editor__settings { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-unit); }
-  .dev-video-editor__preview { display: grid; place-items: center; min-height: 10em; overflow: hidden; background: var(--sys-color-srf-2); }
-  .dev-video-editor__preview video { display: block; width: 100%; max-height: 18em; object-fit: contain; }
+  .dev-video-editor__preview { display: grid; place-items: center; overflow: hidden; background: var(--sys-color-srf-2); }
+  .dev-video-editor__preview video { display: block; width: 100%; object-fit: contain; touch-action: none; }
   .dev-video-editor__range { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
   .dev-video-editor__status { min-height: 1.4em; margin: 0; }
 </style>
@@ -71,7 +71,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
   import { projectImage } from '../lib/images';
   import { isAcceptedVideoFile, isVideoSrc } from '../lib/imageUpload.mjs';
   import { resolveVideoAudio, type ResolvedVideoAudio } from '../lib/videoAudio';
-  import { normalizeImageVariants, responsiveImageStyle, type ImageViewport } from '../lib/responsiveImage';
+  import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction, type ImageViewport } from '../lib/responsiveImage';
   import { imageSourceDims } from '../lib/projectImageFrame';
   import { pageHistory } from '../lib/devHistory';
 
@@ -124,19 +124,20 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     let savedVariants = {} as Record<Viewport, Variant>;
     let audio = resolveVideoAudio(undefined);
     let savedAudio = { ...audio };
-    let baselineStyle = '';
+    let baselineStyle: string | null = null;
     let baselineClassName = '';
     let baselineVariants = '';
     let baselineAudio: string | undefined;
     let baselineVideoAudio: string | undefined;
     let staged = false;
-    let drag: { x: number; y: number } | null = null;
+    let drag: { x: number; y: number; pointerId: number } | null = null;
     const controller = new AbortController();
     const { signal } = controller;
 
     const restoreBaseline = () => {
       if (!target) return;
-      target.style.cssText = baselineStyle;
+      if (baselineStyle === null) target.removeAttribute('style');
+      else target.style.cssText = baselineStyle;
       target.className = baselineClassName;
       if (baselineVariants) target.dataset.devImageVariants = baselineVariants;
       else delete target.dataset.devImageVariants;
@@ -160,7 +161,9 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const apply = (subject: HTMLElement | null = target, draftVariants = variants, draftAudio = audio) => {
       if (!subject || !subject.isConnected) return;
       const variant = draftVariants[selected];
-      const dims = imageSourceDims({ srcWidth: subject.dataset.devImageSrcWidth, srcHeight: subject.dataset.devImageSrcHeight });
+      const dims = imageSourceDims({ srcWidth: subject.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: subject.dataset.devImageSrcHeight || preview.videoHeight });
+      const maxW = coverWidthFraction(variant.aspect, dims ? dims.width / dims.height : null);
+      variant.w = clamp(variant.w, 0.1, maxW);
       const normalized = normalizeImageVariants(variantPayload(draftVariants), 'original', dims);
       const css = responsiveImageStyle(normalized, dims);
       subject.style.cssText += `;${css}`;
@@ -169,7 +172,9 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       subject.dataset.devVideoAudio = JSON.stringify(draftAudio);
       subject.dataset.videoAudio = JSON.stringify(draftAudio);
       const rendered = normalized[selected];
-      previewWrap.style.aspectRatio = rendered.aspect === 'original' && dims ? `${dims.width} / ${dims.height}` : rendered.aspect.replace(':', ' / ');
+      previewWrap.style.aspectRatio = rendered.aspect === 'original'
+        ? (dims ? `${dims.width} / ${dims.height}` : '1 / 1')
+        : rendered.aspect.replace(':', ' / ');
       previewWrap.style.position = 'relative';
       preview.classList.add('project-cropped', 'project-responsive-image');
       preview.style.position = 'absolute';
@@ -178,10 +183,11 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       preview.style.width = `calc(100% / ${rendered.w})`;
       preview.style.height = 'auto';
       preview.style.maxWidth = 'none';
-      preview.style.objectFit = 'contain';
+      preview.style.objectFit = 'fill';
       preview.style.objectPosition = '50% 50%';
       preview.style.transform = `translate(${rendered.cx * -100}%, ${rendered.cy * -100}%)`;
       zoom.value = String(variant.w);
+      zoom.max = String(maxW);
       zoomReadout.textContent = `${Math.round(100 / Math.max(0.1, variant.w))}%`;
       aspect.value = variant.aspect;
       audioButtons.forEach((button) => {
@@ -199,7 +205,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       if (!isVideoSrc(nextTarget.dataset.devImageSrc || '')) return;
       if (target && !staged) restoreBaseline();
       target = nextTarget;
-      baselineStyle = target.getAttribute('style') || '';
+      baselineStyle = target.getAttribute('style');
       baselineClassName = target.className;
       baselineVariants = target.dataset.devImageVariants || '';
       baselineAudio = target.dataset.devVideoAudio;
@@ -216,6 +222,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       preview.load();
       apply();
       overlay.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel: overlay, trigger: nextTarget } }));
     };
     const sameDraft = (left: Record<Viewport, Variant>, right: Record<Viewport, Variant>, leftAudio: ResolvedVideoAudio, rightAudio: ResolvedVideoAudio) => (
       JSON.stringify(variantPayload(left)) === JSON.stringify(variantPayload(right))
@@ -274,19 +281,25 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     aspect.addEventListener('change', () => { variants[selected].aspect = aspect.value; apply(); }, { signal });
     audioButtons.forEach((button) => button.addEventListener('click', () => { audio[selected] = button.dataset.videoAudio === 'true'; apply(); }, { signal }));
     zoom.addEventListener('input', () => { variants[selected].w = Number(zoom.value); apply(); }, { signal });
-    preview.addEventListener('pointerdown', (event) => { drag = { x: event.clientX, y: event.clientY }; preview.setPointerCapture(event.pointerId); }, { signal });
+    preview.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      preview.setPointerCapture(event.pointerId);
+    }, { signal });
     preview.addEventListener('pointermove', (event) => {
       if (!drag) return;
       const variant = variants[selected];
-      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth, srcHeight: target?.dataset.devImageSrcHeight });
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
       const bounds = cropBounds(variant, dims);
-      variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth) * variant.w, bounds.x, 1 - bounds.x);
-      variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight) * variant.w, bounds.y, 1 - bounds.y);
+      if (event.pointerId !== drag.pointerId) return;
+      variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth), bounds.x, 1 - bounds.x);
+      variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight), bounds.y, 1 - bounds.y);
       drag = { x: event.clientX, y: event.clientY };
       apply();
     }, { signal });
-    preview.addEventListener('pointerup', () => { drag = null; }, { signal });
-    preview.addEventListener('pointercancel', () => { drag = null; }, { signal });
+    preview.addEventListener('pointerup', (event) => { if (drag?.pointerId === event.pointerId) drag = null; }, { signal });
+    preview.addEventListener('pointercancel', (event) => { if (drag?.pointerId === event.pointerId) drag = null; }, { signal });
+    preview.addEventListener('lostpointercapture', (event) => { if (drag?.pointerId === (event as PointerEvent).pointerId) drag = null; }, { signal });
     preview.addEventListener('wheel', (event) => { event.preventDefault(); variants[selected].w = clamp(variants[selected].w + event.deltaY / 1000, 0.1, 1); apply(); }, { passive: false, signal });
     save.addEventListener('click', stage, { signal });
     reset.addEventListener('click', resetState, { signal });
@@ -314,7 +327,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     replaceDrop?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); replaceFile?.click(); }
     }, { signal });
-    preview.addEventListener('loadedmetadata', apply, { signal });
+    preview.addEventListener('loadedmetadata', () => apply(), { signal });
     preview.addEventListener('error', () => { status.textContent = 'Video preview unavailable'; }, { signal });
     window.addEventListener('vcd:dev-before-save', () => {
       if (target && !staged && !sameDraft(variants, savedVariants, audio, savedAudio)) stage();
