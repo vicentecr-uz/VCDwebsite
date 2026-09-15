@@ -56,7 +56,13 @@
     let inputMode: InputMode = 'auto';
     try { inputMode = validInputMode(localStorage.getItem(inputModeStorageKey)); } catch {}
     if (inputModeSelect) inputModeSelect.value = inputMode;
+    let autoWheelConfidence: 'mouse' | 'trackpad' | null = null;
+    let mouseBurstEvidence = 0;
     let wheelInputMode: 'mouse' | 'trackpad' | null = null;
+    let coarseBurstSamples = 0;
+    let coarseBurstSign = 0;
+    let coarseBurstRegular = true;
+    let burstStrongTrackpad = false;
     let wheelTimer: number | null = null;
     let closeTimer: number | null = null;
     let revealFrame = 0;
@@ -378,12 +384,23 @@
       event.preventDefault();
     };
     const finishWheel = () => {
-      const pinch = wheelPinch; clearWheel();
+      const pinch = wheelPinch;
+      if (inputMode === 'auto') {
+        if (burstStrongTrackpad) {
+          mouseBurstEvidence = 0;
+        } else if (wheelInputMode === 'mouse') {
+          autoWheelConfidence = 'mouse'; mouseBurstEvidence = 0;
+        } else if (wheelInputMode === 'trackpad' && coarseBurstSamples > 0 && coarseBurstRegular) {
+          mouseBurstEvidence += 1;
+          if (mouseBurstEvidence >= 2) { autoWheelConfidence = 'mouse'; mouseBurstEvidence = 0; }
+        }
+      }
+      clearWheel();
       if (pinch) finishPinch(false);
     };
+    const isCoarseWheel = (event: WheelEvent) => event.deltaMode === 0 && event.deltaX === 0 && Number.isInteger(event.deltaY) && Math.abs(event.deltaY) >= 40;
     const detectWheelMode = (event: WheelEvent): 'mouse' | 'trackpad' => {
-      if (event.deltaMode !== 0 || event.deltaX !== 0 || !Number.isInteger(event.deltaY) || Math.abs(event.deltaY) < 40) return 'trackpad';
-      return 'mouse';
+      return event.deltaMode !== 0 || isCoarseWheel(event) ? 'mouse' : 'trackpad';
     };
     const onWheel = (event: WheelEvent) => {
       if (!dialog.open || closeTimer !== null) return;
@@ -391,7 +408,27 @@
       const pinch = event.ctrlKey || event.metaKey;
       if (pointers.size || nativeGesture || (pinch && performance.now() < nativeUntil)) return;
       stopSpring(); moved = true;
-      if (!wheelInputMode) wheelInputMode = pinch ? 'trackpad' : inputMode === 'auto' ? detectWheelMode(event) : inputMode;
+      if (!wheelInputMode) {
+        wheelInputMode = pinch ? 'trackpad' : inputMode === 'auto' ? autoWheelConfidence ?? detectWheelMode(event) : inputMode;
+        coarseBurstSamples = 0; coarseBurstSign = 0; coarseBurstRegular = true; burstStrongTrackpad = false;
+        if (inputMode === 'auto' && wheelInputMode === 'mouse' && !autoWheelConfidence) autoWheelConfidence = 'mouse';
+      }
+      if (inputMode === 'auto') {
+        const strongTrackpad = event.deltaMode === 0 && !isCoarseWheel(event);
+        if (pinch || strongTrackpad) {
+          burstStrongTrackpad = true;
+          autoWheelConfidence = 'trackpad';
+          mouseBurstEvidence = 0;
+        } else if (event.deltaMode !== 0) {
+          autoWheelConfidence = 'mouse';
+          mouseBurstEvidence = 0;
+        } else if (wheelInputMode === 'trackpad') {
+          // Deliberate limit: one coarse vertical event cannot identify a device, so retained confidence wins until the burst ends.
+          const sign = Math.sign(event.deltaY);
+          if (coarseBurstSign && sign !== coarseBurstSign) coarseBurstRegular = false;
+          coarseBurstSign = sign; coarseBurstSamples += 1;
+        }
+      }
       if (wheelPinch !== pinch) {
         wheelPinch = pinch;
         allowUnderzoom = pinch && view.scale <= 1;
@@ -416,11 +453,12 @@
       clearWheel(); feedback = null; allowUnderzoom = false;
     };
     type NativeGesture = Event & {scale?: number; rotation?: number; clientX?: number; clientY?: number};
-    const onGestureStart = (event: NativeGesture) => {
+      const onGestureStart = (event: NativeGesture) => {
       if (!dialog.open || closeTimer !== null) return;
       event.preventDefault();
       if (pointers.size) return;
       stopSpring(); clearWheel(); nativeGesture = true; moved = true;
+      if (inputMode === 'auto') autoWheelConfidence = 'trackpad';
       start = {...view}; allowUnderzoom = view.scale <= 1; feedback = 'pinch';
       nativeZoomPoint = pointFor(event);
       beginRotation();
