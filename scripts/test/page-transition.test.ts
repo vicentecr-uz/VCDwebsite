@@ -112,17 +112,25 @@ class ContainerFixture {
     style: Record<string, string> = {},
   ) { this.style = style; }
   getBoundingClientRect() { return this.rect; }
+  contains(element: ImageFixture) {
+    for (let current: ContainerFixture | null = element.parentElement; current; current = current.parentElement) {
+      if (current === this) return true;
+    }
+    return false;
+  }
 }
 
 async function flush() { for (let i = 0; i < 20; i++) await Promise.resolve(); }
 
-function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
+function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOverlay?: boolean; noReadinessMarker?: boolean; initialController?: boolean; intro?: boolean; homeIntro?: { state?: 'active' | 'dismissed'; images?: ImageFixture[] }; reduced?: boolean; visible?: boolean; failTween?: boolean; failUpgrade?: boolean; failNavigation?: boolean } = {}) {
   let now = 0;
   let nextId = 0;
   const timers = new Map<number, { at: number; callback: Function }>();
   const frames = new Map<number, Function>();
   const overlay = Object.assign(new Target(), { dataset: {}, style: { opacity: '1', animation: '', transition: '', removeProperty(name: string) { delete (this as any)[name]; } } });
   const readinessMarker = { hidden: true };
+  const homeIntro = options.homeIntro ? Object.assign(new ContainerFixture(), { hidden: options.homeIntro.state === 'dismissed', dataset: { state: options.homeIntro.state ?? 'active' } }) : null;
+  for (const image of options.homeIntro?.images ?? []) image.parentElement = homeIntro;
   const anchors = [new Anchor('/about/'), new Anchor('/play/')];
   const document = Object.assign(new Target(), {
     images: options.images ?? [], fonts: { ready: options.fonts ?? Promise.resolve() },
@@ -130,7 +138,8 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     getElementById: (id: string) => id === 'transition-readiness-marker'
       ? (options.noReadinessMarker ? null : readinessMarker)
       : (options.noOverlay ? null : overlay),
-    querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {} : null,
+    querySelector: (selector: string) => selector === '.project-block--intro' && options.intro ? {}
+      : selector === '[data-home-intro-surface]' ? homeIntro : null,
     querySelectorAll: (selector: string) => selector === 'img[data-image-preview]'
       ? (options.images ?? []).filter((image) => image.preview)
       : selector === 'a' ? anchors : [],
@@ -407,6 +416,45 @@ test('only visible progressive thumbnails participate in readiness geometry', as
   await flush();
   assert.equal(f.tweens.length, 1);
 });
+
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} readiness ignores visible media behind an active home intro`, async () => {
+    const introImage = new ImageFixture();
+    const underlyingImage = new ImageFixture();
+    const f = fixture({ initialController, homeIntro: { images: [introImage] }, images: [introImage, underlyingImage] });
+    await f.paint();
+    assert.equal(introImage.count('load'), 1);
+    assert.equal(underlyingImage.count('load') + underlyingImage.count('error'), 0);
+    introImage.load();
+    introImage.decoded.resolve();
+    await f.paint();
+    await f.paint();
+    await f.advance(250);
+    assert.equal(f.upgrades, 1);
+  });
+
+  test(`${initialController ? 'inline' : 'deferred'} readiness still gates on images inside an active home intro`, async () => {
+    const introImage = new ImageFixture();
+    const f = fixture({ initialController, homeIntro: { images: [introImage] }, images: [introImage] });
+    await f.paint();
+    assert.equal(f.upgrades, 0);
+    introImage.load();
+    introImage.decoded.resolve();
+    await f.paint();
+    await f.paint();
+    await f.advance(250);
+    assert.equal(f.upgrades, 1);
+  });
+
+  test(`${initialController ? 'inline' : 'deferred'} readiness restores all media gates after intro dismissal`, async () => {
+    const introImage = new ImageFixture();
+    const underlyingImage = new ImageFixture();
+    const f = fixture({ initialController, homeIntro: { state: 'dismissed', images: [introImage] }, images: [introImage, underlyingImage] });
+    await f.paint();
+    assert.equal(introImage.count('load'), 1);
+    assert.equal(underlyingImage.count('load'), 1);
+  });
+}
 
 test('four-second fallback releases stalled fonts/media and removes losing listeners', async () => {
   const stalled = new ImageFixture();
