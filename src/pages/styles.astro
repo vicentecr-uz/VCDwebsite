@@ -29,14 +29,16 @@ import ToggleRow from '../components/ui/ToggleRow.astro';
 import PanelActions from '../components/ui/PanelActions.astro';
 import Badge from '../components/ui/Badge.astro';
 import Hairline from '../components/ui/Hairline.astro';
-import stylesNav from '../content/pages/styles.json';
 import {
   deriveNavFromOutline,
   normalizeOutline,
   outlineFromNav,
 } from '../lib/projectOutline';
+import { loadPageDocument } from '../lib/projects';
 import globalCssSource from '../styles/global.css?raw';
 import '../styles/project.css';
+
+const stylesNav = loadPageDocument('styles');
 
 /** Shared preview assets (Tapico) */
 const previewHero = 'Tapico White Hero Center Crop.jpg';
@@ -641,7 +643,7 @@ const sectionLinks = deriveNavFromOutline(visibleOutline);
       <main id="main-content" class="styles-main" data-section-nav-main>
         <section id="styles-intro" class="styles-intro section-block">
           <ProjectBodyText
-            paragraphs={stylesNav.introParagraphs}
+            paragraphs={stylesNav.introParagraphs ?? []}
             documentKey="styles"
             pathPrefix={['introParagraphs']}
             spacing="none"
