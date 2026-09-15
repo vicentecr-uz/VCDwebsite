@@ -59,7 +59,7 @@ const appendEditTriggers = (target: HTMLElement) => {
   image.setAttribute('data-dev-edit-trigger', 'image');
   image.setAttribute('data-dev-mode-only', '');
   image.hidden = true;
-  image.textContent = 'Edit image';
+  image.textContent = target.querySelector('video[data-project-inline-video]') ? 'Edit video' : 'Edit image';
 
   target.append(caption);
   target.append(image);
@@ -572,7 +572,7 @@ function mountImageCarouselSection(
     imageEdit.setAttribute('data-dev-edit-trigger', 'image');
     imageEdit.setAttribute('data-dev-mode-only', '');
     imageEdit.hidden = true;
-    imageEdit.textContent = 'Edit image';
+    imageEdit.textContent = video ? 'Edit video' : 'Edit image';
 
     surface.append(captionAdd, imageEdit);
     figure.append(surface);
