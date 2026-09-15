@@ -82,7 +82,6 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
 
   type Viewport = ImageViewport;
   type Variant = { aspect: string; cx: number; cy: number; w: number };
-  const VIEWPORTS: Viewport[] = ['desktop', 'tablet', 'mobile'];
   const viewportForWidth = (): Viewport => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
   const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
   const readVariants = (target: HTMLElement) => {
@@ -91,9 +90,6 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const dims = imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight });
     return { authored: raw as ImageVariants, resolved: normalizeImageVariants(raw, 'original', dims) as Record<Viewport, Variant> };
   };
-  const variantPayload = (variants: Record<Viewport, Variant>) => Object.fromEntries(
-    VIEWPORTS.map((viewport) => [viewport, variants[viewport]]),
-  );
   const cropBounds = (variant: Variant, dims: { width: number; height: number } | null) => {
     const sourceAspect = dims ? dims.width / dims.height : 1;
     const frameAspect = variant.aspect === 'original' ? sourceAspect : Number(variant.aspect.split(':')[0]) / Number(variant.aspect.split(':')[1]);
@@ -164,13 +160,13 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       preview.removeAttribute('style');
       previewWrap.removeAttribute('style');
     };
-    const apply = (subject: HTMLElement | null = target, draftVariants = variants, draftAudio = audio, draftAuthored = authoredVariants) => {
+    const apply = (subject: HTMLElement | null = target, draftAudio = audio, draftAuthored = authoredVariants) => {
       if (!subject || !subject.isConnected) return;
-      const variant = draftVariants[selected];
       const dims = imageSourceDims({ srcWidth: subject.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: subject.dataset.devImageSrcHeight || preview.videoHeight });
+      const normalized = normalizeImageVariants(draftAuthored, 'original', dims) as Record<Viewport, Variant>;
+      const variant = normalized[selected];
       const maxW = coverWidthFraction(variant.aspect, dims ? dims.width / dims.height : null);
       variant.w = clamp(variant.w, 0.1, maxW);
-      const normalized = normalizeImageVariants(variantPayload(draftVariants), 'original', dims);
       const css = responsiveImageStyle(normalized, dims);
       subject.style.cssText += `;${css}`;
       subject.classList.add('project-cropped', 'project-responsive-image');
@@ -233,11 +229,11 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       overlay.hidden = false;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel: overlay, trigger: nextTarget } }));
     };
-    const sameDraft = (left: Record<Viewport, Variant>, right: Record<Viewport, Variant>, leftAudio: ResolvedVideoAudio, rightAudio: ResolvedVideoAudio) => (
-      JSON.stringify(variantPayload(left)) === JSON.stringify(variantPayload(right))
+    const sameDraft = (leftAuthored: ImageVariants, rightAuthored: ImageVariants, leftAudio: ResolvedVideoAudio, rightAudio: ResolvedVideoAudio) => (
+      JSON.stringify(imageVariantsSavePayload(leftAuthored)) === JSON.stringify(imageVariantsSavePayload(rightAuthored))
       && JSON.stringify(leftAudio) === JSON.stringify(rightAudio)
     );
-    const pendingPayload = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants) => {
+    const pendingPayload = (subject: HTMLElement, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants) => {
       const identity = withDevEditTarget({ document: subject.dataset.devDocument, path: JSON.parse(subject.dataset.devImagePath || '[]') }, subject);
       return {
         ...identity,
@@ -250,9 +246,9 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
         } : {}),
       };
     };
-    const upsertPending = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants = authoredVariants, revert?: () => void) => {
+    const upsertPending = (subject: HTMLElement, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants = authoredVariants, revert?: () => void) => {
       window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
-        detail: { id: devEditPendingId('crop', subject), kind: 'crop', payload: pendingPayload(subject, draftVariants, draftAudio, draftAuthored), revert },
+        detail: { id: devEditPendingId('crop', subject), kind: 'crop', payload: pendingPayload(subject, draftAudio, draftAuthored), revert },
       }));
     };
     const stage = () => {
@@ -260,11 +256,11 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       const editedTarget = target;
       const before = { variants: savedVariants, authored: savedAuthoredVariants, audio: savedAudio };
       const after = { variants: structuredClone(variants), authored: structuredClone(authoredVariants), audio: { ...audio } };
-      upsertPending(editedTarget, after.variants, after.audio, after.authored, () => apply(editedTarget, before.variants, before.audio, before.authored));
+      upsertPending(editedTarget, after.audio, after.authored, () => apply(editedTarget, before.audio, before.authored));
       pageHistory.push({
         label: 'Edit video',
-        undo: () => { apply(editedTarget, before.variants, before.audio, before.authored); upsertPending(editedTarget, before.variants, before.audio, before.authored); },
-        redo: () => { apply(editedTarget, after.variants, after.audio, after.authored); upsertPending(editedTarget, after.variants, after.audio, after.authored); },
+        undo: () => { apply(editedTarget, before.audio, before.authored); upsertPending(editedTarget, before.audio, before.authored); },
+        redo: () => { apply(editedTarget, after.audio, after.authored); upsertPending(editedTarget, after.audio, after.authored); },
       });
       staged = true;
       status.textContent = 'Saved';
@@ -355,7 +351,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     preview.addEventListener('loadedmetadata', () => apply(), { signal });
     preview.addEventListener('error', () => { status.textContent = 'Video preview unavailable'; }, { signal });
     window.addEventListener('vcd:dev-before-save', () => {
-      if (target && !staged && !sameDraft(variants, savedVariants, audio, savedAudio)) stage();
+      if (target && !staged && !sameDraft(authoredVariants, savedAuthoredVariants, audio, savedAudio)) stage();
     }, { signal });
     window.addEventListener('vcd:dev-media-source-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
       if (event.detail?.target !== target || !target) return;

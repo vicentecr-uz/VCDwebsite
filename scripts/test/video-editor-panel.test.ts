@@ -113,6 +113,10 @@ test('desktop aspect edits cascade while explicit mobile overrides survive until
   const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
   aspect.value = '1:1';
   aspect.dispatchEvent(new h.win.Event('change'));
+  (h.document.querySelector('[data-video-viewport="tablet"]') as HTMLButtonElement).click();
+  expect(aspect.value).toBe('1:1');
+  (h.document.querySelector('[data-video-viewport="mobile"]') as HTMLButtonElement).click();
+  expect(aspect.value).toBe('2:3');
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
   expect(h.pending.at(-1).payload.variants).toEqual({ desktop: { aspect: '1:1', cx: 0.5, cy: 0.5, w: 0.5625 }, tablet: {}, mobile: { aspect: '2:3' } });
   h.open();
@@ -120,6 +124,8 @@ test('desktop aspect edits cascade while explicit mobile overrides survive until
   expect(aspect.value).toBe('2:3');
   (h.document.querySelector('[data-video-aspect-reset]') as HTMLButtonElement).click();
   expect(aspect.value).toBe('1:1');
+  h.win.dispatchEvent(new h.win.CustomEvent('vcd:dev-before-save'));
+  expect(h.pending.at(-1).payload.variants.mobile).toEqual({});
 });
 
 test('cropped inline videos use the project source crop rectangle', () => {
