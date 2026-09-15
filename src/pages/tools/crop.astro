@@ -1,0 +1,355 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Header from "../../components/Header.astro";
+---
+
+<Layout title="Crop to content">
+  <Header title="Crop to content" navMenu />
+  <main id="main-content" class="crop-tool" data-crop-tool>
+    <div class="crop-heading">
+      <div>
+        <p class="crop-kicker">Browser tool</p>
+        <h1>Crop to content</h1>
+      </div>
+      <span class="crop-local">On your device</span>
+    </div>
+    <div class="crop-flow">
+      <section class="crop-drop" data-drop>
+        <input
+          data-file
+          aria-label="Choose an image"
+          type="file"
+          accept="image/png,image/jpeg"
+        />
+        <div class="crop-drop-copy">
+          <strong>Drop an image</strong>
+          <span>or browse</span>
+        </div>
+        <img data-thumb alt="" />
+        <div
+          class="crop-progress"
+          role="progressbar"
+          aria-label="Processing progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+        >
+          <i data-progress></i>
+        </div>
+      </section>
+      <div class="crop-arrow" aria-hidden="true">
+        →
+      </div>
+      <section class="crop-editor">
+        <div class="crop-empty" data-empty>
+          Preview
+        </div>
+        <div class="crop-stage" data-stage hidden>
+          <img data-original alt="Original image" />
+          <img data-selected alt="Selected crop" />
+          <div class="crop-frame" data-frame>
+            <button
+              data-handle="nw"
+              aria-label="Move top left crop handle"
+            ></button>
+            <button data-handle="n" aria-label="Move top crop handle"></button>
+            <button
+              data-handle="ne"
+              aria-label="Move top right crop handle"
+            ></button>
+            <button
+              data-handle="e"
+              aria-label="Move right crop handle"
+            ></button>
+            <button
+              data-handle="se"
+              aria-label="Move bottom right crop handle"
+            ></button>
+            <button
+              data-handle="s"
+              aria-label="Move bottom crop handle"
+            ></button>
+            <button
+              data-handle="sw"
+              aria-label="Move bottom left crop handle"
+            ></button>
+            <button data-handle="w" aria-label="Move left crop handle"></button>
+          </div>
+        </div>
+        <p class="crop-status" data-status aria-live="polite">
+          Choose a PNG or JPEG image
+        </p>
+        <div class="crop-controls">
+          <label class="dev-field">
+            <span class="dev-field__label">Padding</span>
+            <span class="dev-field__value">
+              <input
+                data-padding
+                type="range"
+                min="0"
+                max="15"
+                value="3"
+                step="1"
+              />
+              <output>3%</output>
+            </span>
+          </label>
+          <button class="dev-btn dev-btn--soft" data-reset disabled>
+            Reset
+          </button>
+          <button class="dev-btn dev-btn--filled" data-download disabled>
+            Download PNG
+          </button>
+        </div>
+      </section>
+    </div>
+  </main>
+</Layout>
+<script>
+  import { bindCropTool } from "../../scripts/cropTool";
+  bindCropTool(document.querySelector<HTMLElement>("[data-crop-tool]")!);
+</script>
+<style>
+  .crop-tool {
+    max-width: var(--page-media-max-width);
+    margin: 0 auto;
+    padding: calc(var(--space-unit) * 2) var(--space-unit) 4rem;
+  }
+  .crop-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    margin-bottom: 2rem;
+  }
+  .crop-kicker {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin: 0 0 0.35rem;
+    color: var(--sys-color-on-srf-variant);
+  }
+  h1 {
+    font-size: clamp(2rem, 5vw, 4rem);
+    letter-spacing: -0.05em;
+    margin: 0;
+  }
+  .crop-local {
+    font-size: 0.8rem;
+    color: var(--sys-color-on-srf-variant);
+  }
+  .crop-flow {
+    display: grid;
+    grid-template-columns: minmax(12rem, 15rem) 3rem minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-unit);
+  }
+  .crop-drop {
+    aspect-ratio: 1;
+    border: 1px dashed var(--dev-edit-dash-color);
+    border-radius: var(--radius-card);
+    display: grid;
+    place-items: center;
+    position: relative;
+    background: var(--sys-color-srf-container-lowest);
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .crop-drop input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .crop-drop:focus-within {
+    outline: 2px solid var(--sys-color-outline);
+    outline-offset: 3px;
+  }
+  .crop-drop-copy {
+    display: grid;
+    text-align: center;
+    gap: 0.25rem;
+  }
+  .crop-drop-copy span {
+    font-size: 0.8rem;
+    color: var(--sys-color-on-srf-variant);
+  }
+  .crop-drop img {
+    position: absolute;
+    inset: 1rem;
+    width: calc(100% - 2rem);
+    height: calc(100% - 2rem);
+    object-fit: contain;
+    pointer-events: none;
+    display: none;
+  }
+  .crop-drop:has(img[src]) .crop-drop-copy {
+    display: none;
+  }
+  .crop-drop:has(img[src]) img {
+    display: block;
+  }
+  .crop-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: color-mix(in srgb, var(--sys-color-on-srf) 12%, transparent);
+  }
+  .crop-drop[data-dragging] {
+    background: var(--comp-droparea-hover);
+  }
+  .crop-progress i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--sys-color-primary, #1473e6);
+  }
+  .crop-arrow {
+    font-size: 2rem;
+    text-align: center;
+    color: var(--sys-color-on-srf-variant);
+  }
+  .crop-empty {
+    display: grid;
+    place-items: center;
+    min-height: 15rem;
+    border: 1px solid var(--sys-color-outline);
+    color: var(--sys-color-on-srf-variant);
+    border-radius: var(--radius-card);
+  }
+  .crop-editor:has(.crop-stage:not([hidden])) .crop-empty {
+    display: none;
+  }
+  .crop-stage {
+    position: relative;
+    width: 100%;
+    background: repeating-conic-gradient(#eee 0 25%, #fff 0 50%) 50%/1rem 1rem;
+    overflow: visible;
+  }
+  .crop-stage img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+  }
+  .crop-stage [data-original] {
+    opacity: 0.2;
+  }
+  .crop-stage [data-selected] {
+    opacity: 1;
+  }
+  .crop-frame {
+    box-sizing: border-box;
+    position: absolute;
+    border: 2px solid var(--sys-color-primary, #1473e6);
+    box-shadow: none;
+  }
+  .crop-frame button {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    touch-action: none;
+  }
+  .crop-frame button::after {
+    content: "";
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 8px;
+    border: 2px solid white;
+    background: var(--sys-color-primary, #1473e6);
+    border-radius: 50%;
+  }
+  .crop-frame button:nth-child(1) {
+    left: 0;
+    top: 0;
+  }
+  .crop-frame button:nth-child(2) {
+    left: 50%;
+    top: 0;
+  }
+  .crop-frame button:nth-child(3) {
+    right: 0;
+    top: 0;
+    transform: translate(50%, -50%);
+  }
+  .crop-frame button:nth-child(4) {
+    right: 0;
+    top: 50%;
+    transform: translate(50%, -50%);
+  }
+  .crop-frame button:nth-child(5) {
+    right: 0;
+    bottom: 0;
+    transform: translate(50%, 50%);
+  }
+  .crop-frame button:nth-child(6) {
+    left: 50%;
+    bottom: 0;
+    transform: translate(-50%, 50%);
+  }
+  .crop-frame button:nth-child(7) {
+    left: 0;
+    bottom: 0;
+    transform: translate(-50%, 50%);
+  }
+  .crop-frame button:nth-child(8) {
+    left: 0;
+    top: 50%;
+  }
+  .crop-status {
+    min-height: 1.3em;
+    font-size: 0.8rem;
+    color: var(--sys-color-on-srf-variant);
+  }
+  .crop-controls {
+    display: flex;
+    align-items: end;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .crop-controls .dev-field {
+    width: auto;
+    flex: 1;
+    min-width: 8rem;
+    margin-right: auto;
+  }
+  .crop-controls output {
+    font-size: 0.8rem;
+  }
+  .crop-controls input {
+    accent-color: var(--sys-color-primary, #1473e6);
+  }
+  @media (max-width: 40em) {
+    .crop-tool {
+      padding-top: var(--space-unit);
+    }
+    .crop-heading {
+      align-items: start;
+      gap: 1rem;
+      flex-direction: column;
+    }
+    .crop-flow {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+    .crop-drop {
+      max-width: 13rem;
+    }
+    .crop-arrow {
+      transform: rotate(90deg);
+      height: 1rem;
+    }
+    .crop-controls .dev-field {
+      width: 100%;
+    }
+  }
+</style>
