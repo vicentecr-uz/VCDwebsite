@@ -16,10 +16,15 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     <div class="dev-video-editor__settings">
       <SelectField label="Aspect ratio" data-video-aspect options={[
         { value: 'original', label: 'Original' },
-        { value: '16:9', label: '16:9' },
-        { value: '4:3', label: '4:3' },
-        { value: '1:1', label: '1:1' },
-        { value: '9:16', label: '9:16' },
+        { label: 'Landscape', options: [
+          { value: '16:9', label: '16:9' }, { value: '16:10', label: '16:10' },
+          { value: '3:2', label: '3:2' }, { value: '4:3', label: '4:3' }, { value: '5:4', label: '5:4' },
+        ] },
+        { label: 'Square', options: [{ value: '1:1', label: '1:1' }] },
+        { label: 'Portrait', options: [
+          { value: '5:6', label: '5:6' }, { value: '4:5', label: '4:5' }, { value: '3:4', label: '3:4' },
+          { value: '2:3', label: '2:3' }, { value: '10:16', label: '10:16' }, { value: '9:16', label: '9:16' },
+        ] },
       ]} />
       <SegmentedControl label="Audio" data-video-audio-control>
         <Button emphasis="ghost" width="fill" label="" aria-label="Off" data-video-audio="false"><span slot="icon" set:html={sizeIcon(volumeXIcon, 14)} /></Button>
@@ -64,9 +69,10 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
 <script>
   import { devEditPendingId, withDevEditTarget } from '../scripts/devEditTarget';
   import { projectImage } from '../lib/images';
-  import { isVideoSrc } from '../lib/imageUpload.mjs';
+  import { isAcceptedVideoFile, isVideoSrc } from '../lib/imageUpload.mjs';
   import { resolveVideoAudio, type ResolvedVideoAudio } from '../lib/videoAudio';
-  import { normalizeImageVariants, responsiveImageStyle, imageSourceDims, type ImageViewport } from '../lib/responsiveImage';
+  import { normalizeImageVariants, responsiveImageStyle, type ImageViewport } from '../lib/responsiveImage';
+  import { imageSourceDims } from '../lib/projectImageFrame';
   import { pageHistory } from '../lib/devHistory';
 
   type Viewport = ImageViewport;
@@ -83,8 +89,17 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
   const variantPayload = (variants: Record<Viewport, Variant>) => Object.fromEntries(
     VIEWPORTS.map((viewport) => [viewport, variants[viewport]]),
   );
+  const cropBounds = (variant: Variant, dims: { width: number; height: number } | null) => {
+    const sourceAspect = dims ? dims.width / dims.height : 1;
+    const frameAspect = variant.aspect === 'original' ? sourceAspect : Number(variant.aspect.split(':')[0]) / Number(variant.aspect.split(':')[1]);
+    const h = clamp(variant.w * sourceAspect / Math.max(0.001, frameAspect), 0.01, 1);
+    return { x: variant.w / 2, y: h / 2 };
+  };
 
+  let initialized = false;
   const init = () => {
+    if (initialized) return;
+    initialized = true;
     const editor = document.querySelector<HTMLElement>('[data-dev-video-editor]');
     const overlay = editor?.closest<HTMLElement>('[data-dev-panel-key="video"]');
     const preview = editor?.querySelector<HTMLVideoElement>('[data-video-preview]');
@@ -110,11 +125,11 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     let audio = resolveVideoAudio(undefined);
     let savedAudio = { ...audio };
     let baselineStyle = '';
+    let baselineClassName = '';
     let baselineVariants = '';
     let baselineAudio: string | undefined;
     let baselineVideoAudio: string | undefined;
     let staged = false;
-    let replacing = false;
     let drag: { x: number; y: number } | null = null;
     const controller = new AbortController();
     const { signal } = controller;
@@ -122,7 +137,9 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const restoreBaseline = () => {
       if (!target) return;
       target.style.cssText = baselineStyle;
+      target.className = baselineClassName;
       if (baselineVariants) target.dataset.devImageVariants = baselineVariants;
+      else delete target.dataset.devImageVariants;
       if (baselineAudio === undefined) delete target.dataset.devVideoAudio;
       else target.dataset.devVideoAudio = baselineAudio;
       if (baselineVideoAudio === undefined) delete target.dataset.videoAudio;
@@ -133,27 +150,42 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       overlay.hidden = true;
       window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel: overlay } }));
       target = null;
+      drag = null;
+      preview.pause();
       preview.removeAttribute('src');
+      preview.load();
+      preview.removeAttribute('style');
+      previewWrap.removeAttribute('style');
     };
-    const apply = () => {
-      if (!target) return;
-      const variant = variants[selected];
-      const dims = imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight });
-      const normalized = normalizeImageVariants(variantPayload(variants), 'original', dims);
+    const apply = (subject: HTMLElement | null = target, draftVariants = variants, draftAudio = audio) => {
+      if (!subject || !subject.isConnected) return;
+      const variant = draftVariants[selected];
+      const dims = imageSourceDims({ srcWidth: subject.dataset.devImageSrcWidth, srcHeight: subject.dataset.devImageSrcHeight });
+      const normalized = normalizeImageVariants(variantPayload(draftVariants), 'original', dims);
       const css = responsiveImageStyle(normalized, dims);
-      target.style.cssText += `;${css}`;
-      target.dataset.devImageVariants = JSON.stringify(variantPayload(variants));
-      target.dataset.devVideoAudio = JSON.stringify(audio);
-      target.dataset.videoAudio = JSON.stringify(audio);
+      subject.style.cssText += `;${css}`;
+      subject.classList.add('project-cropped', 'project-responsive-image');
+      subject.dataset.devImageVariants = JSON.stringify(variantPayload(draftVariants));
+      subject.dataset.devVideoAudio = JSON.stringify(draftAudio);
+      subject.dataset.videoAudio = JSON.stringify(draftAudio);
       const rendered = normalized[selected];
       previewWrap.style.aspectRatio = rendered.aspect === 'original' && dims ? `${dims.width} / ${dims.height}` : rendered.aspect.replace(':', ' / ');
-      preview.style.objectPosition = `${variant.cx * 100}% ${variant.cy * 100}%`;
-      preview.style.transform = `scale(${Math.max(1, 1 / rendered.w)})`;
+      previewWrap.style.position = 'relative';
+      preview.classList.add('project-cropped', 'project-responsive-image');
+      preview.style.position = 'absolute';
+      preview.style.top = '50%';
+      preview.style.left = '50%';
+      preview.style.width = `calc(100% / ${rendered.w})`;
+      preview.style.height = 'auto';
+      preview.style.maxWidth = 'none';
+      preview.style.objectFit = 'contain';
+      preview.style.objectPosition = '50% 50%';
+      preview.style.transform = `translate(${rendered.cx * -100}%, ${rendered.cy * -100}%)`;
       zoom.value = String(variant.w);
       zoomReadout.textContent = `${Math.round(100 / Math.max(0.1, variant.w))}%`;
       aspect.value = variant.aspect;
       audioButtons.forEach((button) => {
-        const active = audio[selected] === (button.dataset.videoAudio === 'true');
+        const active = draftAudio[selected] === (button.dataset.videoAudio === 'true');
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', String(active));
       });
@@ -168,6 +200,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       if (target && !staged) restoreBaseline();
       target = nextTarget;
       baselineStyle = target.getAttribute('style') || '';
+      baselineClassName = target.className;
       baselineVariants = target.dataset.devImageVariants || '';
       baselineAudio = target.dataset.devVideoAudio;
       baselineVideoAudio = target.dataset.videoAudio;
@@ -184,20 +217,39 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       apply();
       overlay.hidden = false;
     };
+    const sameDraft = (left: Record<Viewport, Variant>, right: Record<Viewport, Variant>, leftAudio: ResolvedVideoAudio, rightAudio: ResolvedVideoAudio) => (
+      JSON.stringify(variantPayload(left)) === JSON.stringify(variantPayload(right))
+      && JSON.stringify(leftAudio) === JSON.stringify(rightAudio)
+    );
+    const pendingPayload = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio) => {
+      const identity = withDevEditTarget({ document: subject.dataset.devDocument, path: JSON.parse(subject.dataset.devImagePath || '[]') }, subject);
+      return {
+        ...identity,
+        variants: variantPayload(draftVariants),
+        audio: Object.values(draftAudio).every(Boolean) ? true : draftAudio,
+        ...(subject.dataset.devImageSrc ? {
+          src: subject.dataset.devImageSrc,
+          ...(subject.dataset.devImageSrcWidth ? { srcWidth: Number(subject.dataset.devImageSrcWidth) } : {}),
+          ...(subject.dataset.devImageSrcHeight ? { srcHeight: Number(subject.dataset.devImageSrcHeight) } : {}),
+        } : {}),
+      };
+    };
+    const upsertPending = (subject: HTMLElement, draftVariants: Record<Viewport, Variant>, draftAudio: ResolvedVideoAudio, revert?: () => void) => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: { id: devEditPendingId('crop', subject), kind: 'crop', payload: pendingPayload(subject, draftVariants, draftAudio), revert },
+      }));
+    };
     const stage = () => {
       if (!target) return;
-      const identity = withDevEditTarget({ document: target.dataset.devDocument, path: JSON.parse(target.dataset.devImagePath || '[]') }, target);
       const editedTarget = target;
       const before = { variants: savedVariants, audio: savedAudio };
       const after = { variants: structuredClone(variants), audio: { ...audio } };
-      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', { detail: {
-        id: devEditPendingId('crop', target), kind: 'crop', payload: {
-          ...identity, variants: variantPayload(variants),
-          audio: Object.values(audio).every(Boolean) ? true : audio,
-        },
-        revert: () => { target = editedTarget; variants = structuredClone(before.variants); audio = { ...before.audio }; apply(); },
-      } }));
-      pageHistory.push({ label: 'Edit video', undo: () => { target = editedTarget; variants = structuredClone(before.variants); audio = { ...before.audio }; apply(); }, redo: () => { target = editedTarget; variants = structuredClone(after.variants); audio = { ...after.audio }; apply(); } });
+      upsertPending(editedTarget, after.variants, after.audio, () => apply(editedTarget, before.variants, before.audio));
+      pageHistory.push({
+        label: 'Edit video',
+        undo: () => { apply(editedTarget, before.variants, before.audio); upsertPending(editedTarget, before.variants, before.audio); },
+        redo: () => { apply(editedTarget, after.variants, after.audio); upsertPending(editedTarget, after.variants, after.audio); },
+      });
       staged = true;
       status.textContent = 'Saved';
       close(true);
@@ -226,8 +278,10 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     preview.addEventListener('pointermove', (event) => {
       if (!drag) return;
       const variant = variants[selected];
-      variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth) * variant.w, variant.w / 2, 1 - variant.w / 2);
-      variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight) * variant.w, variant.w / 2, 1 - variant.w / 2);
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth, srcHeight: target?.dataset.devImageSrcHeight });
+      const bounds = cropBounds(variant, dims);
+      variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth) * variant.w, bounds.x, 1 - bounds.x);
+      variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight) * variant.w, bounds.y, 1 - bounds.y);
       drag = { x: event.clientX, y: event.clientY };
       apply();
     }, { signal });
@@ -236,9 +290,12 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     preview.addEventListener('wheel', (event) => { event.preventDefault(); variants[selected].w = clamp(variants[selected].w + event.deltaY / 1000, 0.1, 1); apply(); }, { passive: false, signal });
     save.addEventListener('click', stage, { signal });
     reset.addEventListener('click', resetState, { signal });
-    cancel.addEventListener('click', close, { signal });
+    cancel.addEventListener('click', () => close(false), { signal });
     const replace = (file: File) => {
-      if (!target || !file.type.startsWith('video/')) return;
+      if (!target || !isAcceptedVideoFile(file)) {
+        status.textContent = 'Choose an MP4, WebM or M4V video';
+        return;
+      }
       window.dispatchEvent(new CustomEvent('vcd:dev-image-replace', { cancelable: true, detail: { target, file } }));
     };
     replaceChoose?.addEventListener('click', () => replaceFile?.click(), { signal });
@@ -259,17 +316,14 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     }, { signal });
     preview.addEventListener('loadedmetadata', apply, { signal });
     preview.addEventListener('error', () => { status.textContent = 'Video preview unavailable'; }, { signal });
-    window.addEventListener('vcd:dev-image-replace', () => {
-      replacing = true;
-      queueMicrotask(() => { replacing = false; });
-    }, { capture: true, signal });
-    window.addEventListener('vcd:dev-before-save', () => { if (target && !staged && !replacing) stage(); }, { signal });
+    window.addEventListener('vcd:dev-before-save', () => {
+      if (target && !staged && !sameDraft(variants, savedVariants, audio, savedAudio)) stage();
+    }, { signal });
     window.addEventListener('vcd:dev-media-source-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
       if (event.detail?.target !== target || !target) return;
       preview.src = projectImage(target.dataset.devImageSrc || '');
       preview.load();
       apply();
-      replacing = false;
     }) as EventListener, { signal });
     window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
       if (event.detail?.panel !== overlay || !target) return;
@@ -277,6 +331,13 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       target = null;
       preview.removeAttribute('src');
     }) as EventListener, { signal });
+    document.addEventListener('astro:before-swap', () => {
+      controller.abort();
+      initialized = false;
+      preview.pause();
+      preview.removeAttribute('src');
+      preview.load();
+    }, { once: true });
   };
   document.addEventListener('astro:page-load', init);
   init();
