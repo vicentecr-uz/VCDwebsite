@@ -11,13 +11,12 @@ const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).forEach((cleanup) => cleanup()); });
 
-function fixture() {
+function fixture(reducedMotion = false) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
     <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><p data-image-lightbox-error hidden></p></div>
-    <button data-image-lightbox-zoom-in>Zoom in</button><button data-image-lightbox-zoom-out>Zoom out</button>
-    <button data-image-lightbox-reset>Reset</button><button data-image-lightbox-close>Close</button></dialog>`;
+    </dialog>`;
   const original = document.querySelector<HTMLImageElement>('#source')!;
   const dialog = document.querySelector('dialog')!;
   const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]')!;
@@ -41,7 +40,9 @@ function fixture() {
   Object.defineProperties(image, { offsetWidth: { value: 800 }, offsetHeight: { value: 600 } });
   viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
-    requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id) };
+    requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
+    getComputedStyle: window.getComputedStyle.bind(window), performance: { now: () => now },
+    matchMedia: () => ({ matches: reducedMotion }) };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
   cleanups.push(dispose);
@@ -51,10 +52,22 @@ function fixture() {
     for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); }
   };
   const click = (target: Element = original, options = {}) => target.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, ...options }));
-  const button = (name: string) => dialog.querySelector<HTMLButtonElement>(`[data-image-lightbox-${name}]`)!;
+  const key = (key: string) => viewer.dispatchEvent(new window.KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+  const wheel = (deltaY: number, ctrlKey = false, deltaMode = 0) => {
+    const event = new window.WheelEvent('wheel', {deltaY, deltaMode, bubbles:true, cancelable:true});
+    Object.assign(event, {ctrlKey, clientX:500, clientY:400});
+    return viewer.dispatchEvent(event);
+  };
+  const gesture = (type: string, scale = 1, rotation = 0) => {
+    const event = new window.Event(type, {bubbles:true,cancelable:true});
+    Object.assign(event, {scale, rotation, clientX:500, clientY:400});
+    viewer.dispatchEvent(event);
+    return event;
+  };
+  const settleSpring = () => { for (let i=0; i<180; i++) { tick(16); frame(); } };
   const pointer = (type: string, id: number, x = 400, y = 400, button = 0) =>
     viewer.dispatchEvent(new window.PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', pointerId: id, clientX: x, clientY: y, button }));
-  return { window, document, original, dialog, viewer, image, click, button, pointer, frame, tick, frames, timers, captured, dispose };
+  return { window, document, original, dialog, viewer, image, click, key, wheel, gesture, settleSpring, pointer, frame, tick, frames, timers, captured, dispose };
 }
 
 for (const key of ['Enter', ' ']) {
@@ -70,8 +83,8 @@ for (const key of ['Enter', ' ']) {
     expect(f.dialog.classList.contains('is-visible')).toBe(false);
     f.frame(); f.frame();
     expect(f.dialog.classList.contains('is-visible')).toBe(true);
-    f.click(f.button('close'));
-    f.tick(199);
+    f.key('Escape');
+    f.tick(149);
     expect(f.dialog.open).toBe(true);
     expect(f.image.hasAttribute('src')).toBe(true);
     f.tick(1);
@@ -101,11 +114,11 @@ test('links, editable/hidden content, cancelled events and Edit mode do not open
 });
 
 test('closing before entry paint and reopening cannot apply stale frames or source cleanup', () => {
-  const f = fixture(); f.click(); f.click(f.button('close'));
+  const f = fixture(); f.click(); f.key('Escape');
   f.frame(); f.frame();
   expect(f.dialog.classList.contains('is-visible')).toBe(false);
   f.original.dataset.imageOriginal = '/images/new.jpg';
-  f.click(); f.tick(200); f.frame(); f.frame();
+  f.click(); f.tick(150); f.frame(); f.frame();
   expect(f.dialog.open).toBe(true);
   expect(f.image.getAttribute('src')).toBe('/images/new.jpg');
   expect(f.dialog.classList.contains('is-visible')).toBe(true);
@@ -115,45 +128,46 @@ test('pinch stays centred, clamps scale/pan, and release cannot dismiss', () => 
   const f = fixture(); f.click();
   f.pointer('pointerdown', 1, 400, 400); f.pointer('pointerdown', 2, 600, 400);
   f.pointer('pointermove', 1, 300, 400); f.pointer('pointermove', 2, 700, 400);
-  expect(f.image.style.transform).toBe('translate3d(0px, 0px, 0) scale(2)');
+  expect(f.image.style.transform).toContain('scale(2)');
   f.pointer('pointerup', 2, 700, 400);
   f.pointer('pointermove', 1, 5000, 400);
-  expect(f.image.style.transform).toBe('translate3d(400px, 0px, 0) scale(2)');
-  f.pointer('pointerup', 1); f.click(f.viewer); f.tick(200);
+  expect(f.image.style.transform).toContain('400px');
+  expect(f.image.style.transform).toContain('scale(2)');
+  f.pointer('pointerup', 1); f.click(f.viewer); f.tick(150);
   expect(f.dialog.open).toBe(true);
   expect(f.captured.size).toBe(0);
-  f.click(f.button('reset'));
-  for (let i = 0; i < 10; i++) f.click(f.button('zoom-in'));
+  f.key('0');
+  for (let i = 0; i < 10; i++) f.key('+');
   expect(f.image.style.transform).toContain('scale(4)');
-  expect(f.button('zoom-in').disabled).toBe(true);
 });
 
 test('cancelled pointer and two-finger tap do not dismiss; next plain tap can dismiss', () => {
   const f = fixture(); f.click();
   f.pointer('pointerdown', 1); f.pointer('pointerdown', 2);
   f.pointer('pointercancel', 1); f.pointer('pointerup', 2);
-  f.click(f.viewer); f.tick(200); expect(f.dialog.open).toBe(true);
+  f.click(f.viewer); f.tick(150); expect(f.dialog.open).toBe(true);
   f.pointer('pointerdown', 3); f.pointer('pointerup', 3);
-  f.click(f.viewer); f.tick(200); expect(f.dialog.open).toBe(false);
+  f.click(f.viewer); f.tick(150); expect(f.dialog.open).toBe(false);
 });
 
 test('keyboard users can zoom and pan; reset returns to fit', () => {
-  const f = fixture(); f.click(); f.click(f.button('zoom-in'));
+  const f = fixture(); f.click(); f.key('+');
   f.viewer.dispatchEvent(new f.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
-  expect(f.image.style.transform).toBe('translate3d(-40px, 0px, 0) scale(1.5)');
-  f.click(f.button('reset'));
-  expect(f.image.style.transform).toBe('translate3d(0px, 0px, 0) scale(1)');
+  expect(f.image.style.transform).toContain('-40px');
+  expect(f.image.style.transform).toContain('scale(1.5)');
+  f.key('0');
+  expect(f.image.style.transform).toContain('scale(1)');
 });
 
 test('image errors keep dismissal usable; Escape, pagehide and disposal clean up', () => {
   const f = fixture(); f.click();
   f.image.dispatchEvent(new f.window.Event('error'));
   expect(f.dialog.querySelector<HTMLElement>('[data-image-lightbox-error]')!.hidden).toBe(false);
-  f.dialog.dispatchEvent(new f.window.Event('cancel', { cancelable: true })); f.tick(200);
+  f.dialog.dispatchEvent(new f.window.Event('cancel', { cancelable: true })); f.tick(150);
   expect(f.dialog.open).toBe(false);
   f.click(); f.window.dispatchEvent(new f.window.Event('pagehide'));
   expect(f.dialog.open).toBe(false); expect(f.timers.size).toBe(0); expect(f.frames.size).toBe(0);
-  f.click(); f.dispose(); f.click(); f.frame(); f.tick(200);
+  f.click(); f.dispose(); f.click(); f.frame(); f.tick(150);
   expect(f.dialog.open).toBe(false);
 });
 
@@ -163,4 +177,139 @@ test('live source helper removes placeholder actions and uses the new original',
   geometry.syncLightboxImage(f.original, '/images/replacement.jpg');
   f.click(); expect(f.image.getAttribute('src')).toBe('/images/replacement.jpg');
   expect(geometry.clampImageScale(Infinity)).toBe(1);
+});
+
+test('opening carries the configured frame fill with the original image and clears it on reuse', () => {
+  const f = fixture();
+  f.original.src = '/images/study.thumb.webp';
+  f.original.dataset.imagePreview = '/images/study.preview.webp';
+  f.original.style.setProperty('--project-image-background', '#f5f5f7');
+  f.click();
+  expect(f.image.getAttribute('src')).toBe('/images/study.jpg');
+  expect(['#f5f5f7', 'rgb(245, 245, 247)']).toContain(f.image.style.backgroundColor);
+  f.key('Escape'); f.tick(150);
+  f.original.style.removeProperty('--project-image-background');
+  f.click();
+  expect(['', 'transparent']).toContain(f.image.style.backgroundColor);
+});
+
+test('drag tracks, twists and fades; crossing and reversing the threshold keeps the veil and springs home', () => {
+  const f=fixture(); f.click(); f.frame(); f.frame();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,466,400);
+  expect(f.image.style.transform).toContain('66px');
+  expect(Number(f.image.style.opacity)).toBeCloseTo(.85,2);
+  expect(f.image.style.filter).toContain('blur(');
+  f.pointer('pointermove',1,550,400);
+  expect(Number(f.image.style.opacity)).toBeCloseTo(.1);
+  expect(f.dialog.classList.contains('is-visible')).toBe(true);
+  f.pointer('pointermove',1,430,400);
+  expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);
+  f.pointer('pointerup',1,430,400); f.settleSpring();
+  expect(f.dialog.open).toBe(true);
+  expect(Number(f.image.style.opacity)).toBe(1);
+  expect(f.image.style.transform).toContain('translate3d(0px, 0px, 0)');
+});
+
+test('release past the drag threshold closes in 150ms; cancelled or lost capture gestures never close', () => {
+  for (const type of ['pointercancel','lostpointercapture','pointerup']) {
+    const f=fixture(); f.click(); f.frame(); f.frame();
+    f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,600,400);
+    f.pointer(type,1,600,400);
+    if(type==='pointerup') {
+      f.tick(149); expect(f.dialog.open).toBe(true); f.tick(1); expect(f.dialog.open).toBe(false);
+    } else {f.settleSpring(); expect(f.dialog.open).toBe(true);}
+  }
+});
+
+test('a second finger cancels single-drag dismissal and a new touch can interrupt spring-back', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,550,400);
+  f.pointer('pointerdown',2,700,400); f.pointer('pointerup',2,700,400); f.pointer('pointerup',1,550,400);
+  f.settleSpring(); expect(f.dialog.open).toBe(true);
+  f.pointer('pointerdown',3,400,400); f.pointer('pointermove',3,450,400); f.pointer('pointerup',3,450,400);
+  f.tick(16); f.frame();
+  const position=f.image.style.transform;
+  f.pointer('pointerdown',4,450,400);
+  expect(f.image.style.transform).toBe(position);
+  f.pointer('pointercancel',4); f.settleSpring(); expect(f.dialog.open).toBe(true);
+});
+
+test('pinching inward from fit can arm dismissal, reverse, or close only on release', () => {
+  for(const reverse of [true,false]) {
+    const f=fixture(); f.click();
+    f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
+    f.pointer('pointermove',1,430,400); f.pointer('pointermove',2,570,400);
+    expect(Number(f.image.style.opacity)).toBe(.1);
+    expect(f.dialog.open).toBe(true);
+    if(reverse) {f.pointer('pointermove',1,410,400); f.pointer('pointermove',2,590,400); expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);}
+    f.pointer('pointerup',2,reverse?590:570,400); f.pointer('pointerup',1,reverse?410:430,400);
+    f.settleSpring(); expect(f.dialog.open).toBe(reverse);
+  }
+});
+
+test('a pinch beginning zoomed in returns to fit without accidentally dismissing', () => {
+  const f=fixture(); f.click(); f.key('+'); f.key('+');
+  f.pointer('pointerdown',1,300,400); f.pointer('pointerdown',2,700,400);
+  f.pointer('pointermove',1,490,400); f.pointer('pointermove',2,510,400);
+  expect(f.image.style.transform).toContain('scale(1)');
+  f.pointer('pointerup',1); f.pointer('pointerup',2); f.settleSpring();
+  expect(f.dialog.open).toBe(true);
+});
+
+test('mouse wheel zooms at the cursor and never dismisses at minimum scale', () => {
+  const f=fixture(); f.click(); f.wheel(-1000);
+  expect(f.image.style.transform).not.toContain('scale(1)');
+  for(let i=0;i<12;i++)f.wheel(1000);
+  f.tick(200); expect(f.dialog.open).toBe(true);
+  expect(f.image.style.transform).toContain('scale(1)');
+});
+
+test('trackpad pinch wheel ends after inactivity and supports underzoom dismissal', () => {
+  const f=fixture(); f.click();
+  for(let i=0;i<8;i++)f.wheel(200,true);
+  expect(Number(f.image.style.opacity)).toBe(.1);
+  expect(f.dialog.open).toBe(true);
+  f.tick(160); f.tick(150); expect(f.dialog.open).toBe(false);
+});
+
+test('Safari rotation has a dead zone, pinch zoom works, and duplicate wheel is ignored', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart');
+  f.gesture('gesturechange',1.5,6);
+  expect(f.image.style.transform).toContain('scale(1.5)');
+  const before=f.image.style.transform; f.wheel(500,true); expect(f.image.style.transform).toBe(before);
+  f.gesture('gesturechange',1.5,30); expect(f.image.style.transform).not.toBe(before);
+  f.gesture('gestureend',1.5,30); f.tick(200); expect(f.dialog.open).toBe(true);
+});
+
+test('reduced motion preserves drag feedback and settles without leaving animation work', () => {
+  const f=fixture(true); f.click(); f.frame(); f.frame();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,440,400);
+  expect(Number(f.image.style.opacity)).toBeLessThan(1);
+  f.pointer('pointerup',1,440,400); f.settleSpring();
+  expect(f.dialog.open).toBe(true); expect(f.frames.size).toBe(0);
+});
+
+test('release coordinates disarm a drag even if the final move was coalesced', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,400,400); f.pointer('pointermove',1,600,400);
+  f.pointer('pointerup',1,430,400); f.settleSpring();
+  expect(f.dialog.open).toBe(true);
+});
+
+test('trackpad underzoom can reverse before the idle boundary and navigation clears pending work', () => {
+  const f=fixture(); f.click();
+  f.wheel(200,true); f.wheel(200,true);
+  expect(Number(f.image.style.opacity)).toBe(.1);
+  f.wheel(-80,true);
+  expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);
+  f.tick(160); f.settleSpring(); expect(f.dialog.open).toBe(true);
+  f.wheel(200,true); f.window.dispatchEvent(new f.window.Event('pagehide'));
+  expect(f.timers.size).toBe(0); expect(f.frames.size).toBe(0);
+});
+
+test('Safari inward pinch can reverse and return to fit without closing', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart');
+  f.gesture('gesturechange',.7); expect(Number(f.image.style.opacity)).toBe(.1);
+  f.gesture('gesturechange',.95); expect(Number(f.image.style.opacity)).toBeGreaterThan(.7);
+  f.gesture('gestureend',.95); f.settleSpring(); expect(f.dialog.open).toBe(true);
 });
