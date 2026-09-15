@@ -238,6 +238,36 @@ test('mouse release carries velocity toward the next real slide before settling'
   block.remove();
 });
 
+test('regrab interrupts momentum without restoring snap before reading the current position', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue) => {
+    dispatchMousePointer(track, 'pointerdown', 41, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 41, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 41, 0, 0, 111);
+    expect(track.style.scrollSnapType).toBe('none');
+    track.scrollLeft = 137;
+    dispatchMousePointer(track, 'pointerdown', 42, 100, 0, 201);
+    expect(track.style.scrollSnapType).toBe('none');
+    dispatchMousePointer(track, 'pointermove', 42, 90, 0, 211);
+    expect(track.scrollLeft).toBe(147);
+    queue.length = 0;
+  });
+  block.remove();
+});
+
+test('mouse edge drag applies bounded rubberband and releases it smoothly', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  dispatchMousePointer(track, 'pointerdown', 43, 100, 0, 1);
+  dispatchMousePointer(track, 'pointermove', 43, 200, 0, 101);
+  expect(track.scrollLeft).toBe(0);
+  expect(Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'))).toBeGreaterThan(0);
+  expect(Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'))).toBeLessThanOrEqual(8);
+  dispatchMousePointer(track, 'pointerup', 43, 200, 0, 111);
+  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
+  expect(track.classList.contains('is-rubberband-settling')).toBe(true);
+  block.remove();
+});
+
 test('settling clamps projected and chosen offsets to the actual scroll bound', () => {
   const { block, track } = createSnapTestCarousel('horizontal');
   Object.defineProperties(track, {
