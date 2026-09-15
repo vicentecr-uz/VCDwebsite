@@ -130,10 +130,14 @@ function renderDots(carousel: Carousel): void {
     '--project-carousel-video-progress',
     lerpByProgress(carousel, (index) => carousel.slides[index]?.querySelector('video') ? 1 : 0).toFixed(4),
   );
+  const activeIndex = Math.min(Math.max(Math.round(carousel.progress), 0), Math.max(carousel.slides.length - 1, 0));
+  carousel.slides.forEach((slide, index) => {
+    if (index === activeIndex) slide.dataset.carouselCurrent = 'true';
+    else delete slide.dataset.carouselCurrent;
+  });
   if (!count || !dotStrip || !dotWindow) return;
 
   const { centre, first, span } = carouselDotGeometry(carousel.progress, count);
-  const activeIndex = Math.round(carousel.progress);
 
   dots.forEach((dot, index) => {
     const { activeness, scale } = carouselDotAppearance(index, carousel.progress, centre);
