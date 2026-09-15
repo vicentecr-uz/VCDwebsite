@@ -437,7 +437,7 @@ function bindDrag(carousel: Carousel): void {
   }, true);
 
   track.addEventListener('dragstart', (event) => {
-    if (dragging && pointerId !== null && moved > 3) event.preventDefault();
+    if (dragging && pointerId !== null) event.preventDefault();
   });
 
   track.addEventListener('pointerdown', (event) => {

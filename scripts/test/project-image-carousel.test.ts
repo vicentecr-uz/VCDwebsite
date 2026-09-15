@@ -124,7 +124,7 @@ function dispatchMousePointer(track: HTMLElement, type: string, pointerId = 1, c
   return event;
 }
 
-test('mouse image drag cancels native image dragging only after the carousel drag is accepted', () => {
+test('mouse image drag cancels native image dragging for an accepted pointerdown', () => {
   const { block, track } = createSnapTestCarousel('horizontal');
   const image = window.document.createElement('img');
   track.querySelector('[data-carousel-slide]')!.append(image);
@@ -132,13 +132,31 @@ test('mouse image drag cancels native image dragging only after the carousel dra
   dispatchMousePointer(track, 'pointerdown', 11, 100);
   const beforeMove = new window.Event('dragstart', { bubbles: true, cancelable: true });
   image.dispatchEvent(beforeMove);
-  expect(beforeMove.defaultPrevented).toBe(false);
+  expect(beforeMove.defaultPrevented).toBe(true);
 
   dispatchMousePointer(track, 'pointermove', 11, 94);
   const afterMove = new window.Event('dragstart', { bubbles: true, cancelable: true });
   image.dispatchEvent(afterMove);
   expect(afterMove.defaultPrevented).toBe(true);
   dispatchMousePointer(track, 'pointerup', 11, 94);
+  block.remove();
+});
+
+test('accepted pointerdown cancels immediate and cross-axis native image drags', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const image = window.document.createElement('img');
+  track.querySelector('[data-carousel-slide]')!.append(image);
+
+  dispatchMousePointer(track, 'pointerdown', 15, 100, 100);
+  const immediate = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(immediate);
+  expect(immediate.defaultPrevented).toBe(true);
+
+  dispatchMousePointer(track, 'pointermove', 15, 100, 94);
+  const crossAxis = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(crossAxis);
+  expect(crossAxis.defaultPrevented).toBe(true);
+  dispatchMousePointer(track, 'pointerup', 15, 100, 94);
   block.remove();
 });
 
