@@ -236,7 +236,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let mode: 'flow' | 'docked' | 'riding' = 'flow';
     const headerChromeHeight = () => {
       const value = Number.parseFloat(getComputedStyle(header).getPropertyValue('--header-chrome-height'));
-      return Number.isFinite(value) && value > 0 ? value : 100;
+      return Number.isFinite(value) && value >= 0 ? value : 100;
     };
     const logicalHeaderRect = () => {
       const rect = header.getBoundingClientRect();
@@ -338,7 +338,12 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       if (mode === 'docked') {
         // Fixed at the viewport top, box pinned to its flow x/width.
         header.style.top = `${-headerChromeHeight()}px`;
-        applyGeo();
+        if (window.innerWidth <= 767) {
+          header.style.left = '0';
+          header.style.width = '100%';
+        } else {
+          applyGeo();
+        }
         if (slide && slideFrom !== null) {
           // Menu opened while partially hidden: dock (fixed, top 0) but start
           // translated UP by the off-screen amount, then ease the transform to
@@ -638,7 +643,14 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       // current scroll mode and vertical geometry. Width changes can update the
       // clean in-flow measurement without swapping riding/docked positions.
       captureGeo();
-      if (mode === 'docked') applyGeo();
+      if (mode === 'docked') {
+        if (window.innerWidth <= 767) {
+          header.style.left = '0';
+          header.style.width = '100%';
+        } else {
+          applyGeo();
+        }
+      }
       else if (mode === 'riding') {
         header.style.left = '0';
         header.style.width = `${geoWidth}px`;
@@ -1579,6 +1591,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     z-index: 0;
     pointer-events: none;
     opacity: 1;
+  }
+
+  @media (max-width: 767px) {
+    .site-header {
+      --header-chrome-height: 0px;
+      box-sizing: border-box;
+      padding-inline: var(--page-gutter, 0px);
+    }
+
+    .site-header__bg {
+      inset: 0;
+    }
   }
 
   /* Deliberately z-index: auto — the row must NOT open a stacking context, so
