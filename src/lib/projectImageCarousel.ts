@@ -447,33 +447,20 @@ function bindDrag(carousel: Carousel): void {
     }
     restoreSnap();
   };
+  const scrollBounds = () => carousel.axis === 'vertical'
+    ? Math.max(0, track.scrollHeight - track.clientHeight)
+    : Math.max(0, track.scrollWidth - track.clientWidth);
   const nearestSlideOffset = (projected: number) => {
     const visible = carousel.slides
       .map((slide) => slideOffset(carousel, slide))
       .filter((offset, index) => carousel.slides[index].offsetWidth || carousel.slides[index].offsetHeight);
     if (!visible.length) return scroll();
-    const measuredMax = carousel.axis === 'vertical'
-      ? Math.max(0, track.scrollHeight - track.clientHeight)
-      : Math.max(0, track.scrollWidth - track.clientWidth);
-    // Happy-dom and detached test tracks report zero scroll metrics; use the
-    // final measured slide only as their unmeasured fallback.
-    const maxScroll = measuredMax || visible[visible.length - 1];
+    const maxScroll = scrollBounds();
     const bounded = Math.min(Math.max(projected, 0), maxScroll);
     return Math.min(
       maxScroll,
       Math.max(0, visible.reduce((best, offset) => Math.abs(offset - bounded) < Math.abs(best - bounded) ? offset : best, visible[0])),
     );
-  };
-  const scrollBounds = () => {
-    const measuredMax = carousel.axis === 'vertical'
-      ? Math.max(0, track.scrollHeight - track.clientHeight)
-      : Math.max(0, track.scrollWidth - track.clientWidth);
-    if (measuredMax) return measuredMax;
-    const last = carousel.slides
-      .map((slide) => slideOffset(carousel, slide))
-      .filter((offset, index) => carousel.slides[index].offsetWidth || carousel.slides[index].offsetHeight)
-      .pop() ?? 0;
-    return Math.max(0, last);
   };
   const clampScroll = (value: number) => Math.min(scrollBounds(), Math.max(0, value));
   const writeScroll = (value: number) => {
@@ -509,6 +496,7 @@ function bindDrag(carousel: Carousel): void {
       velocity += acceleration * elapsed;
       position += velocity * elapsed;
       writeScroll(position);
+      position = scroll();
       if ((Math.abs(target - position) <= 0.5 && Math.abs(velocity) <= 0.01)
         || now - startedAt >= 1000) {
         writeScroll(target);
