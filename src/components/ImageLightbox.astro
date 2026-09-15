@@ -19,9 +19,11 @@
     const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
     const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
     const angleDelta = (a: number, b: number) => ((a - b + 540) % 360) - 180;
-    const snapRotation = (rotation: number) => {
-      const upright = Math.round(rotation / 360) * 360;
-      return Math.abs(rotation - upright) <= 10 ? upright : rotation;
+    const uprightRotation = (rotation: number) => Math.round(rotation / 360) * 360;
+    const resistedRotation = (rotation: number) => {
+      const upright = uprightRotation(rotation);
+      const delta = rotation - upright;
+      return Math.abs(delta) <= 20 ? upright + delta * .2 : rotation;
     };
     const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
     let view = fit();
@@ -48,6 +50,11 @@
     let closeTimer: number | null = null;
     let revealFrame = 0;
     let springFrame = 0;
+    let rotationFrame = 0;
+    let rawRotation = 0;
+    let rotationTarget = 0;
+    let rotationOffset = 0;
+    let rotationResisted = true;
     let session = 0;
     let observer: MutationObserver | null = null;
 
@@ -76,7 +83,39 @@
       image.style.opacity = String(armed ? .1 : 1 - .3 * clamp(amount, 0, 1));
       image.style.filter = `blur(${reducedMotion() ? 0 : 3 * clamp(amount, 0, 1)}px)`;
     };
-    const stopSpring = () => { cancelAnimationFrame(springFrame); springFrame = 0; image.classList.remove('is-settling'); };
+    const stopSpring = () => {
+      cancelAnimationFrame(springFrame); springFrame = 0;
+      cancelAnimationFrame(rotationFrame); rotationFrame = 0;
+      image.classList.remove('is-settling');
+    };
+    const beginRotation = () => {
+      rawRotation = view.rotation;
+      rotationTarget = resistedRotation(rawRotation);
+      rotationOffset = view.rotation - rotationTarget;
+      rotationResisted = Math.abs(rawRotation - uprightRotation(rawRotation)) <= 20;
+    };
+    const updateRotation = (rotation: number) => {
+      rawRotation = rotation;
+      const resisted = Math.abs(rotation - uprightRotation(rotation)) <= 20;
+      const target = resistedRotation(rotation);
+      if (resisted !== rotationResisted) rotationOffset = view.rotation - target;
+      rotationResisted = resisted;
+      rotationTarget = target;
+      view.rotation = target + rotationOffset;
+      if (!rotationOffset || rotationFrame) return;
+      let last = performance.now();
+      const tick = (now: number) => {
+        const dt = Math.max(0, now - last); last = now;
+        const previous = view.rotation;
+        rotationOffset *= Math.exp(-dt / 45);
+        if (Math.abs(rotationOffset) < .01) rotationOffset = 0;
+        view.rotation = rotationTarget + rotationOffset;
+        velocity.rotation = dt ? (view.rotation - previous) / (dt / 1000) : 0;
+        render();
+        rotationFrame = rotationOffset ? requestAnimationFrame(tick) : 0;
+      };
+      rotationFrame = requestAnimationFrame(tick);
+    };
     const clearWheel = () => {
       if (wheelTimer !== null) window.clearTimeout(wheelTimer);
       wheelTimer = null;
@@ -93,10 +132,9 @@
       view = fit(); gesture = null; feedback = null; nativeGesture = false;
       render();
     };
-    const springHome = () => {
+    const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
       stopSpring();
-      if (reducedMotion()) { image.classList.add('is-settling'); view = fit(); feedback = null; render(); return; }
-      const target = fit();
+      if (reducedMotion()) { image.classList.add('is-settling'); view = target; feedback = null; render(); return; }
       let last = performance.now();
       const started = last;
       const keys = ['x', 'y', 'scale', 'rotation'] as const;
@@ -222,7 +260,7 @@
         gesture = view.scale <= 1 ? 'drag' : 'pan'; feedback = gesture === 'drag' ? 'drag' : null;
       } else {
         moved = true;
-        if (gesture === 'drag') { view = fit(); render(); }
+        if (gesture === 'drag' && distance(view,start) > 3) { view = { ...fit(), rotation: start.rotation }; render(); }
         gesture = 'pinch'; feedback = 'pinch'; start = { ...view };
       }
       pointers.set(event.pointerId, pointFor(event));
@@ -232,6 +270,7 @@
         const [a, b] = [...pointers.values()];
         startMidpoint = midpoint(a,b); startDistance = Math.max(1,distance(a,b)); startAngle = angle(a,b); rotationTravel = 0;
         allowUnderzoom = start.scale <= 1;
+        beginRotation();
       }
       event.preventDefault();
     };
@@ -246,12 +285,14 @@
         const nextAngle = angle(a,b);
         rotationTravel += angleDelta(nextAngle,startAngle);
         startAngle = nextAngle;
-        view = { ...pan, scale: nextScale, rotation: snapRotation(start.rotation + (reducedMotion() ? 0 : rotationTravel)) };
+        view = { ...pan, scale: nextScale, rotation: view.rotation };
+        if (!reducedMotion()) updateRotation(start.rotation + rotationTravel);
         if (nextScale >= 1) clampPan();
       } else if (gesture === 'drag' || gesture === 'pan') {
+        if (gesture === 'pan' && distance(startPoint,pointFor(event)) > 0) stopSpring();
         view.x = start.x + event.clientX - startPoint.x;
         view.y = start.y + event.clientY - startPoint.y;
-        if (gesture === 'drag') view.rotation = reducedMotion() ? 0 : clamp(view.x / threshold() * 12, -12, 12);
+        if (gesture === 'drag') view.rotation = start.rotation + (reducedMotion() ? 0 : clamp(view.x / threshold() * 12, -12, 12));
         else clampPan();
       }
       moved ||= pointers.size > 1 || distance(startPoint,pointFor(event)) > 3;
@@ -268,7 +309,14 @@
     const finishPinch = (cancelled: boolean) => {
       if (!cancelled && armed && allowUnderzoom) { dismiss(); return; }
       if (view.scale < 1) { velocity = {x:0,y:0,scale:0,rotation:0}; springHome(); }
-      else { feedback = null; clampPan(); render(); }
+      else {
+        feedback = null; clampPan();
+        const upright = uprightRotation(rawRotation);
+        const rotation = Math.abs(rawRotation - upright) <= 20 ? upright : rawRotation;
+        velocity.x = 0; velocity.y = 0; velocity.scale = 0;
+        if (view.rotation !== rotation) springHome({ ...view, rotation });
+        else render();
+      }
     };
     const onPointerUp = (event: PointerEvent) => {
       if (!pointers.has(event.pointerId)) return;
@@ -283,7 +331,7 @@
         gesture = view.scale < 1 ? 'blocked' : 'pan';
         start = { ...view }; startPoint = [...pointers.values()][0] || {x:0,y:0};
       } else if (!pointers.size && ending === 'drag') {
-        if (!cancelled && armed) dismiss(); else springHome();
+        if (!cancelled && armed) dismiss(); else springHome({ ...fit(), rotation: start.rotation });
       }
       if (!pointers.size) { gesture = null; viewer.classList.remove('is-dragging'); }
       event.preventDefault();
@@ -301,6 +349,7 @@
         clearWheel(); wheelPinch = event.ctrlKey;
         allowUnderzoom = event.ctrlKey && view.scale <= 1;
         feedback = event.ctrlKey ? 'pinch' : null;
+        beginRotation();
       }
       const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewer.clientHeight : 1;
       const delta = clamp(event.deltaY * units, -100, 100);
@@ -315,6 +364,7 @@
       if (pointers.size) return;
       stopSpring(); clearWheel(); nativeGesture = true; moved = true;
       start = {...view}; allowUnderzoom = view.scale <= 1; feedback = 'pinch';
+      beginRotation();
     };
     const onGestureChange = (event: NativeGesture) => {
       if (!dialog.open || closeTimer !== null) return;
@@ -322,7 +372,7 @@
       if (!nativeGesture || pointers.size) return;
       const ratio = event.scale ?? 1;
       if (!Number.isFinite(ratio) || ratio <= 0) return;
-      view.rotation = snapRotation(start.rotation + (reducedMotion() ? 0 : (event.rotation ?? 0)));
+      if (!reducedMotion()) updateRotation(start.rotation + (event.rotation ?? 0));
       zoom(start.scale * ratio, centre(), allowUnderzoom ? .65 : 1);
     };
     const onGestureEnd = (event: Event) => {

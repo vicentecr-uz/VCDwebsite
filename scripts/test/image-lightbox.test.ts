@@ -277,7 +277,7 @@ test('Safari rotation has a dead zone, pinch zoom works, and duplicate wheel is 
   f.gesture('gesturechange',1.5,6);
   expect(f.image.style.transform).toContain('scale(1.5)');
   const before=f.image.style.transform; f.wheel(500,true); expect(f.image.style.transform).toBe(before);
-  f.gesture('gesturechange',1.5,30); expect(f.image.style.transform).not.toBe(before);
+  f.gesture('gesturechange',1.5,30); f.tick(16); f.frame(); expect(f.image.style.transform).not.toBe(before);
   f.gesture('gestureend',1.5,30); f.tick(200); expect(f.dialog.open).toBe(true);
 });
 
@@ -314,33 +314,55 @@ test('Safari inward pinch can reverse and return to fit without closing', () => 
   f.gesture('gestureend',.95); f.settleSpring(); expect(f.dialog.open).toBe(true);
 });
 
-test('rotation snaps within ten degrees of upright while preserving zoom, but not at sideways or upside down', () => {
-  const f=fixture(); f.click(); f.gesture('gesturestart');
-  for (const degrees of [-10,-1,0,1,10,350,359,360,370]) {
+const rotationOf = (image: HTMLImageElement) => Number(/rotate\(([-\d.e+]+)deg\)/.exec(image.style.transform)![1]);
+
+test('small twists have resisted give and spring upright on release without changing zoom', () => {
+  for (const degrees of [-20,-5,5,20,350,370]) {
+    const f=fixture(); f.click(); f.gesture('gesturestart');
     f.gesture('gesturechange',2,degrees);
     const upright=Math.round(degrees/360)*360;
-    expect(f.image.style.transform).toContain(`rotate(${upright}deg)`);
+    expect(rotationOf(f.image)).toBeCloseTo(upright+(degrees-upright)*.2);
+    const before=rotationOf(f.image);
+    f.gesture('gestureend',2,degrees);
+    expect(rotationOf(f.image)).toBe(before);
+    f.tick(16); f.frame();
+    expect(Math.abs(rotationOf(f.image)-upright)).toBeLessThan(Math.abs(before-upright));
+    f.settleSpring();
+    expect(rotationOf(f.image)).toBeCloseTo(upright);
     expect(f.image.style.transform).toContain('scale(2)');
   }
-  for (const degrees of [-11,11,90,180]) {
-    f.gesture('gesturechange',2,degrees);
-    expect(f.image.style.transform).toContain(`rotate(${degrees}deg)`);
-  }
-  f.gesture('gesturechange',2,8); f.gesture('gestureend',2,8);
-  expect(f.image.style.transform).toContain('rotate(0deg)');
-  expect(f.image.style.transform).toContain('scale(2)');
 });
 
-test('touch rotation snaps back to upright when fingers return inside the snap zone', () => {
+test('crossing twenty degrees releases resistance smoothly and reversing re-engages it without jumping', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart');
+  f.gesture('gesturechange',2,20); expect(rotationOf(f.image)).toBe(4);
+  f.gesture('gesturechange',2,21); expect(rotationOf(f.image)).toBe(4);
+  f.tick(16); f.frame();
+  expect(rotationOf(f.image)).toBeGreaterThan(4); expect(rotationOf(f.image)).toBeLessThan(21);
+  f.settleSpring(); expect(rotationOf(f.image)).toBe(21);
+  f.gesture('gesturechange',2,19); expect(rotationOf(f.image)).toBe(21);
+  f.settleSpring(); expect(rotationOf(f.image)).toBeCloseTo(3.8);
+  f.gesture('gestureend',2,19); f.settleSpring(); expect(rotationOf(f.image)).toBe(0);
+});
+
+test('touch rotation gives slightly and springs upright when fingers release inside the resistance zone', () => {
   const f=fixture(); f.click();
   f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
-  f.pointer('pointermove',2,600,480);
-  expect(f.image.style.transform).not.toContain('rotate(0deg)');
   f.pointer('pointermove',2,600,420);
-  expect(f.image.style.transform).toContain('rotate(0deg)');
+  expect(rotationOf(f.image)).toBeGreaterThan(0); expect(rotationOf(f.image)).toBeLessThan(2);
+  const before=rotationOf(f.image);
   f.pointer('pointerup',2,600,420); f.pointer('pointerup',1,400,400);
-  expect(f.image.style.transform).toContain('rotate(0deg)');
-  expect(f.dialog.open).toBe(true);
+  expect(rotationOf(f.image)).toBe(before);
+  f.settleSpring(); expect(rotationOf(f.image)).toBe(0); expect(f.dialog.open).toBe(true);
+});
+
+test('deliberate rotation is retained outside the resistance zone and pending release animation cleans up', () => {
+  const f=fixture(); f.click(); f.gesture('gesturestart');
+  f.gesture('gesturechange',2,90); f.gesture('gestureend',2,90); f.settleSpring();
+  expect(rotationOf(f.image)).toBe(90);
+  f.gesture('gesturestart'); f.gesture('gesturechange',2,-80);
+  f.window.dispatchEvent(new f.window.Event('pagehide'));
+  expect(f.frames.size).toBe(0); expect(f.timers.size).toBe(0);
 });
 
 test('pointer dismissal clears the returned image focus, while keyboard dismissal preserves it', () => {
