@@ -915,16 +915,31 @@ media-volume-range:not(:defined) { display: none; }
   initial-value: 0;
 }
 
-.project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller:hover) .project-image-carousel__dots,
 .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller :is(:focus-visible, [data-video-keyboard-focus])) .project-image-carousel__dots,
 .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__volume-group [data-volume-dragging]) .project-image-carousel__dots {
   --project-carousel-controls-presence: 1;
   transition-delay: 0s;
 }
 
-@media (hover: none) {
-  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over'] .project-image-carousel__dots {
+@media (hover: hover) and (pointer: fine) {
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller:hover) .project-image-carousel__dots {
     --project-carousel-controls-presence: 1;
+    transition-delay: 0s;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over'] .project-image-carousel__dots {
+    --project-carousel-controls-presence: 0;
+    transition-delay: 0s;
+  }
+
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller:not([userinactive])) .project-image-carousel__dots,
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller[mediapaused]) .project-image-carousel__dots,
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__controller :is(:focus-visible, [data-video-keyboard-focus])) .project-image-carousel__dots,
+  .project-image-carousel[data-orientation='horizontal'][data-dots-placement='over']:has(.project-video-player__volume-group [data-volume-dragging]) .project-image-carousel__dots {
+    --project-carousel-controls-presence: 1;
+    transition-delay: 0s;
   }
 }
 
