@@ -49,6 +49,13 @@ test('inactivity hiding is touch-only, while keyboard popup access stays global'
   expect(hover.length).toBeGreaterThan(0);
   expect(hover.every((rule) => rule.media === '(hover: hover) and (pointer: fine)')).toBe(true);
   expect(rules.some((rule) => !rule.media && rule.selector.includes('.project-video-player__volume-group:has(:focus-visible') && rule.style.opacity === '1')).toBe(true);
+  const dotHover = rules.filter((rule) => rule.selector.includes('.project-image-carousel') && rule.selector.includes('controller:hover'));
+  expect(dotHover.length).toBeGreaterThan(0);
+  expect(dotHover.every((rule) => rule.media === '(hover: hover) and (pointer: fine)')).toBe(true);
+  const coarseDots = rules.filter((rule) => rule.selector.includes('.project-image-carousel') && rule.media === '(hover: none), (pointer: coarse)');
+  expect(coarseDots.some((rule) => rule.style.getPropertyValue('--project-carousel-controls-presence') === '0')).toBe(true);
+  expect(coarseDots.some((rule) => rule.selector.includes(':not([userinactive])') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
+  expect(coarseDots.some((rule) => rule.selector.includes('[mediapaused]') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
 });
 
 for (const existing of [false, true]) {
