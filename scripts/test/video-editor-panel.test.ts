@@ -71,7 +71,7 @@ test('opening a video applies shared crop geometry and cancel restores the targe
   const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
   aspect.value = '1:1';
   aspect.dispatchEvent(new h.win.Event('change'));
-  expect(JSON.parse(h.target.dataset.devImageVariants!).desktop.w).toBeCloseTo(0.5625);
+  expect(JSON.parse(h.target.dataset.devImageVariants!).desktop.w).toBeUndefined();
   const preview = h.document.querySelector('[data-video-preview]') as HTMLVideoElement;
   Object.defineProperty(preview, 'clientWidth', { configurable: true, value: 100 });
   Object.defineProperty(preview, 'clientHeight', { configurable: true, value: 100 });
@@ -100,11 +100,11 @@ test('save history updates the pending crop payload on undo and redo', () => {
   aspect.value = '1:1';
   aspect.dispatchEvent(new h.win.Event('change'));
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
-  expect(h.pending.at(-1).payload.variants.desktop.w).toBeCloseTo(0.5625);
+  expect(h.pending.at(-1).payload.variants.desktop.w).toBeUndefined();
   h.history[0].undo();
   expect(h.pending.at(-1).payload.variants).toEqual({ desktop: {}, tablet: {}, mobile: {} });
   h.history[0].redo();
-  expect(h.pending.at(-1).payload.variants.desktop.w).toBeCloseTo(0.5625);
+  expect(h.pending.at(-1).payload.variants.desktop.w).toBeUndefined();
 });
 
 test('desktop aspect edits cascade while explicit mobile overrides survive until reset', () => {
@@ -118,7 +118,7 @@ test('desktop aspect edits cascade while explicit mobile overrides survive until
   (h.document.querySelector('[data-video-viewport="mobile"]') as HTMLButtonElement).click();
   expect(aspect.value).toBe('2:3');
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
-  expect(h.pending.at(-1).payload.variants).toEqual({ desktop: { aspect: '1:1', cx: 0.5, cy: 0.5, w: 0.5625 }, tablet: {}, mobile: { aspect: '2:3' } });
+  expect(h.pending.at(-1).payload.variants).toEqual({ desktop: { aspect: '1:1', cx: 0.5, cy: 0.5 }, tablet: {}, mobile: { aspect: '2:3' } });
   h.open();
   (h.document.querySelector('[data-video-viewport="mobile"]') as HTMLButtonElement).click();
   expect(aspect.value).toBe('2:3');
@@ -128,7 +128,7 @@ test('desktop aspect edits cascade while explicit mobile overrides survive until
   expect(h.pending.at(-1).payload.variants.mobile).toEqual({});
 });
 
-test('dragging an inherited mobile crop saves the resolved width', () => {
+test('dragging an inherited mobile crop saves pan without a zoom width', () => {
   const h = setup();
   h.open();
   const aspect = h.document.querySelector('[data-video-aspect]') as HTMLSelectElement;
@@ -146,7 +146,25 @@ test('dragging an inherited mobile crop saves the resolved width', () => {
   Object.assign(move, { pointerId: 9, clientX: 55, clientY: 50 });
   preview.dispatchEvent(move);
   (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
-  expect(h.pending.at(-1).payload.variants.mobile.w).toBeCloseTo(0.5625);
+  expect(h.pending.at(-1).payload.variants.mobile.w).toBeUndefined();
+  expect(h.pending.at(-1).payload.variants.mobile.cx).toBeLessThan(0.5);
+});
+
+test('existing zoom settings are cleaned for fill while cancel restores the raw payload', () => {
+  const initial = { desktop: { aspect: '1:1', w: 0.3, cx: 0.1, cy: 0.5, zoom: 0.3 } };
+  const h = setup(initial);
+  h.open();
+  const resolved = JSON.parse(h.target.dataset.devImageVariants!);
+  expect(resolved.desktop.w).toBeUndefined();
+  expect(resolved.desktop.cx).toBeGreaterThanOrEqual(0.28125);
+  (h.document.querySelector('[data-video-save]') as HTMLButtonElement).click();
+  expect(h.pending.at(-1).payload.variants.desktop.w).toBeUndefined();
+  expect(h.pending.at(-1).payload.variants.desktop.zoom).toBeUndefined();
+
+  const cancelled = setup(initial);
+  cancelled.open();
+  (cancelled.document.querySelector('[data-video-cancel]') as HTMLButtonElement).click();
+  expect(cancelled.target.dataset.devImageVariants).toBe(JSON.stringify(initial));
 });
 
 test('cropped inline videos use the project source crop rectangle', () => {

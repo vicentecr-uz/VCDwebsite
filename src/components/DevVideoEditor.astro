@@ -90,11 +90,39 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
     const dims = imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight });
     return { authored: raw as ImageVariants, resolved: normalizeImageVariants(raw, 'original', dims) as Record<Viewport, Variant> };
   };
+  const stripZoomSettings = (variants: ImageVariants): ImageVariants => {
+    const next = structuredClone(variants);
+    for (const viewport of ['desktop', 'tablet', 'mobile'] as const) {
+      const variant = next[viewport];
+      if (!variant) continue;
+      delete variant.w;
+      delete variant.zoom;
+      if (!Object.keys(variant).length) delete next[viewport];
+    }
+    return next;
+  };
   const cropBounds = (variant: Variant, dims: { width: number; height: number } | null) => {
     const sourceAspect = dims ? dims.width / dims.height : 1;
     const frameAspect = variant.aspect === 'original' ? sourceAspect : Number(variant.aspect.split(':')[0]) / Number(variant.aspect.split(':')[1]);
     const h = clamp(variant.w * sourceAspect / Math.max(0.001, frameAspect), 0.01, 1);
     return { x: variant.w / 2, y: h / 2 };
+  };
+  const normalizeVideoDraft = (authored: ImageVariants, dims: { width: number; height: number } | null) => {
+    const next = stripZoomSettings(authored);
+    let resolved = normalizeImageVariants(next, 'original', dims) as Record<Viewport, Variant>;
+    for (const viewport of ['desktop', 'tablet', 'mobile'] as const) {
+      const variant = next[viewport];
+      if (!variant || (variant.cx === undefined && variant.cy === undefined && variant.x === undefined && variant.y === undefined)) continue;
+      const bounds = cropBounds(resolved[viewport], dims);
+      const cx = clamp(resolved[viewport].cx, bounds.x, 1 - bounds.x);
+      const cy = clamp(resolved[viewport].cy, bounds.y, 1 - bounds.y);
+      if (variant.cx !== undefined || variant.x !== undefined) variant.cx = cx;
+      if (variant.cy !== undefined || variant.y !== undefined) variant.cy = cy;
+      delete variant.x;
+      delete variant.y;
+      resolved = normalizeImageVariants(next, 'original', dims) as Record<Viewport, Variant>;
+    }
+    return { authored: next, resolved };
   };
 
   let initialized = false;
@@ -214,9 +242,10 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       baselineVideoAudio = target.dataset.videoAudio;
       staged = false;
       const initial = readVariants(target);
-      authoredVariants = initial.authored;
-      savedAuthoredVariants = structuredClone(authoredVariants);
-      variants = initial.resolved;
+      const draft = normalizeVideoDraft(initial.authored, imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight }));
+      authoredVariants = draft.authored;
+      savedAuthoredVariants = structuredClone(initial.authored);
+      variants = draft.resolved;
       savedVariants = structuredClone(variants);
       try { audio = resolveVideoAudio(JSON.parse(target.dataset.devVideoAudio || target.dataset.videoAudio || '{}')); } catch { audio = resolveVideoAudio(undefined); }
       savedAudio = { ...audio };
@@ -267,7 +296,14 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       status.textContent = 'Saved';
       close(true);
     };
-    const resetState = () => { variants = structuredClone(savedVariants); authoredVariants = structuredClone(savedAuthoredVariants); audio = { ...savedAudio }; apply(); };
+    const resetState = () => {
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      const draft = normalizeVideoDraft(savedAuthoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
+      audio = { ...savedAudio };
+      apply();
+    };
 
     window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
       const panel = event.detail?.panel;
@@ -294,12 +330,17 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       variant.cy = clamp(variant.cy, bounds.y, 1 - bounds.y);
       authoredVariants = setImageVariantSetting(authoredVariants, selected, 'aspect', variant);
       authoredVariants = setImageVariantSetting(authoredVariants, selected, 'crop', variant);
+      const draft = normalizeVideoDraft(authoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
       apply();
     }, { signal });
     aspectReset.addEventListener('click', () => {
       authoredVariants = resetImageVariantSetting(authoredVariants, selected, 'aspect');
       const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
-      variants = normalizeImageVariants(authoredVariants, 'original', dims) as Record<Viewport, Variant>;
+      const draft = normalizeVideoDraft(authoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
       apply();
     }, { signal });
     audioButtons.forEach((button) => button.addEventListener('click', () => { audio[selected] = button.dataset.videoAudio === 'true'; apply(); }, { signal }));
@@ -317,6 +358,9 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth), bounds.x, 1 - bounds.x);
       variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight), bounds.y, 1 - bounds.y);
       authoredVariants = setImageVariantSetting(authoredVariants, selected, 'crop', variant);
+      const draft = normalizeVideoDraft(authoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
       drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
       apply();
     }, { signal });
