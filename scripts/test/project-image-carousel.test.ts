@@ -451,3 +451,18 @@ test('video dot placement follows image–video–image swipe progress and rever
   expect(Number(block.style.getPropertyValue('--project-carousel-video-progress'))).toBe(0);
   block.remove();
 });
+
+test('current carousel marker follows the active slide for video dot visibility', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  slides.forEach((slide) => slide.append(window.document.createElement('video')));
+  track.scrollLeft = 0;
+  track.dispatchEvent(new window.Event('scroll'));
+  expect(slides[0].dataset.carouselCurrent).toBe('true');
+  expect(slides[1].dataset.carouselCurrent).toBeUndefined();
+  track.scrollLeft = 100;
+  track.dispatchEvent(new window.Event('scroll'));
+  expect(slides[0].dataset.carouselCurrent).toBeUndefined();
+  expect(slides[1].dataset.carouselCurrent).toBe('true');
+  block.remove();
+});

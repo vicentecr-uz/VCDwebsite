@@ -54,8 +54,8 @@ test('inactivity hiding is touch-only, while keyboard popup access stays global'
   expect(dotHover.every((rule) => rule.media === '(hover: hover) and (pointer: fine)')).toBe(true);
   const coarseDots = rules.filter((rule) => rule.selector.includes('.project-image-carousel') && rule.media === '(hover: none), (pointer: coarse)');
   expect(coarseDots.some((rule) => rule.style.getPropertyValue('--project-carousel-controls-presence') === '0')).toBe(true);
-  expect(coarseDots.some((rule) => rule.selector.includes(':not([userinactive])') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
-  expect(coarseDots.some((rule) => rule.selector.includes('[mediapaused]') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
+  expect(coarseDots.some((rule) => rule.selector.includes('[data-carousel-current]') && rule.selector.includes(':not([userinactive])') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
+  expect(coarseDots.some((rule) => rule.selector.includes('[data-carousel-current]') && rule.selector.includes('[mediapaused]') && rule.style.getPropertyValue('--project-carousel-controls-presence') === '1')).toBe(true);
 });
 
 for (const existing of [false, true]) {
