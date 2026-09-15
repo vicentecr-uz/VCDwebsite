@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { HOME_REVEAL_DURATION, HOME_REVEAL_EASING, HOME_REVEAL_STAGGER, createHomeRevealController, groupHomeRevealRows, makeHomeRevealCloneVisible } from '../../src/lib/homeReveal';
 
 class FakeElement {
-  hidden = false; style: Record<string, string> = { opacity: '', visibility: '', transform: '', filter: '' };
+  hidden = false; dataset: Record<string, string> = {}; style: Record<string, string> = { opacity: '', visibility: '', transform: '', filter: '' };
+  ownerDocument: Document | undefined;
   parentElement: FakeElement | null = null; children: FakeElement[] = []; animations: Array<{ options: KeyframeAnimationOptions; cancel: () => void; finished: Promise<void> }> = []; animateKeyframes: Keyframe[][] = [];
   constructor(public rect = { top: 10, left: 0, width: 100, height: 20 }, public className = '') {}
   classList = { contains: (name: string) => this.className.split(' ').includes(name) };
@@ -16,12 +17,13 @@ class FakeElement {
   remove() {}
   animate(keyframes: Keyframe[], options: KeyframeAnimationOptions) { const animation = { options, cancel() {}, finished: Promise.resolve() }; this.animateKeyframes.push(keyframes); this.animations.push(animation); return animation; }
 }
-const fakeWindow = (reduce = false) => {
+const fakeWindow = (reduce = false, width = 1024) => {
   const listeners = new Map<string, Set<EventListener>>();
-  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
+  return { innerHeight: 800, innerWidth: width, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail, ...(name === 'pageshow' ? detail as object : {}) } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
 };
 const savedDocument = globalThis.document;
-afterEach(() => { Object.assign(globalThis, { document: savedDocument }); });
+let introSurface: FakeElement | null = null;
+afterEach(() => { introSurface = null; Object.assign(globalThis, { document: savedDocument }); });
 
 describe('home reveal choreography', () => {
   test('groups equal-top units and delays the final row across the specified span', () => {
@@ -54,7 +56,7 @@ describe('home reveal choreography', () => {
   test('arms under inert Home, reveals after dismissal, then restores source styles', async () => {
     const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
     home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
-    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
     const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
     expect(controller.isArmed()).toBe(true); expect(header.style.opacity).toBe('0');
     win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
@@ -64,6 +66,57 @@ describe('home reveal choreography', () => {
     await Promise.resolve();
     expect(header.style.opacity).toBe('');
     expect(header.animations).toHaveLength(1);
+    controller.destroy();
+  });
+
+  test('mobile header reveal uses opacity only even when prepared at desktop width', async () => {
+    const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+    const win = fakeWindow(false, 1024); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    expect(header.style.transform).toContain('translateY');
+    win.innerWidth = 390;
+    win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(header.style.transform).toBe(''); expect(header.style.filter).toBe('');
+    expect(header.animateKeyframes[0]).toEqual([{ opacity: 0 }, { opacity: 1 }]);
+    controller.destroy();
+  });
+
+  test('desktop header reveal retains transform and blur', async () => {
+    const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow(false, 1024));
+    controller.run(); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(header.animateKeyframes[0]?.[0]).toMatchObject({ transform: expect.any(String), filter: expect.any(String) });
+    controller.destroy();
+  });
+
+  test('skips initial preparation when the intro is already dismissed', () => {
+    const item = new FakeElement(); const home = new FakeElement(); home.children = [item];
+    home.querySelectorAll = <T>() => [item] as unknown as T[];
+    introSurface = new FakeElement(); introSurface.dataset.state = 'dismissed';
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+    home.ownerDocument = globalThis.document;
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
+    expect(controller.isArmed()).toBe(false);
+    expect(item.style.opacity).toBe('');
+    controller.destroy();
+  });
+
+  test('skips bfcache preparation after the intro is dismissed', async () => {
+    const item = new FakeElement(); const home = new FakeElement(); home.querySelectorAll = <T>() => [item] as unknown as T[];
+    introSurface = new FakeElement(); introSurface.dataset.state = 'active';
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+    home.ownerDocument = globalThis.document;
+    const win = fakeWindow(); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    expect(item.style.opacity).toBe('0');
+    win.emit('pagehide');
+    introSurface.dataset.state = 'dismissed';
+    win.emit('pageshow', { persisted: true });
+    await Promise.resolve();
+    expect(controller.isArmed()).toBe(false);
+    expect(item.style.opacity).toBe('');
     controller.destroy();
   });
 

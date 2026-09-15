@@ -1,0 +1,594 @@
+<dialog class="image-lightbox" data-image-lightbox aria-label="Image viewer">
+  <div class="image-lightbox__viewer" data-image-lightbox-viewer tabindex="0" role="group" aria-label="Image viewer" aria-keyshortcuts="Escape + - 0 ArrowUp ArrowDown ArrowLeft ArrowRight">
+    <img class="image-lightbox__image" data-image-lightbox-image alt="" draggable="false" />
+    <p class="image-lightbox__error" data-image-lightbox-error role="status" hidden>Image could not be loaded.</p>
+    <label class="image-lightbox__input-mode"> <span class="sr-only">Input mode</span><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label>
+  </div>
+</dialog>
+
+<script>
+  import { IMAGE_LIGHTBOX_MAX_SCALE, distance, midpoint, panForPinch, type Point } from '../lib/imageLightbox';
+
+  const bindImageLightbox = (dialog: HTMLDialogElement) => {
+    const viewer = dialog.querySelector<HTMLElement>('[data-image-lightbox-viewer]');
+    const image = dialog.querySelector<HTMLImageElement>('[data-image-lightbox-image]');
+    const error = dialog.querySelector<HTMLElement>('[data-image-lightbox-error]');
+    if (!viewer || !image || !error) return () => {};
+    const inputModeSelect = viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]');
+    type View = { x: number; y: number; scale: number; rotation: number };
+    type Gesture = 'drag' | 'pan' | 'pinch' | 'rotate' | 'blocked' | null;
+    const fit = (): View => ({ x: 0, y: 0, scale: 1, rotation: 0 });
+    const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+    const angle = (a: Point, b: Point) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+    const angleDelta = (a: number, b: number) => ((a - b + 540) % 360) - 180;
+    const uprightRotation = (rotation: number) => Math.round(rotation / 360) * 360;
+    const resistedRotation = (rotation: number) => {
+      const upright = uprightRotation(rotation);
+      const delta = rotation - upright;
+      return Math.abs(delta) <= 20 ? upright + delta * .1 : rotation;
+    };
+    const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isInteractiveControl = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest('select,button,input,textarea,[contenteditable="true"],[contenteditable="plaintext-only"]'));
+    let view = fit();
+    let start = fit();
+    let velocity = fit();
+    let lastSample = 0;
+    let opener: HTMLImageElement | null = null;
+    let restoreKeyboardFocus = false;
+    let gesture: Gesture = null;
+    let feedback: 'drag' | 'pinch' | null = null;
+    let moved = false;
+    let armed = false;
+    let allowUnderzoom = false;
+    let startPoint: Point = { x: 0, y: 0 };
+    let startMidpoint = startPoint;
+    let startDistance = 1;
+    let startAngle = 0;
+    let rotationTravel = 0;
+    let lastPointer: Point | null = null;
+    let nativeZoomPoint: Point | null = null;
+    const pointers = new Map<number, Point>();
+    let nativeGesture = false;
+    let nativeUntil = 0;
+    let wheelPinch: boolean | null = null;
+    type InputMode = 'auto' | 'mouse' | 'trackpad';
+    const inputModeStorageKey = 'vcd:image-lightbox-input-mode';
+    const validInputMode = (value: string | null): InputMode => value === 'mouse' || value === 'trackpad' ? value : 'auto';
+    let inputMode: InputMode = 'auto';
+    try { inputMode = validInputMode(localStorage.getItem(inputModeStorageKey)); } catch {}
+    if (inputModeSelect) inputModeSelect.value = inputMode;
+    let autoWheelConfidence: 'mouse' | 'trackpad' | null = null;
+    let mouseBurstEvidence = 0;
+    let wheelInputMode: 'mouse' | 'trackpad' | null = null;
+    let wheelStart: View | null = null;
+    let wheelTrackpadOffset: Point = { x: 0, y: 0 };
+    let wheelTrackpadDismissEligible = false;
+    let wheelTrackpadActive = false;
+    let coarseBurstSamples = 0;
+    let coarseBurstSign = 0;
+    let coarseBurstMagnitude = 0;
+    let coarseBurstRegular = true;
+    let burstStrongTrackpad = false;
+    let wheelTimer: number | null = null;
+    let closeTimer: number | null = null;
+    let revealFrame = 0;
+    let springFrame = 0;
+    let rotationFrame = 0;
+    let rawRotation = 0;
+    let rotationTarget = 0;
+    let rotationOffset = 0;
+    let rotationResisted = true;
+    let pointerRotationTarget: number | null = null;
+    let session = 0;
+    let observer: MutationObserver | null = null;
+
+    const threshold = () => clamp(Math.min(viewer.clientWidth, viewer.clientHeight) * .22, 90, 150);
+    const centre = (): Point => {
+      const rect = viewer.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    };
+    const clampPan = () => {
+      const radians = view.rotation * Math.PI / 180;
+      const width = (Math.abs(Math.cos(radians)) * image.offsetWidth + Math.abs(Math.sin(radians)) * image.offsetHeight) * view.scale;
+      const height = (Math.abs(Math.sin(radians)) * image.offsetWidth + Math.abs(Math.cos(radians)) * image.offsetHeight) * view.scale;
+      const baseScale = Math.max(view.scale, 1);
+      const x = Math.max(0, width / baseScale * (baseScale - 1) / 2);
+      const y = Math.max(0, height / baseScale * (baseScale - 1) / 2);
+      view.x = clamp(view.x, -x, x);
+      view.y = clamp(view.y, -y, y);
+    };
+    const progress = () => feedback === 'drag'
+      ? Math.hypot(view.x, view.y) / threshold()
+      : feedback === 'pinch' ? Math.max(0, (1 - view.scale) / .25) : 0;
+    const render = () => {
+      const amount = progress();
+      armed = amount >= 1 && (gesture === 'drag' || gesture === 'pinch' || nativeGesture || wheelPinch === true || wheelTrackpadActive);
+      image.classList.toggle('is-armed', armed);
+      const dismissScale = reducedMotion() ? 1 : 1 - .08 * clamp(amount, 0, 1);
+      image.style.transform = `translate3d(${view.x}px, ${view.y}px, 0) rotate(${view.rotation}deg) scale(${view.scale * dismissScale})`;
+      image.style.opacity = String(armed ? .1 : 1 - .3 * clamp(amount, 0, 1));
+      image.style.filter = `blur(${reducedMotion() ? 0 : 3 * clamp(amount, 0, 1)}px)`;
+    };
+    const stopSpring = () => {
+      cancelAnimationFrame(springFrame); springFrame = 0;
+      cancelAnimationFrame(rotationFrame); rotationFrame = 0;
+      image.classList.remove('is-settling');
+    };
+    const beginRotation = () => {
+      rawRotation = view.rotation;
+      rotationTarget = resistedRotation(rawRotation);
+      rotationOffset = view.rotation - rotationTarget;
+      rotationResisted = Math.abs(rawRotation - uprightRotation(rawRotation)) <= 20;
+    };
+    const updateRotation = (rotation: number) => {
+      rawRotation = rotation;
+      const resisted = Math.abs(rotation - uprightRotation(rotation)) <= 20;
+      const target = resistedRotation(rotation);
+      if (resisted !== rotationResisted) rotationOffset = view.rotation - target;
+      rotationResisted = resisted;
+      rotationTarget = target;
+      view.rotation = target + rotationOffset;
+      if (!rotationOffset || rotationFrame) return;
+      let last = performance.now();
+      const tick = (now: number) => {
+        const dt = Math.max(0, now - last); last = now;
+        const previous = view.rotation;
+        rotationOffset *= Math.exp(-dt / 45);
+        if (Math.abs(rotationOffset) < .01) rotationOffset = 0;
+        view.rotation = rotationTarget + rotationOffset;
+        velocity.rotation = dt ? (view.rotation - previous) / (dt / 1000) : 0;
+        render();
+        rotationFrame = rotationOffset ? requestAnimationFrame(tick) : 0;
+      };
+      rotationFrame = requestAnimationFrame(tick);
+    };
+    const clearWheel = () => {
+      if (wheelTimer !== null) window.clearTimeout(wheelTimer);
+      wheelTimer = null;
+      wheelPinch = null;
+      wheelInputMode = null;
+      wheelStart = null;
+      wheelTrackpadOffset = { x: 0, y: 0 };
+      wheelTrackpadDismissEligible = false;
+      wheelTrackpadActive = false;
+    };
+    const releasePointers = () => {
+      const ids = [...pointers.keys()];
+      pointers.clear();
+      for (const id of ids) if (viewer.hasPointerCapture?.(id)) viewer.releasePointerCapture(id);
+      viewer.classList.remove('is-dragging');
+    };
+    const reset = () => {
+      stopSpring(); clearWheel(); releasePointers();
+      view = fit(); gesture = null; feedback = null; nativeGesture = false; nativeZoomPoint = null; lastPointer = null; nativeUntil = 0; pointerRotationTarget = null;
+      render();
+    };
+    const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
+      stopSpring();
+      if (reducedMotion()) { image.classList.add('is-settling'); view = target; feedback = null; render(); return; }
+      let last = performance.now();
+      const started = last;
+      const keys = ['x', 'y', 'scale', 'rotation'] as const;
+      const tick = (now: number) => {
+        let remaining = Math.min((now - last) / 1000, .032);
+        last = now;
+        while (remaining > 0) {
+          const dt = Math.min(remaining, .008);
+          for (const key of keys) {
+            velocity[key] += (-450 * (view[key] - target[key]) - 32 * velocity[key]) * dt;
+            view[key] += velocity[key] * dt;
+          }
+          remaining -= dt;
+        }
+        render();
+        const settled = keys.every(key => Math.abs(view[key] - target[key]) < .001 && Math.abs(velocity[key]) < .01);
+        if (settled || now - started > 1200) {
+          view = target; feedback = null; springFrame = 0; render();
+        } else springFrame = requestAnimationFrame(tick);
+      };
+      springFrame = requestAnimationFrame(tick);
+    };
+    const finishDismiss = () => {
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      closeTimer = null;
+      observer?.disconnect();
+      if (dialog.open) dialog.close();
+      image.removeAttribute('src'); image.alt = ''; image.style.backgroundColor = '';
+      image.style.removeProperty('transition');
+      error.hidden = true;
+      reset();
+      const target = opener; opener = null;
+      if (target?.isConnected) {
+        target.focus({ preventScroll: true });
+        // Pointer dismissal must not leave a clipped focus outline on a carousel image.
+        if (!restoreKeyboardFocus) target.blur();
+      }
+    };
+    const dismiss = (immediate = false) => {
+      if (!dialog.open) return;
+      const closingSession = ++session;
+      cancelAnimationFrame(revealFrame); revealFrame = 0;
+      stopSpring(); clearWheel(); releasePointers(); nativeGesture = false;
+      dialog.classList.remove('is-visible');
+      image.style.transition = 'opacity 150ms ease'; image.style.opacity = '0';
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      if (immediate) { finishDismiss(); return; }
+      closeTimer = window.setTimeout(() => { if (session === closingSession) finishDismiss(); }, 150);
+    };
+    const open = (target: HTMLImageElement, keyboard = false) => {
+      if (!target.dataset.imageOriginal || document.documentElement.classList.contains('is-dev-mode') || !dialog.isConnected || typeof dialog.showModal !== 'function') return;
+      if (closeTimer !== null) window.clearTimeout(closeTimer);
+      closeTimer = null;
+      const openingSession = ++session;
+      cancelAnimationFrame(revealFrame);
+      reset(); moved = false; nativeUntil = 0;
+      opener = target;
+      restoreKeyboardFocus = keyboard;
+      image.style.removeProperty('transition');
+      image.style.backgroundColor = getComputedStyle(target).getPropertyValue('--project-image-background').trim() || 'transparent';
+      image.alt = target.alt; image.src = target.dataset.imageOriginal;
+      error.hidden = true;
+      viewer.removeAttribute('data-keyboard-focus');
+      if (!dialog.open) dialog.showModal();
+      observer?.disconnect();
+      observer = new MutationObserver(() => { if (opener && !opener.isConnected) dismiss(); });
+      observer.observe(document.body, { childList: true, subtree: true });
+      revealFrame = requestAnimationFrame(() => {
+        revealFrame = requestAnimationFrame(() => { if (session === openingSession && dialog.open) dialog.classList.add('is-visible'); });
+      });
+      viewer.focus({ preventScroll: true });
+    };
+    const eligibleImage = (event: Event): HTMLImageElement | null => {
+      const target = event.target instanceof Element ? event.target.closest<HTMLImageElement>('img[data-image-original]') : null;
+      if (!target || target.closest('a,button,input,textarea,select,[role="link"],[contenteditable="true"],[contenteditable="plaintext-only"],[inert],[aria-hidden="true"],[data-preview-reveal]')) return null;
+      if (target.closest('[data-crop-image], .dev-crop-stage, .dev-crop-stage-host, [data-home-intro-surface], [data-carousel-track].is-dragging')) return null;
+      return target;
+    };
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      const target = eligibleImage(event); if (target) open(target);
+    };
+    const onDocumentKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.key !== 'Enter' && event.key !== ' ')) return;
+      const target = eligibleImage(event);
+      if (target && target === event.target && !document.documentElement.classList.contains('is-dev-mode')) { event.preventDefault(); open(target, true); }
+    };
+    const onDialogClick = (event: MouseEvent) => {
+      if (isInteractiveControl(event.target)) return;
+      if (!moved && (event.target === dialog || event.target === viewer || event.target === image)) dismiss();
+    };
+    const onCancel = (event: Event) => { event.preventDefault(); dismiss(); };
+    const onError = () => { if (dialog.open) error.hidden = false; };
+    const onLoad = () => { if (dialog.open && closeTimer === null) { if (!feedback) clampPan(); render(); } };
+    const zoom = (nextScale: number, point: Point, minimum = 1) => {
+      if (nextScale > 1) { allowUnderzoom = false; minimum = 1; }
+      const next = clamp(nextScale, minimum, IMAGE_LIGHTBOX_MAX_SCALE);
+      const pan = panForPinch(view, point, point, view.scale, next, centre());
+      view = { ...view, ...pan, scale: next };
+      if (next >= 1) clampPan();
+      render();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (!dialog.open || closeTimer !== null || event.defaultPrevented || isInteractiveControl(event.target)) return;
+      restoreKeyboardFocus = true;
+      viewer.setAttribute('data-keyboard-focus', '');
+      if (event.key === 'Escape') { event.preventDefault(); dismiss(); return; }
+      if (event.key === '0') { event.preventDefault(); reset(); return; }
+      if (['+', '=', '-'].includes(event.key)) {
+        event.preventDefault(); stopSpring(); feedback = null;
+        zoom(view.scale + (event.key === '-' ? -.5 : .5), centre()); return;
+      }
+      const steps: Record<string, Point> = { ArrowLeft: {x:40,y:0}, ArrowRight: {x:-40,y:0}, ArrowUp: {x:0,y:40}, ArrowDown: {x:0,y:-40} };
+      const step = steps[event.key];
+      if (step && view.scale > 1) { event.preventDefault(); view.x += step.x; view.y += step.y; clampPan(); render(); }
+    };
+    const pointFor = (event: { clientX?: number; clientY?: number }): Point => {
+      if (Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) return { x: event.clientX as number, y: event.clientY as number };
+      return lastPointer ?? centre();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture || isInteractiveControl(event.target)) return;
+      if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
+      stopSpring(); clearWheel(); pointerRotationTarget = null;
+      viewer.removeAttribute('data-keyboard-focus');
+      viewer.classList.add('is-dragging');
+      lastPointer = pointFor(event);
+      if (!pointers.size) {
+        moved = false; start = { ...view }; startPoint = pointFor(event);
+        gesture = event.altKey ? 'rotate' : view.scale <= 1 ? 'drag' : 'pan'; feedback = gesture === 'drag' ? 'drag' : null;
+      } else {
+        moved = true;
+        if (gesture === 'drag' && distance(view,start) > 3) { view = { ...fit(), rotation: start.rotation }; render(); }
+        gesture = 'pinch'; feedback = 'pinch'; start = { ...view };
+      }
+      pointers.set(event.pointerId, pointFor(event));
+      viewer.setPointerCapture?.(event.pointerId);
+      velocity = { x: 0, y: 0, scale: 0, rotation: 0 }; lastSample = performance.now();
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        startMidpoint = midpoint(a,b); startDistance = Math.max(1,distance(a,b)); startAngle = angle(a,b); rotationTravel = 0;
+        allowUnderzoom = start.scale <= 1;
+        beginRotation();
+      }
+      event.preventDefault();
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      lastPointer = pointFor(event);
+      if (!pointers.has(event.pointerId) || closeTimer !== null) return;
+      const previous = { ...view };
+      pointers.set(event.pointerId, pointFor(event));
+      if (gesture === 'pinch' && pointers.size === 2) {
+        const [a,b] = [...pointers.values()];
+        const requestedScale = start.scale * distance(a,b) / startDistance;
+        if (requestedScale > 1) allowUnderzoom = false;
+        const nextScale = clamp(requestedScale, allowUnderzoom ? .65 : 1, IMAGE_LIGHTBOX_MAX_SCALE);
+        const pan = panForPinch(start, startMidpoint, midpoint(a,b), start.scale, nextScale, centre());
+        const nextAngle = angle(a,b);
+        rotationTravel += angleDelta(nextAngle,startAngle);
+        startAngle = nextAngle;
+        view = { ...pan, scale: nextScale, rotation: view.rotation };
+        if (!reducedMotion()) updateRotation(start.rotation + rotationTravel);
+        if (nextScale >= 1) clampPan();
+      } else if (gesture === 'drag' || gesture === 'pan') {
+        if (gesture === 'pan' && distance(startPoint,pointFor(event)) > 0) stopSpring();
+        view.x = start.x + event.clientX - startPoint.x;
+        view.y = start.y + event.clientY - startPoint.y;
+        if (gesture === 'drag') view.rotation = start.rotation + (reducedMotion() ? 0 : clamp(view.x / threshold() * 12, -12, 12));
+        else clampPan();
+      } else if (gesture === 'rotate') {
+        if (!reducedMotion()) updateRotation(start.rotation + (event.clientX - startPoint.x) * .5);
+      }
+      moved ||= pointers.size > 1 || distance(startPoint,pointFor(event)) > 3;
+      const now = performance.now();
+      const elapsed = now - lastSample;
+      const keys = ['x','y','scale','rotation'] as const;
+      if (keys.some(key => view[key] !== previous[key]) || elapsed > 40) {
+        const dt = Math.max(.008, elapsed / 1000);
+        for (const key of keys) velocity[key] = clamp((view[key]-previous[key])/dt, -1500, 1500);
+        lastSample = now;
+      }
+      render(); event.preventDefault();
+    };
+    const finishPinch = (cancelled: boolean) => {
+      if (!cancelled && armed && allowUnderzoom) { dismiss(); return; }
+      if (view.scale < 1) { velocity = {x:0,y:0,scale:0,rotation:0}; springHome(); }
+      else {
+        feedback = null; clampPan();
+        const upright = uprightRotation(rawRotation);
+        const rotation = Math.abs(rawRotation - upright) <= 20 ? upright : rawRotation;
+        pointerRotationTarget = pointers.size ? rotation : null;
+        velocity.x = 0; velocity.y = 0; velocity.scale = 0;
+        if (view.rotation !== rotation) springHome({ ...view, rotation });
+        else render();
+      }
+    };
+    const finishRotation = () => {
+      feedback = null;
+      const upright = uprightRotation(rawRotation);
+      const rotation = Math.abs(rawRotation - upright) <= 20 ? upright : rawRotation;
+      velocity.x = 0; velocity.y = 0; velocity.scale = 0;
+      if (view.rotation !== rotation) springHome({ ...view, rotation }); else render();
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      if (!pointers.has(event.pointerId)) return;
+      const cancelled = event.type !== 'pointerup';
+      if (!cancelled) onPointerMove(event);
+      if (cancelled) moved = true;
+      const ending = gesture;
+      pointers.delete(event.pointerId);
+      if (viewer.hasPointerCapture?.(event.pointerId)) viewer.releasePointerCapture(event.pointerId);
+      if (ending === 'pinch') {
+        finishPinch(cancelled);
+        gesture = view.scale < 1 ? 'blocked' : 'pan';
+        start = { ...view }; startPoint = [...pointers.values()][0] || {x:0,y:0};
+      } else if (!pointers.size && ending === 'drag') {
+        if (!cancelled && armed) dismiss(); else springHome({ ...fit(), rotation: start.rotation });
+      } else if (!pointers.size && ending === 'rotate') {
+        finishRotation();
+      }
+      if (!pointers.size) {
+        if (pointerRotationTarget !== null && closeTimer === null) {
+          velocity = { x: 0, y: 0, scale: 0, rotation: 0 };
+          springHome({ ...view, rotation: pointerRotationTarget });
+          pointerRotationTarget = null;
+        }
+        gesture = null; viewer.classList.remove('is-dragging');
+      }
+      event.preventDefault();
+    };
+    const finishWheel = () => {
+      const pinch = wheelPinch;
+      const trackpadDrag = wheelTrackpadActive && wheelTrackpadDismissEligible;
+      const trackpadStart = wheelStart;
+      const trackpadArmed = armed;
+      if (inputMode === 'auto') {
+        if (burstStrongTrackpad) {
+          mouseBurstEvidence = 0;
+        } else if (wheelInputMode === 'mouse') {
+          autoWheelConfidence = 'mouse'; mouseBurstEvidence = 0;
+        } else if (wheelInputMode === 'trackpad' && coarseBurstSamples >= 3 && coarseBurstRegular) {
+          mouseBurstEvidence += 1;
+          if (mouseBurstEvidence >= 2) { autoWheelConfidence = 'mouse'; mouseBurstEvidence = 0; }
+        }
+      }
+      clearWheel();
+      if (pinch) finishPinch(false);
+      else if (trackpadDrag && trackpadStart) {
+        if (trackpadArmed) dismiss();
+        else springHome({ ...fit(), rotation: trackpadStart.rotation });
+      }
+    };
+    const isCoarseWheel = (event: WheelEvent) => event.deltaMode === 0 && event.deltaX === 0 && Number.isInteger(event.deltaY) && Math.abs(event.deltaY) >= 40;
+    const detectWheelMode = (event: WheelEvent): 'mouse' | 'trackpad' => {
+      return event.deltaMode !== 0 || isCoarseWheel(event) ? 'mouse' : 'trackpad';
+    };
+    const onWheel = (event: WheelEvent) => {
+      if (!dialog.open || closeTimer !== null || isInteractiveControl(event.target)) return;
+      event.preventDefault();
+      const pinch = event.ctrlKey || event.metaKey;
+      if (pointers.size || nativeGesture || (pinch && performance.now() < nativeUntil)) return;
+      stopSpring(); moved = true;
+      if (!wheelInputMode) {
+        wheelInputMode = pinch ? 'trackpad' : inputMode === 'auto' ? autoWheelConfidence ?? detectWheelMode(event) : inputMode;
+        coarseBurstSamples = 0; coarseBurstSign = 0; coarseBurstMagnitude = 0; coarseBurstRegular = true; burstStrongTrackpad = false;
+        wheelStart = { ...view };
+        wheelTrackpadOffset = { x: 0, y: 0 };
+        wheelTrackpadDismissEligible = !pinch && wheelInputMode === 'trackpad' && view.scale <= 1;
+        wheelTrackpadActive = wheelTrackpadDismissEligible;
+        if (inputMode === 'auto' && wheelInputMode === 'mouse' && !autoWheelConfidence) autoWheelConfidence = 'mouse';
+      }
+      if (inputMode === 'auto') {
+        const strongTrackpad = event.deltaMode === 0 && !isCoarseWheel(event);
+        if (pinch || strongTrackpad) {
+          burstStrongTrackpad = true;
+          autoWheelConfidence = 'trackpad';
+          mouseBurstEvidence = 0;
+        } else if (event.deltaMode !== 0) {
+          autoWheelConfidence = 'mouse';
+          mouseBurstEvidence = 0;
+        } else if (wheelInputMode === 'trackpad') {
+          // Deliberate limit: one coarse vertical event cannot identify a device, so retained confidence wins until the burst ends.
+          const sign = Math.sign(event.deltaY);
+          const magnitude = Math.abs(event.deltaY);
+          if (coarseBurstSign && sign !== coarseBurstSign) coarseBurstRegular = false;
+          if (coarseBurstMagnitude && Math.abs(magnitude - coarseBurstMagnitude) > Math.max(4, coarseBurstMagnitude * .2)) coarseBurstRegular = false;
+          coarseBurstSign = sign; coarseBurstMagnitude ||= magnitude; coarseBurstSamples += 1;
+        }
+      }
+      if (wheelPinch !== pinch) {
+        if (pinch && wheelTrackpadActive) {
+          wheelTrackpadActive = false; wheelTrackpadDismissEligible = false; feedback = null;
+          if (wheelStart) view = { ...wheelStart };
+        } else if (!pinch && wheelPinch === true) {
+          wheelTrackpadActive = false; wheelTrackpadDismissEligible = false; feedback = null;
+        }
+        wheelPinch = pinch;
+        allowUnderzoom = pinch && view.scale <= 1;
+        feedback = pinch ? 'pinch' : null;
+        beginRotation();
+      }
+      const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewer.clientHeight : 1;
+      const delta = clamp(event.deltaY * units, -100, 100);
+      if (pinch || wheelInputMode === 'mouse') {
+        zoom(view.scale * Math.exp(-delta * (pinch ? .005 : .002)), pointFor(event), allowUnderzoom ? .65 : 1);
+      } else if (wheelTrackpadActive && wheelStart) {
+        feedback = 'drag';
+        wheelTrackpadOffset.x -= event.deltaX || 0;
+        wheelTrackpadOffset.y -= event.deltaY;
+        view.x = wheelStart.x + wheelTrackpadOffset.x;
+        view.y = wheelStart.y + wheelTrackpadOffset.y;
+        view.rotation = wheelStart.rotation + (reducedMotion() ? 0 : clamp(view.x / threshold() * 12, -12, 12));
+        render();
+      } else {
+        feedback = null;
+        view.x -= (event.deltaX || 0) * units;
+        view.y -= event.deltaY * units;
+        clampPan(); render();
+      }
+      if (wheelTimer !== null) window.clearTimeout(wheelTimer);
+      wheelTimer = window.setTimeout(finishWheel,160);
+    };
+    const onInputModeChange = () => {
+      inputMode = validInputMode(inputModeSelect?.value ?? 'auto');
+      if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
+      try { localStorage.setItem(inputModeStorageKey, inputMode); } catch {}
+      clearWheel(); feedback = null; allowUnderzoom = false;
+    };
+    type NativeGesture = Event & {scale?: number; rotation?: number; clientX?: number; clientY?: number};
+      const onGestureStart = (event: NativeGesture) => {
+      if (!dialog.open || closeTimer !== null) return;
+      event.preventDefault();
+      if (pointers.size) return;
+      if (wheelTrackpadActive && wheelStart) { view = { ...wheelStart }; feedback = null; render(); }
+      stopSpring(); clearWheel(); nativeGesture = true; moved = true;
+      if (inputMode === 'auto') autoWheelConfidence = 'trackpad';
+      start = {...view}; allowUnderzoom = view.scale <= 1; feedback = 'pinch';
+      nativeZoomPoint = pointFor(event);
+      beginRotation();
+    };
+    const onGestureChange = (event: NativeGesture) => {
+      if (!dialog.open || closeTimer !== null) return;
+      event.preventDefault();
+      if (!nativeGesture || pointers.size) return;
+      const ratio = event.scale ?? 1;
+      if (!Number.isFinite(ratio) || ratio <= 0) return;
+      if (!reducedMotion()) updateRotation(start.rotation + (event.rotation ?? 0));
+      zoom(start.scale * ratio, nativeZoomPoint ?? pointFor(event), allowUnderzoom ? .65 : 1);
+    };
+    const onGestureEnd = (event: Event) => {
+      if (!dialog.open) return;
+      event.preventDefault();
+      if (!nativeGesture) return;
+      nativeGesture = false; nativeUntil = performance.now()+250;
+      nativeZoomPoint = null;
+      finishPinch(false);
+    };
+    const onResize = () => { if (!dialog.open || closeTimer !== null) return; if (!feedback) clampPan(); render(); };
+    const onPageHide = () => dismiss(true);
+    document.addEventListener('click',onClick);
+    document.addEventListener('keydown',onDocumentKey);
+    dialog.addEventListener('click',onDialogClick);
+    dialog.addEventListener('cancel',onCancel);
+    image.addEventListener('error',onError);
+    image.addEventListener('load',onLoad);
+    viewer.addEventListener('keydown',onKey);
+    viewer.addEventListener('pointerdown',onPointerDown);
+    viewer.addEventListener('pointermove',onPointerMove);
+    viewer.addEventListener('pointerup',onPointerUp);
+    viewer.addEventListener('pointercancel',onPointerUp);
+    viewer.addEventListener('lostpointercapture',onPointerUp);
+    viewer.addEventListener('wheel',onWheel,{passive:false});
+    viewer.addEventListener('gesturestart',onGestureStart,{passive:false});
+    viewer.addEventListener('gesturechange',onGestureChange,{passive:false});
+    viewer.addEventListener('gestureend',onGestureEnd,{passive:false});
+    inputModeSelect?.addEventListener('change', onInputModeChange);
+    window.addEventListener('resize',onResize);
+    window.addEventListener('pagehide',onPageHide);
+    window.addEventListener('vcd:dev-mode-change',onPageHide);
+    render();
+    return () => {
+      dismiss(true); stopSpring(); clearWheel(); observer?.disconnect();
+      cancelAnimationFrame(revealFrame);
+      document.removeEventListener('click',onClick);
+      document.removeEventListener('keydown',onDocumentKey);
+      dialog.removeEventListener('click',onDialogClick);
+      dialog.removeEventListener('cancel',onCancel);
+      image.removeEventListener('error',onError);
+      image.removeEventListener('load',onLoad);
+      viewer.removeEventListener('keydown',onKey);
+      viewer.removeEventListener('pointerdown',onPointerDown);
+      viewer.removeEventListener('pointermove',onPointerMove);
+      viewer.removeEventListener('pointerup',onPointerUp);
+      viewer.removeEventListener('pointercancel',onPointerUp);
+      viewer.removeEventListener('lostpointercapture',onPointerUp);
+      viewer.removeEventListener('wheel',onWheel);
+      viewer.removeEventListener('gesturestart',onGestureStart);
+      viewer.removeEventListener('gesturechange',onGestureChange);
+      viewer.removeEventListener('gestureend',onGestureEnd);
+      inputModeSelect?.removeEventListener('change', onInputModeChange);
+      window.removeEventListener('resize',onResize);
+      window.removeEventListener('pagehide',onPageHide);
+      window.removeEventListener('vcd:dev-mode-change',onPageHide);
+    };
+  };
+  const disposers = [...document.querySelectorAll<HTMLDialogElement>('[data-image-lightbox]')].map(bindImageLightbox);
+  import.meta.hot?.dispose(() => disposers.forEach(dispose => dispose()));
+</script>
+
+<style>
+  .image-lightbox { border: 0; outline: 0; box-shadow: none; margin: 0; padding: 0; width: 100%; max-width: none; height: calc(var(--vh-safe, 1svh) * 100); max-height: none; color: var(--color-ink, CanvasText); background: transparent; opacity: 0; transition: opacity 150ms ease; }
+  .image-lightbox.is-visible { opacity: 1; }
+  :global(html:has(dialog[data-image-lightbox][open])) { overflow: hidden; }
+  .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-backdrop-opacity, 90%), transparent); opacity: 0; transition: opacity 150ms ease; }
+  .image-lightbox.is-visible::backdrop { opacity: 1; }
+  .image-lightbox__viewer { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); place-items: center; box-sizing: border-box; width: 100%; height: 100%; min-height: 0; padding: calc(var(--vh-safe, 1svh) * 10) 10vw; overflow: hidden; touch-action: none; outline: 0; }
+  .image-lightbox__viewer:focus { outline: 0; }
+  .image-lightbox__viewer[data-keyboard-focus] { outline: 1px solid color-mix(in srgb, currentColor 35%, transparent); outline-offset: -1rem; }
+  .image-lightbox__image { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(var(--vh-safe, 1svh) * 80); object-fit: contain; transform-origin: center; user-select: none; will-change: transform; cursor: grab; }
+  .image-lightbox__image.is-armed, .image-lightbox__image.is-settling { transition: opacity 150ms ease; }
+  .image-lightbox__viewer.is-dragging, .image-lightbox__viewer.is-dragging .image-lightbox__image { cursor: grabbing; }
+  .image-lightbox__error { position: absolute; margin: 0; }
+  .image-lightbox__input-mode { position: absolute; right: max(1rem, 10vw); bottom: max(1rem, calc(var(--vh-safe, 1svh) * 10)); }
+  @media (hover: none) and (pointer: coarse) { .image-lightbox__input-mode { display: none; } }
+  @media (max-width: 40em) { .image-lightbox::backdrop { background: color-mix(in srgb, var(--sys-color-srf) var(--header-surface-mobile-backdrop-opacity, 90%), transparent); } }
+</style>

@@ -1,0 +1,431 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
+import SelectField from './ui/SelectField.astro';
+import SegmentedControl from './ui/SegmentedControl.astro';
+import PanelActions from './ui/PanelActions.astro';
+import Field from './ui/Field.astro';
+import Button from './ui/Button.astro';
+import { sizeIcon } from '../lib/icons';
+import volume2Icon from 'lucide-static/icons/volume-2.svg?raw';
+import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
+---
+
+<DevOverlay storageKey="video" panelKey="video" defaultHidden>
+  <div class="dev-video-editor" data-dev-video-editor>
+    <ViewportSelector dataAttr="data-video-viewport" />
+    <div class="dev-video-editor__settings">
+      <SelectField label="Aspect ratio" data-video-aspect options={[
+        { value: 'original', label: 'Original' },
+        { label: 'Landscape', options: [
+          { value: '16:9', label: '16:9' }, { value: '16:10', label: '16:10' },
+          { value: '3:2', label: '3:2' }, { value: '4:3', label: '4:3' }, { value: '5:4', label: '5:4' },
+        ] },
+        { label: 'Square', options: [{ value: '1:1', label: '1:1' }] },
+        { label: 'Portrait', options: [
+          { value: '5:6', label: '5:6' }, { value: '4:5', label: '4:5' }, { value: '3:4', label: '3:4' },
+          { value: '2:3', label: '2:3' }, { value: '10:16', label: '10:16' }, { value: '9:16', label: '9:16' },
+        ] },
+      ]}>
+        <Button slot="labelAccessory" emphasis="ghost" label="Reset" data-video-aspect-reset />
+      </SelectField>
+      <Field label="Audio" class="dev-video-editor__audio-field">
+        <SegmentedControl label="Audio" data-video-audio-control>
+          <Button emphasis="ghost" width="fill" label="" aria-label="Off" data-video-audio="false"><span slot="icon" set:html={sizeIcon(volumeXIcon, 14)} /></Button>
+          <Button emphasis="ghost" width="fill" label="" aria-label="On" data-video-audio="true"><span slot="icon" set:html={sizeIcon(volume2Icon, 14)} /></Button>
+        </SegmentedControl>
+      </Field>
+    </div>
+    <div class="dev-video-editor__preview" data-video-preview-wrap>
+      <video muted playsinline preload="metadata" data-video-preview></video>
+    </div>
+    <div class="dev-field">
+      <span class="dev-field__label">Replace video</span>
+      <div class="dev-drop" data-video-replace-drop tabindex="0" role="button" aria-label="Replace video">
+        <div class="dev-drop__well">
+          <button type="button" class="dev-btn dev-btn--ghost" data-video-replace-choose>File system</button>
+          <input type="file" accept="video/mp4,video/webm,video/x-m4v,.mp4,.webm,.m4v" hidden data-video-replace-file />
+        </div>
+      </div>
+    </div>
+    <PanelActions>
+      <Button emphasis="ghost" label="Cancel" data-video-cancel />
+      <Button emphasis="ghost" label="Reset" data-video-reset />
+      <Button emphasis="filled" label="Save changes" data-video-save />
+    </PanelActions>
+    <p class="dev-video-editor__status" data-video-status aria-live="polite"></p>
+  </div>
+</DevOverlay>
+
+<style>
+  .dev-video-editor { display: grid; gap: var(--space-unit); }
+  .dev-video-editor__settings { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-unit); }
+  .dev-video-editor__audio-field :global(.dev-segmented) { height: var(--dev-control-height); min-height: var(--dev-control-height); box-sizing: border-box; align-items: stretch; }
+  .dev-video-editor__audio-field :global(.dev-field__value) { padding: 0; background: transparent; }
+  .dev-video-editor__audio-field :global(.dev-field__value:hover),
+  .dev-video-editor__audio-field :global(.dev-field__value:focus-within) { background: transparent; box-shadow: none; }
+  .dev-video-editor__preview { display: grid; place-items: center; overflow: hidden; background: var(--sys-color-srf-2); }
+  .dev-video-editor__preview video { display: block; width: 100%; object-fit: contain; touch-action: none; }
+  .dev-video-editor__status { margin: 0; }
+  .dev-video-editor__status:empty { display: none; }
+</style>
+
+<script>
+  import { devEditPendingId, withDevEditTarget } from '../scripts/devEditTarget';
+  import { projectImage } from '../lib/images';
+  import { isAcceptedVideoFile, isVideoSrc } from '../lib/imageUpload.mjs';
+  import { resolveVideoAudio, type ResolvedVideoAudio } from '../lib/videoAudio';
+  import { normalizeImageVariants, responsiveImageStyle, coverWidthFraction, type ImageViewport, type ImageVariants } from '../lib/responsiveImage';
+  import { imageVariantsSavePayload, resetImageVariantSetting, setImageVariantSetting } from '../lib/imageVariantInheritance';
+  import { imageSourceDims } from '../lib/projectImageFrame';
+  import { pageHistory } from '../lib/devHistory';
+
+  type Viewport = ImageViewport;
+  type Variant = { aspect: string; cx: number; cy: number; w: number };
+  const viewportForWidth = (): Viewport => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+  const readVariants = (target: HTMLElement) => {
+    let raw: Record<string, Partial<Variant>> = {};
+    try { raw = JSON.parse(target.dataset.devImageVariants || '{}'); } catch { /* use defaults */ }
+    const dims = imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight });
+    return { authored: raw as ImageVariants, resolved: normalizeImageVariants(raw, 'original', dims) as Record<Viewport, Variant> };
+  };
+  const stripZoomSettings = (variants: ImageVariants): ImageVariants => {
+    const next = structuredClone(variants);
+    for (const viewport of ['desktop', 'tablet', 'mobile'] as const) {
+      const variant = next[viewport];
+      if (!variant) continue;
+      delete variant.w;
+      delete variant.zoom;
+      if (!Object.keys(variant).length) delete next[viewport];
+    }
+    return next;
+  };
+  const cropBounds = (variant: Variant, dims: { width: number; height: number } | null) => {
+    const sourceAspect = dims ? dims.width / dims.height : 1;
+    const frameAspect = variant.aspect === 'original' ? sourceAspect : Number(variant.aspect.split(':')[0]) / Number(variant.aspect.split(':')[1]);
+    const h = clamp(variant.w * sourceAspect / Math.max(0.001, frameAspect), 0.01, 1);
+    return { x: variant.w / 2, y: h / 2 };
+  };
+  const normalizeVideoDraft = (authored: ImageVariants, dims: { width: number; height: number } | null) => {
+    const next = stripZoomSettings(authored);
+    let resolved = normalizeImageVariants(next, 'original', dims) as Record<Viewport, Variant>;
+    for (const viewport of ['desktop', 'tablet', 'mobile'] as const) {
+      const resolvedVariant = resolved[viewport];
+      const bounds = cropBounds(resolvedVariant, dims);
+      const cx = clamp(resolvedVariant.cx, bounds.x, 1 - bounds.x);
+      const cy = clamp(resolvedVariant.cy, bounds.y, 1 - bounds.y);
+      const variant = next[viewport] ?? {};
+      const hasLocalVariant = Boolean(next[viewport]);
+      const hasLocalX = variant.cx !== undefined || variant.x !== undefined;
+      const hasLocalY = variant.cy !== undefined || variant.y !== undefined;
+      if (hasLocalX && variant.cx !== cx) variant.cx = cx;
+      if (hasLocalY && variant.cy !== cy) variant.cy = cy;
+      if (!hasLocalX && cx !== resolvedVariant.cx) variant.cx = cx;
+      if (!hasLocalY && cy !== resolvedVariant.cy) variant.cy = cy;
+      if (!hasLocalVariant && Object.keys(variant).length) next[viewport] = variant;
+      if (next[viewport]) {
+        delete next[viewport].x;
+        delete next[viewport].y;
+      }
+      resolved = normalizeImageVariants(next, 'original', dims) as Record<Viewport, Variant>;
+    }
+    return { authored: next, resolved };
+  };
+
+  let initialized = false;
+  const init = () => {
+    if (initialized) return;
+    initialized = true;
+    const editor = document.querySelector<HTMLElement>('[data-dev-video-editor]');
+    const overlay = editor?.closest<HTMLElement>('[data-dev-panel-key="video"]');
+    const preview = editor?.querySelector<HTMLVideoElement>('[data-video-preview]');
+    const previewWrap = editor?.querySelector<HTMLElement>('[data-video-preview-wrap]');
+    const aspect = editor?.querySelector<HTMLSelectElement>('[data-video-aspect]');
+    const aspectReset = editor?.querySelector<HTMLButtonElement>('[data-video-aspect-reset]');
+    const save = editor?.querySelector<HTMLButtonElement>('[data-video-save]');
+    const reset = editor?.querySelector<HTMLButtonElement>('[data-video-reset]');
+    const cancel = editor?.querySelector<HTMLButtonElement>('[data-video-cancel]');
+    const status = editor?.querySelector<HTMLElement>('[data-video-status]');
+    const audioButtons = [...(editor?.querySelectorAll<HTMLButtonElement>('[data-video-audio]') || [])];
+    const viewportButtons = [...(editor?.querySelectorAll<HTMLButtonElement>('[data-video-viewport]') || [])];
+    const replaceChoose = editor?.querySelector<HTMLButtonElement>('[data-video-replace-choose]');
+    const replaceFile = editor?.querySelector<HTMLInputElement>('[data-video-replace-file]');
+    const replaceDrop = editor?.querySelector<HTMLElement>('[data-video-replace-drop]');
+    if (!editor || !overlay || !preview || !previewWrap || !aspect || !aspectReset || !save || !reset || !cancel || !status) return;
+
+    let target: HTMLElement | null = null;
+    let selected: Viewport = viewportForWidth();
+    let variants = {} as Record<Viewport, Variant>;
+    let savedVariants = {} as Record<Viewport, Variant>;
+    let authoredVariants = {} as ImageVariants;
+    let savedAuthoredVariants = {} as ImageVariants;
+    let audio = resolveVideoAudio(undefined);
+    let savedAudio = { ...audio };
+    let baselineStyle: string | null = null;
+    let baselineClassName = '';
+    let baselineVariants = '';
+    let baselineAudio: string | undefined;
+    let baselineVideoAudio: string | undefined;
+    let staged = false;
+    let drag: { x: number; y: number; pointerId: number } | null = null;
+    const controller = new AbortController();
+    const { signal } = controller;
+
+    const restoreBaseline = () => {
+      if (!target) return;
+      if (baselineStyle === null) target.removeAttribute('style');
+      else target.style.cssText = baselineStyle;
+      target.className = baselineClassName;
+      if (baselineVariants) target.dataset.devImageVariants = baselineVariants;
+      else delete target.dataset.devImageVariants;
+      if (baselineAudio === undefined) delete target.dataset.devVideoAudio;
+      else target.dataset.devVideoAudio = baselineAudio;
+      if (baselineVideoAudio === undefined) delete target.dataset.videoAudio;
+      else target.dataset.videoAudio = baselineVideoAudio;
+    };
+    const close = (keepChanges = false) => {
+      if (!keepChanges && target) restoreBaseline();
+      overlay.hidden = true;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel: overlay } }));
+      target = null;
+      drag = null;
+      preview.pause();
+      preview.removeAttribute('src');
+      preview.load();
+      preview.removeAttribute('style');
+      previewWrap.removeAttribute('style');
+    };
+    const apply = (subject: HTMLElement | null = target, draftAudio = audio, draftAuthored = authoredVariants) => {
+      if (!subject || !subject.isConnected) return;
+      const dims = imageSourceDims({ srcWidth: subject.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: subject.dataset.devImageSrcHeight || preview.videoHeight });
+      const normalized = normalizeImageVariants(draftAuthored, 'original', dims) as Record<Viewport, Variant>;
+      const variant = normalized[selected];
+      const maxW = coverWidthFraction(variant.aspect, dims ? dims.width / dims.height : null);
+      variant.w = clamp(variant.w, 0.1, maxW);
+      if (subject === target) variants = normalized;
+      const css = responsiveImageStyle(normalized, dims);
+      subject.style.cssText += `;${css}`;
+      subject.classList.add('project-cropped', 'project-responsive-image');
+      subject.dataset.devImageVariants = JSON.stringify(imageVariantsSavePayload(draftAuthored));
+      subject.dataset.devVideoAudio = JSON.stringify(draftAudio);
+      subject.dataset.videoAudio = JSON.stringify(draftAudio);
+      const rendered = normalized[selected];
+      previewWrap.style.aspectRatio = rendered.aspect === 'original'
+        ? (dims ? `${dims.width} / ${dims.height}` : '1 / 1')
+        : rendered.aspect.replace(':', ' / ');
+      previewWrap.style.position = 'relative';
+      preview.classList.add('project-cropped', 'project-responsive-image');
+      preview.style.position = 'absolute';
+      preview.style.top = '50%';
+      preview.style.left = '50%';
+      preview.style.width = `calc(100% / ${rendered.w})`;
+      preview.style.height = 'auto';
+      preview.style.maxWidth = 'none';
+      preview.style.objectFit = 'fill';
+      preview.style.objectPosition = '50% 50%';
+      preview.style.transform = `translate(${rendered.cx * -100}%, ${rendered.cy * -100}%)`;
+      aspect.value = variant.aspect;
+      const localAspect = draftAuthored[selected]?.aspect ?? draftAuthored[selected]?.aspectRatio;
+      aspectReset.hidden = selected === 'desktop' || localAspect === undefined;
+      audioButtons.forEach((button) => {
+        const active = draftAudio[selected] === (button.dataset.videoAudio === 'true');
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.videoViewport === selected;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+    };
+    const open = (nextTarget: HTMLElement) => {
+      if (!isVideoSrc(nextTarget.dataset.devImageSrc || '')) return;
+      if (target && !staged) restoreBaseline();
+      target = nextTarget;
+      baselineStyle = target.getAttribute('style');
+      baselineClassName = target.className;
+      baselineVariants = target.dataset.devImageVariants || '';
+      baselineAudio = target.dataset.devVideoAudio;
+      baselineVideoAudio = target.dataset.videoAudio;
+      staged = false;
+      const initial = readVariants(target);
+      const draft = normalizeVideoDraft(initial.authored, imageSourceDims({ srcWidth: target.dataset.devImageSrcWidth, srcHeight: target.dataset.devImageSrcHeight }));
+      authoredVariants = draft.authored;
+      savedAuthoredVariants = structuredClone(initial.authored);
+      variants = draft.resolved;
+      savedVariants = structuredClone(variants);
+      try { audio = resolveVideoAudio(JSON.parse(target.dataset.devVideoAudio || target.dataset.videoAudio || '{}')); } catch { audio = resolveVideoAudio(undefined); }
+      savedAudio = { ...audio };
+      status.textContent = '';
+      selected = viewportForWidth();
+      aspect.value = variants[selected].aspect;
+      const source = target.dataset.devImageSrc || '';
+      preview.src = projectImage(source);
+      preview.load();
+      apply();
+      overlay.hidden = false;
+      window.dispatchEvent(new CustomEvent('vcd:dev-edit-open', { detail: { panel: overlay, trigger: nextTarget } }));
+    };
+    const sameDraft = (leftAuthored: ImageVariants, rightAuthored: ImageVariants, leftAudio: ResolvedVideoAudio, rightAudio: ResolvedVideoAudio) => (
+      JSON.stringify(imageVariantsSavePayload(leftAuthored)) === JSON.stringify(imageVariantsSavePayload(rightAuthored))
+      && JSON.stringify(leftAudio) === JSON.stringify(rightAudio)
+    );
+    const pendingPayload = (subject: HTMLElement, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants) => {
+      const identity = withDevEditTarget({ document: subject.dataset.devDocument, path: JSON.parse(subject.dataset.devImagePath || '[]') }, subject);
+      return {
+        ...identity,
+        variants: imageVariantsSavePayload(draftAuthored),
+        audio: Object.values(draftAudio).every(Boolean) ? true : draftAudio,
+        ...(subject.dataset.devImageSrc ? {
+          src: subject.dataset.devImageSrc,
+          ...(subject.dataset.devImageSrcWidth ? { srcWidth: Number(subject.dataset.devImageSrcWidth) } : {}),
+          ...(subject.dataset.devImageSrcHeight ? { srcHeight: Number(subject.dataset.devImageSrcHeight) } : {}),
+        } : {}),
+      };
+    };
+    const upsertPending = (subject: HTMLElement, draftAudio: ResolvedVideoAudio, draftAuthored: ImageVariants = authoredVariants, revert?: () => void) => {
+      window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', {
+        detail: { id: devEditPendingId('crop', subject), kind: 'crop', payload: pendingPayload(subject, draftAudio, draftAuthored), revert },
+      }));
+    };
+    const stage = () => {
+      if (!target) return;
+      const editedTarget = target;
+      const before = { variants: savedVariants, authored: savedAuthoredVariants, audio: savedAudio };
+      const after = { variants: structuredClone(variants), authored: structuredClone(authoredVariants), audio: { ...audio } };
+      upsertPending(editedTarget, after.audio, after.authored, () => apply(editedTarget, before.audio, before.authored));
+      pageHistory.push({
+        label: 'Edit video',
+        undo: () => { apply(editedTarget, before.audio, before.authored); upsertPending(editedTarget, before.audio, before.authored); },
+        redo: () => { apply(editedTarget, after.audio, after.authored); upsertPending(editedTarget, after.audio, after.authored); },
+      });
+      staged = true;
+      status.textContent = 'Saved';
+      close(true);
+    };
+    const resetState = () => {
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      const draft = normalizeVideoDraft(savedAuthoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
+      audio = { ...savedAudio };
+      apply();
+    };
+
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
+      const panel = event.detail?.panel;
+      const trigger = event.detail?.trigger;
+      if (panel?.dataset.devPanelKey === 'image' && trigger) {
+        const nextTarget = trigger.closest<HTMLElement>('[data-dev-image-target]')
+          ?? trigger.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]');
+        if (!nextTarget || !isVideoSrc(nextTarget.dataset.devImageSrc || '')) return;
+        event.stopImmediatePropagation();
+        event.preventDefault();
+        panel.hidden = true;
+        window.dispatchEvent(new CustomEvent('vcd:dev-edit-close', { detail: { panel } }));
+        open(nextTarget);
+      }
+    }) as EventListener, { capture: true, signal });
+    viewportButtons.forEach((button) => button.addEventListener('click', () => { selected = button.dataset.videoViewport as Viewport; apply(); }, { signal }));
+    aspect.addEventListener('change', () => {
+      const variant = variants[selected];
+      variant.aspect = aspect.value;
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      variant.w = coverWidthFraction(variant.aspect, dims ? dims.width / dims.height : null);
+      const bounds = cropBounds(variant, dims);
+      variant.cx = clamp(variant.cx, bounds.x, 1 - bounds.x);
+      variant.cy = clamp(variant.cy, bounds.y, 1 - bounds.y);
+      authoredVariants = setImageVariantSetting(authoredVariants, selected, 'aspect', variant);
+      authoredVariants = setImageVariantSetting(authoredVariants, selected, 'crop', variant);
+      const draft = normalizeVideoDraft(authoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
+      apply();
+    }, { signal });
+    aspectReset.addEventListener('click', () => {
+      authoredVariants = resetImageVariantSetting(authoredVariants, selected, 'aspect');
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      const draft = normalizeVideoDraft(authoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
+      apply();
+    }, { signal });
+    audioButtons.forEach((button) => button.addEventListener('click', () => { audio[selected] = button.dataset.videoAudio === 'true'; apply(); }, { signal }));
+    preview.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) return;
+      drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      preview.setPointerCapture(event.pointerId);
+    }, { signal });
+    preview.addEventListener('pointermove', (event) => {
+      if (!drag) return;
+      const variant = variants[selected];
+      const dims = imageSourceDims({ srcWidth: target?.dataset.devImageSrcWidth || preview.videoWidth, srcHeight: target?.dataset.devImageSrcHeight || preview.videoHeight });
+      const bounds = cropBounds(variant, dims);
+      if (event.pointerId !== drag.pointerId) return;
+      variant.cx = clamp(variant.cx - (event.clientX - drag.x) / Math.max(1, preview.clientWidth), bounds.x, 1 - bounds.x);
+      variant.cy = clamp(variant.cy - (event.clientY - drag.y) / Math.max(1, preview.clientHeight), bounds.y, 1 - bounds.y);
+      authoredVariants = setImageVariantSetting(authoredVariants, selected, 'crop', variant);
+      const draft = normalizeVideoDraft(authoredVariants, dims);
+      authoredVariants = draft.authored;
+      variants = draft.resolved;
+      drag = { x: event.clientX, y: event.clientY, pointerId: event.pointerId };
+      apply();
+    }, { signal });
+    preview.addEventListener('pointerup', (event) => { if (drag?.pointerId === event.pointerId) drag = null; }, { signal });
+    preview.addEventListener('pointercancel', (event) => { if (drag?.pointerId === event.pointerId) drag = null; }, { signal });
+    preview.addEventListener('lostpointercapture', (event) => { if (drag?.pointerId === (event as PointerEvent).pointerId) drag = null; }, { signal });
+    save.addEventListener('click', stage, { signal });
+    reset.addEventListener('click', resetState, { signal });
+    cancel.addEventListener('click', () => close(false), { signal });
+    const replace = (file: File) => {
+      if (!target || !isAcceptedVideoFile(file)) {
+        status.textContent = 'Choose an MP4, WebM or M4V video';
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('vcd:dev-image-replace', { cancelable: true, detail: { target, file } }));
+    };
+    replaceChoose?.addEventListener('click', () => replaceFile?.click(), { signal });
+    replaceFile?.addEventListener('change', () => {
+      if (replaceFile.files?.[0]) replace(replaceFile.files[0]);
+      replaceFile.value = '';
+    }, { signal });
+    replaceDrop?.addEventListener('dragover', (event) => { event.preventDefault(); replaceDrop.classList.add('is-dragover'); }, { signal });
+    replaceDrop?.addEventListener('dragleave', () => replaceDrop.classList.remove('is-dragover'), { signal });
+    replaceDrop?.addEventListener('drop', (event) => {
+      event.preventDefault();
+      replaceDrop.classList.remove('is-dragover');
+      const file = (event as DragEvent).dataTransfer?.files?.[0];
+      if (file) replace(file);
+    }, { signal });
+    replaceDrop?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); replaceFile?.click(); }
+    }, { signal });
+    preview.addEventListener('loadedmetadata', () => apply(), { signal });
+    preview.addEventListener('error', () => { status.textContent = 'Video preview unavailable'; }, { signal });
+    window.addEventListener('vcd:dev-before-save', () => {
+      if (target && !staged && !sameDraft(authoredVariants, savedAuthoredVariants, audio, savedAudio)) stage();
+    }, { signal });
+    window.addEventListener('vcd:dev-media-source-changed', ((event: CustomEvent<{ target?: HTMLElement }>) => {
+      if (event.detail?.target !== target || !target) return;
+      preview.src = projectImage(target.dataset.devImageSrc || '');
+      preview.load();
+      apply();
+    }) as EventListener, { signal });
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== overlay || !target) return;
+      if (!staged) restoreBaseline();
+      target = null;
+      preview.removeAttribute('src');
+    }) as EventListener, { signal });
+    document.addEventListener('astro:before-swap', () => {
+      controller.abort();
+      initialized = false;
+      preview.pause();
+      preview.removeAttribute('src');
+      preview.load();
+    }, { once: true });
+  };
+  document.addEventListener('astro:page-load', init);
+  init();
+</script>

@@ -1,4 +1,5 @@
 import { projectImage } from '../lib/images';
+import { syncLightboxImage } from '../lib/imageLightbox';
 import {
   imageGridColumnsStyle,
   imageGridConstrainedStyle,
@@ -58,7 +59,7 @@ const appendEditTriggers = (target: HTMLElement) => {
   image.setAttribute('data-dev-edit-trigger', 'image');
   image.setAttribute('data-dev-mode-only', '');
   image.hidden = true;
-  image.textContent = 'Edit image';
+  image.textContent = target.querySelector('video[data-project-inline-video]') ? 'Edit video' : 'Edit image';
 
   target.append(caption);
   target.append(image);
@@ -105,6 +106,7 @@ const buildInlineImageFigure = (
     maxVh,
     mobileInset,
     background,
+    videoAudio: section.audio as never,
   });
 
   const figure = document.createElement('figure');
@@ -123,6 +125,7 @@ const buildInlineImageFigure = (
     imageBackgroundStyle(background),
   ) ?? '';
   applyDataAttrs(figure, editAttrs);
+  if (section.audio !== undefined) figure.dataset.videoAudio = JSON.stringify(section.audio);
   figure.dataset.mobileInset = mobileInset ? 'true' : 'false';
   figure.dataset.mobileBleedEligible = !maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false';
 
@@ -141,6 +144,7 @@ const buildInlineImageFigure = (
   } else {
     (img as HTMLImageElement).alt = String(section.alt ?? '');
     (img as HTMLImageElement).loading = 'lazy';
+    syncLightboxImage(img as HTMLImageElement, img.src);
   }
   if (hasCrop) {
     const clip = document.createElement('div');
@@ -212,6 +216,7 @@ export function mountImageGridSection(
     src: projectImage(String(item.src ?? (item.items as MountedSection[] | undefined)?.[0]?.src ?? '')),
     alt: String(item.alt ?? ''),
     background: normalizeImageBackground(item.background) ?? 'transparent',
+    audio: item.audio,
   }));
 
   const grid = document.createElement('div');
@@ -295,6 +300,7 @@ export function mountImageGridSection(
       hasOwnVariants,
       mobileInset: item.mobileInset === true,
       background: normalizeImageBackground(item.background) ?? 'transparent',
+      videoAudio: item.audio as never,
     });
 
     const figure = document.createElement('figure');
@@ -309,6 +315,7 @@ export function mountImageGridSection(
     figure.setAttribute('data-grid-hidden-desktop', resolvedLayouts.desktop.hidden.includes(itemId) ? 'true' : 'false');
     figure.setAttribute('data-grid-hidden-tablet', resolvedLayouts.tablet.hidden.includes(itemId) ? 'true' : 'false');
     figure.setAttribute('data-grid-hidden-mobile', resolvedLayouts.mobile.hidden.includes(itemId) ? 'true' : 'false');
+    if (item.audio !== undefined) figure.dataset.videoAudio = JSON.stringify(item.audio);
     applyDataAttrs(figure, editAttrs);
     figure.dataset.mobileInset = item.mobileInset === true ? 'true' : 'false';
     figure.dataset.mobileBleedEligible = mobileBleedEligible ? 'true' : 'false';
@@ -323,6 +330,7 @@ export function mountImageGridSection(
     } else {
       (img as HTMLImageElement).alt = String(item.alt ?? '');
       (img as HTMLImageElement).loading = 'lazy';
+      syncLightboxImage(img as HTMLImageElement, img.src);
     }
 
     const frame = document.createElement('div');
@@ -495,6 +503,7 @@ function mountImageCarouselSection(
       maxVh,
       mobileInset,
       background: normalizeImageBackground(item.background) ?? 'transparent',
+      videoAudio: item.audio as never,
     });
 
     const figure = document.createElement('figure');
@@ -505,6 +514,7 @@ function mountImageCarouselSection(
       placeholder && 'project-media--placeholder',
       'dev-image-edit-target',
     ].filter(Boolean).join(' ');
+    if (item.audio !== undefined) figure.dataset.videoAudio = JSON.stringify(item.audio);
     figure.style.cssText = joinMediaStyles(variantStyle, maxVhStyle(maxVh), imageBackgroundStyle(item.background)) ?? '';
     figure.setAttribute('data-carousel-slide', '');
     if (!parked) figure.setAttribute('data-carousel-index', String(displayIndex));
@@ -535,6 +545,7 @@ function mountImageCarouselSection(
     } else {
       (img as HTMLImageElement).alt = String(item.alt ?? '');
       (img as HTMLImageElement).loading = displayIndex === 0 ? 'eager' : 'lazy';
+      syncLightboxImage(img as HTMLImageElement, img.src);
     }
     frame.append(img);
     if (placeholder) {
@@ -561,7 +572,7 @@ function mountImageCarouselSection(
     imageEdit.setAttribute('data-dev-edit-trigger', 'image');
     imageEdit.setAttribute('data-dev-mode-only', '');
     imageEdit.hidden = true;
-    imageEdit.textContent = 'Edit image';
+    imageEdit.textContent = video ? 'Edit video' : 'Edit image';
 
     surface.append(captionAdd, imageEdit);
     figure.append(surface);
