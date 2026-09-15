@@ -1,0 +1,168 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import Field from './ui/Field.astro';
+import ViewportSelector from './ui/ViewportSelector.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
+import awardBlockSize from '../lib/awardBlockSize.json';
+---
+
+<DevOverlay storageKey="award-block-size" panelKey="award-block-size" defaultHidden>
+  <div data-award-block-size-panel data-defaults={JSON.stringify(awardBlockSize)}>
+    <ViewportSelector dataAttr="data-award-block-viewport" />
+    <Field label="Height" labelFor="award-block-height">
+      <output slot="labelAccessory" for="award-block-height" data-award-block-size-readout>120px</output>
+      <input id="award-block-height" class="award-block-size__range" type="range" min="32" max="200" step="1" value="120" data-award-block-size />
+    </Field>
+    <PanelActions>
+      <Button emphasis="ghost" label="Reset" data-award-block-size-reset />
+      <Button emphasis="filled" label="Save" data-award-block-size-save />
+    </PanelActions>
+    <p class="award-block-size__status" data-award-block-size-status aria-live="polite"></p>
+  </div>
+</DevOverlay>
+
+<style>
+  [data-award-block-size-panel] { display: grid; gap: var(--space-unit); }
+  .award-block-size__range { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
+  .award-block-size__status { min-height: 1.4em; margin: 0; }
+</style>
+
+<script>
+  type Viewport = 'desktop' | 'tablet' | 'mobile';
+  const VIEWPORTS: Viewport[] = ['desktop', 'tablet', 'mobile'];
+  let cleanup: (() => void) | undefined;
+
+  const init = () => {
+    cleanup?.();
+    const panel = document.querySelector<HTMLElement>('[data-award-block-size-panel]');
+    const overlay = panel?.closest<HTMLElement>('[data-dev-overlay]');
+    if (!panel || !overlay) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    let defaults: Record<Viewport, number>;
+    try {
+      defaults = JSON.parse(panel.dataset.defaults || '{}');
+      if (!VIEWPORTS.every((viewport) => typeof defaults[viewport] === 'number' && Number.isFinite(defaults[viewport]))) return;
+    } catch {
+      return;
+    }
+    const values = { ...defaults };
+    const field = panel.querySelector<HTMLInputElement>('[data-award-block-size]');
+    const readout = panel.querySelector<HTMLOutputElement>('[data-award-block-size-readout]');
+    const status = panel.querySelector<HTMLElement>('[data-award-block-size-status]');
+    const save = panel.querySelector<HTMLButtonElement>('[data-award-block-size-save]');
+    const reset = panel.querySelector<HTMLButtonElement>('[data-award-block-size-reset]');
+    const viewportButtons = [...panel.querySelectorAll<HTMLButtonElement>('[data-award-block-viewport]')];
+    if (!field || !readout || !status || !save || !reset || !viewportButtons.length) return;
+
+    const actualViewport = (): Viewport => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
+    let selected = actualViewport();
+    let previewBackup: { value: string; priority: string } | null = null;
+    let previewActive = false;
+    let saving = false;
+
+    const applyPreview = () => {
+      previewActive = true;
+      if (!previewBackup) {
+        previewBackup = {
+          value: document.documentElement.style.getPropertyValue('--award-block-height-live'),
+          priority: document.documentElement.style.getPropertyPriority('--award-block-height-live'),
+        };
+      }
+      document.documentElement.style.setProperty('--award-block-height-live', `${values[selected]}px`);
+    };
+    const clearPreview = () => {
+      if (!previewBackup) return;
+      if (previewBackup.value) document.documentElement.style.setProperty('--award-block-height-live', previewBackup.value, previewBackup.priority);
+      else document.documentElement.style.removeProperty('--award-block-height-live');
+      previewBackup = null;
+      previewActive = false;
+    };
+    const sync = () => {
+      field.value = String(values[selected]);
+      readout.textContent = `${values[selected]}px`;
+      viewportButtons.forEach((button) => {
+        const active = button.dataset.awardBlockViewport === selected;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', String(active));
+      });
+      if (previewActive) applyPreview();
+    };
+    const setSaving = (next: boolean) => {
+      saving = next;
+      save.disabled = next;
+      reset.disabled = next;
+      field.disabled = next;
+      viewportButtons.forEach((button) => { button.disabled = next; });
+    };
+    viewportButtons.forEach((button) => button.addEventListener('click', () => {
+      const viewport = button.dataset.awardBlockViewport as Viewport;
+      if (!VIEWPORTS.includes(viewport) || saving) return;
+      selected = viewport;
+      sync();
+    }, { signal }));
+    field.addEventListener('input', () => {
+      if (!field.validity.valid || !Number.isFinite(field.valueAsNumber)) return;
+      values[selected] = field.valueAsNumber;
+      readout.textContent = `${values[selected]}px`;
+      if (previewActive) applyPreview();
+    }, { signal });
+    field.addEventListener('change', () => {
+      if (!field.validity.valid || !Number.isFinite(field.valueAsNumber)) sync();
+    }, { signal });
+    reset.addEventListener('click', () => {
+      values[selected] = defaults[selected];
+      status.textContent = '';
+      sync();
+    }, { signal });
+    save.addEventListener('click', async () => {
+      if (saving) return;
+      setSaving(true);
+      status.textContent = 'Saving…';
+      try {
+        const response = await fetch('/api/award-block-size', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(values),
+          signal,
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not save award block size.');
+        if (signal.aborted) return;
+        Object.assign(defaults, values);
+        status.textContent = `Saved ${payload.path || 'src/lib/awardBlockSize.json'}`;
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not save award block size.';
+      } finally {
+        setSaving(false);
+      }
+    }, { signal });
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel === overlay) applyPreview();
+    }) as EventListener, { signal });
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel === overlay) clearPreview();
+    }) as EventListener, { signal });
+
+    const visibilityObserver = new MutationObserver(() => {
+      if (overlay.hidden) clearPreview();
+      else applyPreview();
+    });
+    visibilityObserver.observe(overlay, { attributes: true, attributeFilter: ['hidden', 'class'] });
+    sync();
+    if (new URLSearchParams(window.location.search).get('award-size') === '1') {
+      overlay.hidden = false;
+      applyPreview();
+    }
+    cleanup = () => {
+      controller.abort();
+      visibilityObserver.disconnect();
+      clearPreview();
+    };
+  };
+  document.addEventListener('astro:page-load', init);
+  document.addEventListener('astro:before-swap', () => cleanup?.());
+  if (import.meta.hot) import.meta.hot.dispose(() => cleanup?.());
+  init();
+</script>

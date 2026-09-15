@@ -17,6 +17,7 @@ type HomeIntroController = {
 export type HomeIntroConfig = { durationMs?: number };
 
 const controllerKey = '__vcdHomeIntroController';
+const introSeenStorageKey = 'vcd:home-intro-seen';
 
 const isInteractive = (target: EventTarget | null) => {
   if (!(target instanceof Element)) return false;
@@ -30,6 +31,17 @@ export function createHomeIntroController(
   win: Window = window,
   config: HomeIntroConfig = revealConfig.intro,
 ): HomeIntroController {
+  const readIntroSeen = () => {
+    try {
+      return win.sessionStorage?.getItem(introSeenStorageKey) === 'true';
+    } catch {
+      return false;
+    }
+  };
+  const introSeen = readIntroSeen();
+  if (!introSeen) {
+    try { win.sessionStorage?.setItem(introSeenStorageKey, 'true'); } catch {}
+  }
   let state: HomeIntroState = 'pending';
   let disposed = false;
   let finishTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,7 +120,7 @@ export function createHomeIntroController(
     if (isInteractive(event.target)) { cursor.style.display = 'none'; return; }
     const rect = surface.getBoundingClientRect();
     cursor.style.display = 'block';
-    cursor.style.transform = `translate(${event.clientX - rect.left + 12}px, ${event.clientY - rect.top + 8}px)`;
+    cursor.style.transform = `translate(${event.clientX - rect.left}px, ${event.clientY - rect.top}px) translate(-50%, -50%)`;
   };
   const hideCursor = () => {
     const cursor = surface.querySelector<HTMLElement>('[data-home-intro-cursor]');
@@ -133,8 +145,7 @@ export function createHomeIntroController(
   const onPageHide = () => restoreAfterPageHide();
   const onPageShow = (event: PageTransitionEvent) => {
     if (!event.persisted) return;
-    setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active');
-    surface.hidden = false;
+    setState('dismissed');
     announce('vcd:intro-layout-sync');
   };
   const teardown = () => {
@@ -166,7 +177,7 @@ export function createHomeIntroController(
   win.addEventListener('vcd:dev-mode-change', onModeChange);
   win.addEventListener('pagehide', onPageHide);
   win.addEventListener('pageshow', onPageShow);
-  setState(root.classList.contains('is-dev-mode') ? 'editing' : 'active');
+  setState(introSeen ? 'dismissed' : root.classList.contains('is-dev-mode') ? 'editing' : 'active');
   announce('vcd:intro-layout-sync');
 
   return { getState: () => state, dismiss, teardown, reset };

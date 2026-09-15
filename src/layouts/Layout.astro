@@ -8,6 +8,7 @@ import '../styles/global.css';
 import '../styles/dev-chrome.css';
 import DevModeController from '../components/DevModeController.astro';
 import DevTextEditor from '../components/DevTextEditor.astro';
+import DevVideoEditor from '../components/DevVideoEditor.astro';
 import DevProjectGridEditor from '../components/DevProjectGridEditor.astro';
 import DevGalleryReorder from '../components/DevGalleryReorder.astro';
 import DevSectionReorderEditor from '../components/DevSectionReorderEditor.astro';
@@ -19,8 +20,10 @@ import DevShortcutsHelp from '../components/DevShortcutsHelp.astro';
 import DevAssetManager from '../components/DevAssetManager.astro';
 import DevPageColumn from '../components/DevPageColumn.astro';
 import DevAwardBadgeSize from '../components/DevAwardBadgeSize.astro';
+import DevAwardBlockSize from '../components/DevAwardBlockSize.astro';
 import ArchivedDevPanels from '../components/archive/ArchivedDevPanels.astro';
 import GalleryMediaInk from '../components/GalleryMediaInk.astro';
+import ImageLightbox from '../components/ImageLightbox.astro';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED } from '../lib/pageColumn';
 
 if (import.meta.env.DEV) {
@@ -51,7 +54,7 @@ interface Props {
 
 const {
   title,
-  description = 'Portfolio of Vicente Cruz — London-based industrial designer.',
+  description = 'Born in Rome, IT. Based in London, UK.',
   ogImage = DEFAULT_OG_IMAGE,
   columnStyle,
 } = Astro.props;
@@ -74,7 +77,7 @@ const showDevTools = import.meta.env.DEV;
 >
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content={description} />
     {showDevTools && (
       <script is:inline>
@@ -115,7 +118,7 @@ const showDevTools = import.meta.env.DEV;
     )}
     {showDevTools && (
       <style is:inline>
-        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; visibility: hidden !important; animation: none !important; }
         #transition-readiness-marker {
           position: fixed;
           top: max(24px, env(safe-area-inset-top));
@@ -136,8 +139,23 @@ const showDevTools = import.meta.env.DEV;
     )}
     {!showDevTools && (
       <style is:inline>
-        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; visibility: hidden !important; animation: none !important; }
       </style>
+    )}
+    {showDevTools && (
+      <>
+        <script is:inline>
+          if (new URLSearchParams(location.search).get('font-reveal') === 'trickle') {
+            document.documentElement.dataset.fontRevealPrototype = 'pending';
+          }
+        </script>
+        <style is:inline>
+          html[data-font-reveal-prototype="pending"] #site-wrapper,
+          html[data-font-reveal-prototype="pending"] #site-wrapper * {
+            font-family: system-ui, sans-serif !important;
+          }
+        </style>
+      </>
     )}
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -162,8 +180,9 @@ const showDevTools = import.meta.env.DEV;
   <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
 
-    <!-- Safe-area overlay: covers browser chrome inset (Zen, Safari mobile) -->
-    <div id="safe-area-overlay"></div>
+    {showDevTools && <script is:inline type="module" src="/src/scripts/fontRevealPrototype.ts"></script>}
+
+    <ImageLightbox />
 
     <!-- Page transition overlay (GSAP fades this in/out) -->
     <div id="transition-overlay"></div>
@@ -188,7 +207,12 @@ const showDevTools = import.meta.env.DEV;
           const viewport = document.documentElement;
           return rect.bottom > 0 && rect.right > 0 && rect.top < (innerHeight || viewport.clientHeight) && rect.left < (innerWidth || viewport.clientWidth);
         };
-        const images = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible);
+        const readinessImages = (images) => {
+          const intro = document.querySelector('[data-home-intro-surface]');
+          if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
+          return images.filter((image) => intro.contains(image));
+        };
+        const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
         const imageReady = images.map((image) => new Promise((resolve) => {
           if (image.complete) { resolve(); return; }
           const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); resolve(); };
@@ -203,9 +227,10 @@ const showDevTools = import.meta.env.DEV;
           window.addEventListener('vcd:intro-layout-ready', resolve, { once: true });
         });
         const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
-        Promise.race([Promise.all([Promise.resolve(document.fonts?.ready).catch(() => undefined), introLayoutReady, ...imageReady]), timeout]).then(() => {
+        Promise.race([Promise.all([introLayoutReady, ...imageReady]), timeout]).then(() => {
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (overlay.dataset.vcdInitialReveal !== 'running') return;
             mark('initial-fade-start');
             overlay.style.transition = 'opacity 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
             overlay.style.opacity = '0';
@@ -214,7 +239,9 @@ const showDevTools = import.meta.env.DEV;
               if (finished) return;
               finished = true;
               overlay.removeEventListener('transitionend', finish);
+              if (overlay.dataset.vcdInitialReveal !== 'running') return;
               overlay.style.removeProperty('transition');
+              overlay.hidden = true;
               overlay.dataset.vcdInitialReveal = 'complete';
               mark('initial-fade-end');
               window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
@@ -227,10 +254,12 @@ const showDevTools = import.meta.env.DEV;
     </script>
 
     {showDevTools && <DevTextEditor />}
+    {showDevTools && <DevVideoEditor />}
     {showDevTools && <DevModeController />}
     {showDevTools && <DevProjectGridEditor />}
     {showDevTools && <DevGalleryReorder />}
     {showDevTools && <DevAwardBadgeSize />}
+    {showDevTools && <DevAwardBlockSize />}
     {showDevTools && <DevSectionReorderEditor />}
     {showDevTools && <DevLogIssue />}
     {showDevTools && <DevNewProject />}
@@ -256,10 +285,12 @@ const showDevTools = import.meta.env.DEV;
     <script>
       import gsap from 'gsap';
       import { bindSafeVh } from '../lib/safeVh';
+      import { bindExternalLinks } from '../lib/externalLinks';
       import { bindImagePreviewUpgrade, openImagePreviewUpgrade } from '../lib/imagePreviewUpgrade';
 
       // Stable 1vh unit for max-height caps (Edge/iOS svh is buggy mid-scroll).
       bindSafeVh();
+      bindExternalLinks();
 
       const overlay = document.getElementById('transition-overlay');
       const readinessMarker = document.getElementById('transition-readiness-marker') as HTMLOutputElement | null;
@@ -344,6 +375,10 @@ const showDevTools = import.meta.env.DEV;
       let suspended = false;
 
       const invalidate = () => {
+        if (overlay?.dataset.vcdInitialReveal === 'running') {
+          overlay.dataset.vcdInitialReveal = 'cancelled';
+          overlay.style.removeProperty('transition');
+        }
         generation += 1;
         activeTween?.kill();
         activeTween = null;
@@ -380,9 +415,14 @@ const showDevTools = import.meta.env.DEV;
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
         const waits: Promise<unknown>[] = [];
-        waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
+        void Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined);
         let thumbIndex = 0;
-        const readinessImages = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
+        const readinessImagesFor = (images: HTMLImageElement[]) => {
+          const intro = document.querySelector<HTMLElement>('[data-home-intro-surface]');
+          if (!intro || intro.hidden || intro.dataset.state === 'dismissed') return images;
+          return images.filter((image) => intro.contains(image));
+        };
+        const readinessImages = readinessImagesFor(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport)).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
         for (const img of readinessImages) {
           const currentThumbIndex = thumbIndex++;
           waits.push((async () => {
@@ -439,6 +479,7 @@ const showDevTools = import.meta.env.DEV;
         const controller = new AbortController();
         readinessAbort = controller;
         overlay.style.animation = 'none';
+        overlay.hidden = visibleTransition;
         overlay.style.opacity = visibleTransition ? '0' : '1';
         try {
           const wait = waitForReadiness(controller.signal);
@@ -471,7 +512,10 @@ const showDevTools = import.meta.env.DEV;
             ease: REVEAL_EASE,
             onComplete: () => {
               emitTransitionMilestone('veil-fade-end');
-              if (current === generation) activeTween = null;
+              if (current === generation) {
+                overlay.hidden = true;
+                activeTween = null;
+              }
             },
           });
         } catch {
@@ -481,6 +525,7 @@ const showDevTools = import.meta.env.DEV;
             readinessCleanup = null;
             readinessAbort = null;
             overlay.style.opacity = '0';
+            overlay.hidden = true;
           }
         }
       };
@@ -528,6 +573,7 @@ const showDevTools = import.meta.env.DEV;
             return;
           }
           try {
+            overlay.hidden = false;
             activeTween = gsap.to(overlay, {
               opacity: 1,
               duration: 0.25,

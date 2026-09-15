@@ -7,6 +7,7 @@ import Button from '../ui/Button.astro';
 import { sizeIcon } from '../../lib/icons';
 import trashIcon from 'lucide-static/icons/trash-2.svg?raw';
 import checkIcon from 'lucide-static/icons/check.svg?raw';
+import awardBlockSize from '../../lib/awardBlockSize.json';
 
 interface Props {
   src?: string;
@@ -29,6 +30,7 @@ const safeHref = normalizeHref(href) || undefined;
 <section
   id={sectionId}
   class:list={['project-block', 'project-award', projectStackClass(spacing), sectionId && 'section-block']}
+  style={`--award-block-height-mobile-saved:${awardBlockSize.mobile}px;--award-block-height-tablet-saved:${awardBlockSize.tablet}px;--award-block-height-desktop-saved:${awardBlockSize.desktop}px`}
   {...(spacingDevAttrs(documentKey, sectionPath, spacing, { contentId }) ?? {})}
   data-dev-section-deletable={editable ? 'award' : undefined}
   data-project-award
@@ -58,10 +60,10 @@ const safeHref = normalizeHref(href) || undefined;
 
 <style is:global>
   .project-award { display: grid; place-items: center; width: 100%; }
-  .project-award__control { position: relative; display: grid; place-items: center; width: 100%; min-height: 8em; }
+  .project-award__control { position: relative; display: grid; place-items: center; width: 100%; min-height: var(--award-block-height-live, var(--award-block-height-desktop-saved)); }
   .project-award__hit { position: relative; display: block; max-width: 100%; }
   .project-award__hit[href]::after { content: ''; position: absolute; inset: -8px; }
-  .project-award__hit img { display: block; height: 6em; width: auto; max-width: 100%; object-fit: contain; opacity: 1; transition: opacity .2s ease; }
+  .project-award__hit img { display: block; height: var(--award-block-height-live, var(--award-block-height-desktop-saved)); width: auto; max-width: 100%; object-fit: contain; opacity: 1; transition: opacity .2s ease; }
   .project-award__hit:hover img, .project-award__hit:focus-visible img { opacity: .6; }
   .project-award .project-award__edit, .project-award__editor { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
   .project-award .project-award__edit { right: auto; opacity: 1; pointer-events: auto; white-space: nowrap; }
@@ -72,4 +74,10 @@ const safeHref = normalizeHref(href) || undefined;
   .project-award__editor[hidden], .project-award__edit[hidden],
   html:not(.is-dev-mode) .project-award__editor, html:not(.is-dev-mode) .project-award__edit,
   html.show-section-nav-editor .project-award__editor, html.show-section-nav-editor .project-award__edit { display: none; }
+  @media (max-width: 991px) {
+    .project-award__control, .project-award__hit img { min-height: var(--award-block-height-live, var(--award-block-height-tablet-saved)); height: var(--award-block-height-live, var(--award-block-height-tablet-saved)); }
+  }
+  @media (max-width: 767px) {
+    .project-award__control, .project-award__hit img { min-height: var(--award-block-height-live, var(--award-block-height-mobile-saved)); height: var(--award-block-height-live, var(--award-block-height-mobile-saved)); }
+  }
 </style>

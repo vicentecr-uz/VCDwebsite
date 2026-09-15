@@ -5,6 +5,35 @@ import pauseIcon from 'lucide-static/icons/pause.svg?raw';
 import volumeIcon from 'lucide-static/icons/volume-2.svg?raw';
 import muteIcon from 'lucide-static/icons/volume-x.svg?raw';
 import { sizeIcon } from './icons';
+import { resolveVideoAudio, type ResolvedVideoAudio } from './videoAudio';
+
+const viewportForVideo = () => window.innerWidth <= 767 ? 'mobile' : window.innerWidth <= 991 ? 'tablet' : 'desktop';
+
+function readVideoAudio(video: HTMLVideoElement): ResolvedVideoAudio {
+  const target = video.closest<HTMLElement>('[data-dev-image-target], [data-video-audio]');
+  try {
+    const raw = target?.dataset.devVideoAudio || target?.dataset.videoAudio;
+    return resolveVideoAudio(raw ? JSON.parse(raw) : undefined);
+  } catch {
+    return resolveVideoAudio(undefined);
+  }
+}
+
+const forcedMuteBeforeAuthoredOff = new WeakMap<HTMLVideoElement, boolean>();
+
+export function syncProjectVideoAudio(video: HTMLVideoElement): void {
+  const controller = video.closest<HTMLElement>('[data-project-video-controller]');
+  const authoredOn = readVideoAudio(video)[viewportForVideo()];
+  video.toggleAttribute('data-project-video-audio-off', !authoredOn);
+  if (!authoredOn) {
+    if (!forcedMuteBeforeAuthoredOff.has(video)) forcedMuteBeforeAuthoredOff.set(video, video.muted);
+    video.muted = true;
+  } else if (forcedMuteBeforeAuthoredOff.has(video)) {
+    video.muted = forcedMuteBeforeAuthoredOff.get(video) ?? false;
+    forcedMuteBeforeAuthoredOff.delete(video);
+  }
+  controller?.toggleAttribute('data-project-video-audio-off', !authoredOn);
+}
 
 const icon = (source: string, slot: string, size = 28) =>
   sizeIcon(source, size).replace('<svg', `<svg slot="${slot}"`);
@@ -35,6 +64,7 @@ function bindVolumeControls(video: HTMLVideoElement, mute: HTMLElement, volume: 
   });
   mute.addEventListener('mediaunmuterequest', (event) => {
     event.stopImmediatePropagation();
+    if (video.hasAttribute('data-project-video-audio-off')) return;
     if (video.volume === 0) video.volume = previousVolume;
     video.muted = false;
   });
@@ -190,6 +220,7 @@ export function enhanceProjectVideo(video: HTMLVideoElement): void {
   popup.append(volume);
   group.append(mute, popup);
   controller.append(play, progress, group);
+  syncProjectVideoAudio(video);
   bindVideoVisibility(video, controller);
 
   Promise.all(['media-controller', 'media-play-button', 'media-time-range', 'media-mute-button', 'media-volume-range']
@@ -217,6 +248,16 @@ export function bindProjectVideoControls(): void {
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
   else boot();
   document.addEventListener('astro:page-load', boot);
+  window.addEventListener('resize', () => {
+    document.querySelectorAll<HTMLVideoElement>('video[data-project-inline-video]').forEach(syncProjectVideoAudio);
+  }, { passive: true });
+  new MutationObserver((records) => {
+    for (const record of records) {
+      const target = record.target instanceof HTMLElement ? record.target : null;
+      target?.querySelectorAll<HTMLVideoElement>('video[data-project-inline-video]').forEach(syncProjectVideoAudio);
+      if (target?.matches('video[data-project-inline-video]')) syncProjectVideoAudio(target as HTMLVideoElement);
+    }
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-video-audio', 'data-dev-video-audio'] , subtree: true });
   new MutationObserver((records) => {
     for (const record of records) {
       for (const node of record.addedNodes) {

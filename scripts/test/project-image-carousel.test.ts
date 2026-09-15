@@ -9,6 +9,7 @@ Object.assign(globalThis, {
   HTMLElement: window.HTMLElement,
   CSS: window.CSS,
   requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 0; },
+  cancelAnimationFrame: () => {},
 });
 
 for (const axis of ['horizontal', 'vertical']) {
@@ -78,6 +79,12 @@ function createSnapTestCarousel(axis: 'horizontal' | 'vertical') {
     `<div data-carousel-slide data-grid-item-id="item-${i}"></div>`).join('')}</div>`;
   window.document.body.append(block);
   const track = block.querySelector<HTMLElement>('[data-carousel-track]')!;
+  Object.defineProperties(track, {
+    scrollWidth: { configurable: true, value: 300 },
+    clientWidth: { configurable: true, value: 100 },
+    scrollHeight: { configurable: true, value: 300 },
+    clientHeight: { configurable: true, value: 100 },
+  });
   const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
   slides.forEach((slide, index) => {
     Object.defineProperties(slide, {
@@ -88,6 +95,12 @@ function createSnapTestCarousel(axis: 'horizontal' | 'vertical') {
     });
   });
   const calls: ScrollToOptions[] = [];
+  let capturedPointerId: number | null = null;
+  track.hasPointerCapture = (pointerId: number) => capturedPointerId === pointerId;
+  track.setPointerCapture = (pointerId: number) => { capturedPointerId = pointerId; };
+  track.releasePointerCapture = (pointerId: number) => {
+    if (capturedPointerId === pointerId) capturedPointerId = null;
+  };
   track.scrollTo = (options: ScrollToOptions) => {
     calls.push(options);
     track.scrollLeft = options.left ?? track.scrollLeft;
@@ -101,8 +114,235 @@ function dispatchPointerDown(track: HTMLElement): void {
   const event = new window.Event('pointerdown') as PointerEvent;
   Object.defineProperty(event, 'pointerType', { value: 'mouse' });
   Object.defineProperty(event, 'button', { value: 0 });
+  Object.defineProperty(event, 'pointerId', { value: 1 });
   track.dispatchEvent(event);
 }
+
+function dispatchMousePointer(track: HTMLElement, type: string, pointerId = 1, clientX = 0, clientY = 0, timeStamp?: number) {
+  const event = new window.Event(type, { bubbles: true, cancelable: true }) as PointerEvent;
+  Object.defineProperties(event, {
+    pointerType: { value: 'mouse' },
+    button: { value: 0 },
+    pointerId: { value: pointerId },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+  });
+  if (timeStamp !== undefined) Object.defineProperty(event, 'timeStamp', { value: timeStamp });
+  track.dispatchEvent(event);
+  return event;
+}
+
+function withQueuedAnimationFrames(run: (queue: Array<FrameRequestCallback>, base: number) => void): void {
+  const original = globalThis.requestAnimationFrame;
+  const queue: Array<FrameRequestCallback> = [];
+  globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+    queue.push(callback);
+    return queue.length;
+  }) as typeof requestAnimationFrame;
+  try {
+    run(queue, performance.now() + 1);
+  } finally {
+    globalThis.requestAnimationFrame = original;
+  }
+}
+
+function flushAnimationFrames(queue: Array<FrameRequestCallback>, base: number): void {
+  for (let frame = 1; frame <= 100 && queue.length; frame += 1) {
+    queue.shift()!(base + frame * 16);
+  }
+}
+
+test('mouse image drag cancels native image dragging for an accepted pointerdown', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const image = window.document.createElement('img');
+  track.querySelector('[data-carousel-slide]')!.append(image);
+
+  dispatchMousePointer(track, 'pointerdown', 11, 100);
+  const beforeMove = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(beforeMove);
+  expect(beforeMove.defaultPrevented).toBe(true);
+
+  dispatchMousePointer(track, 'pointermove', 11, 94);
+  const afterMove = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(afterMove);
+  expect(afterMove.defaultPrevented).toBe(true);
+  dispatchMousePointer(track, 'pointerup', 11, 94);
+  block.remove();
+});
+
+test('accepted pointerdown cancels immediate and cross-axis native image drags', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const image = window.document.createElement('img');
+  track.querySelector('[data-carousel-slide]')!.append(image);
+
+  dispatchMousePointer(track, 'pointerdown', 15, 100, 100);
+  const immediate = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(immediate);
+  expect(immediate.defaultPrevented).toBe(true);
+
+  dispatchMousePointer(track, 'pointermove', 15, 100, 94);
+  const crossAxis = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(crossAxis);
+  expect(crossAxis.defaultPrevented).toBe(true);
+  dispatchMousePointer(track, 'pointerup', 15, 100, 94);
+  block.remove();
+});
+
+test('ordinary image click remains available while a dragged image click is suppressed', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const image = window.document.createElement('img');
+  track.querySelector('[data-carousel-slide]')!.append(image);
+  let clicks = 0;
+  image.addEventListener('click', () => { clicks += 1; });
+
+  dispatchMousePointer(track, 'pointerdown', 12, 100);
+  dispatchMousePointer(track, 'pointerup', 12, 100);
+  const ordinaryClick = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  image.dispatchEvent(ordinaryClick);
+  expect(ordinaryClick.defaultPrevented).toBe(false);
+  expect(clicks).toBe(1);
+
+  dispatchMousePointer(track, 'pointerdown', 13, 100);
+  dispatchMousePointer(track, 'pointermove', 13, 94);
+  dispatchMousePointer(track, 'pointerup', 13, 94);
+  const draggedClick = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  image.dispatchEvent(draggedClick);
+  expect(draggedClick.defaultPrevented).toBe(true);
+  expect(clicks).toBe(1);
+  block.remove();
+});
+
+test('cancelled mouse drag clears carousel drag state and snap override', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  dispatchMousePointer(track, 'pointerdown', 14, 100);
+  dispatchMousePointer(track, 'pointermove', 14, 94);
+  expect(track.classList.contains('is-dragging')).toBe(true);
+  expect(track.style.scrollSnapType).toBe('none');
+  dispatchMousePointer(track, 'pointercancel', 14, 94);
+  expect(track.classList.contains('is-dragging')).toBe(false);
+  expect(track.style.scrollSnapType).toBe('');
+  block.remove();
+});
+
+test('mouse release carries velocity toward the next real slide before settling', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 16, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 16, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 16, 0, 0, 111);
+    expect(track.style.scrollSnapType).toBe('none');
+    flushAnimationFrames(queue, base);
+    expect(track.scrollLeft).toBe(200);
+    expect(track.style.scrollSnapType).toBe('');
+  });
+  block.remove();
+});
+
+test('regrab interrupts momentum without restoring snap before reading the current position', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue) => {
+    dispatchMousePointer(track, 'pointerdown', 41, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 41, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 41, 0, 0, 111);
+    expect(track.style.scrollSnapType).toBe('none');
+    track.scrollLeft = 137;
+    dispatchMousePointer(track, 'pointerdown', 42, 100, 0, 201);
+    expect(track.style.scrollSnapType).toBe('none');
+    dispatchMousePointer(track, 'pointermove', 42, 90, 0, 211);
+    expect(track.scrollLeft).toBe(147);
+    queue.length = 0;
+  });
+  block.remove();
+});
+
+test('mouse edge drag applies bounded rubberband and releases it smoothly', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  dispatchMousePointer(track, 'pointerdown', 43, 100, 0, 1);
+  dispatchMousePointer(track, 'pointermove', 43, 200, 0, 101);
+  expect(track.scrollLeft).toBe(0);
+  expect(Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'))).toBeGreaterThan(0);
+  expect(Number.parseFloat(track.style.getPropertyValue('--project-carousel-rubberband-x'))).toBeLessThanOrEqual(8);
+  dispatchMousePointer(track, 'pointerup', 43, 200, 0, 111);
+  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
+  expect(track.classList.contains('is-rubberband-settling')).toBe(true);
+  block.remove();
+});
+
+test('settling clamps projected and chosen offsets to the actual scroll bound', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  Object.defineProperties(track, {
+    scrollWidth: { configurable: true, value: 250 },
+    clientWidth: { configurable: true, value: 100 },
+  });
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 31, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 31, -100, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 31, -100, 0, 111);
+    flushAnimationFrames(queue, base);
+    expect(track.scrollLeft).toBeLessThanOrEqual(150);
+    expect(track.scrollLeft).toBeGreaterThanOrEqual(0);
+  });
+  block.remove();
+});
+
+test('reduced motion settles synchronously without scheduling animation frames', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = (() => ({ matches: true })) as typeof window.matchMedia;
+  try {
+    withQueuedAnimationFrames((queue) => {
+      dispatchMousePointer(track, 'pointerdown', 32, 100, 0, 1);
+      dispatchMousePointer(track, 'pointermove', 32, 0, 0, 101);
+      dispatchMousePointer(track, 'pointerup', 32, 0, 0, 111);
+      expect(queue).toHaveLength(0);
+      expect(track.style.scrollSnapType).toBe('');
+    });
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
+  block.remove();
+});
+
+test('stale mouse release velocity does not carry momentum', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 17, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 17, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 17, 0, 0, 401);
+    flushAnimationFrames(queue, base);
+    expect(track.scrollLeft).toBe(100);
+  });
+  block.remove();
+});
+
+test('mouse release clamps momentum to the carousel edge and wheel interrupts it', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  withQueuedAnimationFrames((queue) => {
+    track.scrollLeft = 200;
+    dispatchMousePointer(track, 'pointerdown', 18, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 18, -100, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 18, -100, 0, 111);
+    expect(track.style.scrollSnapType).toBe('none');
+    track.dispatchEvent(new window.Event('wheel'));
+    expect(track.style.scrollSnapType).toBe('');
+    queue.length = 0;
+  });
+  expect(track.scrollLeft).toBeGreaterThanOrEqual(200);
+  block.remove();
+});
+
+test('vertical mouse release carries velocity along the vertical axis', () => {
+  const { block, track } = createSnapTestCarousel('vertical');
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 19, 0, 100, 1);
+    dispatchMousePointer(track, 'pointermove', 19, 0, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 19, 0, 0, 111);
+    flushAnimationFrames(queue, base);
+    expect(track.scrollTop).toBe(200);
+    expect(track.style.scrollSnapType).toBe('');
+  });
+  block.remove();
+});
 
 for (const axis of ['horizontal', 'vertical'] as const) {
   test(`${axis}: wheel scrollend does not correct an intermediate native offset`, () => {
@@ -209,5 +449,20 @@ test('video dot placement follows image–video–image swipe progress and rever
   video.replaceWith(window.document.createElement('img'));
   window.dispatchEvent(new window.CustomEvent('vcd:carousel-refresh', { detail: { block } }));
   expect(Number(block.style.getPropertyValue('--project-carousel-video-progress'))).toBe(0);
+  block.remove();
+});
+
+test('current carousel marker follows the active slide for video dot visibility', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const slides = [...block.querySelectorAll<HTMLElement>('[data-carousel-slide]')];
+  slides.forEach((slide) => slide.append(window.document.createElement('video')));
+  track.scrollLeft = 0;
+  track.dispatchEvent(new window.Event('scroll'));
+  expect(slides[0].dataset.carouselCurrent).toBe('true');
+  expect(slides[1].dataset.carouselCurrent).toBeUndefined();
+  track.scrollLeft = 100;
+  track.dispatchEvent(new window.Event('scroll'));
+  expect(slides[0].dataset.carouselCurrent).toBeUndefined();
+  expect(slides[1].dataset.carouselCurrent).toBe('true');
   block.remove();
 });
