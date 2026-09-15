@@ -41,6 +41,7 @@ import {
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 import { isVideoSrc } from '../../lib/imageUpload.mjs';
+import type { VideoAudioSetting } from '../../lib/videoAudio';
 
 interface Props {
   src: string;
@@ -89,6 +90,7 @@ interface Props {
   captionPosition?: ImageCaptionPositionId;
   /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
+  audio?: VideoAudioSetting;
 }
 
 const {
@@ -123,6 +125,7 @@ const {
   captionStyle: captionStyleProp,
   captionPosition: captionPositionProp,
   captionReveal,
+  audio,
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing, { flush });
@@ -181,6 +184,7 @@ const editAttrs = editable
       ...(isLead ? {} : { constrained: constrainedProp, centered, maxVh }),
       ...(isLead ? {} : { authoredConstrained: Astro.props.constrained }),
       mobileInset,
+      videoAudio: audio,
     })
   : {};
 ---
@@ -202,7 +206,8 @@ const editAttrs = editable
     {...(spacingAttrs ?? {})}
     data-dev-section-deletable={editable ? 'image' : undefined}
     data-mobile-inset={mobileInset ? 'true' : 'false'}
-    data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
+      data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
+      data-video-audio={audio !== undefined ? JSON.stringify(audio) : undefined}
   >
     {hasCrop ? (
       <div class="project-crop-clip">
@@ -337,7 +342,8 @@ const editAttrs = editable
       style={joinMediaStyles(mediaStyle, imageBackgroundStyle(background))}
       {...editAttrs}
       data-mobile-inset={mobileInset ? 'true' : 'false'}
-      data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
+    data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
+    data-video-audio={audio !== undefined ? JSON.stringify(audio) : undefined}
     >
       {hasCrop ? (
         <div class="project-crop-clip">
