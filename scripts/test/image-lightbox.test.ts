@@ -52,11 +52,11 @@ function fixture(reducedMotion = false) {
     for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.callback(); }
   };
   const click = (target: Element = original, options = {}) => target.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, ...options }));
-  const key = (key: string) => viewer.dispatchEvent(new window.KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
-  const wheel = (deltaY: number, ctrlKey = false, deltaMode = 0, x = 500, y = 400, deltaX = 0) => {
+  const key = (key: string, target: EventTarget = viewer) => target.dispatchEvent(new window.KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
+  const wheel = (deltaY: number, ctrlKey = false, deltaMode = 0, x = 500, y = 400, deltaX = 0, target: EventTarget = viewer) => {
     const event = new window.WheelEvent('wheel', {deltaY, deltaMode, bubbles:true, cancelable:true});
     Object.assign(event, {ctrlKey, clientX:x, clientY:y, deltaX});
-    return viewer.dispatchEvent(event);
+    return target.dispatchEvent(event);
   };
   const gesture = (type: string, scale = 1, rotation = 0) => {
     const event = new window.Event(type, {bubbles:true,cancelable:true});
@@ -292,6 +292,23 @@ test('input mode override persists and trackpad wheel pans without dismissing', 
   expect(f.window.localStorage.getItem('vcd:image-lightbox-input-mode')).toBe('trackpad');
 });
 
+test('input mode select keeps native pointer, keyboard and wheel interaction', () => {
+  const f=fixture(); f.click();
+  const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  const pointerEvent = new f.window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'mouse', pointerId: 7, clientX: 500, clientY: 400, button: 0 });
+  select.dispatchEvent(pointerEvent);
+  expect(pointerEvent.defaultPrevented).toBe(false);
+  expect(f.captured.size).toBe(0);
+  const keyEvent = new f.window.KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true });
+  select.dispatchEvent(keyEvent);
+  expect(keyEvent.defaultPrevented).toBe(false);
+  expect(f.image.style.transform).toContain('scale(1)');
+  const wheelEvent = new f.window.WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+  select.dispatchEvent(wheelEvent);
+  expect(wheelEvent.defaultPrevented).toBe(false);
+  expect(f.image.style.transform).toContain('scale(1)');
+});
+
 test('auto wheel mode stays locked for one burst and resets after inactivity', () => {
   const f=fixture(); f.click(); f.wheel(-100, false); const first = f.image.style.transform;
   f.wheel(2, false, 0, 500, 400, 1);
@@ -309,8 +326,8 @@ test('auto mode retains trackpad confidence for a fast vertical burst', () => {
 
 test('auto mode promotes repeated coarse bursts to mouse at the next burst', () => {
   const f=fixture(); f.click(); f.key('+'); f.wheel(2); f.tick(200);
-  f.wheel(100); f.wheel(100); f.tick(200);
-  f.wheel(100); f.wheel(100); f.tick(200);
+  f.wheel(100); f.wheel(100); f.wheel(100); f.tick(200);
+  f.wheel(100); f.wheel(100); f.wheel(100); f.tick(200);
   const before = f.image.style.transform;
   f.wheel(-100);
   expect(f.image.style.transform).not.toBe(before);
