@@ -236,6 +236,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     let mode: 'flow' | 'docked' | 'riding' = 'flow';
     let headerHeight = header.offsetHeight;
     let ticking = false;
+    let offscreenTimer: ReturnType<typeof setTimeout> | null = null;
 
     const isSectionReorderDragging = () =>
       document.documentElement.classList.contains('is-section-reorder-dragging');
@@ -304,6 +305,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       // exactly where the header is visually sitting. Works from riding
       // (absolute) or from a partially-scrolled-out flow position.
       const slideFrom = slide ? Math.max(0, -header.getBoundingClientRect().top) : null;
+      if (offscreenTimer !== null) {
+        clearTimeout(offscreenTimer);
+        offscreenTimer = null;
+      }
+      header.classList.remove('is-scrolled-hidden');
       mode = next;
       header.classList.toggle('is-docked', mode === 'docked');
       header.classList.toggle('is-riding', mode === 'riding');
@@ -489,7 +495,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           // No threshold: the instant you scroll down from docked, it rides —
           // any dead-zone reads as the header catching on a few pixels late.
           // Release at the current spot: absolute at scrollY, so it scrolls
-          // away with the page from the top edge. No fade on the way out.
+          // away with the page from the top edge; fade after it leaves the viewport.
           setMode('riding');
           trend = 'down';
           anchorY = y;
@@ -499,9 +505,26 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         if (trend === 'up' && rect.top >= 0) {
           // Rode back down and its top reached the viewport top: dock, no fade.
           setMode('docked');
-        } else if (rect.bottom < 0) {
-          // Scrolled fully away: back to its flow slot, invisible up top.
-          setMode('flow');
+        } else if (rect.bottom <= 0) {
+          if (trend === 'up' && anchorY - y > REVEAL_PX) {
+            setMode('docked', true);
+          } else if (offscreenTimer === null) {
+            // Safari can paint above the viewport: finish fading before relocating.
+            header.style.transition = '';
+            header.style.opacity = '';
+            header.classList.add('is-scrolled-hidden');
+            offscreenTimer = setTimeout(() => {
+              offscreenTimer = null;
+              if (mode === 'riding' && header.getBoundingClientRect().bottom <= 0) {
+                setMode('flow');
+                header.classList.add('is-scrolled-hidden');
+              }
+            }, 350);
+          }
+        } else {
+          if (offscreenTimer !== null) clearTimeout(offscreenTimer);
+          offscreenTimer = null;
+          header.classList.remove('is-scrolled-hidden');
         }
       } else if (trend === 'up' && anchorY - y > REVEAL_PX) {
         const rect = header.getBoundingClientRect();
@@ -520,7 +543,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
 
       if (mode !== 'riding') {
-        header.classList.remove('is-scrolled-hidden');
+        header.classList.toggle('is-scrolled-hidden', mode === 'flow' && header.getBoundingClientRect().bottom <= 0);
       }
 
       lastY = y;
@@ -1487,7 +1510,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
   .site-header__bg {
     position: absolute;
-    inset-block: 0;
+    inset-block: calc(-1 * max(env(safe-area-inset-top, 0px), 100px)) 0;
     /* Full viewport, not the content column — inherit --page-gutter from
        #site-wrapper (percentage already resolved there, so no 100vw scrollbar). */
     left: calc(-1 * var(--page-gutter, 0px));
