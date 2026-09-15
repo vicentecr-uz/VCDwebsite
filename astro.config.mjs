@@ -64,7 +64,6 @@ import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './sr
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
 import { awardBlockSizeWriter } from './scripts/award-block-size-writer.mjs';
 import { carouselDragTuningWriter } from './scripts/carousel-drag-tuning-writer.mjs';
-import { videoDiagnosticsWriter } from './scripts/video-diagnostics.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
@@ -2700,7 +2699,7 @@ export default defineConfig({
       contentNavDevWriter(),
       homeRevealConfigWriter(),
       awardBlockSizeWriter(),
-      ...(process.env.NODE_ENV === 'production' ? [] : [carouselDragTuningWriter(), videoDiagnosticsWriter()]),
+      ...(process.env.NODE_ENV === 'production' ? [] : [carouselDragTuningWriter()]),
     ],
     optimizeDeps: {
       include: ['gsap', 'color-dialog-box'],
