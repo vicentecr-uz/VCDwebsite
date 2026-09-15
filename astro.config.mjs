@@ -62,6 +62,7 @@ import {
 } from './scripts/build-tokens.mjs';
 import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './src/lib/projectStackSpacing.js';
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
+import { awardBlockSizeWriter } from './scripts/award-block-size-writer.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
@@ -2686,6 +2687,7 @@ export default defineConfig({
       contentBatchDevWriter(),
       contentNavDevWriter(),
       homeRevealConfigWriter(),
+      awardBlockSizeWriter(),
     ],
     optimizeDeps: {
       include: ['gsap', 'color-dialog-box'],
