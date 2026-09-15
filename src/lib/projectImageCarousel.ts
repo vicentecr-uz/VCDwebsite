@@ -432,6 +432,7 @@ function bindDrag(carousel: Carousel): void {
   let releaseVelocity = 0;
   let settleFrame = 0;
   let settleGeneration = 0;
+  let rubberbandTimer = 0;
 
   const scroll = () => scrollPos(carousel);
   const eventTime = (event: Event) => {
@@ -439,13 +440,47 @@ function bindDrag(carousel: Carousel): void {
     return Number.isFinite(stamp) && stamp > 0 ? stamp : performance.now();
   };
   const restoreSnap = () => track.style.removeProperty('scroll-snap-type');
-  const cancelMomentum = () => {
+  const clearRubberband = (animate = true) => {
+    if (rubberbandTimer) {
+      window.clearTimeout(rubberbandTimer);
+      rubberbandTimer = 0;
+    }
+    track.classList.toggle('is-rubberband-settling', animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    track.style.setProperty('--project-carousel-rubberband-x', '0px');
+    track.style.setProperty('--project-carousel-rubberband-y', '0px');
+    if (animate) {
+      rubberbandTimer = window.setTimeout(() => {
+        track.classList.remove('is-rubberband-settling');
+        rubberbandTimer = 0;
+      }, 200);
+    } else {
+      track.classList.remove('is-rubberband-settling');
+    }
+  };
+  const applyRubberband = (raw: number) => {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      track.style.setProperty('--project-carousel-rubberband-x', '0px');
+      track.style.setProperty('--project-carousel-rubberband-y', '0px');
+      return;
+    }
+    const bounded = clampScroll(raw);
+    const overflow = raw - bounded;
+    const amount = Math.sign(overflow) * Math.min(8, Math.abs(overflow) * 0.12);
+    if (carousel.axis === 'vertical') {
+      track.style.setProperty('--project-carousel-rubberband-x', '0px');
+      track.style.setProperty('--project-carousel-rubberband-y', `${-amount}px`);
+    } else {
+      track.style.setProperty('--project-carousel-rubberband-x', `${-amount}px`);
+      track.style.setProperty('--project-carousel-rubberband-y', '0px');
+    }
+  };
+  const cancelMomentum = (restore = true) => {
     settleGeneration += 1;
     if (settleFrame) {
       cancelAnimationFrame(settleFrame);
       settleFrame = 0;
     }
-    restoreSnap();
+    if (restore) restoreSnap();
   };
   const scrollBounds = () => carousel.axis === 'vertical'
     ? Math.max(0, track.scrollHeight - track.clientHeight)
@@ -469,7 +504,7 @@ function bindDrag(carousel: Carousel): void {
     else track.scrollLeft = bounded;
   };
   const settleTo = (target: number, initialVelocity: number) => {
-    cancelMomentum();
+    cancelMomentum(false);
     track.style.scrollSnapType = 'none';
     target = clampScroll(target);
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
@@ -522,10 +557,18 @@ function bindDrag(carousel: Carousel): void {
 
   track.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
-    cancelMomentum();
-    if ((event.target as HTMLElement).closest('button, a, [contenteditable="true"]') || touchesVideoControl(event)) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('button, a, [contenteditable="true"]') || touchesVideoControl(event)) {
+      cancelMomentum();
+      return;
+    }
     // Crop stage owns the pointer — don't steal capture mid-pan.
-    if ((event.target as HTMLElement).closest('.dev-crop-stage, .dev-crop-stage-host')) return;
+    if (target.closest('.dev-crop-stage, .dev-crop-stage-host')) {
+      cancelMomentum();
+      return;
+    }
+    cancelMomentum(false);
+    clearRubberband(false);
     dragging = true;
     pointerId = event.pointerId;
     moved = 0;
@@ -546,7 +589,9 @@ function bindDrag(carousel: Carousel): void {
     if (moved > 3 && !track.hasPointerCapture(event.pointerId)) {
       track.setPointerCapture(event.pointerId);
     }
-    writeScroll(startScroll + delta);
+    const raw = startScroll + delta;
+    writeScroll(raw);
+    applyRubberband(raw);
     const sample = { position: scroll(), time: eventTime(event) };
     if (lastSample) {
       const elapsed = sample.time - lastSample.time;
@@ -565,6 +610,7 @@ function bindDrag(carousel: Carousel): void {
     pointerId = null;
     lastSample = null;
     track.classList.remove('is-dragging');
+    clearRubberband(true);
     if (track.hasPointerCapture(event.pointerId)) track.releasePointerCapture(event.pointerId);
     if (didMove) {
       suppressClick = true;
