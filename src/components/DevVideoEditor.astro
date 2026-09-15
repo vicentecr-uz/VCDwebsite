@@ -59,10 +59,13 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
   .dev-video-editor { display: grid; gap: var(--space-unit); }
   .dev-video-editor__settings { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-unit); }
   .dev-video-editor__audio-field :global(.dev-segmented) { height: var(--dev-control-height); min-height: var(--dev-control-height); box-sizing: border-box; align-items: stretch; }
-  .dev-video-editor__audio-field :global(.dev-segmented .dev-btn) { min-height: 0; height: 100%; }
+  .dev-video-editor__audio-field :global(.dev-field__value) { padding: 0; background: transparent; }
+  .dev-video-editor__audio-field :global(.dev-field__value:hover),
+  .dev-video-editor__audio-field :global(.dev-field__value:focus-within) { background: transparent; box-shadow: none; }
   .dev-video-editor__preview { display: grid; place-items: center; overflow: hidden; background: var(--sys-color-srf-2); }
   .dev-video-editor__preview video { display: block; width: 100%; object-fit: contain; touch-action: none; }
-  .dev-video-editor__status { min-height: 1.4em; margin: 0; }
+  .dev-video-editor__status { margin: 0; }
+  .dev-video-editor__status:empty { display: none; }
 </style>
 
 <script>
@@ -209,6 +212,7 @@ import volumeXIcon from 'lucide-static/icons/volume-x.svg?raw';
       savedVariants = structuredClone(variants);
       try { audio = resolveVideoAudio(JSON.parse(target.dataset.devVideoAudio || target.dataset.videoAudio || '{}')); } catch { audio = resolveVideoAudio(undefined); }
       savedAudio = { ...audio };
+      status.textContent = '';
       selected = viewportForWidth();
       aspect.value = variants[selected].aspect;
       const source = target.dataset.devImageSrc || '';

@@ -109,4 +109,6 @@ test('cropped inline videos use the project source crop rectangle', () => {
   expect(projectStyles).toContain('width: calc(100% / var(--project-content-w, 1));');
   expect(projectStyles).toContain('transform: translate(');
   expect(projectStyles).not.toContain('object-fit: contain !important');
+  expect(projectStyles).toContain('.project-image-grid__item .project-image-grid__frame > .project-video-player__controller > video[data-project-inline-video]');
+  expect(projectStyles).not.toContain('width: calc(100% + 2px);\n    max-width: none;\n    height: calc(100% + 2px);');
 });
