@@ -442,7 +442,7 @@ function bindDrag(carousel: Carousel): void {
   const cancelMomentum = () => {
     settleGeneration += 1;
     if (settleFrame) {
-      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(settleFrame);
+      cancelAnimationFrame(settleFrame);
       settleFrame = 0;
     }
     restoreSnap();
@@ -452,19 +452,45 @@ function bindDrag(carousel: Carousel): void {
       .map((slide) => slideOffset(carousel, slide))
       .filter((offset, index) => carousel.slides[index].offsetWidth || carousel.slides[index].offsetHeight);
     if (!visible.length) return scroll();
-    const maxScroll = carousel.axis === 'vertical'
+    const measuredMax = carousel.axis === 'vertical'
       ? Math.max(0, track.scrollHeight - track.clientHeight)
       : Math.max(0, track.scrollWidth - track.clientWidth);
-    const bounded = Math.min(Math.max(projected, 0), Math.max(maxScroll, visible[visible.length - 1]));
-    return visible.reduce((best, offset) => Math.abs(offset - bounded) < Math.abs(best - bounded) ? offset : best, visible[0]);
+    // Happy-dom and detached test tracks report zero scroll metrics; use the
+    // final measured slide only as their unmeasured fallback.
+    const maxScroll = measuredMax || visible[visible.length - 1];
+    const bounded = Math.min(Math.max(projected, 0), maxScroll);
+    return Math.min(
+      maxScroll,
+      Math.max(0, visible.reduce((best, offset) => Math.abs(offset - bounded) < Math.abs(best - bounded) ? offset : best, visible[0])),
+    );
   };
+  const scrollBounds = () => {
+    const measuredMax = carousel.axis === 'vertical'
+      ? Math.max(0, track.scrollHeight - track.clientHeight)
+      : Math.max(0, track.scrollWidth - track.clientWidth);
+    if (measuredMax) return measuredMax;
+    const last = carousel.slides
+      .map((slide) => slideOffset(carousel, slide))
+      .filter((offset, index) => carousel.slides[index].offsetWidth || carousel.slides[index].offsetHeight)
+      .pop() ?? 0;
+    return Math.max(0, last);
+  };
+  const clampScroll = (value: number) => Math.min(scrollBounds(), Math.max(0, value));
   const writeScroll = (value: number) => {
-    if (carousel.axis === 'vertical') track.scrollTop = value;
-    else track.scrollLeft = value;
+    const bounded = clampScroll(value);
+    if (carousel.axis === 'vertical') track.scrollTop = bounded;
+    else track.scrollLeft = bounded;
   };
   const settleTo = (target: number, initialVelocity: number) => {
     cancelMomentum();
     track.style.scrollSnapType = 'none';
+    target = clampScroll(target);
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      writeScroll(target);
+      restoreSnap();
+      settleFrame = 0;
+      return;
+    }
     const generation = settleGeneration;
     let position = scroll();
     let velocity = initialVelocity;
@@ -532,8 +558,7 @@ function bindDrag(carousel: Carousel): void {
     if (moved > 3 && !track.hasPointerCapture(event.pointerId)) {
       track.setPointerCapture(event.pointerId);
     }
-    if (carousel.axis === 'vertical') track.scrollTop = startScroll + delta;
-    else track.scrollLeft = startScroll + delta;
+    writeScroll(startScroll + delta);
     const sample = { position: scroll(), time: eventTime(event) };
     if (lastSample) {
       const elapsed = sample.time - lastSample.time;
