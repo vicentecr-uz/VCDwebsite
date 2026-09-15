@@ -412,10 +412,23 @@ test('outward wheel at an edge gets bounded diminishing feedback and inward clea
   expect(second).toBeGreaterThan(first);
   expect(second - first).toBeLessThan(first);
   expect(second).toBeLessThanOrEqual(2.5);
-  wheel(20);
-  expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
   await new Promise((resolve) => setTimeout(resolve, 140));
   expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
+  expect(track.classList.contains('is-rubberband-settling')).toBe(true);
+  block.remove();
+});
+
+test('reduced motion keeps outward wheel feedback disabled', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = (() => ({ matches: true })) as typeof window.matchMedia;
+  try {
+    track.dispatchEvent(new window.WheelEvent('wheel', { deltaX: -20, bubbles: true }));
+    expect(track.style.getPropertyValue('--project-carousel-rubberband-x')).toBe('0px');
+    expect(track.classList.contains('is-rubberband-settling')).toBe(false);
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
   block.remove();
 });
 

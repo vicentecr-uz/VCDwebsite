@@ -602,6 +602,11 @@ function bindDrag(carousel: Carousel): void {
       clearRubberband(false);
       return;
     }
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      resetWheelFeedback();
+      clearRubberband(false);
+      return;
+    }
     // Keep the native wheel scroll and snap path. This only paints feedback
     // while a wheel gesture tries to move beyond a physical carousel edge.
     const position = scroll();
