@@ -149,7 +149,7 @@ test('off-centre pinch keeps its focal translation on the first zoom step', () =
   f.pointer('pointerdown',1,200,400); f.pointer('pointerdown',2,400,400);
   f.pointer('pointermove',1,190,400); f.pointer('pointermove',2,410,400);
   expect(f.image.style.transform).toContain('scale(1.1)');
-  expect(Number(/translate3d\(([-\d.e+]+)px/.exec(f.image.style.transform)![1])).not.toBe(0);
+  expect(Number(/translate\(([-\d.e+]+)px/.exec(f.image.style.transform)![1])).not.toBe(0);
 });
 
 test('cancelled pointer and two-finger tap do not dismiss; next plain tap can dismiss', () => {
@@ -218,7 +218,7 @@ test('drag tracks, twists and fades; crossing and reversing the threshold keeps 
   f.pointer('pointerup',1,430,400); f.settleSpring();
   expect(f.dialog.open).toBe(true);
   expect(Number(f.image.style.opacity)).toBe(1);
-  expect(f.image.style.transform).toContain('translate3d(0px, 0px, 0)');
+  expect(f.image.style.transform).toContain('translate(0px, 0px)');
 });
 
 test('release past the drag threshold closes in 150ms; cancelled or lost capture gestures never close', () => {
@@ -277,8 +277,8 @@ test('mouse wheel zooms at the cursor and never dismisses at minimum scale', () 
 
 test('wheel zoom keeps an off-centre pointer anchored', () => {
   const f=fixture(); f.click(); f.wheel(-100, true, 0, 250, 300);
-  expect(Number(/translate3d\(([-\d.e+]+)px/.exec(f.image.style.transform)![1])).toBeGreaterThan(0);
-  expect(Number(/translate3d\([^,]+px, ([-\d.e+]+)px/.exec(f.image.style.transform)![1])).toBeGreaterThan(0);
+  expect(Number(/translate\(([-\d.e+]+)px/.exec(f.image.style.transform)![1])).toBeGreaterThan(0);
+  expect(Number(/translate\([^,]+px, ([-\d.e+]+)px/.exec(f.image.style.transform)![1])).toBeGreaterThan(0);
 });
 
 test('Alt-drag rotates on desktop and springs back upright', () => {
@@ -295,7 +295,7 @@ test('input mode override persists and trackpad wheel pans without dismissing', 
   const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
   select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true }));
   f.click(); f.key('+'); f.wheel(30, false, 0, 500, 400, 20);
-  expect(f.image.style.transform).toContain('translate3d(-20px, -30px, 0)');
+  expect(f.image.style.transform).toContain('translate(-20px, -30px)');
   f.tick(200); expect(f.dialog.open).toBe(true);
   expect(f.window.localStorage.getItem('vcd:image-lightbox-input-mode')).toBe('trackpad');
 });
@@ -334,7 +334,7 @@ test('trackpad swipe below threshold springs home at idle', () => {
   select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true })); f.click();
   f.wheel(40); f.tick(160); f.settleSpring();
   expect(f.dialog.open).toBe(true);
-  expect(f.image.style.transform).toContain('translate3d(0px, 0px, 0)');
+  expect(f.image.style.transform).toContain('translate(0px, 0px)');
 });
 
 test('trackpad swipe reverses before idle and does not dismiss', () => {
@@ -364,13 +364,13 @@ test('auto wheel mode stays locked for one burst and resets after inactivity', (
   f.wheel(2, false, 0, 500, 400, 1);
   expect(f.image.style.transform).not.toBe(first);
   f.tick(200); f.wheel(2, false, 0, 500, 400, 1);
-  expect(f.image.style.transform).toContain('translate3d(-1px, -2px, 0)');
+  expect(f.image.style.transform).toContain('translate(-1px, -2px)');
 });
 
 test('auto mode retains trackpad confidence for a fast vertical burst', () => {
   const f=fixture(); f.click(); f.gesture('gesturestart'); f.gesture('gestureend'); f.tick(300);
   f.key('+'); f.wheel(100);
-  expect(f.image.style.transform).toContain('translate3d(0px, -100px, 0)');
+  expect(f.image.style.transform).toContain('translate(0px, -100px)');
   expect(f.image.style.transform).toContain('scale(1.5)');
 });
 
