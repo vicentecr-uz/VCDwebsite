@@ -9,6 +9,7 @@ Object.assign(globalThis, {
   HTMLElement: window.HTMLElement,
   CSS: window.CSS,
   requestAnimationFrame: (callback: FrameRequestCallback) => { callback(0); return 0; },
+  cancelAnimationFrame: () => {},
 });
 
 for (const axis of ['horizontal', 'vertical']) {
@@ -228,6 +229,41 @@ test('mouse release carries velocity toward the next real slide before settling'
     expect(track.scrollLeft).toBe(200);
     expect(track.style.scrollSnapType).toBe('');
   });
+  block.remove();
+});
+
+test('settling clamps projected and chosen offsets to the actual scroll bound', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  Object.defineProperties(track, {
+    scrollWidth: { configurable: true, value: 250 },
+    clientWidth: { configurable: true, value: 100 },
+  });
+  withQueuedAnimationFrames((queue, base) => {
+    dispatchMousePointer(track, 'pointerdown', 31, 100, 0, 1);
+    dispatchMousePointer(track, 'pointermove', 31, -100, 0, 101);
+    dispatchMousePointer(track, 'pointerup', 31, -100, 0, 111);
+    flushAnimationFrames(queue, base);
+    expect(track.scrollLeft).toBeLessThanOrEqual(150);
+    expect(track.scrollLeft).toBeGreaterThanOrEqual(0);
+  });
+  block.remove();
+});
+
+test('reduced motion settles synchronously without scheduling animation frames', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const previousMatchMedia = window.matchMedia;
+  window.matchMedia = (() => ({ matches: true })) as typeof window.matchMedia;
+  try {
+    withQueuedAnimationFrames((queue) => {
+      dispatchMousePointer(track, 'pointerdown', 32, 100, 0, 1);
+      dispatchMousePointer(track, 'pointermove', 32, 0, 0, 101);
+      dispatchMousePointer(track, 'pointerup', 32, 0, 0, 111);
+      expect(queue).toHaveLength(0);
+      expect(track.style.scrollSnapType).toBe('');
+    });
+  } finally {
+    window.matchMedia = previousMatchMedia;
+  }
   block.remove();
 });
 
