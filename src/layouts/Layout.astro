@@ -208,8 +208,16 @@ const showDevTools = import.meta.env.DEV;
           if (!document.querySelector('.project-block--intro') || document.documentElement.dataset.introLayoutReady === 'true') { resolve(); return; }
           window.addEventListener('vcd:intro-layout-ready', resolve, { once: true });
         });
+        // Give fonts 500ms before revealing fallback text; media keeps its separate 4s ceiling.
+        const fontReady = new Promise((resolve) => {
+          const timer = setTimeout(() => { mark('font-wait-timeout'); resolve(); }, 500);
+          Promise.resolve(document.fonts?.ready).catch(() => undefined).then(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
         const timeout = new Promise((resolve) => setTimeout(resolve, 4000));
-        Promise.race([Promise.all([Promise.resolve(document.fonts?.ready).catch(() => undefined), introLayoutReady, ...imageReady]), timeout]).then(() => {
+        Promise.race([Promise.all([fontReady, introLayoutReady, ...imageReady]), timeout]).then(() => {
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
             mark('initial-fade-start');
@@ -386,7 +394,15 @@ const showDevTools = import.meta.env.DEV;
         cleanups.push(() => signal.removeEventListener('abort', onAbort));
 
         const waits: Promise<unknown>[] = [];
-        waits.push(Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined));
+        // Match the inline reveal's font budget on restored and diagnostic pages.
+        waits.push(new Promise<void>((resolve) => {
+          const fontTimer = setTimeout(() => { emitTransitionMilestone('font-wait-timeout'); resolve(); }, 500);
+          cleanups.push(() => { clearTimeout(fontTimer); resolve(); });
+          Promise.resolve(document.fonts?.ready).then(() => emitTransitionMilestone('fonts-ready')).catch(() => undefined).then(() => {
+            clearTimeout(fontTimer);
+            resolve();
+          });
+        }));
         let thumbIndex = 0;
         const readinessImages = Array.from(document.querySelectorAll('img[data-image-preview]')).filter(isInViewport).sort((a, b) => { const ar = a.getBoundingClientRect(); const br = b.getBoundingClientRect(); return ar.top - br.top || ar.left - br.left; });
         for (const img of readinessImages) {

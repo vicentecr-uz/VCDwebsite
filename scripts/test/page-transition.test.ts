@@ -295,7 +295,7 @@ test('browser trace marks are emitted without the DEV readiness marker', async (
 });
 
 test('readiness trace detail distinguishes resource completion from timeout release', async () => {
-  const f = fixture({ fonts: deferred().promise });
+  const f = fixture({ images: [new ImageFixture()] });
   await f.paint();
   await f.advance(4000);
   const readinessMark = f.marks.find((mark) => mark.name === 'vcd:readiness-satisfied');
@@ -320,8 +320,8 @@ test('visible mode exposes content while stalled, then marks the normal fade bou
   assert.equal(f.upgrades, 1);
 });
 
-test('visible mode fallback marks readiness after four seconds', async () => {
-  const f = fixture({ visible: true, fonts: deferred().promise });
+test('visible mode media fallback marks readiness after four seconds', async () => {
+  const f = fixture({ visible: true, images: [new ImageFixture()] });
   await f.paint();
   await f.advance(3999);
   assert.equal(f.readinessMarker.hidden, true);
@@ -656,3 +656,31 @@ test('the no-JavaScript CSS safety reveal remains available after five seconds',
   assert.match(css, /#transition-overlay\s*\{[^}]*opacity: 1;[^}]*animation: transition-overlay-reveal[^;]* 5s forwards;/);
   assert.match(css, /@keyframes transition-overlay-reveal\s*\{\s*to\s*\{\s*opacity: 0;/);
 });
+
+
+for (const initialController of [false, true]) {
+  test(`${initialController ? 'inline' : 'deferred'} reveal does not hide text for a stalled font`, async () => {
+    const fonts = deferred();
+    const f = fixture({ initialController, fonts: fonts.promise });
+    await f.paint();
+    await f.advance(499);
+    assert.equal(Number(f.overlay.style.opacity), 1);
+    assert.equal(f.tweens.length, 0);
+    await f.advance(1);
+    await f.paint();
+    assert.ok(f.marks.some((mark) => mark.name === 'vcd:font-wait-timeout'));
+    if (initialController) {
+      assert.equal(Number(f.overlay.style.opacity), 0);
+      await f.advance(250);
+      assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+    } else {
+      assert.equal(f.tweens.length, 1);
+      f.tweens[0].finish();
+      assert.equal(Number(f.overlay.style.opacity), 0);
+    }
+    const reveals = f.upgrades;
+    fonts.resolve();
+    await f.paint();
+    assert.equal(f.upgrades, reveals);
+  });
+}
