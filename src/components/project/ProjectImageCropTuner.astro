@@ -268,6 +268,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
     type ImageGridConstrainPercent,
   } from '../../lib/responsiveImage';
   import { projectImage } from '../../lib/images';
+  import { syncLightboxImage } from '../../lib/imageLightbox';
   import { setImageVariantSetting, resetImageVariantSetting, imageVariantSettingSource, imageVariantsSavePayload, type ImageVariantSetting } from '../../lib/imageVariantInheritance';
   import 'color-dialog-box';
   import { normalizeImageBackground } from '../../lib/imageBackground.mjs';
@@ -1345,6 +1346,7 @@ const linkedAspectAlertSvg = sizeIcon(circleAlertIcon, 14);
       sourceRevision += 1;
       image.removeAttribute('srcset');
       image.src = projectImage(src);
+      if (!isListingCover(target)) syncLightboxImage(image, image.src);
       syncPlaceholderState(target, src, slot);
       if (slot === 'hover') target.dataset.devHoverImageSrc = src;
       else {

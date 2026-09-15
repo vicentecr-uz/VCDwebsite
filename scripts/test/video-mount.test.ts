@@ -22,3 +22,16 @@ for (const type of ['image', 'imageGrid', 'imageCarousel']) {
     expect(projectImageTier('clip.webm', 'thumb')).toBe('/images/clip.webm');
   });
 }
+
+
+for (const type of ['image', 'imageGrid', 'imageCarousel']) {
+  test(`${type}: live images retain the full source for the lightbox after leaving Edit`, () => {
+    const item = { id: 'photo', src: 'detail.jpg', alt: 'Detail' };
+    const section = type === 'image' ? { ...item, type } : { id: 'section', type, items: [item] };
+    const node = mountInsertedSection(section, 'demo', 0);
+    const image = node.querySelector('img')!;
+    expect(image.getAttribute('data-image-original')).toBe('/images/detail.jpg');
+    expect(image.getAttribute('role')).toBe('button');
+    expect(image.getAttribute('aria-label')).toBe('Open image: Detail');
+  });
+}

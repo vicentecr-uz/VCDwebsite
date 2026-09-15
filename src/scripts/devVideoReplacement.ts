@@ -1,5 +1,6 @@
 import { isAcceptedImageFile, isAcceptedVideoFile, isVideoSrc, isHeicUpload } from '../lib/imageUpload.mjs';
 import { projectImage } from '../lib/images';
+import { syncLightboxImage } from '../lib/imageLightbox';
 import { createInlineVideo } from '../lib/inlineVideo';
 import { syncImageSourceDims, syncPlaceholderState } from '../lib/projectImageFrame';
 import { refreshProjectCropCovers } from '../lib/projectCropCover';
@@ -50,6 +51,7 @@ export function applyMediaSource(target: HTMLElement, state: Source) {
   media.src = projectImage(state.src);
   if (media instanceof HTMLImageElement) {
     media.alt = state.alt;
+    syncLightboxImage(media, media.src);
     media.className = target.matches('.project-image-grid__item, .project-image-carousel__slide')
       ? 'project-image-grid__image' : 'project-media__img';
     if (target.classList.contains('project-media--max-vh') && !target.classList.contains('project-cropped')) {

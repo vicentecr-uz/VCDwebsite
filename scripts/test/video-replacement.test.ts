@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
+import { syncLightboxImage } from '../../src/lib/imageLightbox';
 import { isAcceptedImageFile, isAcceptedVideoFile, isVideoSrc, isHeicUpload } from '../../src/lib/imageUpload.mjs';
 
 const source = readFileSync(new URL('../../src/scripts/devVideoReplacement.ts', import.meta.url), 'utf8');
@@ -24,7 +25,7 @@ function setup() {
   const env: any = {
     window, document, HTMLElement: window.HTMLElement, HTMLImageElement: window.HTMLImageElement,
     HTMLVideoElement: window.HTMLVideoElement, CustomEvent: window.CustomEvent, AbortController,
-    isAcceptedImageFile, isAcceptedVideoFile, isVideoSrc, isHeicUpload,
+    isAcceptedImageFile, isAcceptedVideoFile, isVideoSrc, isHeicUpload, syncLightboxImage,
     projectImage: (src: string) => `/images/${src}`,
     createInlineVideo: (src: string, alt: string) => {
       const video = document.createElement('video');
@@ -75,6 +76,7 @@ test('video drop stages a playable replacement, preserving frame and reversible 
   h.history[0].undo();
   expect(h.target.querySelector('img')).not.toBeNull();
   expect(h.target.dataset.devImageSrc).toBe('placeholder.svg');
+  expect(h.target.querySelector('img')!.hasAttribute('data-image-original')).toBe(false);
   expect(h.queued.size).toBe(0);
   h.history[0].redo();
   expect(h.target.querySelector('video')).not.toBeNull();
@@ -107,12 +109,14 @@ test('video can be replaced by an image and both replacements undo in order', as
   expect(h.target.dataset.devImageSrc).toBe('demo.mp4');
   h.history[0].undo();
   expect(h.target.dataset.devImageSrc).toBe('placeholder.svg');
+  expect(h.target.querySelector('img')!.hasAttribute('data-image-original')).toBe(false);
 });
 
 test('stale media completion cannot overwrite a newer drop or a departed editor', async () => {
   const h = setup(); h.replace('first.mp4'); h.replace('second.webm');
   await h.finish(0);
   expect(h.target.dataset.devImageSrc).toBe('placeholder.svg');
+  expect(h.target.querySelector('img')!.hasAttribute('data-image-original')).toBe(false);
   await h.finish(1);
   expect(h.target.dataset.devImageSrc).toBe('second.webm');
   h.replace('third.mp4');
@@ -129,6 +133,7 @@ test('failed metadata leaves the original media and pending crop intact', async 
   h.readers[0].reject(new Error('Unreadable video'));
   await Promise.resolve(); await Promise.resolve();
   expect(h.target.dataset.devImageSrc).toBe('placeholder.svg');
+  expect(h.target.querySelector('img')!.hasAttribute('data-image-original')).toBe(false);
   expect(h.queued.get('crop:stable')).toBe(prior);
   expect(h.alerts).toEqual(['Unreadable video']);
   expect(h.target.hasAttribute('aria-busy')).toBe(false);
@@ -149,4 +154,17 @@ test('replacement skips a fading crop ghost and discard also restores earlier cr
   h.queued.get('crop:stable').revert();
   expect(reverted).toBe(true);
   expect(h.target.dataset.devImageSrc).toBe('placeholder.svg');
+  expect(h.target.querySelector('img')!.hasAttribute('data-image-original')).toBe(false);
+});
+
+
+test('live source replacements refresh lightbox original and remove placeholder actions', () => {
+  const h = setup();
+  h.env.applyMediaSource(h.target, { src: 'detail.jpg', alt: 'Detail', srcWidth: 1000, srcHeight: 800 });
+  const image = h.target.querySelector('img')!;
+  expect(image.getAttribute('data-image-original')).toBe('http://localhost:4322/images/detail.jpg');
+  expect(image.getAttribute('aria-label')).toBe('Open image: Detail');
+  expect(image.getAttribute('tabindex')).toBe('0');
+  h.env.applyMediaSource(h.target, { src: 'placeholder.svg', alt: '', srcWidth: 100, srcHeight: 100 });
+  expect(h.target.querySelector('img')!.hasAttribute('tabindex')).toBe(false);
 });

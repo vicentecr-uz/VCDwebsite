@@ -40,7 +40,7 @@ class TestImage extends EventTarget {
   removeAttribute(name: string) { this.attributes.delete(name); }
   hasAttribute(name: string) { return this.attributes.has(name); }
   getBoundingClientRect() { return { top: this.top, left: 20, bottom: this.top + 200, right: 320 }; }
-  cloneNode() { return new TestImage(); }
+  cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); return clone; }
   insertAdjacentElement(_where: string, clone: TestImage) { this.clone = clone; }
   remove() { this.isConnected = false; }
 }
@@ -93,6 +93,10 @@ const previewImages = (src: string) => images.filter((image) => image.src === sr
 try {
   const a = fixture('/a.webp');
   const b = fixture('/b.webp');
+  b.image.setAttribute('data-image-original', '/original.webp');
+  b.image.setAttribute('tabindex', '0');
+  b.image.setAttribute('role', 'button');
+  b.image.setAttribute('aria-label', 'Open image');
   const first = createImagePreviewUpgrade();
   const second = createImagePreviewUpgrade();
   first.bind(a.root);
@@ -125,6 +129,10 @@ try {
   images.find((image) => image.src === '/b.webp')!.onload!();
   await flush();
   assert.ok(b.image.clone, 'the real reveal path creates a clone');
+  for (const attr of ['data-image-original', 'tabindex', 'role', 'aria-label']) {
+    assert.equal(b.image.clone!.hasAttribute(attr), false, 'decorative preview must not inherit lightbox interaction');
+    assert.equal(b.image.hasAttribute(attr), true, 'the real image stays interactive');
+  }
   assert.ok(frames.size > 0);
   assert.ok(timers.size > 0);
   second.destroy();

@@ -1,4 +1,5 @@
 import { projectImage } from '../lib/images';
+import { syncLightboxImage } from '../lib/imageLightbox';
 import {
   imageGridColumnsStyle,
   imageGridConstrainedStyle,
@@ -141,6 +142,7 @@ const buildInlineImageFigure = (
   } else {
     (img as HTMLImageElement).alt = String(section.alt ?? '');
     (img as HTMLImageElement).loading = 'lazy';
+    syncLightboxImage(img as HTMLImageElement, img.src);
   }
   if (hasCrop) {
     const clip = document.createElement('div');
@@ -323,6 +325,7 @@ export function mountImageGridSection(
     } else {
       (img as HTMLImageElement).alt = String(item.alt ?? '');
       (img as HTMLImageElement).loading = 'lazy';
+      syncLightboxImage(img as HTMLImageElement, img.src);
     }
 
     const frame = document.createElement('div');
@@ -535,6 +538,7 @@ function mountImageCarouselSection(
     } else {
       (img as HTMLImageElement).alt = String(item.alt ?? '');
       (img as HTMLImageElement).loading = displayIndex === 0 ? 'eager' : 'lazy';
+      syncLightboxImage(img as HTMLImageElement, img.src);
     }
     frame.append(img);
     if (placeholder) {
