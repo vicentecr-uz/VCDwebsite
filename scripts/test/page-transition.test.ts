@@ -248,7 +248,9 @@ test('cached content still gets one opaque paint; both fades use the approved va
   assert.equal(f.timers.size, 0);
   const entry = f.tweens[0];
   entry.finish();
+  assert.equal(f.overlay.hidden, true);
   f.click();
+  assert.equal(f.overlay.hidden, false);
   for (const tween of f.tweens) {
     assert.equal(tween.vars.duration, 0.25);
     assert.equal(tween.vars.ease, 'power1.out');
@@ -263,6 +265,7 @@ test('early initial controller reveals once and deferred module adopts its state
   await f.paint();
   await f.advance(250);
   assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(f.overlay.hidden, true);
   assert.equal(Number(f.overlay.style.opacity), 0);
   assert.equal(f.overlay.style.transition ?? '', '');
   assert.equal(f.tweens.length, 0);
@@ -678,3 +681,13 @@ for (const initialController of [false, true]) {
     assert.equal(f.upgrades, reveals);
   });
 }
+
+test('navigation during the inline fade keeps the outgoing veil visible', async () => {
+  const f = fixture({ initialController: true });
+  await f.paint();
+  await f.paint();
+  f.click();
+  await f.advance(250);
+  assert.equal(f.overlay.hidden, false);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'cancelled');
+});

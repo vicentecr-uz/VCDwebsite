@@ -120,7 +120,7 @@ const showDevTools = import.meta.env.DEV;
     )}
     {showDevTools && (
       <style is:inline>
-        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; visibility: hidden !important; animation: none !important; }
         #transition-readiness-marker {
           position: fixed;
           top: max(24px, env(safe-area-inset-top));
@@ -141,7 +141,7 @@ const showDevTools = import.meta.env.DEV;
     )}
     {!showDevTools && (
       <style is:inline>
-        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; animation: none !important; }
+        html[data-dev-transition="visible"] #transition-overlay { opacity: 0 !important; visibility: hidden !important; animation: none !important; }
       </style>
     )}
     {showDevTools && (
@@ -184,9 +184,6 @@ const showDevTools = import.meta.env.DEV;
   </head>
   <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
-
-    <!-- Safe-area overlay: covers browser chrome inset (Zen, Safari mobile) -->
-    <div id="safe-area-overlay"></div>
 
     {showDevTools && <script is:inline type="module" src="/src/scripts/fontRevealPrototype.ts"></script>}
 
@@ -233,6 +230,7 @@ const showDevTools = import.meta.env.DEV;
         Promise.race([Promise.all([introLayoutReady, ...imageReady]), timeout]).then(() => {
           mark('initial-readiness-satisfied');
           requestAnimationFrame(() => requestAnimationFrame(() => {
+            if (overlay.dataset.vcdInitialReveal !== 'running') return;
             mark('initial-fade-start');
             overlay.style.transition = 'opacity 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
             overlay.style.opacity = '0';
@@ -241,7 +239,9 @@ const showDevTools = import.meta.env.DEV;
               if (finished) return;
               finished = true;
               overlay.removeEventListener('transitionend', finish);
+              if (overlay.dataset.vcdInitialReveal !== 'running') return;
               overlay.style.removeProperty('transition');
+              overlay.hidden = true;
               overlay.dataset.vcdInitialReveal = 'complete';
               mark('initial-fade-end');
               window.dispatchEvent(new Event('vcd:initial-reveal-complete'));
@@ -372,6 +372,10 @@ const showDevTools = import.meta.env.DEV;
       let suspended = false;
 
       const invalidate = () => {
+        if (overlay?.dataset.vcdInitialReveal === 'running') {
+          overlay.dataset.vcdInitialReveal = 'cancelled';
+          overlay.style.removeProperty('transition');
+        }
         generation += 1;
         activeTween?.kill();
         activeTween = null;
@@ -467,6 +471,7 @@ const showDevTools = import.meta.env.DEV;
         const controller = new AbortController();
         readinessAbort = controller;
         overlay.style.animation = 'none';
+        overlay.hidden = visibleTransition;
         overlay.style.opacity = visibleTransition ? '0' : '1';
         try {
           const wait = waitForReadiness(controller.signal);
@@ -499,7 +504,10 @@ const showDevTools = import.meta.env.DEV;
             ease: REVEAL_EASE,
             onComplete: () => {
               emitTransitionMilestone('veil-fade-end');
-              if (current === generation) activeTween = null;
+              if (current === generation) {
+                overlay.hidden = true;
+                activeTween = null;
+              }
             },
           });
         } catch {
@@ -509,6 +517,7 @@ const showDevTools = import.meta.env.DEV;
             readinessCleanup = null;
             readinessAbort = null;
             overlay.style.opacity = '0';
+            overlay.hidden = true;
           }
         }
       };
@@ -556,6 +565,7 @@ const showDevTools = import.meta.env.DEV;
             return;
           }
           try {
+            overlay.hidden = false;
             activeTween = gsap.to(overlay, {
               opacity: 1,
               duration: 0.25,
