@@ -19,6 +19,14 @@ import {
   opaqueBackground,
   readCropVars,
 } from '../scripts/adaptiveMediaInk';
+import dragTuningConfig from './carouselDragTuning.json';
+import {
+  carouselRubberbandGive,
+  normalizeCarouselDragTuning,
+  type CarouselDragTuning,
+} from './carouselDragTuning';
+
+const DEFAULT_DRAG_TUNING = normalizeCarouselDragTuning(dragTuningConfig);
 
 type Axis = 'horizontal' | 'vertical';
 
@@ -433,6 +441,7 @@ function bindDrag(carousel: Carousel): void {
   let settleFrame = 0;
   let settleGeneration = 0;
   let rubberbandTimer = 0;
+  let gestureTuning = DEFAULT_DRAG_TUNING;
 
   const scroll = () => scrollPos(carousel);
   const eventTime = (event: Event) => {
@@ -446,13 +455,14 @@ function bindDrag(carousel: Carousel): void {
       rubberbandTimer = 0;
     }
     track.classList.toggle('is-rubberband-settling', animate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
+    track.style.setProperty('--project-carousel-rubberband-duration', `${gestureTuning.springBackMs}ms`);
     track.style.setProperty('--project-carousel-rubberband-x', '0px');
     track.style.setProperty('--project-carousel-rubberband-y', '0px');
     if (animate) {
       rubberbandTimer = window.setTimeout(() => {
         track.classList.remove('is-rubberband-settling');
         rubberbandTimer = 0;
-      }, 200);
+      }, gestureTuning.springBackMs);
     } else {
       track.classList.remove('is-rubberband-settling');
     }
@@ -465,7 +475,7 @@ function bindDrag(carousel: Carousel): void {
     }
     const bounded = clampScroll(raw);
     const overflow = raw - bounded;
-    const amount = Math.sign(overflow) * Math.min(8, Math.abs(overflow) * 0.12);
+    const amount = carouselRubberbandGive(overflow, gestureTuning);
     if (carousel.axis === 'vertical') {
       track.style.setProperty('--project-carousel-rubberband-x', '0px');
       track.style.setProperty('--project-carousel-rubberband-y', `${-amount}px`);
@@ -499,6 +509,19 @@ function bindDrag(carousel: Carousel): void {
     );
   };
   const clampScroll = (value: number) => Math.min(scrollBounds(), Math.max(0, value));
+  const readDragTuning = (): CarouselDragTuning => {
+    const style = typeof getComputedStyle === 'function' ? getComputedStyle(track) : track.style;
+    const raw = {
+      tension: Number.parseFloat(style.getPropertyValue('--project-carousel-drag-tension')),
+      dragThreshold: Number.parseFloat(style.getPropertyValue('--project-carousel-drag-threshold')),
+      springBackMs: Number.parseFloat(style.getPropertyValue('--project-carousel-spring-back')),
+    };
+    return normalizeCarouselDragTuning({
+      tension: Number.isFinite(raw.tension) ? raw.tension : DEFAULT_DRAG_TUNING.tension,
+      dragThreshold: Number.isFinite(raw.dragThreshold) ? raw.dragThreshold : DEFAULT_DRAG_TUNING.dragThreshold,
+      springBackMs: Number.isFinite(raw.springBackMs) ? raw.springBackMs : DEFAULT_DRAG_TUNING.springBackMs,
+    });
+  };
   const writeScroll = (value: number) => {
     const bounded = clampScroll(value);
     if (carousel.axis === 'vertical') track.scrollTop = bounded;
@@ -570,6 +593,8 @@ function bindDrag(carousel: Carousel): void {
       return;
     }
     cancelMomentum(false);
+    gestureTuning = readDragTuning();
+    track.style.setProperty('--project-carousel-rubberband-duration', `${gestureTuning.springBackMs}ms`);
     dragging = true;
     pointerId = event.pointerId;
     moved = 0;
@@ -860,6 +885,9 @@ function initCarousel(block: HTMLElement): void {
     viewport,
   };
   collectVisible(carousel);
+  track.style.setProperty('--project-carousel-drag-tension', String(DEFAULT_DRAG_TUNING.tension));
+  track.style.setProperty('--project-carousel-drag-threshold', `${DEFAULT_DRAG_TUNING.dragThreshold}px`);
+  track.style.setProperty('--project-carousel-spring-back', `${DEFAULT_DRAG_TUNING.springBackMs}ms`);
 
   registry.set(block, carousel);
   block.dataset.activeIndex = '0';
