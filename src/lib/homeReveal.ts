@@ -80,6 +80,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
   const isIntroDismissed = () => home.ownerDocument?.querySelector<HTMLElement>('[data-home-intro-surface]')?.dataset.state === 'dismissed';
   const remember = (el: HTMLElement) => { if (!original.has(el)) original.set(el, { opacity: el.style.opacity, visibility: el.style.visibility, transform: el.style.transform, filter: el.style.filter }); };
   const reduceMotion = () => options.reducedMotion ?? (win.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true);
+  const opacityOnly = (unit: HomeRevealUnit, reduce: boolean) => reduce || (unit.kind === 'header' && win.innerWidth <= 767);
   const cleanup = () => {
     animations.forEach((animation) => animation.cancel());
     animations = [];
@@ -94,7 +95,9 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     const reduce = reduceMotion();
     try {
       groupHomeRevealRows(units, 4, config).forEach((row) => row.units.forEach((unit) => {
-        const keyframes = reduce ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, filter: `blur(${config.entrance.blurPx}px)`, transform: `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})` }, { opacity: 1, filter: 'blur(0)', transform: 'translateY(0) scale(1)' }];
+        const visualOpacityOnly = opacityOnly(unit, reduce);
+        if (visualOpacityOnly && unit.kind === 'header') { unit.element!.style.transform = ''; unit.element!.style.filter = ''; }
+        const keyframes = visualOpacityOnly ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 0, filter: `blur(${config.entrance.blurPx}px)`, transform: `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})` }, { opacity: 1, filter: 'blur(0)', transform: 'translateY(0) scale(1)' }];
         // Reduced motion keeps the spatial opacity wave; only movement and
         // blur are removed from its visual variant.
         animations.push(unit.element!.animate(keyframes, { duration: config.entrance.durationMs, delay: row.delay, easing: config.entrance.easing, fill: 'both' }));
@@ -111,7 +114,7 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
     units.forEach((unit) => {
       const source = unit.element!; remember(source); source.style.opacity = '0';
       if (unit.kind === 'text') source.style.visibility = 'hidden';
-      if (!reduce && unit.kind !== 'text') { source.style.transform = `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})`; source.style.filter = `blur(${config.entrance.blurPx}px)`; }
+      if (!opacityOnly(unit, reduce) && unit.kind !== 'text') { source.style.transform = `translateY(${config.entrance.translateYPx}px) scale(${config.entrance.scale})`; source.style.filter = `blur(${config.entrance.blurPx}px)`; }
       if (unit.kind === 'media') source.querySelectorAll<HTMLImageElement>('img').forEach((image) => { void image.decode?.().catch(() => undefined); });
     });
     preparation = (async () => {

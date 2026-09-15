@@ -62,6 +62,8 @@ import {
 } from './scripts/build-tokens.mjs';
 import { canonicalizeProjectStackSpacing, isProjectStackSpacingPath } from './src/lib/projectStackSpacing.js';
 import { homeRevealConfigWriter } from './scripts/home-reveal-config-writer.mjs';
+import { awardBlockSizeWriter } from './scripts/award-block-size-writer.mjs';
+import { carouselDragTuningWriter } from './scripts/carousel-drag-tuning-writer.mjs';
 import { createSectionRestoreStore } from './scripts/dev-section-restore.mjs';
 import { isSafeContentPath, resolveContentTarget } from './src/lib/devContentTarget.mjs';
 import { normalizeImageBackground } from './src/lib/imageBackground.mjs';
@@ -707,6 +709,12 @@ export const applyCropChange = (data, change) => {
   if (Object.prototype.hasOwnProperty.call(change, 'mobileInset') && typeof change.mobileInset !== 'boolean') {
     return { ok: false, error: 'Mobile inset must be a boolean.' };
   }
+  const hasAudio = Object.prototype.hasOwnProperty.call(change, 'audio');
+  if (hasAudio && !(
+    typeof change.audio === 'boolean'
+    || (change.audio && typeof change.audio === 'object' && !Array.isArray(change.audio)
+      && Object.entries(change.audio).every(([viewport, value]) => IMAGE_VIEWPORTS.has(viewport) && typeof value === 'boolean'))
+  )) return { ok: false, error: 'Video audio settings are invalid.' };
 
   const requestedSrc = typeof change.src === 'string'
     ? (change.src === 'placeholder.svg' ? 'placeholder.svg' : normalizeAssetSrc(change.src))
@@ -834,6 +842,10 @@ export const applyCropChange = (data, change) => {
       }
     }
   }
+  if (hasAudio) {
+    if (change.audio === true) delete target.audio;
+    else target.audio = change.audio;
+  }
 
   const hasWidthFlags = typeof change.constrained === 'boolean'
     || (change.constrained && typeof change.constrained === 'object' && !Array.isArray(change.constrained))
@@ -876,7 +888,7 @@ export const applyCropChange = (data, change) => {
     for (const [viewport, next] of Object.entries(parsedVariants.variants)) {
       if (target.hoverVariants?.[viewport]) syncAspect('hoverVariants', viewport, next.aspect);
     }
-  } else if (!parsedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground
+  } else if (!parsedHoverVariants && !hasWidthFlags && !requestedSrc && !hasBackground && !hasAudio
     && change.clearVariants !== true && change.clearHoverVariants !== true && change.clearHoverImage !== true) {
     return { ok: false, error: 'No crop data was provided.' };
   }
@@ -2686,6 +2698,8 @@ export default defineConfig({
       contentBatchDevWriter(),
       contentNavDevWriter(),
       homeRevealConfigWriter(),
+      awardBlockSizeWriter(),
+      ...(process.env.NODE_ENV === 'production' ? [] : [carouselDragTuningWriter()]),
     ],
     optimizeDeps: {
       include: ['gsap', 'color-dialog-box'],

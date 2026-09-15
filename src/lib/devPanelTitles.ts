@@ -1,5 +1,6 @@
 export const DEV_PANEL_TITLES = {
   image: 'Image',
+  video: 'Video',
   caption: 'Caption',
   grid: 'Grid',
   carousel: 'Carousel',
@@ -14,6 +15,7 @@ export const DEV_PANEL_TITLES = {
   'header-surface': 'Header surface',
   'caption-shadow': 'Caption shadow',
   'award-badge-size': 'Award badge size',
+  'award-block-size': 'Award block size',
 } as const;
 
 export type DevPanelKey = keyof typeof DEV_PANEL_TITLES;

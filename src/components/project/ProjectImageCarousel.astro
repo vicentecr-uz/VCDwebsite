@@ -36,6 +36,7 @@ import {
 import { placeholderLabelText } from '../../lib/placeholderLabel';
 import { imageBackgroundStyle, normalizeImageBackground } from '../../lib/imageBackground.mjs';
 import { isVideoSrc } from '../../lib/imageUpload.mjs';
+import type { VideoAudioSetting } from '../../lib/videoAudio';
 import {
   carouselDotAppearance,
   carouselDotGeometry,
@@ -65,6 +66,7 @@ interface Item {
   /** Per-image cap as % of safe vh (`--vh-safe`) — same control as a standalone image. */
   maxVh?: number;
   background?: string;
+  audio?: VideoAudioSetting;
 }
 
 export type { CarouselOrientation, CarouselHeightMode, CarouselDotsPlacement };
@@ -158,6 +160,7 @@ const resolvedItems = items.map((item, index) => {
     hasCaption: imageCaptionsHaveText(captions),
     maxVh: resolveMaxVh(item),
     background: normalizeImageBackground(item.background) ?? 'transparent',
+    audio: item.audio,
   };
 });
 
@@ -261,6 +264,7 @@ const blockStyle = [
               cropId: id,
               variants: crop.variants,
               authoredVariants: item.variants ?? {},
+              videoAudio: item.audio,
               src: item.src,
               srcWidth: item.srcWidth,
               srcHeight: item.srcHeight,
@@ -297,6 +301,7 @@ const blockStyle = [
             {...editAttrs}
             data-mobile-inset={item.mobileInset === true ? 'true' : 'false'}
             data-mobile-bleed-eligible={mobileBleedEligible && constrained.mobile === 100 && !entry.maxVh ? 'true' : 'false'}
+            data-video-audio={item.audio !== undefined ? JSON.stringify(item.audio) : undefined}
           >
             {/*
               Surface carries the max-height width cap so the visible image and
@@ -318,7 +323,11 @@ const blockStyle = [
                 /> : <img
                   src={projectImageTier(item.src, 'thumb')}
                   data-image-preview={isPlaceholder ? undefined : projectImageTier(item.src, 'preview')}
+                  data-image-original={isPlaceholder ? undefined : projectImage(item.src)}
                   alt={item.alt ?? ''}
+                  role={isPlaceholder ? undefined : 'button'}
+                  tabindex={isPlaceholder ? undefined : '0'}
+                  aria-label={isPlaceholder ? undefined : `Open image: ${item.alt || 'image'}`}
                   class="project-image-grid__image"
                   loading="eager"
                 />}
@@ -372,7 +381,7 @@ const blockStyle = [
                   data-dev-mode-only
                   hidden
                 >
-                  Edit image
+                  {isVideo ? 'Edit video' : 'Edit image'}
                 </button>
               )}
             </div>

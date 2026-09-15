@@ -4,6 +4,9 @@ import { fileURLToPath } from 'node:url';
 // Keep new writers here; check-production-output catches emitted authoring endpoints.
 const authoringComponents = new Set([
   'DevAssetManager.astro',
+  'DevAwardBlockSize.astro',
+  'DevVideoEditor.astro',
+  'dev/DevCarouselDragTool.astro',
   'DevGalleryPages.astro',
   'DevGalleryReorder.astro',
   'DevImageDrop.astro',
