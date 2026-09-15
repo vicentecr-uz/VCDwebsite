@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { sizeIcon } from '../../src/lib/icons';
+import { resolveVideoAudio } from '../../src/lib/videoAudio';
 
 const window = new Window({ url: 'http://localhost:4322' });
 for (const key of ['window', 'document', 'Node', 'Element', 'HTMLElement', 'HTMLVideoElement', 'HTMLMediaElement', 'DocumentFragment', 'EventTarget', 'Event', 'CustomEvent', 'MutationObserver', 'ResizeObserver', 'customElements', 'localStorage', 'navigator', 'DOMParser']) {
@@ -23,7 +24,7 @@ const source = readFileSync(new URL('../../src/lib/projectVideoControls.ts', imp
 const projectStyle = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;\n/gm, '').replaceAll('export function', 'function'));
 const svg = (name: string) => readFileSync(new URL(`../../node_modules/lucide-static/icons/${name}.svg`, import.meta.url), 'utf8');
-const env = { sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
+const env = { resolveVideoAudio, sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
 const { enhanceProjectVideo, bindVideoVisibility } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo, bindVideoVisibility }; }`)(env);
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
 
