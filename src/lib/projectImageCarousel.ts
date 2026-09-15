@@ -441,6 +441,9 @@ function bindDrag(carousel: Carousel): void {
   let settleFrame = 0;
   let settleGeneration = 0;
   let rubberbandTimer = 0;
+  let wheelIdleTimer = 0;
+  let wheelOverflow = 0;
+  let wheelSide = 0;
   let gestureTuning = DEFAULT_DRAG_TUNING;
 
   const scroll = () => scrollPos(carousel);
@@ -449,6 +452,14 @@ function bindDrag(carousel: Carousel): void {
     return Number.isFinite(stamp) && stamp > 0 ? stamp : performance.now();
   };
   const restoreSnap = () => track.style.removeProperty('scroll-snap-type');
+  const resetWheelFeedback = () => {
+    if (wheelIdleTimer) {
+      window.clearTimeout(wheelIdleTimer);
+      wheelIdleTimer = 0;
+    }
+    wheelOverflow = 0;
+    wheelSide = 0;
+  };
   const clearRubberband = (animate = true) => {
     if (rubberbandTimer) {
       window.clearTimeout(rubberbandTimer);
@@ -491,7 +502,10 @@ function bindDrag(carousel: Carousel): void {
       settleFrame = 0;
     }
     if (restore) restoreSnap();
-    if (clearVisual) clearRubberband(false);
+    if (clearVisual) {
+      resetWheelFeedback();
+      clearRubberband(false);
+    }
   };
   const scrollBounds = () => carousel.axis === 'vertical'
     ? Math.max(0, track.scrollHeight - track.clientHeight)
@@ -567,6 +581,52 @@ function bindDrag(carousel: Carousel): void {
       settleFrame = requestAnimationFrame(frame);
     };
     settleFrame = requestAnimationFrame(frame);
+  };
+
+  const wheelDelta = (event: WheelEvent): number => {
+    if (event.ctrlKey || event.metaKey) return 0;
+    const primary = carousel.axis === 'vertical' ? event.deltaY : event.deltaX;
+    const cross = carousel.axis === 'vertical' ? event.deltaX : event.deltaY;
+    if (Math.abs(primary) <= Math.abs(cross)) return 0;
+    const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2
+      ? (carousel.axis === 'vertical' ? track.clientHeight : track.clientWidth)
+      : 1;
+    return primary * factor;
+  };
+
+  const handleWheel = (event: WheelEvent) => {
+    cancelMomentum(true, false);
+    const delta = wheelDelta(event);
+    if (!delta) {
+      resetWheelFeedback();
+      clearRubberband(false);
+      return;
+    }
+    // Keep the native wheel scroll and snap path. This only paints feedback
+    // while a wheel gesture tries to move beyond a physical carousel edge.
+    const position = scroll();
+    const maximum = scrollBounds();
+    const side = position <= 1 && delta < 0 ? -1 : position >= maximum - 1 && delta > 0 ? 1 : 0;
+    if (!side) {
+      resetWheelFeedback();
+      clearRubberband(false);
+      return;
+    }
+    if (wheelSide && wheelSide !== side) resetWheelFeedback();
+    if (!wheelSide) gestureTuning = readDragTuning();
+    wheelSide = side;
+    wheelOverflow += Math.abs(delta);
+    const give = carouselRubberbandGive(wheelOverflow, gestureTuning);
+    const signedGive = side < 0 ? give : -give;
+    track.style.setProperty('--project-carousel-rubberband-x', carousel.axis === 'horizontal' ? `${signedGive}px` : '0px');
+    track.style.setProperty('--project-carousel-rubberband-y', carousel.axis === 'vertical' ? `${signedGive}px` : '0px');
+    track.classList.remove('is-rubberband-settling');
+    if (wheelIdleTimer) window.clearTimeout(wheelIdleTimer);
+    wheelIdleTimer = window.setTimeout(() => {
+      wheelIdleTimer = 0;
+      resetWheelFeedback();
+      clearRubberband(true);
+    }, 120);
   };
 
   track.addEventListener('click', (event) => {
@@ -656,7 +716,7 @@ function bindDrag(carousel: Carousel): void {
   track.addEventListener('pointerleave', (event) => {
     if (dragging && event.pointerId === pointerId && !track.hasPointerCapture(event.pointerId)) endDrag(event, false);
   });
-  track.addEventListener('wheel', cancelMomentum, { passive: true });
+  track.addEventListener('wheel', handleWheel, { passive: true });
   track.addEventListener('touchstart', cancelMomentum, { passive: true });
   window.addEventListener('resize', cancelMomentum, { passive: true });
   window.addEventListener('pagehide', cancelMomentum, { passive: true });
