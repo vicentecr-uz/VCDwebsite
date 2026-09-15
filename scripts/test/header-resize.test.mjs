@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('../../src/components/Header.astro', import.meta.url), 'utf8');
+assert.match(source, /window\.innerWidth <= 767/);
+assert.match(source, /if \(mode !== 'docked'\) setMode\('docked'\)/);
+assert.match(source, /header\.classList\.remove\('is-scrolled-hidden'\)/);
+assert.match(source, /if \(mode !== 'flow'\) setMode\('flow'\)/);
+assert.match(source, /--header-chrome-height/);
 const marker = "window.addEventListener('resize', () => {";
 const start = source.indexOf(marker);
 const end = source.indexOf('\n    });', start);
@@ -18,7 +23,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
   };
   const runSource = [
     'document', 'header', 'mode', 'headerHeight', 'calls',
-    'syncHeaderWidth', 'syncSlot', 'syncMenuSurfaceInlineSize', 'applyGeo',
+    'syncMobileHeaderMode', 'syncHeaderWidth', 'syncSlot', 'syncMenuSurfaceInlineSize', 'applyGeo',
   ];
   const compiled = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
     let viewportWidth = ${width};
@@ -38,6 +43,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
       state.mode,
       72,
       calls,
+      () => {},
       () => { calls.syncHeaderWidth += 1; },
       () => { calls.syncSlot += 1; },
       () => {},
