@@ -442,18 +442,14 @@
   transition-delay: 0s;
 }
 
-/* Media Chrome owns touch inactivity; keep custom controls in that lifecycle. */
-.project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__play,
-.project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__progress,
-.project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__volume-group {
-  opacity: 0;
-  pointer-events: none;
+.project-video-player__volume-group:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-popup,
+.project-video-player__volume-group:has([data-volume-dragging]) .project-video-player__volume-popup {
+  visibility: visible;
+  opacity: 1;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .project-video-player__volume-group:hover .project-video-player__volume-popup,
-  .project-video-player__volume-group:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-popup,
-  .project-video-player__volume-group:has([data-volume-dragging]) .project-video-player__volume-popup {
+  .project-video-player__volume-group:hover .project-video-player__volume-popup {
     visibility: visible;
     opacity: 1;
   }
@@ -468,6 +464,14 @@
 }
 
 @media (hover: none), (pointer: coarse) {
+  /* Media Chrome owns touch inactivity; keep custom controls in that lifecycle. */
+  .project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__play,
+  .project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__progress,
+  .project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__volume-group {
+    opacity: 0;
+    pointer-events: none;
+  }
+
   .project-video-player__controller:not([userinactive]) .project-video-player__play,
   .project-video-player__controller:not([userinactive]) .project-video-player__progress,
   .project-video-player__controller:not([userinactive]) .project-video-player__volume-group,

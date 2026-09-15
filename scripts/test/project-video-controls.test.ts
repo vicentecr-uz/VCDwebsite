@@ -28,10 +28,18 @@ const { enhanceProjectVideo, bindVideoVisibility } = new Function('env', `with(e
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
 
 test('touch controls follow Media Chrome inactivity while fine-pointer hover stays scoped', () => {
-  expect(projectStyle).toContain('.project-video-player__controller[userinactive]');
-  expect(projectStyle).toContain('pointer-events: none;');
-  expect(projectStyle).toContain('@media (hover: hover) and (pointer: fine)');
-  expect(projectStyle).toContain('@media (hover: none), (pointer: coarse)');
+  const touchStart = projectStyle.indexOf('@media (hover: none), (pointer: coarse)');
+  const fineStart = projectStyle.indexOf('@media (hover: hover) and (pointer: fine)');
+  const inactiveStart = projectStyle.indexOf('.project-video-player__controller[userinactive]');
+  const hoverStart = projectStyle.indexOf('.project-video-player__controller:hover');
+  const focusPopupStart = projectStyle.indexOf('.project-video-player__volume-group:has(:focus-visible');
+  expect(touchStart).toBeGreaterThan(-1);
+  expect(fineStart).toBeGreaterThan(-1);
+  expect(inactiveStart).toBeGreaterThan(touchStart);
+  expect(hoverStart).toBeGreaterThan(fineStart);
+  expect(focusPopupStart).toBeGreaterThan(-1);
+  expect(focusPopupStart).toBeLessThan(fineStart);
+  expect(projectStyle.slice(inactiveStart, projectStyle.indexOf('}', inactiveStart))).toContain('pointer-events: none;');
   expect(projectStyle).toContain('.project-video-player__controller[mediapaused] .project-video-player__play');
 });
 
