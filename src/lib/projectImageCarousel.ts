@@ -423,9 +423,22 @@ const touchesVideoControl = (event: Event) => event.composedPath().some((node) =
 function bindDrag(carousel: Carousel): void {
   const { track } = carousel;
   let dragging = false;
+  let pointerId: number | null = null;
   let start = 0;
   let startScroll = 0;
   let moved = 0;
+  let suppressClick = false;
+
+  track.addEventListener('click', (event) => {
+    if (!suppressClick) return;
+    suppressClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
+
+  track.addEventListener('dragstart', (event) => {
+    if (dragging && pointerId !== null && moved > 3) event.preventDefault();
+  });
 
   track.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
@@ -433,7 +446,9 @@ function bindDrag(carousel: Carousel): void {
     // Crop stage owns the pointer — don't steal capture mid-pan.
     if ((event.target as HTMLElement).closest('.dev-crop-stage, .dev-crop-stage-host')) return;
     dragging = true;
+    pointerId = event.pointerId;
     moved = 0;
+    suppressClick = false;
     start = carousel.axis === 'vertical' ? event.clientY : event.clientX;
     startScroll = scrollPos(carousel);
     track.classList.add('is-dragging');
@@ -441,7 +456,7 @@ function bindDrag(carousel: Carousel): void {
   });
 
   track.addEventListener('pointermove', (event) => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== pointerId) return;
     const current = carousel.axis === 'vertical' ? event.clientY : event.clientX;
     const delta = start - current;
     moved = Math.max(moved, Math.abs(delta));
@@ -453,16 +468,26 @@ function bindDrag(carousel: Carousel): void {
   });
 
   const endDrag = (event: PointerEvent) => {
-    if (!dragging) return;
+    if (!dragging || event.pointerId !== pointerId) return;
+    const didMove = moved > 3;
     dragging = false;
+    pointerId = null;
     track.classList.remove('is-dragging');
     track.style.removeProperty('scroll-snap-type');
     if (track.hasPointerCapture(event.pointerId)) track.releasePointerCapture(event.pointerId);
-    if (moved > 3) scrollToIndex(carousel, activeIndexFor(carousel));
+    if (didMove) {
+      suppressClick = true;
+      scrollToIndex(carousel, activeIndexFor(carousel));
+      window.setTimeout(() => { suppressClick = false; }, 0);
+    }
   };
 
   track.addEventListener('pointerup', endDrag);
   track.addEventListener('pointercancel', endDrag);
+  track.addEventListener('lostpointercapture', endDrag);
+  track.addEventListener('pointerleave', (event) => {
+    if (dragging && event.pointerId === pointerId && !track.hasPointerCapture(event.pointerId)) endDrag(event);
+  });
 }
 
 /**

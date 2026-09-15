@@ -88,6 +88,12 @@ function createSnapTestCarousel(axis: 'horizontal' | 'vertical') {
     });
   });
   const calls: ScrollToOptions[] = [];
+  let capturedPointerId: number | null = null;
+  track.hasPointerCapture = (pointerId: number) => capturedPointerId === pointerId;
+  track.setPointerCapture = (pointerId: number) => { capturedPointerId = pointerId; };
+  track.releasePointerCapture = (pointerId: number) => {
+    if (capturedPointerId === pointerId) capturedPointerId = null;
+  };
   track.scrollTo = (options: ScrollToOptions) => {
     calls.push(options);
     track.scrollLeft = options.left ?? track.scrollLeft;
@@ -101,8 +107,76 @@ function dispatchPointerDown(track: HTMLElement): void {
   const event = new window.Event('pointerdown') as PointerEvent;
   Object.defineProperty(event, 'pointerType', { value: 'mouse' });
   Object.defineProperty(event, 'button', { value: 0 });
+  Object.defineProperty(event, 'pointerId', { value: 1 });
   track.dispatchEvent(event);
 }
+
+function dispatchMousePointer(track: HTMLElement, type: string, pointerId = 1, clientX = 0, clientY = 0) {
+  const event = new window.Event(type, { bubbles: true, cancelable: true }) as PointerEvent;
+  Object.defineProperties(event, {
+    pointerType: { value: 'mouse' },
+    button: { value: 0 },
+    pointerId: { value: pointerId },
+    clientX: { value: clientX },
+    clientY: { value: clientY },
+  });
+  track.dispatchEvent(event);
+  return event;
+}
+
+test('mouse image drag cancels native image dragging only after the carousel drag is accepted', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const image = window.document.createElement('img');
+  track.querySelector('[data-carousel-slide]')!.append(image);
+
+  dispatchMousePointer(track, 'pointerdown', 11, 100);
+  const beforeMove = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(beforeMove);
+  expect(beforeMove.defaultPrevented).toBe(false);
+
+  dispatchMousePointer(track, 'pointermove', 11, 94);
+  const afterMove = new window.Event('dragstart', { bubbles: true, cancelable: true });
+  image.dispatchEvent(afterMove);
+  expect(afterMove.defaultPrevented).toBe(true);
+  dispatchMousePointer(track, 'pointerup', 11, 94);
+  block.remove();
+});
+
+test('ordinary image click remains available while a dragged image click is suppressed', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  const image = window.document.createElement('img');
+  track.querySelector('[data-carousel-slide]')!.append(image);
+  let clicks = 0;
+  image.addEventListener('click', () => { clicks += 1; });
+
+  dispatchMousePointer(track, 'pointerdown', 12, 100);
+  dispatchMousePointer(track, 'pointerup', 12, 100);
+  const ordinaryClick = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  image.dispatchEvent(ordinaryClick);
+  expect(ordinaryClick.defaultPrevented).toBe(false);
+  expect(clicks).toBe(1);
+
+  dispatchMousePointer(track, 'pointerdown', 13, 100);
+  dispatchMousePointer(track, 'pointermove', 13, 94);
+  dispatchMousePointer(track, 'pointerup', 13, 94);
+  const draggedClick = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+  image.dispatchEvent(draggedClick);
+  expect(draggedClick.defaultPrevented).toBe(true);
+  expect(clicks).toBe(1);
+  block.remove();
+});
+
+test('cancelled mouse drag clears carousel drag state and snap override', () => {
+  const { block, track } = createSnapTestCarousel('horizontal');
+  dispatchMousePointer(track, 'pointerdown', 14, 100);
+  dispatchMousePointer(track, 'pointermove', 14, 94);
+  expect(track.classList.contains('is-dragging')).toBe(true);
+  expect(track.style.scrollSnapType).toBe('none');
+  dispatchMousePointer(track, 'pointercancel', 14, 94);
+  expect(track.classList.contains('is-dragging')).toBe(false);
+  expect(track.style.scrollSnapType).toBe('');
+  block.remove();
+});
 
 for (const axis of ['horizontal', 'vertical'] as const) {
   test(`${axis}: wheel scrollend does not correct an intermediate native offset`, () => {
