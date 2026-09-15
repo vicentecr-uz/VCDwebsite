@@ -17,9 +17,9 @@ class FakeElement {
   remove() {}
   animate(keyframes: Keyframe[], options: KeyframeAnimationOptions) { const animation = { options, cancel() {}, finished: Promise.resolve() }; this.animateKeyframes.push(keyframes); this.animations.push(animation); return animation; }
 }
-const fakeWindow = (reduce = false) => {
+const fakeWindow = (reduce = false, width = 1024) => {
   const listeners = new Map<string, Set<EventListener>>();
-  return { innerHeight: 800, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail, ...(name === 'pageshow' ? detail as object : {}) } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
+  return { innerHeight: 800, innerWidth: width, matchMedia: () => ({ matches: reduce }), addEventListener(name: string, fn: EventListener) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name)!.add(fn); }, removeEventListener(name: string, fn: EventListener) { listeners.get(name)?.delete(fn); }, emit(name: string, detail?: unknown) { listeners.get(name)?.forEach((fn) => fn({ type: name, detail, ...(name === 'pageshow' ? detail as object : {}) } as CustomEvent)); }, listenerCount(name: string) { return listeners.get(name)?.size ?? 0; } } as unknown as Window & { emit: (name: string, detail?: unknown) => void; listenerCount: (name: string) => number };
 };
 const savedDocument = globalThis.document;
 let introSurface: FakeElement | null = null;
@@ -66,6 +66,29 @@ describe('home reveal choreography', () => {
     await Promise.resolve();
     expect(header.style.opacity).toBe('');
     expect(header.animations).toHaveLength(1);
+    controller.destroy();
+  });
+
+  test('mobile header reveal uses opacity only even when prepared at desktop width', async () => {
+    const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+    const win = fakeWindow(false, 1024); const controller = createHomeRevealController(home as unknown as HTMLElement, win);
+    expect(header.style.transform).toContain('translateY');
+    win.innerWidth = 390;
+    win.emit('vcd:home-intro-dismissed'); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(header.style.transform).toBe(''); expect(header.style.filter).toBe('');
+    expect(header.animateKeyframes[0]).toEqual([{ opacity: 0 }, { opacity: 1 }]);
+    controller.destroy();
+  });
+
+  test('desktop header reveal retains transform and blur', async () => {
+    const header = new FakeElement(); const home = new FakeElement(); home.children = [header];
+    home.querySelectorAll = <T>(selector: string) => selector.includes('site-header-slot') ? [header] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 }, querySelector: () => introSurface } });
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow(false, 1024));
+    controller.run(); await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(header.animateKeyframes[0]?.[0]).toMatchObject({ transform: expect.any(String), filter: expect.any(String) });
     controller.destroy();
   });
 
