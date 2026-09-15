@@ -428,14 +428,6 @@
   --media-range-bar-color: var(--media-time-range-buffered-color);
 }
 
-.project-video-player__volume-group:hover .project-video-player__volume-popup,
-.project-video-player__volume-group:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-popup,
-.project-video-player__volume-group:has([data-volume-dragging]) .project-video-player__volume-popup {
-  visibility: visible;
-  opacity: 1;
-}
-
-.project-video-player__controller:hover .project-video-player__play,
 .project-video-player__controller:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__play,
 .project-video-player__play[mediapaused] {
   opacity: 1;
@@ -443,8 +435,6 @@
   transition-delay: 0s;
 }
 
-.project-video-player__controller:hover .project-video-player__progress,
-.project-video-player__controller:hover .project-video-player__volume-group,
 .project-video-player__controller:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__progress,
 .project-video-player__controller:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-group,
 .project-video-player__volume-group:has([data-volume-dragging]) {
@@ -452,9 +442,40 @@
   transition-delay: 0s;
 }
 
-@media (hover: none) {
-  .project-video-player__progress,
-  .project-video-player__volume-group { opacity: 1; }
+/* Media Chrome owns touch inactivity; keep custom controls in that lifecycle. */
+.project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__play,
+.project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__progress,
+.project-video-player__controller[userinactive]:not([mediapaused]):not(:has(:focus-visible, [data-video-keyboard-focus])) .project-video-player__volume-group {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .project-video-player__volume-group:hover .project-video-player__volume-popup,
+  .project-video-player__volume-group:has(:focus-visible, [data-video-keyboard-focus]) .project-video-player__volume-popup,
+  .project-video-player__volume-group:has([data-volume-dragging]) .project-video-player__volume-popup {
+    visibility: visible;
+    opacity: 1;
+  }
+
+  .project-video-player__controller:hover .project-video-player__play,
+  .project-video-player__controller:hover .project-video-player__progress,
+  .project-video-player__controller:hover .project-video-player__volume-group {
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .project-video-player__controller:not([userinactive]) .project-video-player__play,
+  .project-video-player__controller:not([userinactive]) .project-video-player__progress,
+  .project-video-player__controller:not([userinactive]) .project-video-player__volume-group,
+  .project-video-player__controller[mediapaused] .project-video-player__play {
+    opacity: 1;
+    pointer-events: auto;
+    transition-delay: 0s;
+  }
 }
 
 media-play-button:not(:defined),

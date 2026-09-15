@@ -20,11 +20,20 @@ window.CSSStyleSheet.prototype.insertRule = function(rule: string, index?: numbe
 };
 await import('media-chrome');
 const source = readFileSync(new URL('../../src/lib/projectVideoControls.ts', import.meta.url), 'utf8');
+const projectStyle = readFileSync(new URL('../../src/styles/project.css', import.meta.url), 'utf8');
 const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.replace(/^import .*;\n/gm, '').replaceAll('export function', 'function'));
 const svg = (name: string) => readFileSync(new URL(`../../node_modules/lucide-static/icons/${name}.svg`, import.meta.url), 'utf8');
 const env = { sizeIcon, playIcon: svg('play'), pauseIcon: svg('pause'), volumeIcon: svg('volume-2'), muteIcon: svg('volume-x') };
 const { enhanceProjectVideo, bindVideoVisibility } = new Function('env', `with(env) { ${code}; return { enhanceProjectVideo, bindVideoVisibility }; }`)(env);
 const settle = async () => { await new Promise((resolve) => setTimeout(resolve, 20)); };
+
+test('touch controls follow Media Chrome inactivity while fine-pointer hover stays scoped', () => {
+  expect(projectStyle).toContain('.project-video-player__controller[userinactive]');
+  expect(projectStyle).toContain('pointer-events: none;');
+  expect(projectStyle).toContain('@media (hover: hover) and (pointer: fine)');
+  expect(projectStyle).toContain('@media (hover: none), (pointer: coarse)');
+  expect(projectStyle).toContain('.project-video-player__controller[mediapaused] .project-video-player__play');
+});
 
 for (const existing of [false, true]) {
   test(`${existing ? 'standalone' : 'inline'} video shares one functioning controller`, async () => {
