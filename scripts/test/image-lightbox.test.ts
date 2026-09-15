@@ -15,7 +15,7 @@ function fixture(reducedMotion = false) {
   const window = new Window({ url: 'http://localhost:4323', settings: { errorCapture: BrowserErrorCaptureEnum.disabled } });
   const document = window.document;
   document.body.innerHTML = `<img id="source" alt="Study" data-image-original="/images/study.jpg" role="button" tabindex="0">
-    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><p data-image-lightbox-error hidden></p></div>
+    <dialog data-image-lightbox><div data-image-lightbox-viewer tabindex="0"><img data-image-lightbox-image><p data-image-lightbox-error hidden></p><label><select data-image-lightbox-input-mode aria-label="Input mode"><option value="auto">Auto</option><option value="mouse">Mouse</option><option value="trackpad">Trackpad</option></select></label></div>
     </dialog>`;
   const original = document.querySelector<HTMLImageElement>('#source')!;
   const dialog = document.querySelector('dialog')!;
@@ -41,7 +41,7 @@ function fixture(reducedMotion = false) {
   viewer.getBoundingClientRect = () => ({ left: 100, top: 100, width: 800, height: 600 } as DOMRect);
   const env = { ...geometry, window, document, Element: window.Element, MutationObserver: window.MutationObserver,
     requestAnimationFrame: raf, cancelAnimationFrame: (id: number) => frames.delete(id),
-    getComputedStyle: window.getComputedStyle.bind(window), performance: { now: () => now },
+    getComputedStyle: window.getComputedStyle.bind(window), localStorage: window.localStorage, performance: { now: () => now },
     matchMedia: () => ({ matches: reducedMotion }) };
   const bind = new Function(...Object.keys(env), `${compiled}; return bindImageLightbox;`)(...Object.values(env));
   const dispose = bind(dialog);
@@ -53,9 +53,9 @@ function fixture(reducedMotion = false) {
   };
   const click = (target: Element = original, options = {}) => target.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, ...options }));
   const key = (key: string) => viewer.dispatchEvent(new window.KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}));
-  const wheel = (deltaY: number, ctrlKey = false, deltaMode = 0) => {
+  const wheel = (deltaY: number, ctrlKey = false, deltaMode = 0, x = 500, y = 400, deltaX = 0) => {
     const event = new window.WheelEvent('wheel', {deltaY, deltaMode, bubbles:true, cancelable:true});
-    Object.assign(event, {ctrlKey, clientX:500, clientY:400});
+    Object.assign(event, {ctrlKey, clientX:x, clientY:y, deltaX});
     return viewer.dispatchEvent(event);
   };
   const gesture = (type: string, scale = 1, rotation = 0) => {
@@ -65,8 +65,11 @@ function fixture(reducedMotion = false) {
     return event;
   };
   const settleSpring = () => { for (let i=0; i<180; i++) { tick(16); frame(); } };
-  const pointer = (type: string, id: number, x = 400, y = 400, button = 0) =>
-    viewer.dispatchEvent(new window.PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', pointerId: id, clientX: x, clientY: y, button }));
+  const pointer = (type: string, id: number, x = 400, y = 400, button = 0, altKey = false) => {
+    const event = new window.PointerEvent(type, { bubbles: true, cancelable: true, pointerType: 'touch', pointerId: id, clientX: x, clientY: y, button });
+    Object.assign(event, { altKey });
+    return viewer.dispatchEvent(event);
+  };
   return { window, document, original, dialog, viewer, image, click, key, wheel, gesture, settleSpring, pointer, frame, tick, frames, timers, captured, dispose };
 }
 
@@ -262,6 +265,39 @@ test('mouse wheel zooms at the cursor and never dismisses at minimum scale', () 
   for(let i=0;i<12;i++)f.wheel(1000);
   f.tick(200); expect(f.dialog.open).toBe(true);
   expect(f.image.style.transform).toContain('scale(1)');
+});
+
+test('wheel zoom keeps an off-centre pointer anchored', () => {
+  const f=fixture(); f.click(); f.wheel(-100, true, 0, 250, 300);
+  expect(Number(/translate3d\(([-\d.e+]+)px/.exec(f.image.style.transform)![1])).toBeGreaterThan(0);
+  expect(Number(/translate3d\([^,]+px, ([-\d.e+]+)px/.exec(f.image.style.transform)![1])).toBeGreaterThan(0);
+});
+
+test('Alt-drag rotates on desktop and springs back upright', () => {
+  const f=fixture(); f.click();
+  f.pointer('pointerdown',1,400,400,0,true); f.pointer('pointermove',1,440,400,0,true);
+  expect(rotationOf(f.image)).toBeGreaterThan(0);
+  f.pointer('pointerup',1,440,400,0,true); f.settleSpring();
+  expect(rotationOf(f.image)).toBe(0);
+  expect(f.dialog.open).toBe(true);
+});
+
+test('input mode override persists and trackpad wheel pans without dismissing', () => {
+  const f=fixture();
+  const select = f.viewer.querySelector<HTMLSelectElement>('[data-image-lightbox-input-mode]')!;
+  select.value = 'trackpad'; select.dispatchEvent(new f.window.Event('change', { bubbles: true }));
+  f.click(); f.key('+'); f.wheel(30, false, 0, 500, 400, 20);
+  expect(f.image.style.transform).toContain('translate3d(-20px, -30px, 0)');
+  f.tick(200); expect(f.dialog.open).toBe(true);
+  expect(f.window.localStorage.getItem('vcd:image-lightbox-input-mode')).toBe('trackpad');
+});
+
+test('auto wheel mode stays locked for one burst and resets after inactivity', () => {
+  const f=fixture(); f.click(); f.wheel(-100, false); const first = f.image.style.transform;
+  f.wheel(2, false, 0, 500, 400, 1);
+  expect(f.image.style.transform).not.toBe(first);
+  f.tick(200); f.wheel(2, false, 0, 500, 400, 1);
+  expect(f.image.style.transform).toContain('translate3d(-1px, -2px, 0)');
 });
 
 test('trackpad pinch wheel ends after inactivity and supports underzoom dismissal', () => {
