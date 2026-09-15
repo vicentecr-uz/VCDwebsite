@@ -1567,9 +1567,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       transparent
     );
     opacity: 0;
+    visibility: hidden;
     transition:
       opacity var(--header-menu-surface-duration, 0.48s) cubic-bezier(0.22, 1, 0.36, 1)
-      var(--header-menu-surface-delay, 0s);
+      var(--header-menu-surface-delay, 0s),
+      visibility 0s calc(var(--header-menu-surface-duration, 0.48s) + var(--header-menu-surface-delay, 0s));
     pointer-events: none;
     /* Above page content (sections sit at 25), below the header bar (50). */
     z-index: 40;
@@ -1579,6 +1581,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       + .site-header-slot .header-trigger[data-menu-surface-open]
     ) {
     opacity: 1;
+    visibility: visible;
+    transition-delay: var(--header-menu-surface-delay, 0s), 0s;
   }
 
   /* Tap mode: the backdrop swallows the dismiss tap so it can't also activate
