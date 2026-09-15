@@ -321,7 +321,7 @@ test('small twists have resisted give and spring upright on release without chan
     const f=fixture(); f.click(); f.gesture('gesturestart');
     f.gesture('gesturechange',2,degrees);
     const upright=Math.round(degrees/360)*360;
-    expect(rotationOf(f.image)).toBeCloseTo(upright+(degrees-upright)*.2);
+    expect(rotationOf(f.image)).toBeCloseTo(upright+(degrees-upright)*.1);
     const before=rotationOf(f.image);
     f.gesture('gestureend',2,degrees);
     expect(rotationOf(f.image)).toBe(before);
@@ -335,13 +335,13 @@ test('small twists have resisted give and spring upright on release without chan
 
 test('crossing twenty degrees releases resistance smoothly and reversing re-engages it without jumping', () => {
   const f=fixture(); f.click(); f.gesture('gesturestart');
-  f.gesture('gesturechange',2,20); expect(rotationOf(f.image)).toBe(4);
-  f.gesture('gesturechange',2,21); expect(rotationOf(f.image)).toBe(4);
+  f.gesture('gesturechange',2,20); expect(rotationOf(f.image)).toBe(2);
+  f.gesture('gesturechange',2,21); expect(rotationOf(f.image)).toBe(2);
   f.tick(16); f.frame();
-  expect(rotationOf(f.image)).toBeGreaterThan(4); expect(rotationOf(f.image)).toBeLessThan(21);
+  expect(rotationOf(f.image)).toBeGreaterThan(2); expect(rotationOf(f.image)).toBeLessThan(21);
   f.settleSpring(); expect(rotationOf(f.image)).toBe(21);
   f.gesture('gesturechange',2,19); expect(rotationOf(f.image)).toBe(21);
-  f.settleSpring(); expect(rotationOf(f.image)).toBeCloseTo(3.8);
+  f.settleSpring(); expect(rotationOf(f.image)).toBeCloseTo(1.9);
   f.gesture('gestureend',2,19); f.settleSpring(); expect(rotationOf(f.image)).toBe(0);
 });
 
@@ -373,4 +373,23 @@ test('pointer dismissal clears the returned image focus, while keyboard dismissa
   expect(f.document.activeElement).not.toBe(f.original);
   f.click(); f.key('Escape'); f.tick(150);
   expect(f.document.activeElement).toBe(f.original);
+});
+
+test('staggered finger release and remaining-finger movement cannot strand resisted rotation', () => {
+  for (const drift of [.5,30]) {
+    const f=fixture(); f.click(); f.key('+');
+    f.pointer('pointerdown',1,400,400); f.pointer('pointerdown',2,600,400);
+    f.pointer('pointermove',2,600,430);
+    const scale=/scale\(([^)]+)\)/.exec(f.image.style.transform)![1];
+    expect(rotationOf(f.image)).toBeGreaterThan(0);
+    f.pointer('pointerup',2,600,430);
+    f.tick(16); f.frame();
+    f.pointer('pointermove',1,400+drift,400);
+    f.pointer('pointerup',1,401+drift,400);
+    expect(rotationOf(f.image)).not.toBe(0);
+    f.settleSpring();
+    expect(rotationOf(f.image)).toBe(0);
+    expect(f.image.style.transform).toContain(`scale(${scale})`);
+    expect(f.dialog.open).toBe(true);
+  }
 });

@@ -23,7 +23,7 @@
     const resistedRotation = (rotation: number) => {
       const upright = uprightRotation(rotation);
       const delta = rotation - upright;
-      return Math.abs(delta) <= 20 ? upright + delta * .2 : rotation;
+      return Math.abs(delta) <= 20 ? upright + delta * .1 : rotation;
     };
     const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
     let view = fit();
@@ -55,6 +55,7 @@
     let rotationTarget = 0;
     let rotationOffset = 0;
     let rotationResisted = true;
+    let pointerRotationTarget: number | null = null;
     let session = 0;
     let observer: MutationObserver | null = null;
 
@@ -129,7 +130,7 @@
     };
     const reset = () => {
       stopSpring(); clearWheel(); releasePointers();
-      view = fit(); gesture = null; feedback = null; nativeGesture = false;
+      view = fit(); gesture = null; feedback = null; nativeGesture = false; pointerRotationTarget = null;
       render();
     };
     const springHome = (target: View = { ...fit(), rotation: uprightRotation(view.rotation) }) => {
@@ -252,7 +253,7 @@
     const pointFor = (event: PointerEvent): Point => ({ x: event.clientX, y: event.clientY });
     const onPointerDown = (event: PointerEvent) => {
       if (!dialog.open || closeTimer !== null || event.button !== 0 || pointers.size >= 2 || nativeGesture) return;
-      stopSpring(); clearWheel();
+      stopSpring(); clearWheel(); pointerRotationTarget = null;
       viewer.removeAttribute('data-keyboard-focus');
       viewer.classList.add('is-dragging');
       if (!pointers.size) {
@@ -313,6 +314,7 @@
         feedback = null; clampPan();
         const upright = uprightRotation(rawRotation);
         const rotation = Math.abs(rawRotation - upright) <= 20 ? upright : rawRotation;
+        pointerRotationTarget = pointers.size ? rotation : null;
         velocity.x = 0; velocity.y = 0; velocity.scale = 0;
         if (view.rotation !== rotation) springHome({ ...view, rotation });
         else render();
@@ -333,7 +335,14 @@
       } else if (!pointers.size && ending === 'drag') {
         if (!cancelled && armed) dismiss(); else springHome({ ...fit(), rotation: start.rotation });
       }
-      if (!pointers.size) { gesture = null; viewer.classList.remove('is-dragging'); }
+      if (!pointers.size) {
+        if (pointerRotationTarget !== null && closeTimer === null) {
+          velocity = { x: 0, y: 0, scale: 0, rotation: 0 };
+          springHome({ ...view, rotation: pointerRotationTarget });
+          pointerRotationTarget = null;
+        }
+        gesture = null; viewer.classList.remove('is-dragging');
+      }
       event.preventDefault();
     };
     const finishWheel = () => {
