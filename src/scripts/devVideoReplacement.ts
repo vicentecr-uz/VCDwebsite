@@ -112,8 +112,7 @@ export function bindVideoReplacement() {
   window.addEventListener('vcd:dev-image-replace', ((event: CustomEvent<{ target: HTMLElement; file?: File; src?: string }>) => {
     const { target, file, src } = event.detail ?? {};
     if (event.defaultPrevented || !document.documentElement.classList.contains('is-dev-mode')
-      || !(target instanceof HTMLElement) || !target.matches('[data-dev-image-target]')
-      || target.closest('.project-grid__item')) return;
+      || !(target instanceof HTMLElement) || !target.matches('[data-dev-image-target]')) return;
     if (!isVideoSrc(file?.name ?? src) && !isVideoSrc(target.dataset.devImageSrc)) return;
     event.preventDefault();
     if (file && !isAcceptedImageFile(file) && !isAcceptedVideoFile(file)) {
@@ -191,7 +190,19 @@ export function bindVideoReplacement() {
             }));
             return;
           }
-          const payload = { ...baseline.pending?.payload, ...identity, src: state.src, srcWidth: state.srcWidth, srcHeight: state.srcHeight };
+          let liveVariants: unknown;
+          let liveAudio: unknown;
+          try { liveVariants = target.dataset.devImageVariants ? JSON.parse(target.dataset.devImageVariants) : undefined; } catch { liveVariants = undefined; }
+          try { liveAudio = target.dataset.devVideoAudio ? JSON.parse(target.dataset.devVideoAudio) : true; } catch { liveAudio = true; }
+          const payload = {
+            ...baseline.pending?.payload,
+            ...identity,
+            ...(liveVariants ? { variants: liveVariants } : {}),
+            audio: liveAudio,
+            src: state.src,
+            srcWidth: state.srcWidth,
+            srcHeight: state.srcHeight,
+          };
           window.dispatchEvent(new CustomEvent('vcd:dev-pending-upsert', { detail: {
             id, kind: 'crop', payload, revert: baseline.revert,
           } }));

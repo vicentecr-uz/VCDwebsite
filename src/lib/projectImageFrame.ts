@@ -25,6 +25,7 @@ import {
 } from './imageCaptions';
 import { PLACEHOLDER_IMAGE_VARIANTS } from './projectImageDefaults';
 import { normalizeImageBackground } from './imageBackground.mjs';
+import type { VideoAudioSetting } from './videoAudio';
 
 export function isPlaceholderSrc(src: string): boolean {
   return src === 'placeholder.svg' || src.endsWith('/placeholder.svg');
@@ -214,6 +215,7 @@ export interface ImageDevEditContext {
   /** Opt a full-width mobile image back into the page gutter. */
   mobileInset?: boolean;
   background?: string;
+  videoAudio?: VideoAudioSetting;
 }
 
 /** Per-viewport default frame aspects for gallery listing covers (seed only). */
@@ -344,6 +346,7 @@ export function imageDevEditAttrs(
     attrs['data-dev-max-vh'] = '';
   }
   attrs['data-mobile-inset'] = context.mobileInset === true ? 'true' : 'false';
+  if (context.videoAudio !== undefined) attrs['data-dev-video-audio'] = JSON.stringify(context.videoAudio);
 
   return attrs;
 }
