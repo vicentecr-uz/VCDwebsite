@@ -82,7 +82,7 @@ const { mode = 'dome' } = Astro.props;
   let upgrade;
   let generation = 0;
   let frame = 0;
-  let config = { diameter: 180, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, glowStrength: 0.33, glowSpread: 10, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33 };
+  let config = { diameter: 180, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 10, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33 };
   let position = { x: 0, y: 0 };
   let pointer;
 
@@ -154,7 +154,7 @@ const { mode = 'dome' } = Astro.props;
       cornerRadius: diameter / 2, zRadius: host.dataset.mode === 'dome' ? diameter / 2 : config.zRadius,
       bevelMode: host.dataset.mode === 'dome' ? 1 : 2,
       bevelWidth: config.bevelWidth, rimWidth: config.rimWidth, sheen: config.sheen,
-      glowStrength: config.glowStrength, glowSpread: config.glowSpread,
+      colourPickup: config.colourPickup, glowStrength: config.glowStrength, glowSpread: config.glowSpread,
       edgeHighlight: config.edgeHighlight, specular: config.specular, shadowOpacity: config.shadowOpacity,
       chromAberration: 0.025, shadowSpread: 10,
     });
@@ -223,7 +223,7 @@ const { mode = 'dome' } = Astro.props;
   window.addEventListener('message', (event) => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'glass-proto-config') return;
     const next = event.data.config;
-    const ranges = { diameter: [100, 220], zoom: [1, 4], zRadius: [1, 50], bevelWidth: [12, 48], rimWidth: [0.5, 3], sheen: [0, 1], glowStrength: [0, 0.5], glowSpread: [4, 40], refraction: [0, 2], edgeHighlight: [0, 0.3], specular: [0, 1], shadowOpacity: [0, 0.5] };
+    const ranges = { diameter: [100, 220], zoom: [1, 4], zRadius: [1, 50], bevelWidth: [12, 48], rimWidth: [0.5, 3], sheen: [0, 1], colourPickup: [0, 1], glowStrength: [0, 0.5], glowSpread: [4, 40], refraction: [0, 2], edgeHighlight: [0, 0.3], specular: [0, 1], shadowOpacity: [0, 0.5] };
     for (const key of Object.keys(ranges)) {
       const value = Number(next?.[key]);
       if (Number.isFinite(value)) config[key] = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
