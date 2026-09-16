@@ -82,7 +82,7 @@ const { mode = 'dome' } = Astro.props;
   let upgrade;
   let generation = 0;
   let frame = 0;
-  let config = { diameter: 160, zoom: 2.5, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
+  let config = { diameter: 160, zoom: 2.5, zRadius: 16, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
   let position = { x: 0, y: 0 };
   let pointer;
 
@@ -151,7 +151,7 @@ const { mode = 'dome' } = Astro.props;
     lens.style.width = lens.style.height = `${diameter}px`;
     lens.dataset.config = JSON.stringify({
       floating: false, blurAmount: 0, refraction: config.refraction,
-      cornerRadius: diameter / 2, zRadius: host.dataset.mode === 'dome' ? diameter / 2 : 16,
+      cornerRadius: diameter / 2, zRadius: host.dataset.mode === 'dome' ? diameter / 2 : config.zRadius,
       bevelMode: host.dataset.mode === 'dome' ? 1 : 0,
       edgeHighlight: config.edgeHighlight, shadowOpacity: config.shadowOpacity,
       chromAberration: 0.025, shadowSpread: 10,
@@ -221,7 +221,7 @@ const { mode = 'dome' } = Astro.props;
   window.addEventListener('message', (event) => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'glass-proto-config') return;
     const next = event.data.config;
-    const ranges = { diameter: [100, 220], zoom: [1, 4], refraction: [0, 2], edgeHighlight: [0, 0.3], shadowOpacity: [0, 0.5] };
+    const ranges = { diameter: [100, 220], zoom: [1, 4], zRadius: [1, 50], refraction: [0, 2], edgeHighlight: [0, 0.3], shadowOpacity: [0, 0.5] };
     for (const key of Object.keys(ranges)) {
       const value = Number(next?.[key]);
       if (Number.isFinite(value)) config[key] = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
