@@ -1,0 +1,239 @@
+---
+import DemoLayout from '../../../layouts/DemoLayout.astro';
+---
+
+<DemoLayout title="Liquid glass prototype">
+  <section class="prototype" aria-labelledby="prototype-title">
+    <h1 id="prototype-title">Low-res Image Loader</h1>
+
+    <div class="prototype-stage">
+      <iframe
+        id="variant-frame"
+        title="Low-res image loader prototype"
+        src="/preview/progressive-image"
+      ></iframe>
+    </div>
+  </section>
+
+  <nav class="proto-picker" aria-label="Prototype variants" data-position="top">
+    <span class="proto-picker-highlight" aria-hidden="true"></span>
+    <button class="proto-picker-item" data-active aria-current="true" data-variant="/preview/progressive-image">Baseline</button>
+    <button class="proto-picker-item" data-variant="/proto/liquid-glass/dome">Dome</button>
+    <button class="proto-picker-item" data-variant="/proto/liquid-glass/flat">Flat lens</button>
+    <span class="proto-picker-divider" aria-hidden="true"></span>
+    <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
+  </nav>
+
+  <details class="proto-controls" id="proto-controls">
+    <summary>Controls</summary>
+    <div class="proto-controls-body">
+      <div class="proto-control" data-control="diameter">
+        <label for="diameter">Diameter <output>160px</output></label>
+        <input id="diameter" type="range" min="100" max="220" step="4" value="160" />
+      </div>
+      <div class="proto-control" data-control="refraction">
+        <label for="refraction">Refraction <output>1.20</output></label>
+        <input id="refraction" type="range" min="0" max="2" step="0.05" value="1.2" />
+      </div>
+      <div class="proto-control" data-control="edgeHighlight">
+        <label for="edgeHighlight">Rim <output>0.05</output></label>
+        <input id="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.05" />
+      </div>
+      <div class="proto-control" data-control="shadowOpacity">
+        <label for="shadowOpacity">Shadow <output>0.18</output></label>
+        <input id="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.18" />
+      </div>
+      <button class="proto-copy" type="button">Copy config</button>
+      <span class="proto-copy-status" role="status" aria-live="polite"></span>
+    </div>
+  </details>
+</DemoLayout>
+
+<style>
+  .prototype {
+    display: grid;
+    justify-items: center;
+    gap: 1.5rem;
+    width: min(100%, 50em);
+  }
+
+  h1 {
+    margin: 0;
+    color: var(--sys-color-on-srf);
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    line-height: 1;
+    letter-spacing: -0.04em;
+  }
+
+  .prototype-stage {
+    width: 100%;
+    height: 36rem;
+    overflow: hidden;
+    border: 1px solid var(--sys-color-outline-variant);
+    border-radius: var(--radius-control-smooth);
+    background: var(--comp-demo-frame-container);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+  }
+
+  iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+  .proto-controls {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 2147483646;
+    width: 220px;
+    color: #fff;
+    border-radius: 12px;
+    background: rgb(10 10 10 / 0.82);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24);
+    font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .proto-controls summary { padding: 10px 12px; cursor: pointer; user-select: none; }
+  .proto-controls-body { display: grid; gap: 12px; padding: 0 12px 12px; }
+  .proto-control { display: grid; gap: 6px; }
+  .proto-control label { display: flex; justify-content: space-between; color: rgb(255 255 255 / 0.78); }
+  .proto-control output { color: #fff; font-variant-numeric: tabular-nums; }
+  .proto-control input { width: 100%; accent-color: #fff; }
+  .proto-copy { padding: 7px 9px; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 7px; background: transparent; color: #fff; cursor: pointer; font: inherit; }
+  .proto-copy:hover { background: rgb(255 255 255 / 0.1); }
+  .proto-controls button:focus-visible, .proto-controls input:focus-visible, .proto-controls summary:focus-visible { outline: 2px solid rgb(255 255 255 / 0.55); outline-offset: 2px; }
+  .proto-copy-status { min-height: 1em; color: rgb(255 255 255 / 0.65); }
+  .proto-controls[aria-disabled="true"] { opacity: 0.48; }
+  .proto-controls[aria-disabled="true"] .proto-controls-body { pointer-events: none; }
+
+  .proto-picker {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2147483647;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
+    background: rgba(10, 10, 10, 0.82);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+      0 8px 24px rgba(0, 0, 0, 0.24),
+      0 2px 6px rgba(0, 0, 0, 0.12);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .proto-picker-highlight { position: absolute; top: 4px; left: 0; height: 28px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); will-change: transform; }
+  .proto-picker[data-ready] .proto-picker-highlight { transition: transform 250ms cubic-bezier(0.23, 1, 0.32, 1), width 250ms cubic-bezier(0.23, 1, 0.32, 1); }
+  @media (prefers-reduced-motion: reduce) { .proto-picker[data-ready] .proto-picker-highlight { transition: none; } }
+  .proto-picker-item { position: relative; display: flex; align-items: center; height: 28px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: rgba(255, 255, 255, 0.55); font: inherit; cursor: pointer; transition: color 150ms ease-out; }
+  .proto-picker-item:hover { color: rgba(255, 255, 255, 0.85); }
+  .proto-picker-item:active { transform: scale(0.97); }
+  .proto-picker-item:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.4); outline-offset: 2px; }
+  .proto-picker-item[data-active] { color: #fff; }
+  .proto-picker-divider { width: 1px; height: 16px; margin: 0 4px; background: rgba(255, 255, 255, 0.12); }
+  .proto-picker-replay { padding: 0 10px; font-size: 14px; }
+  .proto-picker[data-position="top"] { bottom: auto; top: 24px; }
+
+  @media (max-width: 40em) {
+    .prototype { gap: 1rem; }
+    .proto-controls { top: 12px; right: 12px; width: 200px; }
+    .proto-controls:not([open]) { width: auto; }
+  }
+</style>
+
+<script>
+  const frame = document.querySelector('#variant-frame');
+  const picker = document.querySelector('.proto-picker');
+  const highlight = picker.querySelector('.proto-picker-highlight');
+  const items = [...picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)')];
+  const replay = picker.querySelector('.proto-picker-replay');
+  const controls = document.querySelector('#proto-controls');
+  const defaults = { diameter: 160, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
+  const values = { ...defaults };
+  const controlInputs = [...controls.querySelectorAll('input, button')];
+  let current = 0;
+
+  function moveHighlight() {
+    const el = items[current];
+    highlight.style.width = el.offsetWidth + 'px';
+    highlight.style.transform = `translateX(${el.offsetLeft}px)`;
+  }
+
+  function sendConfig() {
+    if (current === 0 || !frame.contentWindow) return;
+    frame.contentWindow.postMessage({ type: 'glass-proto-config', config: values }, location.origin);
+  }
+
+  function mount(i) {
+    frame.src = items[i].dataset.variant;
+  }
+
+  function setActive(i) {
+    if (i < 0 || i >= items.length) return;
+    current = i;
+    items.forEach((el, j) => {
+      el.toggleAttribute('data-active', j === i);
+      if (j === i) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
+    });
+    controls.setAttribute('aria-disabled', String(i === 0));
+    controlInputs.forEach((control) => { control.disabled = i === 0; });
+    moveHighlight();
+    const url = new URL(location);
+    url.searchParams.set('v', i + 1);
+    history.replaceState(null, '', url);
+    mount(i);
+  }
+
+  items.forEach((el, i) => el.addEventListener('click', () => setActive(i)));
+  replay?.addEventListener('click', () => mount(current));
+  frame.addEventListener('load', sendConfig);
+  window.addEventListener('resize', moveHighlight);
+  document.addEventListener('keydown', (e) => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const num = parseInt(e.key, 10);
+    if (num >= 1 && num <= items.length) setActive(num - 1);
+    else if (e.key === 'ArrowRight') setActive((current + 1) % items.length);
+    else if (e.key === 'ArrowLeft') setActive((current - 1 + items.length) % items.length);
+    else if (e.key === 'r' || e.key === 'R') mount(current);
+  });
+
+  Object.keys(values).forEach((key) => {
+    const input = document.querySelector(`#${key}`);
+    const output = input.parentElement.querySelector('output');
+    input.addEventListener('input', () => {
+      values[key] = Number(input.value);
+      output.textContent = key === 'diameter' ? `${values[key]}px` : values[key].toFixed(2);
+      sendConfig();
+    });
+  });
+
+  document.querySelector('.proto-copy').addEventListener('click', async () => {
+    const variant = items[current].textContent.trim();
+    const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}`;
+    const status = document.querySelector('.proto-copy-status');
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard unavailable');
+      await navigator.clipboard.writeText(config);
+      status.textContent = 'Copied';
+    } catch {
+      status.textContent = 'Copy failed';
+    }
+    setTimeout(() => status.textContent = '', 1200);
+  });
+
+  controls.open = window.matchMedia('(min-width: 40em)').matches;
+  const requestedVariant = Number.parseInt(new URLSearchParams(location.search).get('v'), 10);
+  const initialVariant = Number.isInteger(requestedVariant) && requestedVariant >= 1 && requestedVariant <= items.length ? requestedVariant - 1 : 0;
+  setActive(initialVariant);
+  requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute('data-ready', '')));
+</script>
