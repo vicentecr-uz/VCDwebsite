@@ -82,7 +82,7 @@ const { mode = 'dome' } = Astro.props;
   let upgrade;
   let generation = 0;
   let frame = 0;
-  let config = { diameter: 180, boundaryCircle: 100, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 10, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33 };
+  let config = { diameter: 180, boundaryCircle: 26, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 10, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33 };
   let position = { x: 0, y: 0 };
   let pointer;
   let springFrame = 0;
@@ -141,12 +141,21 @@ const { mode = 'dome' } = Astro.props;
     }
     context.resetTransform();
     context.clearRect(0, 0, width, height);
+    context.fillStyle = getComputedStyle(document.body).backgroundColor;
+    context.fillRect(0, 0, width, height);
+    context.save();
     if (host.dataset.mode === 'flat') {
       // The invisible canvas supplies magnified pixels only to the glass renderer.
       const centerX = (position.x + lens.offsetWidth / 2) * width / root.clientWidth;
       const centerY = (position.y + lens.offsetHeight / 2) * height / root.clientHeight;
       context.setTransform(config.zoom, 0, 0, config.zoom, centerX * (1 - config.zoom), centerY * (1 - config.zoom));
     }
+    const style = getComputedStyle(stack);
+    const scale = width / root.clientWidth;
+    const radii = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].map((radius) => parseFloat(radius) * scale);
+    context.beginPath();
+    context.roundRect(0, 0, width, height, radii);
+    context.clip();
     context.drawImage(image, 0, 0, width, height);
     const reveal = stack.querySelector('[data-preview-reveal]');
     if (reveal?.complete && reveal.naturalWidth) {
@@ -166,6 +175,7 @@ const { mode = 'dome' } = Astro.props;
       maskContext.globalCompositeOperation = 'source-over';
       context.drawImage(mask, 0, 0);
     }
+    context.restore();
     glass?.markChanged(source);
   }
 
