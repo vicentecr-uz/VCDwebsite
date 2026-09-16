@@ -46,6 +46,10 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
         <label for="diameter">Diameter <output>180px</output></label>
         <input id="diameter" type="range" min="100" max="220" step="4" value="180" />
       </div>
+      <div class="proto-control" data-control="boundaryCircle" hidden>
+        <label for="boundaryCircle">Boundary circle <output>100%</output></label>
+        <input id="boundaryCircle" type="range" min="0" max="100" step="1" value="100" />
+      </div>
       <div class="proto-control" data-control="zoom" hidden>
         <label for="zoom">Zoom <output>2.0×</output></label>
         <input id="zoom" type="range" min="1" max="4" step="0.1" value="2" />
@@ -213,16 +217,16 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   const replay = picker.querySelector('.proto-picker-replay');
   const controls = document.querySelector('#proto-controls');
   const presetKey = 'vcd-liquid-glass-presets-v4';
-  const keys = ['diameter', 'refraction', 'edgeHighlight', 'specular', 'shadowOpacity', 'zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen', 'colourPickup', 'glowStrength', 'glowSpread'];
+  const keys = ['diameter', 'refraction', 'edgeHighlight', 'specular', 'shadowOpacity', 'zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen', 'colourPickup', 'boundaryCircle', 'glowStrength', 'glowSpread'];
   const presetDefaults = [
-    { name: 'Phone', range: '<480px', diameter: 124, refraction: 0.5, edgeHighlight: 0.03, specular: 0.35, shadowOpacity: 0.15, zoom: 2, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.6, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 8 },
-    { name: 'Tablet', range: '480–767px', diameter: 152, refraction: 0.5, edgeHighlight: 0.01, specular: 0.35, shadowOpacity: 0.33, zoom: 2, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.65, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 8 },
-    { name: 'Desktop', range: '≥768px', diameter: 180, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 10 },
+    { name: 'Phone', range: '<480px', diameter: 124, refraction: 0.5, edgeHighlight: 0.03, specular: 0.35, shadowOpacity: 0.15, zoom: 2, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.6, colourPickup: 0.12, boundaryCircle: 100, glowStrength: 0.33, glowSpread: 8 },
+    { name: 'Tablet', range: '480–767px', diameter: 152, refraction: 0.5, edgeHighlight: 0.01, specular: 0.35, shadowOpacity: 0.33, zoom: 2, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.65, colourPickup: 0.12, boundaryCircle: 100, glowStrength: 0.33, glowSpread: 8 },
+    { name: 'Desktop', range: '≥768px', diameter: 180, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, colourPickup: 0.12, boundaryCircle: 100, glowStrength: 0.33, glowSpread: 10 },
   ];
   let presets = presetDefaults.map((preset) => ({ ...preset }));
   const domeValues = { ...presetDefaults[2] };
   const controlInputs = [...controls.querySelectorAll('input, button')];
-  const flatControls = controls.querySelectorAll('[data-control="zoom"], [data-control="zRadius"], [data-control="bevelWidth"], [data-control="rimWidth"], [data-control="sheen"], [data-control="colourPickup"], [data-control="glowStrength"], [data-control="glowSpread"]');
+  const flatControls = controls.querySelectorAll('[data-control="zoom"], [data-control="zRadius"], [data-control="bevelWidth"], [data-control="rimWidth"], [data-control="sheen"], [data-control="colourPickup"], [data-control="boundaryCircle"], [data-control="glowStrength"], [data-control="glowSpread"]');
   let presetIndex = 2;
   let current = 0;
 
@@ -243,7 +247,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
       const input = document.querySelector(`#${key}`);
       const output = input.parentElement.querySelector('output');
       input.value = config()[key];
-      output.textContent = ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${config()[key]}px` : key === 'rimWidth' ? `${config()[key].toFixed(1)}px` : key === 'zoom' ? `${config()[key].toFixed(1)}×` : config()[key].toFixed(2);
+      output.textContent = key === 'boundaryCircle' ? `${config()[key]}%` : ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${config()[key]}px` : key === 'rimWidth' ? `${config()[key].toFixed(1)}px` : key === 'zoom' ? `${config()[key].toFixed(1)}×` : config()[key].toFixed(2);
     });
   }
 
@@ -267,7 +271,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
       if (j === i) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
     });
     controls.querySelectorAll('[data-control]').forEach((control) => { control.setAttribute('aria-disabled', String(i === 0)); });
-    controlInputs.forEach((control) => { control.disabled = i === 0 || (['zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen', 'colourPickup', 'glowStrength', 'glowSpread'].includes(control.id) && i !== 2); });
+    controlInputs.forEach((control) => { control.disabled = i === 0 || (['zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen', 'colourPickup', 'boundaryCircle', 'glowStrength', 'glowSpread'].includes(control.id) && i !== 2); });
     flatControls.forEach((control) => { control.hidden = i !== 2; });
     document.querySelector('.proto-copy').textContent = i === 2 ? 'Copy presets' : 'Copy config';
     moveHighlight();
@@ -299,14 +303,14 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     input.addEventListener('input', () => {
       config()[key] = Number(input.value);
       if (current === 2) { presets[presetIndex] = { ...config() }; try { sessionStorage.setItem(presetKey, JSON.stringify(presets)); } catch {} }
-      output.textContent = ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${config()[key]}px` : key === 'rimWidth' ? `${config()[key].toFixed(1)}px` : key === 'zoom' ? `${config()[key].toFixed(1)}×` : config()[key].toFixed(2);
+      output.textContent = key === 'boundaryCircle' ? `${config()[key]}%` : ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${config()[key]}px` : key === 'rimWidth' ? `${config()[key].toFixed(1)}px` : key === 'zoom' ? `${config()[key].toFixed(1)}×` : config()[key].toFixed(2);
       sendConfig();
     });
   });
 
   document.querySelector('.proto-copy').addEventListener('click', async () => {
     const variant = items[current].textContent.trim();
-    const format = (preset) => `${preset.name} (${preset.range}) · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · colour pickup: ${preset.colourPickup.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px`;
+    const format = (preset) => `${preset.name} (${preset.range}) · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · boundary circle: ${preset.boundaryCircle}% · colour pickup: ${preset.colourPickup.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px`;
     const configText = current === 2 ? presets.map(format).join('\n') : `${variant} · diameter: ${domeValues.diameter}px · refraction: ${domeValues.refraction.toFixed(2)} · rim: ${domeValues.edgeHighlight.toFixed(2)} · highlights: ${domeValues.specular.toFixed(2)} · shadow: ${domeValues.shadowOpacity.toFixed(2)}`;
     const status = document.querySelector('.proto-copy-status');
     try {
@@ -321,7 +325,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
 
   try {
     const saved = JSON.parse(sessionStorage.getItem(presetKey));
-    if (Array.isArray(saved)) saved.forEach((preset) => { if (preset && preset.colourPickup === undefined) preset.colourPickup = 0.12; });
+    if (Array.isArray(saved)) saved.forEach((preset) => { if (preset && preset.colourPickup === undefined) preset.colourPickup = 0.12; if (preset && preset.boundaryCircle === undefined) preset.boundaryCircle = 100; });
     if (Array.isArray(saved) && saved.length === 3 && saved.every((preset) => keys.every((key) => preset && Number.isFinite(preset[key]) && preset[key] >= Number(document.querySelector(`#${key}`).min) && preset[key] <= Number(document.querySelector(`#${key}`).max)))) {
       presets = saved.map((preset, index) => ({ ...presetDefaults[index], ...Object.fromEntries(keys.map((key) => [key, preset[key]])) }));
     }
