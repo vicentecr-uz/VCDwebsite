@@ -1,5 +1,5 @@
 diff --git a/dist/GlassRenderer.js b/dist/GlassRenderer.js
-index cf7aa8608381484cd243729d558a3be9b3963999..8538ddde74542cf84f92184862ffd1f371e9b9ae 100644
+index cf7aa8608381484cd243729d558a3be9b3963999..16108d44a4e02939b51929765d189f1f254217a0 100644
 --- a/dist/GlassRenderer.js
 +++ b/dist/GlassRenderer.js
 @@ -68,7 +68,7 @@ export class GlassRenderer {
@@ -7,11 +7,11 @@ index cf7aa8608381484cd243729d558a3be9b3963999..8538ddde74542cf84f92184862ffd1f3
              'u_sat', 'u_tint', 'u_zRadius', 'u_brightness',
              'u_shadowAlpha', 'u_shadowSpread', 'u_shadowOffY',
 -            'u_bevelMode',
-+            'u_bevelMode', 'u_bevelWidth', 'u_rimWidth', 'u_sheen', 'u_dpr',
++            'u_bevelMode', 'u_bevelWidth', 'u_rimWidth', 'u_sheen', 'u_glowStrength', 'u_glowSpread', 'u_dpr',
          ]);
      }
      _initBuffers() {
-@@ -196,6 +196,10 @@ export class GlassRenderer {
+@@ -196,6 +196,12 @@ export class GlassRenderer {
          gl.uniform1f(this.glassU.u_sat, config.saturation);
          gl.uniform1f(this.glassU.u_tint, config.tintStrength);
          gl.uniform1f(this.glassU.u_zRadius, config.zRadius * dpr);
@@ -19,14 +19,16 @@ index cf7aa8608381484cd243729d558a3be9b3963999..8538ddde74542cf84f92184862ffd1f3
 +        gl.uniform1f(this.glassU.u_dpr, dpr);
 +        gl.uniform1f(this.glassU.u_rimWidth, config.rimWidth ?? 1.4);
 +        gl.uniform1f(this.glassU.u_sheen, config.sheen ?? 0.3);
++        gl.uniform1f(this.glassU.u_glowStrength, config.glowStrength ?? 0.18);
++        gl.uniform1f(this.glassU.u_glowSpread, config.glowSpread ?? 14);
          gl.uniform1f(this.glassU.u_brightness, config.brightness);
          gl.uniform1f(this.glassU.u_shadowAlpha, config.shadowOpacity);
          gl.uniform1f(this.glassU.u_shadowSpread, config.shadowSpread * dpr);
 diff --git a/dist/defaults.d.ts b/dist/defaults.d.ts
-index 707ee737e49f4ad5346dd662847ec59013c93f8d..a9b6dd2182cdf988ed20afeca78d6f7f261cfaa3 100644
+index 707ee737e49f4ad5346dd662847ec59013c93f8d..6ecd9dacfe2e95638db693c8f9d0610c15a1997f 100644
 --- a/dist/defaults.d.ts
 +++ b/dist/defaults.d.ts
-@@ -23,6 +23,12 @@ export interface GlassConfig {
+@@ -23,6 +23,16 @@ export interface GlassConfig {
      cornerRadius: number;
      /** Z-radius (bevel depth) — controls the curvature of the pill bevel */
      zRadius: number;
@@ -36,10 +38,14 @@ index 707ee737e49f4ad5346dd662847ec59013c93f8d..a9b6dd2182cdf988ed20afeca78d6f7f
 +    rimWidth?: number;
 +    /** Spectral tint of the rim illumination, from 0 to 1. */
 +    sheen?: number;
++    /** Independent inward glow intensity for bevelMode 2. */
++    glowStrength?: number;
++    /** Inward glow spread in CSS pixels for bevelMode 2. */
++    glowSpread?: number;
      /** Overall opacity of the glass panel */
      opacity: number;
      /** Saturation adjustment (-1 = desaturated, 0 = normal, 1 = vivid) */
-@@ -45,6 +51,7 @@ export interface GlassConfig {
+@@ -45,6 +55,7 @@ export interface GlassConfig {
       * Bevel mode: 0 = biconvex pill (half-circle cross-section, default),
       * 1 = dome (flat bottom, quarter-circle top — use with cornerRadius = zRadius
       * for a perfect half-sphere magnifier effect).
@@ -48,21 +54,23 @@ index 707ee737e49f4ad5346dd662847ec59013c93f8d..a9b6dd2182cdf988ed20afeca78d6f7f
      bevelMode: number;
  }
 diff --git a/dist/index.js b/dist/index.js
-index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa3494926460382a6f6570 100644
+index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e8463310ad8 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -1256,6 +1256,10 @@ uniform float u_alpha;
+@@ -1256,6 +1256,12 @@ uniform float u_alpha;
  uniform float u_sat;
  uniform float u_tint;
  uniform float u_zRadius;
 +uniform float u_bevelWidth;
 +uniform float u_rimWidth;
 +uniform float u_sheen;
++uniform float u_glowStrength;
++uniform float u_glowSpread;
 +uniform float u_dpr;
  uniform float u_brightness;
  uniform float u_shadowAlpha;
  uniform float u_shadowSpread;
-@@ -1274,10 +1278,16 @@ float rrSDF(vec2 p, vec2 b, float r) {
+@@ -1274,10 +1280,16 @@ float rrSDF(vec2 p, vec2 b, float r) {
  // Bevel height field.
  // Both modes use the same half-circle profile (smooth peak at centre,
  // steep at edges).  The difference is in the refraction model:
@@ -81,7 +89,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  	if (d <= 0.0) return 0.0;
  	if (d >= zR) return zR;
  	return sqrt(d * (2.0 * zR - d));
-@@ -1292,7 +1302,7 @@ void main() {
+@@ -1292,7 +1304,7 @@ void main() {
  	float r = min(u_radius, min(half_.x, half_.y));
  	float sdf = rrSDF(v_localPx, half_, r);
  
@@ -90,7 +98,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  	if (sdf > 0.0) {
  		float sdfShadow = rrSDF(v_localPx - vec2(0.0, u_shadowOffY), half_, r);
  		float d = max(sdfShadow - 1.0, 0.0);
-@@ -1305,16 +1315,16 @@ void main() {
+@@ -1305,16 +1317,16 @@ void main() {
  		return;
  	}
  
@@ -110,7 +118,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  	float dC = inside;
  	float dR = -rrSDF(v_localPx + vec2(e, 0.0), half_, r);
  	float dL = -rrSDF(v_localPx - vec2(e, 0.0), half_, r);
-@@ -1330,14 +1340,18 @@ void main() {
+@@ -1330,14 +1342,18 @@ void main() {
  
  	float depth = smoothstep(0.0, zR, inside);
  
@@ -131,7 +139,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  		// Biconvex: physically-based dual-surface refraction
  		vec2 exitRefr = hGrad * refrPow;
  		vec2 entryRefr = hGrad * refrPow;
-@@ -1347,17 +1361,17 @@ void main() {
+@@ -1347,17 +1363,17 @@ void main() {
  		refrPx += centerDir * u_refract * 4.0 * depth;
  	} else {
  		// Dome (plano-convex): uniform magnification by contracting UV toward center.
@@ -152,7 +160,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  	float caS = u_chroma * 18.0 * (edge * 0.7 + 0.3) * 2.0;
  	vec2 caD = N.xy * caS * pxToUV;
  	vec2 base = v_screenUV + refr + micro;
-@@ -1372,27 +1386,27 @@ void main() {
+@@ -1372,27 +1388,27 @@ void main() {
  		texture2D(u_blurTex, base).g,
  		texture2D(u_blurTex, base - caD).b
  	);
@@ -187,7 +195,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  	vec3 V = vec3(0.0, 0.0, 1.0);
  	vec3 L1 = normalize(vec3(0.4, 0.7, 1.0));
  	vec3 H1 = normalize(L1 + V);
-@@ -1407,27 +1421,47 @@ void main() {
+@@ -1407,27 +1423,52 @@ void main() {
  	float sp4 = pow(max(dot(N, H4), 0.0), 120.0) * 0.6;
  	float totalSpec = (sp1 + sp2 + spB + sp4) * u_spec;
  
@@ -215,19 +223,24 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
 +		vec2 outward = vec2(dL - dR, dD - dU);
 +		outward /= max(length(outward), 0.0001);
 +		float facing = dot(outward, normalize(vec2(-1.0, -1.0)));
-+		float lobes = pow(max(facing, 0.0), 3.0) + 0.75 * pow(max(-facing, 0.0), 3.0);
++		float dominant = pow(max(facing, 0.0), 1.5);
++		float secondary = pow(max(-facing, 0.0), 3.0);
 +		float upperRight = dot(outward, normalize(vec2(1.0, -1.0)));
 +		float darkArc = exp((upperRight - 1.0) / 0.07);
-+		float rimLight = (0.48 + 0.52 * lobes) * (1.0 - 0.95 * darkArc);
++		float rimLight = (0.25 + 0.75 * dominant + 0.42 * secondary) * (1.0 - 0.95 * darkArc);
 +		float width = max(1.0, min(u_bevelWidth, maxD));
-+		float edgeLine = exp(-pow((inside / u_dpr - u_rimWidth * 0.7) / u_rimWidth, 2.0));
-+		float inwardGlow = exp(-inside / (width * 0.32)) * (1.0 - smoothstep(width * 0.6, width, inside));
++		float litRimWidth = u_rimWidth * (0.85 + 0.4 * dominant);
++		float edgeLine = exp(-pow((inside / u_dpr - litRimWidth * 0.7) / litRimWidth, 2.0));
++		float glowReach = u_glowSpread * u_dpr * (0.65 + 0.75 * dominant);
++		float glowLight = (0.15 + 0.85 * dominant + 0.35 * secondary) * (1.0 - 0.95 * darkArc);
++		float inwardGlow = exp(-pow(inside / glowReach, 1.5)) * (1.0 - smoothstep(width * 0.75, width, inside));
 +		// Colour belongs to the rim illumination, not the sampled image.
-+		float angle = atan(outward.y, outward.x + 0.000001);
-+		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 2.0);
-+		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen);
++		float bottomArc = exp((outward.y - 1.0) / 0.035);
++		float angle = atan(outward.x, outward.y + 0.000001);
++		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
++		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen * bottomArc);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
-+		fin += vec3(rimLight * u_spec * inwardGlow * 0.35);
++		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
 +	} else {
  	fin += vec3(totalSpec);
@@ -239,18 +252,18 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
  
  	gl_FragColor = vec4(fin, mask * u_alpha);
  }`;
-@@ -1509,7 +1543,9 @@ var GlassRenderer = class {
+@@ -1509,7 +1550,9 @@ var GlassRenderer = class {
        "u_shadowAlpha",
        "u_shadowSpread",
        "u_shadowOffY",
 -      "u_bevelMode"
 +      "u_bevelMode",
-+      "u_bevelWidth", "u_rimWidth", "u_sheen",
++      "u_bevelWidth", "u_rimWidth", "u_sheen", "u_glowStrength", "u_glowSpread",
 +      "u_dpr"
      ]);
    }
    _initBuffers() {
-@@ -1627,6 +1663,10 @@ var GlassRenderer = class {
+@@ -1627,6 +1670,12 @@ var GlassRenderer = class {
      gl.uniform1f(this.glassU.u_sat, config.saturation);
      gl.uniform1f(this.glassU.u_tint, config.tintStrength);
      gl.uniform1f(this.glassU.u_zRadius, config.zRadius * dpr);
@@ -258,25 +271,29 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..11905874c7a5159251fa349492646038
 +    gl.uniform1f(this.glassU.u_dpr, dpr);
 +    gl.uniform1f(this.glassU.u_rimWidth, config.rimWidth ?? 1.4);
 +    gl.uniform1f(this.glassU.u_sheen, config.sheen ?? 0.3);
++    gl.uniform1f(this.glassU.u_glowStrength, config.glowStrength ?? 0.18);
++    gl.uniform1f(this.glassU.u_glowSpread, config.glowSpread ?? 14);
      gl.uniform1f(this.glassU.u_brightness, config.brightness);
      gl.uniform1f(this.glassU.u_shadowAlpha, config.shadowOpacity);
      gl.uniform1f(this.glassU.u_shadowSpread, config.shadowSpread * dpr);
 diff --git a/dist/shaders.js b/dist/shaders.js
-index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e19769138405936efd18bd 100644
+index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..31456afa9d27985e0f0d8b610306e82e390548ae 100644
 --- a/dist/shaders.js
 +++ b/dist/shaders.js
-@@ -104,6 +104,10 @@ uniform float u_alpha;
+@@ -104,6 +104,12 @@ uniform float u_alpha;
  uniform float u_sat;
  uniform float u_tint;
  uniform float u_zRadius;
 +uniform float u_bevelWidth;
 +uniform float u_rimWidth;
 +uniform float u_sheen;
++uniform float u_glowStrength;
++uniform float u_glowSpread;
 +uniform float u_dpr;
  uniform float u_brightness;
  uniform float u_shadowAlpha;
  uniform float u_shadowSpread;
-@@ -126,6 +130,12 @@ float rrSDF(vec2 p, vec2 b, float r) {
+@@ -126,6 +132,12 @@ float rrSDF(vec2 p, vec2 b, float r) {
  //   mode 1 = dome (plano-convex) — flat bottom, so only exit refraction.
  // d = distance inside from edge (-sdf), zR = z-radius of the bevel.
  float bevelHeight(float d, float zR) {
@@ -289,7 +306,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
  	if (d <= 0.0) return 0.0;
  	if (d >= zR) return zR;
  	return sqrt(d * (2.0 * zR - d));
-@@ -162,7 +172,7 @@ void main() {
+@@ -162,7 +174,7 @@ void main() {
  
  	// ── Surface normal (top surface) via bevel height field ──
  	float zR = u_zRadius;
@@ -298,7 +315,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
  	float dC = inside;
  	float dR = -rrSDF(v_localPx + vec2(e, 0.0), half_, r);
  	float dL = -rrSDF(v_localPx - vec2(e, 0.0), half_, r);
-@@ -185,7 +195,11 @@ void main() {
+@@ -185,7 +197,11 @@ void main() {
  	float thickness = hC * 2.0;
  	float thickNorm = thickness / max(zR * 2.0, 1.0);
  	vec2 refrPx;
@@ -311,7 +328,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
  		// Biconvex: physically-based dual-surface refraction
  		vec2 exitRefr = hGrad * refrPow;
  		vec2 entryRefr = hGrad * refrPow;
-@@ -220,9 +234,11 @@ void main() {
+@@ -220,9 +236,11 @@ void main() {
  		texture2D(u_blurTex, base).g,
  		texture2D(u_blurTex, base - caD).b
  	);
@@ -326,7 +343,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
  
  	// ── Brightness ──
  	col *= 1.0 + u_brightness;
-@@ -233,7 +249,7 @@ void main() {
+@@ -233,7 +251,7 @@ void main() {
  
  	// ── Cool glass tint ──
  	col = mix(col, col * vec3(0.92, 0.95, 1.05), u_tint);
@@ -335,7 +352,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -269,11 +285,31 @@ void main() {
+@@ -269,11 +287,36 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -343,19 +360,24 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
 +		vec2 outward = vec2(dL - dR, dD - dU);
 +		outward /= max(length(outward), 0.0001);
 +		float facing = dot(outward, normalize(vec2(-1.0, -1.0)));
-+		float lobes = pow(max(facing, 0.0), 3.0) + 0.75 * pow(max(-facing, 0.0), 3.0);
++		float dominant = pow(max(facing, 0.0), 1.5);
++		float secondary = pow(max(-facing, 0.0), 3.0);
 +		float upperRight = dot(outward, normalize(vec2(1.0, -1.0)));
 +		float darkArc = exp((upperRight - 1.0) / 0.07);
-+		float rimLight = (0.48 + 0.52 * lobes) * (1.0 - 0.95 * darkArc);
++		float rimLight = (0.25 + 0.75 * dominant + 0.42 * secondary) * (1.0 - 0.95 * darkArc);
 +		float width = max(1.0, min(u_bevelWidth, maxD));
-+		float edgeLine = exp(-pow((inside / u_dpr - u_rimWidth * 0.7) / u_rimWidth, 2.0));
-+		float inwardGlow = exp(-inside / (width * 0.32)) * (1.0 - smoothstep(width * 0.6, width, inside));
++		float litRimWidth = u_rimWidth * (0.85 + 0.4 * dominant);
++		float edgeLine = exp(-pow((inside / u_dpr - litRimWidth * 0.7) / litRimWidth, 2.0));
++		float glowReach = u_glowSpread * u_dpr * (0.65 + 0.75 * dominant);
++		float glowLight = (0.15 + 0.85 * dominant + 0.35 * secondary) * (1.0 - 0.95 * darkArc);
++		float inwardGlow = exp(-pow(inside / glowReach, 1.5)) * (1.0 - smoothstep(width * 0.75, width, inside));
 +		// Colour belongs to the rim illumination, not the sampled image.
-+		float angle = atan(outward.y, outward.x + 0.000001);
-+		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 2.0);
-+		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen);
++		float bottomArc = exp((outward.y - 1.0) / 0.035);
++		float angle = atan(outward.x, outward.y + 0.000001);
++		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
++		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen * bottomArc);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
-+		fin += vec3(rimLight * u_spec * inwardGlow * 0.35);
++		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
 +	} else {
  	fin += vec3(totalSpec);
@@ -368,7 +390,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..fe1ab4ed07e3ef5976e1976913840593
  	gl_FragColor = vec4(fin, mask * u_alpha);
  }`;
 diff --git a/src/GlassRenderer.ts b/src/GlassRenderer.ts
-index 47ded66baafde0a89e08a30f9b6a2ec63f158233..ffe72f7780426202e22107423a44451b6b2d9cca 100644
+index 47ded66baafde0a89e08a30f9b6a2ec63f158233..781297cc30744a646ec1a62f2b969820495f3b06 100644
 --- a/src/GlassRenderer.ts
 +++ b/src/GlassRenderer.ts
 @@ -116,7 +116,7 @@ export class GlassRenderer {
@@ -376,11 +398,11 @@ index 47ded66baafde0a89e08a30f9b6a2ec63f158233..ffe72f7780426202e22107423a44451b
  			'u_sat', 'u_tint', 'u_zRadius', 'u_brightness',
  			'u_shadowAlpha', 'u_shadowSpread', 'u_shadowOffY',
 -			'u_bevelMode',
-+			'u_bevelMode', 'u_bevelWidth', 'u_rimWidth', 'u_sheen', 'u_dpr',
++			'u_bevelMode', 'u_bevelWidth', 'u_rimWidth', 'u_sheen', 'u_glowStrength', 'u_glowSpread', 'u_dpr',
  		]);
  	}
  
-@@ -271,6 +271,10 @@ export class GlassRenderer {
+@@ -271,6 +271,12 @@ export class GlassRenderer {
  		gl.uniform1f(this.glassU.u_sat, config.saturation);
  		gl.uniform1f(this.glassU.u_tint, config.tintStrength);
  		gl.uniform1f(this.glassU.u_zRadius, config.zRadius * dpr);
@@ -388,14 +410,16 @@ index 47ded66baafde0a89e08a30f9b6a2ec63f158233..ffe72f7780426202e22107423a44451b
 +		gl.uniform1f(this.glassU.u_dpr, dpr);
 +		gl.uniform1f(this.glassU.u_rimWidth, config.rimWidth ?? 1.4);
 +		gl.uniform1f(this.glassU.u_sheen, config.sheen ?? 0.3);
++		gl.uniform1f(this.glassU.u_glowStrength, config.glowStrength ?? 0.18);
++		gl.uniform1f(this.glassU.u_glowSpread, config.glowSpread ?? 14);
  		gl.uniform1f(this.glassU.u_brightness, config.brightness);
  		gl.uniform1f(this.glassU.u_shadowAlpha, config.shadowOpacity);
  		gl.uniform1f(this.glassU.u_shadowSpread, config.shadowSpread * dpr);
 diff --git a/src/defaults.ts b/src/defaults.ts
-index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..7592a8a82b27460f46a8905e3eb6c339df2f0f2b 100644
+index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..d159ae9c718497f2e8763255c38a75dea85a0485 100644
 --- a/src/defaults.ts
 +++ b/src/defaults.ts
-@@ -24,6 +24,12 @@ export interface GlassConfig {
+@@ -24,6 +24,16 @@ export interface GlassConfig {
  	cornerRadius: number;
  	/** Z-radius (bevel depth) — controls the curvature of the pill bevel */
  	zRadius: number;
@@ -405,10 +429,14 @@ index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..7592a8a82b27460f46a8905e3eb6c339
 +    rimWidth?: number;
 +    /** Spectral tint of the rim illumination, from 0 to 1. */
 +    sheen?: number;
++    /** Independent inward glow intensity for bevelMode 2. */
++    glowStrength?: number;
++    /** Inward glow spread in CSS pixels for bevelMode 2. */
++    glowSpread?: number;
  	/** Overall opacity of the glass panel */
  	opacity: number;
  	/** Saturation adjustment (-1 = desaturated, 0 = normal, 1 = vivid) */
-@@ -46,6 +52,7 @@ export interface GlassConfig {
+@@ -46,6 +56,7 @@ export interface GlassConfig {
  	 * Bevel mode: 0 = biconvex pill (half-circle cross-section, default),
  	 * 1 = dome (flat bottom, quarter-circle top — use with cornerRadius = zRadius
  	 * for a perfect half-sphere magnifier effect).
@@ -417,21 +445,23 @@ index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..7592a8a82b27460f46a8905e3eb6c339
  	bevelMode: number;
  }
 diff --git a/src/shaders.ts b/src/shaders.ts
-index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..3285feb88d3107b60b0d4ef0feaa9f87ea30799f 100644
+index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..b4824a85bfd28452142f79ec235916c45ce23b3f 100644
 --- a/src/shaders.ts
 +++ b/src/shaders.ts
-@@ -109,6 +109,10 @@ uniform float u_alpha;
+@@ -109,6 +109,12 @@ uniform float u_alpha;
  uniform float u_sat;
  uniform float u_tint;
  uniform float u_zRadius;
 +uniform float u_bevelWidth;
 +uniform float u_rimWidth;
 +uniform float u_sheen;
++uniform float u_glowStrength;
++uniform float u_glowSpread;
 +uniform float u_dpr;
  uniform float u_brightness;
  uniform float u_shadowAlpha;
  uniform float u_shadowSpread;
-@@ -131,6 +135,12 @@ float rrSDF(vec2 p, vec2 b, float r) {
+@@ -131,6 +137,12 @@ float rrSDF(vec2 p, vec2 b, float r) {
  //   mode 1 = dome (plano-convex) — flat bottom, so only exit refraction.
  // d = distance inside from edge (-sdf), zR = z-radius of the bevel.
  float bevelHeight(float d, float zR) {
@@ -444,7 +474,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..3285feb88d3107b60b0d4ef0feaa9f87
  	if (d <= 0.0) return 0.0;
  	if (d >= zR) return zR;
  	return sqrt(d * (2.0 * zR - d));
-@@ -167,7 +177,7 @@ void main() {
+@@ -167,7 +179,7 @@ void main() {
  
  	// ── Surface normal (top surface) via bevel height field ──
  	float zR = u_zRadius;
@@ -453,7 +483,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..3285feb88d3107b60b0d4ef0feaa9f87
  	float dC = inside;
  	float dR = -rrSDF(v_localPx + vec2(e, 0.0), half_, r);
  	float dL = -rrSDF(v_localPx - vec2(e, 0.0), half_, r);
-@@ -190,7 +200,11 @@ void main() {
+@@ -190,7 +202,11 @@ void main() {
  	float thickness = hC * 2.0;
  	float thickNorm = thickness / max(zR * 2.0, 1.0);
  	vec2 refrPx;
@@ -466,7 +496,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..3285feb88d3107b60b0d4ef0feaa9f87
  		// Biconvex: physically-based dual-surface refraction
  		vec2 exitRefr = hGrad * refrPow;
  		vec2 entryRefr = hGrad * refrPow;
-@@ -240,7 +254,7 @@ void main() {
+@@ -240,7 +256,7 @@ void main() {
  
  	// ── Cool glass tint ──
  	col = mix(col, col * vec3(0.92, 0.95, 1.05), u_tint);
@@ -475,7 +505,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..3285feb88d3107b60b0d4ef0feaa9f87
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -276,11 +290,31 @@ void main() {
+@@ -276,11 +292,36 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -483,19 +513,24 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..3285feb88d3107b60b0d4ef0feaa9f87
 +		vec2 outward = vec2(dL - dR, dD - dU);
 +		outward /= max(length(outward), 0.0001);
 +		float facing = dot(outward, normalize(vec2(-1.0, -1.0)));
-+		float lobes = pow(max(facing, 0.0), 3.0) + 0.75 * pow(max(-facing, 0.0), 3.0);
++		float dominant = pow(max(facing, 0.0), 1.5);
++		float secondary = pow(max(-facing, 0.0), 3.0);
 +		float upperRight = dot(outward, normalize(vec2(1.0, -1.0)));
 +		float darkArc = exp((upperRight - 1.0) / 0.07);
-+		float rimLight = (0.48 + 0.52 * lobes) * (1.0 - 0.95 * darkArc);
++		float rimLight = (0.25 + 0.75 * dominant + 0.42 * secondary) * (1.0 - 0.95 * darkArc);
 +		float width = max(1.0, min(u_bevelWidth, maxD));
-+		float edgeLine = exp(-pow((inside / u_dpr - u_rimWidth * 0.7) / u_rimWidth, 2.0));
-+		float inwardGlow = exp(-inside / (width * 0.32)) * (1.0 - smoothstep(width * 0.6, width, inside));
++		float litRimWidth = u_rimWidth * (0.85 + 0.4 * dominant);
++		float edgeLine = exp(-pow((inside / u_dpr - litRimWidth * 0.7) / litRimWidth, 2.0));
++		float glowReach = u_glowSpread * u_dpr * (0.65 + 0.75 * dominant);
++		float glowLight = (0.15 + 0.85 * dominant + 0.35 * secondary) * (1.0 - 0.95 * darkArc);
++		float inwardGlow = exp(-pow(inside / glowReach, 1.5)) * (1.0 - smoothstep(width * 0.75, width, inside));
 +		// Colour belongs to the rim illumination, not the sampled image.
-+		float angle = atan(outward.y, outward.x + 0.000001);
-+		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 2.0);
-+		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen);
++		float bottomArc = exp((outward.y - 1.0) / 0.035);
++		float angle = atan(outward.x, outward.y + 0.000001);
++		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
++		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen * bottomArc);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
-+		fin += vec3(rimLight * u_spec * inwardGlow * 0.35);
++		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
 +	} else {
  	fin += vec3(totalSpec);
