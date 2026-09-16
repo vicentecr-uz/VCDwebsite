@@ -82,7 +82,7 @@ const { mode = 'dome' } = Astro.props;
   let upgrade;
   let generation = 0;
   let frame = 0;
-  let config = { diameter: 188, zoom: 1.9, zRadius: 10, bevelWidth: 32, rimWidth: 1.4, sheen: 0.3, refraction: 0.8, edgeHighlight: 0.05, specular: 0.4, shadowOpacity: 0.15 };
+  let config = { diameter: 188, zoom: 1.9, zRadius: 31, bevelWidth: 32, rimWidth: 1.2, sheen: 0.35, glowStrength: 0.18, glowSpread: 14, refraction: 0.95, edgeHighlight: 0.05, specular: 0.6, shadowOpacity: 0.15 };
   let position = { x: 0, y: 0 };
   let pointer;
 
@@ -154,6 +154,7 @@ const { mode = 'dome' } = Astro.props;
       cornerRadius: diameter / 2, zRadius: host.dataset.mode === 'dome' ? diameter / 2 : config.zRadius,
       bevelMode: host.dataset.mode === 'dome' ? 1 : 2,
       bevelWidth: config.bevelWidth, rimWidth: config.rimWidth, sheen: config.sheen,
+      glowStrength: config.glowStrength, glowSpread: config.glowSpread,
       edgeHighlight: config.edgeHighlight, specular: config.specular, shadowOpacity: config.shadowOpacity,
       chromAberration: 0.025, shadowSpread: 10,
     });
@@ -222,7 +223,7 @@ const { mode = 'dome' } = Astro.props;
   window.addEventListener('message', (event) => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'glass-proto-config') return;
     const next = event.data.config;
-    const ranges = { diameter: [100, 220], zoom: [1, 4], zRadius: [1, 50], bevelWidth: [12, 48], rimWidth: [0.5, 3], sheen: [0, 1], refraction: [0, 2], edgeHighlight: [0, 0.3], specular: [0, 1], shadowOpacity: [0, 0.5] };
+    const ranges = { diameter: [100, 220], zoom: [1, 4], zRadius: [1, 50], bevelWidth: [12, 48], rimWidth: [0.5, 3], sheen: [0, 1], glowStrength: [0, 0.5], glowSpread: [4, 40], refraction: [0, 2], edgeHighlight: [0, 0.3], specular: [0, 1], shadowOpacity: [0, 0.5] };
     for (const key of Object.keys(ranges)) {
       const value = Number(next?.[key]);
       if (Number.isFinite(value)) config[key] = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
