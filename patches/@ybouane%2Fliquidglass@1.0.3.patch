@@ -56,7 +56,7 @@ index 707ee737e49f4ad5346dd662847ec59013c93f8d..4e79750fc2d8d7932546433531605cf8
      bevelMode: number;
  }
 diff --git a/dist/index.js b/dist/index.js
-index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cde6db5504 100644
+index 10897f2a4b0027c888468c892c8168c26dcf2076..ff9b4138c7dbf2f28d10ecef39db2c67b5febc12 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1256,6 +1256,13 @@ uniform float u_alpha;
@@ -121,7 +121,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
  	float dC = inside;
  	float dR = -rrSDF(v_localPx + vec2(e, 0.0), half_, r);
  	float dL = -rrSDF(v_localPx - vec2(e, 0.0), half_, r);
-@@ -1330,14 +1343,19 @@ void main() {
+@@ -1330,14 +1343,18 @@ void main() {
  
  	float depth = smoothstep(0.0, zR, inside);
  
@@ -138,12 +138,11 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
 +		// Trace through the curved surface; the flat face adds no extra zoom.
 +		vec3 ray = refract(vec3(0.0, 0.0, -1.0), N, 1.0 / ior);
 +		refrPx = ray.xy / max(-ray.z, 0.1) * (zR + hC) * u_refract;
-+
 +	} else if (u_bevelMode < 0.5) {
  		// Biconvex: physically-based dual-surface refraction
  		vec2 exitRefr = hGrad * refrPow;
  		vec2 entryRefr = hGrad * refrPow;
-@@ -1347,17 +1365,17 @@ void main() {
+@@ -1347,17 +1364,17 @@ void main() {
  		refrPx += centerDir * u_refract * 4.0 * depth;
  	} else {
  		// Dome (plano-convex): uniform magnification by contracting UV toward center.
@@ -164,7 +163,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
  	float caS = u_chroma * 18.0 * (edge * 0.7 + 0.3) * 2.0;
  	vec2 caD = N.xy * caS * pxToUV;
  	vec2 base = v_screenUV + refr + micro;
-@@ -1372,27 +1390,27 @@ void main() {
+@@ -1372,27 +1389,27 @@ void main() {
  		texture2D(u_blurTex, base).g,
  		texture2D(u_blurTex, base - caD).b
  	);
@@ -199,7 +198,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
  	vec3 V = vec3(0.0, 0.0, 1.0);
  	vec3 L1 = normalize(vec3(0.4, 0.7, 1.0));
  	vec3 H1 = normalize(L1 + V);
-@@ -1407,27 +1425,70 @@ void main() {
+@@ -1407,27 +1424,62 @@ void main() {
  	float sp4 = pow(max(dot(N, H4), 0.0), 120.0) * 0.6;
  	float totalSpec = (sp1 + sp2 + spB + sp4) * u_spec;
  
@@ -243,24 +242,16 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
 +		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
-+		// Mirror the source across the lens centre at equal scale, then soften its colour.
-+		vec2 nearbyUV = v_screenUV - 2.0 * v_localPx * pxToUV;
-+		vec2 blurStep = vec2(maxD * 0.08) / u_res;
-+		vec3 nearby = vec3(0.0);
-+		for (int y = -1; y <= 1; y++) {
-+			for (int x = -1; x <= 1; x++) {
-+				float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0) / 16.0;
-+				nearby += texture2D(u_bgTex, clamp(nearbyUV + vec2(float(x), float(y)) * blurStep, 0.0, 1.0)).rgb * weight;
-+			}
-+		}
++		vec2 tangent = vec2(-outward.y, outward.x);
++		vec2 nearbyUV = v_screenUV + outward * 6.0 * u_dpr * pxToUV;
++		vec2 spreadUV = tangent * 8.0 * u_dpr * pxToUV;
++		vec3 nearby = texture2D(u_bgTex, clamp(nearbyUV, 0.0, 1.0)).rgb * 0.5;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV + spreadUV, 0.0, 1.0)).rgb * 0.25;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV - spreadUV, 0.0, 1.0)).rgb * 0.25;
 +		float peak = max(nearby.r, max(nearby.g, nearby.b));
 +		vec3 reflectedTint = nearby / max(peak, 0.001);
 +		vec3 reflectedWhite = mix(vec3(1.0), reflectedTint, u_colourPickup * smoothstep(0.02, 0.15, peak));
 +		vec3 rimColour = mix(reflectedWhite, spectrum, u_sheen * bottomArc);
-+		float chroma = (peak - min(nearby.r, min(nearby.g, nearby.b))) / max(peak, 0.001);
-+		float reflectionReach = max(1.0, min(u_bevelWidth, maxD) * 0.55);
-+		float reflectionBand = exp(-pow(max(inside, 0.0) / reflectionReach, 2.0)) * faceFade;
-+		fin = mix(fin, reflectedTint, 0.35 * u_colourPickup * chroma * smoothstep(0.02, 0.15, peak) * reflectionBand);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
 +		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
@@ -274,7 +265,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
  
  	gl_FragColor = vec4(fin, mask * u_alpha);
  }`;
-@@ -1509,7 +1570,9 @@ var GlassRenderer = class {
+@@ -1509,7 +1561,9 @@ var GlassRenderer = class {
        "u_shadowAlpha",
        "u_shadowSpread",
        "u_shadowOffY",
@@ -285,7 +276,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
      ]);
    }
    _initBuffers() {
-@@ -1627,6 +1690,13 @@ var GlassRenderer = class {
+@@ -1627,6 +1681,13 @@ var GlassRenderer = class {
      gl.uniform1f(this.glassU.u_sat, config.saturation);
      gl.uniform1f(this.glassU.u_tint, config.tintStrength);
      gl.uniform1f(this.glassU.u_zRadius, config.zRadius * dpr);
@@ -300,7 +291,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5fb1010941f54cb6bbd331f98c0ae2cd
      gl.uniform1f(this.glassU.u_shadowAlpha, config.shadowOpacity);
      gl.uniform1f(this.glassU.u_shadowSpread, config.shadowSpread * dpr);
 diff --git a/dist/shaders.js b/dist/shaders.js
-index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76e0f3856e92ec8e69af3730500623afc653817a 100644
+index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..14d7a4a46a37673317f89921d7563b64a5d34566 100644
 --- a/dist/shaders.js
 +++ b/dist/shaders.js
 @@ -104,6 +104,13 @@ uniform float u_alpha;
@@ -339,7 +330,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76e0f3856e92ec8e69af3730500623af
  	float dC = inside;
  	float dR = -rrSDF(v_localPx + vec2(e, 0.0), half_, r);
  	float dL = -rrSDF(v_localPx - vec2(e, 0.0), half_, r);
-@@ -185,7 +198,12 @@ void main() {
+@@ -185,7 +198,11 @@ void main() {
  	float thickness = hC * 2.0;
  	float thickNorm = thickness / max(zR * 2.0, 1.0);
  	vec2 refrPx;
@@ -348,12 +339,11 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76e0f3856e92ec8e69af3730500623af
 +		// Trace through the curved surface; the flat face adds no extra zoom.
 +		vec3 ray = refract(vec3(0.0, 0.0, -1.0), N, 1.0 / ior);
 +		refrPx = ray.xy / max(-ray.z, 0.1) * (zR + hC) * u_refract;
-+
 +	} else if (u_bevelMode < 0.5) {
  		// Biconvex: physically-based dual-surface refraction
  		vec2 exitRefr = hGrad * refrPow;
  		vec2 entryRefr = hGrad * refrPow;
-@@ -220,9 +238,11 @@ void main() {
+@@ -220,9 +237,11 @@ void main() {
  		texture2D(u_blurTex, base).g,
  		texture2D(u_blurTex, base - caD).b
  	);
@@ -368,7 +358,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76e0f3856e92ec8e69af3730500623af
  
  	// ── Brightness ──
  	col *= 1.0 + u_brightness;
-@@ -233,7 +253,7 @@ void main() {
+@@ -233,7 +252,7 @@ void main() {
  
  	// ── Cool glass tint ──
  	col = mix(col, col * vec3(0.92, 0.95, 1.05), u_tint);
@@ -377,7 +367,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76e0f3856e92ec8e69af3730500623af
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -269,11 +289,54 @@ void main() {
+@@ -269,11 +288,46 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -401,24 +391,16 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76e0f3856e92ec8e69af3730500623af
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
 +		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
-+		// Mirror the source across the lens centre at equal scale, then soften its colour.
-+		vec2 nearbyUV = v_screenUV - 2.0 * v_localPx * pxToUV;
-+		vec2 blurStep = vec2(maxD * 0.08) / u_res;
-+		vec3 nearby = vec3(0.0);
-+		for (int y = -1; y <= 1; y++) {
-+			for (int x = -1; x <= 1; x++) {
-+				float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0) / 16.0;
-+				nearby += texture2D(u_bgTex, clamp(nearbyUV + vec2(float(x), float(y)) * blurStep, 0.0, 1.0)).rgb * weight;
-+			}
-+		}
++		vec2 tangent = vec2(-outward.y, outward.x);
++		vec2 nearbyUV = v_screenUV + outward * 6.0 * u_dpr * pxToUV;
++		vec2 spreadUV = tangent * 8.0 * u_dpr * pxToUV;
++		vec3 nearby = texture2D(u_bgTex, clamp(nearbyUV, 0.0, 1.0)).rgb * 0.5;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV + spreadUV, 0.0, 1.0)).rgb * 0.25;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV - spreadUV, 0.0, 1.0)).rgb * 0.25;
 +		float peak = max(nearby.r, max(nearby.g, nearby.b));
 +		vec3 reflectedTint = nearby / max(peak, 0.001);
 +		vec3 reflectedWhite = mix(vec3(1.0), reflectedTint, u_colourPickup * smoothstep(0.02, 0.15, peak));
 +		vec3 rimColour = mix(reflectedWhite, spectrum, u_sheen * bottomArc);
-+		float chroma = (peak - min(nearby.r, min(nearby.g, nearby.b))) / max(peak, 0.001);
-+		float reflectionReach = max(1.0, min(u_bevelWidth, maxD) * 0.55);
-+		float reflectionBand = exp(-pow(max(inside, 0.0) / reflectionReach, 2.0)) * faceFade;
-+		fin = mix(fin, reflectedTint, 0.35 * u_colourPickup * chroma * smoothstep(0.02, 0.15, peak) * reflectionBand);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
 +		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
@@ -490,7 +472,7 @@ index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..75469ca4c144abab5c5b0fdf7955e5f6
  	bevelMode: number;
  }
 diff --git a/src/shaders.ts b/src/shaders.ts
-index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..58df88dbe1215485a72559264120009ec4c0a08b 100644
+index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..9c25c276601f1885cc587ba00c6704e5e55b4ae1 100644
 --- a/src/shaders.ts
 +++ b/src/shaders.ts
 @@ -109,6 +109,13 @@ uniform float u_alpha;
@@ -529,7 +511,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..58df88dbe1215485a72559264120009e
  	float dC = inside;
  	float dR = -rrSDF(v_localPx + vec2(e, 0.0), half_, r);
  	float dL = -rrSDF(v_localPx - vec2(e, 0.0), half_, r);
-@@ -190,7 +203,12 @@ void main() {
+@@ -190,7 +203,11 @@ void main() {
  	float thickness = hC * 2.0;
  	float thickNorm = thickness / max(zR * 2.0, 1.0);
  	vec2 refrPx;
@@ -538,12 +520,11 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..58df88dbe1215485a72559264120009e
 +		// Trace through the curved surface; the flat face adds no extra zoom.
 +		vec3 ray = refract(vec3(0.0, 0.0, -1.0), N, 1.0 / ior);
 +		refrPx = ray.xy / max(-ray.z, 0.1) * (zR + hC) * u_refract;
-+
 +	} else if (u_bevelMode < 0.5) {
  		// Biconvex: physically-based dual-surface refraction
  		vec2 exitRefr = hGrad * refrPow;
  		vec2 entryRefr = hGrad * refrPow;
-@@ -240,7 +258,7 @@ void main() {
+@@ -240,7 +257,7 @@ void main() {
  
  	// ── Cool glass tint ──
  	col = mix(col, col * vec3(0.92, 0.95, 1.05), u_tint);
@@ -552,7 +533,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..58df88dbe1215485a72559264120009e
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -276,11 +294,54 @@ void main() {
+@@ -276,11 +293,46 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -576,24 +557,16 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..58df88dbe1215485a72559264120009e
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
 +		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
-+		// Mirror the source across the lens centre at equal scale, then soften its colour.
-+		vec2 nearbyUV = v_screenUV - 2.0 * v_localPx * pxToUV;
-+		vec2 blurStep = vec2(maxD * 0.08) / u_res;
-+		vec3 nearby = vec3(0.0);
-+		for (int y = -1; y <= 1; y++) {
-+			for (int x = -1; x <= 1; x++) {
-+				float weight = (x == 0 ? 2.0 : 1.0) * (y == 0 ? 2.0 : 1.0) / 16.0;
-+				nearby += texture2D(u_bgTex, clamp(nearbyUV + vec2(float(x), float(y)) * blurStep, 0.0, 1.0)).rgb * weight;
-+			}
-+		}
++		vec2 tangent = vec2(-outward.y, outward.x);
++		vec2 nearbyUV = v_screenUV + outward * 6.0 * u_dpr * pxToUV;
++		vec2 spreadUV = tangent * 8.0 * u_dpr * pxToUV;
++		vec3 nearby = texture2D(u_bgTex, clamp(nearbyUV, 0.0, 1.0)).rgb * 0.5;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV + spreadUV, 0.0, 1.0)).rgb * 0.25;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV - spreadUV, 0.0, 1.0)).rgb * 0.25;
 +		float peak = max(nearby.r, max(nearby.g, nearby.b));
 +		vec3 reflectedTint = nearby / max(peak, 0.001);
 +		vec3 reflectedWhite = mix(vec3(1.0), reflectedTint, u_colourPickup * smoothstep(0.02, 0.15, peak));
 +		vec3 rimColour = mix(reflectedWhite, spectrum, u_sheen * bottomArc);
-+		float chroma = (peak - min(nearby.r, min(nearby.g, nearby.b))) / max(peak, 0.001);
-+		float reflectionReach = max(1.0, min(u_bevelWidth, maxD) * 0.55);
-+		float reflectionBand = exp(-pow(max(inside, 0.0) / reflectionReach, 2.0)) * faceFade;
-+		fin = mix(fin, reflectedTint, 0.35 * u_colourPickup * chroma * smoothstep(0.02, 0.15, peak) * reflectionBand);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
 +		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
