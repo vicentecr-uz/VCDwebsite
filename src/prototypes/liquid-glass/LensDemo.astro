@@ -40,7 +40,7 @@ const { mode = 'dome' } = Astro.props;
 </html>
 <style>
   html, body { height: 100%; margin: 0; background: var(--comp-demo-frame-container); }
-  .prototype { height: 100%; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; }
+  .prototype { height: 100%; overflow: clip; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; }
   .composition { position: relative; width: min(100%, 28em); height: 100%; container-type: inline-size; }
   .composition-grid { display: grid; height: 100%; grid-template-rows: 1fr 75cqw 1fr; justify-items: center; }
   .image-area { grid-row: 2; position: relative; width: 100%; height: 100%; }
@@ -133,11 +133,26 @@ const { mode = 'dome' } = Astro.props;
   function drawSource() {
     const image = currentImage();
     if (!image?.complete || !image.naturalWidth) return;
-    const width = Math.min(2048, Math.round(root.clientWidth * Math.min(devicePixelRatio, 2) * 2));
-    const height = Math.round(width * 0.75);
+    const padding = host.dataset.mode === 'flat' ? config.diameter : 0;
+    const cssWidth = root.clientWidth + padding * 2;
+    const cssHeight = root.clientHeight + padding * 2;
+    const width = Math.min(2048, Math.round(cssWidth * Math.min(devicePixelRatio, 2) * 2));
+    const scale = width / cssWidth;
+    const height = Math.round(cssHeight * scale);
+    const imageWidth = root.clientWidth * scale;
+    const imageHeight = root.clientHeight * scale;
+    const origin = padding * scale;
+    source.style.position = 'absolute';
+    source.style.left = source.style.top = `${-padding}px`;
+    source.style.width = `${cssWidth}px`;
+    source.style.height = `${cssHeight}px`;
     if (source.width !== width || source.height !== height) {
-      source.width = mask.width = width;
-      source.height = mask.height = height;
+      source.width = width;
+      source.height = height;
+    }
+    if (mask.width !== Math.round(imageWidth) || mask.height !== Math.round(imageHeight)) {
+      mask.width = Math.round(imageWidth);
+      mask.height = Math.round(imageHeight);
     }
     context.resetTransform();
     context.clearRect(0, 0, width, height);
@@ -146,34 +161,33 @@ const { mode = 'dome' } = Astro.props;
     context.save();
     if (host.dataset.mode === 'flat') {
       // The invisible canvas supplies magnified pixels only to the glass renderer.
-      const centerX = (position.x + lens.offsetWidth / 2) * width / root.clientWidth;
-      const centerY = (position.y + lens.offsetHeight / 2) * height / root.clientHeight;
+      const centerX = (position.x + lens.offsetWidth / 2 + padding) * scale;
+      const centerY = (position.y + lens.offsetHeight / 2 + padding) * scale;
       context.setTransform(config.zoom, 0, 0, config.zoom, centerX * (1 - config.zoom), centerY * (1 - config.zoom));
     }
     const style = getComputedStyle(stack);
-    const scale = width / root.clientWidth;
     const radii = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].map((radius) => parseFloat(radius) * scale);
     context.beginPath();
-    context.roundRect(0, 0, width, height, radii);
+    context.roundRect(origin, origin, imageWidth, imageHeight, radii);
     context.clip();
-    context.drawImage(image, 0, 0, width, height);
+    context.drawImage(image, origin, origin, imageWidth, imageHeight);
     const reveal = stack.querySelector('[data-preview-reveal]');
     if (reveal?.complete && reveal.naturalWidth) {
       // Mirror the shared loader's 22% feather; replace this adapter if its mask changes.
       const progress = parseFloat(getComputedStyle(reveal).getPropertyValue('--preview-reveal-y')) / 100 || 0;
       const start = Math.max(0, progress - 0.22);
       const end = Math.min(1, progress + 0.22);
-      maskContext.clearRect(0, 0, width, height);
+      maskContext.clearRect(0, 0, mask.width, mask.height);
       maskContext.globalCompositeOperation = 'source-over';
-      maskContext.drawImage(reveal, 0, 0, width, height);
-      const gradient = maskContext.createLinearGradient(0, 0, 0, height);
+      maskContext.drawImage(reveal, 0, 0, mask.width, mask.height);
+      const gradient = maskContext.createLinearGradient(0, 0, 0, mask.height);
       gradient.addColorStop(start, '#000');
       gradient.addColorStop(end, 'transparent');
       maskContext.globalCompositeOperation = 'destination-in';
       maskContext.fillStyle = gradient;
-      maskContext.fillRect(0, 0, width, height);
+      maskContext.fillRect(0, 0, mask.width, mask.height);
       maskContext.globalCompositeOperation = 'source-over';
-      context.drawImage(mask, 0, 0);
+      context.drawImage(mask, origin, origin, imageWidth, imageHeight);
     }
     context.restore();
     glass?.markChanged(source);
