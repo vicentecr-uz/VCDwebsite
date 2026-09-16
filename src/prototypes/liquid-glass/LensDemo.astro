@@ -85,6 +85,45 @@ const { mode = 'dome' } = Astro.props;
   let config = { diameter: 180, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, colourPickup: 0.12, glowStrength: 0.33, glowSpread: 10, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33 };
   let position = { x: 0, y: 0 };
   let pointer;
+  let springFrame = 0;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const bounds = () => ({ x: Math.max(0, root.clientWidth - lens.offsetWidth), y: Math.max(0, root.clientHeight - lens.offsetHeight) });
+  const clamp = (value, max) => Math.max(0, Math.min(max, value));
+  const resistance = (value, max) => {
+    const edge = clamp(value, max);
+    const distance = value - edge;
+    const reach = config.diameter * 0.16;
+    return edge + distance / (1 + Math.abs(distance) / reach);
+  };
+  const unresist = (value, max) => {
+    const edge = clamp(value, max);
+    const distance = value - edge;
+    return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / (config.diameter * 0.16));
+  };
+  function stopSpring() { cancelAnimationFrame(springFrame); springFrame = 0; }
+  function settle(velocity = { x: 0, y: 0 }) {
+    stopSpring();
+    const limit = bounds();
+    const target = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
+    const offset = { x: position.x - target.x, y: position.y - target.y };
+    if (reducedMotion.matches || (!offset.x && !offset.y)) { position = target; place(); return; }
+    const start = performance.now();
+    const tick = (now) => {
+      const t = (now - start) / 1000;
+      let complete = true;
+      for (const axis of ['x', 'y']) {
+        let speed = offset[axis] ? Math.max(-600, Math.min(600, velocity[axis])) : 0;
+        if (speed * offset[axis] > 0) speed = Math.sign(speed) * Math.min(Math.abs(speed), Math.max(0, config.diameter * 0.16 - Math.abs(offset[axis])) * 14);
+        const delta = Math.exp(-22 * t) * (offset[axis] * Math.cos(14 * t) + (speed + 22 * offset[axis]) / 14 * Math.sin(14 * t));
+        position[axis] = target[axis] + delta;
+        if (Math.abs(delta) > 0.05) complete = false;
+      }
+      place();
+      if ((complete && t > 0.15) || t >= 0.65) { position = target; place(); springFrame = 0; }
+      else springFrame = requestAnimationFrame(tick);
+    };
+    springFrame = requestAnimationFrame(tick);
+  }
 
   function currentImage() { return stack.querySelector('[data-progressive-image]'); }
 
@@ -138,15 +177,14 @@ const { mode = 'dome' } = Astro.props;
   }
 
   function place() {
-    const diameter = lens.offsetWidth;
-    position.x = Math.max(0, Math.min(root.clientWidth - diameter, position.x));
-    position.y = Math.max(0, Math.min(root.clientHeight - diameter, position.y));
     lens.style.transform = `translate(${position.x}px, ${position.y}px)`;
     if (host.dataset.mode === 'flat') drawSource();
     glass?.markChanged();
   }
 
   function configure() {
+    stopSpring();
+    if (pointer) { const id = pointer.id; pointer = undefined; if (lens.hasPointerCapture(id)) lens.releasePointerCapture(id); lens.style.cursor = 'grab'; }
     const diameter = Math.min(config.diameter, root.clientWidth - 16, root.clientHeight - 16);
     lens.style.width = lens.style.height = `${diameter}px`;
     lens.dataset.config = JSON.stringify({
@@ -158,31 +196,55 @@ const { mode = 'dome' } = Astro.props;
       edgeHighlight: config.edgeHighlight, specular: config.specular, shadowOpacity: config.shadowOpacity,
       chromAberration: 0.025, shadowSpread: 10,
     });
+    const limit = bounds();
+    position = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
     place();
   }
 
   lens.addEventListener('pointerdown', (event) => {
     if (!event.isPrimary || event.button !== 0) return;
-    pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, origin: { ...position } };
+    if (pointer) return;
+    stopSpring();
+    const limit = bounds();
+    pointer = { id: event.pointerId, x: event.clientX, y: event.clientY,
+      origin: { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) },
+      time: performance.now(), velocity: { x: 0, y: 0 } };
     lens.setPointerCapture(event.pointerId);
     lens.style.cursor = 'grabbing';
     event.preventDefault();
   }, { signal });
   lens.addEventListener('pointermove', (event) => {
     if (!pointer || pointer.id !== event.pointerId) return;
-    position = { x: pointer.origin.x + event.clientX - pointer.x, y: pointer.origin.y + event.clientY - pointer.y };
+    const limit = bounds();
+    const next = { x: resistance(pointer.origin.x + event.clientX - pointer.x, limit.x), y: resistance(pointer.origin.y + event.clientY - pointer.y, limit.y) };
+    const now = performance.now();
+    const elapsed = Math.max(1, now - pointer.time) / 1000;
+    pointer.velocity = { x: (next.x - position.x) / elapsed, y: (next.y - position.y) / elapsed };
+    pointer.time = now;
+    position = next;
     place();
   }, { signal });
-  const release = () => { pointer = undefined; lens.style.cursor = 'grab'; };
+  const release = (event) => {
+    if (!pointer || pointer.id !== event.pointerId) return;
+    const velocity = event.type === 'pointerup' && performance.now() - pointer.time < 80 ? pointer.velocity : { x: 0, y: 0 };
+    const id = pointer.id;
+    pointer = undefined;
+    if (lens.hasPointerCapture(id)) lens.releasePointerCapture(id);
+    lens.style.cursor = 'grab';
+    settle(velocity);
+  };
   for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) lens.addEventListener(event, release, { signal });
   lens.addEventListener('keydown', (event) => {
     const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
     const direction = directions[event.key];
     if (!direction) return;
     event.preventDefault();
+    if (pointer) return;
+    stopSpring();
+    const limit = bounds();
     const step = event.shiftKey ? 20 : 8;
-    position.x += direction[0] * step;
-    position.y += direction[1] * step;
+    position.x = clamp(position.x + direction[0] * step, limit.x);
+    position.y = clamp(position.y + direction[1] * step, limit.y);
     place();
   }, { signal });
 
@@ -216,6 +278,10 @@ const { mode = 'dome' } = Astro.props;
     drawSource();
   }, { signal });
 
+  reducedMotion.addEventListener('change', () => { if (reducedMotion.matches && springFrame) settle(); }, { signal });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { configure(); }
+  }, { signal });
   const observer = new MutationObserver(followReveal);
   observer.observe(stack, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-image-upgraded', 'class'] });
   const resize = new ResizeObserver(() => { configure(); drawSource(); });
@@ -253,6 +319,7 @@ const { mode = 'dome' } = Astro.props;
   }
   initialize();
   window.addEventListener('pagehide', () => {
+    stopSpring();
     lifecycle.abort();
     generation += 1;
     observer.disconnect();
