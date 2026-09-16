@@ -27,29 +27,44 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   <details class="proto-controls" id="proto-controls">
     <summary>Controls</summary>
     <div class="proto-controls-body">
+      <div class="proto-control">
+        <label for="frame-width">Frame width <output id="frame-width-value"></output></label>
+        <select id="frame-width">
+          <option value="auto">Auto</option>
+          <option value="280">280px</option>
+          <option value="320">320px</option>
+          <option value="390">390px</option>
+          <option value="640">640px</option>
+          <option value="768">768px</option>
+        </select>
+      </div>
       <div class="proto-control" data-control="diameter">
-        <label for="diameter">Diameter <output>160px</output></label>
-        <input id="diameter" type="range" min="100" max="220" step="4" value="160" />
+        <label for="diameter">Diameter <output>188px</output></label>
+        <input id="diameter" type="range" min="100" max="220" step="4" value="188" />
       </div>
       <div class="proto-control" data-control="zoom" hidden>
-        <label for="zoom">Zoom <output>2.5×</output></label>
-        <input id="zoom" type="range" min="1" max="4" step="0.1" value="2.5" />
+        <label for="zoom">Zoom <output>1.9×</output></label>
+        <input id="zoom" type="range" min="1" max="4" step="0.1" value="1.9" />
       </div>
       <div class="proto-control" data-control="zRadius" hidden>
-        <label for="zRadius">Z-radius <output>16px</output></label>
-        <input id="zRadius" type="range" min="1" max="50" step="1" value="16" />
+        <label for="zRadius">Z-radius <output>10px</output></label>
+        <input id="zRadius" type="range" min="1" max="50" step="1" value="10" />
       </div>
       <div class="proto-control" data-control="refraction">
-        <label for="refraction">Refraction <output>1.20</output></label>
-        <input id="refraction" type="range" min="0" max="2" step="0.05" value="1.2" />
+        <label for="refraction">Refraction <output>0.80</output></label>
+        <input id="refraction" type="range" min="0" max="2" step="0.05" value="0.8" />
       </div>
       <div class="proto-control" data-control="edgeHighlight">
         <label for="edgeHighlight">Rim <output>0.05</output></label>
         <input id="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.05" />
       </div>
+      <div class="proto-control" data-control="specular">
+        <label for="specular">Highlights <output>0.40</output></label>
+        <input id="specular" type="range" min="0" max="1" step="0.05" value="0.4" />
+      </div>
       <div class="proto-control" data-control="shadowOpacity">
-        <label for="shadowOpacity">Shadow <output>0.18</output></label>
-        <input id="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.18" />
+        <label for="shadowOpacity">Shadow <output>0.15</output></label>
+        <input id="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.15" />
       </div>
       <button class="proto-copy" type="button">Copy config</button>
       <span class="proto-copy-status" role="status" aria-live="polite"></span>
@@ -74,7 +89,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   }
 
   .prototype-stage {
-    width: 100%;
+    width: min(100%, calc(var(--preview-width, 100%) + 2px));
     height: 36rem;
     overflow: hidden;
     border: 1px solid var(--sys-color-outline-variant);
@@ -82,6 +97,8 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     background: var(--comp-demo-frame-container);
     box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
   }
+
+  #frame-width { width: 100%; color: inherit; background: #333; border: 1px solid #666; border-radius: 6px; padding: 6px; font-size: 16px; }
 
   iframe { display: block; width: 100%; height: 100%; border: 0; }
 
@@ -111,10 +128,10 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   .proto-copy:hover { background: rgb(255 255 255 / 0.1); }
   .proto-controls button:focus-visible, .proto-controls input:focus-visible, .proto-controls summary:focus-visible { outline: 2px solid rgb(255 255 255 / 0.55); outline-offset: 2px; }
   .proto-copy-status { min-height: 1em; color: rgb(255 255 255 / 0.65); }
-  .proto-controls[aria-disabled="true"] { opacity: 0.48; }
-  .proto-controls[aria-disabled="true"] .proto-controls-body { pointer-events: none; }
+  .proto-control[aria-disabled="true"], .proto-copy:disabled { opacity: 0.48; }
 
   .proto-picker {
+    width: max-content;
     position: fixed;
     bottom: 24px;
     left: 50%;
@@ -153,7 +170,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
 
   @media (max-width: 40em) {
     .prototype { gap: 1rem; }
-    .proto-controls { top: 12px; right: 12px; width: 200px; }
+    .proto-controls { top: auto; bottom: 12px; right: 12px; width: 200px; }
     .proto-controls:not([open]) { width: auto; }
   }
 </style>
@@ -165,8 +182,8 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   const items = [...picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)')];
   const replay = picker.querySelector('.proto-picker-replay');
   const controls = document.querySelector('#proto-controls');
-  const defaults = { diameter: 160, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
-  const values = { ...defaults, zoom: 2.5, zRadius: 16 };
+  const defaults = { diameter: 188, refraction: 0.8, edgeHighlight: 0.05, specular: 0.4, shadowOpacity: 0.15 };
+  const values = { ...defaults, zoom: 1.9, zRadius: 10 };
   const controlInputs = [...controls.querySelectorAll('input, button')];
   const flatControls = controls.querySelectorAll('[data-control="zoom"], [data-control="zRadius"]');
   let current = 0;
@@ -193,7 +210,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
       el.toggleAttribute('data-active', j === i);
       if (j === i) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
     });
-    controls.setAttribute('aria-disabled', String(i === 0));
+    controls.querySelectorAll('[data-control]').forEach((control) => { control.setAttribute('aria-disabled', String(i === 0)); });
     controlInputs.forEach((control) => { control.disabled = i === 0 || (['zoom', 'zRadius'].includes(control.id) && i !== 2); });
     flatControls.forEach((control) => { control.hidden = i !== 2; });
     moveHighlight();
@@ -230,7 +247,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   document.querySelector('.proto-copy').addEventListener('click', async () => {
     const variant = items[current].textContent.trim();
     const zoom = current === 2 ? ` · zoom: ${values.zoom.toFixed(1)}× · z-radius: ${values.zRadius}px` : '';
-    const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}${zoom}`;
+    const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · highlights: ${values.specular.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}${zoom}`;
     const status = document.querySelector('.proto-copy-status');
     try {
       if (!navigator.clipboard) throw new Error('Clipboard unavailable');
@@ -242,7 +259,23 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     setTimeout(() => status.textContent = '', 1200);
   });
 
-  controls.open = window.matchMedia('(min-width: 40em)').matches;
+  controls.open = window.matchMedia('(min-width: 78.5em)').matches;
+  const widthControl = document.querySelector('#frame-width');
+  const stage = document.querySelector('.prototype-stage');
+  function setWidth() {
+    stage.style.setProperty('--preview-width', widthControl.value === 'auto' ? '100%' : `${widthControl.value}px`);
+    const url = new URL(location);
+    if (widthControl.value === 'auto') url.searchParams.delete('width');
+    else url.searchParams.set('width', widthControl.value);
+    history.replaceState(null, '', url);
+  }
+  const requestedWidth = new URLSearchParams(location.search).get('width');
+  if ([...widthControl.options].some((option) => option.value === requestedWidth)) widthControl.value = requestedWidth;
+  widthControl.addEventListener('change', setWidth);
+  setWidth();
+  new ResizeObserver(() => {
+    document.querySelector('#frame-width-value').textContent = `${Math.round(frame.clientWidth)}px`;
+  }).observe(frame);
   const requestedVariant = Number.parseInt(new URLSearchParams(location.search).get('v'), 10);
   const initialVariant = Number.isInteger(requestedVariant) && requestedVariant >= 1 && requestedVariant <= items.length ? requestedVariant - 1 : 0;
   setActive(initialVariant);
