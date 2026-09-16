@@ -54,7 +54,7 @@ index 707ee737e49f4ad5346dd662847ec59013c93f8d..6ecd9dacfe2e95638db693c8f9d0610c
      bevelMode: number;
  }
 diff --git a/dist/index.js b/dist/index.js
-index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e8463310ad8 100644
+index 10897f2a4b0027c888468c892c8168c26dcf2076..ee5fbce68bfb40fc094ebcf17a48b93d1f7e7770 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1256,6 +1256,12 @@ uniform float u_alpha;
@@ -195,7 +195,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e84
  	vec3 V = vec3(0.0, 0.0, 1.0);
  	vec3 L1 = normalize(vec3(0.4, 0.7, 1.0));
  	vec3 H1 = normalize(L1 + V);
-@@ -1407,27 +1423,52 @@ void main() {
+@@ -1407,27 +1423,61 @@ void main() {
  	float sp4 = pow(max(dot(N, H4), 0.0), 120.0) * 0.6;
  	float totalSpec = (sp1 + sp2 + spB + sp4) * u_spec;
  
@@ -238,7 +238,16 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e84
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
 +		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
-+		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen * bottomArc);
++		vec2 tangent = vec2(-outward.y, outward.x);
++		vec2 nearbyUV = v_screenUV + outward * 6.0 * u_dpr * pxToUV;
++		vec2 spreadUV = tangent * 8.0 * u_dpr * pxToUV;
++		vec3 nearby = texture2D(u_bgTex, clamp(nearbyUV, 0.0, 1.0)).rgb * 0.5;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV + spreadUV, 0.0, 1.0)).rgb * 0.25;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV - spreadUV, 0.0, 1.0)).rgb * 0.25;
++		float peak = max(nearby.r, max(nearby.g, nearby.b));
++		vec3 reflectedTint = nearby / max(peak, 0.001);
++		vec3 reflectedWhite = mix(vec3(1.0), reflectedTint, 0.12 * smoothstep(0.02, 0.15, peak));
++		vec3 rimColour = mix(reflectedWhite, spectrum, u_sheen * bottomArc);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
 +		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
@@ -252,7 +261,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e84
  
  	gl_FragColor = vec4(fin, mask * u_alpha);
  }`;
-@@ -1509,7 +1550,9 @@ var GlassRenderer = class {
+@@ -1509,7 +1559,9 @@ var GlassRenderer = class {
        "u_shadowAlpha",
        "u_shadowSpread",
        "u_shadowOffY",
@@ -263,7 +272,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e84
      ]);
    }
    _initBuffers() {
-@@ -1627,6 +1670,12 @@ var GlassRenderer = class {
+@@ -1627,6 +1679,12 @@ var GlassRenderer = class {
      gl.uniform1f(this.glassU.u_sat, config.saturation);
      gl.uniform1f(this.glassU.u_tint, config.tintStrength);
      gl.uniform1f(this.glassU.u_zRadius, config.zRadius * dpr);
@@ -277,7 +286,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..5069ac80c2712bf46d79c81205203e84
      gl.uniform1f(this.glassU.u_shadowAlpha, config.shadowOpacity);
      gl.uniform1f(this.glassU.u_shadowSpread, config.shadowSpread * dpr);
 diff --git a/dist/shaders.js b/dist/shaders.js
-index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..31456afa9d27985e0f0d8b610306e82e390548ae 100644
+index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..76c0e9678ec883f66195bd0c3a470ab3bed62f89 100644
 --- a/dist/shaders.js
 +++ b/dist/shaders.js
 @@ -104,6 +104,12 @@ uniform float u_alpha;
@@ -352,7 +361,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..31456afa9d27985e0f0d8b610306e82e
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -269,11 +287,36 @@ void main() {
+@@ -269,11 +287,45 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -375,7 +384,16 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..31456afa9d27985e0f0d8b610306e82e
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
 +		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
-+		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen * bottomArc);
++		vec2 tangent = vec2(-outward.y, outward.x);
++		vec2 nearbyUV = v_screenUV + outward * 6.0 * u_dpr * pxToUV;
++		vec2 spreadUV = tangent * 8.0 * u_dpr * pxToUV;
++		vec3 nearby = texture2D(u_bgTex, clamp(nearbyUV, 0.0, 1.0)).rgb * 0.5;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV + spreadUV, 0.0, 1.0)).rgb * 0.25;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV - spreadUV, 0.0, 1.0)).rgb * 0.25;
++		float peak = max(nearby.r, max(nearby.g, nearby.b));
++		vec3 reflectedTint = nearby / max(peak, 0.001);
++		vec3 reflectedWhite = mix(vec3(1.0), reflectedTint, 0.12 * smoothstep(0.02, 0.15, peak));
++		vec3 rimColour = mix(reflectedWhite, spectrum, u_sheen * bottomArc);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
 +		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
@@ -445,7 +463,7 @@ index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..d159ae9c718497f2e8763255c38a75de
  	bevelMode: number;
  }
 diff --git a/src/shaders.ts b/src/shaders.ts
-index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..b4824a85bfd28452142f79ec235916c45ce23b3f 100644
+index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..0a8a7660311bff3540ef07dba10cb332b405de8c 100644
 --- a/src/shaders.ts
 +++ b/src/shaders.ts
 @@ -109,6 +109,12 @@ uniform float u_alpha;
@@ -505,7 +523,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..b4824a85bfd28452142f79ec235916c4
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -276,11 +292,36 @@ void main() {
+@@ -276,11 +292,45 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -528,7 +546,16 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..b4824a85bfd28452142f79ec235916c4
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
 +		vec3 spectrum = 0.65 + 0.35 * cos(vec3(0.0, 2.0944, 4.1888) + angle * 8.0);
-+		vec3 rimColour = mix(vec3(1.0), spectrum, u_sheen * bottomArc);
++		vec2 tangent = vec2(-outward.y, outward.x);
++		vec2 nearbyUV = v_screenUV + outward * 6.0 * u_dpr * pxToUV;
++		vec2 spreadUV = tangent * 8.0 * u_dpr * pxToUV;
++		vec3 nearby = texture2D(u_bgTex, clamp(nearbyUV, 0.0, 1.0)).rgb * 0.5;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV + spreadUV, 0.0, 1.0)).rgb * 0.25;
++		nearby += texture2D(u_bgTex, clamp(nearbyUV - spreadUV, 0.0, 1.0)).rgb * 0.25;
++		float peak = max(nearby.r, max(nearby.g, nearby.b));
++		vec3 reflectedTint = nearby / max(peak, 0.001);
++		vec3 reflectedWhite = mix(vec3(1.0), reflectedTint, 0.12 * smoothstep(0.02, 0.15, peak));
++		vec3 rimColour = mix(reflectedWhite, spectrum, u_sheen * bottomArc);
 +		fin += rimColour * rimLight * u_spec * edgeLine;
 +		fin += vec3(glowLight * u_glowStrength * inwardGlow);
 +		fin += vec3(innerStroke * u_edgeHL * 0.55);
