@@ -31,6 +31,10 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
         <label for="diameter">Diameter <output>160px</output></label>
         <input id="diameter" type="range" min="100" max="220" step="4" value="160" />
       </div>
+      <div class="proto-control" data-control="zoom" hidden>
+        <label for="zoom">Zoom <output>2.5×</output></label>
+        <input id="zoom" type="range" min="1" max="4" step="0.1" value="2.5" />
+      </div>
       <div class="proto-control" data-control="refraction">
         <label for="refraction">Refraction <output>1.20</output></label>
         <input id="refraction" type="range" min="0" max="2" step="0.05" value="1.2" />
@@ -158,8 +162,9 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   const replay = picker.querySelector('.proto-picker-replay');
   const controls = document.querySelector('#proto-controls');
   const defaults = { diameter: 160, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
-  const values = { ...defaults };
+  const values = { ...defaults, zoom: 2.5 };
   const controlInputs = [...controls.querySelectorAll('input, button')];
+  const zoomControl = controls.querySelector('[data-control="zoom"]');
   let current = 0;
 
   function moveHighlight() {
@@ -185,7 +190,8 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
       if (j === i) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
     });
     controls.setAttribute('aria-disabled', String(i === 0));
-    controlInputs.forEach((control) => { control.disabled = i === 0; });
+    controlInputs.forEach((control) => { control.disabled = i === 0 || (control.id === 'zoom' && i !== 2); });
+    zoomControl.hidden = i !== 2;
     moveHighlight();
     const url = new URL(location);
     url.searchParams.set('v', i + 1);
@@ -212,14 +218,15 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     const output = input.parentElement.querySelector('output');
     input.addEventListener('input', () => {
       values[key] = Number(input.value);
-      output.textContent = key === 'diameter' ? `${values[key]}px` : values[key].toFixed(2);
+      output.textContent = key === 'diameter' ? `${values[key]}px` : key === 'zoom' ? `${values[key].toFixed(1)}×` : values[key].toFixed(2);
       sendConfig();
     });
   });
 
   document.querySelector('.proto-copy').addEventListener('click', async () => {
     const variant = items[current].textContent.trim();
-    const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}`;
+    const zoom = current === 2 ? ` · zoom: ${values.zoom.toFixed(1)}×` : '';
+    const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}${zoom}`;
     const status = document.querySelector('.proto-copy-status');
     try {
       if (!navigator.clipboard) throw new Error('Clipboard unavailable');

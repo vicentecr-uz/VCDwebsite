@@ -48,6 +48,7 @@ const { mode = 'dome' } = Astro.props;
   .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; }
   .glass-root { position: absolute; inset: 0; }
   .glass-source { display: block; width: 100%; height: 100%; border-radius: var(--radius-control-smooth); pointer-events: none; }
+  .prototype[data-mode="flat"] .glass-source { opacity: 0; }
   .lens { position: absolute; left: 0; top: 0; width: 160px; height: 160px; border-radius: 50%; z-index: 1; cursor: grab; touch-action: none; outline-offset: 4px; }
   .lens[hidden] { display: none; }
   .lens:focus-visible { outline: 2px solid var(--sys-color-on-srf); }
@@ -81,7 +82,7 @@ const { mode = 'dome' } = Astro.props;
   let upgrade;
   let generation = 0;
   let frame = 0;
-  let config = { diameter: 160, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
+  let config = { diameter: 160, zoom: 2.5, refraction: 1.2, edgeHighlight: 0.05, shadowOpacity: 0.18 };
   let position = { x: 0, y: 0 };
   let pointer;
 
@@ -96,7 +97,14 @@ const { mode = 'dome' } = Astro.props;
       source.width = mask.width = width;
       source.height = mask.height = height;
     }
+    context.resetTransform();
     context.clearRect(0, 0, width, height);
+    if (host.dataset.mode === 'flat') {
+      // The invisible canvas supplies magnified pixels only to the glass renderer.
+      const centerX = (position.x + lens.offsetWidth / 2) * width / root.clientWidth;
+      const centerY = (position.y + lens.offsetHeight / 2) * height / root.clientHeight;
+      context.setTransform(config.zoom, 0, 0, config.zoom, centerX * (1 - config.zoom), centerY * (1 - config.zoom));
+    }
     context.drawImage(image, 0, 0, width, height);
     const reveal = stack.querySelector('[data-preview-reveal]');
     if (reveal?.complete && reveal.naturalWidth) {
@@ -134,6 +142,7 @@ const { mode = 'dome' } = Astro.props;
     position.x = Math.max(0, Math.min(root.clientWidth - diameter, position.x));
     position.y = Math.max(0, Math.min(root.clientHeight - diameter, position.y));
     lens.style.transform = `translate(${position.x}px, ${position.y}px)`;
+    if (host.dataset.mode === 'flat') drawSource();
     glass?.markChanged();
   }
 
@@ -212,7 +221,7 @@ const { mode = 'dome' } = Astro.props;
   window.addEventListener('message', (event) => {
     if (event.origin !== location.origin || event.source !== parent || event.data?.type !== 'glass-proto-config') return;
     const next = event.data.config;
-    const ranges = { diameter: [100, 220], refraction: [0, 2], edgeHighlight: [0, 0.3], shadowOpacity: [0, 0.5] };
+    const ranges = { diameter: [100, 220], zoom: [1, 4], refraction: [0, 2], edgeHighlight: [0, 0.3], shadowOpacity: [0, 0.5] };
     for (const key of Object.keys(ranges)) {
       const value = Number(next?.[key]);
       if (Number.isFinite(value)) config[key] = Math.max(ranges[key][0], Math.min(ranges[key][1], value));
