@@ -34,21 +34,25 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
           <option value="280">280px</option>
           <option value="320">320px</option>
           <option value="390">390px</option>
+          <option value="480">480px</option>
           <option value="640">640px</option>
           <option value="768">768px</option>
         </select>
       </div>
+      <div class="proto-control">
+        <label>Preset <output id="preset-value">Desktop · ≥768px</output></label>
+      </div>
       <div class="proto-control" data-control="diameter">
-        <label for="diameter">Diameter <output>188px</output></label>
-        <input id="diameter" type="range" min="100" max="220" step="4" value="188" />
+        <label for="diameter">Diameter <output>180px</output></label>
+        <input id="diameter" type="range" min="100" max="220" step="4" value="180" />
       </div>
       <div class="proto-control" data-control="zoom" hidden>
-        <label for="zoom">Zoom <output>1.9×</output></label>
-        <input id="zoom" type="range" min="1" max="4" step="0.1" value="1.9" />
+        <label for="zoom">Zoom <output>2.0×</output></label>
+        <input id="zoom" type="range" min="1" max="4" step="0.1" value="2" />
       </div>
       <div class="proto-control" data-control="zRadius" hidden>
-        <label for="zRadius">Depth <output>31px</output></label>
-        <input id="zRadius" type="range" min="1" max="50" step="1" value="31" />
+        <label for="zRadius">Depth <output>36px</output></label>
+        <input id="zRadius" type="range" min="1" max="50" step="1" value="36" />
       </div>
       <div class="proto-control" data-control="bevelWidth" hidden>
         <label for="bevelWidth">Edge width <output>32px</output></label>
@@ -59,32 +63,32 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
         <input id="rimWidth" type="range" min="0.5" max="3" step="0.1" value="1.2" />
       </div>
       <div class="proto-control" data-control="sheen" hidden>
-        <label for="sheen">Sheen <output>0.35</output></label>
-        <input id="sheen" type="range" min="0" max="1" step="0.05" value="0.35" />
+        <label for="sheen">Sheen <output>0.60</output></label>
+        <input id="sheen" type="range" min="0" max="1" step="0.05" value="0.6" />
       </div>
       <div class="proto-control" data-control="glowStrength" hidden>
-        <label for="glowStrength">Glow <output>0.18</output></label>
-        <input id="glowStrength" type="range" min="0" max="0.5" step="0.01" value="0.18" />
+        <label for="glowStrength">Glow <output>0.33</output></label>
+        <input id="glowStrength" type="range" min="0" max="0.5" step="0.01" value="0.33" />
       </div>
       <div class="proto-control" data-control="glowSpread" hidden>
-        <label for="glowSpread">Glow spread <output>14px</output></label>
-        <input id="glowSpread" type="range" min="4" max="40" step="1" value="14" />
+        <label for="glowSpread">Glow spread <output>10px</output></label>
+        <input id="glowSpread" type="range" min="4" max="40" step="1" value="10" />
       </div>
       <div class="proto-control" data-control="refraction">
-        <label for="refraction">Refraction <output>0.95</output></label>
-        <input id="refraction" type="range" min="0" max="2" step="0.05" value="0.95" />
+        <label for="refraction">Refraction <output>0.50</output></label>
+        <input id="refraction" type="range" min="0" max="2" step="0.05" value="0.5" />
       </div>
       <div class="proto-control" data-control="edgeHighlight">
-        <label for="edgeHighlight">Rim <output>0.05</output></label>
-        <input id="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.05" />
+        <label for="edgeHighlight">Rim <output>0.01</output></label>
+        <input id="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.01" />
       </div>
       <div class="proto-control" data-control="specular">
-        <label for="specular">Highlights <output>0.60</output></label>
-        <input id="specular" type="range" min="0" max="1" step="0.05" value="0.6" />
+        <label for="specular">Highlights <output>0.30</output></label>
+        <input id="specular" type="range" min="0" max="1" step="0.05" value="0.3" />
       </div>
       <div class="proto-control" data-control="shadowOpacity">
-        <label for="shadowOpacity">Shadow <output>0.15</output></label>
-        <input id="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.15" />
+        <label for="shadowOpacity">Shadow <output>0.33</output></label>
+        <input id="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.33" />
       </div>
       <button class="proto-copy" type="button">Copy config</button>
       <span class="proto-copy-status" role="status" aria-live="polite"></span>
@@ -204,10 +208,18 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   const items = [...picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)')];
   const replay = picker.querySelector('.proto-picker-replay');
   const controls = document.querySelector('#proto-controls');
-  const defaults = { diameter: 188, refraction: 0.95, edgeHighlight: 0.05, specular: 0.6, shadowOpacity: 0.15 };
-  const values = { ...defaults, zoom: 1.9, zRadius: 31, bevelWidth: 32, rimWidth: 1.2, sheen: 0.35, glowStrength: 0.18, glowSpread: 14 };
+  const presetKey = 'vcd-liquid-glass-presets-v1';
+  const keys = ['diameter', 'refraction', 'edgeHighlight', 'specular', 'shadowOpacity', 'zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen', 'glowStrength', 'glowSpread'];
+  const presetDefaults = [
+    { name: 'Phone', range: '<480px', diameter: 124, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, glowStrength: 0.33, glowSpread: 10 },
+    { name: 'Tablet', range: '480–767px', diameter: 152, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, glowStrength: 0.33, glowSpread: 10 },
+    { name: 'Desktop', range: '≥768px', diameter: 180, refraction: 0.5, edgeHighlight: 0.01, specular: 0.3, shadowOpacity: 0.33, zoom: 2, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.6, glowStrength: 0.33, glowSpread: 10 },
+  ];
+  let presets = presetDefaults.map((preset) => ({ ...preset }));
+  const domeValues = { ...presetDefaults[2] };
   const controlInputs = [...controls.querySelectorAll('input, button')];
   const flatControls = controls.querySelectorAll('[data-control="zoom"], [data-control="zRadius"], [data-control="bevelWidth"], [data-control="rimWidth"], [data-control="sheen"], [data-control="glowStrength"], [data-control="glowSpread"]');
+  let presetIndex = 2;
   let current = 0;
 
   function moveHighlight() {
@@ -218,7 +230,25 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
 
   function sendConfig() {
     if (current === 0 || !frame.contentWindow) return;
-    frame.contentWindow.postMessage({ type: 'glass-proto-config', config: values }, location.origin);
+    frame.contentWindow.postMessage({ type: 'glass-proto-config', config: current === 2 ? presets[presetIndex] : domeValues }, location.origin);
+  }
+
+  function config() { return current === 2 ? presets[presetIndex] : domeValues; }
+  function updateControls() {
+    keys.forEach((key) => {
+      const input = document.querySelector(`#${key}`);
+      const output = input.parentElement.querySelector('output');
+      input.value = config()[key];
+      output.textContent = ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${config()[key]}px` : key === 'rimWidth' ? `${config()[key].toFixed(1)}px` : key === 'zoom' ? `${config()[key].toFixed(1)}×` : config()[key].toFixed(2);
+    });
+  }
+
+  function selectPreset(width) {
+    const next = width < 480 ? 0 : width < 768 ? 1 : 2;
+    if (next === presetIndex && current === 2) return;
+    presetIndex = next;
+    document.querySelector('#preset-value').textContent = `${presets[next].name} · ${presets[next].range}`;
+    if (current === 2) { updateControls(); sendConfig(); }
   }
 
   function mount(i) {
@@ -235,11 +265,14 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     controls.querySelectorAll('[data-control]').forEach((control) => { control.setAttribute('aria-disabled', String(i === 0)); });
     controlInputs.forEach((control) => { control.disabled = i === 0 || (['zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen', 'glowStrength', 'glowSpread'].includes(control.id) && i !== 2); });
     flatControls.forEach((control) => { control.hidden = i !== 2; });
+    document.querySelector('.proto-copy').textContent = i === 2 ? 'Copy presets' : 'Copy config';
     moveHighlight();
     const url = new URL(location);
     url.searchParams.set('v', i + 1);
     history.replaceState(null, '', url);
     mount(i);
+    if (i === 2) { selectPreset(frame.clientWidth); updateControls(); }
+    else updateControls();
   }
 
   items.forEach((el, i) => el.addEventListener('click', () => setActive(i)));
@@ -256,30 +289,38 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     else if (e.key === 'r' || e.key === 'R') mount(current);
   });
 
-  Object.keys(values).forEach((key) => {
+  keys.forEach((key) => {
     const input = document.querySelector(`#${key}`);
     const output = input.parentElement.querySelector('output');
     input.addEventListener('input', () => {
-      values[key] = Number(input.value);
-      output.textContent = ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${values[key]}px` : key === 'rimWidth' ? `${values[key].toFixed(1)}px` : key === 'zoom' ? `${values[key].toFixed(1)}×` : values[key].toFixed(2);
+      config()[key] = Number(input.value);
+      if (current === 2) { presets[presetIndex] = { ...config() }; try { sessionStorage.setItem(presetKey, JSON.stringify(presets)); } catch {} }
+      output.textContent = ['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key) ? `${config()[key]}px` : key === 'rimWidth' ? `${config()[key].toFixed(1)}px` : key === 'zoom' ? `${config()[key].toFixed(1)}×` : config()[key].toFixed(2);
       sendConfig();
     });
   });
 
   document.querySelector('.proto-copy').addEventListener('click', async () => {
     const variant = items[current].textContent.trim();
-    const zoom = current === 2 ? ` · zoom: ${values.zoom.toFixed(1)}× · depth: ${values.zRadius}px · edge width: ${values.bevelWidth}px · rim width: ${values.rimWidth.toFixed(1)}px · sheen: ${values.sheen.toFixed(2)} · glow: ${values.glowStrength.toFixed(2)} · glow spread: ${values.glowSpread}px` : '';
-    const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · highlights: ${values.specular.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}${zoom}`;
+    const format = (preset) => `${preset.name} (${preset.range}) · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px`;
+    const configText = current === 2 ? presets.map(format).join('\n') : `${variant} · diameter: ${domeValues.diameter}px · refraction: ${domeValues.refraction.toFixed(2)} · rim: ${domeValues.edgeHighlight.toFixed(2)} · highlights: ${domeValues.specular.toFixed(2)} · shadow: ${domeValues.shadowOpacity.toFixed(2)}`;
     const status = document.querySelector('.proto-copy-status');
     try {
       if (!navigator.clipboard) throw new Error('Clipboard unavailable');
-      await navigator.clipboard.writeText(config);
+      await navigator.clipboard.writeText(configText);
       status.textContent = 'Copied';
     } catch {
       status.textContent = 'Copy failed';
     }
     setTimeout(() => status.textContent = '', 1200);
   });
+
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(presetKey));
+    if (Array.isArray(saved) && saved.length === 3 && saved.every((preset) => keys.every((key) => preset && Number.isFinite(preset[key]) && preset[key] >= Number(document.querySelector(`#${key}`).min) && preset[key] <= Number(document.querySelector(`#${key}`).max)))) {
+      presets = saved.map((preset, index) => ({ ...presetDefaults[index], ...Object.fromEntries(keys.map((key) => [key, preset[key]])) }));
+    }
+  } catch {}
 
   controls.open = window.matchMedia('(min-width: 78.5em)').matches;
   const widthControl = document.querySelector('#frame-width');
@@ -297,6 +338,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   setWidth();
   new ResizeObserver(() => {
     document.querySelector('#frame-width-value').textContent = `${Math.round(frame.clientWidth)}px`;
+    selectPreset(frame.clientWidth);
   }).observe(frame);
   const requestedVariant = Number.parseInt(new URLSearchParams(location.search).get('v'), 10);
   const initialVariant = Number.isInteger(requestedVariant) && requestedVariant >= 1 && requestedVariant <= items.length ? requestedVariant - 1 : 0;
