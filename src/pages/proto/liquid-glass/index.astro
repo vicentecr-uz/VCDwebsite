@@ -54,6 +54,14 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
         <label for="bevelWidth">Edge width <output>32px</output></label>
         <input id="bevelWidth" type="range" min="12" max="48" step="1" value="32" />
       </div>
+      <div class="proto-control" data-control="rimWidth" hidden>
+        <label for="rimWidth">Rim width <output>1.4px</output></label>
+        <input id="rimWidth" type="range" min="0.5" max="3" step="0.1" value="1.4" />
+      </div>
+      <div class="proto-control" data-control="sheen" hidden>
+        <label for="sheen">Sheen <output>0.30</output></label>
+        <input id="sheen" type="range" min="0" max="1" step="0.05" value="0.3" />
+      </div>
       <div class="proto-control" data-control="refraction">
         <label for="refraction">Refraction <output>0.80</output></label>
         <input id="refraction" type="range" min="0" max="2" step="0.05" value="0.8" />
@@ -112,6 +120,8 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     right: 24px;
     z-index: 2147483646;
     width: 220px;
+    max-height: calc(100dvh - 96px);
+    overflow-y: auto;
     color: #fff;
     border-radius: 12px;
     background: rgb(10 10 10 / 0.82);
@@ -187,9 +197,9 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
   const replay = picker.querySelector('.proto-picker-replay');
   const controls = document.querySelector('#proto-controls');
   const defaults = { diameter: 188, refraction: 0.8, edgeHighlight: 0.05, specular: 0.4, shadowOpacity: 0.15 };
-  const values = { ...defaults, zoom: 1.9, zRadius: 10, bevelWidth: 32 };
+  const values = { ...defaults, zoom: 1.9, zRadius: 10, bevelWidth: 32, rimWidth: 1.4, sheen: 0.3 };
   const controlInputs = [...controls.querySelectorAll('input, button')];
-  const flatControls = controls.querySelectorAll('[data-control="zoom"], [data-control="zRadius"], [data-control="bevelWidth"]');
+  const flatControls = controls.querySelectorAll('[data-control="zoom"], [data-control="zRadius"], [data-control="bevelWidth"], [data-control="rimWidth"], [data-control="sheen"]');
   let current = 0;
 
   function moveHighlight() {
@@ -215,7 +225,7 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
       if (j === i) el.setAttribute('aria-current', 'true'); else el.removeAttribute('aria-current');
     });
     controls.querySelectorAll('[data-control]').forEach((control) => { control.setAttribute('aria-disabled', String(i === 0)); });
-    controlInputs.forEach((control) => { control.disabled = i === 0 || (['zoom', 'zRadius', 'bevelWidth'].includes(control.id) && i !== 2); });
+    controlInputs.forEach((control) => { control.disabled = i === 0 || (['zoom', 'zRadius', 'bevelWidth', 'rimWidth', 'sheen'].includes(control.id) && i !== 2); });
     flatControls.forEach((control) => { control.hidden = i !== 2; });
     moveHighlight();
     const url = new URL(location);
@@ -243,14 +253,14 @@ import DemoLayout from '../../../layouts/DemoLayout.astro';
     const output = input.parentElement.querySelector('output');
     input.addEventListener('input', () => {
       values[key] = Number(input.value);
-      output.textContent = ['diameter', 'zRadius', 'bevelWidth'].includes(key) ? `${values[key]}px` : key === 'zoom' ? `${values[key].toFixed(1)}×` : values[key].toFixed(2);
+      output.textContent = ['diameter', 'zRadius', 'bevelWidth'].includes(key) ? `${values[key]}px` : key === 'rimWidth' ? `${values[key].toFixed(1)}px` : key === 'zoom' ? `${values[key].toFixed(1)}×` : values[key].toFixed(2);
       sendConfig();
     });
   });
 
   document.querySelector('.proto-copy').addEventListener('click', async () => {
     const variant = items[current].textContent.trim();
-    const zoom = current === 2 ? ` · zoom: ${values.zoom.toFixed(1)}× · depth: ${values.zRadius}px · edge width: ${values.bevelWidth}px` : '';
+    const zoom = current === 2 ? ` · zoom: ${values.zoom.toFixed(1)}× · depth: ${values.zRadius}px · edge width: ${values.bevelWidth}px · rim width: ${values.rimWidth.toFixed(1)}px · sheen: ${values.sheen.toFixed(2)}` : '';
     const config = `${variant} · diameter: ${values.diameter}px · refraction: ${values.refraction.toFixed(2)} · rim: ${values.edgeHighlight.toFixed(2)} · highlights: ${values.specular.toFixed(2)} · shadow: ${values.shadowOpacity.toFixed(2)}${zoom}`;
     const status = document.querySelector('.proto-copy-status');
     try {
