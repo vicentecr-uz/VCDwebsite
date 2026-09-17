@@ -28,8 +28,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     </div></div>
 </vcd-progressive-image-demo>
 <style>
+  :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
   :global(.demo-page:has(vcd-progressive-image-demo[data-image-preview-url])) { height: 100%; padding: 0; }
-  vcd-progressive-image-demo { width: 100%; height: 100%; overflow: clip; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; }
+  vcd-progressive-image-demo { position: relative; z-index: 1; width: 100%; height: 100%; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; }
   .composition { position: relative; width: min(100%, 28em); height: 100%; container-type: inline-size; }
   .composition-grid { display: grid; height: 100%; grid-template-rows: 1fr 75cqw 1fr; justify-items: center; }
   .image-area { grid-row: 2; position: relative; width: 100%; height: 100%; }
@@ -70,6 +71,11 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
+    const scene = host.closest<HTMLElement>('.project-interactive-demo');
+    const composition = host.querySelector<HTMLElement>('.composition')!;
+    let frameImage: HTMLCanvasElement | null = null;
+    let framePending = false;
+    let frameCapturing = false;
     let toolbarImage;
     let toolbarPending = false;
     let toolbarCapturing = false;
@@ -129,6 +135,23 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       springFrame = requestAnimationFrame(tick);
     }
 
+    async function captureFrame() {
+      if (!scene) return;
+      framePending = true;
+      if (!glass || frameCapturing || signal.aborted) return;
+      frameCapturing = true;
+      try {
+        while (framePending && !signal.aborted) {
+          framePending = false;
+          const rect = scene.getBoundingClientRect();
+          const captured = await glass.capture.captureToCanvas(scene, rect.width, rect.height, [composition]);
+          if (signal.aborted) return;
+          frameImage = captured;
+          drawSource();
+        }
+      } finally { frameCapturing = false; }
+    }
+
     async function captureToolbar() {
       toolbarPending = true;
       if (!glass || toolbarCapturing || signal.aborted) return;
@@ -174,13 +197,19 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       }
       context.resetTransform();
       context.clearRect(0, 0, width, height);
-      context.fillStyle = getComputedStyle(document.body).backgroundColor;
+      const bodyBackground = getComputedStyle(document.body).backgroundColor;
+      context.fillStyle = bodyBackground === 'rgba(0, 0, 0, 0)' ? getComputedStyle(document.documentElement).backgroundColor : bodyBackground;
       context.fillRect(0, 0, width, height);
       context.save();
       // The invisible canvas supplies magnified pixels only to the glass renderer.
       const centerX = (position.x + lens.offsetWidth / 2 + padding) * scale;
       const centerY = (position.y + lens.offsetHeight / 2 + padding) * scale;
       context.setTransform(config.zoom, 0, 0, config.zoom, centerX * (1 - config.zoom), centerY * (1 - config.zoom));
+      if (scene && frameImage) {
+        const rect = scene.getBoundingClientRect();
+        const rootRect = root.getBoundingClientRect();
+        context.drawImage(frameImage, (rect.left - rootRect.left + padding) * scale, (rect.top - rootRect.top + padding) * scale, rect.width * scale, rect.height * scale);
+      }
       const style = getComputedStyle(stack);
       const radii = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].map((radius) => parseFloat(radius) * scale);
       context.save();
@@ -346,9 +375,12 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     for (const event of ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'focusin', 'focusout', 'transitionend']) toolbar.addEventListener(event, captureToolbar, { signal });
     const toolbarResize = new ResizeObserver(captureToolbar);
     toolbarResize.observe(toolbar);
-    const resize = new ResizeObserver(() => { configure(); drawSource(); });
+    const resize = new ResizeObserver(() => { configure(); drawSource(); captureFrame(); });
     resize.observe(root);
     resize.observe(host);
+    const frameObserver = new MutationObserver(captureFrame);
+    if (scene) frameObserver.observe(scene, { attributes: true });
+    frameObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
 
     async function initialize() {
       try {
@@ -364,7 +396,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         const instance = await LiquidGlass.init({ root, glassElements: [lens] });
         if (signal.aborted) { instance.destroy(); return; }
         glass = instance;
-        await captureToolbar();
+        await Promise.all([captureToolbar(), captureFrame()]);
         if (signal.aborted) return;
         drawSource();
         status.textContent = '';
@@ -388,6 +420,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       toolbarObserver.disconnect();
       toolbarResize.disconnect();
       toolbarImage = undefined;
+      frameImage = null;
+      frameObserver.disconnect();
       resize.disconnect();
       cancelAnimationFrame(frame);
       upgrade?.destroy();
