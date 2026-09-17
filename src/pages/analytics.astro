@@ -4,17 +4,24 @@ import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import Button from '../components/ui/Button.astro';
 import SegmentedControl from '../components/ui/SegmentedControl.astro';
+import ProjectSections from '../components/project/ProjectSections.astro';
+import { loadPageDocument } from '../lib/projects';
+import '../styles/project.css';
+
+const analyticsPage = loadPageDocument('analytics');
 ---
 
 <Layout title="Analytics preferences — Vicente Cruz">
   <div class="flex flex-col min-h-dvh">
     <Header title="Analytics" navMenu />
     <main id="main-content" style="flex: 1; padding-block: calc(var(--space-unit) * 2);">
-      <h1 style="margin-bottom: calc(var(--space-unit) * 2);">Analytics preferences</h1>
-      <p id="exclude-visits-label" style="margin-bottom: var(--space-unit);">Exclude my visits</p>
-      <SegmentedControl id="exclude-visits" label="Exclude my visits" aria-labelledby="exclude-visits-label">
-        <Button emphasis="ghost" width="fill" label="Off" data-excluded="false" aria-pressed="false" disabled />
-        <Button emphasis="ghost" width="fill" label="On" data-excluded="true" aria-pressed="false" disabled />
+      <h1 class="sr-only">Analytics preferences</h1>
+      <div data-dev-project-drop-zone>
+        <ProjectSections documentKey="analytics" sections={analyticsPage.sections} />
+      </div>
+      <SegmentedControl id="exclude-visits" label="Exclude my visits" aria-labelledby="exclude-visits-label" style="width: fit-content; margin-top: var(--space-unit);">
+        <Button emphasis="ghost" label="Off" style="min-width: var(--dev-control-min-width);" data-excluded="false" aria-pressed="false" disabled />
+        <Button emphasis="ghost" label="On" style="min-width: var(--dev-control-min-width);" data-excluded="true" aria-pressed="false" disabled />
       </SegmentedControl>
       <p id="analytics-error" role="alert" hidden style="margin-top: var(--space-unit);"></p>
       <noscript>Enable JavaScript to change your analytics preference.</noscript>
