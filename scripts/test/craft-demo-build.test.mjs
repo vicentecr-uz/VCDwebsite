@@ -66,7 +66,13 @@ for (const demo of CRAFT_DEMOS) {
   assert.equal(nodes.some((node) => /\b(dev-panel__lights|dev-panel-actions)\b/.test(attr(node, 'class') ?? '') || attr(node, 'data-dev-panel-draggable') !== undefined), false, `${demo.id}: no panel chrome or dragging`);
   assert.ok(nodes.some((node) => node.tagName === 'meta' && attr(node, 'name') === 'robots' && attr(node, 'content') === 'noindex,nofollow'));
   const policy = nodes.find((node) => node.tagName === 'meta' && attr(node, 'http-equiv') === 'Content-Security-Policy');
-  assert.match(attr(policy, 'content'), /connect-src 'none'/, `${demo.id}: no production fetch/WebSocket access`);
+  if (isProgressiveImage) {
+    assert.match(attr(policy, 'content'), /connect-src 'self' https:\/\/fonts.googleapis.com https:\/\/fonts.gstatic.com;/, `${demo.id}: toolbar capture can embed its stylesheet and fonts`);
+    assert.ok(nodes.some((node) => attr(node, 'class')?.split(/\s+/).includes('lens') && attr(node, 'tabindex') === '0'), `${demo.id}: keyboard-accessible magnifier`);
+    assert.equal(nodes.some((node) => attr(node, 'type') === 'range'), false, `${demo.id}: no prototype controls`);
+  } else {
+    assert.match(attr(policy, 'content'), /connect-src 'none'/, `${demo.id}: no production fetch/WebSocket access`);
+  }
   assert.match(attr(policy, 'content'), /form-action 'none'/);
   assert.equal(nodes.some((node) => attr(node, 'contenteditable') !== undefined), false);
   assert.doesNotMatch(html, /data-dev-document|data-dev-edit|data-project-image-crop-tuner|dev-mode-toggle/);
@@ -102,10 +108,11 @@ assert.equal(craftDemo(null), undefined);
 
 for (const slug of ['devpanel', 'low-res-image-loader']) {
   const document = JSON.parse(await readFile(path.join(root, 'src/content/projects', `${slug}.json`), 'utf8'));
-  assert.equal(document.status, 'draft', 'placeholder integration must not publish a draft');
+  assert.ok(['draft', 'published'].includes(document.status), `${slug}: valid project visibility`);
   assert.ok(document.sections.length > 0);
-  for (const section of document.sections) {
-    assert.equal(section.type, 'interactiveDemo');
+  const demos = document.sections.filter((section) => section.type === 'interactiveDemo');
+  assert.ok(demos.length > 0, `${slug}: retains its interactive demo alongside authored content`);
+  for (const section of demos) {
     assert.ok(craftDemo(section.demo), `${slug}: known demo`);
   }
 }
