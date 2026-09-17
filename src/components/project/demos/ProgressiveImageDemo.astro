@@ -25,16 +25,16 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         <Hairline orientation="vertical" />
         <Button label="" emphasis="ghost" aria-label="Reset" data-reset><span slot="icon" aria-hidden="true" set:html={rotateIcon} /></Button>
       </div>
-      <p class="status" role="status">Preparing glass…</p>
+      <p class="status sr-only" role="status"></p>
     </div></div>
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
   :global(.demo-page:has(vcd-progressive-image-demo[data-image-preview-url])) { height: 100%; padding: 0; }
-  vcd-progressive-image-demo { position: relative; z-index: 1; width: 100%; height: 100%; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; }
-  .composition { position: relative; width: min(100%, 28em); height: 100%; container-type: inline-size; }
-  .composition-grid { display: grid; height: 100%; grid-template-rows: 1fr 75cqw 1fr; justify-items: center; }
-  .image-area { grid-row: 2; position: relative; width: 100%; height: 100%; }
+  vcd-progressive-image-demo { position: relative; z-index: 1; width: 100%; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; --progressive-demo-gap: 2.4rem; }
+  .composition { position: relative; width: min(100%, 28em); container-type: inline-size; }
+  .composition-grid { display: grid; grid-template-rows: 75cqw auto; gap: var(--progressive-demo-gap); padding-block: var(--progressive-demo-gap); justify-items: center; }
+  .image-area { position: relative; width: 100%; height: 100%; }
   .image-stack { position: absolute; inset: 0; border-radius: var(--radius-control-smooth); overflow: hidden; }
   .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; }
   .glass-root { position: absolute; inset: 0; }
@@ -52,14 +52,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   }
   .lens[hidden] { display: none; }
   .lens:focus-visible { outline: 2px solid var(--sys-color-on-srf); }
-  .actions { grid-row: 3; align-self: center; display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 12px; }
+  .actions { display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 12px; }
   .actions :global(.dev-hairline) { margin-inline: 2px; }
   .actions :global(.dev-btn__icon svg) { width: 16px; height: 16px; }
   .actions :global([data-load]::before) { right: -6px; }
   .actions :global([data-reset]::before) { left: -6px; }
-  .status { grid-row: 1; grid-column: 1; align-self: center; text-align: center; margin: 0; font: var(--dev-text-label); color: var(--sys-color-on-srf-variant); }
-  .status:empty { display: none; }
-  @media (pointer: coarse) { .actions :global(.dev-btn) { min-height: 44px; } }
+  @media (pointer: coarse) {
+    .actions :global(.dev-btn) { min-height: 44px; }
+  }
 </style>
 <script>
   import { imageLensBounds } from '../../../lib/imageLensBounds';
