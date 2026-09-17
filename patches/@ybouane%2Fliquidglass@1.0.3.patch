@@ -56,7 +56,7 @@ index 707ee737e49f4ad5346dd662847ec59013c93f8d..4e79750fc2d8d7932546433531605cf8
      bevelMode: number;
  }
 diff --git a/dist/index.js b/dist/index.js
-index 10897f2a4b0027c888468c892c8168c26dcf2076..2c655b7bc24eb822422e18bf50db71351bd75769 100644
+index 10897f2a4b0027c888468c892c8168c26dcf2076..8e790b86b4daed58ce564c7cd133520660eb297d 100644
 --- a/dist/index.js
 +++ b/dist/index.js
 @@ -1256,6 +1256,13 @@ uniform float u_alpha;
@@ -198,7 +198,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..2c655b7bc24eb822422e18bf50db7135
  	vec3 V = vec3(0.0, 0.0, 1.0);
  	vec3 L1 = normalize(vec3(0.4, 0.7, 1.0));
  	vec3 H1 = normalize(L1 + V);
-@@ -1407,27 +1424,65 @@ void main() {
+@@ -1407,27 +1424,67 @@ void main() {
  	float sp4 = pow(max(dot(N, H4), 0.0), 120.0) * 0.6;
  	float totalSpec = (sp1 + sp2 + spB + sp4) * u_spec;
  
@@ -237,7 +237,9 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..2c655b7bc24eb822422e18bf50db7135
 +		float glowLight = (0.15 + 0.85 * dominant + 0.35 * secondary) * (1.0 - 0.95 * darkArc);
 +		float glowT = clamp(inside / maxD, 0.0, 1.0);
 +		float faceFade = 1.0 - glowT * glowT * glowT * (glowT * (glowT * 6.0 - 15.0) + 10.0);
-+		float inwardGlow = exp(-pow(max(inside, 0.0) / glowReach, 2.0)) * faceFade;
++		float glowProgress = clamp(max(inside, 0.0) / (glowReach * 1.8), 0.0, 1.0);
++		float glowEase = glowProgress * glowProgress * glowProgress * (glowProgress * (glowProgress * 6.0 - 15.0) + 10.0);
++		float inwardGlow = (1.0 - glowEase) * faceFade;
 +		// Colour belongs to the rim illumination, not the sampled image.
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
@@ -268,7 +270,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..2c655b7bc24eb822422e18bf50db7135
  
  	gl_FragColor = vec4(fin, mask * u_alpha);
  }`;
-@@ -1509,7 +1564,9 @@ var GlassRenderer = class {
+@@ -1509,7 +1566,9 @@ var GlassRenderer = class {
        "u_shadowAlpha",
        "u_shadowSpread",
        "u_shadowOffY",
@@ -279,7 +281,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..2c655b7bc24eb822422e18bf50db7135
      ]);
    }
    _initBuffers() {
-@@ -1627,6 +1684,13 @@ var GlassRenderer = class {
+@@ -1627,6 +1686,13 @@ var GlassRenderer = class {
      gl.uniform1f(this.glassU.u_sat, config.saturation);
      gl.uniform1f(this.glassU.u_tint, config.tintStrength);
      gl.uniform1f(this.glassU.u_zRadius, config.zRadius * dpr);
@@ -294,7 +296,7 @@ index 10897f2a4b0027c888468c892c8168c26dcf2076..2c655b7bc24eb822422e18bf50db7135
      gl.uniform1f(this.glassU.u_shadowAlpha, config.shadowOpacity);
      gl.uniform1f(this.glassU.u_shadowSpread, config.shadowSpread * dpr);
 diff --git a/dist/shaders.js b/dist/shaders.js
-index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..6699d9f0e2d1e06021d4d45490ccfb1b4d6ec72f 100644
+index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..7fdcb5dbbcc8507d382a84c414ae6966b4e399ce 100644
 --- a/dist/shaders.js
 +++ b/dist/shaders.js
 @@ -104,6 +104,13 @@ uniform float u_alpha;
@@ -370,7 +372,7 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..6699d9f0e2d1e06021d4d45490ccfb1b
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -269,11 +288,49 @@ void main() {
+@@ -269,11 +288,51 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -389,7 +391,9 @@ index 3f559f16d10fd25d1ba6f067025cc1d325d530a0..6699d9f0e2d1e06021d4d45490ccfb1b
 +		float glowLight = (0.15 + 0.85 * dominant + 0.35 * secondary) * (1.0 - 0.95 * darkArc);
 +		float glowT = clamp(inside / maxD, 0.0, 1.0);
 +		float faceFade = 1.0 - glowT * glowT * glowT * (glowT * (glowT * 6.0 - 15.0) + 10.0);
-+		float inwardGlow = exp(-pow(max(inside, 0.0) / glowReach, 2.0)) * faceFade;
++		float glowProgress = clamp(max(inside, 0.0) / (glowReach * 1.8), 0.0, 1.0);
++		float glowEase = glowProgress * glowProgress * glowProgress * (glowProgress * (glowProgress * 6.0 - 15.0) + 10.0);
++		float inwardGlow = (1.0 - glowEase) * faceFade;
 +		// Colour belongs to the rim illumination, not the sampled image.
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
@@ -478,7 +482,7 @@ index 33d97c9e720582cc3bafd0bb7db010b6dbe3cd09..75469ca4c144abab5c5b0fdf7955e5f6
  	bevelMode: number;
  }
 diff --git a/src/shaders.ts b/src/shaders.ts
-index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..822d96e517a8a66dbc58e244044bac15dfe63b8a 100644
+index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..f7e4a8c67fc96c717a65dcc17eaf23d0920e1e14 100644
 --- a/src/shaders.ts
 +++ b/src/shaders.ts
 @@ -109,6 +109,13 @@ uniform float u_alpha;
@@ -539,7 +543,7 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..822d96e517a8a66dbc58e244044bac15
  
  	// ── Fresnel ──
  	float fres = pow(1.0 - abs(N.z), 4.0) * u_fresnel;
-@@ -276,11 +293,49 @@ void main() {
+@@ -276,11 +293,51 @@ void main() {
  
  	// ── Composite ──
  	vec3 fin = col;
@@ -558,7 +562,9 @@ index daa399aa9ae84bfa45df40c4ddf0f0ff1f4d89fc..822d96e517a8a66dbc58e244044bac15
 +		float glowLight = (0.15 + 0.85 * dominant + 0.35 * secondary) * (1.0 - 0.95 * darkArc);
 +		float glowT = clamp(inside / maxD, 0.0, 1.0);
 +		float faceFade = 1.0 - glowT * glowT * glowT * (glowT * (glowT * 6.0 - 15.0) + 10.0);
-+		float inwardGlow = exp(-pow(max(inside, 0.0) / glowReach, 2.0)) * faceFade;
++		float glowProgress = clamp(max(inside, 0.0) / (glowReach * 1.8), 0.0, 1.0);
++		float glowEase = glowProgress * glowProgress * glowProgress * (glowProgress * (glowProgress * 6.0 - 15.0) + 10.0);
++		float inwardGlow = (1.0 - glowEase) * faceFade;
 +		// Colour belongs to the rim illumination, not the sampled image.
 +		float bottomArc = exp((outward.y - 1.0) / 0.035);
 +		float angle = atan(outward.x, outward.y + 0.000001);
