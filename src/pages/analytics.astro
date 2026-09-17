@@ -1,0 +1,50 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import Button from '../components/ui/Button.astro';
+---
+
+<Layout title="Analytics preferences — Vicente Cruz">
+  <div class="flex flex-col min-h-dvh">
+    <Header title="Analytics" navMenu />
+    <main id="main-content" style="flex: 1; padding-block: calc(var(--space-unit) * 2);">
+      <h1 style="margin-bottom: calc(var(--space-unit) * 2);">Analytics preferences</h1>
+      <Button id="exclude-visits" label="Exclude my visits" aria-pressed="false" disabled />
+      <p id="analytics-error" role="alert" hidden style="margin-top: var(--space-unit);"></p>
+      <noscript>Enable JavaScript to change your analytics preference.</noscript>
+    </main>
+    <Footer />
+  </div>
+</Layout>
+
+<script>
+  const button = document.querySelector<HTMLButtonElement>('#exclude-visits');
+  const error = document.querySelector<HTMLParagraphElement>('#analytics-error');
+  if (button && error) {
+    const update = () => {
+      const excluded = Boolean(localStorage.getItem('umami.disabled'));
+      button.setAttribute('aria-pressed', String(excluded));
+      button.classList.toggle('is-selected', excluded);
+      button.disabled = false;
+      error.hidden = true;
+    };
+    const showError = () => {
+      button.disabled = true;
+      error.textContent = 'Allow website storage in this browser, then reload to change your preference.';
+      error.hidden = false;
+    };
+    try { update(); } catch { showError(); }
+    button.addEventListener('click', () => {
+      try {
+        if (localStorage.getItem('umami.disabled')) localStorage.removeItem('umami.disabled');
+        else localStorage.setItem('umami.disabled', '1');
+        update();
+      } catch { showError(); }
+    });
+    window.addEventListener('storage', (event) => {
+      if (event.key !== null && event.key !== 'umami.disabled') return;
+      try { update(); } catch { showError(); }
+    });
+  }
+</script>
