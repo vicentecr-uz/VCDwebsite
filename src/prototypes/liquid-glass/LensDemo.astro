@@ -72,6 +72,10 @@ const { mode = 'dome' } = Astro.props;
   const load = host.querySelector('[data-load]');
   const reset = host.querySelector('[data-reset]');
   const status = host.querySelector('.status');
+  const toolbar = host.querySelector('.actions');
+  let toolbarImage;
+  let toolbarPending = false;
+  let toolbarCapturing = false;
   const template = host.querySelector('template');
   const context = source.getContext('2d');
   const mask = document.createElement('canvas');
@@ -128,6 +132,22 @@ const { mode = 'dome' } = Astro.props;
     springFrame = requestAnimationFrame(tick);
   }
 
+  async function captureToolbar() {
+    toolbarPending = true;
+    if (!glass || toolbarCapturing || signal.aborted) return;
+    toolbarCapturing = true;
+    try {
+      while (toolbarPending && !signal.aborted) {
+        toolbarPending = false;
+        const rect = toolbar.getBoundingClientRect();
+        const captured = await glass.capture.captureToCanvas(toolbar, rect.width, rect.height);
+        if (signal.aborted) return;
+        toolbarImage = captured;
+        drawSource();
+      }
+    } finally { toolbarCapturing = false; }
+  }
+
   function currentImage() { return stack.querySelector('[data-progressive-image]'); }
 
   function drawSource() {
@@ -167,6 +187,7 @@ const { mode = 'dome' } = Astro.props;
     }
     const style = getComputedStyle(stack);
     const radii = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].map((radius) => parseFloat(radius) * scale);
+    context.save();
     context.beginPath();
     context.roundRect(origin, origin, imageWidth, imageHeight, radii);
     context.clip();
@@ -188,6 +209,12 @@ const { mode = 'dome' } = Astro.props;
       maskContext.fillRect(0, 0, mask.width, mask.height);
       maskContext.globalCompositeOperation = 'source-over';
       context.drawImage(mask, origin, origin, imageWidth, imageHeight);
+    }
+    context.restore();
+    if (toolbarImage && host.dataset.mode === 'flat') {
+      const rect = toolbar.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      context.drawImage(toolbarImage, (rect.left - rootRect.left + padding) * scale, (rect.top - rootRect.top + padding) * scale, rect.width * scale, rect.height * scale);
     }
     context.restore();
     glass?.markChanged(source);
@@ -311,6 +338,11 @@ const { mode = 'dome' } = Astro.props;
   }, { signal });
   const observer = new MutationObserver(followReveal);
   observer.observe(stack, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-image-upgraded', 'class'] });
+  const toolbarObserver = new MutationObserver(captureToolbar);
+  toolbarObserver.observe(toolbar, { attributes: true, childList: true, characterData: true, subtree: true });
+  for (const event of ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'focusin', 'focusout', 'transitionend']) toolbar.addEventListener(event, captureToolbar, { signal });
+  const toolbarResize = new ResizeObserver(captureToolbar);
+  toolbarResize.observe(toolbar);
   const resize = new ResizeObserver(() => { configure(); drawSource(); });
   resize.observe(root);
   window.addEventListener('message', (event) => {
@@ -336,6 +368,7 @@ const { mode = 'dome' } = Astro.props;
       const instance = await LiquidGlass.init({ root, glassElements: [lens] });
       if (signal.aborted) { instance.destroy(); return; }
       glass = instance;
+      await captureToolbar();
       drawSource();
       status.textContent = '';
     } catch (error) {
@@ -350,6 +383,9 @@ const { mode = 'dome' } = Astro.props;
     lifecycle.abort();
     generation += 1;
     observer.disconnect();
+    toolbarObserver.disconnect();
+    toolbarResize.disconnect();
+    toolbarImage = undefined;
     resize.disconnect();
     cancelAnimationFrame(frame);
     upgrade?.destroy();
