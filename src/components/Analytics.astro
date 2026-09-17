@@ -1,0 +1,16 @@
+---
+const path = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const isPreferences = path === '/analytics';
+const track = import.meta.env.PROD && !isPreferences && path !== '/dev' && !path.startsWith('/dev/');
+---
+
+{isPreferences && <meta name="robots" content="noindex,nofollow" />}
+{track && (
+  <script
+    is:inline
+    defer
+    src="https://cloud.umami.is/script.js"
+    data-website-id="021decb2-29fe-4d60-a4e3-2e54d7b79848"
+    data-domains="wip.vcruzdesigns.com,vcruzdesigns.com,www.vcruzdesigns.com"
+  ></script>
+)}
