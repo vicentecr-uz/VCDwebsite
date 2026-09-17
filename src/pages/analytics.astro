@@ -3,6 +3,7 @@ import Layout from '../layouts/Layout.astro';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
 import Button from '../components/ui/Button.astro';
+import SegmentedControl from '../components/ui/SegmentedControl.astro';
 ---
 
 <Layout title="Analytics preferences — Vicente Cruz">
@@ -10,7 +11,11 @@ import Button from '../components/ui/Button.astro';
     <Header title="Analytics" navMenu />
     <main id="main-content" style="flex: 1; padding-block: calc(var(--space-unit) * 2);">
       <h1 style="margin-bottom: calc(var(--space-unit) * 2);">Analytics preferences</h1>
-      <Button id="exclude-visits" label="Exclude my visits" aria-pressed="false" disabled />
+      <p id="exclude-visits-label" style="margin-bottom: var(--space-unit);">Exclude my visits</p>
+      <SegmentedControl id="exclude-visits" label="Exclude my visits" aria-labelledby="exclude-visits-label">
+        <Button emphasis="ghost" width="fill" label="Off" data-excluded="false" aria-pressed="false" disabled />
+        <Button emphasis="ghost" width="fill" label="On" data-excluded="true" aria-pressed="false" disabled />
+      </SegmentedControl>
       <p id="analytics-error" role="alert" hidden style="margin-top: var(--space-unit);"></p>
       <noscript>Enable JavaScript to change your analytics preference.</noscript>
     </main>
@@ -19,29 +24,32 @@ import Button from '../components/ui/Button.astro';
 </Layout>
 
 <script>
-  const button = document.querySelector<HTMLButtonElement>('#exclude-visits');
+  const buttons = document.querySelectorAll<HTMLButtonElement>('#exclude-visits button');
   const error = document.querySelector<HTMLParagraphElement>('#analytics-error');
-  if (button && error) {
+  if (buttons.length && error) {
     const update = () => {
       const excluded = Boolean(localStorage.getItem('umami.disabled'));
-      button.setAttribute('aria-pressed', String(excluded));
-      button.classList.toggle('is-selected', excluded);
-      button.disabled = false;
+      buttons.forEach((button) => {
+        const selected = (button.dataset.excluded === 'true') === excluded;
+        button.setAttribute('aria-pressed', String(selected));
+        button.classList.toggle('is-selected', selected);
+        button.disabled = false;
+      });
       error.hidden = true;
     };
     const showError = () => {
-      button.disabled = true;
+      buttons.forEach((button) => { button.disabled = true; });
       error.textContent = 'Allow website storage in this browser, then reload to change your preference.';
       error.hidden = false;
     };
     try { update(); } catch { showError(); }
-    button.addEventListener('click', () => {
+    buttons.forEach((button) => button.addEventListener('click', () => {
       try {
-        if (localStorage.getItem('umami.disabled')) localStorage.removeItem('umami.disabled');
-        else localStorage.setItem('umami.disabled', '1');
+        if (button.dataset.excluded === 'true') localStorage.setItem('umami.disabled', '1');
+        else localStorage.removeItem('umami.disabled');
         update();
       } catch { showError(); }
-    });
+    }));
     window.addEventListener('storage', (event) => {
       if (event.key !== null && event.key !== 'umami.disabled') return;
       try { update(); } catch { showError(); }
