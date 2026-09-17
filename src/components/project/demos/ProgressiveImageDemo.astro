@@ -51,6 +51,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   @media (pointer: coarse) { .actions :global(.dev-btn) { min-height: 44px; } }
 </style>
 <script>
+  import { imageLensBounds } from '../../../lib/imageLensBounds';
   import { LiquidGlass } from '@ybouane/liquidglass';
   import { createImagePreviewUpgrade } from '../../../lib/imagePreviewUpgrade';
   class ProgressiveImageDemo extends HTMLElement {
@@ -71,14 +72,6 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
-    const scene = host.closest<HTMLElement>('.project-interactive-demo');
-    const composition = host.querySelector<HTMLElement>('.composition')!;
-    let frameImage: HTMLCanvasElement | null = null;
-    let framePending = false;
-    let frameCapturing = false;
-    let toolbarImage;
-    let toolbarPending = false;
-    let toolbarCapturing = false;
     const template = host.querySelector<HTMLTemplateElement>('template')!;
     const context = source.getContext('2d');
     const mask = document.createElement('canvas');
@@ -89,26 +82,26 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let upgrade;
     let generation = 0;
     let frame = 0;
-    let config = { diameter: 180, boundaryCircle: 5, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
+    let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
     let position = { x: 0, y: 0 };
     let pointer;
     let springFrame = 0;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
-    const bounds = () => {
-      const inset = lens.offsetWidth * (1 - config.boundaryCircle / 100) / 2;
-      return { min: -inset, x: Math.max(0, root.clientWidth - lens.offsetWidth) + inset, y: Math.max(0, root.clientHeight - lens.offsetHeight) + inset };
-    };
-    const clamp = (value, max) => Math.max(bounds().min, Math.min(max, value));
+    let geometry = { width: 0, height: 0, diameter: 180, padding: 54, scale: 2, radii: [0, 0, 0, 0], background: '#fff' };
+    let limit = { min: 0, x: 0, y: 0 };
+    let elasticReach = 1;
+    const bounds = () => limit;
+    const clamp = (value, max) => Math.max(limit.min, Math.min(max, value));
     const resistance = (value, max) => {
       const edge = clamp(value, max);
       const distance = value - edge;
-      const reach = config.diameter * 0.16;
+      const reach = elasticReach;
       return edge + distance / (1 + Math.abs(distance) / reach);
     };
     const unresist = (value, max) => {
       const edge = clamp(value, max);
       const distance = value - edge;
-      return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / (config.diameter * 0.16));
+      return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / elasticReach);
     };
     function stopSpring() { cancelAnimationFrame(springFrame); springFrame = 0; }
     function settle(velocity = { x: 0, y: 0 }) {
@@ -123,7 +116,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         let complete = true;
         for (const axis of ['x', 'y']) {
           let speed = offset[axis] ? Math.max(-600, Math.min(600, velocity[axis])) : 0;
-          if (speed * offset[axis] > 0) speed = Math.sign(speed) * Math.min(Math.abs(speed), Math.max(0, config.diameter * 0.16 - Math.abs(offset[axis])) * 14);
+          if (speed * offset[axis] > 0) speed = Math.sign(speed) * Math.min(Math.abs(speed), Math.max(0, elasticReach - Math.abs(offset[axis])) * 14);
           const delta = Math.exp(-22 * t) * (offset[axis] * Math.cos(14 * t) + (speed + 22 * offset[axis]) / 14 * Math.sin(14 * t));
           position[axis] = target[axis] + delta;
           if (Math.abs(delta) > 0.05) complete = false;
@@ -135,88 +128,28 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       springFrame = requestAnimationFrame(tick);
     }
 
-    async function captureFrame() {
-      if (!scene) return;
-      framePending = true;
-      if (!glass || frameCapturing || signal.aborted) return;
-      frameCapturing = true;
-      try {
-        while (framePending && !signal.aborted) {
-          framePending = false;
-          const rect = scene.getBoundingClientRect();
-          const captured = await glass.capture.captureToCanvas(scene, rect.width, rect.height, [composition]);
-          if (signal.aborted) return;
-          frameImage = captured;
-          drawSource();
-        }
-      } finally { frameCapturing = false; }
-    }
-
-    async function captureToolbar() {
-      toolbarPending = true;
-      if (!glass || toolbarCapturing || signal.aborted) return;
-      toolbarCapturing = true;
-      try {
-        while (toolbarPending && !signal.aborted) {
-          toolbarPending = false;
-          const rect = toolbar.getBoundingClientRect();
-          const captured = await glass.capture.captureToCanvas(toolbar, rect.width, rect.height);
-          if (signal.aborted) return;
-          toolbarImage = captured;
-          drawSource();
-        }
-      } finally { toolbarCapturing = false; }
-    }
-
-    function currentImage() { return stack.querySelector('[data-progressive-image]'); }
+    function currentImage() { return stack.querySelector<HTMLImageElement>('[data-progressive-image]')!; }
 
     function drawSource() {
       if (signal.aborted || !context || !maskContext) return;
       const image = currentImage();
       if (!image?.complete || !image.naturalWidth) return;
-      const padding = config.diameter;
-      const cssWidth = root.clientWidth + padding * 2;
-      const cssHeight = root.clientHeight + padding * 2;
-      const width = Math.min(2048, Math.round(cssWidth * Math.min(devicePixelRatio, 2) * 2));
-      const scale = width / cssWidth;
-      const height = Math.round(cssHeight * scale);
-      const imageWidth = root.clientWidth * scale;
-      const imageHeight = root.clientHeight * scale;
-      const origin = padding * scale;
-      source.style.position = 'absolute';
-      source.style.left = source.style.top = `${-padding}px`;
-      source.style.width = `${cssWidth}px`;
-      source.style.height = `${cssHeight}px`;
-      if (source.width !== width || source.height !== height) {
-        source.width = width;
-        source.height = height;
-      }
-      if (mask.width !== Math.round(imageWidth) || mask.height !== Math.round(imageHeight)) {
-        mask.width = Math.round(imageWidth);
-        mask.height = Math.round(imageHeight);
-      }
+      const { width: imageWidth, height: imageHeight, diameter, padding, scale, radii, background } = geometry;
+      if (!imageWidth || !imageHeight) return;
+      source.style.transform = `translate(${position.x - padding}px, ${position.y - padding}px)`;
       context.resetTransform();
-      context.clearRect(0, 0, width, height);
-      const bodyBackground = getComputedStyle(document.body).backgroundColor;
-      context.fillStyle = bodyBackground === 'rgba(0, 0, 0, 0)' ? getComputedStyle(document.documentElement).backgroundColor : bodyBackground;
-      context.fillRect(0, 0, width, height);
+      context.clearRect(0, 0, source.width, source.height);
+      context.fillStyle = background;
+      context.fillRect(0, 0, source.width, source.height);
       context.save();
-      // The invisible canvas supplies magnified pixels only to the glass renderer.
-      const centerX = (position.x + lens.offsetWidth / 2 + padding) * scale;
-      const centerY = (position.y + lens.offsetHeight / 2 + padding) * scale;
-      context.setTransform(config.zoom, 0, 0, config.zoom, centerX * (1 - config.zoom), centerY * (1 - config.zoom));
-      if (scene && frameImage) {
-        const rect = scene.getBoundingClientRect();
-        const rootRect = root.getBoundingClientRect();
-        context.drawImage(frameImage, (rect.left - rootRect.left + padding) * scale, (rect.top - rootRect.top + padding) * scale, rect.width * scale, rect.height * scale);
-      }
-      const style = getComputedStyle(stack);
-      const radii = [style.borderTopLeftRadius, style.borderTopRightRadius, style.borderBottomRightRadius, style.borderBottomLeftRadius].map((radius) => parseFloat(radius) * scale);
-      context.save();
+      const zoomScale = scale * config.zoom;
+      context.setTransform(zoomScale, 0, 0, zoomScale,
+        source.width / 2 - (position.x + diameter / 2) * zoomScale,
+        source.height / 2 - (position.y + diameter / 2) * zoomScale);
       context.beginPath();
-      context.roundRect(origin, origin, imageWidth, imageHeight, radii);
+      context.roundRect(0, 0, imageWidth, imageHeight, radii);
       context.clip();
-      context.drawImage(image, origin, origin, imageWidth, imageHeight);
+      context.drawImage(image, 0, 0, imageWidth, imageHeight);
       const reveal = stack.querySelector('[data-preview-reveal]');
       if (reveal?.complete && reveal.naturalWidth) {
         // Mirror the shared loader's 22% feather; replace this adapter if its mask changes.
@@ -233,13 +166,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         maskContext.fillStyle = gradient;
         maskContext.fillRect(0, 0, mask.width, mask.height);
         maskContext.globalCompositeOperation = 'source-over';
-        context.drawImage(mask, origin, origin, imageWidth, imageHeight);
-      }
-      context.restore();
-      if (toolbarImage) {
-        const rect = toolbar.getBoundingClientRect();
-        const rootRect = root.getBoundingClientRect();
-        context.drawImage(toolbarImage, (rect.left - rootRect.left + padding) * scale, (rect.top - rootRect.top + padding) * scale, rect.width * scale, rect.height * scale);
+        context.drawImage(mask, 0, 0, imageWidth, imageHeight);
       }
       context.restore();
       glass?.markChanged(source);
@@ -262,6 +189,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }
 
     function configure() {
+      if (signal.aborted) return;
       const width = host.clientWidth;
       const physical = width < 480
         ? { diameter: 124, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, glowSpread: 12 }
@@ -269,9 +197,39 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
           ? { diameter: 152, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, glowSpread: 14 }
           : { diameter: 180, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, glowSpread: 17 };
       Object.assign(config, physical);
-      stopSpring();
-      if (pointer) { const id = pointer.id; pointer = undefined; if (lens.hasPointerCapture(id)) lens.releasePointerCapture(id); lens.style.cursor = 'grab'; }
-      const diameter = Math.min(config.diameter, root.clientWidth - 16, root.clientHeight - 16);
+      const wasSpringing = Boolean(springFrame);
+      const imageRect = root.getBoundingClientRect();
+      if (imageRect.width <= 16 || imageRect.height <= 16) return;
+      const frameRect = host.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const diameter = Math.min(config.diameter, imageRect.width - 16, imageRect.height - 16);
+      const radius = diameter / 2;
+      const gap = Math.min(imageRect.left - frameRect.left, frameRect.right - imageRect.right,
+        imageRect.top - frameRect.top, frameRect.bottom - imageRect.bottom, toolbarRect.top - imageRect.bottom);
+      const nextBounds = imageLensBounds({ width: imageRect.width, height: imageRect.height,
+        diameter, depth: config.zRadius, edgeWidth: config.bevelWidth, refraction: config.refraction, zoom: config.zoom, gap });
+      const { padding, boundaryRadius } = nextBounds;
+      const boundsChanged = limit.min !== nextBounds.min || limit.x !== nextBounds.x || limit.y !== nextBounds.y;
+      elasticReach = nextBounds.reach;
+      limit = nextBounds;
+      const imageStyle = getComputedStyle(stack);
+      const size = diameter + padding * 2;
+      const pixels = Math.round(size * Math.min(devicePixelRatio, 2));
+      geometry = { width: imageRect.width, height: imageRect.height, diameter, padding, scale: pixels / size,
+        radii: [imageStyle.borderTopLeftRadius, imageStyle.borderTopRightRadius, imageStyle.borderBottomRightRadius, imageStyle.borderBottomLeftRadius].map(parseFloat),
+        background: getComputedStyle(host).getPropertyValue('--comp-demo-frame-container').trim() };
+      // Resolve the token through CSS; canvas fillStyle does not resolve custom properties.
+      source.style.backgroundColor = 'var(--comp-demo-frame-container)';
+      geometry.background = getComputedStyle(source).backgroundColor;
+      source.style.position = 'absolute';
+      source.style.left = source.style.top = '0';
+      source.style.width = source.style.height = `${size}px`;
+      if (source.width !== pixels || source.height !== pixels) source.width = source.height = pixels;
+      const maskWidth = Math.round(imageRect.width * geometry.scale);
+      const maskHeight = Math.round(imageRect.height * geometry.scale);
+      if (mask.width !== maskWidth || mask.height !== maskHeight) { mask.width = maskWidth; mask.height = maskHeight; }
+      host.dataset.boundaryCircle = (boundaryRadius / radius * 100).toFixed(1);
+      host.dataset.elasticReach = elasticReach.toFixed(1);
       lens.style.width = lens.style.height = `${diameter}px`;
       lens.dataset.config = JSON.stringify({
         floating: false, blurAmount: 0, refraction: config.refraction,
@@ -282,9 +240,15 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         edgeHighlight: config.edgeHighlight, specular: config.specular, shadowOpacity: config.shadowOpacity,
         chromAberration: 0.025, shadowSpread: 10,
       });
-      const limit = bounds();
-      position = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
+      if (pointer) {
+        pointer.origin = { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) };
+        pointer.x = pointer.lastX;
+        pointer.y = pointer.lastY;
+      } else if (!wasSpringing) {
+        position = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
+      }
       place();
+      if (wasSpringing && boundsChanged) settle();
     }
 
     lens.addEventListener('pointerdown', (event) => {
@@ -292,7 +256,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       if (pointer) return;
       stopSpring();
       const limit = bounds();
-      pointer = { id: event.pointerId, x: event.clientX, y: event.clientY,
+      pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY,
         origin: { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) },
         time: performance.now(), velocity: { x: 0, y: 0 } };
       lens.setPointerCapture(event.pointerId);
@@ -301,6 +265,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }, { signal });
     lens.addEventListener('pointermove', (event) => {
       if (!pointer || pointer.id !== event.pointerId) return;
+      pointer.lastX = event.clientX;
+      pointer.lastY = event.clientY;
       const limit = bounds();
       const next = { x: resistance(pointer.origin.x + event.clientX - pointer.x, limit.x), y: resistance(pointer.origin.y + event.clientY - pointer.y, limit.y) };
       const now = performance.now();
@@ -370,17 +336,12 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }, { signal });
     const observer = new MutationObserver(followReveal);
     observer.observe(stack, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-image-upgraded', 'class'] });
-    const toolbarObserver = new MutationObserver(captureToolbar);
-    toolbarObserver.observe(toolbar, { attributes: true, childList: true, characterData: true, subtree: true });
-    for (const event of ['pointerover', 'pointerout', 'pointerdown', 'pointerup', 'focusin', 'focusout', 'transitionend']) toolbar.addEventListener(event, captureToolbar, { signal });
-    const toolbarResize = new ResizeObserver(captureToolbar);
-    toolbarResize.observe(toolbar);
-    const resize = new ResizeObserver(() => { configure(); drawSource(); captureFrame(); });
+    const resize = new ResizeObserver(() => { configure(); });
     resize.observe(root);
     resize.observe(host);
-    const frameObserver = new MutationObserver(captureFrame);
-    if (scene) frameObserver.observe(scene, { attributes: true });
-    frameObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-theme'] });
+    resize.observe(toolbar);
+    const theme = new MutationObserver(configure);
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
 
     async function initialize() {
       try {
@@ -396,7 +357,6 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         const instance = await LiquidGlass.init({ root, glassElements: [lens] });
         if (signal.aborted) { instance.destroy(); return; }
         glass = instance;
-        await Promise.all([captureToolbar(), captureFrame()]);
         if (signal.aborted) return;
         drawSource();
         status.textContent = '';
@@ -417,12 +377,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       lifecycle.abort();
       generation += 1;
       observer.disconnect();
-      toolbarObserver.disconnect();
-      toolbarResize.disconnect();
-      toolbarImage = undefined;
-      frameImage = null;
-      frameObserver.disconnect();
       resize.disconnect();
+      theme.disconnect();
       cancelAnimationFrame(frame);
       upgrade?.destroy();
       glass?.destroy();
