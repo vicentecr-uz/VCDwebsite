@@ -108,10 +108,11 @@ assert.equal(craftDemo(null), undefined);
 
 for (const slug of ['devpanel', 'low-res-image-loader']) {
   const document = JSON.parse(await readFile(path.join(root, 'src/content/projects', `${slug}.json`), 'utf8'));
-  assert.equal(document.status, 'draft', 'placeholder integration must not publish a draft');
+  assert.ok(['draft', 'published'].includes(document.status), `${slug}: valid project visibility`);
   assert.ok(document.sections.length > 0);
-  for (const section of document.sections) {
-    assert.equal(section.type, 'interactiveDemo');
+  const demos = document.sections.filter((section) => section.type === 'interactiveDemo');
+  assert.ok(demos.length > 0, `${slug}: retains its interactive demo alongside authored content`);
+  for (const section of demos) {
     assert.ok(craftDemo(section.demo), `${slug}: known demo`);
   }
 }
