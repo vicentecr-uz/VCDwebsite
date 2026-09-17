@@ -74,6 +74,10 @@ Page navigation starts with `#transition-overlay` opaque. On initial load, a sma
 
 Use only components and patterns listed on `/styles`. Ask Anto before introducing something outside that library. Do not copy legacy case-study markup from `src/components/project/legacy/`.
 
+When creating a page, compose its headings, text, and media from the existing content-backed page blocks wherever they fit, so Anto can edit them through in-page Edit. Use the disk-backed page loader and verify Save survives a reload; styled hardcoded text is not equivalent to an editable block.
+
+Treat difficulty expressing a page through blocks as evidence of an editor capability gap. Identify the missing capability and address it within the agreed task scope, or explicitly report the remaining gap. Do not silently bypass the editor with page-specific markup. Functional controls may still need engine code; keep that boundary explicit.
+
 Signed-off Tapico/future case-study primitives:
 
 - `ProjectLayout`
