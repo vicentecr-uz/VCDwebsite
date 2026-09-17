@@ -6,6 +6,11 @@ import '../../../styles/project.css';
 import { projectImageTier } from '../../../lib/images';
 const thumb = projectImageTier('IMG_2480.jpeg', 'thumb');
 const preview = projectImageTier('IMG_2480.jpeg', 'preview');
+const sheenControls = [
+  { key: 'sheen', label: 'Strength', min: 0, max: 1, step: 0.01, value: 0.5, unit: '' },
+  { key: 'sheenInset', label: 'Inset', min: 0, max: 8, step: 0.1, value: 0.3, unit: 'px' },
+  { key: 'sheenWidth', label: 'Width', min: 0.1, max: 8, step: 0.1, value: 1, unit: 'px' },
+];
 ---
 <vcd-progressive-image-demo data-image-preview-url={preview}>
     <div class="composition"><div class="composition-grid">
@@ -26,6 +31,22 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
       <p class="status" role="status">Preparing glass…</p>
     </div></div>
+    {import.meta.env.DEV && (
+      <!-- Temporary in-place sheen controls; remove after tuning. -->
+      <details class="sheen-controls" data-sheen-controls open>
+        <summary>Sheen</summary>
+        <div class="sheen-controls__fields">
+          {sheenControls.map(({ key, label, min, max, step, value, unit }) => (
+            <label>
+              <span>{label}<output data-sheen-value={key}>{value.toFixed(2)}{unit}</output></span>
+              <input type="range" data-sheen-key={key} min={min} max={max} step={step} value={value} />
+            </label>
+          ))}
+          <textarea data-sheen-summary aria-label="Sheen settings" rows="2" readonly>sheen: 0.50 · inset: 0.30px · width: 1.00px</textarea>
+          <button type="button" data-copy-sheen>Copy settings</button>
+        </div>
+      </details>
+    )}
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
@@ -57,6 +78,15 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .actions :global([data-load]::before) { right: -6px; }
   .actions :global([data-reset]::before) { left: -6px; }
   .status { grid-row: 1; grid-column: 1; align-self: center; text-align: center; margin: 0; font: var(--dev-text-label); color: var(--sys-color-on-srf-variant); }
+  .sheen-controls { position: fixed; top: 80px; right: 16px; z-index: 100; width: min(240px, calc(100vw - 32px)); padding: 12px; border-radius: 12px; background: #292929; color: #fff; box-shadow: 0 4px 24px #0003; font: 14px/1.4 system-ui, sans-serif; }
+  .sheen-controls summary { cursor: pointer; }
+  .sheen-controls__fields { display: grid; gap: 12px; padding-top: 12px; }
+  .sheen-controls label { display: grid; gap: 4px; }
+  .sheen-controls label span { display: flex; justify-content: space-between; }
+  .sheen-controls output { font-variant-numeric: tabular-nums; }
+  .sheen-controls input { width: 100%; margin: 0; accent-color: #fff; min-height: 24px; }
+  .sheen-controls textarea { width: 100%; resize: none; background: transparent; color: inherit; border: 1px solid #ffffff40; border-radius: 4px; font: 16px/1.4 system-ui, sans-serif; }
+  .sheen-controls button { background: #444; color: inherit; border: 1px solid #ffffff40; padding: 8px; border-radius: 6px; font: inherit; cursor: pointer; }
   .status:empty { display: none; }
   @media (pointer: coarse) { .actions :global(.dev-btn) { min-height: 44px; } }
 </style>
@@ -92,7 +122,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let upgrade;
     let generation = 0;
     let frame = 0;
-    let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
+    let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, sheenInset: 0.3, sheenWidth: 1, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
     let position = { x: 0, y: 0 };
     let pointer;
     let springFrame = 0;
@@ -250,7 +280,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         floating: false, blurAmount: 0, refraction: config.refraction,
         cornerRadius: diameter / 2, zRadius: config.zRadius,
         bevelMode: 2,
-        bevelWidth: config.bevelWidth, rimWidth: config.rimWidth, sheen: config.sheen,
+        bevelWidth: config.bevelWidth, rimWidth: config.rimWidth, sheen: config.sheen, sheenInset: config.sheenInset, sheenWidth: config.sheenWidth,
         colourPickup: config.colourPickup, glowStrength: config.glowStrength, glowSpread: config.glowSpread,
         edgeHighlight: config.edgeHighlight, specular: config.specular, shadowOpacity: config.shadowOpacity,
         chromAberration: 0.025, shadowSpread: 10,
@@ -265,6 +295,26 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       place();
       if (wasSpringing && boundsChanged) settle();
     }
+
+    const sheenPanel = host.querySelector<HTMLElement>('[data-sheen-controls]');
+    sheenPanel?.addEventListener('input', (event) => {
+      const input = event.target as HTMLInputElement;
+      const key = input.dataset.sheenKey;
+      if (key !== 'sheen' && key !== 'sheenInset' && key !== 'sheenWidth') return;
+      config[key] = Number(input.value);
+      sheenPanel.querySelector<HTMLOutputElement>(`[data-sheen-value="${key}"]`)!.value = `${config[key].toFixed(2)}${key === 'sheen' ? '' : 'px'}`;
+      sheenPanel.querySelector<HTMLTextAreaElement>('[data-sheen-summary]')!.value = `sheen: ${config.sheen.toFixed(2)} · inset: ${config.sheenInset.toFixed(2)}px · width: ${config.sheenWidth.toFixed(2)}px`;
+      if (!lens.dataset.config) return;
+      const settings = JSON.parse(lens.dataset.config);
+      settings[key] = config[key];
+      lens.dataset.config = JSON.stringify(settings);
+      glass?.markChanged();
+    }, { signal });
+    sheenPanel?.querySelector<HTMLButtonElement>('[data-copy-sheen]')?.addEventListener('click', async () => {
+      const summary = sheenPanel.querySelector<HTMLTextAreaElement>('[data-sheen-summary]')!;
+      try { await navigator.clipboard.writeText(summary.value); }
+      catch { summary.focus(); summary.select(); }
+    }, { signal });
 
     lens.addEventListener('pointerdown', (event) => {
       if (!event.isPrimary || event.button !== 0) return;
