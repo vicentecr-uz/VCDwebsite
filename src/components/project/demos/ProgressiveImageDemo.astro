@@ -1,223 +1,407 @@
 ---
 import Button from '../../ui/Button.astro';
 import Hairline from '../../ui/Hairline.astro';
-import { projectImageTier } from '../../../lib/images';
 import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import '../../../styles/project.css';
+import { projectImageTier } from '../../../lib/images';
+const thumb = projectImageTier('IMG_2480.jpeg', 'thumb');
+const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
-const image = 'IMG_2480.jpeg';
-const thumb = projectImageTier(image, 'thumb');
-const preview = projectImageTier(image, 'preview');
 ---
-
 <vcd-progressive-image-demo data-image-preview-url={preview}>
-  <div class="progressive-image-demo">
-    <div class="progressive-image-demo__frame" data-image-root>
-      <img data-progressive-image width="4032" height="3024" src={thumb} alt="Disassembled utility knife arranged on a gridded cutting mat" />
-      <template data-image-template>
-        <img data-progressive-image width="4032" height="3024" src={thumb} alt="Disassembled utility knife arranged on a gridded cutting mat" />
-      </template>
-    </div>
-
-    <div class="progressive-image-demo__controls dev-surface" role="group" aria-label="Image loading">
-      <Button label="Load" type="button" emphasis="ghost" data-load />
-      <Hairline orientation="vertical" />
-      <Button label="" type="button" emphasis="ghost" data-reset aria-label="Reset">
-        <span slot="icon" aria-hidden="true" set:html={rotateIcon} />
-      </Button>
-    </div>
-    <div class="progressive-image-demo__status" aria-live="polite" data-status></div>
-  </div>
+    <div class="composition"><div class="composition-grid">
+      <div class="image-area">
+        <div class="image-stack" data-image-root>
+          <img data-progressive-image src={thumb} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" />
+          <template data-image-template><img data-progressive-image src={thumb} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" /></template>
+        </div>
+        <div class="glass-root">
+          <canvas class="glass-source" aria-hidden="true"></canvas>
+          <div class="lens" tabindex="0" role="group" aria-label="Magnifying glass. Drag or use arrow keys to move." hidden></div>
+        </div>
+      </div>
+      <div class="actions dev-surface" role="group" aria-label="Image loading">
+        <Button label="Load" emphasis="ghost" data-load />
+        <Hairline orientation="vertical" />
+        <Button label="" emphasis="ghost" aria-label="Reset" data-reset><span slot="icon" aria-hidden="true" set:html={rotateIcon} /></Button>
+      </div>
+      <p class="status" role="status">Preparing glass…</p>
+    </div></div>
 </vcd-progressive-image-demo>
-
 <style>
-  :global(.demo-page:has(vcd-progressive-image-demo[data-image-preview-url])) {
-    height: 100%;
-    padding-block: 0;
+  :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
+  :global(.demo-page:has(vcd-progressive-image-demo[data-image-preview-url])) { height: 100%; padding: 0; }
+  vcd-progressive-image-demo { position: relative; z-index: 1; width: 100%; height: 100%; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; }
+  .composition { position: relative; width: min(100%, 28em); height: 100%; container-type: inline-size; }
+  .composition-grid { display: grid; height: 100%; grid-template-rows: 1fr 75cqw 1fr; justify-items: center; }
+  .image-area { grid-row: 2; position: relative; width: 100%; height: 100%; }
+  .image-stack { position: absolute; inset: 0; border-radius: var(--radius-control-smooth); overflow: hidden; }
+  .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .glass-root { position: absolute; inset: 0; }
+  .glass-source { display: block; width: 100%; height: 100%; border-radius: var(--radius-control-smooth); pointer-events: none; opacity: 0; }
+  .lens { position: absolute; left: 0; top: 0; width: 180px; height: 180px; border-radius: 50%; z-index: 1; cursor: grab; touch-action: none; outline-offset: 4px; }
+  .lens :global(canvas) { opacity: 0; }
+  .lens[data-ready] :global(canvas) { opacity: 1; animation: glass-enter 280ms cubic-bezier(0.32, 0.72, 0, 1); }
+  @keyframes glass-enter {
+    from { opacity: 0; filter: blur(6px); scale: 0.97; }
+    to { opacity: 1; filter: blur(0); scale: 1; }
   }
-
-  vcd-progressive-image-demo {
-    display: block;
-    width: min(100%, 28em);
-    height: 100%;
-    container-type: inline-size;
+  @media (prefers-reduced-motion: reduce) {
+    .lens[data-ready] :global(canvas) { animation-name: glass-enter-fade; }
+    @keyframes glass-enter-fade { from { opacity: 0; } to { opacity: 1; } }
   }
-
-  .progressive-image-demo {
-    position: relative;
-    display: grid;
-    grid-template-rows: 1fr 75cqw 1fr;
-    justify-items: center;
-    height: 100%;
-  }
-
-  .progressive-image-demo__frame {
-    grid-row: 2;
-    position: relative;
-    width: 100%;
-    aspect-ratio: 4 / 3;
-    overflow: hidden;
-    background: var(--sys-color-srf-container-low);
-    border-radius: var(--radius-control-smooth);
-  }
-
-  .progressive-image-demo__frame img {
-    display: block;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-  }
-
-  .progressive-image-demo__controls {
-    grid-row: 3;
-    align-self: center;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px;
-    border-radius: 12px;
-  }
-
-  .progressive-image-demo__controls :global([data-load]::before) {
-    right: -6px;
-  }
-
-  .progressive-image-demo__controls :global([data-reset]::before) {
-    left: -6px;
-  }
-
-  .progressive-image-demo__controls :global(.dev-btn__icon),
-  .progressive-image-demo__controls :global(.dev-btn__icon svg) {
-    width: 16px;
-    height: 16px;
-  }
-
-  .progressive-image-demo__controls :global(.dev-hairline--vertical) {
-    margin-inline: 2px;
-  }
-
-  .progressive-image-demo__status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
-  }
-
-  .progressive-image-demo__status.is-visible {
-    bottom: var(--space-unit);
-    width: auto;
-    height: auto;
-    margin: 0;
-    overflow: visible;
-    clip: auto;
-    white-space: normal;
-    color: var(--sys-color-on-srf-variant);
-    font: var(--dev-text-label);
-  }
-
-  @media (pointer: coarse) {
-    .progressive-image-demo :global(.dev-btn) { min-height: 44px; }
-  }
+  .lens[hidden] { display: none; }
+  .lens:focus-visible { outline: 2px solid var(--sys-color-on-srf); }
+  .actions { grid-row: 3; align-self: center; display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 12px; }
+  .actions :global(.dev-hairline) { margin-inline: 2px; }
+  .actions :global(.dev-btn__icon svg) { width: 16px; height: 16px; }
+  .actions :global([data-load]::before) { right: -6px; }
+  .actions :global([data-reset]::before) { left: -6px; }
+  .status { grid-row: 1; grid-column: 1; align-self: center; text-align: center; margin: 0; font: var(--dev-text-label); color: var(--sys-color-on-srf-variant); }
+  .status:empty { display: none; }
+  @media (pointer: coarse) { .actions :global(.dev-btn) { min-height: 44px; } }
 </style>
-
 <script>
-  type PreviewUpgrade = { bind(root: ParentNode): void; open(): void; destroy(): void };
-
+  import { imageLensBounds } from '../../../lib/imageLensBounds';
+  import { LiquidGlass } from '@ybouane/liquidglass';
+  import { createImagePreviewUpgrade } from '../../../lib/imagePreviewUpgrade';
   class ProgressiveImageDemo extends HTMLElement {
-    private controller?: AbortController;
-    private factory?: PreviewUpgrade;
-    private observer?: MutationObserver;
-    private generation = 0;
-    private image?: HTMLImageElement;
-
+    private dispose?: () => void;
     connectedCallback() {
-      this.controller?.abort();
-      this.factory?.destroy();
-      this.controller = new AbortController();
-      const { signal } = this.controller;
-      const root = this.querySelector<HTMLElement>('[data-image-root]');
-      const template = this.querySelector<HTMLTemplateElement>('[data-image-template]');
-      const load = this.querySelector<HTMLButtonElement>('[data-load]');
-      const reset = this.querySelector<HTMLButtonElement>('[data-reset]');
-      const status = this.querySelector<HTMLElement>('[data-status]');
-      const preview = this.dataset.imagePreviewUrl;
-      if (!root || !template || !load || !reset || !status || !preview) return;
-
-      this.factory = undefined;
-      this.image = root.querySelector<HTMLImageElement>('[data-progressive-image]') ?? undefined;
-      const setStatus = (value: string, visible = false) => {
-        status.textContent = value;
-        status.classList.toggle('is-visible', visible);
-      };
-      const observeImage = () => {
-        this.observer?.disconnect();
-        this.image = root.querySelector<HTMLImageElement>('[data-progressive-image]') ?? undefined;
-        if (!this.image) return;
-        this.observer = new MutationObserver(() => {
-          if (this.image?.dataset.imageUpgraded === 'true') setStatus('Preview');
-        });
-        this.observer.observe(this.image, { attributes: true, attributeFilter: ['data-image-upgraded'] });
-      };
-
-      observeImage();
-      setStatus('Thumbnail');
-      load.addEventListener('click', async () => {
-        if (load.disabled || !this.image) return;
-        const run = ++this.generation;
-        this.factory?.destroy();
-        this.factory = undefined;
-        load.disabled = true;
-        setStatus('Loading');
-        try {
-          const { createImagePreviewUpgrade } = await import('../../../lib/imagePreviewUpgrade');
-          if (signal.aborted || run !== this.generation || !this.image) return;
-          this.image.dataset.imagePreview = preview;
-          this.factory = createImagePreviewUpgrade({ onError: () => {
-            if (signal.aborted || run !== this.generation) return;
-            this.factory?.destroy();
-            this.factory = undefined;
-            load.disabled = false;
-            setStatus('Image unavailable', true);
-          } });
-          this.factory.bind(root);
-          this.factory.open();
-        } catch {
-          if (signal.aborted || run !== this.generation) return;
-          this.factory?.destroy();
-          this.factory = undefined;
-          load.disabled = false;
-          setStatus('Image unavailable', true);
-        }
-      }, { signal });
-
-      reset.addEventListener('click', () => {
-        this.generation += 1;
-        this.factory?.destroy();
-        this.factory = undefined;
-        this.observer?.disconnect();
-        root.querySelector('[data-progressive-image]')?.remove();
-        root.insertBefore(template.content.cloneNode(true), root.firstChild);
-        observeImage();
-        load.disabled = false;
-        setStatus('Thumbnail');
-      }, { signal });
+      this.dispose?.();
+      this.dispose = initializeDemo(this);
     }
-
-    disconnectedCallback() {
-      this.generation += 1;
-      this.observer?.disconnect();
-      this.factory?.destroy();
-      this.controller?.abort();
-      this.observer = undefined;
-      this.factory = undefined;
-      this.controller = undefined;
-    }
+    disconnectedCallback() { this.dispose?.(); this.dispose = undefined; }
   }
 
+  function initializeDemo(host: HTMLElement) {
+    const root = host.querySelector<HTMLElement>('.glass-root')!;
+    const source = host.querySelector<HTMLCanvasElement>('.glass-source')!;
+    const stack = host.querySelector<HTMLElement>('[data-image-root]')!;
+    const lens = host.querySelector<HTMLElement>('.lens')!;
+    const load = host.querySelector<HTMLButtonElement>('[data-load]')!;
+    const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
+    const status = host.querySelector<HTMLElement>('.status')!;
+    const toolbar = host.querySelector<HTMLElement>('.actions')!;
+    const template = host.querySelector<HTMLTemplateElement>('template')!;
+    const context = source.getContext('2d');
+    const mask = document.createElement('canvas');
+    const maskContext = mask.getContext('2d');
+    const lifecycle = new AbortController();
+    const { signal } = lifecycle;
+    let glass;
+    let upgrade;
+    let generation = 0;
+    let frame = 0;
+    let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
+    let position = { x: 0, y: 0 };
+    let pointer;
+    let springFrame = 0;
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+    let geometry = { width: 0, height: 0, diameter: 180, padding: 54, scale: 2, radii: [0, 0, 0, 0], background: '#fff' };
+    let limit = { min: 0, x: 0, y: 0 };
+    let elasticReach = 1;
+    const bounds = () => limit;
+    const clamp = (value, max) => Math.max(limit.min, Math.min(max, value));
+    const resistance = (value, max) => {
+      const edge = clamp(value, max);
+      const distance = value - edge;
+      const reach = elasticReach;
+      return edge + distance / (1 + Math.abs(distance) / reach);
+    };
+    const unresist = (value, max) => {
+      const edge = clamp(value, max);
+      const distance = value - edge;
+      return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / elasticReach);
+    };
+    function stopSpring() { cancelAnimationFrame(springFrame); springFrame = 0; }
+    function settle(velocity = { x: 0, y: 0 }) {
+      stopSpring();
+      const limit = bounds();
+      const target = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
+      const offset = { x: position.x - target.x, y: position.y - target.y };
+      if (reducedMotion.matches || (!offset.x && !offset.y)) { position = target; place(); return; }
+      const start = performance.now();
+      const tick = (now) => {
+        const t = (now - start) / 1000;
+        let complete = true;
+        for (const axis of ['x', 'y']) {
+          let speed = offset[axis] ? Math.max(-600, Math.min(600, velocity[axis])) : 0;
+          if (speed * offset[axis] > 0) speed = Math.sign(speed) * Math.min(Math.abs(speed), Math.max(0, elasticReach - Math.abs(offset[axis])) * 14);
+          const delta = Math.exp(-22 * t) * (offset[axis] * Math.cos(14 * t) + (speed + 22 * offset[axis]) / 14 * Math.sin(14 * t));
+          position[axis] = target[axis] + delta;
+          if (Math.abs(delta) > 0.05) complete = false;
+        }
+        place();
+        if ((complete && t > 0.15) || t >= 0.65) { position = target; place(); springFrame = 0; }
+        else springFrame = requestAnimationFrame(tick);
+      };
+      springFrame = requestAnimationFrame(tick);
+    }
+
+    function currentImage() { return stack.querySelector<HTMLImageElement>('[data-progressive-image]')!; }
+
+    function drawSource() {
+      if (signal.aborted || !context || !maskContext) return;
+      const image = currentImage();
+      if (!image?.complete || !image.naturalWidth) return;
+      const { width: imageWidth, height: imageHeight, diameter, padding, scale, radii, background } = geometry;
+      if (!imageWidth || !imageHeight) return;
+      source.style.transform = `translate(${position.x - padding}px, ${position.y - padding}px)`;
+      context.resetTransform();
+      context.clearRect(0, 0, source.width, source.height);
+      context.fillStyle = background;
+      context.fillRect(0, 0, source.width, source.height);
+      context.save();
+      const zoomScale = scale * config.zoom;
+      const offsetX = source.width / 2 - (position.x + diameter / 2) * zoomScale;
+      const offsetY = source.height / 2 - (position.y + diameter / 2) * zoomScale;
+      context.setTransform(zoomScale, 0, 0, zoomScale, offsetX, offsetY);
+      context.beginPath();
+      context.roundRect(0, 0, imageWidth, imageHeight, radii);
+      context.clip();
+      context.drawImage(image, 0, 0, imageWidth, imageHeight);
+      const reveal = stack.querySelector('[data-preview-reveal]');
+      if (reveal?.complete && reveal.naturalWidth) {
+        // Mirror the shared loader's 22% feather; replace this adapter if its mask changes.
+        const revealStyle = getComputedStyle(reveal);
+        const progress = parseFloat(revealStyle.getPropertyValue('--preview-reveal-y')) / 100;
+        maskContext.resetTransform();
+        maskContext.clearRect(0, 0, mask.width, mask.height);
+        maskContext.globalCompositeOperation = 'source-over';
+        maskContext.setTransform(zoomScale, 0, 0, zoomScale, offsetX, offsetY);
+        // Rasterize both image layers at the same magnified resolution before compositing.
+        maskContext.drawImage(reveal, 0, 0, imageWidth, imageHeight);
+        maskContext.globalCompositeOperation = 'destination-in';
+        if (reducedMotion.matches) {
+          maskContext.fillStyle = `rgba(0, 0, 0, ${revealStyle.opacity})`;
+        } else {
+          const gradient = maskContext.createLinearGradient(0, (progress - 0.22) * imageHeight, 0, (progress + 0.22) * imageHeight);
+          gradient.addColorStop(0, '#000');
+          gradient.addColorStop(1, 'transparent');
+          maskContext.fillStyle = gradient;
+        }
+        maskContext.fillRect(0, 0, imageWidth, imageHeight);
+        maskContext.globalCompositeOperation = 'source-over';
+        context.resetTransform();
+        context.drawImage(mask, 0, 0);
+      }
+      context.restore();
+      glass?.markChanged(source);
+    }
+
+    function followReveal() {
+      cancelAnimationFrame(frame);
+      const tick = () => {
+        if (signal.aborted) return;
+        drawSource();
+        if (stack.querySelector('[data-preview-reveal]')) frame = requestAnimationFrame(tick);
+      };
+      tick();
+    }
+
+    function place() {
+      lens.style.transform = `translate(${position.x}px, ${position.y}px)`;
+      drawSource();
+      glass?.markChanged();
+    }
+
+    function configure() {
+      if (signal.aborted) return;
+      const width = host.clientWidth;
+      const physical = width < 480
+        ? { diameter: 124, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, glowSpread: 12 }
+        : width < 768
+          ? { diameter: 152, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, glowSpread: 14 }
+          : { diameter: 180, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, glowSpread: 17 };
+      Object.assign(config, physical);
+      const wasSpringing = Boolean(springFrame);
+      const imageRect = root.getBoundingClientRect();
+      if (imageRect.width <= 16 || imageRect.height <= 16) return;
+      const frameRect = host.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      const diameter = Math.min(config.diameter, imageRect.width - 16, imageRect.height - 16);
+      const radius = diameter / 2;
+      const gap = Math.min(imageRect.left - frameRect.left, frameRect.right - imageRect.right,
+        imageRect.top - frameRect.top, frameRect.bottom - imageRect.bottom, toolbarRect.top - imageRect.bottom);
+      const nextBounds = imageLensBounds({ width: imageRect.width, height: imageRect.height,
+        diameter, depth: config.zRadius, edgeWidth: config.bevelWidth, refraction: config.refraction, zoom: config.zoom, gap });
+      const { padding, boundaryRadius } = nextBounds;
+      const boundsChanged = limit.min !== nextBounds.min || limit.x !== nextBounds.x || limit.y !== nextBounds.y;
+      elasticReach = nextBounds.reach;
+      limit = nextBounds;
+      const imageStyle = getComputedStyle(stack);
+      const size = diameter + padding * 2;
+      const pixels = Math.round(size * Math.min(devicePixelRatio, 2));
+      geometry = { width: imageRect.width, height: imageRect.height, diameter, padding, scale: pixels / size,
+        radii: [imageStyle.borderTopLeftRadius, imageStyle.borderTopRightRadius, imageStyle.borderBottomRightRadius, imageStyle.borderBottomLeftRadius].map(parseFloat),
+        background: getComputedStyle(host).getPropertyValue('--comp-demo-frame-container').trim() };
+      // Resolve the token through CSS; canvas fillStyle does not resolve custom properties.
+      source.style.backgroundColor = 'var(--comp-demo-frame-container)';
+      geometry.background = getComputedStyle(source).backgroundColor;
+      source.style.position = 'absolute';
+      source.style.left = source.style.top = '0';
+      source.style.width = source.style.height = `${size}px`;
+      if (source.width !== pixels || source.height !== pixels) source.width = source.height = pixels;
+      if (mask.width !== pixels || mask.height !== pixels) mask.width = mask.height = pixels;
+      host.dataset.boundaryCircle = (boundaryRadius / radius * 100).toFixed(1);
+      host.dataset.elasticReach = elasticReach.toFixed(1);
+      lens.style.width = lens.style.height = `${diameter}px`;
+      lens.dataset.config = JSON.stringify({
+        floating: false, blurAmount: 0, refraction: config.refraction,
+        cornerRadius: diameter / 2, zRadius: config.zRadius,
+        bevelMode: 2,
+        bevelWidth: config.bevelWidth, rimWidth: config.rimWidth, sheen: config.sheen, sheenInset: config.sheenInset, sheenWidth: config.sheenWidth,
+        colourPickup: config.colourPickup, glowStrength: config.glowStrength, glowSpread: config.glowSpread,
+        edgeHighlight: config.edgeHighlight, specular: config.specular, shadowOpacity: config.shadowOpacity,
+        chromAberration: 0.025, shadowSpread: 10,
+      });
+      if (pointer) {
+        pointer.origin = { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) };
+        pointer.x = pointer.lastX;
+        pointer.y = pointer.lastY;
+      } else if (!wasSpringing) {
+        position = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
+      }
+      place();
+      if (wasSpringing && boundsChanged) settle();
+    }
+
+    lens.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      if (pointer) return;
+      stopSpring();
+      const limit = bounds();
+      pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY,
+        origin: { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) },
+        time: performance.now(), velocity: { x: 0, y: 0 } };
+      lens.setPointerCapture(event.pointerId);
+      lens.style.cursor = 'grabbing';
+      event.preventDefault();
+    }, { signal });
+    lens.addEventListener('pointermove', (event) => {
+      if (!pointer || pointer.id !== event.pointerId) return;
+      pointer.lastX = event.clientX;
+      pointer.lastY = event.clientY;
+      const limit = bounds();
+      const next = { x: resistance(pointer.origin.x + event.clientX - pointer.x, limit.x), y: resistance(pointer.origin.y + event.clientY - pointer.y, limit.y) };
+      const now = performance.now();
+      const elapsed = Math.max(1, now - pointer.time) / 1000;
+      pointer.velocity = { x: (next.x - position.x) / elapsed, y: (next.y - position.y) / elapsed };
+      pointer.time = now;
+      position = next;
+      place();
+    }, { signal });
+    const release = (event) => {
+      if (!pointer || pointer.id !== event.pointerId) return;
+      const velocity = event.type === 'pointerup' && performance.now() - pointer.time < 80 ? pointer.velocity : { x: 0, y: 0 };
+      const id = pointer.id;
+      pointer = undefined;
+      if (lens.hasPointerCapture(id)) lens.releasePointerCapture(id);
+      lens.style.cursor = 'grab';
+      settle(velocity);
+    };
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) lens.addEventListener(event, release, { signal });
+    lens.addEventListener('keydown', (event) => {
+      const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+      const direction = directions[event.key];
+      if (!direction) return;
+      event.preventDefault();
+      if (pointer) return;
+      stopSpring();
+      const limit = bounds();
+      const step = event.shiftKey ? 20 : 8;
+      position.x = clamp(position.x + direction[0] * step, limit.x);
+      position.y = clamp(position.y + direction[1] * step, limit.y);
+      place();
+    }, { signal });
+
+    load.addEventListener('click', () => {
+      if (load.disabled) return;
+      const run = ++generation;
+      upgrade?.destroy();
+      load.disabled = true;
+      status.textContent = '';
+      currentImage().dataset.imagePreview = host.dataset.imagePreviewUrl;
+      upgrade = createImagePreviewUpgrade({ onError: () => {
+        if (run !== generation || signal.aborted) return;
+        upgrade?.destroy();
+        load.disabled = false;
+        status.textContent = 'Image unavailable. Try Load again.';
+        drawSource();
+      } });
+      upgrade.bind(stack);
+      upgrade.open();
+    }, { signal });
+
+    reset.addEventListener('click', () => {
+      generation += 1;
+      upgrade?.destroy();
+      cancelAnimationFrame(frame);
+      currentImage().remove();
+      stack.prepend(template.content.cloneNode(true));
+      currentImage().addEventListener('load', drawSource, { once: true, signal });
+      load.disabled = false;
+      status.textContent = '';
+      drawSource();
+    }, { signal });
+
+    reducedMotion.addEventListener('change', () => { if (reducedMotion.matches && springFrame) settle(); }, { signal });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { configure(); }
+    }, { signal });
+    const observer = new MutationObserver(followReveal);
+    observer.observe(stack, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data-image-upgraded', 'class'] });
+    const resize = new ResizeObserver(() => { configure(); });
+    resize.observe(root);
+    resize.observe(host);
+    resize.observe(toolbar);
+    const theme = new MutationObserver(configure);
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+
+    async function initialize() {
+      try {
+        await currentImage().decode();
+        await document.fonts.ready;
+        if (signal.aborted) return;
+        if (!context || !maskContext) throw new Error('Canvas unavailable');
+        configure();
+        drawSource();
+        lens.hidden = false;
+        position = { x: root.clientWidth * 0.76 - config.diameter / 2, y: root.clientHeight * 0.31 - config.diameter / 2 };
+        configure();
+        const instance = await LiquidGlass.init({ root, glassElements: [lens] });
+        if (signal.aborted) { instance.destroy(); return; }
+        glass = instance;
+        if (signal.aborted) return;
+        drawSource();
+        lens.dataset.ready = '';
+        status.textContent = '';
+      } catch (error) {
+        if (signal.aborted) return;
+        lens.hidden = true;
+        status.textContent = 'Glass unavailable in this browser. Load and Reset still work.';
+        console.error('Image magnifier:', error);
+      }
+    }
+    initialize();
+    function dispose() {
+      if (signal.aborted) return;
+      stopSpring();
+      const pointerId = pointer?.id;
+      pointer = undefined;
+      if (pointerId !== undefined && lens.hasPointerCapture(pointerId)) lens.releasePointerCapture(pointerId);
+      lifecycle.abort();
+      generation += 1;
+      observer.disconnect();
+      resize.disconnect();
+      theme.disconnect();
+      cancelAnimationFrame(frame);
+      upgrade?.destroy();
+      glass?.destroy();
+    }
+    window.addEventListener('pagehide', (event) => { if (!event.persisted) dispose(); }, { signal });
+    return dispose;
+  }
   if (!customElements.get('vcd-progressive-image-demo')) customElements.define('vcd-progressive-image-demo', ProgressiveImageDemo);
 </script>

@@ -1,4 +1,5 @@
 ---
+import ProgressiveImageDemo from './demos/ProgressiveImageDemo.astro';
 import { craftDemo } from '../../lib/craftDemos';
 import { projectStackClass, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 
@@ -16,15 +17,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} {...(spacingAttrs ?? {})}>
-    <iframe
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} style={demo.id === 'progressive-image' ? `height:${demo.height}rem` : undefined} {...(spacingAttrs ?? {})}>
+    {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
       src={`/preview/${demo.id}`}
       title={demo.title}
       loading="lazy"
       sandbox="allow-scripts allow-same-origin"
       referrerpolicy="no-referrer"
       style={`height:${demo.height}rem`}
-    />
+    />}
   </div>
 )}
 
