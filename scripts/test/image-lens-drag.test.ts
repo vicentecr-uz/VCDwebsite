@@ -3,6 +3,18 @@ import { readFileSync } from 'node:fs';
 import { imageLensBounds } from '../../src/lib/imageLensBounds';
 
 // Exercise the real controller without a browser, rendering, or synthetic UI interaction.
+class CanvasContext {
+  transform = [1, 0, 0, 1, 0, 0];
+  draws: Array<{ image: Element; transform: number[]; args: number[] }> = [];
+  stack: number[][] = [];
+  resetTransform() { this.transform = [1, 0, 0, 1, 0, 0]; }
+  setTransform(...values: number[]) { this.transform = values; }
+  save() { this.stack.push([...this.transform]); }
+  restore() { this.transform = this.stack.pop()!; }
+  clearRect() {} fillRect() {} beginPath() {} roundRect() {} clip() {}
+  createLinearGradient() { return { addColorStop() {} }; }
+  drawImage(image: Element, ...args: number[]) { this.draws.push({ image, args, transform: [...this.transform] }); }
+}
 class Element extends EventTarget {
   style: Record<string, string> = {};
   dataset: Record<string, string> = {};
@@ -16,7 +28,8 @@ class Element extends EventTarget {
   rect = { left: 0, top: 0, right: 800, bottom: 576, width: 800, height: 576 };
   querySelector(selector: string) { return this.nodes[selector]; }
   getBoundingClientRect() { return this.rect; }
-  getContext() { return {}; }
+  context = new CanvasContext();
+  getContext() { return this.context; }
   setPointerCapture(id: number) { this.captures.add(id); }
   hasPointerCapture(id: number) { return this.captures.has(id); }
   releasePointerCapture(id: number) { this.captures.delete(id); }
@@ -36,10 +49,11 @@ class ResizeObserver {
 }
 class MutationObserver { observe() {} disconnect() {} }
 const html = new Element();
-const document = Object.assign(new EventTarget(), { documentElement: html, fonts: { ready: Promise.resolve() }, createElement: () => new Element() });
+const mask = new Element();
+const document = Object.assign(new EventTarget(), { documentElement: html, fonts: { ready: Promise.resolve() }, createElement: () => mask });
 const window = new EventTarget();
 const media = Object.assign(new EventTarget(), { matches: false });
-const getComputedStyle = () => ({ borderTopLeftRadius: '11.2px', borderTopRightRadius: '11.2px', borderBottomRightRadius: '11.2px', borderBottomLeftRadius: '11.2px', backgroundColor: 'rgb(249, 249, 251)', getPropertyValue: () => '#f9f9fb' });
+const getComputedStyle = () => ({ borderTopLeftRadius: '11.2px', borderTopRightRadius: '11.2px', borderBottomRightRadius: '11.2px', borderBottomLeftRadius: '11.2px', backgroundColor: 'rgb(249, 249, 251)', opacity: '1', getPropertyValue: (name: string) => name === '--preview-reveal-y' ? '122%' : '#f9f9fb' });
 const source = readFileSync(new URL('../../src/components/project/demos/ProgressiveImageDemo.astro', import.meta.url), 'utf8').match(/<script>([^]*?)<\/script>/)![1].replace(/^\s*import .*;\s*$/gm, '');
 const javascript = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
 let time = 0;
@@ -76,6 +90,20 @@ advance(16);
 assert.notEqual(lens.style.transform, returning, 'spring continues after refresh');
 for (let i = 0; i < 45; i++) advance(16);
 assert.equal(frames.size, 0, 'spring settles');
+const baseImage = host.nodes['[data-image-root]'].nodes['[data-progressive-image]'];
+const reveal = new Element();
+baseImage.complete = reveal.complete = true;
+host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'] = reveal;
+resizeCallbacks.forEach(callback => callback());
+const sourceCanvas = host.nodes['.glass-source'];
+const revealDraw = mask.context.draws.at(-1)!;
+assert.deepEqual(revealDraw.transform, sourceCanvas.context.draws.at(-2)!.transform, 'thumb and reveal use identical magnified sampling');
+assert.equal(mask.width, sourceCanvas.width, 'reveal crop retains the full source pixel density');
+assert.equal(mask.height, sourceCanvas.height);
+assert.deepEqual(sourceCanvas.context.draws.at(-1)!.args, [0, 0], 'composite the reveal without another rescale');
+delete host.nodes['[data-image-root]'].nodes['[data-preview-reveal]'];
+resizeCallbacks.forEach(callback => callback());
+assert.deepEqual(sourceCanvas.context.draws.at(-1)!.transform, revealDraw.transform, 'final image retains the reveal sampling density');
 dispose();
 pointer('pointerdown', 200, 200);
 assert.equal(lens.hasPointerCapture(1), false, 'disposal removes drag handlers');
