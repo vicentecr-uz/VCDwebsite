@@ -14,6 +14,8 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  compare?: boolean;
+  variant?: 'current' | 'throw';
 }
 
 const {
@@ -24,17 +26,22 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  compare = false,
+  variant = 'current',
 } = Astro.props;
 const statusId = `signup-status-${sectionId ?? Math.random().toString(36).slice(2, 8)}`;
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+const showPanel = import.meta.env.DEV && !compare;
+const showPicker = import.meta.env.DEV && !compare;
 ---
 
 <section
   id={sectionId}
   class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
     data-signup-motion
-    data-signup-variant="current"
+    data-signup-variant={variant}
+    data-signup-compare={compare ? '' : undefined}
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'signup' : undefined}
 >
@@ -72,7 +79,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       <p class="project-signup__status-message" data-signup-status-message></p>
     </div>
   </form>
-  {import.meta.env.DEV && (
+  {showPanel && (
     <aside class="signup-motion-panel" data-signup-motion-panel aria-label="Success motion">
       <p class="signup-motion-panel__title">Success motion</p>
       <label>Preview speed
@@ -179,15 +186,17 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         <p class="signup-motion-panel__note">Center first, then outer. Independent of Current’s Get involved out.</p>
       </div>
       <p class="signup-motion-panel__group" data-for="current">6. Placeholder</p>
-      <p class="signup-motion-panel__group" data-for="throw">7. Placeholder</p>
-      <label>Wait, then fade in <output data-out="placeholderWait">400ms</output>
+      <label data-for="current">Wait, then fade in <output data-out="placeholderWait">400ms</output>
         <input data-ctrl="placeholderWait" type="range" min="0" max="2000" step="50" value="400" />
       </label>
-      <p class="signup-motion-panel__note">Placeholder fade uses Letter ease. Empty / invalid submit uses the real field status.</p>
+      <p class="signup-motion-panel__note" data-for="current">Placeholder fade uses Letter ease. Empty / invalid submit uses the real field status.</p>
+      <p class="signup-motion-panel__note" data-for="throw">Placeholder starts with Get involved coming back. Empty / invalid submit uses the real field status.</p>
       <button type="button" class="signup-motion-panel__btn" data-copy>Copy config</button>
       <button type="button" class="signup-motion-panel__btn" data-save>Save</button>
       <button type="button" class="signup-motion-panel__btn" data-revert>Revert</button>
     </aside>
+  )}
+  {showPicker && (
     <nav class="proto-picker" aria-label="Prototype variants">
       <span class="proto-picker-highlight" aria-hidden="true"></span>
       <button class="proto-picker-item" data-active aria-current="true">Current</button>
@@ -449,6 +458,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           animation.cancel();
         });
       });
+      finishEmail();
+      const placeholderIn = revealPlaceholder(token);
       const maxFromEdge = letterExit(0, n, c.inMove, reduce).maxFromEdge;
       const giIn = chars.map((el, i) => {
         const pose = letterExit(i, n, c.inMove, reduce);
@@ -468,8 +479,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           },
         );
       });
-      await Promise.all([emailDone, checkOut, ...giIn.map(settled)]);
-      finishEmail();
+      await Promise.all([emailDone, checkOut, placeholderIn, ...giIn.map(settled)]);
       chars.forEach((el) => {
         el.style.cssText = '';
         el.getAnimations().forEach((animation) => animation.cancel());
@@ -599,8 +609,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       button.removeAttribute('aria-busy');
       celebrating = false;
       form.classList.remove('is-celebrating');
-      await waitMs(c.placeholderWait);
-      await revealPlaceholder(id);
+      if (variant !== 'throw') {
+        await waitMs(c.placeholderWait);
+        await revealPlaceholder(id);
+      }
     };
     const picker = motionRoot?.querySelector<HTMLElement>('.proto-picker');
     const highlight = picker?.querySelector<HTMLElement>('.proto-picker-highlight');
@@ -646,6 +658,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       resetIdle();
       replayMotion();
     });
+    if (picker) {
     window.addEventListener('resize', moveHighlight);
     document.addEventListener('keydown', (event) => {
       const target = event.target;
@@ -662,7 +675,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       }
     });
     setActive((Number.parseInt(new URLSearchParams(location.search).get('v') ?? '', 10) || 1) - 1);
-    requestAnimationFrame(() => requestAnimationFrame(() => picker?.setAttribute('data-ready', '')));
+    requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute('data-ready', '')));
+    }
     let shakes: Animation[] = [];
     const dismissStatus = () => {
       clearTimeout(statusTimer);
@@ -803,6 +817,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     flex-direction: column;
     gap: var(--space-related);
     max-width: 40em;
+  }
+
+  .project-signup[data-signup-compare] .project-signup__form {
+    max-width: none;
   }
 
   .project-signup__status {
