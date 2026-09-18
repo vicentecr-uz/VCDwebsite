@@ -52,14 +52,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         placeholder={placeholder}
         aria-describedby={statusId}
         data-signup-email
-      />
+      >
+        <span slot="trail" class="project-signup__shortcut" data-signup-shortcut data-text-field-trail hidden aria-hidden="true">⏎</span>
+      </TextField>
       <div class="project-signup__action">
-        <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
-          ⏎
-          <svg class="project-signup__shortcut-tail" width="20" height="8" viewBox="0 0 24 10" focusable="false">
-            <path d="M0 0 C4 0 5 0 7 3 L10 7 Q12 10 14 7 L17 3 C19 0 20 0 24 0 Z" />
-          </svg>
-        </span>
         <button type="submit" aria-label={label} aria-keyshortcuts="Enter">
           <span class="project-signup__label" data-signup-label aria-hidden="true">{label}</span>
           <span class="project-signup__check" data-signup-check hidden aria-hidden="true">
@@ -218,6 +214,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       }
       shortcut.hidden = input.value.length === 0;
       shortcut.classList.toggle('is-valid', input.validity.valid);
+      input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     };
     input?.addEventListener('input', () => {
       updateShortcut();
@@ -425,18 +422,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .project-signup__shortcut {
-    position: absolute;
-    left: 50%;
-    bottom: calc(100% + 0.75rem);
-    transform: translateX(-50%);
-    transform-origin: 50% calc(100% + 6px);
-    padding: 0.375rem 0.5rem;
-    border-radius: 0.5rem;
-    background: var(--sys-color-srf-container-low);
+    flex: none;
+    align-self: center;
+    padding: 0 0 0 0.4em;
     color: var(--sys-color-on-srf-subtle);
     font-size: 0.8125rem;
-    line-height: 1.25;
-    white-space: nowrap;
+    line-height: 1;
     pointer-events: none;
     transition: color 150ms ease;
   }
@@ -447,12 +438,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   @keyframes shortcut-enter {
     from {
-      transform: translateX(-50%) scale(0.97);
       opacity: 0;
       filter: blur(2px);
     }
     to {
-      transform: translateX(-50%) scale(1);
       opacity: 1;
       filter: blur(0);
     }
@@ -467,14 +456,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   @keyframes shortcut-fade {
     from { opacity: 0; }
     to { opacity: 1; }
-  }
-
-  .project-signup__shortcut-tail {
-    position: absolute;
-    top: calc(100% - 1px);
-    left: 50%;
-    transform: translateX(-50%);
-    fill: var(--sys-color-srf-container-low);
   }
 
   .project-signup__shortcut.is-valid {
@@ -536,7 +517,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   :global(.project-signup__field .dev-text-field__content) {
-    padding: 0 0.75rem;
+    padding-block: 0;
+    padding-inline-start: 0.75rem;
+    padding-inline-end: calc(0.75rem + var(--dev-text-field-trail-end, 0px));
   }
 
   :global(.project-signup__field .dev-field__input) {
