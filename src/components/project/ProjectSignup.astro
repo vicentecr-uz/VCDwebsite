@@ -58,6 +58,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
+    const input = form.querySelector('input');
+    input?.addEventListener('pointerdown', () => { input.dataset.pointerFocus = ''; });
+    input?.addEventListener('blur', () => { delete input.dataset.pointerFocus; });
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab') delete input.dataset.pointerFocus;
+    });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const status = form.querySelector<HTMLElement>('[data-project-signup-status]');
@@ -68,6 +74,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 <style>
   .project-signup__form {
+    width: 100%;
     display: flex;
     flex-direction: column;
     gap: var(--space-related);
@@ -85,11 +92,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .project-signup__control input {
+    appearance: none;
+    width: 0;
     min-width: 0;
     flex: 1;
+    height: 2.625rem;
     min-height: 2.625rem;
     padding: 0 0.75rem;
     border: 0;
+    border-radius: 0.5rem;
     outline: 0;
     background: transparent;
     color: var(--sys-color-on-srf);
@@ -101,10 +112,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     opacity: 1;
   }
 
-  .project-signup__control input:focus-visible {
+  .project-signup__control input:focus-visible:not([data-pointer-focus]) {
     outline: 2px solid var(--sys-color-on-srf);
     outline-offset: -2px;
-    border-radius: 0.5rem;
   }
 
   .project-signup__control button {
