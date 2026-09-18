@@ -3,6 +3,13 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 ---
 
 <DemoLayout title="Signup success motion">
+  {import.meta.env.DEV && (
+    <script>
+      import '@aiforui/lapse/install';
+      import { mountLapse } from '@aiforui/lapse/panel';
+      mountLapse();
+    </script>
+  )}
   <div id="proto-root" class="proto-root">
     <section class="proto-context">
       <p class="proto-kicker">Newsletter</p>
@@ -75,6 +82,10 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 </DemoLayout>
 
 <style is:global>
+  html, body {
+    background: var(--sys-color-srf);
+  }
+
   .proto-root {
     --stagger: 20;
     --char-ms: 160;
@@ -367,7 +378,7 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
   }
 </style>
 
-<script is:inline>
+<script>
   const root = document.getElementById('proto-root');
   const stage = document.getElementById('stage');
   const picker = document.querySelector('.proto-picker');
