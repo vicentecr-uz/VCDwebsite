@@ -168,12 +168,19 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     color: var(--comp-button-filled-label);
     cursor: pointer;
     font: 400 1.1rem / 1 var(--font-sans);
+    transition: background-color 0.2s ease, transform var(--motion-press-duration) ease-out;
   }
 
   @media (hover: hover) and (pointer: fine) {
     .proto-control button:hover {
       background: var(--comp-button-filled-container-hover);
     }
+  }
+
+  .proto-control button:active,
+  .proto-control button.is-keyboard-pressed {
+    background: var(--comp-button-filled-container-hover);
+    transform: scale(var(--motion-press-scale));
   }
 
   .proto-control button:focus-visible {
@@ -507,7 +514,19 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
   const bind = () => {
     const form = stage.querySelector('[data-proto-form]');
     const label = form?.querySelector('[data-label]');
+    const button = form?.querySelector('button[type=submit]');
+    const input = form?.querySelector('input');
+    let pressTimer;
     if (label) splitLabel(label);
+    input?.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' || event.isComposing) return;
+      event.preventDefault();
+      if (event.repeat) return;
+      clearTimeout(pressTimer);
+      button?.classList.add('is-keyboard-pressed');
+      pressTimer = setTimeout(() => button?.classList.remove('is-keyboard-pressed'), 150);
+      form.requestSubmit();
+    });
     form?.addEventListener('submit', (event) => {
       event.preventDefault();
       void play();
