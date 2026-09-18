@@ -347,6 +347,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: transparent;
   }
 
+  /* Pointer/tap focus stays quiet: kill shared TextField hover fill + focus-within inset ring. */
+  :global(.project-signup__field:hover .dev-field__value),
+  :global(.project-signup__field .dev-field__value:focus-within) {
+    background: transparent;
+    box-shadow: none;
+  }
+
   :global(.project-signup__field .dev-text-field) {
     --dev-text-field-edge-gutter: 12px;
     --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
@@ -355,12 +362,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: transparent;
   }
 
-  :global(.project-signup__field:hover .dev-text-field) {
+  :global(.project-signup__field:hover .dev-text-field),
+  :global(.project-signup__field:focus-within .dev-text-field) {
     --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
-  }
-
-  :global(.project-signup__field:hover .dev-field__value) {
-    background: transparent;
   }
 
   :global(.project-signup__field .dev-text-field__content) {
@@ -373,6 +377,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     margin: 0;
     padding: 0;
     outline: 0;
+    -webkit-tap-highlight-color: transparent;
     color: var(--sys-color-on-srf);
     font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
   }
