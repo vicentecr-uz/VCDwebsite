@@ -1,0 +1,395 @@
+---
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
+import TextField from '../ui/TextField.astro';
+
+interface Props {
+  label?: string;
+  placeholder?: string;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+
+const {
+  label = 'Get involved',
+  placeholder = 'jternus@apple.com',
+  documentKey,
+  sectionPath,
+  spacing = 'group',
+  sectionId,
+  contentId,
+} = Astro.props;
+const statusId = `signup-status-${sectionId ?? Math.random().toString(36).slice(2, 8)}`;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={editable ? 'signup' : undefined}
+>
+  <form class="project-signup__form" data-project-signup-form novalidate>
+    <div class="project-signup__control">
+      <span class="project-signup__surface" aria-hidden="true"></span>
+      <TextField
+        class="project-signup__field"
+        label="Email address"
+        hideLabel
+        pattern={String.raw`[^@\s]+@[^@\s]+\.[^@\s]+`}
+        required
+        autocomplete="email"
+        inputmode="email"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder={placeholder}
+        aria-describedby={statusId}
+        data-signup-email
+      />
+      <div class="project-signup__action">
+        <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
+          ⏎
+          <svg class="project-signup__shortcut-tail" width="20" height="8" viewBox="0 0 24 10" focusable="false">
+            <path d="M0 0 C4 0 5 0 7 3 L10 7 Q12 10 14 7 L17 3 C19 0 20 0 24 0 Z" />
+          </svg>
+        </span>
+        <button type="submit" aria-keyshortcuts="Enter">{label}</button>
+      </div>
+    </div>
+    <div id={statusId} class="project-signup__status" data-signup-status aria-live="polite" aria-atomic="true">
+      <p class="project-signup__status-message" data-signup-status-message></p>
+    </div>
+  </form>
+</section>
+
+<script>
+  import tlds from 'tlds';
+
+  const validTlds = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
+  // Design-review only; replace this handler with the signup API before enabling subscriptions.
+  document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
+    if (form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
+    const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
+    const field = form.querySelector<HTMLElement>('.project-signup__field');
+    const button = form.querySelector<HTMLButtonElement>('button[type=submit]');
+    let pressTimer: ReturnType<typeof setTimeout>;
+    const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
+    const statusMessage = form.querySelector<HTMLElement>('[data-signup-status-message]');
+    const surface = form.querySelector<HTMLElement>('.project-signup__surface');
+    let statusTimer: ReturnType<typeof setTimeout>;
+    let shakes: Animation[] = [];
+    const dismissStatus = () => {
+      clearTimeout(statusTimer);
+      form.classList.remove('is-error', 'has-status');
+    };
+    const showStatus = (message: string, error = false) => {
+      dismissStatus();
+      if (statusMessage) {
+        statusMessage.textContent = message;
+        statusMessage.classList.toggle('project-signup__error', error);
+      }
+      form.classList.add('has-status');
+      form.classList.toggle('is-error', error);
+      statusTimer = setTimeout(dismissStatus, 2500);
+    };
+    const emailChecker = document.createElement('input');
+    emailChecker.type = 'email';
+    const updateShortcut = () => {
+      if (!input || !shortcut) return;
+      input.setCustomValidity('');
+      emailChecker.value = input.value;
+      if (emailChecker.validity.typeMismatch) {
+        input.setCustomValidity('Enter a valid email address.');
+      }
+      if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
+        input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
+      }
+      shortcut.hidden = input.value.length === 0;
+      shortcut.classList.toggle('is-valid', input.validity.valid);
+    };
+    input?.addEventListener('input', () => {
+      updateShortcut();
+      dismissStatus();
+      input.removeAttribute('aria-invalid');
+    });
+    input?.addEventListener('change', updateShortcut);
+    updateShortcut();
+    field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
+    input?.addEventListener('blur', () => { if (field) delete field.dataset.pointerFocus; });
+    input?.addEventListener('keydown', (event) => {
+      if (event.key === 'Tab' && field) delete field.dataset.pointerFocus;
+      if (event.key === 'Enter' && !event.isComposing) {
+        event.preventDefault();
+        if (event.repeat) return;
+        clearTimeout(pressTimer);
+        button?.classList.add('is-keyboard-pressed');
+        pressTimer = setTimeout(() => button?.classList.remove('is-keyboard-pressed'), 150);
+        form.requestSubmit();
+      }
+    });
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      updateShortcut();
+      dismissStatus();
+      if (!input || !input.value.trim()) return;
+      if (!input.validity.valid) {
+        input.setAttribute('aria-invalid', 'true');
+        showStatus(input.validity.patternMismatch
+          ? 'Enter a valid email address.'
+          : input.validationMessage, true);
+        shakes.forEach((animation) => animation.cancel());
+        shakes = [];
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
+            [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
+            { duration: 300, easing: 'ease-in-out' },
+          ));
+        }
+        return;
+      }
+      input.removeAttribute('aria-invalid');
+      showStatus('Signup is not available yet.');
+    });
+  });
+</script>
+
+<style>
+  .project-signup__form {
+    position: relative;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-related);
+    max-width: 40em;
+  }
+
+  .project-signup__status {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    color: var(--sys-color-on-srf-subtle);
+    font-size: var(--text-input-status-size);
+    font-weight: var(--text-input-status-weight);
+    line-height: var(--text-input-status-leading);
+    letter-spacing: var(--text-input-status-tracking);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-8px);
+    visibility: hidden;
+    transition: opacity 180ms ease, transform 180ms ease, visibility 0s 180ms;
+  }
+
+  .project-signup__form.has-status .project-signup__status {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .project-signup__form.is-error .project-signup__surface {
+    outline-color: var(--sys-color-error);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-signup__status { transform: none; }
+  }
+
+  .project-signup__control {
+    position: relative;
+    isolation: isolate;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 9rem;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 3.125rem;
+    padding: 0.25rem;
+    border-radius: 0.75rem;
+  }
+
+  .project-signup__surface {
+    outline: 2px solid transparent;
+    outline-offset: 0;
+    transition: outline-color 180ms ease;
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--sys-color-srf-container-lowest);
+    pointer-events: none;
+  }
+
+  .project-signup__control button {
+    position: relative;
+    width: 100%;
+    min-height: 2.625rem;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
+    cursor: pointer;
+    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+    /* Same press cue as .dev-btn: filled hover/active share one colour, so scale is the click signal. */
+    transition: background-color 0.2s ease, transform var(--motion-press-duration) ease-out;
+  }
+
+  .project-signup__control button::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+
+  .project-signup__action {
+    position: relative;
+    min-width: 0;
+  }
+
+  .project-signup__shortcut {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    transform-origin: 50% calc(100% + 6px);
+    bottom: calc(100% + 1rem);
+    padding: 0.375rem 0.5rem;
+    border-radius: 0.5rem;
+    background: var(--sys-color-srf-container-low);
+    color: var(--sys-color-on-srf-subtle);
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    pointer-events: none;
+    transition: color 150ms ease;
+  }
+
+  .project-signup__shortcut:not([hidden]) {
+    animation: shortcut-enter 180ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+
+  @keyframes shortcut-enter {
+    from {
+      transform: translateX(-50%) scale(0.97);
+      opacity: 0;
+      filter: blur(2px);
+    }
+    to {
+      transform: translateX(-50%) scale(1);
+      opacity: 1;
+      filter: blur(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-signup__shortcut:not([hidden]) {
+      animation-name: shortcut-fade;
+    }
+  }
+
+  @keyframes shortcut-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .project-signup__shortcut-tail {
+    position: absolute;
+    top: calc(100% - 1px);
+    left: 50%;
+    transform: translateX(-50%);
+    fill: var(--sys-color-srf-container-low);
+  }
+
+  .project-signup__shortcut.is-valid {
+    color: var(--sys-color-on-srf);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-signup__control button:hover {
+      background: var(--comp-button-filled-container-hover);
+    }
+  }
+
+  .project-signup__control button:active,
+  .project-signup__control button.is-keyboard-pressed {
+    background: var(--comp-button-filled-container-hover);
+    transform: scale(var(--motion-press-scale));
+  }
+
+  .project-signup__control button:focus-visible {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: 2px;
+  }
+
+  .project-signup__status-message { margin: 0; }
+
+  .project-signup__error { color: var(--sys-color-error); }
+
+  :global(.project-signup__field) {
+    min-width: 0;
+    width: 100%;
+  }
+
+  :global(.project-signup__field .dev-field__value) {
+    min-width: 0;
+    width: 100%;
+    padding: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+  }
+
+  :global(.project-signup__field .dev-text-field) {
+    --dev-text-field-edge-gutter: 12px;
+    --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
+    min-width: 0;
+    width: 100%;
+    background: transparent;
+  }
+
+  :global(.project-signup__field:hover .dev-text-field) {
+    --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
+  }
+
+  :global(.project-signup__field:hover .dev-field__value) {
+    background: transparent;
+  }
+
+  :global(.project-signup__field .dev-text-field__content) {
+    padding: 0 0.75rem;
+  }
+
+  :global(.project-signup__field .dev-field__input) {
+    appearance: none;
+    height: 2.625rem;
+    margin: 0;
+    padding: 0;
+    outline: 0;
+    color: var(--sys-color-on-srf);
+    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+  }
+
+  :global(.project-signup__field .dev-field__input::placeholder) {
+    color: var(--sys-color-on-srf-subtle);
+    opacity: 1;
+  }
+
+  :global(.project-signup__field:not([data-pointer-focus]) .dev-field__value:has(input:focus-visible)) {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
+  }
+
+  @media (max-width: 40em) {
+    .project-signup__control {
+      grid-template-columns: minmax(0, 1fr) 8.5rem;
+    }
+  }
+</style>

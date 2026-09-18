@@ -129,7 +129,9 @@ export function createHomeRevealController(home: HTMLElement, win: Window = wind
         // stay visible so opacity/WAAPI can reveal it while the semantic source
         // remains hidden until cleanup.
         makeHomeRevealCloneVisible(clone);
-        Object.assign(clone.style, { position: 'fixed', margin: '0', left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, pointerEvents: 'none' });
+        // The intro resets scroll on dismissal; anchor clones to the page, not the viewport.
+        const homeRect = home.getBoundingClientRect();
+        Object.assign(clone.style, { position: 'absolute', margin: '0', left: `${rect.left - homeRect.left}px`, top: `${rect.top - homeRect.top}px`, width: `${rect.width}px`, pointerEvents: 'none' });
         home.append(clone); clones.push(clone);
         let lines: HTMLElement[] | undefined;
         try {
