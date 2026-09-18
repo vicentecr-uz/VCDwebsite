@@ -23,6 +23,13 @@ test('production visible diagnostic is limited to loopback hosts and the veil', 
   assert.match(productionStyle, /#transition-overlay/);
   assert.doesNotMatch(productionStyle, /transition-readiness-marker|background: #ff1493/);
 });
+
+test('cold loads cover with an inline veil before bundled CSS', () => {
+  const critical = layout.match(/<style is:inline>\s*\/\* Cover the first paint[\s\S]*?<\/style>/)?.[0] ?? '';
+  assert.match(critical, /#transition-overlay\s*\{[^}]*position:\s*fixed/);
+  assert.match(critical, /#transition-overlay\s*\{[^}]*opacity:\s*1/);
+  assert.match(layout, /<a href="#main-content"[\s\S]*?<div id="transition-overlay">/);
+});
 const script = [...layout.matchAll(/<script>([\s\S]*?)<\/script>/g)]
   .map((match) => match[1]).find((source) => source.includes("import gsap from 'gsap'"));
 assert.ok(script, 'Exercise the actual Layout transition script');
@@ -200,7 +207,7 @@ function fixture(options: { images?: ImageFixture[]; fonts?: Promise<void>; noOv
     performance: { now: () => 0, mark: (name: string, markOptions?: any) => { marks.push({ name, options: markOptions }); } },
     Event: class { constructor(public type: string) {} }, innerHeight: 800, innerWidth: 1200,
     setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame,
-    gsap: fakeGsap, bindSafeVh() {}, bindImagePreviewUpgrade() { bound++; },
+    gsap: fakeGsap, bindSafeVh() {}, bindExternalLinks() {}, bindImagePreviewUpgrade() { bound++; },
     openImagePreviewUpgrade() { if (options.failUpgrade) throw new Error('upgrade unavailable'); upgrades++; },
     getComputedStyle: (element: any) => ({
       opacity: element.style?.opacity ?? overlay.style.opacity,
@@ -283,6 +290,26 @@ test('early initial controller reveals once and deferred module adopts its state
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-readiness-satisfied'));
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-start'));
   assert.ok(f.marks.some((mark) => mark.name === 'vcd:initial-fade-end'));
+});
+
+test('inline reveal waits for viewport thumbnail decode before fading', async () => {
+  const image = new ImageFixture();
+  image.complete = true;
+  image.naturalWidth = 300;
+  const f = fixture({ initialController: true, images: [image] });
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(image.decodeCalls, 1);
+  assert.notEqual(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(Number(f.overlay.style.opacity), 1);
+  image.decoded.resolve();
+  await flush();
+  await f.paint();
+  await f.paint();
+  await f.advance(250);
+  assert.equal(f.overlay.dataset.vcdInitialReveal, 'complete');
+  assert.equal(Number(f.overlay.style.opacity), 0);
 });
 
 test('initial page stays covered until intro spacing is ready', async () => {
