@@ -14,8 +14,6 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
-  compare?: boolean;
-  variant?: 'current' | 'throw';
 }
 
 const {
@@ -26,22 +24,16 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
-  compare = false,
-  variant = 'current',
 } = Astro.props;
 const statusId = `signup-status-${sectionId ?? Math.random().toString(36).slice(2, 8)}`;
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
-const showPanel = import.meta.env.DEV && !compare;
-const showPicker = import.meta.env.DEV && !compare;
 ---
 
 <section
   id={sectionId}
   class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
-    data-signup-motion
-    data-signup-variant={variant}
-    data-signup-compare={compare ? '' : undefined}
+  data-signup-motion
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'signup' : undefined}
 >
@@ -79,139 +71,12 @@ const showPicker = import.meta.env.DEV && !compare;
       <p class="project-signup__status-message" data-signup-status-message></p>
     </div>
   </form>
-  {showPanel && (
-    <aside class="signup-motion-panel" data-signup-motion-panel aria-label="Success motion">
-      <p class="signup-motion-panel__title">Success motion</p>
-      <label>Preview speed
-        <select data-ctrl="speed">
-          <option value="1" selected>1×</option>
-          <option value="0.5">0.5×</option>
-          <option value="0.25">0.25×</option>
-        </select>
-      </label>
-      <p class="signup-motion-panel__note">Get involved leaving and the check are locked except where a slider says otherwise. Controls follow the routine.</p>
-      <div data-for="current">
-        <p class="signup-motion-panel__group">1. Check leaves</p>
-        <label>Delay after check-out starts <output data-out="emailVsCheck">100ms</output>
-          <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="100" />
-        </label>
-      </div>
-      <p class="signup-motion-panel__group" data-for="current">2. Wind-up (left)</p>
-      <p class="signup-motion-panel__group" data-for="throw">1. Wind-up (left)</p>
-      <label>Distance <output data-out="anticipate">10px</output>
-        <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="10" />
-      </label>
-      <label>Duration <output data-out="anticipateMs">100ms</output>
-        <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="100" />
-      </label>
-      <label>Ease
-        <select data-ctrl="anticipateEase">
-          <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate — fastest at the left</option>
-          <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
-          <option value="cubic-bezier(0.4, 0.05, 0.6, 0.95)" selected>coil — slow–fast–slow</option>
-          <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">settle — brakes into the pose</option>
-          <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
-        </select>
-      </label>
-      <label>Taller and skinnier <output data-out="squash">0.10</output>
-        <input data-ctrl="squash" type="range" min="0" max="0.3" step="0.02" value="0.1" />
-      </label>
-      <p class="signup-motion-panel__group" data-for="current">3. Store</p>
-      <p class="signup-motion-panel__group" data-for="throw">2. Store</p>
-      <label>Hold at left <output data-out="storeMs">70ms</output>
-        <input data-ctrl="storeMs" type="range" min="0" max="200" step="10" value="70" />
-      </label>
-      <p class="signup-motion-panel__group" data-for="current">4. Release (right)</p>
-      <p class="signup-motion-panel__group" data-for="throw">3. Release (right)</p>
-      <label>Duration fallback <output data-out="emailMs">500ms</output>
-        <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="500" />
-      </label>
-      <label>Ease fallback
-        <select data-ctrl="releaseEase">
-          <option value="linear">constant — already at speed</option>
-          <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate from rest</option>
-          <option value="cubic-bezier(0.5, 0, 0.75, 0.16)" selected>accelerate hard from rest</option>
-        </select>
-      </label>
-      <label>Acceleration <output data-out="accel">12000 px/s²</output>
-        <input data-ctrl="accel" type="range" min="0" max="40000" step="500" value="12000" />
-      </label>
-      <label>Max speed <output data-out="vmax">1600 px/s</output>
-        <input data-ctrl="vmax" type="range" min="200" max="4000" step="50" value="1600" />
-      </label>
-      <p class="signup-motion-panel__note">Acceleration 0 uses Duration fallback + Ease fallback. Otherwise the throw is accelerate-then-coast at max speed.</p>
-      <label>Shorter and wider <output data-out="stretch">0.10</output>
-        <input data-ctrl="stretch" type="range" min="0" max="0.3" step="0.02" value="0.1" />
-      </label>
-      <p class="signup-motion-panel__group" data-for="current">5. Get involved back</p>
-      <p class="signup-motion-panel__group" data-for="throw">4. Get involved out</p>
-      <label>Start during release <output data-out="returnAt">80%</output>
-        <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="80" />
-      </label>
-      <label>Stagger across release <output data-out="returnSpan">40%</output>
-        <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="40" />
-      </label>
-      <label>Each letter <output data-out="returnMs">300ms</output>
-        <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="300" />
-      </label>
-      <label>Letter ease
-        <select data-ctrl="ease">
-          <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">ease-out-quad</option>
-          <option value="cubic-bezier(0.215, 0.61, 0.355, 1)">ease-out-cubic</option>
-          <option value="cubic-bezier(0.165, 0.84, 0.44, 1)">ease-out-quart</option>
-          <option value="cubic-bezier(0.23, 1, 0.32, 1)" selected>ease-out-quint</option>
-          <option value="cubic-bezier(0.32, 0.72, 0, 1)">ease-out-strong</option>
-          <option value="cubic-bezier(0.645, 0.045, 0.355, 1)">ease-in-out-cubic</option>
-        </select>
-      </label>
-      <div data-for="throw">
-        <p class="signup-motion-panel__group">5. Check in</p>
-        <label>Vs last letter out <output data-out="checkVsLast">0ms</output>
-          <input data-ctrl="checkVsLast" type="range" min="-400" max="400" step="10" value="0" />
-        </label>
-        <p class="signup-motion-panel__note">Negative starts the check before the last Get involved letter finishes. Positive waits after it.</p>
-        <p class="signup-motion-panel__group">6. Get involved back</p>
-        <label>Timing offset <output data-out="inStagger">50ms</output>
-          <input data-ctrl="inStagger" type="range" min="0" max="160" step="5" value="50" />
-        </label>
-        <label>Distance <output data-out="inMove">14px</output>
-          <input data-ctrl="inMove" type="range" min="0" max="32" step="1" value="14" />
-        </label>
-        <label>Blur <output data-out="inBlur">12px</output>
-          <input data-ctrl="inBlur" type="range" min="0" max="24" step="1" value="12" />
-        </label>
-        <label>Each letter <output data-out="inMs">320ms</output>
-          <input data-ctrl="inMs" type="range" min="80" max="800" step="10" value="320" />
-        </label>
-        <p class="signup-motion-panel__note">Center first, then outer. Independent of Current’s Get involved out.</p>
-      </div>
-      <p class="signup-motion-panel__group" data-for="current">6. Placeholder</p>
-      <label data-for="current">Wait, then fade in <output data-out="placeholderWait">400ms</output>
-        <input data-ctrl="placeholderWait" type="range" min="0" max="2000" step="50" value="400" />
-      </label>
-      <p class="signup-motion-panel__note" data-for="current">Placeholder fade uses Letter ease. Empty / invalid submit uses the real field status.</p>
-      <p class="signup-motion-panel__note" data-for="throw">Placeholder starts with Get involved coming back. Empty / invalid submit uses the real field status.</p>
-      <button type="button" class="signup-motion-panel__btn" data-copy>Copy config</button>
-      <button type="button" class="signup-motion-panel__btn" data-save>Save</button>
-      <button type="button" class="signup-motion-panel__btn" data-revert>Revert</button>
-    </aside>
-  )}
-  {showPicker && (
-    <nav class="proto-picker" aria-label="Prototype variants">
-      <span class="proto-picker-highlight" aria-hidden="true"></span>
-      <button class="proto-picker-item" data-active aria-current="true">Current</button>
-      <button class="proto-picker-item">Throw first</button>
-      <span class="proto-picker-divider" aria-hidden="true"></span>
-      <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
-    </nav>
-  )}
 </section>
 
 <script>
   import tlds from 'tlds';
   import {
     animateRelease,
-    bindSignupMotionPanel,
     readSignupMotionCfg,
     throwDurationMs,
   } from '../../scripts/signupSuccessMotion';
@@ -221,8 +86,6 @@ const showPicker = import.meta.env.DEV && !compare;
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
     const motionRoot = form.closest<HTMLElement>('[data-signup-motion]');
-    const panel = motionRoot?.querySelector<HTMLElement>('[data-signup-motion-panel]');
-    if (motionRoot && panel) bindSignupMotionPanel(panel, motionRoot);
     const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
     const field = form.querySelector<HTMLElement>('.project-signup__field');
     const textField = form.querySelector<HTMLElement>('.dev-text-field');
@@ -235,9 +98,9 @@ const showPicker = import.meta.env.DEV && !compare;
     const labelEl = form.querySelector<HTMLElement>('[data-signup-label]');
     const checkEl = form.querySelector<HTMLElement>('[data-signup-check]');
     let celebrating = false;
+    let submitting = false;
     let playId = 0;
     let ghost: HTMLElement | null = null;
-    let lastEmail = '';
     if (labelEl && labelEl.dataset.split !== 'true') {
       const text = labelEl.textContent ?? '';
       labelEl.textContent = '';
@@ -291,16 +154,6 @@ const showPicker = import.meta.env.DEV && !compare;
       track.append(next);
       ghost = next;
       return next;
-    };
-    const letterExit = (i: number, n: number, move: number, reduce: boolean) => {
-      const center = Math.max(n - 1, 1) / 2;
-      const fromEdge = Math.min(i, n - 1 - i);
-      const maxFromEdge = Math.min(center, n - 1 - center);
-      const dist = center === 0 ? 0 : Math.abs(i - center) / center;
-      const dir = i < center ? 1 : i > center ? -1 : 0;
-      const travel = move * (0.25 + 0.75 * dist);
-      const x = reduce ? 0 : dir * travel;
-      return { fromEdge, maxFromEdge, x };
     };
     const prepareThrow = (reduce: boolean) => {
       if (!input || !motionRoot) return null;
@@ -366,38 +219,6 @@ const showPicker = import.meta.env.DEV && !compare;
       input.getAnimations().forEach((animation) => animation.cancel());
       teardownGhost();
     };
-    const playEmailAndReturn = async (
-      reduce: boolean,
-      chars: HTMLElement[],
-    ) => {
-      if (!labelEl) return;
-      const prepared = prepareThrow(reduce);
-      if (!prepared) return;
-      const { c, throwMs, runEmail } = prepared;
-      const emailDone = runEmail();
-      labelEl.hidden = false;
-      const n = chars.length;
-      const start = reduce ? 0 : c.anticipateMs + c.storeMs + c.returnAt * throwMs;
-      const span = reduce ? Math.max(0, n - 1) * 30 : c.returnSpan * throwMs;
-      const returnAnims = chars.map((el, i) => el.animate(
-        reduce
-          ? [{ opacity: 0 }, { opacity: 1 }]
-          : [
-            { opacity: 0, filter: `blur(${c.blur}px)`, transform: `scale(${c.scale})` },
-            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
-          ],
-        {
-          duration: c.returnMs,
-          delay: start + (n <= 1 ? 0 : (i / (n - 1)) * span),
-          easing: c.ease,
-          fill: 'both',
-        },
-      ));
-      await Promise.all([emailDone, ...returnAnims.map(settled)]);
-      finishEmail();
-      chars.forEach((el) => el.getAnimations().forEach((animation) => animation.cancel()));
-      labelEl.getAnimations().forEach((animation) => animation.cancel());
-    };
     const playThrowFirst = async (
       reduce: boolean,
       chars: HTMLElement[],
@@ -453,64 +274,32 @@ const showPicker = import.meta.env.DEV && !compare;
       await giOutDone;
       if (token !== playId) return;
       chars.forEach((el) => {
-        el.getAnimations().forEach((animation) => {
-          animation.commitStyles();
-          animation.cancel();
-        });
+        el.getAnimations().forEach((animation) => animation.cancel());
+        el.style.cssText = '';
       });
       finishEmail();
-      const placeholderIn = revealPlaceholder(token);
-      const maxFromEdge = letterExit(0, n, c.inMove, reduce).maxFromEdge;
-      const giIn = chars.map((el, i) => {
-        const pose = letterExit(i, n, c.inMove, reduce);
-        const delay = (maxFromEdge - pose.fromEdge) * c.inStagger;
-        return el.animate(
-          reduce
-            ? [{ opacity: 0 }, { opacity: 1 }]
-            : [
-              { opacity: 0, filter: `blur(${c.inBlur}px)`, transform: `translateX(${pose.x}px) scale(${c.scale})` },
-              { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
-            ],
-          {
-            duration: c.inMs,
-            delay,
-            easing: c.ease,
-            fill: 'forwards',
-          },
-        );
-      });
-      await Promise.all([emailDone, checkOut, placeholderIn, ...giIn.map(settled)]);
+      const giIn = labelEl.animate(
+        reduce
+          ? [{ opacity: 0 }, { opacity: 1 }]
+          : [
+            { opacity: 0, filter: `blur(${c.inBlur}px)`, transform: `scale(${c.scale})` },
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+          ],
+        { duration: c.inMs, easing: c.ease, fill: 'both' },
+      );
+      const placeholderIn = revealPlaceholder(token, { duration: c.inMs, blur: c.inBlur });
+      await Promise.all([emailDone, checkOut, placeholderIn, settled(giIn)]);
       chars.forEach((el) => {
         el.style.cssText = '';
         el.getAnimations().forEach((animation) => animation.cancel());
       });
-      labelEl.getAnimations().forEach((animation) => animation.cancel());
+      giIn.cancel();
+      labelEl.style.cssText = '';
     };
-    const resetIdle = () => {
-      playId += 1;
-      celebrating = false;
-      form.classList.remove('is-celebrating');
-      teardownGhost();
-      checkEl?.classList.remove('is-in', 'is-out', 'is-reduced');
-      if (checkEl) checkEl.hidden = true;
-      if (labelEl) {
-        labelEl.hidden = false;
-        labelEl.getAnimations().forEach((animation) => animation.cancel());
-        labelEl.querySelectorAll<HTMLElement>('[data-char]').forEach((el) => {
-          el.getAnimations().forEach((animation) => animation.cancel());
-          el.style.cssText = '';
-        });
-      }
-      if (input) {
-        input.classList.remove('is-signup-placeholder-pending', 'is-signup-ghosted');
-        input.readOnly = false;
-        input.getAnimations().forEach((animation) => animation.cancel());
-        input.style.cssText = '';
-      }
-      button?.removeAttribute('aria-busy');
-      shortcut?.classList.remove('is-inert');
-    };
-    const revealPlaceholder = async (id: number) => {
+    const revealPlaceholder = async (
+      id: number,
+      motion?: { duration: number; blur?: number },
+    ) => {
       if (!input || !motionRoot || id !== playId) return;
       const c = readSignupMotionCfg(motionRoot);
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -523,14 +312,16 @@ const showPicker = import.meta.env.DEV && !compare;
         input.classList.remove('is-signup-placeholder-pending');
         return;
       }
+      const duration = motion?.duration ?? 320 * c.speed;
+      const blur = motion?.blur ?? 4;
       await settled(next.animate(
         reduce
           ? [{ opacity: 0 }, { opacity: 1 }]
           : [
-            { opacity: 0, filter: 'blur(4px)' },
+            { opacity: 0, filter: `blur(${blur}px)` },
             { opacity: 1, filter: 'blur(0px)' },
           ],
-        { duration: 320 * c.speed, easing: c.ease, fill: 'forwards' },
+        { duration, easing: c.ease, fill: 'forwards' },
       ));
       if (id !== playId) return;
       input.classList.remove('is-signup-placeholder-pending');
@@ -547,136 +338,14 @@ const showPicker = import.meta.env.DEV && !compare;
       input.blur();
       shortcut?.classList.add('is-inert');
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const c = readSignupMotionCfg(motionRoot);
       const chars = [...labelEl.querySelectorAll<HTMLElement>('[data-char]')];
-      const variant = motionRoot.dataset.signupVariant === 'throw' ? 'throw' : 'current';
-      if (variant === 'throw') {
-        await playThrowFirst(reduce, chars, id);
-      } else {
-        const n = chars.length;
-        const center = Math.max(n - 1, 1) / 2;
-        const lastEnd = Math.max(...chars.map((_, i) => Math.min(i, n - 1 - i) * c.stagger + c.charMs));
-        chars.forEach((node, i) => {
-          const fromEdge = Math.min(i, n - 1 - i);
-          const dist = Math.abs(i - center) / center;
-          const dir = i < center ? 1 : i > center ? -1 : 0;
-          const travel = c.move * (c.taper * dist + (1 - c.taper));
-          const x = reduce ? 0 : dir * travel;
-          node.animate(
-            [
-              { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
-              { opacity: 0, filter: `blur(${reduce ? 0 : c.blur}px)`, transform: `translateX(${x}px) scale(${reduce ? 1 : c.scale})` },
-            ],
-            { duration: c.charMs, delay: fromEdge * c.stagger, easing: c.ease, fill: 'forwards' },
-          );
-        });
-        await waitMs(Math.max(0, lastEnd - c.overlap));
-        checkEl.hidden = false;
-        checkEl.classList.toggle('is-reduced', reduce);
-        checkEl.classList.remove('is-in', 'is-out');
-        void checkEl.offsetWidth;
-        await new Promise<void>((resolve) => {
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-        });
-        checkEl.classList.add('is-in');
-        await waitCheckTransition(c.checkMs);
-        await Promise.all(chars.map((node) => Promise.all(node.getAnimations().map(settled))));
-        labelEl.hidden = true;
-        chars.forEach((el) => el.getAnimations().forEach((animation) => animation.cancel()));
-        await waitMs(c.hold);
-        if (id !== playId) return;
-        let exitPromise = Promise.resolve();
-        if (c.emailVsCheck >= 0) {
-          checkEl.classList.remove('is-in');
-          checkEl.classList.add('is-out');
-          const checkDone = waitCheckTransition(c.checkMs);
-          if (c.emailVsCheck > 0) await waitMs(c.emailVsCheck);
-          exitPromise = playEmailAndReturn(reduce, chars);
-          await checkDone;
-        } else {
-          exitPromise = playEmailAndReturn(reduce, chars);
-          await waitMs(-c.emailVsCheck);
-          checkEl.classList.remove('is-in');
-          checkEl.classList.add('is-out');
-          await waitCheckTransition(c.checkMs);
-        }
-        checkEl.hidden = true;
-        checkEl.classList.remove('is-out', 'is-reduced');
-        await exitPromise;
-      }
+      await playThrowFirst(reduce, chars, id);
       if (id !== playId) return;
       input.readOnly = false;
       button.removeAttribute('aria-busy');
       celebrating = false;
       form.classList.remove('is-celebrating');
-      if (variant !== 'throw') {
-        await waitMs(c.placeholderWait);
-        await revealPlaceholder(id);
-      }
     };
-    const picker = motionRoot?.querySelector<HTMLElement>('.proto-picker');
-    const highlight = picker?.querySelector<HTMLElement>('.proto-picker-highlight');
-    const items = picker
-      ? [...picker.querySelectorAll<HTMLButtonElement>('.proto-picker-item:not(.proto-picker-replay)')]
-      : [];
-    const replay = picker?.querySelector<HTMLButtonElement>('.proto-picker-replay');
-    const variantKeys = ['current', 'throw'] as const;
-    let currentVariant = 0;
-    const moveHighlight = () => {
-      const el = items[currentVariant];
-      if (!el || !highlight) return;
-      highlight.style.width = `${el.offsetWidth}px`;
-      highlight.style.transform = `translateX(${el.offsetLeft}px)`;
-    };
-    const replayMotion = () => {
-      if (!input) return;
-      if (!input.value.trim()) input.value = lastEmail || 'jternus@apple.com';
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      void playSuccess();
-    };
-    const setActive = (i: number, play = false) => {
-      if (i < 0 || i >= variantKeys.length || !motionRoot) return;
-      currentVariant = i;
-      motionRoot.dataset.signupVariant = variantKeys[i];
-      panel?.querySelectorAll<HTMLElement>('[data-for]').forEach((el) => {
-        el.hidden = el.dataset.for !== variantKeys[i];
-      });
-      items.forEach((el, j) => {
-        el.toggleAttribute('data-active', j === i);
-        if (j === i) el.setAttribute('aria-current', 'true');
-        else el.removeAttribute('aria-current');
-      });
-      moveHighlight();
-      const url = new URL(location.href);
-      url.searchParams.set('v', String(i + 1));
-      history.replaceState(null, '', url);
-      resetIdle();
-      if (play) replayMotion();
-    };
-    items.forEach((el, i) => el.addEventListener('click', () => setActive(i)));
-    replay?.addEventListener('click', () => {
-      resetIdle();
-      replayMotion();
-    });
-    if (picker) {
-    window.addEventListener('resize', moveHighlight);
-    document.addEventListener('keydown', (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
-      if (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const num = Number.parseInt(event.key, 10);
-      if (num >= 1 && num <= variantKeys.length) setActive(num - 1);
-      else if (event.key === 'ArrowRight') setActive((currentVariant + 1) % variantKeys.length);
-      else if (event.key === 'ArrowLeft') setActive((currentVariant - 1 + variantKeys.length) % variantKeys.length);
-      else if (event.key === 'r' || event.key === 'R') {
-        resetIdle();
-        replayMotion();
-      }
-    });
-    setActive((Number.parseInt(new URLSearchParams(location.search).get('v') ?? '', 10) || 1) - 1);
-    requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute('data-ready', '')));
-    }
     let shakes: Animation[] = [];
     const dismissStatus = () => {
       clearTimeout(statusTimer);
@@ -742,9 +411,18 @@ const showPicker = import.meta.env.DEV && !compare;
         form.requestSubmit();
       }
     });
-    form.addEventListener('submit', (event) => {
+    const shakeInvalid = () => {
+      shakes.forEach((animation) => animation.cancel());
+      shakes = [];
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
+        [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
+        { duration: 300, easing: 'ease-in-out' },
+      ));
+    };
+    form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (celebrating) return;
+      if (celebrating || submitting) return;
       updateShortcut();
       dismissStatus();
       if (!input) return;
@@ -758,19 +436,46 @@ const showPicker = import.meta.env.DEV && !compare;
         showStatus(input.validity.patternMismatch
           ? 'Enter a valid email address.'
           : input.validationMessage, true);
-        shakes.forEach((animation) => animation.cancel());
-        shakes = [];
-        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
-            [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
-            { duration: 300, easing: 'ease-in-out' },
-          ));
-        }
+        shakeInvalid();
         return;
       }
       input.removeAttribute('aria-invalid');
-      lastEmail = input.value.trim();
-      void playSuccess();
+      submitting = true;
+      button?.setAttribute('aria-busy', 'true');
+      try {
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: input.value.trim() }),
+        });
+        let errorText = '';
+        try {
+          const payload = await response.json() as { error?: unknown };
+          if (typeof payload?.error === 'string') errorText = payload.error;
+        } catch {
+          // non-JSON body
+        }
+        if (response.status === 200) {
+          await playSuccess();
+          return;
+        }
+        if (response.status === 502 || response.status === 503) {
+          showStatus(errorText || 'Signup is not available yet.');
+        } else if (response.status >= 400 && response.status < 500) {
+          showStatus(errorText || 'Signup is not available yet.', true);
+          if (response.status === 400) {
+            input.setAttribute('aria-invalid', 'true');
+            shakeInvalid();
+          }
+        } else {
+          showStatus(errorText || 'Signup is not available yet.');
+        }
+      } catch {
+        showStatus('Signup is not available yet.');
+      } finally {
+        submitting = false;
+        if (!celebrating) button?.removeAttribute('aria-busy');
+      }
     });
   });
 </script>
@@ -785,7 +490,7 @@ const showPicker = import.meta.env.DEV && !compare;
     --blur: 10;
     --overlap: 400;
     --check-ms: 160;
-    --hold: 1400;
+    --hold: 1000;
     --email-vs-check: 100;
     --anticipate: 10;
     --anticipate-ms: 100;
@@ -817,10 +522,6 @@ const showPicker = import.meta.env.DEV && !compare;
     flex-direction: column;
     gap: var(--space-related);
     max-width: 40em;
-  }
-
-  .project-signup[data-signup-compare] .project-signup__form {
-    max-width: none;
   }
 
   .project-signup__status {
@@ -1148,187 +849,5 @@ const showPicker = import.meta.env.DEV && !compare;
 
   .project-signup__form.is-celebrating :global(.project-signup__field) {
     pointer-events: none;
-  }
-
-  .signup-motion-panel {
-    position: fixed;
-    top: 24px;
-    right: 24px;
-    z-index: 2147483647;
-    width: 260px;
-    max-height: calc(100vh - 96px);
-    overflow: auto;
-    padding: 12px;
-    border-radius: 12px;
-    background: rgba(10, 10, 10, 0.82);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    backdrop-filter: blur(12px) saturate(1.4);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-      0 8px 24px rgba(0, 0, 0, 0.24);
-    color: #fff;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 12px;
-    line-height: 1.3;
-    -webkit-font-smoothing: antialiased;
-  }
-
-  .signup-motion-panel__title,
-  .signup-motion-panel__group {
-    margin: 0 0 8px;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-  }
-
-  .signup-motion-panel__group {
-    margin-top: 12px;
-    color: rgba(255, 255, 255, 0.55);
-    font-weight: 500;
-  }
-
-  .signup-motion-panel__note {
-    margin: 0 0 8px;
-    color: rgba(255, 255, 255, 0.45);
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .signup-motion-panel label {
-    display: grid;
-    gap: 4px;
-    margin-bottom: 10px;
-    color: rgba(255, 255, 255, 0.8);
-  }
-
-  .signup-motion-panel output {
-    float: right;
-    font-variant-numeric: tabular-nums;
-    color: #fff;
-  }
-
-  .signup-motion-panel input[type="range"],
-  .signup-motion-panel select {
-    width: 100%;
-    accent-color: #fff;
-  }
-
-  .signup-motion-panel select {
-    height: 28px;
-    border: 0;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-  }
-
-  .signup-motion-panel__btn {
-    width: 100%;
-    height: 28px;
-    margin-top: 4px;
-    border: 0;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font: inherit;
-    cursor: pointer;
-  }
-
-  .signup-motion-panel__btn:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.4);
-    outline-offset: 2px;
-  }
-
-  :global(.project-signup[data-signup-variant='current'] [data-for='throw']),
-  :global(.project-signup[data-signup-variant='throw'] [data-for='current']) {
-    display: none;
-  }
-
-  .proto-picker {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 2147483647;
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    padding: 4px;
-    border-radius: 999px;
-    background: rgba(10, 10, 10, 0.82);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    backdrop-filter: blur(12px) saturate(1.4);
-    box-shadow:
-      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
-      0 8px 24px rgba(0, 0, 0, 0.24),
-      0 2px 6px rgba(0, 0, 0, 0.12);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-size: 13px;
-    line-height: 1;
-    -webkit-font-smoothing: antialiased;
-    user-select: none;
-    -webkit-user-select: none;
-  }
-
-  .proto-picker-highlight {
-    position: absolute;
-    top: 4px;
-    left: 0;
-    height: 28px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.12);
-    will-change: transform;
-  }
-
-  .proto-picker[data-ready] .proto-picker-highlight {
-    transition:
-      transform 250ms cubic-bezier(0.23, 1, 0.32, 1),
-      width 250ms cubic-bezier(0.23, 1, 0.32, 1);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .proto-picker[data-ready] .proto-picker-highlight { transition: none; }
-  }
-
-  .proto-picker-item {
-    position: relative;
-    display: flex;
-    align-items: center;
-    height: 28px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 999px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.55);
-    font: inherit;
-    cursor: pointer;
-    transition: color 150ms ease-out;
-  }
-
-  .proto-picker-item:hover {
-    color: rgba(255, 255, 255, 0.85);
-  }
-
-  .proto-picker-item:active {
-    transform: scale(0.97);
-  }
-
-  .proto-picker-item:focus-visible {
-    outline: 2px solid rgba(255, 255, 255, 0.4);
-    outline-offset: 2px;
-  }
-
-  .proto-picker-item[data-active] {
-    color: #fff;
-  }
-
-  .proto-picker-divider {
-    width: 1px;
-    height: 16px;
-    margin: 0 4px;
-    background: rgba(255, 255, 255, 0.12);
-  }
-
-  .proto-picker-replay {
-    padding: 0 10px;
-    font-size: 14px;
   }
 </style>

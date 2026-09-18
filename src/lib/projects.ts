@@ -79,6 +79,8 @@ const projectModules = import.meta.glob<{ default: ProjectDocument }>(
 export type PageDocumentKey = 'home' | 'home-intro' | 'work' | 'play' | 'about' | 'styles' | 'analytics';
 
 export type PageDocument = {
+  title?: string;
+  description?: string;
   subtitle?: string;
   introHeight?: number;
   introParagraphs?: string[];
