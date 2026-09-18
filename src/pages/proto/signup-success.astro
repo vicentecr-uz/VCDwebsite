@@ -92,6 +92,10 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     <label>Return duration <output data-out="returnMs">220ms</output>
       <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="220" />
     </label>
+    <p class="proto-panel-group">Placeholder</p>
+    <label>Wait <output data-out="placeholderWait">400ms</output>
+      <input data-ctrl="placeholderWait" type="range" min="0" max="2000" step="50" value="400" />
+    </label>
     <p class="proto-panel-note">Empty / invalid submit uses the real field status. Scale and blur for letters back come from Letters out.</p>
     <button type="button" class="proto-copy">Copy config</button>
     <button type="button" class="proto-copy proto-save">Save</button>
@@ -128,6 +132,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     --return-at: 25;
     --return-span: 55;
     --return-ms: 220;
+    --placeholder-wait: 400;
     --speed: 1;
     --ease: cubic-bezier(0.23, 1, 0.32, 1);
     width: min(40em, 100%);
@@ -181,9 +186,18 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     color: var(--sys-color-on-srf);
   }
 
+  .proto-email-ghost.is-placeholder {
+    color: var(--sys-color-on-srf-subtle);
+  }
+
   .proto-root .dev-field__input.is-proto-ghosted {
     color: transparent;
     caret-color: transparent;
+  }
+
+  .proto-root .dev-field__input.is-proto-placeholder-pending::placeholder {
+    color: transparent;
+    opacity: 0;
   }
 
   .proto-root .dev-text-field.is-proto-fade::after {
@@ -369,6 +383,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
   const DEMO_EMAIL = 'jternus@apple.com';
   let current = 0;
   let playing = false;
+  let playId = 0;
   let ghost = null;
 
   const form = () => stage.querySelector('[data-project-signup-form]');
@@ -411,6 +426,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       returnAt: num('--return-at', 25) / 100,
       returnSpan: num('--return-span', 55) / 100,
       returnMs: num('--return-ms', 220) * speed,
+      placeholderWait: num('--placeholder-wait', 400) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
       speed,
     };
@@ -451,6 +467,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
 
   const resetVisuals = () => {
     const { form: el, input, label, check, button } = parts();
+    playId += 1;
     playing = false;
     if (el) delete el.dataset.protoPlaying;
     teardownGhost();
@@ -469,7 +486,10 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       check.hidden = true;
       check.classList.remove('is-in', 'is-out', 'is-reduced');
     }
-    if (input) input.readOnly = false;
+    if (input) {
+      input.readOnly = false;
+      input.classList.remove('is-proto-placeholder-pending');
+    }
     button?.removeAttribute('aria-busy');
     el?.classList.remove('is-error', 'has-status');
   };
@@ -555,6 +575,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     ));
     await Promise.all([emailDone, ...returnAnims.map(settled)]);
     if (input) {
+      input.classList.add('is-proto-placeholder-pending');
       input.value = '';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.getAnimations().forEach((a) => a.cancel());
@@ -562,6 +583,47 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     teardownGhost();
     chars.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
     label.getAnimations().forEach((a) => a.cancel());
+  };
+
+  const revealPlaceholder = async (c, reduce, input, id) => {
+    if (id !== playId || !input) return;
+    if (input.value || document.activeElement === input) {
+      input.classList.remove('is-proto-placeholder-pending');
+      return;
+    }
+    const { textField } = parts();
+    const track = textField?.querySelector('.dev-text-field__track');
+    if (!track) {
+      input.classList.remove('is-proto-placeholder-pending');
+      return;
+    }
+    const next = document.createElement('span');
+    next.className = 'proto-email-ghost is-placeholder';
+    next.setAttribute('aria-hidden', 'true');
+    const style = getComputedStyle(input);
+    const inputRect = input.getBoundingClientRect();
+    const trackRect = track.getBoundingClientRect();
+    next.style.font = style.font;
+    next.style.letterSpacing = style.letterSpacing;
+    next.style.left = `${inputRect.left - trackRect.left + track.scrollLeft}px`;
+    next.style.top = `${inputRect.top - trackRect.top}px`;
+    next.style.height = `${inputRect.height}px`;
+    next.textContent = input.placeholder;
+    track.append(next);
+    ghost = next;
+    await settled(next.animate(
+      reduce
+        ? [{ opacity: 0 }, { opacity: 1 }]
+        : [
+          { opacity: 0, filter: 'blur(4px)' },
+          { opacity: 1, filter: 'blur(0px)' },
+        ],
+      { duration: 220 * c.speed, easing: c.ease, fill: 'forwards' },
+    ));
+    if (id !== playId) return;
+    next.remove();
+    if (ghost === next) ghost = null;
+    input.classList.remove('is-proto-placeholder-pending');
   };
 
   const startCheckOut = (check) => {
@@ -572,6 +634,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
   const play = async () => {
     const { form: el, input, label, check, button, shortcut } = parts();
     if (!el || !input || !label || !check || playing) return;
+    const id = ++playId;
     playing = true;
     el.dataset.protoPlaying = 'true';
     button?.setAttribute('aria-busy', 'true');
@@ -627,6 +690,9 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     button?.removeAttribute('aria-busy');
     delete el.dataset.protoPlaying;
     playing = false;
+    if (id !== playId) return;
+    await wait(c.placeholderWait);
+    await revealPlaceholder(c, reduce, input, id);
   };
 
   const remount = () => {
@@ -689,6 +755,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     const returnAt = Number(document.querySelector('[data-ctrl=returnAt]').value);
     const returnSpan = Number(document.querySelector('[data-ctrl=returnSpan]').value);
     const returnMs = Number(document.querySelector('[data-ctrl=returnMs]').value);
+    const placeholderWait = Number(document.querySelector('[data-ctrl=placeholderWait]').value);
     root.style.setProperty('--speed', String(speed));
     root.style.setProperty('--ease', ease);
     root.style.setProperty('--stagger', String(stagger));
@@ -707,6 +774,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     root.style.setProperty('--return-at', String(returnAt));
     root.style.setProperty('--return-span', String(returnSpan));
     root.style.setProperty('--return-ms', String(returnMs));
+    root.style.setProperty('--placeholder-wait', String(placeholderWait));
     document.querySelector('[data-out=stagger]').textContent = `${stagger}ms`;
     document.querySelector('[data-out=charMs]').textContent = `${charMs}ms`;
     document.querySelector('[data-out=move]').textContent = `${move}px`;
@@ -723,6 +791,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     document.querySelector('[data-out=returnAt]').textContent = `${returnAt}%`;
     document.querySelector('[data-out=returnSpan]').textContent = `${returnSpan}%`;
     document.querySelector('[data-out=returnMs]').textContent = `${returnMs}ms`;
+    document.querySelector('[data-out=placeholderWait]').textContent = `${placeholderWait}ms`;
   };
 
   document.querySelectorAll('[data-ctrl]').forEach((el) => {
@@ -780,6 +849,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       `returnAt: ${document.querySelector('[data-ctrl=returnAt]').value}%`,
       `returnSpan: ${document.querySelector('[data-ctrl=returnSpan]').value}%`,
       `returnDuration: ${document.querySelector('[data-ctrl=returnMs]').value}ms`,
+      `placeholderWait: ${document.querySelector('[data-ctrl=placeholderWait]').value}ms`,
       `ease: ${document.querySelector('[data-ctrl=ease]').value}`,
       `speed: ${document.querySelector('[data-ctrl=speed]').value}x`,
     ].join(' · ');
