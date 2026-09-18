@@ -9,8 +9,8 @@
  * Bind from the site layout (or any early client script). Multiple callers are
  * safe — listeners bind once.
  *
- * @see https://github.com/vcruzdesigns/VCDwebsite/issues/96
- * @see https://github.com/vcruzdesigns/VCDwebsite/issues/97
+ * @see https://github.com/vicentecr-uz/VCDwebsite/issues/96
+ * @see https://github.com/vicentecr-uz/VCDwebsite/issues/97
  */
 
 export const SAFE_VH_PROP = '--vh-safe';

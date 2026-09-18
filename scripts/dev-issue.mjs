@@ -15,7 +15,7 @@ import { promisify } from 'node:util';
 
 const execFile = promisify(execFileCb);
 
-const REPO = 'vcruzdesigns/VCDwebsite';
+const REPO = 'vicentecr-uz/VCDwebsite';
 const ASSETS_BRANCH = 'issue-assets';
 // No hardcoded label list: listMeta() pulls every label straight from the
 // repo on each load, so a label created on GitHub shows up here without a
