@@ -183,6 +183,22 @@ describe('home reveal choreography', () => {
     expect(home.children[0]?.style.visibility).toBe('visible'); controller.destroy();
   });
 
+  test('anchors text clones to the page when intro dismissal resets scroll', async () => {
+    const textBlock = new FakeElement({ top: 600, left: 32, width: 400, height: 80 });
+    const home = new FakeElement({ top: -500, left: 12, width: 800, height: 1800 });
+    home.querySelectorAll = <T>(selector: string) => selector.includes('.project-body-text') ? [textBlock] as unknown as T[] : [];
+    Object.assign(globalThis, { document: { fonts: undefined, documentElement: { clientHeight: 800 } } });
+    const controller = createHomeRevealController(home as unknown as HTMLElement, fakeWindow());
+    await controller.prepare();
+    const clone = home.children[0];
+    expect(clone.style.position).toBe('absolute');
+    expect(clone.style.top).toBe('1100px');
+    expect(clone.style.left).toBe('20px');
+    home.rect.top = 0;
+    expect(Number.parseFloat(clone.style.top) + home.rect.top).toBe(1100);
+    controller.destroy();
+  });
+
   test('uses the project cover, not stack or metadata, as media unit', () => {
     const cover = new FakeElement(); const home = new FakeElement(); let mediaSelector = '';
     home.querySelectorAll = <T>(selector: string) => { if (selector.includes('project-grid__cover')) { mediaSelector = selector; return [cover] as unknown as T[]; } return []; };
