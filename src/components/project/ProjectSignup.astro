@@ -25,6 +25,7 @@ const {
   sectionId,
   contentId,
 } = Astro.props;
+const errorId = `signup-error-${sectionId ?? Math.random().toString(36).slice(2, 8)}`;
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
 ---
@@ -35,7 +36,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'signup' : undefined}
 >
-  <form class="project-signup__form" data-project-signup-form>
+  <form class="project-signup__form" data-project-signup-form novalidate>
     <div class="project-signup__control">
       <TextField
         class="project-signup__field"
@@ -48,6 +49,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         autocapitalize="none"
         spellcheck="false"
         placeholder={placeholder}
+        aria-describedby={errorId}
         data-signup-email
       />
       <div class="project-signup__action">
@@ -60,6 +62,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         <button type="submit" aria-keyshortcuts="Meta+Enter Control+Enter">{label}</button>
       </div>
     </div>
+    <p id={errorId} class="project-signup__error" data-signup-error aria-live="polite" aria-atomic="true"></p>
     <p class="project-signup__status" data-project-signup-status aria-live="polite" hidden>
       Signup is not available yet.
     </p>
@@ -77,6 +80,14 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
     const field = form.querySelector<HTMLElement>('.project-signup__field');
     const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
+    const error = form.querySelector<HTMLElement>('[data-signup-error]');
+    const control = form.querySelector<HTMLElement>('.project-signup__control');
+    let errorTimer: ReturnType<typeof setTimeout>;
+    let shake: Animation | undefined;
+    const dismissError = () => {
+      clearTimeout(errorTimer);
+      form.classList.remove('is-error');
+    };
     const emailChecker = document.createElement('input');
     emailChecker.type = 'email';
     const updateShortcut = () => {
@@ -92,7 +103,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       shortcut.hidden = input.value.length === 0;
       shortcut.classList.toggle('is-valid', input.validity.valid);
     };
-    input?.addEventListener('input', updateShortcut);
+    input?.addEventListener('input', () => {
+      updateShortcut();
+      dismissError();
+      input.removeAttribute('aria-invalid');
+    });
     input?.addEventListener('change', updateShortcut);
     updateShortcut();
     field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
@@ -106,7 +121,28 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
+      updateShortcut();
+      dismissError();
       const status = form.querySelector<HTMLElement>('[data-project-signup-status]');
+      if (status) status.hidden = true;
+      if (!input || !input.value.trim()) return;
+      if (!input.validity.valid) {
+        input.setAttribute('aria-invalid', 'true');
+        if (error) error.textContent = input.validity.patternMismatch
+          ? 'Enter a valid email address.'
+          : input.validationMessage;
+        form.classList.add('is-error');
+        shake?.cancel();
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          shake = control?.animate(
+            [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
+            { duration: 300, easing: 'ease-in-out' },
+          );
+        }
+        errorTimer = setTimeout(dismissError, 2500);
+        return;
+      }
+      input.removeAttribute('aria-invalid');
       if (status) status.hidden = false;
     });
   });
@@ -114,11 +150,46 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 <style>
   .project-signup__form {
+    position: relative;
     width: 100%;
     display: flex;
     flex-direction: column;
     gap: var(--space-related);
     max-width: 40em;
+  }
+
+  .project-signup__error {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    left: 0;
+    right: 0;
+    margin: 0;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.5rem;
+    background: var(--sys-color-srf-container-low);
+    color: var(--sys-color-error);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-8px);
+    visibility: hidden;
+    transition: opacity 180ms ease, transform 180ms ease, visibility 0s 180ms;
+  }
+
+  .project-signup__form.is-error .project-signup__error {
+    opacity: 1;
+    transform: translateY(0);
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .project-signup__form.is-error .project-signup__control {
+    box-shadow: inset 0 0 0 1px var(--sys-color-error);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .project-signup__error { transform: none; }
   }
 
   .project-signup__control {
