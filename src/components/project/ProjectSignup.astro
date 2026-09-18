@@ -212,8 +212,14 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
-      shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
       shortcut.classList.toggle('is-valid', input.validity.valid);
+      if ((celebrating || form.dataset.protoPlaying === 'true') && input.value.length > 0) {
+        shortcut.hidden = false;
+        shortcut.classList.add('is-inert');
+        return;
+      }
+      shortcut.classList.remove('is-inert');
+      shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
       input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     };
     input?.addEventListener('input', () => {
@@ -225,8 +231,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     input?.addEventListener('focus', updateShortcut);
     updateShortcut();
     field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
-    input?.addEventListener('blur', () => {
+    input?.addEventListener('blur', (event) => {
       if (field) delete field.dataset.pointerFocus;
+      const toSubmit = event.relatedTarget instanceof Node && Boolean(button?.contains(event.relatedTarget));
+      if (toSubmit && shortcut) {
+        shortcut.classList.add('is-inert');
+        return;
+      }
       updateShortcut();
     });
     input?.addEventListener('keydown', (event) => {
@@ -463,6 +474,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   @keyframes shortcut-fade {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  .project-signup__shortcut.is-inert {
+    visibility: hidden;
+    animation: none;
   }
 
   .project-signup__shortcut.is-valid {
