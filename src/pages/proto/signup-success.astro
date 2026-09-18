@@ -41,27 +41,27 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       </select>
     </label>
     <p class="proto-panel-group">Email out</p>
-    <label>Vs check-out <output data-out="emailVsCheck">0ms</output>
-      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="0" />
+    <label>Vs check-out <output data-out="emailVsCheck">300ms</output>
+      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="300" />
     </label>
-    <label>Anticipate <output data-out="anticipate">10px</output>
-      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="10" />
+    <label>Anticipate <output data-out="anticipate">8px</output>
+      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="8" />
     </label>
-    <label>Anticipate time <output data-out="anticipateMs">100ms</output>
-      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="100" />
+    <label>Anticipate time <output data-out="anticipateMs">80ms</output>
+      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="80" />
     </label>
-    <label>Travel <output data-out="emailMs">520ms</output>
-      <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="520" />
+    <label>Travel <output data-out="emailMs">500ms</output>
+      <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="500" />
     </label>
     <p class="proto-panel-group">Letters back</p>
-    <label>Start at <output data-out="returnAt">25%</output>
-      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="25" />
+    <label>Start at <output data-out="returnAt">10%</output>
+      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="10" />
     </label>
     <label>Spread <output data-out="returnSpan">55%</output>
       <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="55" />
     </label>
-    <label>Return duration <output data-out="returnMs">220ms</output>
-      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="220" />
+    <label>Return duration <output data-out="returnMs">200ms</output>
+      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="200" />
     </label>
     <p class="proto-panel-group">Placeholder</p>
     <label>Wait <output data-out="placeholderWait">400ms</output>
@@ -96,13 +96,13 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     --overlap: 400;
     --check-ms: 160;
     --hold: 1400;
-    --email-vs-check: 0;
-    --anticipate: 10;
-    --anticipate-ms: 100;
-    --email-ms: 520;
-    --return-at: 25;
+    --email-vs-check: 300;
+    --anticipate: 8;
+    --anticipate-ms: 80;
+    --email-ms: 500;
+    --return-at: 10;
     --return-span: 55;
-    --return-ms: 220;
+    --return-ms: 200;
     --placeholder-wait: 400;
     --speed: 1;
     --ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -390,13 +390,13 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       overlap: num('--overlap', 400) * speed,
       checkMs: num('--check-ms', 160) * speed,
       hold: num('--hold', 1400) * speed,
-      emailVsCheck: num('--email-vs-check', 0) * speed,
-      anticipate: num('--anticipate', 10),
-      anticipateMs: num('--anticipate-ms', 100) * speed,
-      emailMs: num('--email-ms', 520) * speed,
-      returnAt: num('--return-at', 25) / 100,
+      emailVsCheck: num('--email-vs-check', 300) * speed,
+      anticipate: num('--anticipate', 8),
+      anticipateMs: num('--anticipate-ms', 80) * speed,
+      emailMs: num('--email-ms', 500) * speed,
+      returnAt: num('--return-at', 10) / 100,
       returnSpan: num('--return-span', 55) / 100,
-      returnMs: num('--return-ms', 220) * speed,
+      returnMs: num('--return-ms', 200) * speed,
       placeholderWait: num('--placeholder-wait', 400) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
       speed,
@@ -643,7 +643,10 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     el.dataset.protoPlaying = 'true';
     button?.setAttribute('aria-busy', 'true');
     input.readOnly = true;
-    if (shortcut) shortcut.hidden = true;
+    if (shortcut) {
+      shortcut.hidden = true;
+      input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
+    }
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const c = cfg();
     const chars = [...label.querySelectorAll('[data-char]')];
@@ -766,7 +769,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     el.addEventListener('input', readControls);
   });
 
-  const STORAGE_KEY = 'vcd:proto-signup-success';
+  const STORAGE_KEY = 'vcd:proto-signup-success-v2';
   const factoryValues = Object.fromEntries(
     [...document.querySelectorAll('[data-ctrl]')].map((el) => [el.dataset.ctrl, el.value]),
   );

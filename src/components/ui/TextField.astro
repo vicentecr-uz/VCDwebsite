@@ -22,6 +22,7 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       <div class="dev-text-field__content">
         {prefix && <span class="dev-text-field__prefix" aria-hidden="true">{prefix}</span>}
         <input id={inputId} type="text" value={value} placeholder={placeholder} disabled={disabled} class="dev-field__input" aria-label={hideLabel ? label : undefined} {...rest} />
+        <slot name="trail" />
       </div>
     </div>
     <span class="dev-text-field__measure" aria-hidden="true"></span>
@@ -29,6 +30,12 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
 </Field>
 
 <script>
+  const getTextFieldTrailWidth = (root) => {
+    const trail = root.querySelector('[data-text-field-trail]');
+    if (!(trail instanceof HTMLElement) || trail.hidden) return 0;
+    return trail.getBoundingClientRect().width;
+  };
+
   const measureInputText = (input, measure, value) => {
     const style = getComputedStyle(input);
     measure.style.font = style.font;
@@ -72,12 +79,20 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
     const edgeGutter = Number.parseFloat(
       rootStyle.getPropertyValue('--dev-text-field-edge-gutter'),
     ) || 8;
+    const fadeWidth = Number.parseFloat(
+      rootStyle.getPropertyValue('--dev-text-field-fade-width'),
+    ) || 22;
     const displayedTextWidth = measureInputText(input, measure, input.value || input.placeholder);
+    const trailWidth = getTextFieldTrailWidth(root);
     const scrollOwner = track;
     const textStartX = input.offsetLeft;
-    const textEndX = textStartX + displayedTextWidth;
+    const textEndX = textStartX + displayedTextWidth + trailWidth;
     const start = input.selectionStart;
     const end = input.selectionEnd;
+    root.style.setProperty(
+      '--dev-text-field-trail-end',
+      trailWidth > 0 ? `${Math.max(0, fadeWidth - edgeGutter)}px` : '0px',
+    );
     root.classList.toggle('is-fade-left', scrollOwner.scrollLeft > 0.5);
     root.classList.toggle(
       'is-fade-right',
@@ -96,9 +111,9 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
     const leftCaretInset = root.classList.contains('is-fade-left')
       ? caretSafeInset
       : edgeGutter;
-    const rightCaretInset = root.classList.contains('is-fade-right')
+    const rightCaretInset = (root.classList.contains('is-fade-right')
       ? caretSafeInset
-      : edgeGutter;
+      : edgeGutter) + (start === input.value.length ? trailWidth : 0);
     const viewportCaretStartX = caretStartX - scrollOwner.scrollLeft;
     const viewportCaretEndX = caretEndX - scrollOwner.scrollLeft;
     root.classList.toggle(
@@ -140,14 +155,15 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       && caretOffset === 0
       && !root.classList.contains('dev-text-field--prefix');
     const isTextEnd = isCollapsed && caretOffset === input.value.length;
+    const trailWidth = getTextFieldTrailWidth(root);
     if (isTextStart) scrollOwner.scrollLeft = 0;
     if (isTextEnd) scrollOwner.scrollLeft = maxScroll;
     const leftInset = root.classList.contains('is-fade-left') && !isTextStart
       ? caretSafeInset
       : edgeGutter;
-    const rightInset = root.classList.contains('is-fade-right') && !isTextEnd
+    const rightInset = (root.classList.contains('is-fade-right') && !isTextEnd
       ? caretSafeInset
-      : edgeGutter;
+      : edgeGutter) + (isTextEnd ? trailWidth : 0);
     const caretViewportStartX = caretStartX - scrollOwner.scrollLeft;
     const caretViewportEndX = caretEndX - scrollOwner.scrollLeft;
     const clampScroll = (value) => Math.min(maxScroll, Math.max(0, value));
