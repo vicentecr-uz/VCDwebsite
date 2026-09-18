@@ -477,7 +477,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
   };
 
   const resetVisuals = () => {
-    const { form: el, input, label, check, button } = parts();
+    const { form: el, input, label, check, button, shortcut } = parts();
     playId += 1;
     playing = false;
     if (el) delete el.dataset.protoPlaying;
@@ -501,6 +501,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       input.readOnly = false;
       input.classList.remove('is-proto-placeholder-pending');
     }
+    shortcut?.classList.remove('is-inert');
     button?.removeAttribute('aria-busy');
     el?.classList.remove('is-error', 'has-status');
   };
@@ -668,10 +669,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     el.dataset.protoPlaying = 'true';
     button?.setAttribute('aria-busy', 'true');
     input.readOnly = true;
-    if (shortcut) {
-      shortcut.hidden = true;
-      input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
-    }
+    shortcut?.classList.add('is-inert');
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const c = cfg();
     const chars = [...label.querySelectorAll('[data-char]')];
