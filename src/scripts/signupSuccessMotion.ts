@@ -17,6 +17,10 @@ export type SignupMotionCfg = {
   returnSpan: number;
   returnMs: number;
   checkVsLast: number;
+  inStagger: number;
+  inMove: number;
+  inBlur: number;
+  inMs: number;
   placeholderWait: number;
   squash: number;
   stretch: number;
@@ -59,6 +63,10 @@ export const readSignupMotionCfg = (root: HTMLElement): SignupMotionCfg => {
     returnSpan: num(root, '--return-span', 40) / 100,
     returnMs: num(root, '--return-ms', 300) * speed,
     checkVsLast: num(root, '--check-vs-last', 0) * speed,
+    inStagger: num(root, '--gi-in-stagger', 50) * speed,
+    inMove: num(root, '--gi-in-move', 14),
+    inBlur: num(root, '--gi-in-blur', 12),
+    inMs: num(root, '--gi-in-ms', 320) * speed,
     placeholderWait: num(root, '--placeholder-wait', 400) * speed,
     squash: num(root, '--squash', 0.1),
     stretch: num(root, '--stretch', 0.1),
@@ -140,7 +148,7 @@ const out = (panel: HTMLElement, key: string) => panel.querySelector(`[data-out=
 export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => {
   if (panel.dataset.bound === 'true') return;
   panel.dataset.bound = 'true';
-  const STORAGE_KEY = 'vcd:signup-success-motion-v2';
+  const STORAGE_KEY = 'vcd:signup-success-motion-v3';
   const factoryValues = Object.fromEntries(
     [...panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-ctrl]')].map((el) => [
       el.dataset.ctrl ?? '',
@@ -166,6 +174,10 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
     const returnSpan = Number(ctrl<HTMLInputElement>(panel, 'returnSpan')?.value ?? 40);
     const returnMs = Number(ctrl<HTMLInputElement>(panel, 'returnMs')?.value ?? 300);
     const checkVsLast = Number(ctrl<HTMLInputElement>(panel, 'checkVsLast')?.value ?? 0);
+    const inStagger = Number(ctrl<HTMLInputElement>(panel, 'inStagger')?.value ?? 50);
+    const inMove = Number(ctrl<HTMLInputElement>(panel, 'inMove')?.value ?? 14);
+    const inBlur = Number(ctrl<HTMLInputElement>(panel, 'inBlur')?.value ?? 12);
+    const inMs = Number(ctrl<HTMLInputElement>(panel, 'inMs')?.value ?? 320);
     const placeholderWait = Number(ctrl<HTMLInputElement>(panel, 'placeholderWait')?.value ?? 400);
     root.style.setProperty('--speed', String(speed));
     root.style.setProperty('--ease', ease);
@@ -184,6 +196,10 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
     root.style.setProperty('--return-span', String(returnSpan));
     root.style.setProperty('--return-ms', String(returnMs));
     root.style.setProperty('--check-vs-last', String(checkVsLast));
+    root.style.setProperty('--gi-in-stagger', String(inStagger));
+    root.style.setProperty('--gi-in-move', String(inMove));
+    root.style.setProperty('--gi-in-blur', String(inBlur));
+    root.style.setProperty('--gi-in-ms', String(inMs));
     root.style.setProperty('--placeholder-wait', String(placeholderWait));
     const setOut = (key: string, value: string) => {
       const node = out(panel, key);
@@ -202,6 +218,10 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
     setOut('returnSpan', `${returnSpan}%`);
     setOut('returnMs', `${returnMs}ms`);
     setOut('checkVsLast', `${checkVsLast}ms`);
+    setOut('inStagger', `${inStagger}ms`);
+    setOut('inMove', `${inMove}px`);
+    setOut('inBlur', `${inBlur}px`);
+    setOut('inMs', `${inMs}ms`);
     setOut('placeholderWait', `${placeholderWait}ms`);
   };
 
@@ -256,6 +276,10 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
       `returnSpan: ${ctrl(panel, 'returnSpan')?.value}%`,
       `returnDuration: ${ctrl(panel, 'returnMs')?.value}ms`,
       `checkVsLast: ${ctrl(panel, 'checkVsLast')?.value}ms`,
+      `inStagger: ${ctrl(panel, 'inStagger')?.value}ms`,
+      `inMove: ${ctrl(panel, 'inMove')?.value}px`,
+      `inBlur: ${ctrl(panel, 'inBlur')?.value}px`,
+      `inMs: ${ctrl(panel, 'inMs')?.value}ms`,
       `placeholderWait: ${ctrl(panel, 'placeholderWait')?.value}ms`,
       `ease: ${ctrl(panel, 'ease')?.value}`,
       `speed: ${ctrl(panel, 'speed')?.value}x`,

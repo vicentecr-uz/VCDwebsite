@@ -162,10 +162,24 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         <label>Vs last letter out <output data-out="checkVsLast">0ms</output>
           <input data-ctrl="checkVsLast" type="range" min="-400" max="400" step="10" value="0" />
         </label>
-        <p class="signup-motion-panel__note">Negative starts the check before the last Get involved letter finishes. Positive waits after it. After the hold, Get involved comes back as the reverse of the locked outer-inward out (center first).</p>
+        <p class="signup-motion-panel__note">Negative starts the check before the last Get involved letter finishes. Positive waits after it.</p>
+        <p class="signup-motion-panel__group">6. Get involved back</p>
+        <label>Timing offset <output data-out="inStagger">50ms</output>
+          <input data-ctrl="inStagger" type="range" min="0" max="160" step="5" value="50" />
+        </label>
+        <label>Distance <output data-out="inMove">14px</output>
+          <input data-ctrl="inMove" type="range" min="0" max="32" step="1" value="14" />
+        </label>
+        <label>Blur <output data-out="inBlur">12px</output>
+          <input data-ctrl="inBlur" type="range" min="0" max="24" step="1" value="12" />
+        </label>
+        <label>Each letter <output data-out="inMs">320ms</output>
+          <input data-ctrl="inMs" type="range" min="80" max="800" step="10" value="320" />
+        </label>
+        <p class="signup-motion-panel__note">Center first, then outer. Independent of Current’s Get involved out.</p>
       </div>
       <p class="signup-motion-panel__group" data-for="current">6. Placeholder</p>
-      <p class="signup-motion-panel__group" data-for="throw">6. Placeholder</p>
+      <p class="signup-motion-panel__group" data-for="throw">7. Placeholder</p>
       <label>Wait, then fade in <output data-out="placeholderWait">400ms</output>
         <input data-ctrl="placeholderWait" type="range" min="0" max="2000" step="50" value="400" />
       </label>
@@ -269,13 +283,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       ghost = next;
       return next;
     };
-    const letterExit = (i: number, n: number, c: ReturnType<typeof readSignupMotionCfg>, reduce: boolean) => {
+    const letterExit = (i: number, n: number, move: number, reduce: boolean) => {
       const center = Math.max(n - 1, 1) / 2;
       const fromEdge = Math.min(i, n - 1 - i);
       const maxFromEdge = Math.min(center, n - 1 - center);
-      const dist = Math.abs(i - center) / center;
+      const dist = center === 0 ? 0 : Math.abs(i - center) / center;
       const dir = i < center ? 1 : i > center ? -1 : 0;
-      const travel = c.move * (c.taper * dist + (1 - c.taper));
+      const travel = move * (0.25 + 0.75 * dist);
       const x = reduce ? 0 : dir * travel;
       return { fromEdge, maxFromEdge, x };
     };
@@ -435,33 +449,37 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           animation.cancel();
         });
       });
-      const maxFromEdge = letterExit(0, n, c, reduce).maxFromEdge;
+      const maxFromEdge = letterExit(0, n, c.inMove, reduce).maxFromEdge;
       const giIn = chars.map((el, i) => {
-        const pose = letterExit(i, n, c, reduce);
-        const delay = (maxFromEdge - pose.fromEdge) * c.stagger;
+        const pose = letterExit(i, n, c.inMove, reduce);
+        const delay = (maxFromEdge - pose.fromEdge) * c.inStagger;
         return el.animate(
           reduce
             ? [{ opacity: 0 }, { opacity: 1 }]
             : [
-              { opacity: 0, filter: `blur(${c.blur}px)`, transform: `translateX(${pose.x}px) scale(${c.scale})` },
+              { opacity: 0, filter: `blur(${c.inBlur}px)`, transform: `translateX(${pose.x}px) scale(${c.scale})` },
               { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
             ],
           {
-            duration: c.charMs,
+            duration: c.inMs,
             delay,
             easing: c.ease,
-            fill: 'both',
+            fill: 'forwards',
           },
         );
       });
       await Promise.all([emailDone, checkOut, ...giIn.map(settled)]);
       finishEmail();
-      chars.forEach((el) => el.getAnimations().forEach((animation) => animation.cancel()));
+      chars.forEach((el) => {
+        el.style.cssText = '';
+        el.getAnimations().forEach((animation) => animation.cancel());
+      });
       labelEl.getAnimations().forEach((animation) => animation.cancel());
     };
     const resetIdle = () => {
       playId += 1;
       celebrating = false;
+      form.classList.remove('is-celebrating');
       teardownGhost();
       checkEl?.classList.remove('is-in', 'is-out', 'is-reduced');
       if (checkEl) checkEl.hidden = true;
@@ -486,7 +504,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       if (!input || !motionRoot || id !== playId) return;
       const c = readSignupMotionCfg(motionRoot);
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      if (input.value || document.activeElement === input) {
+      if (input.value.trim()) {
         input.classList.remove('is-signup-placeholder-pending');
         return;
       }
@@ -502,19 +520,21 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
             { opacity: 0, filter: 'blur(4px)' },
             { opacity: 1, filter: 'blur(0px)' },
           ],
-        { duration: 220 * c.speed, easing: c.ease, fill: 'forwards' },
+        { duration: 320 * c.speed, easing: c.ease, fill: 'forwards' },
       ));
       if (id !== playId) return;
+      input.classList.remove('is-signup-placeholder-pending');
       next.remove();
       if (ghost === next) ghost = null;
-      input.classList.remove('is-signup-placeholder-pending');
     };
     const playSuccess = async () => {
       if (!button || !labelEl || !checkEl || !input || !motionRoot || celebrating) return;
       const id = ++playId;
       celebrating = true;
+      form.classList.add('is-celebrating');
       button.setAttribute('aria-busy', 'true');
       input.readOnly = true;
+      input.blur();
       shortcut?.classList.add('is-inert');
       const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
       const c = readSignupMotionCfg(motionRoot);
@@ -578,6 +598,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       input.readOnly = false;
       button.removeAttribute('aria-busy');
       celebrating = false;
+      form.classList.remove('is-celebrating');
       await waitMs(c.placeholderWait);
       await revealPlaceholder(id);
     };
@@ -670,8 +691,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
       shortcut.classList.toggle('is-valid', input.validity.valid);
-      if ((celebrating) && input.value.length > 0) {
-        shortcut.hidden = false;
+      if (celebrating) {
         shortcut.classList.add('is-inert');
         return;
       }
@@ -767,6 +787,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     --return-span: 40;
     --return-ms: 300;
     --check-vs-last: 0;
+    --gi-in-stagger: 50;
+    --gi-in-move: 14;
+    --gi-in-blur: 12;
+    --gi-in-ms: 320;
     --placeholder-wait: 400;
     --speed: 1;
     --ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -1091,6 +1115,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   :global(.project-signup .dev-field__input.is-signup-ghosted) {
     color: transparent;
+    -webkit-text-fill-color: transparent;
     caret-color: transparent;
   }
 
@@ -1101,6 +1126,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   :global(.project-signup .dev-text-field.is-signup-fade::after) {
     opacity: 1;
+  }
+
+  .project-signup__form.is-celebrating :global(.project-signup__field) {
+    pointer-events: none;
   }
 
   .signup-motion-panel {
