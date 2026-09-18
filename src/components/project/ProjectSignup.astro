@@ -1,0 +1,141 @@
+---
+import {
+  projectStackClass,
+  spacingDevAttrs,
+  type ProjectStackSpacing,
+} from '../../lib/projectStack';
+
+interface Props {
+  label?: string;
+  placeholder?: string;
+  documentKey?: string;
+  sectionPath?: Array<string | number>;
+  spacing?: ProjectStackSpacing;
+  sectionId?: string;
+  contentId?: string;
+}
+
+const {
+  label = 'Get involved',
+  placeholder = 'jternus@apple.com',
+  documentKey,
+  sectionPath,
+  spacing = 'group',
+  sectionId,
+  contentId,
+} = Astro.props;
+const editable = import.meta.env.DEV && documentKey && sectionPath;
+const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { contentId });
+---
+
+<section
+  id={sectionId}
+  class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
+  {...(spacingAttrs ?? {})}
+  data-dev-section-deletable={editable ? 'signup' : undefined}
+>
+  <form class="project-signup__form" data-project-signup-form>
+    <div class="project-signup__control">
+      <input
+        type="email"
+        required
+        autocomplete="email"
+        placeholder={placeholder}
+        aria-label="Email address"
+      />
+      <button type="submit">{label}</button>
+    </div>
+    <p class="project-signup__status" data-project-signup-status aria-live="polite" hidden>
+      Signup is not available yet.
+    </p>
+  </form>
+</section>
+
+<script>
+  document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
+    if (form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const status = form.querySelector<HTMLElement>('[data-project-signup-status]');
+      if (status) status.hidden = false;
+    });
+  });
+</script>
+
+<style>
+  .project-signup__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-related);
+    max-width: 40em;
+  }
+
+  .project-signup__control {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 3.125rem;
+    padding: 0.25rem;
+    border-radius: 0.75rem;
+    background: var(--sys-color-srf-container-lowest);
+  }
+
+  .project-signup__control input {
+    min-width: 0;
+    flex: 1;
+    min-height: 2.625rem;
+    padding: 0 0.75rem;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--sys-color-on-srf);
+    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+  }
+
+  .project-signup__control input::placeholder {
+    color: var(--sys-color-on-srf-subtle);
+    opacity: 1;
+  }
+
+  .project-signup__control input:focus-visible {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
+    border-radius: 0.5rem;
+  }
+
+  .project-signup__control button {
+    flex: 0 0 9rem;
+    min-height: 2.625rem;
+    padding: 0 1rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: var(--comp-button-filled-container);
+    color: var(--comp-button-filled-label);
+    cursor: pointer;
+    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .project-signup__control button:hover {
+      background: var(--comp-button-filled-container-hover);
+    }
+  }
+
+  .project-signup__control button:focus-visible {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: 2px;
+  }
+
+  .project-signup__status {
+    margin: 0;
+    color: var(--sys-color-on-srf-variant);
+    font-size: var(--text-body-size);
+  }
+
+  @media (max-width: 40em) {
+    .project-signup__control button {
+      flex-basis: 8.5rem;
+    }
+  }
+</style>
