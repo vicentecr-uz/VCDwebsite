@@ -32,21 +32,21 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     </label>
     <p class="proto-panel-note">Get involved leaving and the check are locked. Controls below follow the rest of the routine.</p>
     <p class="proto-panel-group">1. Check leaves</p>
-    <label>Delay after check-out starts <output data-out="emailVsCheck">300ms</output>
-      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="300" />
+    <label>Delay after check-out starts <output data-out="emailVsCheck">100ms</output>
+      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="100" />
     </label>
     <p class="proto-panel-group">2. Wind-up (left)</p>
-    <label>Distance <output data-out="anticipate">8px</output>
-      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="8" />
+    <label>Distance <output data-out="anticipate">10px</output>
+      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="10" />
     </label>
-    <label>Duration <output data-out="anticipateMs">80ms</output>
-      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="80" />
+    <label>Duration <output data-out="anticipateMs">100ms</output>
+      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="100" />
     </label>
     <label>Ease
       <select data-ctrl="anticipateEase">
-        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)" selected>accelerate — fastest at the left</option>
+        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate — fastest at the left</option>
         <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
-        <option value="cubic-bezier(0.5, 0, 0.5, 1)">coil — slow–fast–slow</option>
+        <option value="cubic-bezier(0.5, 0, 0.5, 1)" selected>coil — slow–fast–slow</option>
         <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">settle — brakes into the pose</option>
         <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
       </select>
@@ -61,20 +61,20 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     </label>
     <label>Ease
       <select data-ctrl="releaseEase">
-        <option value="linear" selected>constant — already at speed</option>
+        <option value="linear">constant — already at speed</option>
         <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate from rest</option>
-        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard from rest</option>
+        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)" selected>accelerate hard from rest</option>
       </select>
     </label>
     <p class="proto-panel-group">5. Get involved back</p>
-    <label>Start during release <output data-out="returnAt">10%</output>
-      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="10" />
+    <label>Start during release <output data-out="returnAt">80%</output>
+      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="80" />
     </label>
-    <label>Stagger across release <output data-out="returnSpan">55%</output>
-      <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="55" />
+    <label>Stagger across release <output data-out="returnSpan">40%</output>
+      <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="40" />
     </label>
-    <label>Each letter <output data-out="returnMs">200ms</output>
-      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="200" />
+    <label>Each letter <output data-out="returnMs">300ms</output>
+      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="300" />
     </label>
     <label>Letter ease
       <select data-ctrl="ease">
@@ -119,16 +119,16 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     --overlap: 400;
     --check-ms: 160;
     --hold: 1400;
-    --email-vs-check: 300;
-    --anticipate: 8;
-    --anticipate-ms: 80;
-    --anticipate-ease: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+    --email-vs-check: 100;
+    --anticipate: 10;
+    --anticipate-ms: 100;
+    --anticipate-ease: cubic-bezier(0.5, 0, 0.5, 1);
     --store-ms: 70;
     --email-ms: 500;
-    --release-ease: linear;
-    --return-at: 10;
-    --return-span: 55;
-    --return-ms: 200;
+    --release-ease: cubic-bezier(0.5, 0, 0.75, 0.16);
+    --return-at: 80;
+    --return-span: 40;
+    --return-ms: 300;
     --placeholder-wait: 400;
     --speed: 1;
     --ease: cubic-bezier(0.23, 1, 0.32, 1);
@@ -416,18 +416,18 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       overlap: num('--overlap', 400) * speed,
       checkMs: num('--check-ms', 160) * speed,
       hold: num('--hold', 1400) * speed,
-      emailVsCheck: num('--email-vs-check', 300) * speed,
-      anticipate: num('--anticipate', 8),
-      anticipateMs: num('--anticipate-ms', 80) * speed,
+      emailVsCheck: num('--email-vs-check', 100) * speed,
+      anticipate: num('--anticipate', 10),
+      anticipateMs: num('--anticipate-ms', 100) * speed,
       storeMs: num('--store-ms', 70) * speed,
       emailMs: num('--email-ms', 500) * speed,
-      returnAt: num('--return-at', 10) / 100,
-      returnSpan: num('--return-span', 55) / 100,
-      returnMs: num('--return-ms', 200) * speed,
+      returnAt: num('--return-at', 80) / 100,
+      returnSpan: num('--return-span', 40) / 100,
+      returnMs: num('--return-ms', 300) * speed,
       placeholderWait: num('--placeholder-wait', 400) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
-      anticipateEase: getComputedStyle(root).getPropertyValue('--anticipate-ease').trim() || 'cubic-bezier(0.55, 0.055, 0.675, 0.19)',
-      releaseEase: getComputedStyle(root).getPropertyValue('--release-ease').trim() || 'linear',
+      anticipateEase: getComputedStyle(root).getPropertyValue('--anticipate-ease').trim() || 'cubic-bezier(0.5, 0, 0.5, 1)',
+      releaseEase: getComputedStyle(root).getPropertyValue('--release-ease').trim() || 'cubic-bezier(0.5, 0, 0.75, 0.16)',
       speed,
     };
   };
@@ -787,7 +787,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     el.addEventListener('input', readControls);
   });
 
-  const STORAGE_KEY = 'vcd:proto-signup-success-v3';
+  const STORAGE_KEY = 'vcd:proto-signup-success-v4';
   const factoryValues = Object.fromEntries(
     [...document.querySelectorAll('[data-ctrl]')].map((el) => [el.dataset.ctrl, el.value]),
   );
