@@ -586,15 +586,29 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }, { signal });
 
     reset.addEventListener('click', () => {
-      generation += 1;
+      const run = ++generation;
       upgrade?.destroy();
       cancelAnimationFrame(frame);
-      currentImage().remove();
-      stack.prepend(template.content.cloneNode(true));
-      currentImage().addEventListener('load', drawSource, { once: true, signal });
       load.disabled = false;
       status.textContent = '';
-      drawSource();
+      const incoming = template.content.cloneNode(true);
+      const image = incoming.querySelector('[data-progressive-image]');
+      let applied = false;
+      const apply = () => {
+        if (applied || run !== generation || signal.aborted) return;
+        applied = true;
+        // Keep the live photo until this thumb has pixels. Removing first leaves
+        // one empty frame while the lens canvas still holds the last zoomed bitmap.
+        currentImage()?.remove();
+        stack.prepend(incoming);
+        drawSource();
+      };
+      if (image?.complete && image.naturalWidth) apply();
+      else {
+        image?.addEventListener('load', apply, { once: true, signal });
+        image?.addEventListener('error', apply, { once: true, signal });
+        void image?.decode?.().then(apply, apply);
+      }
     }, { signal });
 
     reducedMotion.addEventListener('change', () => { if (reducedMotion.matches && springFrame) settle(); }, { signal });
