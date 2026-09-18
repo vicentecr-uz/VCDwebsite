@@ -55,12 +55,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       />
       <div class="project-signup__action">
         <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
-          Cmd/Ctrl + ⏎
+          ⏎
           <svg class="project-signup__shortcut-tail" width="20" height="8" viewBox="0 0 24 10" focusable="false">
             <path d="M0 0 C4 0 5 0 7 3 L10 7 Q12 10 14 7 L17 3 C19 0 20 0 24 0 Z" />
           </svg>
         </span>
-        <button type="submit" aria-keyshortcuts="Meta+Enter Control+Enter">{label}</button>
+        <button type="submit" aria-keyshortcuts="Enter">{label}</button>
       </div>
     </div>
     <div id={statusId} class="project-signup__status" data-signup-status aria-live="polite" aria-atomic="true">
@@ -79,6 +79,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     form.dataset.bound = 'true';
     const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
     const field = form.querySelector<HTMLElement>('.project-signup__field');
+    const button = form.querySelector<HTMLButtonElement>('button[type=submit]');
+    let pressTimer: ReturnType<typeof setTimeout>;
     const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
     const statusMessage = form.querySelector<HTMLElement>('[data-signup-status-message]');
     const surface = form.querySelector<HTMLElement>('.project-signup__surface');
@@ -124,8 +126,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     input?.addEventListener('blur', () => { if (field) delete field.dataset.pointerFocus; });
     input?.addEventListener('keydown', (event) => {
       if (event.key === 'Tab' && field) delete field.dataset.pointerFocus;
-      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.isComposing) {
+      if (event.key === 'Enter' && !event.isComposing) {
         event.preventDefault();
+        if (event.repeat) return;
+        clearTimeout(pressTimer);
+        button?.classList.add('is-keyboard-pressed');
+        pressTimer = setTimeout(() => button?.classList.remove('is-keyboard-pressed'), 150);
         form.requestSubmit();
       }
     });
@@ -309,6 +315,11 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     .project-signup__control button:hover {
       background: var(--comp-button-filled-container-hover);
     }
+  }
+
+  .project-signup__control button:active,
+  .project-signup__control button.is-keyboard-pressed {
+    background: var(--comp-button-filled-container-hover);
   }
 
   .project-signup__control button:focus-visible {
