@@ -164,21 +164,30 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     padding: 0 1rem;
     border: 0;
     border-radius: 0.5rem;
-    background: var(--comp-button-filled-container);
+    background: transparent;
     color: var(--comp-button-filled-label);
     cursor: pointer;
     font: 400 1.1rem / 1 var(--font-sans);
+  }
+
+  .proto-btn-press {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    border-radius: inherit;
+    background: var(--comp-button-filled-container);
+    pointer-events: none;
     transition: background-color 0.2s ease, transform var(--motion-press-duration) ease-out;
   }
 
   @media (hover: hover) and (pointer: fine) {
-    .proto-control button:hover {
+    .proto-control button:hover .proto-btn-press {
       background: var(--comp-button-filled-container-hover);
     }
   }
 
-  .proto-control button:active,
-  .proto-control button.is-keyboard-pressed {
+  .proto-control button:active .proto-btn-press,
+  .proto-control button.is-keyboard-pressed .proto-btn-press {
     background: var(--comp-button-filled-container-hover);
     transform: scale(var(--motion-press-scale));
   }
@@ -190,6 +199,8 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 
   .proto-label,
   .proto-check {
+    position: relative;
+    z-index: 1;
     grid-area: 1 / 1;
   }
 
@@ -209,27 +220,6 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 
   .proto-check:not([hidden]) {
     display: inline-flex;
-    opacity: 0;
-    transform: scale(1.03);
-    filter: blur(4px);
-    -webkit-filter: blur(4px);
-    transition-property: opacity, transform, filter, -webkit-filter;
-    transition-duration: calc(var(--check-ms) * var(--speed) * 1ms);
-    transition-timing-function: var(--ease);
-  }
-
-  .proto-check.is-in {
-    opacity: 1;
-    transform: scale(1);
-    filter: blur(0);
-    -webkit-filter: blur(0);
-  }
-
-  .proto-check.is-out {
-    opacity: 0;
-    transform: scale(0.97);
-    filter: blur(4px);
-    -webkit-filter: blur(4px);
   }
 
   .proto-panel {
@@ -434,6 +424,7 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
       <span class="proto-surface" aria-hidden="true"></span>
       <input type="email" value="jternus@apple.com" aria-label="Email address" autocomplete="off" />
       <button type="submit" aria-label="Get involved">
+        <span class="proto-btn-press" aria-hidden="true"></span>
         <span class="proto-label" data-label aria-hidden="true">Get involved</span>
         <span class="proto-check" data-check hidden aria-hidden="true">${CHECK}</span>
       </button>
@@ -452,21 +443,6 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const settled = (animation) => animation.finished.catch(() => undefined);
-
-  const waitCheck = (el, ms) => new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      el.removeEventListener('transitionend', onEnd);
-      resolve();
-    };
-    const onEnd = (event) => {
-      if (event.target === el && event.propertyName === 'opacity') finish();
-    };
-    el.addEventListener('transitionend', onEnd);
-    setTimeout(finish, ms + 80);
-  });
 
   const play = async () => {
     const form = stage.querySelector('[data-proto-form]');
@@ -496,19 +472,32 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     });
     await wait(Math.max(0, lastEnd - c.overlap));
     check.hidden = false;
-    check.classList.remove('is-in', 'is-out');
-    void check.offsetWidth;
-    requestAnimationFrame(() => requestAnimationFrame(() => check.classList.add('is-in')));
-    await waitCheck(check, c.checkMs);
+    check.getAnimations().forEach((a) => a.cancel());
+    await settled(check.animate(
+      reduce
+        ? [{ opacity: 0 }, { opacity: 1 }]
+        : [
+            { opacity: 0, filter: 'blur(4px)', transform: 'scale(1.03)' },
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1.03)', offset: 0.35 },
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+          ],
+      { duration: c.checkMs, easing: c.ease, fill: 'forwards' },
+    ));
     await Promise.all(chars.map((el) => Promise.all(el.getAnimations().map(settled))));
     label.hidden = true;
     chars.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
     await wait(c.hold);
-    check.classList.remove('is-in');
-    check.classList.add('is-out');
-    await waitCheck(check, c.checkMs);
+    await settled(check.animate(
+      reduce
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+            { opacity: 0, filter: 'blur(4px)', transform: 'scale(0.97)' },
+          ],
+      { duration: c.checkMs, easing: c.ease, fill: 'forwards' },
+    ));
     check.hidden = true;
-    check.classList.remove('is-out');
+    check.getAnimations().forEach((a) => a.cancel());
     label.hidden = false;
     await settled(label.animate(
       reduce
