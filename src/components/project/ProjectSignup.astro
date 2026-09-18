@@ -49,7 +49,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       <div class="project-signup__action">
         <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
           Cmd/Ctrl + ⏎
-          <svg class="project-signup__shortcut-tail" width="24" height="10" viewBox="0 0 24 10" focusable="false">
+          <svg class="project-signup__shortcut-tail" width="20" height="8" viewBox="0 0 24 10" focusable="false">
             <path d="M0 0 C4 0 5 0 7 3 L10 7 Q12 10 14 7 L17 3 C19 0 20 0 24 0 Z" />
           </svg>
         </span>
@@ -63,6 +63,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 </section>
 
 <script>
+  import tlds from 'tlds';
+
+  const validTlds = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
   // Design-review only; replace this handler with the signup API before enabling subscriptions.
   document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
     if (form.dataset.bound === 'true') return;
@@ -71,6 +74,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
     const updateShortcut = () => {
       if (!input || !shortcut) return;
+      input.setCustomValidity('');
+      if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
+        input.setCustomValidity('Enter an email address with a recognised domain ending.');
+      }
       shortcut.hidden = input.value.length === 0;
       shortcut.classList.toggle('is-valid', input.validity.valid);
     };
