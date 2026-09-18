@@ -210,7 +210,7 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
   .proto-check:not([hidden]) {
     display: inline-flex;
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(1.03);
     filter: blur(4px);
     -webkit-filter: blur(4px);
     transition-property: opacity, transform, filter, -webkit-filter;
@@ -223,6 +223,13 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     transform: scale(1);
     filter: blur(0);
     -webkit-filter: blur(0);
+  }
+
+  .proto-check.is-out {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(4px);
+    -webkit-filter: blur(4px);
   }
 
   .proto-panel {
@@ -489,7 +496,7 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     });
     await wait(Math.max(0, lastEnd - c.overlap));
     check.hidden = false;
-    check.classList.remove('is-in');
+    check.classList.remove('is-in', 'is-out');
     void check.offsetWidth;
     requestAnimationFrame(() => requestAnimationFrame(() => check.classList.add('is-in')));
     await waitCheck(check, c.checkMs);
@@ -498,8 +505,10 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     chars.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
     await wait(c.hold);
     check.classList.remove('is-in');
+    check.classList.add('is-out');
     await waitCheck(check, c.checkMs);
     check.hidden = true;
+    check.classList.remove('is-out');
     label.hidden = false;
     await settled(label.animate(
       reduce
