@@ -302,19 +302,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     syncSlot();
 
     // Horizontal geometry for the out-of-flow modes. The always-in-flow slot
-    // provides the clean layout geometry (load + resize), stored and never
-    // re-read from a positioned state — so it can't compound or drift. A
-    // fixed/absolute header with unset left/right shrink-wraps to its content;
-    // this pins the box to the exact x-position and width flow gave it.
-    // rect.left is already viewport-relative, which is exactly what fixed
-    // positioning wants — do NOT add scrollX (that double-counts the gutter and
-    // shoves it right).
+    // is the only safe measure — never read the positioned header, or the
+    // width compounds. A fixed header with unset left/right shrink-wraps to
+    // its content; this pins the box to the slot's current x/width. Recapture
+    // at apply time so a scrollbar that appears after first paint (images,
+    // fonts) cannot leave a stale wider dock. rect.left is already
+    // viewport-relative, which is exactly what fixed positioning wants — do
+    // NOT add scrollX (that double-counts the gutter and shoves it right).
     let geoLeft = 0;
     let geoWidth = 0;
     const captureGeo = () => {
-      const rect = headerSlot instanceof HTMLElement
-        ? headerSlot.getBoundingClientRect()
-        : header.getBoundingClientRect();
+      if (!(headerSlot instanceof HTMLElement)) return;
+      const rect = headerSlot.getBoundingClientRect();
       geoLeft = rect.left;
       geoWidth = rect.width;
     };
@@ -324,6 +323,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     document.fonts?.addEventListener('loadingdone', () => captureGeo());
 
     const applyGeo = () => {
+      captureGeo();
       header.style.left = `${geoLeft}px`;
       header.style.width = `${geoWidth}px`;
     };
@@ -391,10 +391,11 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         // Absolute positions against the slot (position: relative), which is
         // ALREADY at the correct x-offset in the content column — so left must
         // be 0, not the viewport-relative geoLeft (that would double-count the
-        // gutter and shove it right). Width still comes from the flow measure.
+        // gutter and shove it right). Width 100% tracks the slot live, so a
+        // later scrollbar cannot leave a stale pixel width.
         header.style.top = `${window.scrollY - headerChromeHeight()}px`;
         header.style.left = '0';
-        header.style.width = `${geoWidth}px`;
+        header.style.width = '100%';
       } else {
         header.style.top = '';
         clearGeo();
@@ -669,7 +670,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       else if (mode === 'riding') {
         header.style.left = '0';
-        header.style.width = `${geoWidth}px`;
+        header.style.width = '100%';
       }
     });
   }

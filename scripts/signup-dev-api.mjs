@@ -35,60 +35,57 @@ const send = (res, status, body) => {
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 };
 
-const mountApi = (server, route, tooLarge, handle) => {
-  server.middlewares.use(route, async (req, res, next) => {
-    try {
-      const env = loadSignupDevEnv(server.config.root || process.cwd());
-      const host = req.headers.host || 'localhost';
-      const url = new URL(req.url || '/', `http://${host}`);
-      const headers = new Headers();
-      for (const [key, value] of Object.entries(req.headers)) {
-        if (value == null) continue;
-        headers.set(key, Array.isArray(value) ? value.join(', ') : String(value));
-      }
-
-      /** @type {RequestInit} */
-      const init = { method: req.method || 'GET', headers };
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
-        const chunks = [];
-        let size = 0;
-        for await (const chunk of req) {
-          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          size += buf.length;
-          if (size > 8192) {
-            send(res, 400, { error: tooLarge });
-            return;
-          }
-          chunks.push(buf);
-        }
-        init.body = Buffer.concat(chunks);
-      }
-
-      const request = new Request(url, init);
-      const response = await handle(request, env);
-      res.statusCode = response.status;
-      response.headers.forEach((value, key) => {
-        if (key.toLowerCase() === 'transfer-encoding') return;
-        res.setHeader(key, value);
-      });
-      res.end(Buffer.from(await response.arrayBuffer()));
-    } catch (error) {
-      next(error);
-    }
-  });
-};
-
 /**
- * Vite plugin (`apply: 'serve'`) — local /api/signup.
+ * Vite plugin (`apply: 'serve'`) — mounts POST /api/signup for local astro-dev.
+ * Shares `handleSignupRequest` with the Pages Function via ssrLoadModule.
  */
 export function signupDevApi() {
   return {
     name: 'signup-dev-api',
     apply: 'serve',
     configureServer(server) {
-      mountApi(server, '/api/signup', 'Enter a valid email address.', async (request, env) => {
-        const { handleSignupRequest } = await server.ssrLoadModule('/src/lib/signup-handler.ts');
-        return handleSignupRequest(request, env, { isDev: true });
+      server.middlewares.use('/api/signup', async (req, res, next) => {
+        try {
+          const { handleSignupRequest } = await server.ssrLoadModule('/src/lib/signup-handler.ts');
+          const env = loadSignupDevEnv(server.config.root || process.cwd());
+
+          const host = req.headers.host || 'localhost';
+          const url = new URL(req.url || '/', `http://${host}`);
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(req.headers)) {
+            if (value == null) continue;
+            headers.set(key, Array.isArray(value) ? value.join(', ') : String(value));
+          }
+
+          /** @type {RequestInit} */
+          const init = { method: req.method || 'GET', headers };
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            const chunks = [];
+            let size = 0;
+            for await (const chunk of req) {
+              const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+              size += buf.length;
+              if (size > 8192) {
+                send(res, 400, { error: 'Enter a valid email address.' });
+                return;
+              }
+              chunks.push(buf);
+            }
+            init.body = Buffer.concat(chunks);
+          }
+
+          const request = new Request(url, init);
+          const response = await handleSignupRequest(request, env, { isDev: true });
+          res.statusCode = response.status;
+          response.headers.forEach((value, key) => {
+            if (key.toLowerCase() === 'transfer-encoding') return;
+            res.setHeader(key, value);
+          });
+          const buf = Buffer.from(await response.arrayBuffer());
+          res.end(buf);
+        } catch (error) {
+          next(error);
+        }
       });
     },
   };
