@@ -10,6 +10,16 @@ assert.match(source, /--header-chrome-height/);
 assert.match(source, /--header-chrome-height: 0px/);
 assert.match(source, /header\.style\.width = '100%'/);
 assert.match(source, /box-sizing: border-box/);
+assert.match(
+  source,
+  /const applyGeo = \(\) => \{\s*captureGeo\(\);/,
+  'docked applyGeo must recapture from the in-flow slot before writing width',
+);
+assert.match(
+  source,
+  /else if \(mode === 'riding'\) \{\s*header\.style\.left = '0';\s*header\.style\.width = '100%';/,
+  'riding width must follow the slot, not a cached pixel measure',
+);
 const mobileStyles = source.slice(source.indexOf('  @media (max-width: 767px) {'), source.indexOf('\n  }\n\n  /* Deliberately', source.indexOf('  @media (max-width: 767px) {')));
 assert.match(mobileStyles, /\.site-header-slot\s*\{[\s\S]*height:\s*calc\(var\(--space-unit\) \* 3\.75\)/);
 assert.match(mobileStyles, /\.site-header\s*\{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*left:\s*0;[\s\S]*width:\s*100%/);
@@ -83,7 +93,7 @@ function createHarness({ width = 800, mode = 'flow' } = {}) {
   harness.execute(960);
   assert.deepEqual(harness.calls, { syncHeaderWidth: 1, syncSlot: 1, menuSizes: 1, captureGeo: 1, applyGeo: 0 });
   assert.equal(harness.header.style.left, '0');
-  assert.equal(harness.header.style.width, '777px');
+  assert.equal(harness.header.style.width, '100%');
   assert.equal(harness.header.style.top, '123px');
   assert.equal(harness.header.style.opacity, '0.4');
 }
