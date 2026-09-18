@@ -79,7 +79,7 @@ media/            # source media; reachable assets are copied to dist/images at 
 
 ## Hosted tools
 
-- **Stoozing Playground** — served at [`/stoozing-playground`](https://wip.vcruzdesigns.com/stoozing-playground) from `public/stoozing-playground/index.html`. This is a **vendored copy** of the single self-contained HTML file in the [`vcruzdesigns/stooze-page`](https://github.com/vcruzdesigns/stooze-page) repo (canonical source). It has no build step and loads Chart.js from a CDN. Mobile touch tweaks (16px inputs to stop iOS zoom-on-focus, floating Settings pill) are applied in this copy under a `@media (max-width: 640px)` block. To refresh, re-copy `stoozing-playground.html` from `stooze-page` over the vendored file and re-apply the mobile block if it was overwritten.
+- **Stoozing Playground** — served at [`/stoozing-playground`](https://wip.vcruzdesigns.com/stoozing-playground) from `public/stoozing-playground/index.html`. This is a **vendored copy** of the single self-contained HTML file in the [`vicentecr-uz/stooze-page`](https://github.com/vicentecr-uz/stooze-page) repo (canonical source). It has no build step and loads Chart.js from a CDN. Mobile touch tweaks (16px inputs to stop iOS zoom-on-focus, floating Settings pill) are applied in this copy under a `@media (max-width: 640px)` block. To refresh, re-copy `stoozing-playground.html` from `stooze-page` over the vendored file and re-apply the mobile block if it was overwritten.
 
 ## Conventions
 
