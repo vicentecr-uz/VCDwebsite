@@ -23,14 +23,60 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
 
   <aside class="proto-panel" aria-label="Motion controls">
     <p class="proto-panel-title">Success motion</p>
-    <label>Speed
+    <label>Preview speed
       <select data-ctrl="speed">
         <option value="1" selected>1×</option>
         <option value="0.5">0.5×</option>
         <option value="0.25">0.25×</option>
       </select>
     </label>
+    <p class="proto-panel-note">Get involved leaving and the check are locked. Controls below follow the rest of the routine.</p>
+    <p class="proto-panel-group">1. Check leaves</p>
+    <label>Delay after check-out starts <output data-out="emailVsCheck">300ms</output>
+      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="300" />
+    </label>
+    <p class="proto-panel-group">2. Wind-up (left)</p>
+    <label>Distance <output data-out="anticipate">8px</output>
+      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="8" />
+    </label>
+    <label>Duration <output data-out="anticipateMs">80ms</output>
+      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="80" />
+    </label>
     <label>Ease
+      <select data-ctrl="anticipateEase">
+        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)" selected>accelerate — fastest at the left</option>
+        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
+        <option value="cubic-bezier(0.5, 0, 0.5, 1)">coil — slow–fast–slow</option>
+        <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">settle — brakes into the pose</option>
+        <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
+      </select>
+    </label>
+    <p class="proto-panel-group">3. Store</p>
+    <label>Hold at left <output data-out="storeMs">70ms</output>
+      <input data-ctrl="storeMs" type="range" min="0" max="200" step="10" value="70" />
+    </label>
+    <p class="proto-panel-group">4. Release (right)</p>
+    <label>Duration <output data-out="emailMs">500ms</output>
+      <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="500" />
+    </label>
+    <label>Ease
+      <select data-ctrl="releaseEase">
+        <option value="linear" selected>constant — already at speed</option>
+        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate from rest</option>
+        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard from rest</option>
+      </select>
+    </label>
+    <p class="proto-panel-group">5. Get involved back</p>
+    <label>Start during release <output data-out="returnAt">10%</output>
+      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="10" />
+    </label>
+    <label>Stagger across release <output data-out="returnSpan">55%</output>
+      <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="55" />
+    </label>
+    <label>Each letter <output data-out="returnMs">200ms</output>
+      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="200" />
+    </label>
+    <label>Letter ease
       <select data-ctrl="ease">
         <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">ease-out-quad</option>
         <option value="cubic-bezier(0.215, 0.61, 0.355, 1)">ease-out-cubic</option>
@@ -40,53 +86,11 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
         <option value="cubic-bezier(0.645, 0.045, 0.355, 1)">ease-in-out-cubic</option>
       </select>
     </label>
-    <p class="proto-panel-group">Email out</p>
-    <label>Vs check-out <output data-out="emailVsCheck">300ms</output>
-      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="300" />
-    </label>
-    <label>Anticipate <output data-out="anticipate">8px</output>
-      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="8" />
-    </label>
-    <label>Anticipate time <output data-out="anticipateMs">80ms</output>
-      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="80" />
-    </label>
-    <label>Anticipate ease
-      <select data-ctrl="anticipateEase">
-        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)" selected>accelerate</option>
-        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
-        <option value="cubic-bezier(0.5, 0, 0.5, 1)">coil</option>
-        <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">settle-out</option>
-        <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
-      </select>
-    </label>
-    <label>Store <output data-out="storeMs">70ms</output>
-      <input data-ctrl="storeMs" type="range" min="0" max="200" step="10" value="70" />
-    </label>
-    <label>Travel <output data-out="emailMs">500ms</output>
-      <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="500" />
-    </label>
-    <label>Release ease
-      <select data-ctrl="releaseEase">
-        <option value="linear" selected>constant</option>
-        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate</option>
-        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
-      </select>
-    </label>
-    <p class="proto-panel-group">Letters back</p>
-    <label>Start at <output data-out="returnAt">10%</output>
-      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="10" />
-    </label>
-    <label>Spread <output data-out="returnSpan">55%</output>
-      <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="55" />
-    </label>
-    <label>Return duration <output data-out="returnMs">200ms</output>
-      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="200" />
-    </label>
-    <p class="proto-panel-group">Placeholder</p>
-    <label>Wait <output data-out="placeholderWait">400ms</output>
+    <p class="proto-panel-group">6. Placeholder</p>
+    <label>Wait, then fade in <output data-out="placeholderWait">400ms</output>
       <input data-ctrl="placeholderWait" type="range" min="0" max="2000" step="50" value="400" />
     </label>
-    <p class="proto-panel-note">Empty / invalid submit uses the real field status.</p>
+    <p class="proto-panel-note">Placeholder fade uses Letter ease. Empty / invalid submit uses the real field status.</p>
     <button type="button" class="proto-copy">Copy config</button>
     <button type="button" class="proto-copy proto-save">Save</button>
     <button type="button" class="proto-copy proto-revert">Revert</button>
