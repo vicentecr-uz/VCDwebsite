@@ -33,6 +33,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 <section
   id={sectionId}
   class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
+  data-signup-motion
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'signup' : undefined}
 >
@@ -70,18 +71,117 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       <p class="project-signup__status-message" data-signup-status-message></p>
     </div>
   </form>
+  {import.meta.env.DEV && (
+    <aside class="signup-motion-panel" data-signup-motion-panel aria-label="Success motion">
+      <p class="signup-motion-panel__title">Success motion</p>
+      <label>Preview speed
+        <select data-ctrl="speed">
+          <option value="1" selected>1×</option>
+          <option value="0.5">0.5×</option>
+          <option value="0.25">0.25×</option>
+        </select>
+      </label>
+      <p class="signup-motion-panel__note">Get involved leaving and the check are locked. Controls below follow the rest of the routine.</p>
+      <p class="signup-motion-panel__group">1. Check leaves</p>
+      <label>Delay after check-out starts <output data-out="emailVsCheck">100ms</output>
+        <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="100" />
+      </label>
+      <p class="signup-motion-panel__group">2. Wind-up (left)</p>
+      <label>Distance <output data-out="anticipate">10px</output>
+        <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="10" />
+      </label>
+      <label>Duration <output data-out="anticipateMs">100ms</output>
+        <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="100" />
+      </label>
+      <label>Ease
+        <select data-ctrl="anticipateEase">
+          <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate — fastest at the left</option>
+          <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
+          <option value="cubic-bezier(0.4, 0.05, 0.6, 0.95)" selected>coil — slow–fast–slow</option>
+          <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">settle — brakes into the pose</option>
+          <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
+        </select>
+      </label>
+      <label>Taller and skinnier <output data-out="squash">0.10</output>
+        <input data-ctrl="squash" type="range" min="0" max="0.3" step="0.02" value="0.1" />
+      </label>
+      <p class="signup-motion-panel__group">3. Store</p>
+      <label>Hold at left <output data-out="storeMs">70ms</output>
+        <input data-ctrl="storeMs" type="range" min="0" max="200" step="10" value="70" />
+      </label>
+      <p class="signup-motion-panel__group">4. Release (right)</p>
+      <label>Duration fallback <output data-out="emailMs">500ms</output>
+        <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="500" />
+      </label>
+      <label>Ease fallback
+        <select data-ctrl="releaseEase">
+          <option value="linear">constant — already at speed</option>
+          <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate from rest</option>
+          <option value="cubic-bezier(0.5, 0, 0.75, 0.16)" selected>accelerate hard from rest</option>
+        </select>
+      </label>
+      <label>Acceleration <output data-out="accel">12000 px/s²</output>
+        <input data-ctrl="accel" type="range" min="0" max="40000" step="500" value="12000" />
+      </label>
+      <label>Max speed <output data-out="vmax">1600 px/s</output>
+        <input data-ctrl="vmax" type="range" min="200" max="4000" step="50" value="1600" />
+      </label>
+      <p class="signup-motion-panel__note">Acceleration 0 uses Duration fallback + Ease fallback. Otherwise the throw is accelerate-then-coast at max speed.</p>
+      <label>Shorter and wider <output data-out="stretch">0.10</output>
+        <input data-ctrl="stretch" type="range" min="0" max="0.3" step="0.02" value="0.1" />
+      </label>
+      <p class="signup-motion-panel__group">5. Get involved back</p>
+      <label>Start during release <output data-out="returnAt">80%</output>
+        <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="80" />
+      </label>
+      <label>Stagger across release <output data-out="returnSpan">40%</output>
+        <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="40" />
+      </label>
+      <label>Each letter <output data-out="returnMs">300ms</output>
+        <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="300" />
+      </label>
+      <label>Letter ease
+        <select data-ctrl="ease">
+          <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">ease-out-quad</option>
+          <option value="cubic-bezier(0.215, 0.61, 0.355, 1)">ease-out-cubic</option>
+          <option value="cubic-bezier(0.165, 0.84, 0.44, 1)">ease-out-quart</option>
+          <option value="cubic-bezier(0.23, 1, 0.32, 1)" selected>ease-out-quint</option>
+          <option value="cubic-bezier(0.32, 0.72, 0, 1)">ease-out-strong</option>
+          <option value="cubic-bezier(0.645, 0.045, 0.355, 1)">ease-in-out-cubic</option>
+        </select>
+      </label>
+      <p class="signup-motion-panel__group">6. Placeholder</p>
+      <label>Wait, then fade in <output data-out="placeholderWait">400ms</output>
+        <input data-ctrl="placeholderWait" type="range" min="0" max="2000" step="50" value="400" />
+      </label>
+      <p class="signup-motion-panel__note">Placeholder fade uses Letter ease. Empty / invalid submit uses the real field status.</p>
+      <button type="button" class="signup-motion-panel__btn" data-copy>Copy config</button>
+      <button type="button" class="signup-motion-panel__btn" data-save>Save</button>
+      <button type="button" class="signup-motion-panel__btn" data-revert>Revert</button>
+      <button type="button" class="signup-motion-panel__btn" data-replay>Replay</button>
+    </aside>
+  )}
 </section>
 
 <script>
   import tlds from 'tlds';
+  import {
+    animateRelease,
+    bindSignupMotionPanel,
+    readSignupMotionCfg,
+    throwDurationMs,
+  } from '../../scripts/signupSuccessMotion';
 
   const validTlds = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
-  // Design-review only; replace this handler with the signup API before enabling subscriptions.
   document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
+    const motionRoot = form.closest<HTMLElement>('[data-signup-motion]');
+    const panel = motionRoot?.querySelector<HTMLElement>('[data-signup-motion-panel]');
+    if (motionRoot && panel) bindSignupMotionPanel(panel, motionRoot);
     const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
     const field = form.querySelector<HTMLElement>('.project-signup__field');
+    const textField = form.querySelector<HTMLElement>('.dev-text-field');
     const button = form.querySelector<HTMLButtonElement>('button[type=submit]');
     let pressTimer: ReturnType<typeof setTimeout>;
     const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
@@ -91,6 +191,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     const labelEl = form.querySelector<HTMLElement>('[data-signup-label]');
     const checkEl = form.querySelector<HTMLElement>('[data-signup-check]');
     let celebrating = false;
+    let playId = 0;
+    let ghost: HTMLElement | null = null;
+    let lastEmail = '';
     if (labelEl && labelEl.dataset.split !== 'true') {
       const text = labelEl.textContent ?? '';
       labelEl.textContent = '';
@@ -120,71 +223,216 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       checkEl.addEventListener('transitionend', onEnd);
       window.setTimeout(finish, ms + 80);
     });
-    const showCheck = async (reduceMotion: boolean, ms: number) => {
-      if (!checkEl) return;
-      checkEl.hidden = false;
-      checkEl.classList.toggle('is-reduced', reduceMotion);
-      checkEl.classList.remove('is-in');
-      void checkEl.offsetWidth;
-      await new Promise<void>((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-      });
-      checkEl.classList.add('is-in');
-      await waitCheckTransition(ms);
+    const teardownGhost = () => {
+      ghost?.remove();
+      ghost = null;
+      input?.classList.remove('is-signup-ghosted');
+      textField?.classList.remove('is-signup-fade');
     };
-    const hideCheck = async (ms: number) => {
-      if (!checkEl) return;
-      checkEl.classList.remove('is-in');
-      await waitCheckTransition(ms);
-      checkEl.hidden = true;
-      checkEl.classList.remove('is-reduced');
+    const mountEmailGhost = (className: string, text: string) => {
+      const track = textField?.querySelector('.dev-text-field__track');
+      if (!input || !textField || !track) return null;
+      const next = document.createElement('span');
+      next.className = className;
+      next.setAttribute('aria-hidden', 'true');
+      const style = getComputedStyle(input);
+      const inputRect = input.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      next.style.font = style.font;
+      next.style.letterSpacing = style.letterSpacing;
+      next.style.left = `${inputRect.left - trackRect.left + track.scrollLeft}px`;
+      next.style.top = `${inputRect.top - trackRect.top}px`;
+      next.style.height = `${inputRect.height}px`;
+      next.textContent = text;
+      track.append(next);
+      ghost = next;
+      return next;
     };
-    const playSuccess = async () => {
-      if (!button || !labelEl || !checkEl || celebrating) return;
-      celebrating = true;
-      button.setAttribute('aria-busy', 'true');
-      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const chars = [...labelEl.querySelectorAll<HTMLElement>('[data-char]')];
-      const n = chars.length;
-      const center = Math.max(n - 1, 1) / 2;
-      const stagger = 32;
-      const duration = 220;
-      const ease = 'cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-      const maxMove = 18;
-      await Promise.all(chars.map((el, i) => {
-        const fromEdge = Math.min(i, n - 1 - i);
-        const dist = Math.abs(i - center) / center;
-        const dir = i < center ? 1 : i > center ? -1 : 0;
-        const x = reduce ? 0 : dir * maxMove * dist;
-        const scale = reduce ? 1 : 0.97;
-        const blur = reduce ? 0 : 4;
-        return settled(el.animate(
-          [
-            { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
-            { opacity: 0, filter: `blur(${blur}px)`, transform: `translateX(${x}px) scale(${scale})` },
-          ],
-          { duration, delay: fromEdge * stagger, easing: ease, fill: 'forwards' },
-        ));
-      }));
-      labelEl.hidden = true;
-      chars.forEach((el) => el.getAnimations().forEach((animation) => animation.cancel()));
-      await showCheck(reduce, duration);
-      await waitMs(2000);
-      await hideCheck(duration);
+    const playEmailAndReturn = async (
+      reduce: boolean,
+      chars: HTMLElement[],
+    ) => {
+      if (!input || !labelEl || !motionRoot) return;
+      const c = readSignupMotionCfg(motionRoot);
+      const emailEl = reduce ? null : mountEmailGhost('project-signup__email-ghost', input.value);
+      if (emailEl) {
+        input.classList.add('is-signup-ghosted');
+        textField?.classList.add('is-signup-fade');
+      }
+      const fadeWidth = Number.parseFloat(
+        getComputedStyle(textField ?? document.documentElement)
+          .getPropertyValue('--dev-text-field-fade-width'),
+      ) || 22;
+      const travelPx = emailEl && textField
+        ? textField.getBoundingClientRect().right - emailEl.getBoundingClientRect().left + fadeWidth
+        : 0;
+      const throwDistance = Math.max(0, travelPx + c.anticipate);
+      const throwMs = reduce || c.accel <= 0 || c.vmax <= 0
+        ? c.emailMs
+        : throwDurationMs(throwDistance, c.accel, c.vmax, c.emailMs / c.speed) * c.speed;
+      const runEmail = async () => {
+        if (reduce) {
+          input.classList.add('is-signup-ghosted');
+          await settled(input.animate(
+            [{ opacity: 1 }, { opacity: 0 }],
+            { duration: c.emailMs, easing: c.ease, fill: 'forwards' },
+          ));
+          return;
+        }
+        if (!emailEl) return;
+        if (c.anticipate > 0 && c.anticipateMs > 0) {
+          const windup = emailEl.animate(
+            [
+              { transform: 'translateX(0) scaleX(1) scaleY(1)' },
+              { transform: `translateX(${-c.anticipate}px) scaleX(${1 - c.squash}) scaleY(${1 + c.squash})` },
+            ],
+            { duration: c.anticipateMs, easing: c.anticipateEase, fill: 'forwards' },
+          );
+          await settled(windup);
+          windup.commitStyles();
+          windup.cancel();
+          if (c.storeMs > 0) await waitMs(c.storeMs);
+        }
+        const release = animateRelease(
+          emailEl,
+          -c.anticipate,
+          travelPx,
+          1 - c.squash,
+          1 + c.squash,
+          1 + c.stretch,
+          1 - c.stretch,
+          c,
+        );
+        await release.finished;
+      };
+      const emailDone = runEmail();
       labelEl.hidden = false;
-      await settled(labelEl.animate(
+      const n = chars.length;
+      const start = reduce ? 0 : c.anticipateMs + c.storeMs + c.returnAt * throwMs;
+      const span = reduce ? Math.max(0, n - 1) * 30 : c.returnSpan * throwMs;
+      const returnAnims = chars.map((el, i) => el.animate(
+        reduce
+          ? [{ opacity: 0 }, { opacity: 1 }]
+          : [
+            { opacity: 0, filter: `blur(${c.blur}px)`, transform: `scale(${c.scale})` },
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+          ],
+        {
+          duration: c.returnMs,
+          delay: start + (n <= 1 ? 0 : (i / (n - 1)) * span),
+          easing: c.ease,
+          fill: 'both',
+        },
+      ));
+      await Promise.all([emailDone, ...returnAnims.map(settled)]);
+      input.classList.add('is-signup-placeholder-pending');
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.getAnimations().forEach((animation) => animation.cancel());
+      teardownGhost();
+      chars.forEach((el) => el.getAnimations().forEach((animation) => animation.cancel()));
+      labelEl.getAnimations().forEach((animation) => animation.cancel());
+    };
+    const revealPlaceholder = async (id: number) => {
+      if (!input || !motionRoot || id !== playId) return;
+      const c = readSignupMotionCfg(motionRoot);
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (input.value || document.activeElement === input) {
+        input.classList.remove('is-signup-placeholder-pending');
+        return;
+      }
+      const next = mountEmailGhost('project-signup__email-ghost is-placeholder', input.placeholder);
+      if (!next) {
+        input.classList.remove('is-signup-placeholder-pending');
+        return;
+      }
+      await settled(next.animate(
         reduce
           ? [{ opacity: 0 }, { opacity: 1 }]
           : [
             { opacity: 0, filter: 'blur(4px)' },
             { opacity: 1, filter: 'blur(0px)' },
           ],
-        { duration, easing: ease, fill: 'forwards' },
+        { duration: 220 * c.speed, easing: c.ease, fill: 'forwards' },
       ));
-      labelEl.getAnimations().forEach((animation) => animation.cancel());
+      if (id !== playId) return;
+      next.remove();
+      if (ghost === next) ghost = null;
+      input.classList.remove('is-signup-placeholder-pending');
+    };
+    const playSuccess = async () => {
+      if (!button || !labelEl || !checkEl || !input || !motionRoot || celebrating) return;
+      const id = ++playId;
+      celebrating = true;
+      button.setAttribute('aria-busy', 'true');
+      input.readOnly = true;
+      shortcut?.classList.add('is-inert');
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const c = readSignupMotionCfg(motionRoot);
+      const chars = [...labelEl.querySelectorAll<HTMLElement>('[data-char]')];
+      const n = chars.length;
+      const center = Math.max(n - 1, 1) / 2;
+      const lastEnd = Math.max(...chars.map((_, i) => Math.min(i, n - 1 - i) * c.stagger + c.charMs));
+      chars.forEach((node, i) => {
+        const fromEdge = Math.min(i, n - 1 - i);
+        const dist = Math.abs(i - center) / center;
+        const dir = i < center ? 1 : i > center ? -1 : 0;
+        const travel = c.move * (c.taper * dist + (1 - c.taper));
+        const x = reduce ? 0 : dir * travel;
+        node.animate(
+          [
+            { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
+            { opacity: 0, filter: `blur(${reduce ? 0 : c.blur}px)`, transform: `translateX(${x}px) scale(${reduce ? 1 : c.scale})` },
+          ],
+          { duration: c.charMs, delay: fromEdge * c.stagger, easing: c.ease, fill: 'forwards' },
+        );
+      });
+      await waitMs(Math.max(0, lastEnd - c.overlap));
+      checkEl.hidden = false;
+      checkEl.classList.toggle('is-reduced', reduce);
+      checkEl.classList.remove('is-in', 'is-out');
+      void checkEl.offsetWidth;
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      checkEl.classList.add('is-in');
+      await waitCheckTransition(c.checkMs);
+      await Promise.all(chars.map((node) => Promise.all(node.getAnimations().map(settled))));
+      labelEl.hidden = true;
+      chars.forEach((el) => el.getAnimations().forEach((animation) => animation.cancel()));
+      await waitMs(c.hold);
+      if (id !== playId) return;
+      let exitPromise = Promise.resolve();
+      if (c.emailVsCheck >= 0) {
+        checkEl.classList.remove('is-in');
+        checkEl.classList.add('is-out');
+        const checkDone = waitCheckTransition(c.checkMs);
+        if (c.emailVsCheck > 0) await waitMs(c.emailVsCheck);
+        exitPromise = playEmailAndReturn(reduce, chars);
+        await checkDone;
+      } else {
+        exitPromise = playEmailAndReturn(reduce, chars);
+        await waitMs(-c.emailVsCheck);
+        checkEl.classList.remove('is-in');
+        checkEl.classList.add('is-out');
+        await waitCheckTransition(c.checkMs);
+      }
+      checkEl.hidden = true;
+      checkEl.classList.remove('is-out', 'is-reduced');
+      await exitPromise;
+      input.readOnly = false;
       button.removeAttribute('aria-busy');
       celebrating = false;
+      if (id !== playId) return;
+      await waitMs(c.placeholderWait);
+      await revealPlaceholder(id);
     };
+    panel?.querySelector('[data-replay]')?.addEventListener('click', () => {
+      if (celebrating || !input) return;
+      if (!input.value.trim()) input.value = lastEmail || 'jternus@apple.com';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      void playSuccess();
+    });
     let shakes: Animation[] = [];
     const dismissStatus = () => {
       clearTimeout(statusTimer);
@@ -213,7 +461,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
       shortcut.classList.toggle('is-valid', input.validity.valid);
-      if ((celebrating || form.dataset.protoPlaying === 'true') && input.value.length > 0) {
+      if ((celebrating) && input.value.length > 0) {
         shortcut.hidden = false;
         shortcut.classList.add('is-inert');
         return;
@@ -253,7 +501,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (celebrating || form.dataset.protoPlaying === 'true') return;
+      if (celebrating) return;
       updateShortcut();
       dismissStatus();
       if (!input) return;
@@ -278,17 +526,42 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         return;
       }
       input.removeAttribute('aria-invalid');
-      if (form.closest('[data-signup-proto]')) {
-        form.dispatchEvent(new CustomEvent('signup:proto-success', { bubbles: true }));
-        return;
-      }
-      showStatus('Signup is not available yet.');
+      lastEmail = input.value.trim();
       void playSuccess();
     });
   });
 </script>
 
 <style>
+  .project-signup {
+    --stagger: 10;
+    --char-ms: 500;
+    --move: 8;
+    --taper: 20;
+    --scale-to: 0.97;
+    --blur: 10;
+    --overlap: 400;
+    --check-ms: 160;
+    --hold: 1400;
+    --email-vs-check: 100;
+    --anticipate: 10;
+    --anticipate-ms: 100;
+    --anticipate-ease: cubic-bezier(0.4, 0.05, 0.6, 0.95);
+    --squash: 0.1;
+    --store-ms: 70;
+    --email-ms: 500;
+    --release-ease: cubic-bezier(0.5, 0, 0.75, 0.16);
+    --release-accel: 12000;
+    --release-vmax: 1600;
+    --stretch: 0.1;
+    --return-at: 80;
+    --return-span: 40;
+    --return-ms: 300;
+    --placeholder-wait: 400;
+    --speed: 1;
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
   .project-signup__form {
     position: relative;
     width: 100%;
@@ -405,12 +678,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     align-items: center;
     justify-content: center;
     opacity: 0;
-    transform: scale(0.97);
+    transform: scale(1.03);
     filter: blur(4px);
     -webkit-filter: blur(4px);
     transition-property: opacity, transform, filter, -webkit-filter;
-    transition-duration: 220ms;
-    transition-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
   }
 
   .project-signup__check.is-in {
@@ -418,6 +691,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     transform: scale(1);
     filter: blur(0px);
     -webkit-filter: blur(0px);
+  }
+
+  .project-signup__check.is-out {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(4px);
+    -webkit-filter: blur(4px);
   }
 
   .project-signup__check.is-reduced {
@@ -581,5 +861,122 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     :global(.project-signup__field .dev-field__input) {
       font-size: var(--text-body-size);
     }
+  }
+
+  :global(.project-signup__email-ghost) {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+    color: var(--sys-color-on-srf);
+    transform-origin: left center;
+  }
+
+  :global(.project-signup__email-ghost.is-placeholder) {
+    color: var(--sys-color-on-srf-subtle);
+  }
+
+  :global(.project-signup .dev-field__input.is-signup-ghosted) {
+    color: transparent;
+    caret-color: transparent;
+  }
+
+  :global(.project-signup .dev-field__input.is-signup-placeholder-pending::placeholder) {
+    color: transparent;
+    opacity: 0;
+  }
+
+  :global(.project-signup .dev-text-field.is-signup-fade::after) {
+    opacity: 1;
+  }
+
+  .signup-motion-panel {
+    position: fixed;
+    top: 24px;
+    right: 24px;
+    z-index: 2147483647;
+    width: 260px;
+    max-height: calc(100vh - 96px);
+    overflow: auto;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(10, 10, 10, 0.82);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+    backdrop-filter: blur(12px) saturate(1.4);
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset,
+      0 8px 24px rgba(0, 0, 0, 0.24);
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    line-height: 1.3;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .signup-motion-panel__title,
+  .signup-motion-panel__group {
+    margin: 0 0 8px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .signup-motion-panel__group {
+    margin-top: 12px;
+    color: rgba(255, 255, 255, 0.55);
+    font-weight: 500;
+  }
+
+  .signup-motion-panel__note {
+    margin: 0 0 8px;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .signup-motion-panel label {
+    display: grid;
+    gap: 4px;
+    margin-bottom: 10px;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .signup-motion-panel output {
+    float: right;
+    font-variant-numeric: tabular-nums;
+    color: #fff;
+  }
+
+  .signup-motion-panel input[type="range"],
+  .signup-motion-panel select {
+    width: 100%;
+    accent-color: #fff;
+  }
+
+  .signup-motion-panel select {
+    height: 28px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+  }
+
+  .signup-motion-panel__btn {
+    width: 100%;
+    height: 28px;
+    margin-top: 4px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .signup-motion-panel__btn:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.4);
+    outline-offset: 2px;
   }
 </style>
