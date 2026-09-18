@@ -4,6 +4,7 @@ import {
   spacingDevAttrs,
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
+import TextField from '../ui/TextField.astro';
 
 interface Props {
   label?: string;
@@ -36,15 +37,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 >
   <form class="project-signup__form" data-project-signup-form>
     <div class="project-signup__control">
-      <input
-        type="email"
+      <TextField
+        class="project-signup__field"
+        label="Email address"
+        hideLabel
         pattern={String.raw`[^@\s]+@[^@\s]+\.[^@\s]+`}
         required
         autocomplete="email"
+        inputmode="email"
         autocapitalize="none"
         spellcheck="false"
         placeholder={placeholder}
-        aria-label="Email address"
+        data-signup-email
       />
       <div class="project-signup__action">
         <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
@@ -70,11 +74,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
-    const input = form.querySelector('input');
+    const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
+    const field = form.querySelector<HTMLElement>('.project-signup__field');
     const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
+    const emailChecker = document.createElement('input');
+    emailChecker.type = 'email';
     const updateShortcut = () => {
       if (!input || !shortcut) return;
       input.setCustomValidity('');
+      emailChecker.value = input.value;
+      if (emailChecker.validity.typeMismatch) {
+        input.setCustomValidity('Enter a valid email address.');
+      }
       if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
         input.setCustomValidity('Enter an email address with a recognised domain ending.');
       }
@@ -84,10 +95,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     input?.addEventListener('input', updateShortcut);
     input?.addEventListener('change', updateShortcut);
     updateShortcut();
-    input?.addEventListener('pointerdown', () => { input.dataset.pointerFocus = ''; });
-    input?.addEventListener('blur', () => { delete input.dataset.pointerFocus; });
+    field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
+    input?.addEventListener('blur', () => { if (field) delete field.dataset.pointerFocus; });
     input?.addEventListener('keydown', (event) => {
-      if (event.key === 'Tab') delete input.dataset.pointerFocus;
+      if (event.key === 'Tab' && field) delete field.dataset.pointerFocus;
       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.isComposing) {
         event.preventDefault();
         form.requestSubmit();
@@ -119,31 +130,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     padding: 0.25rem;
     border-radius: 0.75rem;
     background: var(--sys-color-srf-container-lowest);
-  }
-
-  .project-signup__control input {
-    appearance: none;
-    width: 100%;
-    min-width: 0;
-    height: 2.625rem;
-    min-height: 2.625rem;
-    padding: 0 0.75rem;
-    border: 0;
-    border-radius: 0.5rem;
-    outline: 0;
-    background: transparent;
-    color: var(--sys-color-on-srf);
-    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
-  }
-
-  .project-signup__control input::placeholder {
-    color: var(--sys-color-on-srf-subtle);
-    opacity: 1;
-  }
-
-  .project-signup__control input:focus-visible:not([data-pointer-focus]) {
-    outline: 2px solid var(--sys-color-on-srf);
-    outline-offset: -2px;
   }
 
   .project-signup__control button {
@@ -213,6 +199,59 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     margin: 0;
     color: var(--sys-color-on-srf-variant);
     font-size: var(--text-body-size);
+  }
+
+  :global(.project-signup__field) {
+    min-width: 0;
+    width: 100%;
+  }
+
+  :global(.project-signup__field .dev-field__value) {
+    min-width: 0;
+    width: 100%;
+    padding: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+  }
+
+  :global(.project-signup__field .dev-text-field) {
+    --dev-text-field-edge-gutter: 12px;
+    --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
+    min-width: 0;
+    width: 100%;
+    background: transparent;
+  }
+
+  :global(.project-signup__field:hover .dev-text-field) {
+    --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
+  }
+
+  :global(.project-signup__field:hover .dev-field__value) {
+    background: transparent;
+  }
+
+  :global(.project-signup__field .dev-text-field__content) {
+    padding: 0 0.75rem;
+  }
+
+  :global(.project-signup__field .dev-field__input) {
+    appearance: none;
+    height: 2.625rem;
+    margin: 0;
+    padding: 0;
+    outline: 0;
+    color: var(--sys-color-on-srf);
+    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+  }
+
+  :global(.project-signup__field .dev-field__input::placeholder) {
+    color: var(--sys-color-on-srf-subtle);
+    opacity: 1;
+  }
+
+  :global(.project-signup__field:not([data-pointer-focus]) .dev-field__value:has(input:focus-visible)) {
+    outline: 2px solid var(--sys-color-on-srf);
+    outline-offset: -2px;
   }
 
   @media (max-width: 40em) {
