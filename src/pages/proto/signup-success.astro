@@ -1,5 +1,6 @@
 ---
 import DemoLayout from '../../layouts/DemoLayout.astro';
+import ProjectSignup from '../../components/project/ProjectSignup.astro';
 ---
 
 <DemoLayout title="Signup success motion">
@@ -14,7 +15,9 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     <section class="proto-context">
       <p class="proto-kicker">Newsletter</p>
       <p class="proto-lede">No faff. Just newsletter-exclusive content every whenever, once a month at most.</p>
-      <div id="stage"></div>
+      <div id="stage" data-signup-proto>
+        <ProjectSignup />
+      </div>
     </section>
   </div>
 
@@ -66,10 +69,30 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     <label>Hold <output data-out="hold">1400ms</output>
       <input data-ctrl="hold" type="range" min="400" max="4000" step="100" value="1400" />
     </label>
-    <p class="proto-panel-group">Letters back</p>
-    <label>Return duration <output data-out="returnMs">160ms</output>
-      <input data-ctrl="returnMs" type="range" min="80" max="500" step="10" value="160" />
+    <p class="proto-panel-group">Email out</p>
+    <label>Vs check-out <output data-out="emailVsCheck">0ms</output>
+      <input data-ctrl="emailVsCheck" type="range" min="-400" max="400" step="10" value="0" />
     </label>
+    <label>Anticipate <output data-out="anticipate">10px</output>
+      <input data-ctrl="anticipate" type="range" min="0" max="24" step="1" value="10" />
+    </label>
+    <label>Anticipate time <output data-out="anticipateMs">100ms</output>
+      <input data-ctrl="anticipateMs" type="range" min="40" max="240" step="10" value="100" />
+    </label>
+    <label>Travel <output data-out="emailMs">520ms</output>
+      <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="520" />
+    </label>
+    <p class="proto-panel-group">Letters back</p>
+    <label>Start at <output data-out="returnAt">25%</output>
+      <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="25" />
+    </label>
+    <label>Spread <output data-out="returnSpan">55%</output>
+      <input data-ctrl="returnSpan" type="range" min="10" max="100" step="5" value="55" />
+    </label>
+    <label>Return duration <output data-out="returnMs">220ms</output>
+      <input data-ctrl="returnMs" type="range" min="80" max="800" step="10" value="220" />
+    </label>
+    <p class="proto-panel-note">Empty / invalid submit uses the real field status. Scale and blur for letters back come from Letters out.</p>
     <button type="button" class="proto-copy">Copy config</button>
     <button type="button" class="proto-copy proto-save">Save</button>
     <button type="button" class="proto-copy proto-revert">Revert</button>
@@ -98,7 +121,13 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     --overlap: 400;
     --check-ms: 160;
     --hold: 1400;
-    --return-ms: 160;
+    --email-vs-check: 0;
+    --anticipate: 10;
+    --anticipate-ms: 100;
+    --email-ms: 520;
+    --return-at: 25;
+    --return-span: 55;
+    --return-ms: 220;
     --speed: 1;
     --ease: cubic-bezier(0.23, 1, 0.32, 1);
     width: min(40em, 100%);
@@ -106,6 +135,7 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
 
   .proto-context {
     width: min(40em, 100%);
+    padding-bottom: 4.5rem;
   }
 
   .proto-kicker {
@@ -123,113 +153,48 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     max-width: 36em;
   }
 
-  .proto-control {
-    position: relative;
-    isolation: isolate;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 9rem;
-    align-items: center;
-    gap: 0.25rem;
-    min-height: 3.125rem;
-    padding: 0.25rem;
-    border-radius: 0.75rem;
-  }
-
-  .proto-surface {
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    background: var(--sys-color-srf-container-lowest);
-  }
-
-  .proto-control input {
-    appearance: none;
-    height: 2.625rem;
-    margin: 0;
-    padding: 0 0.75rem;
-    border: 0;
-    background: transparent;
-    color: var(--sys-color-on-srf);
-    font: 400 1.1rem / 1 var(--font-sans);
-    outline: 0;
-  }
-
-  .proto-control button {
-    display: grid;
-    place-items: center;
-    position: relative;
-    width: 100%;
-    min-height: 2.625rem;
-    padding: 0 1rem;
-    border: 0;
-    border-radius: 0.5rem;
-    background: var(--comp-button-filled-container);
-    color: var(--comp-button-filled-label);
-    cursor: pointer;
-    font: 400 1.1rem / 1 var(--font-sans);
-    transition: background-color 0.2s ease, transform var(--motion-press-duration) ease-out;
-  }
-
-  @media (hover: hover) and (pointer: fine) {
-    .proto-control button:hover {
-      background: var(--comp-button-filled-container-hover);
-    }
-  }
-
-  .proto-control button:active,
-  .proto-control button.is-keyboard-pressed {
-    background: var(--comp-button-filled-container-hover);
-    transform: scale(var(--motion-press-scale));
-  }
-
-  .proto-control button:focus-visible {
-    outline: 2px solid var(--sys-color-on-srf);
-    outline-offset: 2px;
-  }
-
-  .proto-label,
-  .proto-check {
-    grid-area: 1 / 1;
-  }
-
-  .proto-label {
-    display: inline-flex;
-    white-space: nowrap;
-  }
-
-  .proto-label[hidden],
-  .proto-check[hidden] {
-    display: none;
-  }
-
-  .proto-char {
-    display: inline-block;
-  }
-
-  .proto-check:not([hidden]) {
-    display: inline-flex;
-    opacity: 0;
+  .proto-root .project-signup__check:not([hidden]) {
     transform: scale(1.03);
-    filter: blur(4px);
-    -webkit-filter: blur(4px);
-    transition-property: opacity, transform, filter, -webkit-filter;
     transition-duration: calc(var(--check-ms) * var(--speed) * 1ms);
     transition-timing-function: var(--ease);
   }
 
-  .proto-check.is-in {
-    opacity: 1;
+  .proto-root .project-signup__check.is-in {
     transform: scale(1);
-    filter: blur(0);
-    -webkit-filter: blur(0);
   }
 
-  .proto-check.is-out {
+  .proto-root .project-signup__check.is-out {
     opacity: 0;
     transform: scale(0.97);
     filter: blur(4px);
     -webkit-filter: blur(4px);
+  }
+
+  .proto-email-ghost {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+    color: var(--sys-color-on-srf);
+  }
+
+  .proto-root .dev-field__input.is-proto-ghosted {
+    color: transparent;
+    caret-color: transparent;
+  }
+
+  .proto-root .dev-text-field.is-proto-fade::after {
+    opacity: 1;
+  }
+
+  .proto-panel-note {
+    margin: 0 0 8px;
+    color: rgba(255, 255, 255, 0.45);
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .proto-panel {
@@ -401,9 +366,25 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
   const highlight = picker.querySelector('.proto-picker-highlight');
   const items = [...picker.querySelectorAll('.proto-picker-item:not(.proto-picker-replay)')];
   const replay = picker.querySelector('.proto-picker-replay');
-  const CHECK = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  const DEMO_EMAIL = 'jternus@apple.com';
   let current = 0;
   let playing = false;
+  let ghost = null;
+
+  const form = () => stage.querySelector('[data-project-signup-form]');
+  const parts = () => {
+    const el = form();
+    return {
+      form: el,
+      input: el?.querySelector('[data-signup-email]'),
+      label: el?.querySelector('[data-signup-label]'),
+      check: el?.querySelector('[data-signup-check]'),
+      button: el?.querySelector('button[type=submit]'),
+      shortcut: el?.querySelector('[data-signup-shortcut]'),
+      textField: el?.querySelector('.dev-text-field'),
+      content: el?.querySelector('.dev-text-field__content'),
+    };
+  };
 
   const num = (name, fallback) => {
     const raw = getComputedStyle(root).getPropertyValue(name).trim();
@@ -423,31 +404,16 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
       overlap: num('--overlap', 400) * speed,
       checkMs: num('--check-ms', 160) * speed,
       hold: num('--hold', 1400) * speed,
-      returnMs: num('--return-ms', 160) * speed,
+      emailVsCheck: num('--email-vs-check', 0) * speed,
+      anticipate: num('--anticipate', 10),
+      anticipateMs: num('--anticipate-ms', 100) * speed,
+      emailMs: num('--email-ms', 520) * speed,
+      returnAt: num('--return-at', 25) / 100,
+      returnSpan: num('--return-span', 55) / 100,
+      returnMs: num('--return-ms', 220) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
       speed,
     };
-  };
-
-  const variantHTML = () => `
-    <form class="proto-control" data-proto-form>
-      <span class="proto-surface" aria-hidden="true"></span>
-      <input type="email" value="jternus@apple.com" aria-label="Email address" autocomplete="off" />
-      <button type="submit" aria-label="Get involved">
-        <span class="proto-label" data-label aria-hidden="true">Get involved</span>
-        <span class="proto-check" data-check hidden aria-hidden="true">${CHECK}</span>
-      </button>
-    </form>`;
-
-  const splitLabel = (label) => {
-    const text = label.textContent ?? '';
-    label.textContent = '';
-    [...text].forEach((ch) => {
-      const span = document.createElement('span');
-      span.className = 'proto-char';
-      span.textContent = ch === ' ' ? '\u00a0' : ch;
-      label.append(span);
-    });
   };
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -468,25 +434,162 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     setTimeout(finish, ms + 80);
   });
 
+  const teardownGhost = () => {
+    const { input, textField } = parts();
+    ghost?.remove();
+    ghost = null;
+    input?.classList.remove('is-proto-ghosted');
+    textField?.classList.remove('is-proto-fade');
+  };
+
+  const fillDemoEmail = () => {
+    const { input } = parts();
+    if (!input) return;
+    input.value = DEMO_EMAIL;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+
+  const resetVisuals = () => {
+    const { form: el, input, label, check, button } = parts();
+    playing = false;
+    if (el) delete el.dataset.protoPlaying;
+    teardownGhost();
+    [label, check, input, el].forEach((node) => {
+      node?.getAnimations?.().forEach((a) => a.cancel());
+    });
+    label?.querySelectorAll('[data-char]').forEach((node) => {
+      node.getAnimations().forEach((a) => a.cancel());
+      node.style.cssText = '';
+    });
+    if (label) {
+      label.hidden = false;
+      label.getAnimations().forEach((a) => a.cancel());
+    }
+    if (check) {
+      check.hidden = true;
+      check.classList.remove('is-in', 'is-out', 'is-reduced');
+    }
+    if (input) input.readOnly = false;
+    button?.removeAttribute('aria-busy');
+    el?.classList.remove('is-error', 'has-status');
+  };
+
+  const mountEmailGhost = () => {
+    const { input, textField } = parts();
+    const track = textField?.querySelector('.dev-text-field__track');
+    if (!input || !textField || !track) return null;
+    const next = document.createElement('span');
+    next.className = 'proto-email-ghost';
+    next.setAttribute('aria-hidden', 'true');
+    const style = getComputedStyle(input);
+    const inputRect = input.getBoundingClientRect();
+    const trackRect = track.getBoundingClientRect();
+    next.style.font = style.font;
+    next.style.letterSpacing = style.letterSpacing;
+    next.style.left = `${inputRect.left - trackRect.left + track.scrollLeft}px`;
+    next.style.top = `${inputRect.top - trackRect.top}px`;
+    next.style.height = `${inputRect.height}px`;
+    next.textContent = input.value;
+    track.append(next);
+    input.classList.add('is-proto-ghosted');
+    textField.classList.add('is-proto-fade');
+    ghost = next;
+    return next;
+  };
+
+  const playEmailAndReturn = async (c, reduce, label, chars, input) => {
+    const emailEl = reduce ? null : mountEmailGhost();
+    const { textField } = parts();
+    const fadeWidth = Number.parseFloat(
+      getComputedStyle(textField ?? document.documentElement)
+        .getPropertyValue('--dev-text-field-fade-width'),
+    ) || 22;
+    const travelPx = emailEl && textField
+      ? textField.getBoundingClientRect().right - emailEl.getBoundingClientRect().left + fadeWidth
+      : 0;
+    const runEmail = async () => {
+      if (reduce) {
+        input.classList.add('is-proto-ghosted');
+        await settled(input.animate(
+          [{ opacity: 1 }, { opacity: 0 }],
+          { duration: c.emailMs, easing: c.ease, fill: 'forwards' },
+        ));
+        return;
+      }
+      if (!emailEl) return;
+      if (c.anticipate > 0 && c.anticipateMs > 0) {
+        await settled(emailEl.animate(
+          [
+            { transform: 'translateX(0)' },
+            { transform: `translateX(${-c.anticipate}px)` },
+          ],
+          { duration: c.anticipateMs, easing: 'cubic-bezier(0.645, 0.045, 0.355, 1)', fill: 'forwards' },
+        ));
+      }
+      await settled(emailEl.animate(
+        [
+          { transform: `translateX(${-c.anticipate}px)` },
+          { transform: `translateX(${travelPx}px)` },
+        ],
+        { duration: c.emailMs, easing: c.ease, fill: 'forwards' },
+      ));
+    };
+    const emailDone = runEmail();
+    label.hidden = false;
+    const n = chars.length;
+    const start = reduce ? 0 : c.anticipateMs + c.returnAt * c.emailMs;
+    const span = reduce ? Math.max(0, n - 1) * 30 : c.returnSpan * c.emailMs;
+    const returnAnims = chars.map((el, i) => el.animate(
+      reduce
+        ? [{ opacity: 0 }, { opacity: 1 }]
+        : [
+          { opacity: 0, filter: `blur(${c.blur}px)`, transform: `scale(${c.scale})` },
+          { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+        ],
+      {
+        duration: c.returnMs,
+        delay: start + (n <= 1 ? 0 : (i / (n - 1)) * span),
+        easing: c.ease,
+        fill: 'both',
+      },
+    ));
+    await Promise.all([emailDone, ...returnAnims.map(settled)]);
+    if (input) {
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.getAnimations().forEach((a) => a.cancel());
+    }
+    teardownGhost();
+    chars.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
+    label.getAnimations().forEach((a) => a.cancel());
+  };
+
+  const startCheckOut = (check) => {
+    check.classList.remove('is-in');
+    check.classList.add('is-out');
+  };
+
   const play = async () => {
-    const form = stage.querySelector('[data-proto-form]');
-    const label = form?.querySelector('[data-label]');
-    const check = form?.querySelector('[data-check]');
-    if (!form || !label || !check || playing) return;
+    const { form: el, input, label, check, button, shortcut } = parts();
+    if (!el || !input || !label || !check || playing) return;
     playing = true;
+    el.dataset.protoPlaying = 'true';
+    button?.setAttribute('aria-busy', 'true');
+    input.readOnly = true;
+    if (shortcut) shortcut.hidden = true;
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const c = cfg();
-    const chars = [...label.querySelectorAll('.proto-char')];
+    const chars = [...label.querySelectorAll('[data-char]')];
     const n = chars.length;
     const center = Math.max(n - 1, 1) / 2;
     const lastEnd = Math.max(...chars.map((_, i) => Math.min(i, n - 1 - i) * c.stagger + c.charMs));
-    chars.forEach((el, i) => {
+    chars.forEach((node, i) => {
       const fromEdge = Math.min(i, n - 1 - i);
       const dist = Math.abs(i - center) / center;
       const dir = i < center ? 1 : i > center ? -1 : 0;
       const travel = c.move * (c.taper * dist + (1 - c.taper));
       const x = reduce ? 0 : dir * travel;
-      el.animate(
+      node.animate(
         [
           { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
           { opacity: 0, filter: `blur(${reduce ? 0 : c.blur}px)`, transform: `translateX(${x}px) scale(${reduce ? 1 : c.scale})` },
@@ -500,56 +603,36 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     void check.offsetWidth;
     requestAnimationFrame(() => requestAnimationFrame(() => check.classList.add('is-in')));
     await waitCheck(check, c.checkMs);
-    await Promise.all(chars.map((el) => Promise.all(el.getAnimations().map(settled))));
+    await Promise.all(chars.map((node) => Promise.all(node.getAnimations().map(settled))));
     label.hidden = true;
-    chars.forEach((el) => el.getAnimations().forEach((a) => a.cancel()));
+    chars.forEach((node) => node.getAnimations().forEach((a) => a.cancel()));
     await wait(c.hold);
-    check.classList.remove('is-in');
-    check.classList.add('is-out');
-    await waitCheck(check, c.checkMs);
+    let exitPromise = Promise.resolve();
+    if (c.emailVsCheck >= 0) {
+      startCheckOut(check);
+      const checkDone = waitCheck(check, c.checkMs);
+      if (c.emailVsCheck > 0) await wait(c.emailVsCheck);
+      exitPromise = playEmailAndReturn(c, reduce, label, chars, input);
+      await checkDone;
+    } else {
+      exitPromise = playEmailAndReturn(c, reduce, label, chars, input);
+      await wait(-c.emailVsCheck);
+      startCheckOut(check);
+      await waitCheck(check, c.checkMs);
+    }
     check.hidden = true;
     check.classList.remove('is-out');
-    label.hidden = false;
-    await settled(label.animate(
-      reduce
-        ? [{ opacity: 0 }, { opacity: 1 }]
-        : [{ opacity: 0, filter: `blur(${c.blur}px)` }, { opacity: 1, filter: 'blur(0px)' }],
-      { duration: c.returnMs, easing: c.ease, fill: 'forwards' },
-    ));
-    label.getAnimations().forEach((a) => a.cancel());
+    await exitPromise;
+    if (input) input.readOnly = false;
+    button?.removeAttribute('aria-busy');
+    delete el.dataset.protoPlaying;
     playing = false;
   };
 
-  const bind = () => {
-    const form = stage.querySelector('[data-proto-form]');
-    const label = form?.querySelector('[data-label]');
-    const button = form?.querySelector('button[type=submit]');
-    const input = form?.querySelector('input');
-    let pressTimer;
-    if (label) splitLabel(label);
-    input?.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' || event.isComposing) return;
-      event.preventDefault();
-      if (event.repeat) return;
-      clearTimeout(pressTimer);
-      button?.classList.add('is-keyboard-pressed');
-      pressTimer = setTimeout(() => button?.classList.remove('is-keyboard-pressed'), 150);
-      form.requestSubmit();
-    });
-    form?.addEventListener('submit', (event) => {
-      event.preventDefault();
-      void play();
-    });
-  };
-
-  const mount = () => {
-    playing = false;
-    stage.innerHTML = '';
-    requestAnimationFrame(() => {
-      stage.innerHTML = variantHTML();
-      bind();
-      requestAnimationFrame(() => void play());
-    });
+  const remount = () => {
+    resetVisuals();
+    fillDemoEmail();
+    requestAnimationFrame(() => void play());
   };
 
   const moveHighlight = () => {
@@ -570,11 +653,11 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     const url = new URL(location);
     url.searchParams.set('v', String(i + 1));
     history.replaceState(null, '', url);
-    mount();
+    remount();
   };
 
   items.forEach((el, i) => el.addEventListener('click', () => setActive(i)));
-  replay?.addEventListener('click', () => mount());
+  replay?.addEventListener('click', () => remount());
   window.addEventListener('resize', moveHighlight);
   document.addEventListener('keydown', (e) => {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable) return;
@@ -583,8 +666,9 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     if (n >= 1 && n <= items.length) setActive(n - 1);
     else if (e.key === 'ArrowRight') setActive((current + 1) % items.length);
     else if (e.key === 'ArrowLeft') setActive((current - 1 + items.length) % items.length);
-    else if (e.key === 'r' || e.key === 'R') mount();
+    else if (e.key === 'r' || e.key === 'R') remount();
   });
+  stage.addEventListener('signup:proto-success', () => void play());
 
   const readControls = () => {
     const speed = Number(document.querySelector('[data-ctrl=speed]').value);
@@ -598,6 +682,12 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     const overlap = Number(document.querySelector('[data-ctrl=overlap]').value);
     const checkMs = Number(document.querySelector('[data-ctrl=checkMs]').value);
     const hold = Number(document.querySelector('[data-ctrl=hold]').value);
+    const emailVsCheck = Number(document.querySelector('[data-ctrl=emailVsCheck]').value);
+    const anticipate = Number(document.querySelector('[data-ctrl=anticipate]').value);
+    const anticipateMs = Number(document.querySelector('[data-ctrl=anticipateMs]').value);
+    const emailMs = Number(document.querySelector('[data-ctrl=emailMs]').value);
+    const returnAt = Number(document.querySelector('[data-ctrl=returnAt]').value);
+    const returnSpan = Number(document.querySelector('[data-ctrl=returnSpan]').value);
     const returnMs = Number(document.querySelector('[data-ctrl=returnMs]').value);
     root.style.setProperty('--speed', String(speed));
     root.style.setProperty('--ease', ease);
@@ -610,6 +700,12 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     root.style.setProperty('--overlap', String(overlap));
     root.style.setProperty('--check-ms', String(checkMs));
     root.style.setProperty('--hold', String(hold));
+    root.style.setProperty('--email-vs-check', String(emailVsCheck));
+    root.style.setProperty('--anticipate', String(anticipate));
+    root.style.setProperty('--anticipate-ms', String(anticipateMs));
+    root.style.setProperty('--email-ms', String(emailMs));
+    root.style.setProperty('--return-at', String(returnAt));
+    root.style.setProperty('--return-span', String(returnSpan));
     root.style.setProperty('--return-ms', String(returnMs));
     document.querySelector('[data-out=stagger]').textContent = `${stagger}ms`;
     document.querySelector('[data-out=charMs]').textContent = `${charMs}ms`;
@@ -620,6 +716,12 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     document.querySelector('[data-out=overlap]').textContent = `${overlap}ms`;
     document.querySelector('[data-out=checkMs]').textContent = `${checkMs}ms`;
     document.querySelector('[data-out=hold]').textContent = `${hold}ms`;
+    document.querySelector('[data-out=emailVsCheck]').textContent = `${emailVsCheck}ms`;
+    document.querySelector('[data-out=anticipate]').textContent = `${anticipate}px`;
+    document.querySelector('[data-out=anticipateMs]').textContent = `${anticipateMs}ms`;
+    document.querySelector('[data-out=emailMs]').textContent = `${emailMs}ms`;
+    document.querySelector('[data-out=returnAt]').textContent = `${returnAt}%`;
+    document.querySelector('[data-out=returnSpan]').textContent = `${returnSpan}%`;
     document.querySelector('[data-out=returnMs]').textContent = `${returnMs}ms`;
   };
 
@@ -671,6 +773,12 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
       `checkOverlap: ${document.querySelector('[data-ctrl=overlap]').value}ms`,
       `checkDuration: ${document.querySelector('[data-ctrl=checkMs]').value}ms`,
       `hold: ${document.querySelector('[data-ctrl=hold]').value}ms`,
+      `emailVsCheck: ${document.querySelector('[data-ctrl=emailVsCheck]').value}ms`,
+      `anticipate: ${document.querySelector('[data-ctrl=anticipate]').value}px`,
+      `anticipateMs: ${document.querySelector('[data-ctrl=anticipateMs]').value}ms`,
+      `emailTravel: ${document.querySelector('[data-ctrl=emailMs]').value}ms`,
+      `returnAt: ${document.querySelector('[data-ctrl=returnAt]').value}%`,
+      `returnSpan: ${document.querySelector('[data-ctrl=returnSpan]').value}%`,
       `returnDuration: ${document.querySelector('[data-ctrl=returnMs]').value}ms`,
       `ease: ${document.querySelector('[data-ctrl=ease]').value}`,
       `speed: ${document.querySelector('[data-ctrl=speed]').value}x`,

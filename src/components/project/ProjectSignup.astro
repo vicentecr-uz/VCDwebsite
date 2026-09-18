@@ -241,7 +241,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      if (celebrating) return;
+      if (celebrating || form.dataset.protoPlaying === 'true') return;
       updateShortcut();
       dismissStatus();
       if (!input) return;
@@ -266,6 +266,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         return;
       }
       input.removeAttribute('aria-invalid');
+      if (form.closest('[data-signup-proto]')) {
+        form.dispatchEvent(new CustomEvent('signup:proto-success', { bubbles: true }));
+        return;
+      }
       showStatus('Signup is not available yet.');
       void playSuccess();
     });
