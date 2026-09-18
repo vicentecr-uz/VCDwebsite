@@ -361,6 +361,16 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       form.classList.toggle('is-error', error);
       statusTimer = setTimeout(dismissStatus, 2500);
     };
+    const shakeInvalid = () => {
+      shakes.forEach((animation) => animation.cancel());
+      shakes = [];
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
+          [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
+          { duration: 300, easing: 'ease-in-out' },
+        ));
+      }
+    };
     const emailChecker = document.createElement('input');
     emailChecker.type = 'email';
     const updateShortcut = () => {
@@ -411,15 +421,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         form.requestSubmit();
       }
     });
-    const shakeInvalid = () => {
-      shakes.forEach((animation) => animation.cancel());
-      shakes = [];
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-      shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
-        [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
-        { duration: 300, easing: 'ease-in-out' },
-      ));
-    };
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (celebrating || submitting) return;
