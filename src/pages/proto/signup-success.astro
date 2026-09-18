@@ -22,7 +22,7 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     <p class="proto-panel-title">Success motion</p>
     <label>Speed
       <select data-ctrl="speed">
-        <option value="1">1×</option>
+        <option value="1" selected>1×</option>
         <option value="0.5">0.5×</option>
         <option value="0.25">0.25×</option>
       </select>
@@ -38,27 +38,27 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
       </select>
     </label>
     <p class="proto-panel-group">Letters out</p>
-    <label>Stagger <output data-out="stagger">20ms</output>
-      <input data-ctrl="stagger" type="range" min="0" max="80" step="1" value="20" />
+    <label>Stagger <output data-out="stagger">10ms</output>
+      <input data-ctrl="stagger" type="range" min="0" max="80" step="1" value="10" />
     </label>
-    <label>Char duration <output data-out="charMs">160ms</output>
-      <input data-ctrl="charMs" type="range" min="80" max="500" step="10" value="160" />
+    <label>Char duration <output data-out="charMs">500ms</output>
+      <input data-ctrl="charMs" type="range" min="80" max="500" step="10" value="500" />
     </label>
-    <label>Travel <output data-out="move">14px</output>
-      <input data-ctrl="move" type="range" min="0" max="40" step="1" value="14" />
+    <label>Travel <output data-out="move">8px</output>
+      <input data-ctrl="move" type="range" min="0" max="40" step="1" value="8" />
     </label>
-    <label>Edge extra travel <output data-out="taper">0</output>
-      <input data-ctrl="taper" type="range" min="0" max="100" step="5" value="0" />
+    <label>Edge extra travel <output data-out="taper">0.20</output>
+      <input data-ctrl="taper" type="range" min="0" max="100" step="5" value="20" />
     </label>
     <label>Scale to <output data-out="scale">0.97</output>
       <input data-ctrl="scale" type="range" min="90" max="100" step="1" value="97" />
     </label>
-    <label>Blur <output data-out="blur">4px</output>
-      <input data-ctrl="blur" type="range" min="0" max="12" step="0.5" value="4" />
+    <label>Blur <output data-out="blur">10px</output>
+      <input data-ctrl="blur" type="range" min="0" max="12" step="0.5" value="10" />
     </label>
     <p class="proto-panel-group">Check</p>
-    <label>Start early <output data-out="overlap">120ms</output>
-      <input data-ctrl="overlap" type="range" min="0" max="400" step="10" value="120" />
+    <label>Start early <output data-out="overlap">400ms</output>
+      <input data-ctrl="overlap" type="range" min="0" max="400" step="10" value="400" />
     </label>
     <label>Check duration <output data-out="checkMs">160ms</output>
       <input data-ctrl="checkMs" type="range" min="80" max="500" step="10" value="160" />
@@ -67,10 +67,12 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
       <input data-ctrl="hold" type="range" min="400" max="4000" step="100" value="1400" />
     </label>
     <p class="proto-panel-group">Letters back</p>
-    <label>Return duration <output data-out="returnMs">140ms</output>
-      <input data-ctrl="returnMs" type="range" min="80" max="500" step="10" value="140" />
+    <label>Return duration <output data-out="returnMs">160ms</output>
+      <input data-ctrl="returnMs" type="range" min="80" max="500" step="10" value="160" />
     </label>
     <button type="button" class="proto-copy">Copy config</button>
+    <button type="button" class="proto-copy proto-save">Save</button>
+    <button type="button" class="proto-copy proto-revert">Revert</button>
   </aside>
 
   <nav class="proto-picker" aria-label="Prototype variants">
@@ -87,16 +89,16 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
   }
 
   .proto-root {
-    --stagger: 20;
-    --char-ms: 160;
-    --move: 14;
-    --taper: 0;
+    --stagger: 10;
+    --char-ms: 500;
+    --move: 8;
+    --taper: 20;
     --scale-to: 0.97;
-    --blur: 4;
-    --overlap: 120;
+    --blur: 10;
+    --overlap: 400;
     --check-ms: 160;
     --hold: 1400;
-    --return-ms: 140;
+    --return-ms: 160;
     --speed: 1;
     --ease: cubic-bezier(0.23, 1, 0.32, 1);
     width: min(40em, 100%);
@@ -398,16 +400,16 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
   const cfg = () => {
     const speed = num('--speed', 1);
     return {
-      stagger: num('--stagger', 20) * speed,
-      charMs: num('--char-ms', 160) * speed,
-      move: num('--move', 14),
-      taper: num('--taper', 0) / 100,
+      stagger: num('--stagger', 10) * speed,
+      charMs: num('--char-ms', 500) * speed,
+      move: num('--move', 8),
+      taper: num('--taper', 20) / 100,
       scale: num('--scale-to', 0.97),
-      blur: num('--blur', 4),
-      overlap: num('--overlap', 120) * speed,
+      blur: num('--blur', 10),
+      overlap: num('--overlap', 400) * speed,
       checkMs: num('--check-ms', 160) * speed,
       hold: num('--hold', 1400) * speed,
-      returnMs: num('--return-ms', 140) * speed,
+      returnMs: num('--return-ms', 160) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
       speed,
     };
@@ -597,8 +599,40 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
     el.addEventListener('input', readControls);
   });
 
+  const STORAGE_KEY = 'vcd:proto-signup-success';
+  const factoryValues = Object.fromEntries(
+    [...document.querySelectorAll('[data-ctrl]')].map((el) => [el.dataset.ctrl, el.value]),
+  );
+
+  const readSaved = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  const applyCtrlMap = (map) => {
+    document.querySelectorAll('[data-ctrl]').forEach((el) => {
+      const key = el.dataset.ctrl;
+      if (Object.hasOwn(map, key)) el.value = String(map[key]);
+    });
+  };
+
+  const snapshotControls = () => Object.fromEntries(
+    [...document.querySelectorAll('[data-ctrl]')].map((el) => [el.dataset.ctrl, el.value]),
+  );
+
+  const flashButton = (btn, temp, original) => {
+    btn.textContent = temp;
+    setTimeout(() => { btn.textContent = original; }, 1200);
+  };
+
   document.querySelector('.proto-copy').addEventListener('click', async () => {
-    const c = cfg();
     const text = [
       `stagger: ${document.querySelector('[data-ctrl=stagger]').value}ms`,
       `charDuration: ${document.querySelector('[data-ctrl=charMs]').value}ms`,
@@ -614,10 +648,25 @@ import DemoLayout from '../../layouts/DemoLayout.astro';
       `speed: ${document.querySelector('[data-ctrl=speed]').value}x`,
     ].join(' · ');
     await navigator.clipboard.writeText(text);
-    document.querySelector('.proto-copy').textContent = 'Copied';
-    setTimeout(() => { document.querySelector('.proto-copy').textContent = 'Copy config'; }, 1200);
+    const copyBtn = document.querySelector('.proto-copy');
+    flashButton(copyBtn, 'Copied', 'Copy config');
   });
 
+  document.querySelector('.proto-save').addEventListener('click', () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotControls()));
+    } catch { /* private mode */ }
+    flashButton(document.querySelector('.proto-save'), 'Saved', 'Save');
+  });
+
+  document.querySelector('.proto-revert').addEventListener('click', () => {
+    applyCtrlMap({ ...factoryValues, ...(readSaved() ?? {}) });
+    readControls();
+    flashButton(document.querySelector('.proto-revert'), 'Reverted', 'Revert');
+  });
+
+  const saved = readSaved();
+  if (saved) applyCtrlMap(saved);
   readControls();
   setActive((parseInt(new URLSearchParams(location.search).get('v'), 10) || 1) - 1);
   requestAnimationFrame(() => requestAnimationFrame(() => picker.setAttribute('data-ready', '')));
