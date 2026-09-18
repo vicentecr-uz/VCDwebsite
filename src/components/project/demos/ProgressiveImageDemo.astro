@@ -26,7 +26,13 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         <Button label="" emphasis="ghost" aria-label="Reset" data-reset><span slot="icon" aria-hidden="true" set:html={rotateIcon} /></Button>
       </div>
       <p class="status sr-only" role="status"></p>
-    </div></div>
+    </div>
+    <div class="hint" data-hint hidden aria-hidden="true">
+      <div class="hint-pointer" data-hint-pointer>
+        <span class="hint-finger" data-hint-finger></span>
+      </div>
+    </div>
+  </div>
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
@@ -40,6 +46,33 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .glass-root { position: absolute; inset: 0; }
   .glass-source { display: block; width: 100%; height: 100%; border-radius: var(--radius-control-smooth); pointer-events: none; opacity: 0; }
   .lens { position: absolute; left: 0; top: 0; width: 180px; height: 180px; border-radius: 50%; z-index: 1; cursor: grab; touch-action: none; outline-offset: 4px; }
+  .hint { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: visible; }
+  .hint-pointer {
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0;
+    filter: blur(8px);
+    transform-origin: 0 0;
+    transition: filter 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+  }
+  .hint.is-visible .hint-pointer { filter: blur(0); }
+  .hint-finger {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--sys-color-srf-container-low) 70%, transparent),
+      0 6px 18px rgb(0 0 0 / 0.16);
+    transform: translate(-50%, -50%);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hint-pointer { filter: none; transition: none; }
+  }
   .lens :global(canvas) { opacity: 0; }
   .lens[data-ready] :global(canvas) { opacity: 1; animation: glass-enter 280ms cubic-bezier(0.32, 0.72, 0, 1); }
   @keyframes glass-enter {
@@ -85,6 +118,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
     const template = host.querySelector<HTMLTemplateElement>('template')!;
+    const hint = host.querySelector<HTMLElement>('[data-hint]');
+    const hintPointer = host.querySelector<HTMLElement>('[data-hint-pointer]');
     const context = source.getContext('2d');
     const mask = document.createElement('canvas');
     const maskContext = mask.getContext('2d');
@@ -97,6 +132,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
     let position = { x: 0, y: 0 };
     let pointer;
+    let hintFrame = 0;
+    let hintTimer = 0;
+    let hinting = false;
     let springFrame = 0;
     const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
     let geometry = { width: 0, height: 0, diameter: 180, padding: 54, scale: 2, radii: [0, 0, 0, 0], background: '#fff' };
@@ -247,6 +285,154 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       glass?.markChanged();
     }
 
+    function stopHint() {
+      const running = hinting || hintFrame || hintTimer;
+      cancelAnimationFrame(hintFrame);
+      clearTimeout(hintTimer);
+      hintFrame = 0;
+      hintTimer = 0;
+      hinting = false;
+      if (!running) return;
+      if (hint) {
+        hint.hidden = true;
+        hint.classList.remove('is-visible');
+      }
+      if (hintPointer) {
+        hintPointer.style.willChange = '';
+        hintPointer.style.opacity = '';
+        hintPointer.style.transform = '';
+      }
+    }
+
+    function playHint() {
+      if (!hint || !hintPointer || signal.aborted || pointer) return;
+      stopHint();
+      hint.hidden = false;
+      const start = { ...position };
+      const diameter = geometry.diameter;
+      const end = {
+        x: geometry.width * 0.097 - diameter / 2,
+        y: geometry.height * 0.564 - diameter / 2,
+      };
+      const grip = {
+        x: (0.3 + Math.random() * 0.4) * diameter,
+        y: (0.3 + Math.random() * 0.4) * diameter,
+      };
+      const origin = hint.getBoundingClientRect();
+      const rootBox = root.getBoundingClientRect();
+      const overlayOf = (pos) => ({
+        x: pos.x + grip.x + rootBox.left - origin.left,
+        y: pos.y + grip.y + rootBox.top - origin.top,
+      });
+      const controlPoint = (el) => {
+        const box = el.getBoundingClientRect();
+        return { x: box.left + box.width / 2 - origin.left, y: box.top + box.height / 2 - origin.top };
+      };
+      const startAt = overlayOf(start);
+      const cubicBezier = (x1, y1, x2, y2) => (x) => {
+        let t = x;
+        for (let i = 0; i < 6; i++) {
+          const u = 1 - t;
+          const current = 3 * u * u * t * x1 + 3 * u * t * t * x2 + t * t * t;
+          const derivative = 3 * u * u * x1 + 6 * u * t * (x2 - x1) + 3 * t * t * (1 - x2);
+          if (Math.abs(derivative) < 1e-6) break;
+          t -= (current - x) / derivative;
+        }
+        const u = 1 - t;
+        return 3 * u * u * t * y1 + 3 * u * t * t * y2 + t * t * t;
+      };
+      const easeOut = cubicBezier(0.32, 0.72, 0, 1);
+      const easeInOut = cubicBezier(0.645, 0.045, 0.355, 1);
+      const mix = (from, to, t) => ({ x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t });
+      let cursor = { x: 0, y: 0, scale: 1, opacity: 0 };
+      const paintCursor = () => {
+        hintPointer.style.opacity = String(cursor.opacity);
+        hintPointer.style.transform = `translate(${cursor.x}px, ${cursor.y}px) scale(${cursor.scale})`;
+      };
+      const wait = (ms) => new Promise((resolve) => { hintTimer = window.setTimeout(resolve, ms); });
+      const animate = (duration, easing, update) => new Promise((resolve) => {
+        const t0 = performance.now();
+        const tick = (now) => {
+          if (!hinting) { resolve(); return; }
+          const t = Math.min(1, (now - t0) / duration);
+          update(easing(t));
+          if (t < 1) hintFrame = requestAnimationFrame(tick);
+          else resolve();
+        };
+        hintFrame = requestAnimationFrame(tick);
+      });
+      const moveCursor = (to, duration, easing = easeInOut) => {
+        const from = { ...cursor };
+        return animate(duration, easing, (t) => {
+          cursor.x = from.x + (to.x - from.x) * t;
+          cursor.y = from.y + (to.y - from.y) * t;
+          if (to.scale !== undefined) cursor.scale = from.scale + (to.scale - from.scale) * t;
+          if (to.opacity !== undefined) cursor.opacity = from.opacity + (to.opacity - from.opacity) * t;
+          paintCursor();
+        });
+      };
+      const tap = async (target, action) => {
+        await moveCursor({ x: target.x, y: target.y, scale: 1 }, 320);
+        if (!hinting) return;
+        await wait(100);
+        if (!hinting) return;
+        await moveCursor({ ...cursor, scale: 0.88 }, 120, easeOut);
+        if (!hinting) return;
+        action?.();
+        await wait(120);
+        if (!hinting) return;
+        await moveCursor({ ...cursor, scale: 1 }, 120, easeOut);
+      };
+      hinting = true;
+      hintPointer.style.willChange = 'transform, opacity';
+      void (async () => {
+        if (reducedMotion.matches) {
+          hint.classList.add('is-visible');
+          cursor = { x: startAt.x, y: startAt.y, scale: 1, opacity: 0 };
+          paintCursor();
+          await moveCursor({ ...cursor, opacity: 1 }, 280, easeOut);
+          if (!hinting) return;
+          await wait(700);
+          if (!hinting) return;
+          await moveCursor({ ...cursor, opacity: 0 }, 280, easeOut);
+          if (hinting) stopHint();
+          return;
+        }
+        cursor = { x: startAt.x + 20, y: startAt.y - 64, scale: 1, opacity: 0 };
+        paintCursor();
+        await wait(400);
+        if (!hinting) return;
+        hint.classList.add('is-visible');
+        await moveCursor({ x: startAt.x, y: startAt.y, scale: 1, opacity: 1 }, 420);
+        if (!hinting) return;
+        await wait(100);
+        if (!hinting) return;
+        await moveCursor({ ...cursor, scale: 0.88 }, 120, easeOut);
+        if (!hinting) return;
+        await wait(120);
+        if (!hinting) return;
+        await animate(800, easeInOut, (t) => {
+          position = mix(start, end, t);
+          const next = overlayOf(position);
+          cursor.x = next.x;
+          cursor.y = next.y;
+          paintCursor();
+          place();
+        });
+        if (!hinting) return;
+        await moveCursor({ ...cursor, scale: 1 }, 120, easeOut);
+        if (!hinting) return;
+        await tap(controlPoint(load), () => load.click());
+        if (!hinting) return;
+        await wait(1100);
+        if (!hinting) return;
+        const away = controlPoint(load);
+        hint.classList.remove('is-visible');
+        await moveCursor({ x: away.x + 28, y: away.y + 40, opacity: 0 }, 260);
+        if (hinting) stopHint();
+      })();
+    }
+
     function configure() {
       if (signal.aborted) return;
       const width = host.clientWidth;
@@ -301,16 +487,18 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         pointer.origin = { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) };
         pointer.x = pointer.lastX;
         pointer.y = pointer.lastY;
-      } else if (!wasSpringing) {
+      } else if (!wasSpringing && !hinting) {
         position = { x: clamp(position.x, limit.x), y: clamp(position.y, limit.y) };
       }
       place();
+      if (hinting && boundsChanged) stopHint();
       if (wasSpringing && boundsChanged) settle();
     }
 
     lens.addEventListener('pointerdown', (event) => {
       if (!event.isPrimary || event.button !== 0) return;
       if (pointer) return;
+      stopHint();
       stopSpring();
       const limit = bounds();
       const now = performance.now();
@@ -363,12 +551,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       startCoast(velocity);
     };
     for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) lens.addEventListener(event, release, { signal });
+    host.addEventListener('pointerdown', () => { if (hinting) stopHint(); }, { signal });
     lens.addEventListener('keydown', (event) => {
       const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
       const direction = directions[event.key];
       if (!direction) return;
       event.preventDefault();
       if (pointer) return;
+      stopHint();
       stopSpring();
       const limit = bounds();
       const step = event.shiftKey ? 20 : 8;
@@ -438,6 +628,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         drawSource();
         lens.dataset.ready = '';
         status.textContent = '';
+        playHint();
       } catch (error) {
         if (signal.aborted) return;
         lens.hidden = true;
@@ -448,6 +639,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     initialize();
     function dispose() {
       if (signal.aborted) return;
+      stopHint();
       stopSpring();
       const pointerId = pointer?.id;
       pointer = undefined;
