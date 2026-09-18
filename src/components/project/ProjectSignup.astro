@@ -212,7 +212,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
-      shortcut.hidden = input.value.length === 0;
+      shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
       shortcut.classList.toggle('is-valid', input.validity.valid);
       input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     };
@@ -222,9 +222,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       input.removeAttribute('aria-invalid');
     });
     input?.addEventListener('change', updateShortcut);
+    input?.addEventListener('focus', updateShortcut);
     updateShortcut();
     field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
-    input?.addEventListener('blur', () => { if (field) delete field.dataset.pointerFocus; });
+    input?.addEventListener('blur', () => {
+      if (field) delete field.dataset.pointerFocus;
+      updateShortcut();
+    });
     input?.addEventListener('keydown', (event) => {
       if (event.key === 'Tab' && field) delete field.dataset.pointerFocus;
       if (event.key === 'Enter' && !event.isComposing) {
