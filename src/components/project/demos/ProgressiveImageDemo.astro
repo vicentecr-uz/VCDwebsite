@@ -63,6 +63,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 </style>
 <script>
   import { imageLensBounds } from '../../../lib/imageLensBounds';
+  import { createEaseOut, inWall, LENS_INERTIA, stepContact } from '../../../lib/imageLensInertia';
   import { LiquidGlass } from '@ybouane/liquidglass';
   import { createImagePreviewUpgrade } from '../../../lib/imagePreviewUpgrade';
   class ProgressiveImageDemo extends HTMLElement {
@@ -114,7 +115,47 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const distance = value - edge;
       return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / elasticReach);
     };
-    function stopSpring() { cancelAnimationFrame(springFrame); springFrame = 0; }
+    function stopSpring() {
+      cancelAnimationFrame(springFrame);
+      springFrame = 0;
+      lens.style.willChange = '';
+    }
+    function startCoast(velocity) {
+      stopSpring();
+      lens.style.willChange = 'transform';
+      let stepper = createEaseOut(velocity, LENS_INERTIA.friction);
+      let contacting = inWall(position, bounds());
+      let last = performance.now();
+      const tick = (now) => {
+        if (signal.aborted) return;
+        const dt = Math.min(0.032, Math.max(0, (now - last) / 1000));
+        last = now;
+        if (dt > 0) {
+          const limit = bounds();
+          if (!contacting && !inWall(position, limit)) {
+            const result = stepper.step(dt, LENS_INERTIA.friction);
+            velocity = result.velocity;
+            position = { x: position.x + velocity.x * dt, y: position.y + velocity.y * dt };
+            if (inWall(position, limit)) contacting = true;
+            else if (result.done) { settle({ x: 0, y: 0 }); return; }
+          } else {
+            const next = stepContact(position, velocity, dt, limit, elasticReach, LENS_INERTIA.stiffness, LENS_INERTIA.restitution);
+            position = next.position;
+            velocity = next.velocity;
+            if (!inWall(position, limit)) {
+              contacting = false;
+              if (Math.hypot(velocity.x, velocity.y) < LENS_INERTIA.threshold) { settle({ x: 0, y: 0 }); return; }
+              stepper = createEaseOut(velocity, LENS_INERTIA.friction);
+            } else {
+              contacting = true;
+            }
+          }
+          place();
+        }
+        springFrame = requestAnimationFrame(tick);
+      };
+      springFrame = requestAnimationFrame(tick);
+    }
     function settle(velocity = { x: 0, y: 0 }) {
       stopSpring();
       const limit = bounds();
@@ -272,9 +313,10 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       if (pointer) return;
       stopSpring();
       const limit = bounds();
+      const now = performance.now();
       pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY,
         origin: { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) },
-        time: performance.now(), velocity: { x: 0, y: 0 } };
+        time: now, velocity: { x: 0, y: 0 }, samples: [{ t: now, x: position.x, y: position.y }] };
       lens.setPointerCapture(event.pointerId);
       lens.style.cursor = 'grabbing';
       event.preventDefault();
@@ -289,17 +331,36 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const elapsed = Math.max(1, now - pointer.time) / 1000;
       pointer.velocity = { x: (next.x - position.x) / elapsed, y: (next.y - position.y) / elapsed };
       pointer.time = now;
+      pointer.samples.push({ t: now, x: next.x, y: next.y });
+      if (pointer.samples.length > 16) pointer.samples.shift();
       position = next;
       place();
     }, { signal });
     const release = (event) => {
       if (!pointer || pointer.id !== event.pointerId) return;
-      const velocity = event.type === 'pointerup' && performance.now() - pointer.time < 80 ? pointer.velocity : { x: 0, y: 0 };
+      const now = performance.now();
+      let velocity = { x: 0, y: 0 };
+      if (event.type === 'pointerup') {
+        const samples = pointer.samples.filter((sample) => now - sample.t <= 80);
+        if (samples.length >= 2) {
+          const first = samples[0];
+          const last = samples[samples.length - 1];
+          const elapsed = Math.max(1, last.t - first.t) / 1000;
+          velocity = { x: (last.x - first.x) / elapsed, y: (last.y - first.y) / elapsed };
+        }
+      }
       const id = pointer.id;
       pointer = undefined;
       if (lens.hasPointerCapture(id)) lens.releasePointerCapture(id);
       lens.style.cursor = 'grab';
-      settle(velocity);
+      const speed = Math.hypot(velocity.x, velocity.y);
+      if (reducedMotion.matches || event.type !== 'pointerup' || speed < LENS_INERTIA.threshold) {
+        settle(speed < LENS_INERTIA.threshold ? { x: 0, y: 0 } : velocity);
+        return;
+      }
+      const max = 2400;
+      if (speed > max) velocity = { x: velocity.x / speed * max, y: velocity.y / speed * max };
+      startCoast(velocity);
     };
     for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) lens.addEventListener(event, release, { signal });
     lens.addEventListener('keydown', (event) => {
