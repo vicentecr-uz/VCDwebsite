@@ -1,6 +1,8 @@
 ---
 interface Props {
   title?: string;
+  /** DEV: JSON document whose `title` the page name writes to in Edit mode. */
+  titleDocument?: string;
   /** @deprecated Use nav menu on all pages; kept for non–nav-menu fallback only. */
   linkHref?: string;
   navMenu?: boolean;
@@ -11,10 +13,18 @@ import headerSettings from '../content/settings/header.json';
 
 const {
   title = headerSettings.siteTitle,
+  titleDocument = '',
   linkHref = '/',
   navMenu = true,
   wordmarkAsH1 = false,
 } = Astro.props;
+const titleEditAttrs = import.meta.env.DEV && titleDocument
+  ? {
+      'data-dev-text-document': titleDocument,
+      'data-dev-text-path': JSON.stringify(['title']),
+      'data-dev-text-kind': 'text',
+    }
+  : undefined;
 const WordmarkTag = wordmarkAsH1 ? 'h1' : 'span';
 const homeWordmark = headerSettings.siteTitle.replace(' ', '\u00a0');
 const wordmark = title.replace(' ', '\u00a0');
@@ -70,11 +80,16 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
                     </span>
                   </span>
                 ) : (
-                  <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
+                  <WordmarkTag class="header-trigger__wordmark" {...titleEditAttrs}>{wordmark}</WordmarkTag>
+                )}
+                {showWordmarkSwap && titleEditAttrs && (
+                  <WordmarkTag class="header-trigger__wordmark header-trigger__wordmark--edit" {...titleEditAttrs}>
+                    {wordmark}
+                  </WordmarkTag>
                 )}
               </a>
             ) : (
-              <WordmarkTag class="header-trigger__wordmark">{wordmark}</WordmarkTag>
+              <WordmarkTag class="header-trigger__wordmark" {...titleEditAttrs}>{wordmark}</WordmarkTag>
             )}
           </div>
           <ul class="header-menu" role="list">
@@ -184,6 +199,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   // Touch / no-hover devices open the menu on tap instead of on hover.
   const tapModeMq = window.matchMedia('(hover: none), (pointer: coarse)');
   const isTapMode = () => tapModeMq.matches;
+  const isDevEditing = () => document.documentElement.classList.contains('is-dev-mode');
   const adaptivePageColumnsEnabled = document.documentElement.hasAttribute('data-adaptive-page-columns');
 
   const header = document.querySelector('.site-header');
@@ -751,6 +767,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const openMenu = (event?: Event) => {
       if (isOpen()) return;
+      if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
       if (import.meta.env.DEV) {
         const pinnedSide = document.documentElement.dataset.headerSurfacePreview;
         if (pinnedSide && pinnedSide !== previewSide) return;
@@ -876,6 +893,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       'click',
       (event) => {
         if (!isTapMode()) return;
+        if (isDevEditing() && trigger.classList.contains('header-trigger--start')) return;
 
         const target = event.target as Element | null;
         if (target?.closest('.header-menu__link')) return;
@@ -1143,6 +1161,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const syncWordmarkHover = () => {
       if (wordmarkAnimating) return;
+      if (isDevEditing()) return;
 
       const hoverActive = isWordmarkHoverActive();
 
@@ -1192,6 +1211,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const onWordmarkPointerActive = () => {
+      if (isDevEditing()) return;
       if (wordmarkAnimating) return;
       if (!wordmarkIsOpen) void runWordmarkOpen();
     };
@@ -1213,6 +1233,24 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     // Tap mode has no hover to follow — swap with the menu itself.
     startTrigger.addEventListener('header:trigger-open', onWordmarkPointerActive);
     startTrigger.addEventListener('header:trigger-close', onWordmarkPointerInactive);
+
+    if (import.meta.env.DEV) {
+      const startBrand = startTrigger.querySelector<HTMLAnchorElement>('.header-trigger__brand-link');
+      const startBrandHref = startBrand?.getAttribute('href') ?? '';
+      const syncStartBrandForEdit = (active: boolean) => {
+        if (!startBrand) return;
+        if (active) startBrand.removeAttribute('href');
+        else if (startBrandHref) startBrand.setAttribute('href', startBrandHref);
+      };
+      syncStartBrandForEdit(isDevEditing());
+      window.addEventListener('vcd:dev-mode-change', ((event: CustomEvent<{ active?: boolean }>) => {
+        const active = Boolean(event.detail?.active);
+        syncStartBrandForEdit(active);
+        if (!active) return;
+        startTrigger.dispatchEvent(new CustomEvent('header:request-close'));
+        document.dispatchEvent(new CustomEvent('header:force-close'));
+      }) as EventListener);
+    }
 
     // Instant wordmark reset when menu force-closes (pagehide / bfcache).
     document.addEventListener('header:force-close', () => {
@@ -2013,6 +2051,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   .header-trigger__wordmark-stack {
     position: relative;
     display: inline-block;
+  }
+
+  .header-trigger__wordmark--edit {
+    display: none;
+  }
+
+  :global(html.is-dev-mode) .header-trigger--start:has(.header-trigger__wordmark--edit) .header-trigger__wordmark-stack {
+    display: none;
+  }
+
+  :global(html.is-dev-mode) .header-trigger__wordmark--edit {
+    display: block;
   }
 
   .header-trigger__wordmark--page,

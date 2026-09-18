@@ -79,7 +79,7 @@ const mountApi = (server, route, tooLarge, handle) => {
 };
 
 /**
- * Vite plugin (`apply: 'serve'`) — local /api/signup and /api/signup-pref.
+ * Vite plugin (`apply: 'serve'`) — local /api/signup.
  */
 export function signupDevApi() {
   return {
@@ -89,34 +89,6 @@ export function signupDevApi() {
       mountApi(server, '/api/signup', 'Enter a valid email address.', async (request, env) => {
         const { handleSignupRequest } = await server.ssrLoadModule('/src/lib/signup-handler.ts');
         return handleSignupRequest(request, env, { isDev: true });
-      });
-      mountApi(server, '/api/signup-pref', 'That note is too long.', async (request, env) => {
-        const { mkdir, readFile, appendFile } = await import('node:fs/promises');
-        const { handleSignupPrefRequest } = await server.ssrLoadModule('/src/lib/signup-pref-handler.ts');
-        const file = path.join(server.config.root || process.cwd(), '.data/signup-pref.jsonl');
-        const store = {
-          add: async (vote) => {
-            await mkdir(path.dirname(file), { recursive: true });
-            await appendFile(file, `${JSON.stringify(vote)}\n`);
-          },
-          list: async () => {
-            if (!existsSync(file)) return [];
-            const raw = await readFile(file, 'utf8');
-            return raw.split('\n').flatMap((line) => {
-              const trimmed = line.trim();
-              if (!trimmed) return [];
-              try {
-                return [JSON.parse(trimmed)];
-              } catch {
-                return [];
-              }
-            });
-          },
-        };
-        return handleSignupPrefRequest(request, store, {
-          isDev: true,
-          resultsKey: env.SIGNUP_PREF_KEY,
-        });
       });
     },
   };
