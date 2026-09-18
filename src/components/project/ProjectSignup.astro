@@ -38,6 +38,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     <div class="project-signup__control">
       <input
         type="email"
+        pattern="[^@\s]+@[^@\s]+\.[^@\s]+"
         required
         autocomplete="email"
         autocapitalize="none"
@@ -46,7 +47,12 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         aria-label="Email address"
       />
       <div class="project-signup__action">
-        <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">Cmd/Ctrl + ⏎</span>
+        <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
+          Cmd/Ctrl + ⏎
+          <svg class="project-signup__shortcut-tail" width="24" height="10" viewBox="0 0 24 10" focusable="false">
+            <path d="M0 0 C4 0 5 0 7 3 L10 7 Q12 10 14 7 L17 3 C19 0 20 0 24 0 Z" />
+          </svg>
+        </span>
         <button type="submit" aria-keyshortcuts="Meta+Enter Control+Enter">{label}</button>
       </div>
     </div>
@@ -159,8 +165,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   .project-signup__shortcut {
     position: absolute;
-    right: 0;
-    bottom: calc(100% + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(100% + 1rem);
     padding: 0.375rem 0.5rem;
     border-radius: 0.5rem;
     background: var(--sys-color-srf-container-low);
@@ -169,6 +176,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     line-height: 1.25;
     white-space: nowrap;
     pointer-events: none;
+    transition: color 150ms ease;
+  }
+
+  .project-signup__shortcut-tail {
+    position: absolute;
+    top: calc(100% - 1px);
+    left: 50%;
+    transform: translateX(-50%);
+    fill: var(--sys-color-srf-container-low);
   }
 
   .project-signup__shortcut.is-valid {
