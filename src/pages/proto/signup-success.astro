@@ -65,6 +65,13 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     <label>Travel <output data-out="emailMs">500ms</output>
       <input data-ctrl="emailMs" type="range" min="200" max="1200" step="10" value="500" />
     </label>
+    <label>Release ease
+      <select data-ctrl="releaseEase">
+        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)" selected>accelerate</option>
+        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
+        <option value="linear">constant</option>
+      </select>
+    </label>
     <p class="proto-panel-group">Letters back</p>
     <label>Start at <output data-out="returnAt">10%</output>
       <input data-ctrl="returnAt" type="range" min="0" max="100" step="5" value="10" />
@@ -114,6 +121,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     --anticipate-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
     --store-ms: 70;
     --email-ms: 500;
+    --release-ease: cubic-bezier(0.55, 0.055, 0.675, 0.19);
     --return-at: 10;
     --return-span: 55;
     --return-ms: 200;
@@ -415,6 +423,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       placeholderWait: num('--placeholder-wait', 400) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
       anticipateEase: getComputedStyle(root).getPropertyValue('--anticipate-ease').trim() || 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+      releaseEase: getComputedStyle(root).getPropertyValue('--release-ease').trim() || 'cubic-bezier(0.55, 0.055, 0.675, 0.19)',
       speed,
     };
   };
@@ -539,7 +548,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
           { transform: `translateX(${-c.anticipate}px)` },
           { transform: `translateX(${travelPx}px)` },
         ],
-        { duration: c.emailMs, easing: c.ease, fill: 'forwards' },
+        { duration: c.emailMs, easing: c.releaseEase, fill: 'forwards' },
       ));
     };
     const emailDone = runEmail();
@@ -741,6 +750,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     const anticipateEase = document.querySelector('[data-ctrl=anticipateEase]').value;
     const storeMs = Number(document.querySelector('[data-ctrl=storeMs]').value);
     const emailMs = Number(document.querySelector('[data-ctrl=emailMs]').value);
+    const releaseEase = document.querySelector('[data-ctrl=releaseEase]').value;
     const returnAt = Number(document.querySelector('[data-ctrl=returnAt]').value);
     const returnSpan = Number(document.querySelector('[data-ctrl=returnSpan]').value);
     const returnMs = Number(document.querySelector('[data-ctrl=returnMs]').value);
@@ -753,6 +763,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     root.style.setProperty('--anticipate-ease', anticipateEase);
     root.style.setProperty('--store-ms', String(storeMs));
     root.style.setProperty('--email-ms', String(emailMs));
+    root.style.setProperty('--release-ease', releaseEase);
     root.style.setProperty('--return-at', String(returnAt));
     root.style.setProperty('--return-span', String(returnSpan));
     root.style.setProperty('--return-ms', String(returnMs));
@@ -813,6 +824,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       `anticipateEase: ${document.querySelector('[data-ctrl=anticipateEase]').value}`,
       `storeMs: ${document.querySelector('[data-ctrl=storeMs]').value}ms`,
       `emailTravel: ${document.querySelector('[data-ctrl=emailMs]').value}ms`,
+      `releaseEase: ${document.querySelector('[data-ctrl=releaseEase]').value}`,
       `returnAt: ${document.querySelector('[data-ctrl=returnAt]').value}%`,
       `returnSpan: ${document.querySelector('[data-ctrl=returnSpan]').value}%`,
       `returnDuration: ${document.querySelector('[data-ctrl=returnMs]').value}ms`,
