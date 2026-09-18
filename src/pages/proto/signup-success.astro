@@ -52,10 +52,10 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     </label>
     <label>Anticipate ease
       <select data-ctrl="anticipateEase">
-        <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)" selected>settle-out</option>
-        <option value="cubic-bezier(0.645, 0.045, 0.355, 1)">in-out cubic</option>
-        <option value="cubic-bezier(0.23, 1, 0.32, 1)">snap-out</option>
+        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)" selected>accelerate</option>
+        <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
         <option value="cubic-bezier(0.5, 0, 0.5, 1)">coil</option>
+        <option value="cubic-bezier(0.25, 0.46, 0.45, 0.94)">settle-out</option>
         <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
       </select>
     </label>
@@ -67,9 +67,9 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     </label>
     <label>Release ease
       <select data-ctrl="releaseEase">
-        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)" selected>accelerate</option>
+        <option value="linear" selected>constant</option>
+        <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate</option>
         <option value="cubic-bezier(0.5, 0, 0.75, 0.16)">accelerate hard</option>
-        <option value="linear">constant</option>
       </select>
     </label>
     <p class="proto-panel-group">Letters back</p>
@@ -118,10 +118,10 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     --email-vs-check: 300;
     --anticipate: 8;
     --anticipate-ms: 80;
-    --anticipate-ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    --anticipate-ease: cubic-bezier(0.55, 0.055, 0.675, 0.19);
     --store-ms: 70;
     --email-ms: 500;
-    --release-ease: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+    --release-ease: linear;
     --return-at: 10;
     --return-span: 55;
     --return-ms: 200;
@@ -422,8 +422,8 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       returnMs: num('--return-ms', 200) * speed,
       placeholderWait: num('--placeholder-wait', 400) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
-      anticipateEase: getComputedStyle(root).getPropertyValue('--anticipate-ease').trim() || 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
-      releaseEase: getComputedStyle(root).getPropertyValue('--release-ease').trim() || 'cubic-bezier(0.55, 0.055, 0.675, 0.19)',
+      anticipateEase: getComputedStyle(root).getPropertyValue('--anticipate-ease').trim() || 'cubic-bezier(0.55, 0.055, 0.675, 0.19)',
+      releaseEase: getComputedStyle(root).getPropertyValue('--release-ease').trim() || 'linear',
       speed,
     };
   };
@@ -783,7 +783,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     el.addEventListener('input', readControls);
   });
 
-  const STORAGE_KEY = 'vcd:proto-signup-success-v2';
+  const STORAGE_KEY = 'vcd:proto-signup-success-v3';
   const factoryValues = Object.fromEntries(
     [...document.querySelectorAll('[data-ctrl]')].map((el) => [el.dataset.ctrl, el.value]),
   );
