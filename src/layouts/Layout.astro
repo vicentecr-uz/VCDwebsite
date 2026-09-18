@@ -81,6 +81,25 @@ const showDevTools = import.meta.env.DEV;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content={description} />
+    <style is:inline>
+      /* Cover the first paint. Bundled global.css (and Vite's JS-injected sheet
+         in DEV) can arrive after the page is already visible. */
+      html, body { background: #ffffff; }
+      #transition-overlay {
+        position: fixed;
+        inset: 0;
+        background: #ffffff;
+        z-index: 100;
+        pointer-events: none;
+        opacity: 1;
+        animation: transition-overlay-reveal 0.5s cubic-bezier(0.55, 0.055, 0.675, 0.19) 5s forwards;
+      }
+      html[data-theme='dark'], html[data-theme='dark'] body { background: #1f1f1f; }
+      html[data-theme='dark'] #transition-overlay { background: #1f1f1f; }
+      @keyframes transition-overlay-reveal {
+        to { opacity: 0; visibility: hidden; }
+      }
+    </style>
     {showDevTools && (
       <script is:inline>
         try {
@@ -181,14 +200,12 @@ const showDevTools = import.meta.env.DEV;
   </head>
   <body>
     <a href="#main-content" class="skip-to-content">Skip to content</a>
+    <div id="transition-overlay"></div>
+    {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}
 
     {showDevTools && <script is:inline type="module" src="/src/scripts/fontRevealPrototype.ts"></script>}
 
     <ImageLightbox />
-
-    <!-- Page transition overlay (GSAP fades this in/out) -->
-    <div id="transition-overlay"></div>
-    {showDevTools && <output id="transition-readiness-marker" class="dev-surface" hidden role="status">Fade would start</output>}
 
     <div id="site-wrapper" style={ADAPTIVE_PAGE_COLUMNS_ENABLED ? columnStyle : undefined}>
       <slot />
@@ -216,8 +233,14 @@ const showDevTools = import.meta.env.DEV;
         };
         const images = readinessImages(Array.from(document.querySelectorAll('img[data-image-preview]')).filter(visible));
         const imageReady = images.map((image) => new Promise((resolve) => {
-          if (image.complete) { resolve(); return; }
-          const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); resolve(); };
+          const finish = () => {
+            const decoded = (typeof image.decode === 'function' && image.naturalWidth > 0)
+              ? Promise.resolve(image.decode()).catch(() => undefined)
+              : Promise.resolve();
+            decoded.then(resolve, resolve);
+          };
+          if (image.complete) { finish(); return; }
+          const done = () => { image.removeEventListener('load', done); image.removeEventListener('error', done); finish(); };
           image.addEventListener('load', done, { once: true });
           image.addEventListener('error', done, { once: true });
         }));
