@@ -602,20 +602,6 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     check.classList.add('is-out');
   };
 
-  const settleCheckIn = (check, label, chars) => {
-    label.hidden = true;
-    chars.forEach((node) => {
-      node.getAnimations().forEach((a) => a.cancel());
-      node.style.cssText = '';
-    });
-    check.style.transition = 'none';
-    check.hidden = false;
-    check.classList.remove('is-out');
-    check.classList.add('is-in');
-    void check.offsetWidth;
-    check.style.transition = '';
-  };
-
   const playExit = async (c, reduce, label, chars, input, check) => {
     let exitPromise = Promise.resolve();
     if (c.emailVsCheck >= 0) {
@@ -635,7 +621,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     await exitPromise;
   };
 
-  const play = async (opts = {}) => {
+  const play = async () => {
     const { form: el, input, label, check, button, shortcut } = parts();
     if (!el || !input || !label || !check || playing) return;
     const id = ++playId;
@@ -650,38 +636,33 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const c = cfg();
     const chars = [...label.querySelectorAll('[data-char]')];
-    if (opts.fromHold) {
-      settleCheckIn(check, label, chars);
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    } else {
-      const n = chars.length;
-      const center = Math.max(n - 1, 1) / 2;
-      const lastEnd = Math.max(...chars.map((_, i) => Math.min(i, n - 1 - i) * c.stagger + c.charMs));
-      chars.forEach((node, i) => {
-        const fromEdge = Math.min(i, n - 1 - i);
-        const dist = Math.abs(i - center) / center;
-        const dir = i < center ? 1 : i > center ? -1 : 0;
-        const travel = c.move * (c.taper * dist + (1 - c.taper));
-        const x = reduce ? 0 : dir * travel;
-        node.animate(
-          [
-            { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
-            { opacity: 0, filter: `blur(${reduce ? 0 : c.blur}px)`, transform: `translateX(${x}px) scale(${reduce ? 1 : c.scale})` },
-          ],
-          { duration: c.charMs, delay: fromEdge * c.stagger, easing: c.ease, fill: 'forwards' },
-        );
-      });
-      await wait(Math.max(0, lastEnd - c.overlap));
-      check.hidden = false;
-      check.classList.remove('is-in', 'is-out');
-      void check.offsetWidth;
-      requestAnimationFrame(() => requestAnimationFrame(() => check.classList.add('is-in')));
-      await waitCheck(check, c.checkMs);
-      await Promise.all(chars.map((node) => Promise.all(node.getAnimations().map(settled))));
-      label.hidden = true;
-      chars.forEach((node) => node.getAnimations().forEach((a) => a.cancel()));
-      await wait(c.hold);
-    }
+    const n = chars.length;
+    const center = Math.max(n - 1, 1) / 2;
+    const lastEnd = Math.max(...chars.map((_, i) => Math.min(i, n - 1 - i) * c.stagger + c.charMs));
+    chars.forEach((node, i) => {
+      const fromEdge = Math.min(i, n - 1 - i);
+      const dist = Math.abs(i - center) / center;
+      const dir = i < center ? 1 : i > center ? -1 : 0;
+      const travel = c.move * (c.taper * dist + (1 - c.taper));
+      const x = reduce ? 0 : dir * travel;
+      node.animate(
+        [
+          { opacity: 1, filter: 'blur(0px)', transform: 'translateX(0) scale(1)' },
+          { opacity: 0, filter: `blur(${reduce ? 0 : c.blur}px)`, transform: `translateX(${x}px) scale(${reduce ? 1 : c.scale})` },
+        ],
+        { duration: c.charMs, delay: fromEdge * c.stagger, easing: c.ease, fill: 'forwards' },
+      );
+    });
+    await wait(Math.max(0, lastEnd - c.overlap));
+    check.hidden = false;
+    check.classList.remove('is-in', 'is-out');
+    void check.offsetWidth;
+    requestAnimationFrame(() => requestAnimationFrame(() => check.classList.add('is-in')));
+    await waitCheck(check, c.checkMs);
+    await Promise.all(chars.map((node) => Promise.all(node.getAnimations().map(settled))));
+    label.hidden = true;
+    chars.forEach((node) => node.getAnimations().forEach((a) => a.cancel()));
+    await wait(c.hold);
     if (id !== playId) return;
     await playExit(c, reduce, label, chars, input, check);
     if (input) input.readOnly = false;
@@ -696,7 +677,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
   const remount = () => {
     resetVisuals();
     fillDemoEmail();
-    requestAnimationFrame(() => void play({ fromHold: true }));
+    requestAnimationFrame(() => void play());
   };
 
   const moveHighlight = () => {
