@@ -73,7 +73,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   import tlds from 'tlds';
 
   const validTlds = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
-  // Design-review only; replace this handler with the signup API before enabling subscriptions.
   document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
@@ -86,6 +85,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     const surface = form.querySelector<HTMLElement>('.project-signup__surface');
     let statusTimer: ReturnType<typeof setTimeout>;
     let shakes: Animation[] = [];
+    let submitting = false;
     const dismissStatus = () => {
       clearTimeout(statusTimer);
       form.classList.remove('is-error', 'has-status');
@@ -99,6 +99,16 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       form.classList.add('has-status');
       form.classList.toggle('is-error', error);
       statusTimer = setTimeout(dismissStatus, 2500);
+    };
+    const shakeInvalid = () => {
+      shakes.forEach((animation) => animation.cancel());
+      shakes = [];
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
+          [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
+          { duration: 300, easing: 'ease-in-out' },
+        ));
+      }
     };
     const emailChecker = document.createElement('input');
     emailChecker.type = 'email';
@@ -135,7 +145,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         form.requestSubmit();
       }
     });
-    form.addEventListener('submit', (event) => {
+    form.addEventListener('submit', async (event) => {
       event.preventDefault();
       updateShortcut();
       dismissStatus();
@@ -145,18 +155,45 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         showStatus(input.validity.patternMismatch
           ? 'Enter a valid email address.'
           : input.validationMessage, true);
-        shakes.forEach((animation) => animation.cancel());
-        shakes = [];
-        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-          shakes = [field, surface].filter((element): element is HTMLElement => !!element).map((element) => element.animate(
-            [0, -4, 4, -3, 3, 0].map((x) => ({ transform: `translateX(${x}px)` })),
-            { duration: 300, easing: 'ease-in-out' },
-          ));
-        }
+        shakeInvalid();
         return;
       }
       input.removeAttribute('aria-invalid');
-      showStatus('Signup is not available yet.');
+      if (submitting) return;
+      submitting = true;
+      button?.setAttribute('aria-busy', 'true');
+      try {
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: input.value.trim() }),
+        });
+        let errorText = '';
+        try {
+          const payload = await response.json() as { error?: unknown };
+          if (typeof payload?.error === 'string') errorText = payload.error;
+        } catch {
+          // non-JSON body
+        }
+        if (response.status === 200) {
+          showStatus("You're in.");
+        } else if (response.status === 502 || response.status === 503) {
+          showStatus(errorText || 'Signup is not available yet.');
+        } else if (response.status >= 400 && response.status < 500) {
+          showStatus(errorText || 'Signup is not available yet.', true);
+          if (response.status === 400) {
+            input.setAttribute('aria-invalid', 'true');
+            shakeInvalid();
+          }
+        } else {
+          showStatus(errorText || 'Signup is not available yet.');
+        }
+      } catch {
+        showStatus('Signup is not available yet.');
+      } finally {
+        submitting = false;
+        button?.removeAttribute('aria-busy');
+      }
     });
   });
 </script>
