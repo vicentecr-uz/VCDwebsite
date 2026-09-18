@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { imageLensBounds } from '../../src/lib/imageLensBounds';
+import * as inertia from '../../src/lib/imageLensInertia';
 
 // Exercise the real controller without a browser, rendering, or synthetic UI interaction.
 class CanvasContext {
@@ -55,12 +56,12 @@ const window = new EventTarget();
 const media = Object.assign(new EventTarget(), { matches: false });
 const getComputedStyle = () => ({ borderTopLeftRadius: '11.2px', borderTopRightRadius: '11.2px', borderBottomRightRadius: '11.2px', borderBottomLeftRadius: '11.2px', backgroundColor: 'rgb(249, 249, 251)', opacity: '1', getPropertyValue: (name: string) => name === '--preview-reveal-y' ? '122%' : '#f9f9fb' });
 const source = readFileSync(new URL('../../src/components/project/demos/ProgressiveImageDemo.astro', import.meta.url), 'utf8').match(/<script>([^]*?)<\/script>/)![1].replace(/^\s*import .*;\s*$/gm, '');
-const javascript = new Bun.Transpiler({ loader: 'ts' }).transformSync(source);
+const javascript = new Bun.Transpiler({ loader: 'ts' }).transformSync(`const { createEaseOut, inWall, LENS_INERTIA, stepContact } = inertia;\n${source}`);
 let time = 0;
 let nextFrame = 0;
 const frames = new Map<number, (time: number) => void>();
 const advance = (ms: number) => { time += ms; const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(time)); };
-const initialize = new Function('imageLensBounds', 'LiquidGlass', 'HTMLElement', 'customElements', 'document', 'window', 'matchMedia', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio', 'performance', `${javascript}; return initializeDemo;`)(imageLensBounds, {}, Element, { get: () => true }, document, window, () => media, getComputedStyle, ResizeObserver, MutationObserver, (callback: (time: number) => void) => { frames.set(++nextFrame, callback); return nextFrame; }, (id: number) => frames.delete(id), 2, { now: () => time });
+const initialize = new Function('imageLensBounds', 'inertia', 'LiquidGlass', 'HTMLElement', 'customElements', 'document', 'window', 'matchMedia', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'requestAnimationFrame', 'cancelAnimationFrame', 'devicePixelRatio', 'performance', `${javascript}; return initializeDemo;`)(imageLensBounds, inertia, {}, Element, { get: () => true }, document, window, () => media, getComputedStyle, ResizeObserver, MutationObserver, (callback: (time: number) => void) => { frames.set(++nextFrame, callback); return nextFrame; }, (id: number) => frames.delete(id), 2, { now: () => time });
 const dispose = initialize(host);
 resizeCallbacks.forEach(callback => callback());
 const pointer = (type: string, x: number, y: number) => lens.dispatchEvent(Object.assign(new Event(type, { cancelable: true }), { pointerId: 1, isPrimary: true, button: 0, clientX: x, clientY: y }));
@@ -107,4 +108,25 @@ assert.deepEqual(sourceCanvas.context.draws.at(-1)!.transform, revealDraw.transf
 dispose();
 pointer('pointerdown', 200, 200);
 assert.equal(lens.hasPointerCapture(1), false, 'disposal removes drag handlers');
+
+{
+  const stepper = inertia.createEaseOut({ x: 900, y: 0 }, 10);
+  let velocity = { x: 900, y: 0 };
+  for (let i = 0; i < 80; i++) velocity = stepper.step(0.016, 10).velocity;
+  assert.equal(velocity.x, 0, 'ease-out reaches 0 without a threshold cutoff');
+}
+{
+  const bounds = { min: 0, x: 200, y: 200 };
+  let pos = { x: 202, y: 80 };
+  let vel = { x: 900, y: 0 };
+  let minX = pos.x;
+  for (let i = 0; i < 50; i++) {
+    const next = inertia.stepContact(pos, vel, 0.016, bounds, 24);
+    pos = next.position;
+    vel = next.velocity;
+    minX = Math.min(minX, pos.x);
+  }
+  assert.ok(minX < 200, 'bumper returns inside the boundary after a hard hit');
+}
+
 console.log('image-lens-drag: passed (movement, resize during capture, release, disposal)');
