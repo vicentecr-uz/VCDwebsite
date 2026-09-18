@@ -22,6 +22,7 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       <div class="dev-text-field__content">
         {prefix && <span class="dev-text-field__prefix" aria-hidden="true">{prefix}</span>}
         <input id={inputId} type="text" value={value} placeholder={placeholder} disabled={disabled} class="dev-field__input" aria-label={hideLabel ? label : undefined} {...rest} />
+        <slot name="trail" />
       </div>
     </div>
     <span class="dev-text-field__measure" aria-hidden="true"></span>
@@ -29,6 +30,29 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
 </Field>
 
 <script>
+  const syncTextFieldTrail = (root, input, measure) => {
+    const trail = root.querySelector('[data-text-field-trail]');
+    const rootStyle = getComputedStyle(root);
+    const edgeGutter = Number.parseFloat(
+      rootStyle.getPropertyValue('--dev-text-field-edge-gutter'),
+    ) || 8;
+    const fadeWidth = Number.parseFloat(
+      rootStyle.getPropertyValue('--dev-text-field-fade-width'),
+    ) || 22;
+    if (!(trail instanceof HTMLElement) || trail.hidden) {
+      root.style.setProperty('--dev-text-field-trail-end', '0px');
+      return { trailWidth: 0, trailRight: 0 };
+    }
+    const textEndX = input.offsetLeft + measureInputText(input, measure, input.value);
+    trail.style.left = `${textEndX}px`;
+    const trailWidth = trail.getBoundingClientRect().width;
+    root.style.setProperty(
+      '--dev-text-field-trail-end',
+      `${trailWidth + Math.max(0, fadeWidth - edgeGutter)}px`,
+    );
+    return { trailWidth, trailRight: textEndX + trailWidth };
+  };
+
   const measureInputText = (input, measure, value) => {
     const style = getComputedStyle(input);
     measure.style.font = style.font;
@@ -73,15 +97,17 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       rootStyle.getPropertyValue('--dev-text-field-edge-gutter'),
     ) || 8;
     const displayedTextWidth = measureInputText(input, measure, input.value || input.placeholder);
+    const { trailWidth, trailRight } = syncTextFieldTrail(root, input, measure);
     const scrollOwner = track;
     const textStartX = input.offsetLeft;
     const textEndX = textStartX + displayedTextWidth;
+    const overflowRight = Math.max(textEndX, trailRight);
     const start = input.selectionStart;
     const end = input.selectionEnd;
     root.classList.toggle('is-fade-left', scrollOwner.scrollLeft > 0.5);
     root.classList.toggle(
       'is-fade-right',
-      textEndX - scrollOwner.scrollLeft > scrollOwner.clientWidth - edgeGutter + 0.5,
+      overflowRight - scrollOwner.scrollLeft > scrollOwner.clientWidth - edgeGutter + 0.5,
     );
 
     if (document.activeElement !== input || start === null || end === null || start !== end) {
@@ -100,11 +126,13 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       ? caretSafeInset
       : edgeGutter;
     const viewportCaretStartX = caretStartX - scrollOwner.scrollLeft;
-    const viewportCaretEndX = caretEndX - scrollOwner.scrollLeft;
+    const atTextEnd = start === end && start === input.value.length;
+    const viewportRightEdge = (trailWidth > 0 && atTextEnd ? trailRight : caretEndX)
+      - scrollOwner.scrollLeft;
     root.classList.toggle(
       'is-caret-outside',
       viewportCaretStartX < leftCaretInset - 0.5
-        || viewportCaretEndX > scrollOwner.clientWidth - rightCaretInset + 0.5,
+        || viewportRightEdge > scrollOwner.clientWidth - rightCaretInset + 0.5,
     );
   };
 
@@ -127,21 +155,21 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
     const end = input.selectionEnd;
     if (start === null || end === null) return;
     const caretOffset = start === end || input.selectionDirection !== 'backward' ? end : start;
+    const isCollapsed = start === end;
+    const isTextStart = isCollapsed
+      && caretOffset === 0
+      && !root.classList.contains('dev-text-field--prefix');
+    const isTextEnd = isCollapsed && caretOffset === input.value.length;
     const {
       scrollOwner,
       edgeGutter,
       caretSafeInset,
       caretStartX,
       caretEndX,
-      maxScroll,
     } = getTextFieldCaretGeometry(root, input, track, measure, caretOffset);
-    const isCollapsed = start === end;
-    const isTextStart = isCollapsed
-      && caretOffset === 0
-      && !root.classList.contains('dev-text-field--prefix');
-    const isTextEnd = isCollapsed && caretOffset === input.value.length;
+    const { trailWidth, trailRight } = syncTextFieldTrail(root, input, measure);
     if (isTextStart) scrollOwner.scrollLeft = 0;
-    if (isTextEnd) scrollOwner.scrollLeft = maxScroll;
+    if (isTextEnd) scrollOwner.scrollLeft = Math.max(0, scrollOwner.scrollWidth - scrollOwner.clientWidth);
     const leftInset = root.classList.contains('is-fade-left') && !isTextStart
       ? caretSafeInset
       : edgeGutter;
@@ -149,11 +177,13 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       ? caretSafeInset
       : edgeGutter;
     const caretViewportStartX = caretStartX - scrollOwner.scrollLeft;
-    const caretViewportEndX = caretEndX - scrollOwner.scrollLeft;
+    const rightEdge = trailWidth > 0 && isTextEnd ? trailRight : caretEndX;
+    const rightEdgeViewportX = rightEdge - scrollOwner.scrollLeft;
+    const maxScroll = Math.max(0, scrollOwner.scrollWidth - scrollOwner.clientWidth);
     const clampScroll = (value) => Math.min(maxScroll, Math.max(0, value));
     if (caretViewportStartX < leftInset) scrollOwner.scrollLeft = clampScroll(caretStartX - leftInset);
-    else if (caretViewportEndX > scrollOwner.clientWidth - rightInset) {
-      scrollOwner.scrollLeft = clampScroll(caretEndX - scrollOwner.clientWidth + rightInset);
+    else if (rightEdgeViewportX > scrollOwner.clientWidth - rightInset) {
+      scrollOwner.scrollLeft = clampScroll(rightEdge - scrollOwner.clientWidth + rightInset);
     }
   };
 

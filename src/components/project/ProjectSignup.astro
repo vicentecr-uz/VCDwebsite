@@ -33,6 +33,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 <section
   id={sectionId}
   class:list={['project-block', 'project-block--text', 'project-signup', projectStackClass(spacing), sectionId && 'section-block']}
+  data-signup-motion
   {...(spacingAttrs ?? {})}
   data-dev-section-deletable={editable ? 'signup' : undefined}
 >
@@ -52,15 +53,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         placeholder={placeholder}
         aria-describedby={statusId}
         data-signup-email
-      />
+      >
+        <span slot="trail" class="project-signup__shortcut" data-signup-shortcut data-text-field-trail hidden aria-hidden="true">⏎</span>
+      </TextField>
       <div class="project-signup__action">
-        <span class="project-signup__shortcut" data-signup-shortcut hidden aria-hidden="true">
-          ⏎
-          <svg class="project-signup__shortcut-tail" width="20" height="8" viewBox="0 0 24 10" focusable="false">
-            <path d="M0 0 C4 0 5 0 7 3 L10 7 Q12 10 14 7 L17 3 C19 0 20 0 24 0 Z" />
-          </svg>
-        </span>
-        <button type="submit" aria-keyshortcuts="Enter">{label}</button>
+        <button type="submit" aria-label={label} aria-keyshortcuts="Enter">
+          <span class="project-signup__label" data-signup-label aria-hidden="true">{label}</span>
+          <span class="project-signup__check" data-signup-check hidden aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </span>
+        </button>
       </div>
     </div>
     <div id={statusId} class="project-signup__status" data-signup-status aria-live="polite" aria-atomic="true">
@@ -71,21 +75,278 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
 <script>
   import tlds from 'tlds';
+  import {
+    animateRelease,
+    readSignupMotionCfg,
+    throwDurationMs,
+  } from '../../scripts/signupSuccessMotion';
 
   const validTlds = new Set(tlds.map((tld) => new URL(`https://${tld}`).hostname));
   document.querySelectorAll<HTMLFormElement>('[data-project-signup-form]').forEach((form) => {
     if (form.dataset.bound === 'true') return;
     form.dataset.bound = 'true';
+    const motionRoot = form.closest<HTMLElement>('[data-signup-motion]');
     const input = form.querySelector<HTMLInputElement>('[data-signup-email]');
     const field = form.querySelector<HTMLElement>('.project-signup__field');
+    const textField = form.querySelector<HTMLElement>('.dev-text-field');
     const button = form.querySelector<HTMLButtonElement>('button[type=submit]');
     let pressTimer: ReturnType<typeof setTimeout>;
     const shortcut = form.querySelector<HTMLElement>('[data-signup-shortcut]');
     const statusMessage = form.querySelector<HTMLElement>('[data-signup-status-message]');
     const surface = form.querySelector<HTMLElement>('.project-signup__surface');
     let statusTimer: ReturnType<typeof setTimeout>;
-    let shakes: Animation[] = [];
+    const labelEl = form.querySelector<HTMLElement>('[data-signup-label]');
+    const checkEl = form.querySelector<HTMLElement>('[data-signup-check]');
+    let celebrating = false;
     let submitting = false;
+    let playId = 0;
+    let ghost: HTMLElement | null = null;
+    if (labelEl && labelEl.dataset.split !== 'true') {
+      const text = labelEl.textContent ?? '';
+      labelEl.textContent = '';
+      [...text].forEach((ch) => {
+        const span = document.createElement('span');
+        span.className = 'project-signup__char';
+        span.textContent = ch === ' ' ? '\u00a0' : ch;
+        span.dataset.char = '';
+        labelEl.append(span);
+      });
+      labelEl.dataset.split = 'true';
+    }
+    const waitMs = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+    const settled = (animation: Animation) => animation.finished.catch(() => undefined);
+    const waitCheckTransition = (ms: number) => new Promise<void>((resolve) => {
+      if (!checkEl) return resolve();
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        checkEl.removeEventListener('transitionend', onEnd);
+        resolve();
+      };
+      const onEnd = (event: TransitionEvent) => {
+        if (event.target === checkEl && event.propertyName === 'opacity') finish();
+      };
+      checkEl.addEventListener('transitionend', onEnd);
+      window.setTimeout(finish, ms + 80);
+    });
+    const teardownGhost = () => {
+      ghost?.remove();
+      ghost = null;
+      input?.classList.remove('is-signup-ghosted');
+      textField?.classList.remove('is-signup-fade');
+    };
+    const mountEmailGhost = (className: string, text: string) => {
+      const track = textField?.querySelector('.dev-text-field__track');
+      if (!input || !textField || !track) return null;
+      const next = document.createElement('span');
+      next.className = className;
+      next.setAttribute('aria-hidden', 'true');
+      const style = getComputedStyle(input);
+      const inputRect = input.getBoundingClientRect();
+      const trackRect = track.getBoundingClientRect();
+      next.style.font = style.font;
+      next.style.letterSpacing = style.letterSpacing;
+      next.style.left = `${inputRect.left - trackRect.left + track.scrollLeft}px`;
+      next.style.top = `${inputRect.top - trackRect.top}px`;
+      next.style.height = `${inputRect.height}px`;
+      next.textContent = text;
+      track.append(next);
+      ghost = next;
+      return next;
+    };
+    const prepareThrow = (reduce: boolean) => {
+      if (!input || !motionRoot) return null;
+      const c = readSignupMotionCfg(motionRoot);
+      const emailEl = reduce ? null : mountEmailGhost('project-signup__email-ghost', input.value);
+      if (emailEl) {
+        input.classList.add('is-signup-ghosted');
+        textField?.classList.add('is-signup-fade');
+      }
+      const fadeWidth = Number.parseFloat(
+        getComputedStyle(textField ?? document.documentElement)
+          .getPropertyValue('--dev-text-field-fade-width'),
+      ) || 22;
+      const travelPx = emailEl && textField
+        ? textField.getBoundingClientRect().right - emailEl.getBoundingClientRect().left + fadeWidth
+        : 0;
+      const throwDistance = Math.max(0, travelPx + c.anticipate);
+      const throwMs = reduce || c.accel <= 0 || c.vmax <= 0
+        ? c.emailMs
+        : throwDurationMs(throwDistance, c.accel, c.vmax, c.emailMs / c.speed) * c.speed;
+      const runEmail = async () => {
+        if (reduce) {
+          input.classList.add('is-signup-ghosted');
+          await settled(input.animate(
+            [{ opacity: 1 }, { opacity: 0 }],
+            { duration: c.emailMs, easing: c.ease, fill: 'forwards' },
+          ));
+          return;
+        }
+        if (!emailEl) return;
+        if (c.anticipate > 0 && c.anticipateMs > 0) {
+          const windup = emailEl.animate(
+            [
+              { transform: 'translateX(0) scaleX(1) scaleY(1)' },
+              { transform: `translateX(${-c.anticipate}px) scaleX(${1 - c.squash}) scaleY(${1 + c.squash})` },
+            ],
+            { duration: c.anticipateMs, easing: c.anticipateEase, fill: 'forwards' },
+          );
+          await settled(windup);
+          windup.commitStyles();
+          windup.cancel();
+          if (c.storeMs > 0) await waitMs(c.storeMs);
+        }
+        const release = animateRelease(
+          emailEl,
+          -c.anticipate,
+          travelPx,
+          1 - c.squash,
+          1 + c.squash,
+          1 + c.stretch,
+          1 - c.stretch,
+          c,
+        );
+        await release.finished;
+      };
+      return { c, throwMs, runEmail };
+    };
+    const finishEmail = () => {
+      if (!input) return;
+      input.classList.add('is-signup-placeholder-pending');
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.getAnimations().forEach((animation) => animation.cancel());
+      teardownGhost();
+    };
+    const playThrowFirst = async (
+      reduce: boolean,
+      chars: HTMLElement[],
+      token: number,
+    ) => {
+      if (!labelEl || !motionRoot) return;
+      const prepared = prepareThrow(reduce);
+      if (!prepared) return;
+      const { c, throwMs, runEmail } = prepared;
+      const n = chars.length;
+      const start = reduce ? 0 : c.anticipateMs + c.storeMs + c.returnAt * throwMs;
+      const span = reduce ? Math.max(0, n - 1) * 30 : c.returnSpan * throwMs;
+      const lastOutEnd = start + (n <= 1 ? 0 : span) + c.returnMs;
+      const checkInAt = Math.max(0, lastOutEnd + c.checkVsLast);
+      const emailDone = runEmail();
+      const giOut = chars.map((el, i) => el.animate(
+        reduce
+          ? [{ opacity: 1 }, { opacity: 0 }]
+          : [
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+            { opacity: 0, filter: `blur(${c.blur}px)`, transform: `scale(${c.scale})` },
+          ],
+        {
+          duration: c.returnMs,
+          delay: start + (n <= 1 ? 0 : (i / (n - 1)) * span),
+          easing: c.ease,
+          fill: 'both',
+        },
+      ));
+      const giOutDone = Promise.all(giOut.map(settled));
+      await waitMs(checkInAt);
+      if (token !== playId) return;
+      if (checkEl) {
+        checkEl.hidden = false;
+        checkEl.classList.toggle('is-reduced', reduce);
+        checkEl.classList.remove('is-in', 'is-out');
+        void checkEl.offsetWidth;
+        await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+        checkEl.classList.add('is-in');
+        await waitCheckTransition(c.checkMs);
+      }
+      if (token !== playId) return;
+      await waitMs(c.hold);
+      if (token !== playId) return;
+      const checkOut = (async () => {
+        if (!checkEl) return;
+        checkEl.classList.remove('is-in');
+        checkEl.classList.add('is-out');
+        await waitCheckTransition(c.checkMs);
+        checkEl.hidden = true;
+        checkEl.classList.remove('is-out', 'is-reduced');
+      })();
+      await giOutDone;
+      if (token !== playId) return;
+      chars.forEach((el) => {
+        el.getAnimations().forEach((animation) => animation.cancel());
+        el.style.cssText = '';
+      });
+      finishEmail();
+      const giIn = labelEl.animate(
+        reduce
+          ? [{ opacity: 0 }, { opacity: 1 }]
+          : [
+            { opacity: 0, filter: `blur(${c.inBlur}px)`, transform: `scale(${c.scale})` },
+            { opacity: 1, filter: 'blur(0px)', transform: 'scale(1)' },
+          ],
+        { duration: c.inMs, easing: c.ease, fill: 'both' },
+      );
+      const placeholderIn = revealPlaceholder(token, { duration: c.inMs, blur: c.inBlur });
+      await Promise.all([emailDone, checkOut, placeholderIn, settled(giIn)]);
+      chars.forEach((el) => {
+        el.style.cssText = '';
+        el.getAnimations().forEach((animation) => animation.cancel());
+      });
+      giIn.cancel();
+      labelEl.style.cssText = '';
+    };
+    const revealPlaceholder = async (
+      id: number,
+      motion?: { duration: number; blur?: number },
+    ) => {
+      if (!input || !motionRoot || id !== playId) return;
+      const c = readSignupMotionCfg(motionRoot);
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (input.value.trim()) {
+        input.classList.remove('is-signup-placeholder-pending');
+        return;
+      }
+      const next = mountEmailGhost('project-signup__email-ghost is-placeholder', input.placeholder);
+      if (!next) {
+        input.classList.remove('is-signup-placeholder-pending');
+        return;
+      }
+      const duration = motion?.duration ?? 320 * c.speed;
+      const blur = motion?.blur ?? 4;
+      await settled(next.animate(
+        reduce
+          ? [{ opacity: 0 }, { opacity: 1 }]
+          : [
+            { opacity: 0, filter: `blur(${blur}px)` },
+            { opacity: 1, filter: 'blur(0px)' },
+          ],
+        { duration, easing: c.ease, fill: 'forwards' },
+      ));
+      if (id !== playId) return;
+      input.classList.remove('is-signup-placeholder-pending');
+      next.remove();
+      if (ghost === next) ghost = null;
+    };
+    const playSuccess = async () => {
+      if (!button || !labelEl || !checkEl || !input || !motionRoot || celebrating) return;
+      const id = ++playId;
+      celebrating = true;
+      form.classList.add('is-celebrating');
+      button.setAttribute('aria-busy', 'true');
+      input.readOnly = true;
+      input.blur();
+      shortcut?.classList.add('is-inert');
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const chars = [...labelEl.querySelectorAll<HTMLElement>('[data-char]')];
+      await playThrowFirst(reduce, chars, id);
+      if (id !== playId) return;
+      input.readOnly = false;
+      button.removeAttribute('aria-busy');
+      celebrating = false;
+      form.classList.remove('is-celebrating');
+    };
+    let shakes: Animation[] = [];
     const dismissStatus = () => {
       clearTimeout(statusTimer);
       form.classList.remove('is-error', 'has-status');
@@ -122,8 +383,14 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       if (input.validity.valid && !validTlds.has(input.value.split('.').at(-1)!.toLowerCase())) {
         input.setCustomValidity('Enter an email with a recognized TLD (like .com, .net, .org, etc...)');
       }
-      shortcut.hidden = input.value.length === 0;
       shortcut.classList.toggle('is-valid', input.validity.valid);
+      if (celebrating) {
+        shortcut.classList.add('is-inert');
+        return;
+      }
+      shortcut.classList.remove('is-inert');
+      shortcut.hidden = input.value.length === 0 || document.activeElement !== input;
+      input.dispatchEvent(new CustomEvent('vcd:text-field-sync', { bubbles: true }));
     };
     input?.addEventListener('input', () => {
       updateShortcut();
@@ -131,9 +398,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       input.removeAttribute('aria-invalid');
     });
     input?.addEventListener('change', updateShortcut);
+    input?.addEventListener('focus', updateShortcut);
     updateShortcut();
     field?.addEventListener('pointerdown', () => { field.dataset.pointerFocus = ''; });
-    input?.addEventListener('blur', () => { if (field) delete field.dataset.pointerFocus; });
+    input?.addEventListener('blur', (event) => {
+      if (field) delete field.dataset.pointerFocus;
+      const toSubmit = event.relatedTarget instanceof Node && Boolean(button?.contains(event.relatedTarget));
+      if (toSubmit && shortcut) {
+        shortcut.classList.add('is-inert');
+        return;
+      }
+      updateShortcut();
+    });
     input?.addEventListener('keydown', (event) => {
       if (event.key === 'Tab' && field) delete field.dataset.pointerFocus;
       if (event.key === 'Enter' && !event.isComposing) {
@@ -147,9 +423,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (celebrating || submitting) return;
       updateShortcut();
       dismissStatus();
-      if (!input || !input.value.trim()) return;
+      if (!input) return;
+      if (!input.value.trim()) {
+        input.removeAttribute('aria-invalid');
+        showStatus('The email address input is empty.');
+        return;
+      }
       if (!input.validity.valid) {
         input.setAttribute('aria-invalid', 'true');
         showStatus(input.validity.patternMismatch
@@ -159,7 +441,6 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         return;
       }
       input.removeAttribute('aria-invalid');
-      if (submitting) return;
       submitting = true;
       button?.setAttribute('aria-busy', 'true');
       try {
@@ -176,8 +457,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
           // non-JSON body
         }
         if (response.status === 200) {
-          showStatus("You're in.");
-        } else if (response.status === 502 || response.status === 503) {
+          await playSuccess();
+          return;
+        }
+        if (response.status === 502 || response.status === 503) {
           showStatus(errorText || 'Signup is not available yet.');
         } else if (response.status >= 400 && response.status < 500) {
           showStatus(errorText || 'Signup is not available yet.', true);
@@ -192,13 +475,47 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
         showStatus('Signup is not available yet.');
       } finally {
         submitting = false;
-        button?.removeAttribute('aria-busy');
+        if (!celebrating) button?.removeAttribute('aria-busy');
       }
     });
   });
 </script>
 
 <style>
+  .project-signup {
+    --stagger: 10;
+    --char-ms: 500;
+    --move: 8;
+    --taper: 20;
+    --scale-to: 0.97;
+    --blur: 10;
+    --overlap: 400;
+    --check-ms: 160;
+    --hold: 1000;
+    --email-vs-check: 100;
+    --anticipate: 10;
+    --anticipate-ms: 100;
+    --anticipate-ease: cubic-bezier(0.4, 0.05, 0.6, 0.95);
+    --squash: 0.1;
+    --store-ms: 70;
+    --email-ms: 500;
+    --release-ease: cubic-bezier(0.5, 0, 0.75, 0.16);
+    --release-accel: 12000;
+    --release-vmax: 1600;
+    --stretch: 0.1;
+    --return-at: 80;
+    --return-span: 40;
+    --return-ms: 300;
+    --check-vs-last: 0;
+    --gi-in-stagger: 50;
+    --gi-in-move: 14;
+    --gi-in-blur: 12;
+    --gi-in-ms: 320;
+    --placeholder-wait: 400;
+    --speed: 1;
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
   .project-signup__form {
     position: relative;
     width: 100%;
@@ -236,7 +553,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .project-signup__form.is-error .project-signup__surface {
-    outline-color: var(--sys-color-error);
+    /* Softer than status text: keep full --sys-color-error on .project-signup__error only. */
+    outline-color: color-mix(in srgb, var(--sys-color-error) 45%, transparent);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -268,6 +586,8 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
   }
 
   .project-signup__control button {
+    display: grid;
+    place-items: center;
     position: relative;
     width: 100%;
     min-height: 2.625rem;
@@ -277,7 +597,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: var(--comp-button-filled-container);
     color: var(--comp-button-filled-label);
     cursor: pointer;
-    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+    font: 400 1.1rem / 1 var(--font-sans);
     /* Same press cue as .dev-btn: filled hover/active share one colour, so scale is the click signal. */
     transition: background-color 0.2s ease, transform var(--motion-press-duration) ease-out;
   }
@@ -288,6 +608,63 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     inset: -8px;
   }
 
+  .project-signup__label,
+  .project-signup__check {
+    grid-area: 1 / 1;
+  }
+
+  .project-signup__label {
+    display: inline-flex;
+    white-space: nowrap;
+  }
+
+  .project-signup__char {
+    display: inline-block;
+  }
+
+  .project-signup__label[hidden],
+  .project-signup__check[hidden] {
+    display: none;
+  }
+
+  .project-signup__check:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(1.03);
+    filter: blur(4px);
+    -webkit-filter: blur(4px);
+    transition-property: opacity, transform, filter, -webkit-filter;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .project-signup__check.is-in {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+    -webkit-filter: blur(0px);
+  }
+
+  .project-signup__check.is-out {
+    opacity: 0;
+    transform: scale(0.97);
+    filter: blur(4px);
+    -webkit-filter: blur(4px);
+  }
+
+  .project-signup__check.is-reduced {
+    transform: none;
+    filter: none;
+    -webkit-filter: none;
+    transition-property: opacity;
+  }
+
+  .project-signup__check svg {
+    display: block;
+  }
+
   .project-signup__action {
     position: relative;
     min-width: 0;
@@ -295,18 +672,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   .project-signup__shortcut {
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    transform-origin: 50% calc(100% + 6px);
-    bottom: calc(100% + 1rem);
-    padding: 0.375rem 0.5rem;
-    border-radius: 0.5rem;
-    background: var(--sys-color-srf-container-low);
+    top: 50%;
+    left: 0;
+    z-index: 1;
+    padding: 0 0 0 0.4em;
     color: var(--sys-color-on-srf-subtle);
     font-size: 0.8125rem;
-    line-height: 1.25;
-    white-space: nowrap;
+    line-height: 1;
     pointer-events: none;
+    transform: translateY(-50%);
     transition: color 150ms ease;
   }
 
@@ -316,12 +690,10 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 
   @keyframes shortcut-enter {
     from {
-      transform: translateX(-50%) scale(0.97);
       opacity: 0;
       filter: blur(2px);
     }
     to {
-      transform: translateX(-50%) scale(1);
       opacity: 1;
       filter: blur(0);
     }
@@ -338,12 +710,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     to { opacity: 1; }
   }
 
-  .project-signup__shortcut-tail {
-    position: absolute;
-    top: calc(100% - 1px);
-    left: 50%;
-    transform: translateX(-50%);
-    fill: var(--sys-color-srf-container-low);
+  .project-signup__shortcut.is-inert {
+    visibility: hidden;
+    animation: none;
   }
 
   .project-signup__shortcut.is-valid {
@@ -384,6 +753,13 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: transparent;
   }
 
+  /* Pointer/tap focus stays quiet: kill shared TextField hover fill + focus-within inset ring. */
+  :global(.project-signup__field:hover .dev-field__value),
+  :global(.project-signup__field .dev-field__value:focus-within) {
+    background: transparent;
+    box-shadow: none;
+  }
+
   :global(.project-signup__field .dev-text-field) {
     --dev-text-field-edge-gutter: 12px;
     --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
@@ -392,16 +768,15 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     background: transparent;
   }
 
-  :global(.project-signup__field:hover .dev-text-field) {
+  :global(.project-signup__field:hover .dev-text-field),
+  :global(.project-signup__field:focus-within .dev-text-field) {
     --dev-text-field-fade-surface: var(--sys-color-srf-container-lowest);
   }
 
-  :global(.project-signup__field:hover .dev-field__value) {
-    background: transparent;
-  }
-
   :global(.project-signup__field .dev-text-field__content) {
-    padding: 0 0.75rem;
+    padding-block: 0;
+    padding-inline-start: 0.75rem;
+    padding-inline-end: calc(0.75rem + var(--dev-text-field-trail-end, 0px));
   }
 
   :global(.project-signup__field .dev-field__input) {
@@ -410,8 +785,9 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     margin: 0;
     padding: 0;
     outline: 0;
+    -webkit-tap-highlight-color: transparent;
     color: var(--sys-color-on-srf);
-    font: 400 max(1rem, var(--text-body-size)) / 1 var(--font-sans);
+    font: 400 1.1rem / 1 var(--font-sans);
   }
 
   :global(.project-signup__field .dev-field__input::placeholder) {
@@ -419,14 +795,60 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     opacity: 1;
   }
 
-  :global(.project-signup__field:not([data-pointer-focus]) .dev-field__value:has(input:focus-visible)) {
-    outline: 2px solid var(--sys-color-on-srf);
-    outline-offset: -2px;
+  :global(.project-signup__field:not([data-pointer-focus]) .dev-field__value:has(input:focus-visible)::after) {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 2px var(--sys-color-on-srf);
   }
 
   @media (max-width: 40em) {
     .project-signup__control {
       grid-template-columns: minmax(0, 1fr) 8.5rem;
     }
+
+    /* Match phone body (0.875rem / 14px). Lifts the 16px iOS anti-zoom floor. */
+    .project-signup__control button,
+    :global(.project-signup__field .dev-field__input) {
+      font-size: var(--text-body-size);
+    }
+  }
+
+  :global(.project-signup__email-ghost) {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    margin: 0;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+    color: var(--sys-color-on-srf);
+    transform-origin: left center;
+  }
+
+  :global(.project-signup__email-ghost.is-placeholder) {
+    color: var(--sys-color-on-srf-subtle);
+  }
+
+  :global(.project-signup .dev-field__input.is-signup-ghosted) {
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    caret-color: transparent;
+  }
+
+  :global(.project-signup .dev-field__input.is-signup-placeholder-pending::placeholder) {
+    color: transparent;
+    opacity: 0;
+  }
+
+  :global(.project-signup .dev-text-field.is-signup-fade::after) {
+    opacity: 1;
+  }
+
+  .project-signup__form.is-celebrating :global(.project-signup__field) {
+    pointer-events: none;
   }
 </style>
