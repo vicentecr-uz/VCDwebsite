@@ -43,21 +43,14 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       root.style.setProperty('--dev-text-field-trail-end', '0px');
       return { trailWidth: 0, trailRight: 0 };
     }
-    const start = input.selectionStart;
-    const end = input.selectionEnd;
-    const focused = document.activeElement === input && start !== null && end !== null;
-    const caretOffset = focused
-      ? (start === end || input.selectionDirection !== 'backward' ? end : start)
-      : input.value.length;
-    const caretX = input.offsetLeft + measureInputText(input, measure, input.value.slice(0, caretOffset));
-    trail.style.left = `${caretX}px`;
+    const textEndX = input.offsetLeft + measureInputText(input, measure, input.value);
+    trail.style.left = `${textEndX}px`;
     const trailWidth = trail.getBoundingClientRect().width;
-    const atEnd = caretOffset === input.value.length;
     root.style.setProperty(
       '--dev-text-field-trail-end',
-      atEnd ? `${trailWidth + Math.max(0, fadeWidth - edgeGutter)}px` : '0px',
+      `${trailWidth + Math.max(0, fadeWidth - edgeGutter)}px`,
     );
-    return { trailWidth, trailRight: caretX + trailWidth };
+    return { trailWidth, trailRight: textEndX + trailWidth };
   };
 
   const measureInputText = (input, measure, value) => {
@@ -133,7 +126,9 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       ? caretSafeInset
       : edgeGutter;
     const viewportCaretStartX = caretStartX - scrollOwner.scrollLeft;
-    const viewportRightEdge = (trailWidth > 0 ? trailRight : caretEndX) - scrollOwner.scrollLeft;
+    const atTextEnd = start === end && start === input.value.length;
+    const viewportRightEdge = (trailWidth > 0 && atTextEnd ? trailRight : caretEndX)
+      - scrollOwner.scrollLeft;
     root.classList.toggle(
       'is-caret-outside',
       viewportCaretStartX < leftCaretInset - 0.5
@@ -182,7 +177,7 @@ const inputId = typeof id === 'string' && id.trim() ? id : `text-field-${Math.ra
       ? caretSafeInset
       : edgeGutter;
     const caretViewportStartX = caretStartX - scrollOwner.scrollLeft;
-    const rightEdge = trailWidth > 0 ? trailRight : caretEndX;
+    const rightEdge = trailWidth > 0 && isTextEnd ? trailRight : caretEndX;
     const rightEdgeViewportX = rightEdge - scrollOwner.scrollLeft;
     const maxScroll = Math.max(0, scrollOwner.scrollWidth - scrollOwner.clientWidth);
     const clampScroll = (value) => Math.min(maxScroll, Math.max(0, value));
