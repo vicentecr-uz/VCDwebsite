@@ -16,6 +16,7 @@ export type SignupMotionCfg = {
   returnAt: number;
   returnSpan: number;
   returnMs: number;
+  checkVsLast: number;
   placeholderWait: number;
   squash: number;
   stretch: number;
@@ -57,6 +58,7 @@ export const readSignupMotionCfg = (root: HTMLElement): SignupMotionCfg => {
     returnAt: num(root, '--return-at', 80) / 100,
     returnSpan: num(root, '--return-span', 40) / 100,
     returnMs: num(root, '--return-ms', 300) * speed,
+    checkVsLast: num(root, '--check-vs-last', 0) * speed,
     placeholderWait: num(root, '--placeholder-wait', 400) * speed,
     squash: num(root, '--squash', 0.1),
     stretch: num(root, '--stretch', 0.1),
@@ -138,7 +140,7 @@ const out = (panel: HTMLElement, key: string) => panel.querySelector(`[data-out=
 export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => {
   if (panel.dataset.bound === 'true') return;
   panel.dataset.bound = 'true';
-  const STORAGE_KEY = 'vcd:signup-success-motion-v1';
+  const STORAGE_KEY = 'vcd:signup-success-motion-v2';
   const factoryValues = Object.fromEntries(
     [...panel.querySelectorAll<HTMLInputElement | HTMLSelectElement>('[data-ctrl]')].map((el) => [
       el.dataset.ctrl ?? '',
@@ -163,6 +165,7 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
     const returnAt = Number(ctrl<HTMLInputElement>(panel, 'returnAt')?.value ?? 80);
     const returnSpan = Number(ctrl<HTMLInputElement>(panel, 'returnSpan')?.value ?? 40);
     const returnMs = Number(ctrl<HTMLInputElement>(panel, 'returnMs')?.value ?? 300);
+    const checkVsLast = Number(ctrl<HTMLInputElement>(panel, 'checkVsLast')?.value ?? 0);
     const placeholderWait = Number(ctrl<HTMLInputElement>(panel, 'placeholderWait')?.value ?? 400);
     root.style.setProperty('--speed', String(speed));
     root.style.setProperty('--ease', ease);
@@ -180,6 +183,7 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
     root.style.setProperty('--return-at', String(returnAt));
     root.style.setProperty('--return-span', String(returnSpan));
     root.style.setProperty('--return-ms', String(returnMs));
+    root.style.setProperty('--check-vs-last', String(checkVsLast));
     root.style.setProperty('--placeholder-wait', String(placeholderWait));
     const setOut = (key: string, value: string) => {
       const node = out(panel, key);
@@ -197,6 +201,7 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
     setOut('returnAt', `${returnAt}%`);
     setOut('returnSpan', `${returnSpan}%`);
     setOut('returnMs', `${returnMs}ms`);
+    setOut('checkVsLast', `${checkVsLast}ms`);
     setOut('placeholderWait', `${placeholderWait}ms`);
   };
 
@@ -250,6 +255,7 @@ export const bindSignupMotionPanel = (panel: HTMLElement, root: HTMLElement) => 
       `returnAt: ${ctrl(panel, 'returnAt')?.value}%`,
       `returnSpan: ${ctrl(panel, 'returnSpan')?.value}%`,
       `returnDuration: ${ctrl(panel, 'returnMs')?.value}ms`,
+      `checkVsLast: ${ctrl(panel, 'checkVsLast')?.value}ms`,
       `placeholderWait: ${ctrl(panel, 'placeholderWait')?.value}ms`,
       `ease: ${ctrl(panel, 'ease')?.value}`,
       `speed: ${ctrl(panel, 'speed')?.value}x`,
