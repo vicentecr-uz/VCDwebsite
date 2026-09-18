@@ -51,6 +51,9 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
         <option value="cubic-bezier(0.34, 1.4, 0.64, 1)">overshoot</option>
       </select>
     </label>
+    <label>Taller and skinnier <output data-out="squash">0.10</output>
+      <input data-ctrl="squash" type="range" min="0" max="0.3" step="0.02" value="0.1" />
+    </label>
     <p class="proto-panel-group">3. Store</p>
     <label>Hold at left <output data-out="storeMs">70ms</output>
       <input data-ctrl="storeMs" type="range" min="0" max="200" step="10" value="70" />
@@ -65,6 +68,9 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
         <option value="cubic-bezier(0.55, 0.055, 0.675, 0.19)">accelerate from rest</option>
         <option value="cubic-bezier(0.5, 0, 0.75, 0.16)" selected>accelerate hard from rest</option>
       </select>
+    </label>
+    <label>Shorter and wider <output data-out="stretch">0.10</output>
+      <input data-ctrl="stretch" type="range" min="0" max="0.3" step="0.02" value="0.1" />
     </label>
     <p class="proto-panel-group">5. Get involved back</p>
     <label>Start during release <output data-out="returnAt">80%</output>
@@ -123,9 +129,11 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     --anticipate: 10;
     --anticipate-ms: 100;
     --anticipate-ease: cubic-bezier(0.5, 0, 0.5, 1);
+    --squash: 0.1;
     --store-ms: 70;
     --email-ms: 500;
     --release-ease: cubic-bezier(0.5, 0, 0.75, 0.16);
+    --stretch: 0.1;
     --return-at: 80;
     --return-span: 40;
     --return-ms: 300;
@@ -181,6 +189,7 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     pointer-events: none;
     z-index: 1;
     color: var(--sys-color-on-srf);
+    transform-origin: center;
   }
 
   .proto-email-ghost.is-placeholder {
@@ -426,6 +435,8 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       returnMs: num('--return-ms', 300) * speed,
       placeholderWait: num('--placeholder-wait', 400) * speed,
       ease: getComputedStyle(root).getPropertyValue('--ease').trim() || 'cubic-bezier(0.23, 1, 0.32, 1)',
+      squash: num('--squash', 0.1),
+      stretch: num('--stretch', 0.1),
       anticipateEase: getComputedStyle(root).getPropertyValue('--anticipate-ease').trim() || 'cubic-bezier(0.5, 0, 0.5, 1)',
       releaseEase: getComputedStyle(root).getPropertyValue('--release-ease').trim() || 'cubic-bezier(0.5, 0, 0.75, 0.16)',
       speed,
@@ -537,21 +548,19 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
         return;
       }
       if (!emailEl) return;
+      const pose = (x, sx, sy) => `translateX(${x}px) scaleX(${sx}) scaleY(${sy})`;
+      const rest = pose(0, 1, 1);
+      const coiled = pose(-c.anticipate, 1 - c.squash, 1 + c.squash);
+      const flying = pose(travelPx, 1 + c.stretch, 1 - c.stretch);
       if (c.anticipate > 0 && c.anticipateMs > 0) {
         await settled(emailEl.animate(
-          [
-            { transform: 'translateX(0)' },
-            { transform: `translateX(${-c.anticipate}px)` },
-          ],
+          [{ transform: rest }, { transform: coiled }],
           { duration: c.anticipateMs, easing: c.anticipateEase, fill: 'forwards' },
         ));
         if (c.storeMs > 0) await wait(c.storeMs);
       }
       await settled(emailEl.animate(
-        [
-          { transform: `translateX(${-c.anticipate}px)` },
-          { transform: `translateX(${travelPx}px)` },
-        ],
+        [{ transform: coiled }, { transform: flying }],
         { duration: c.emailMs, easing: c.releaseEase, fill: 'forwards' },
       ));
     };
@@ -752,9 +761,11 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     const anticipate = Number(document.querySelector('[data-ctrl=anticipate]').value);
     const anticipateMs = Number(document.querySelector('[data-ctrl=anticipateMs]').value);
     const anticipateEase = document.querySelector('[data-ctrl=anticipateEase]').value;
+    const squash = Number(document.querySelector('[data-ctrl=squash]').value);
     const storeMs = Number(document.querySelector('[data-ctrl=storeMs]').value);
     const emailMs = Number(document.querySelector('[data-ctrl=emailMs]').value);
     const releaseEase = document.querySelector('[data-ctrl=releaseEase]').value;
+    const stretch = Number(document.querySelector('[data-ctrl=stretch]').value);
     const returnAt = Number(document.querySelector('[data-ctrl=returnAt]').value);
     const returnSpan = Number(document.querySelector('[data-ctrl=returnSpan]').value);
     const returnMs = Number(document.querySelector('[data-ctrl=returnMs]').value);
@@ -765,9 +776,11 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     root.style.setProperty('--anticipate', String(anticipate));
     root.style.setProperty('--anticipate-ms', String(anticipateMs));
     root.style.setProperty('--anticipate-ease', anticipateEase);
+    root.style.setProperty('--squash', String(squash));
     root.style.setProperty('--store-ms', String(storeMs));
     root.style.setProperty('--email-ms', String(emailMs));
     root.style.setProperty('--release-ease', releaseEase);
+    root.style.setProperty('--stretch', String(stretch));
     root.style.setProperty('--return-at', String(returnAt));
     root.style.setProperty('--return-span', String(returnSpan));
     root.style.setProperty('--return-ms', String(returnMs));
@@ -775,8 +788,10 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
     document.querySelector('[data-out=emailVsCheck]').textContent = `${emailVsCheck}ms`;
     document.querySelector('[data-out=anticipate]').textContent = `${anticipate}px`;
     document.querySelector('[data-out=anticipateMs]').textContent = `${anticipateMs}ms`;
+    document.querySelector('[data-out=squash]').textContent = squash.toFixed(2);
     document.querySelector('[data-out=storeMs]').textContent = `${storeMs}ms`;
     document.querySelector('[data-out=emailMs]').textContent = `${emailMs}ms`;
+    document.querySelector('[data-out=stretch]').textContent = stretch.toFixed(2);
     document.querySelector('[data-out=returnAt]').textContent = `${returnAt}%`;
     document.querySelector('[data-out=returnSpan]').textContent = `${returnSpan}%`;
     document.querySelector('[data-out=returnMs]').textContent = `${returnMs}ms`;
@@ -826,9 +841,11 @@ import ProjectSignup from '../../components/project/ProjectSignup.astro';
       `anticipate: ${document.querySelector('[data-ctrl=anticipate]').value}px`,
       `anticipateMs: ${document.querySelector('[data-ctrl=anticipateMs]').value}ms`,
       `anticipateEase: ${document.querySelector('[data-ctrl=anticipateEase]').value}`,
+      `squash: ${document.querySelector('[data-ctrl=squash]').value}`,
       `storeMs: ${document.querySelector('[data-ctrl=storeMs]').value}ms`,
       `emailTravel: ${document.querySelector('[data-ctrl=emailMs]').value}ms`,
       `releaseEase: ${document.querySelector('[data-ctrl=releaseEase]').value}`,
+      `stretch: ${document.querySelector('[data-ctrl=stretch]').value}`,
       `returnAt: ${document.querySelector('[data-ctrl=returnAt]').value}%`,
       `returnSpan: ${document.querySelector('[data-ctrl=returnSpan]').value}%`,
       `returnDuration: ${document.querySelector('[data-ctrl=returnMs]').value}ms`,
