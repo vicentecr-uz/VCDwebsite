@@ -17,7 +17,7 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
 ---
 
 {demo && (
-  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} style={demo.id === 'progressive-image' ? `height:${demo.height}rem` : undefined} {...(spacingAttrs ?? {})}>
+  <div class:list={['project-block', 'project-interactive-demo', projectStackClass(spacing), sectionId && 'section-block']} id={sectionId} {...(spacingAttrs ?? {})}>
     {demo.id === 'progressive-image' ? <ProgressiveImageDemo /> : <iframe
       src={`/preview/${demo.id}`}
       title={demo.title}
@@ -34,6 +34,14 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
     position: relative;
     border-radius: var(--radius-control-smooth);
     background: var(--comp-demo-frame-container);
+  }
+
+  @media (max-width: 40em) {
+    .project-interactive-demo {
+      width: calc(100% + 2 * var(--page-gutter));
+      margin-inline: calc(-1 * var(--page-gutter));
+      border-radius: 0;
+    }
   }
 
   .project-interactive-demo::after {

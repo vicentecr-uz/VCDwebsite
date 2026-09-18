@@ -17,6 +17,7 @@
   box-sizing: border-box;
   font: var(--dev-text-label);
   cursor: pointer;
+  touch-action: manipulation;
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease,
     transform var(--motion-press-duration) ease-out;
 }
@@ -82,8 +83,10 @@
 /* aria-pressed is the accessible expression of a selected control, is-active
    the class-state equivalent — panels that toggle either should not each
    re-declare the selected fill. */
-.dev-btn--ghost:hover {
-  background: var(--comp-button-ghost-container-hover);
+@media (hover: hover) and (pointer: fine) {
+  .dev-btn--ghost:hover {
+    background: var(--comp-button-ghost-container-hover);
+  }
 }
 
 .dev-btn--ghost.is-selected,
@@ -102,8 +105,10 @@
   min-width: var(--dev-control-min-width);
 }
 
-.dev-btn--soft:hover {
-  background: var(--comp-button-soft-container-hover);
+@media (hover: hover) and (pointer: fine) {
+  .dev-btn--soft:hover {
+    background: var(--comp-button-soft-container-hover);
+  }
 }
 
 .dev-btn--soft.is-selected,
@@ -122,7 +127,12 @@
   min-width: var(--dev-control-min-width);
 }
 
-.dev-btn--filled:hover,
+@media (hover: hover) and (pointer: fine) {
+  .dev-btn--filled:hover {
+    background: var(--comp-button-filled-container-hover);
+  }
+}
+
 .dev-btn--filled:active {
   background: var(--comp-button-filled-container-hover);
 }
@@ -139,8 +149,10 @@
   min-width: var(--dev-control-min-width);
 }
 
-.dev-btn--page:hover {
-  background: var(--comp-button-page-container-hover);
+@media (hover: hover) and (pointer: fine) {
+  .dev-btn--page:hover {
+    background: var(--comp-button-page-container-hover);
+  }
 }
 
 .dev-btn--page:active {
@@ -159,8 +171,10 @@
   min-width: var(--dev-control-min-width);
 }
 
-.dev-btn--danger:hover {
-  background: var(--comp-button-danger-container-hover);
+@media (hover: hover) and (pointer: fine) {
+  .dev-btn--danger:hover {
+    background: var(--comp-button-danger-container-hover);
+  }
 }
 
 .dev-btn--danger:active {
@@ -717,14 +731,16 @@
    is invisible there; unselected hover/press mix toward the selected fill
    instead (lighten, not climb the container ladder). Must beat
    .dev-btn--ghost:hover / :active. */
-.dev-segmented .dev-btn.is-selected:hover,
-.dev-segmented .dev-btn.is-active:hover,
-.dev-segmented .dev-btn[aria-pressed='true']:hover {
-  background: var(--dev-segmented-selected-fill);
-}
+@media (hover: hover) and (pointer: fine) {
+  .dev-segmented .dev-btn.is-selected:hover,
+  .dev-segmented .dev-btn.is-active:hover,
+  .dev-segmented .dev-btn[aria-pressed='true']:hover {
+    background: var(--dev-segmented-selected-fill);
+  }
 
-.dev-segmented .dev-btn:hover:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
-  background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+  .dev-segmented .dev-btn:hover:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
+    background: color-mix(in oklch, var(--dev-segmented-selected-fill) 50%, transparent);
+  }
 }
 .dev-segmented .dev-btn:active:not(.is-selected):not(.is-active):not([aria-pressed='true']) {
   background: color-mix(in oklch, var(--dev-segmented-selected-fill) 75%, transparent);
