@@ -12,6 +12,7 @@ import ProjectInteractiveDemo from './ProjectInteractiveDemo.astro';
 import ProjectDetails from './ProjectDetails.astro';
 import ProjectAward from './ProjectAward.astro';
 import ProjectScrollFinale from './ProjectScrollFinale.astro';
+import ProjectSignup from './ProjectSignup.astro';
 import { projectStackClass, resolveProjectSpacing, resolveStackSpacingForIndex, spacingDevAttrs, type ProjectStackSpacing } from '../../lib/projectStack';
 import { PLACEHOLDER_IMAGE_VARIANTS } from '../../lib/projectImageDefaults';
 import { getProjectGridListings } from '../../lib/projects';
@@ -142,6 +143,20 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
         intro={intro !== undefined}
         introHeight={introHeight}
         introHeightPath={intro ? ['introHeight'] : undefined}
+      />
+    );
+  }
+
+  if (type === 'signup') {
+    return (
+      <ProjectSignup
+        label={String(section.label ?? 'Get involved')}
+        placeholder={String(section.placeholder ?? 'jternus@apple.com')}
+        documentKey={documentKey}
+        sectionPath={path}
+        spacing={spacing}
+        sectionId={section.sectionId as string | undefined}
+        contentId={section.id as string | undefined}
       />
     );
   }
