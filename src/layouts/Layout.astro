@@ -51,6 +51,7 @@ interface Props {
    * controls whether Layout applies it and mounts the dev/HMR synchronizer.
    */
   columnStyle?: string;
+  robots?: string;
 }
 
 const {
@@ -58,6 +59,7 @@ const {
   description = 'Born in Rome, IT. Based in London, UK.',
   ogImage = DEFAULT_OG_IMAGE,
   columnStyle,
+  robots,
 } = Astro.props;
 
 // Astro.site comes from `site` in astro.config.mjs. Absolute URLs are required:
@@ -81,6 +83,7 @@ const showDevTools = import.meta.env.DEV;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content={description} />
+    {robots && <meta name="robots" content={robots} />}
     {showDevTools && (
       <script is:inline>
         try {

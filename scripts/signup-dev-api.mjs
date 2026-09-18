@@ -35,57 +35,88 @@ const send = (res, status, body) => {
   res.end(typeof body === 'string' ? body : JSON.stringify(body));
 };
 
+const mountApi = (server, route, tooLarge, handle) => {
+  server.middlewares.use(route, async (req, res, next) => {
+    try {
+      const env = loadSignupDevEnv(server.config.root || process.cwd());
+      const host = req.headers.host || 'localhost';
+      const url = new URL(req.url || '/', `http://${host}`);
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (value == null) continue;
+        headers.set(key, Array.isArray(value) ? value.join(', ') : String(value));
+      }
+
+      /** @type {RequestInit} */
+      const init = { method: req.method || 'GET', headers };
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        const chunks = [];
+        let size = 0;
+        for await (const chunk of req) {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          size += buf.length;
+          if (size > 8192) {
+            send(res, 400, { error: tooLarge });
+            return;
+          }
+          chunks.push(buf);
+        }
+        init.body = Buffer.concat(chunks);
+      }
+
+      const request = new Request(url, init);
+      const response = await handle(request, env);
+      res.statusCode = response.status;
+      response.headers.forEach((value, key) => {
+        if (key.toLowerCase() === 'transfer-encoding') return;
+        res.setHeader(key, value);
+      });
+      res.end(Buffer.from(await response.arrayBuffer()));
+    } catch (error) {
+      next(error);
+    }
+  });
+};
+
 /**
- * Vite plugin (`apply: 'serve'`) — mounts POST /api/signup for local astro-dev.
- * Shares `handleSignupRequest` with the Pages Function via ssrLoadModule.
+ * Vite plugin (`apply: 'serve'`) — local /api/signup and /api/signup-pref.
  */
 export function signupDevApi() {
   return {
     name: 'signup-dev-api',
     apply: 'serve',
     configureServer(server) {
-      server.middlewares.use('/api/signup', async (req, res, next) => {
-        try {
-          const { handleSignupRequest } = await server.ssrLoadModule('/src/lib/signup-handler.ts');
-          const env = loadSignupDevEnv(server.config.root || process.cwd());
-
-          const host = req.headers.host || 'localhost';
-          const url = new URL(req.url || '/', `http://${host}`);
-          const headers = new Headers();
-          for (const [key, value] of Object.entries(req.headers)) {
-            if (value == null) continue;
-            headers.set(key, Array.isArray(value) ? value.join(', ') : String(value));
-          }
-
-          /** @type {RequestInit} */
-          const init = { method: req.method || 'GET', headers };
-          if (req.method !== 'GET' && req.method !== 'HEAD') {
-            const chunks = [];
-            let size = 0;
-            for await (const chunk of req) {
-              const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-              size += buf.length;
-              if (size > 8192) {
-                send(res, 400, { error: 'Enter a valid email address.' });
-                return;
+      mountApi(server, '/api/signup', 'Enter a valid email address.', async (request, env) => {
+        const { handleSignupRequest } = await server.ssrLoadModule('/src/lib/signup-handler.ts');
+        return handleSignupRequest(request, env, { isDev: true });
+      });
+      mountApi(server, '/api/signup-pref', 'That note is too long.', async (request, env) => {
+        const { mkdir, readFile, appendFile } = await import('node:fs/promises');
+        const { handleSignupPrefRequest } = await server.ssrLoadModule('/src/lib/signup-pref-handler.ts');
+        const file = path.join(server.config.root || process.cwd(), '.data/signup-pref.jsonl');
+        const store = {
+          add: async (vote) => {
+            await mkdir(path.dirname(file), { recursive: true });
+            await appendFile(file, `${JSON.stringify(vote)}\n`);
+          },
+          list: async () => {
+            if (!existsSync(file)) return [];
+            const raw = await readFile(file, 'utf8');
+            return raw.split('\n').flatMap((line) => {
+              const trimmed = line.trim();
+              if (!trimmed) return [];
+              try {
+                return [JSON.parse(trimmed)];
+              } catch {
+                return [];
               }
-              chunks.push(buf);
-            }
-            init.body = Buffer.concat(chunks);
-          }
-
-          const request = new Request(url, init);
-          const response = await handleSignupRequest(request, env, { isDev: true });
-          res.statusCode = response.status;
-          response.headers.forEach((value, key) => {
-            if (key.toLowerCase() === 'transfer-encoding') return;
-            res.setHeader(key, value);
-          });
-          const buf = Buffer.from(await response.arrayBuffer());
-          res.end(buf);
-        } catch (error) {
-          next(error);
-        }
+            });
+          },
+        };
+        return handleSignupPrefRequest(request, store, {
+          isDev: true,
+          resultsKey: env.SIGNUP_PREF_KEY,
+        });
       });
     },
   };
