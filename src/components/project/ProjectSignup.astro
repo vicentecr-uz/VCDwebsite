@@ -139,12 +139,18 @@ const spacingAttrs = spacingDevAttrs(documentKey, sectionPath, spacing, { conten
       event.preventDefault();
       updateShortcut();
       dismissStatus();
-      if (!input || !input.value.trim()) return;
-      if (!input.validity.valid) {
+      if (!input) return;
+      const empty = !input.value.trim();
+      if (empty || !input.validity.valid) {
         input.setAttribute('aria-invalid', 'true');
-        showStatus(input.validity.patternMismatch
-          ? 'Enter a valid email address.'
-          : input.validationMessage, true);
+        showStatus(
+          empty
+            ? "There's email address input is empty."
+            : input.validity.patternMismatch
+              ? 'Enter a valid email address.'
+              : input.validationMessage,
+          true,
+        );
         shakes.forEach((animation) => animation.cancel());
         shakes = [];
         if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
