@@ -1,18 +1,20 @@
 import { createElement, createRef } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { Draw, toSvg, type DrawHandle, type Stroke } from 'drawesome';
+import { Draw, type DrawHandle, type Stroke } from 'drawesome';
 import 'drawesome/styles.css';
 import type { SiteAnnotation } from './siteAnnotations';
-import { positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
+import { siteAnnotationSvg } from './siteAnnotationSvg';
+import { annotationRect, findTextAnchor, positionSiteAnnotations } from '../scripts/siteAnnotationPosition';
 import '../styles/site-annotation-editor.css';
 
 type TextAnchor = NonNullable<SiteAnnotation['anchor']>;
 type Target = { section: HTMLElement; documentKey: string; sectionId: string };
 
-const state = new Map<string, { original: SiteAnnotation[]; current: SiteAnnotation[] }>();
+const state = new Map<string, { target: Target; original: SiteAnnotation[]; current: SiteAnnotation[] }>();
 const targetKey = ({ documentKey, sectionId }: Target) => `${documentKey}:${sectionId}`;
 let stage: HTMLElement | null = null;
 let reactRoot: Root | null = null;
+let editingImage: HTMLImageElement | null = null;
 let savedSelection: { anchor: TextAnchor; rect: DOMRect } | null = null;
 let hadSelection = false;
 const lifecycle = new AbortController();
@@ -34,7 +36,7 @@ const annotationsFor = (target: Target) => {
   let original: SiteAnnotation[] = [];
   try { original = JSON.parse(layer?.dataset.siteAnnotations || '[]'); }
   catch { original = []; }
-  entry = { original, current: structuredClone(original) };
+  entry = { target, original, current: structuredClone(original) };
   state.set(key, entry);
   return entry;
 };
@@ -53,9 +55,7 @@ const renderCurrent = (target: Target) => {
   layer.replaceChildren(...entry.current.map((annotation) => {
     const image = document.createElement('img');
     image.dataset.siteAnnotation = annotation.id;
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(toSvg(
-      annotation.strokes as Stroke[], annotation.board.w, annotation.board.h, 'transparent',
-    ))}`;
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(siteAnnotationSvg(annotation))}`;
     image.alt = '';
     image.draggable = false;
     return image;
@@ -76,6 +76,7 @@ const updateCount = (target: Target) => {
 
 const pushPending = (target: Target) => {
   const entry = annotationsFor(target);
+  target = entry.target;
   const id = `annotation:${targetKey(target)}`;
   if (JSON.stringify(entry.current) === JSON.stringify(entry.original)) {
     window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id } }));
@@ -139,6 +140,8 @@ const selectedAnchor = (section: HTMLElement, range: Range | null): { anchor: Te
 };
 
 const closeStage = () => {
+  editingImage?.style.removeProperty('display');
+  editingImage = null;
   reactRoot?.unmount();
   reactRoot = null;
   stage?.remove();
@@ -202,6 +205,18 @@ const cropStrokes = (strokes: Stroke[], board: { w: number; h: number }) => {
 
 const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMRect } | null, existing?: SiteAnnotation) => {
   closeStage();
+  target = annotationsFor(target).target;
+  const anchor = existing?.anchor ?? selected?.anchor;
+  const existingRect = existing ? annotationRect(target.section, existing) : null;
+  if (existing && !existingRect) {
+    window.alert('Reattach this drawing to a word before editing it.');
+    return;
+  }
+  if (existing) {
+    editingImage = [...target.section.querySelectorAll<HTMLImageElement>('[data-site-annotation]')]
+      .find((image) => image.dataset.siteAnnotation === existing.id) ?? null;
+    if (editingImage) editingImage.style.display = 'none';
+  }
   const overlay = document.createElement('div');
   overlay.className = 'site-draw-stage';
   const canvas = document.createElement('div');
@@ -244,14 +259,26 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   overlay.addEventListener('wheel', (event) => event.preventDefault(), { passive: false });
 
   const drawRef = createRef<DrawHandle>();
-  let latest = existing?.strokes as Stroke[] ?? [];
+  const sectionRect = target.section.getBoundingClientRect();
+  const scaleX = existing && existingRect ? existingRect.width / existing.board.w : 1;
+  const scaleY = existing && existingRect ? existingRect.height / existing.board.h : 1;
+  // Strokes have one pen width; exact anisotropic nib scaling would require transformed SVG paths.
+  let latest: Stroke[] = existing && existingRect ? existing.strokes.map((stroke) => ({
+    ...stroke,
+    size: stroke.size * Math.sqrt(scaleX * scaleY),
+    points: stroke.points.map(([x, y, pressure]) => [
+      sectionRect.left + existingRect.left + x * scaleX,
+      sectionRect.top + existingRect.top + y * scaleY,
+      pressure,
+    ] as [number, number, number]),
+  })) : [];
+  const initialStrokes = JSON.stringify(latest);
   reactRoot = createRoot(canvas);
   const narrow = window.innerWidth < 680;
   reactRoot.render(createElement(Draw, {
     ref: drawRef,
     background: 'transparent',
     initialStrokes: latest,
-    board: existing?.board,
     onChange: (strokes: Stroke[]) => { latest = strokes; },
     placement: narrow ? 'left' : 'bottom',
     shortcuts: false,
@@ -261,28 +288,41 @@ const startDrawing = (target: Target, selected: { anchor: TextAnchor; rect: DOMR
   }));
 
   done.addEventListener('click', () => {
-    if (!latest.length) { closeStage(); return; }
+    if (!latest.length) {
+      if (existing) {
+        const entry = annotationsFor(target);
+        entry.current = entry.current.filter((item) => item.id !== existing.id);
+        pushPending(target);
+      }
+      closeStage();
+      return;
+    }
+    const mobileVisibility = currentKind === 'highlight' || mobileInput.checked ? 'show' : 'hide';
     let annotation: SiteAnnotation;
-    if (existing) {
-      annotation = { ...existing, strokes: latest, mobile: existing.kind === 'highlight' || mobileInput.checked ? 'show' : 'hide' };
+    if (existing && JSON.stringify(latest) === initialStrokes) {
+      annotation = { ...existing, mobile: mobileVisibility };
     } else {
       const board = drawRef.current?.getSize() ?? { w: canvas.clientWidth, h: canvas.clientHeight };
       const cropped = cropStrokes(latest, board);
       if (!cropped) { closeStage(); return; }
-      const base = selected?.rect ?? target.section.getBoundingClientRect();
+      const base = anchor ? findTextAnchor(target.section, anchor) : target.section.getBoundingClientRect();
+      if (!base) {
+        window.alert('The selected word moved or changed. Cancel and select it again.');
+        return;
+      }
       const x = cropped.rect.left - base.left;
       const y = cropped.rect.top - base.top;
       annotation = {
-        id: crypto.randomUUID(),
+        id: existing?.id ?? crypto.randomUUID(),
         sectionId: target.sectionId,
         kind: currentKind,
-        ...(selected ? { anchor: selected.anchor } : {}),
+        ...(anchor ? { anchor } : {}),
         board: { w: cropped.rect.width, h: cropped.rect.height },
         box: currentKind === 'highlight'
           ? { x: x / base.width, y: y / base.height, w: cropped.rect.width / base.width, h: cropped.rect.height / base.height }
           : { x, y, w: cropped.rect.width, h: cropped.rect.height },
         strokes: cropped.strokes,
-        mobile: currentKind === 'highlight' || mobileInput.checked ? 'show' : 'hide',
+        mobile: mobileVisibility,
       };
     }
     const entry = annotationsFor(target);
@@ -335,11 +375,13 @@ const showManage = (target: Target, button: HTMLButtonElement) => {
 
 const bindButtons = () => {
   for (const section of document.querySelectorAll<HTMLElement>('[data-site-annotation-section-id][data-site-annotation-document]')) {
-    if (section.querySelector('[data-site-draw-open]')) continue;
     const sectionId = section.dataset.siteAnnotationSectionId || '';
     const documentKey = section.dataset.siteAnnotationDocument || '';
     if (!sectionId || !documentKey) continue;
-    const target = { section, sectionId, documentKey };
+    const entry = annotationsFor({ section, sectionId, documentKey });
+    const target = entry.target;
+    target.section = section;
+    if (section.querySelector('[data-site-draw-open]')) continue;
     const controls = document.createElement('div');
     controls.className = 'site-draw-controls dev-surface';
     const open = document.createElement('button');
@@ -385,13 +427,29 @@ window.addEventListener('vcd:dev-mode-change', (event) => {
   if (!(event as CustomEvent<{ active: boolean }>).detail.active) closeStage();
   else bindButtons();
 }, { signal: lifecycle.signal });
-window.addEventListener('vcd:dev-section-structure-changed', () => {
-  for (const [key] of state) {
-    const section = [...document.querySelectorAll<HTMLElement>('[data-site-annotation-section-id]')]
-      .find((item) => `${item.dataset.siteAnnotationDocument}:${item.dataset.siteAnnotationSectionId}` === key);
-    if (!section) window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: `annotation:${key}` } }));
-  }
+const syncTargets = () => {
   bindButtons();
+  for (const [key, entry] of state) {
+    if (entry.target.section.isConnected) pushPending(entry.target);
+    else window.dispatchEvent(new CustomEvent('vcd:dev-pending-remove', { detail: { id: `annotation:${key}` } }));
+  }
+};
+window.addEventListener('vcd:dev-section-structure-changed', syncTargets, { signal: lifecycle.signal });
+window.addEventListener('vcd:site-annotation-targets-changed', syncTargets, { signal: lifecycle.signal });
+window.addEventListener('vcd:site-annotation-section-remap', (event) => {
+  const { document: documentKey, previousId, sectionId } = (event as CustomEvent<{
+    document: string; previousId: string; sectionId: string;
+  }>).detail;
+  const key = `${documentKey}:${previousId}`;
+  const entry = state.get(key);
+  if (!entry) return;
+  state.delete(key);
+  entry.target.sectionId = sectionId;
+  for (const annotations of [entry.original, entry.current]) {
+    for (const annotation of annotations) annotation.sectionId = sectionId;
+  }
+  state.set(targetKey(entry.target), entry);
+  renderCurrent(entry.target);
 }, { signal: lifecycle.signal });
 window.addEventListener('vcd:site-annotations-saved', (event) => {
   const detail = (event as CustomEvent<{ document: string; sectionId: string }>).detail;

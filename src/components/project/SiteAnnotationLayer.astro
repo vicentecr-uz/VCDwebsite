@@ -1,5 +1,5 @@
 ---
-import { toSvg } from 'drawesome';
+import { siteAnnotationSvg } from '../../lib/siteAnnotationSvg';
 import { validateSiteAnnotations, type SiteAnnotation } from '../../lib/siteAnnotations';
 import '../../styles/site-annotations.css';
 
@@ -15,12 +15,7 @@ const valid = validateSiteAnnotations(source, new Set([sectionId]))
   : [];
 const items = valid.map((annotation) => ({
   annotation,
-  src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(toSvg(
-    annotation.strokes,
-    annotation.board.w,
-    annotation.board.h,
-    'transparent',
-  ))}`,
+  src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(siteAnnotationSvg(annotation))}`,
 }));
 const positionData = import.meta.env.DEV ? valid : valid.map(({ strokes, ...annotation }) => annotation);
 ---
