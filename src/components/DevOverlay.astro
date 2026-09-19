@@ -232,7 +232,7 @@ const hideSvg = trafficLightIcon(xIcon);
     const GAP = 8;
     const VIEW_INSET = 8;
 
-    const placeBesideTrigger = (trigger: HTMLElement) => {
+    const placeBesideTrigger = (trigger: HTMLElement, clientX?: number, clientY?: number) => {
       const trig = trigger.getBoundingClientRect();
       const w = overlay.offsetWidth;
       const h = overlay.offsetHeight;
@@ -243,34 +243,34 @@ const hideSvg = trafficLightIcon(xIcon);
         || document.documentElement;
       const layoutRect = layoutEl.getBoundingClientRect();
       const layoutMid = (layoutRect.left + layoutRect.right) / 2;
-      const trigMid = (trig.left + trig.right) / 2;
-      const preferLeft = trigMid < layoutMid;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
-      const imageTarget = overlay.dataset.devPanelKey === 'image'
-        ? trigger.closest<HTMLElement>('[data-dev-image-target]')
-          ?? trigger.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]')
-        : null;
-      const clearImageRight = imageTarget
-        ? Math.max(layoutRect.right, imageTarget.getBoundingClientRect().right) + 16
-        : null;
-      const roomRight = vw - VIEW_INSET - (trig.right + GAP);
-      const roomLeft = trig.left - GAP - VIEW_INSET;
+      const x = clientX ?? (trig.left + trig.right) / 2;
+      const y = clientY ?? (trig.top + trig.bottom) / 2;
+      const block = trigger.closest<HTMLElement>(
+        '.project-block, .project-image-grid, .project-image-carousel, [data-dev-project-grid], .project-grid__item',
+      );
+      const blockRect = block?.getBoundingClientRect();
+      const imageTarget = trigger.closest<HTMLElement>('[data-dev-image-target]')
+        ?? trigger.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]');
+      const imageRect = imageTarget?.getBoundingClientRect();
+      const clearRight = Math.max(layoutRect.right, blockRect?.right ?? 0, imageRect?.right ?? 0) + 16;
+      const clearLeft = Math.min(layoutRect.left, blockRect?.left ?? layoutRect.left, imageRect?.left ?? layoutRect.left) - 16 - w;
+      const right = trig.right + GAP;
+      const leftOfTrigger = trig.left - GAP - w;
       let left: number;
-      if (clearImageRight !== null) {
-        left = Math.min(clearImageRight, vw - VIEW_INSET - w);
-      } else if (preferLeft) {
-        if (roomLeft >= w) left = trig.left - GAP - w;
-        else if (roomRight >= w) left = trig.right + GAP;
-        else left = roomLeft >= roomRight ? trig.left - GAP - w : trig.right + GAP;
+      if (block && clearRight + w <= vw - VIEW_INSET) {
+        left = clearRight;
+      } else if (block && clearLeft >= VIEW_INSET) {
+        left = clearLeft;
+      } else if (!block && x < layoutMid && right + w <= vw - VIEW_INSET) {
+        left = right;
+      } else if (!block && x >= layoutMid && leftOfTrigger >= VIEW_INSET) {
+        left = leftOfTrigger;
       } else {
-        if (roomRight >= w) left = trig.right + GAP;
-        else if (roomLeft >= w) left = trig.left - GAP - w;
-        else left = roomRight >= roomLeft ? trig.right + GAP : trig.left - GAP - w;
+        left = clamp(x - w / 2, VIEW_INSET, Math.max(VIEW_INSET, vw - VIEW_INSET - w));
       }
-      let top = trig.top;
-      if (top + h > vh - VIEW_INSET) top = vh - VIEW_INSET - h;
-      if (top < VIEW_INSET) top = VIEW_INSET;
+      const top = clamp(y - h / 2, VIEW_INSET, Math.max(VIEW_INSET, vh - VIEW_INSET - h));
       applyPosition(left, top, true);
     };
 
@@ -875,15 +875,15 @@ const hideSvg = trafficLightIcon(xIcon);
     });
 
     if (!embedded) {
-      window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ trigger?: HTMLElement; panel?: HTMLElement }>) => {
-        const { trigger, panel } = event.detail ?? {};
+      window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ trigger?: HTMLElement; panel?: HTMLElement; clientX?: number; clientY?: number }>) => {
+        const { trigger, panel, clientX, clientY } = event.detail ?? {};
         if (panel !== overlay || !(trigger instanceof HTMLElement)) return;
         if (overlay.classList.contains('is-minimized')) setMinimized(false);
         const place = () => {
           const w = overlay.offsetWidth;
           const h = overlay.offsetHeight;
           if (w <= 0 || h <= 0) return;
-          placeBesideTrigger(trigger);
+          placeBesideTrigger(trigger, clientX, clientY);
         };
         requestAnimationFrame(() => requestAnimationFrame(place));
       }) as EventListener);
