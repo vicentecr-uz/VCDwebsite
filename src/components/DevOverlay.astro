@@ -258,17 +258,20 @@ const hideSvg = trafficLightIcon(xIcon);
       const clearLeft = Math.min(layoutRect.left, blockRect?.left ?? layoutRect.left, imageRect?.left ?? layoutRect.left) - 16 - w;
       const right = trig.right + GAP;
       const leftOfTrigger = trig.left - GAP - w;
+      const maxLeft = Math.max(VIEW_INSET, vw - VIEW_INSET - w);
       let left: number;
-      if (block && clearRight + w <= vw - VIEW_INSET) {
+      if (block && overlay.dataset.devPanelKey === 'image' && clearRight + w <= vw - VIEW_INSET) {
         left = clearRight;
-      } else if (block && clearLeft >= VIEW_INSET) {
+      } else if (block && overlay.dataset.devPanelKey === 'image' && clearLeft >= VIEW_INSET) {
         left = clearLeft;
+      } else if (block) {
+        left = clamp(x < layoutMid ? clearLeft : clearRight, VIEW_INSET, maxLeft);
       } else if (!block && x < layoutMid && right + w <= vw - VIEW_INSET) {
         left = right;
       } else if (!block && x >= layoutMid && leftOfTrigger >= VIEW_INSET) {
         left = leftOfTrigger;
       } else {
-        left = clamp(x - w / 2, VIEW_INSET, Math.max(VIEW_INSET, vw - VIEW_INSET - w));
+        left = clamp(x - w / 2, VIEW_INSET, maxLeft);
       }
       const top = clamp(y - h / 2, VIEW_INSET, Math.max(VIEW_INSET, vh - VIEW_INSET - h));
       applyPosition(left, top, true);
