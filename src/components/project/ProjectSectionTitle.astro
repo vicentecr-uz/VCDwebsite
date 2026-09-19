@@ -4,6 +4,7 @@ import {
   spacingDevAttrs,
   type ProjectStackSpacing,
 } from '../../lib/projectStack';
+import SiteAnnotationLayer from './SiteAnnotationLayer.astro';
 
 type TitleVisibility = {
   desktop?: boolean;
@@ -34,6 +35,7 @@ interface Props {
   intro?: boolean;
   introHeight?: number;
   introHeightPath?: Array<string | number>;
+  annotations?: unknown;
 }
 
 const {
@@ -50,6 +52,7 @@ const {
   intro = false,
   introHeight,
   introHeightPath,
+  annotations,
 } = Astro.props;
 
 const showTitle = {
@@ -92,6 +95,8 @@ const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
   style={intro ? `--intro-height: ${normalizedIntroHeight}` : undefined}
   data-dev-section-title={editable ? 'true' : undefined}
   data-dev-show-title={editable ? JSON.stringify(showTitle) : undefined}
+  data-site-annotation-section-id={contentId}
+  data-site-annotation-document={import.meta.env.DEV ? documentKey : undefined}
 >
   <Tag
     class="project-section-title"
@@ -99,4 +104,5 @@ const normalizedIntroHeight = Number.isFinite(rawIntroHeight)
     data-dev-text-path={editable ? JSON.stringify([...sectionPath, 'title']) : undefined}
     data-dev-text-kind={editable ? 'text' : undefined}
   >{title}</Tag>
+  {contentId && (import.meta.env.DEV || (Array.isArray(annotations) && annotations.length > 0)) && <SiteAnnotationLayer sectionId={contentId} annotations={annotations} />}
 </div>
