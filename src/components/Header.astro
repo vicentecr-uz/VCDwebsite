@@ -10,6 +10,19 @@ interface Props {
 }
 
 import headerSettings from '../content/settings/header.json';
+import type { SvgComponent } from 'astro/types';
+
+const logoModules = import.meta.glob<{ default: SvgComponent }>('../../media/**/*.svg', { eager: true });
+const logoPath = headerSettings.logoPath;
+const logoAssetPath = logoPath.startsWith('/images/')
+  ? decodeURIComponent(logoPath.slice('/images/'.length))
+  : '';
+const logoModuleKey = `../../media/${logoAssetPath}`;
+const Logo = logoModules[logoModuleKey]?.default;
+
+if (!Logo) {
+  throw new Error(`Header logo asset is missing or invalid: ${logoPath}`);
+}
 
 const {
   title = headerSettings.siteTitle,
@@ -115,29 +128,27 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       </div>
       <div class="header-trigger header-trigger--end">
         <span class="header-trigger__sizer header-trigger__sizer--logo" aria-hidden="true">
-          <span
-            class="header-trigger__logo"
-            style={`--logo-src: url("${headerSettings.logoPath}")`}
-          ></span>
+          <span class="header-trigger__logo">
+            <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
+          </span>
         </span>
         <div class="header-trigger__panel">
           <div class="header-trigger__panel-bg" aria-hidden="true"></div>
           <div class="header-trigger__brand" data-dev-mode-trigger>
             {brandHref ? (
               <a href={brandHref} class="header-trigger__brand-link" aria-label="Home">
-                <span
-                  class="header-trigger__logo"
-                  style={`--logo-src: url("${headerSettings.logoPath}")`}
-                  aria-hidden="true"
-                ></span>
+                <span class="header-trigger__logo" aria-hidden="true">
+                  <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
+                </span>
               </a>
             ) : (
               <span
                 class="header-trigger__logo"
-                style={`--logo-src: url("${headerSettings.logoPath}")`}
                 role="img"
                 aria-label="Logo"
-              ></span>
+              >
+                <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
+              </span>
             )}
           </div>
           <ul class="header-menu" role="list">
@@ -183,11 +194,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
           class="header-link block transition-opacity duration-200 opacity-100 hover:opacity-70"
           aria-label="Logo"
         >
-          <span
-            class="header-trigger__logo"
-            style={`--logo-src: url("${headerSettings.logoPath}")`}
-            aria-hidden="true"
-          ></span>
+          <span class="header-trigger__logo" aria-hidden="true">
+            <Logo width="100%" height="100%" fill="currentColor" aria-hidden="true" focusable="false" />
+          </span>
         </a>
       </nav>
     </div>
@@ -2108,14 +2117,18 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     height: var(--header-logo-size);
     width: var(--header-logo-size);
     display: block;
-    background-color: var(--sys-color-on-srf);
-    transition: background-color 0.18s ease;
-    -webkit-mask: var(--logo-src) center / contain no-repeat;
-    mask: var(--logo-src) center / contain no-repeat;
+    color: var(--sys-color-on-srf);
+    transition: color 0.18s ease;
+  }
+
+  .header-trigger__logo :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   :global(html.is-dev-mode) .header-trigger__logo {
-    background-color: var(--sys-color-on-srf-variant);
+    color: var(--sys-color-on-srf-variant);
   }
 
   .header-menu {
