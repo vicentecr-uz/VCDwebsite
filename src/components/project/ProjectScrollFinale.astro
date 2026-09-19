@@ -71,7 +71,10 @@ const { spacerBufferPx = 16 } = Astro.props;
       const markedFade = Array.from(dropZone.children).find((child) =>
         child instanceof HTMLElement && child.dataset.projectScrollFinaleRole === 'fade') as HTMLElement | undefined;
       const media = mediaFor(markedFade ?? null);
-      if (media) media.style.opacity = '';
+      if (media) {
+        media.style.opacity = '';
+        media.inert = false;
+      }
       root.classList.remove('is-centered');
       setSidebarFade('');
     };
@@ -134,6 +137,7 @@ const { spacerBufferPx = 16 } = Astro.props;
       const fadeOpacity = 1 - progress;
 
       media.style.opacity = fadeOpacity < 0.999 ? String(fadeOpacity) : '';
+      media.inert = fadeOpacity < 0.05;
       root.classList.toggle('is-centered', progress >= 0.98);
       setSidebarFade(fadeOpacity < 0.999 ? String(fadeOpacity) : '');
     };
