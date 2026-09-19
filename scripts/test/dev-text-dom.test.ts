@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { clipboardParagraphHtml, readParagraphsValue, serializeInlineHtml } from '../../src/lib/devTextDom.ts';
+import { clipboardParagraphHtml, paragraphTextWrap, refreshParagraphWrapping, readParagraphsValue, resolveAutoTextWrap, serializeInlineHtml } from '../../src/lib/devTextDom.ts';
+import { resolveTextWrapHtml } from '../../src/lib/projectTextWrap.ts';
 
 const dom = new Window();
 const previousDocument = globalThis.document;
@@ -20,6 +21,50 @@ test('serializes supported inline markup and escapes unsafe content', () => {
   assert.equal(serializeInlineHtml(el('<a href="javascript:alert(1)">unsafe</a><span class="text-emphasis">old tone</span><span class="text-subtle">quiet tone</span>')), 'unsafe<span class="text-emphasis">old tone</span><span class="text-subtle">quiet tone</span>');
   assert.equal(serializeInlineHtml(el('<strong>root <a href="/x">link</a></strong><br>')), '<strong>root <a href="/x">link</a></strong><br>');
   assert.equal(serializeInlineHtml(el('<p><br></p>').firstElementChild!), '');
+});
+
+test('preserves and normalizes paragraph wrapping metadata', () => {
+  assert.equal(serializeInlineHtml(el('<span data-text-wrap="pretty">Newsletter copy</span>')), '<span data-text-wrap="pretty">Newsletter copy</span>');
+  assert.equal(serializeInlineHtml(el('<span data-text-wrap="danger">copy</span>')), 'copy');
+  assert.equal(paragraphTextWrap(el('<p><span data-text-wrap="balance">Heading</span></p>').firstElementChild!), 'balance');
+  assert.equal(paragraphTextWrap(el('<p>copy</p>').firstElementChild!), 'auto');
+  assert.equal(paragraphTextWrap(el('<p>copy</p>').firstElementChild!, true), 'balance');
+  assert.equal(resolveTextWrapHtml('<span data-text-wrap="pretty">copy</span>'), 'pretty');
+  assert.equal(resolveTextWrapHtml('<span data-text-wrap="auto"><span class="text-emphasis">Heading</span></span>'), 'balance');
+  assert.equal(resolveTextWrapHtml('<span data-text-wrap="auto"><span class="text-emphasis">Heading</span> copy</span>'), 'normal');
+  assert.equal(resolveTextWrapHtml('<span data-text-wrap="auto"><span class="text-emphasis"><span>Heading</span></span></span>'), 'balance');
+  assert.equal(resolveTextWrapHtml('<span data-text-wrap="auto"><span class="text-emphasis"><span>Heading</span></span> copy</span>'), 'normal');
+  assert.equal(resolveTextWrapHtml('<span data-text-wrap="auto"><span class="text-emphasis">Heading</span> <strong>copy</strong></span>'), 'normal');
+});
+
+test('static and live Auto wrapping classify the same inline content', () => {
+  const cases: Array<[string, 'balance' | 'normal' | 'pretty', boolean?]> = [
+    ['<span class="text-emphasis">Heading</span>', 'balance'],
+    ['<span class="text-emphasis">Heading</span> copy', 'normal'],
+    ['<a href="/x"><span class="text-emphasis">Linked heading</span></a>', 'balance'],
+    ['<span class="text-emphasis"><span>Nested heading</span></span>', 'balance'],
+    ['<span class="text-emphasis"><span class="text-subtle">Quiet heading</span></span>', 'normal'],
+    ['<span class="text-emphasis">Heading</span>&#xA0;', 'balance'],
+    ['<span class="text-emphasis">Heading</span>&nbsp;copy', 'normal'],
+    ['<span data-text-wrap="pretty">A description</span>', 'pretty'],
+    ['<span data-text-wrap="normal"><span class="text-emphasis">Heading</span></span>', 'normal'],
+    ['<span data-text-wrap="balance">A paragraph</span>', 'balance'],
+    ['<span data-text-wrap="auto"><span class="text-emphasis">Heading</span></span>', 'balance'],
+    ['<span data-text-wrap="auto"><span class="text-emphasis">Heading</span></span>', 'balance', true],
+    ['<span data-text-wrap="invalid"><span class="text-emphasis">Heading</span></span>', 'balance'],
+  ];
+
+  cases.forEach(([html, expected, legacyBalance]) => {
+    const paragraph = el(`<p>${html}</p>`).firstElementChild!;
+    const liveMode = paragraphTextWrap(paragraph, legacyBalance);
+    const live = liveMode === 'auto' ? resolveAutoTextWrap(paragraph) : liveMode;
+    assert.equal(live, expected, `live classification for ${html}`);
+    assert.equal(resolveTextWrapHtml(html, legacyBalance), expected, `static classification for ${html}`);
+  });
+
+  const div = el('<div><span class="text-emphasis">Heading</span></div>').firstElementChild!;
+  assert.equal(paragraphTextWrap(div), 'auto');
+  assert.equal(resolveAutoTextWrap(div), 'balance');
 });
 
 test('reads mixed blocks without dropping root inline content', () => {
@@ -64,4 +109,31 @@ test('Save and reload preserve literal text and every unmarked trailing break', 
 test('nested clipboard wrappers retain boundaries and supported marks', () => {
   assert.deepEqual(readParagraphsValue(el('<strong><div>one</div><div>two</div></strong>')), ['<strong>one</strong>', '<strong>two</strong>']);
   assert.deepEqual(readParagraphsValue(el('<br>')), ['']);
+});
+
+
+test('live wrapping changes preserve the caret and canonical Save markup', () => {
+  const root = el('<p><span data-text-wrap="balance"><span class="text-emphasis">Heading</span></span></p><div>Body</div>');
+  const paragraph = root.firstElementChild as HTMLElement;
+  const text = paragraph.querySelector('.text-emphasis')!.firstChild!;
+  const selection = dom.getSelection();
+  selection.setPosition(text, 3);
+  for (const mode of ['normal', 'pretty', 'auto']) {
+    paragraph.setAttribute('data-text-wrap', mode);
+    refreshParagraphWrapping(root, true);
+    const resolved = mode === 'auto' ? 'balance' : mode;
+    assert.ok(paragraph.classList.contains(`project-body-text__wrap-${resolved}`));
+    assert.equal(selection.anchorNode, text);
+    assert.equal(selection.anchorOffset, 3);
+    const value = readParagraphsValue(root);
+    assert.equal(value[0], `<span data-text-wrap="${mode}"><span class="text-emphasis">Heading</span></span>`);
+    const reload = el(value.map((html) => `<p>${html}</p>`).join(''));
+    refreshParagraphWrapping(reload, true);
+    assert.equal(reload.firstElementChild!.className, paragraph.className);
+    assert.deepEqual(readParagraphsValue(reload), value);
+  }
+  paragraph.setAttribute('data-text-wrap', 'auto');
+  paragraph.append(' ordinary');
+  refreshParagraphWrapping(root, true);
+  assert.ok(paragraph.classList.contains('project-body-text__wrap-normal'));
 });
