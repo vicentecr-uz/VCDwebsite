@@ -2349,11 +2349,17 @@ function contentSpacingDevWriter() {
               && Number.isInteger(value)
               && value >= 1
               && value <= 100;
+            const validBoardHeight = field === 'viewportMaxEm'
+              && target.path.length === 3
+              && target.path[0] === 'sections'
+              && value && typeof value === 'object' && !Array.isArray(value)
+              && Object.keys(value).sort().join(',') === 'desktop,mobile,tablet'
+              && Object.values(value).every((height) => Number.isInteger(height) && height >= 8 && height <= 60);
             if (
               !target?.relativeFile ||
               !Array.isArray(target.path) ||
               target.path.length > 8 ||
-              (!validSpacing && !validIntroHeight) ||
+              (!validSpacing && !validIntroHeight && !validBoardHeight) ||
               target.path.some((part) => !isSafePathPart(part))
             ) {
               send(400, { error: 'One or more layout fields are not editable.' });
@@ -2393,6 +2399,10 @@ function contentSpacingDevWriter() {
               const field = resolvedPath.at(-1);
               if (target === null || typeof target !== 'object' || Array.isArray(target)) {
                 send(400, { error: 'A layout path no longer exists.' });
+                return;
+              }
+              if (field === 'viewportMaxEm' && target.type !== 'redditCommentCarousel') {
+                send(400, { error: 'Board height is only editable on Reddit comment carousels.' });
                 return;
               }
               if (field === 'introHeight' && resolvedPath.length === 1) {
