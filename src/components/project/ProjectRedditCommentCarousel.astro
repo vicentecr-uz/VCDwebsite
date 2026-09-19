@@ -31,6 +31,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  viewportMaxEm?: { desktop?: number; tablet?: number; mobile?: number };
 }
 
 const {
@@ -40,7 +41,14 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  viewportMaxEm,
 } = Astro.props;
+
+const heights = {
+  desktop: viewportMaxEm?.desktop ?? 20,
+  tablet: viewportMaxEm?.tablet ?? 32,
+  mobile: viewportMaxEm?.mobile ?? 26,
+};
 
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const stackClass = projectStackClass(spacing);
@@ -78,8 +86,25 @@ const copies = [0, 1, 2] as const;
   id={sectionId}
   class:list={['project-block', 'reddit-comment-board', stackClass, sectionId && 'section-block']}
   data-reddit-comment-board
+  data-reddit-board-heights={JSON.stringify(heights)}
+  data-reddit-board-document={editable ? documentKey : undefined}
+  data-reddit-board-path={editable ? JSON.stringify([...sectionPath, 'viewportMaxEm']) : undefined}
+  style={`--rcb-height-desktop:${heights.desktop}em;--rcb-height-tablet:${heights.tablet}em;--rcb-height-mobile:${heights.mobile}em`}
   {...(spacingAttrs ?? {})}
 >
+  {editable && (
+    <details class="reddit-comment-board__tuner" data-reddit-board-tuner>
+      <summary>Board height</summary>
+      {(['desktop', 'tablet', 'mobile'] as const).map((breakpoint) => (
+        <label>
+          <span>{breakpoint[0].toUpperCase() + breakpoint.slice(1)} <output data-reddit-board-output={breakpoint}>{heights[breakpoint]}em</output></span>
+          <input type="range" min="8" max="60" step="1" value={heights[breakpoint]} data-reddit-board-height={breakpoint} />
+        </label>
+      ))}
+      <button type="button" data-reddit-board-save>Save height</button>
+      <span role="status" data-reddit-board-status></span>
+    </details>
+  )}
   <div class="reddit-comment-board__shell">
     <button
       type="button"
@@ -165,7 +190,7 @@ const copies = [0, 1, 2] as const;
     --rcb-pad-y: 0.75em;
     --rcb-fade: 1.25em;
     /* One “page” of the board; peeks of the next band fade at the edge. */
-    --rcb-viewport-max: min(20em, calc(var(--vh-safe, 1svh) * 52));
+    --rcb-viewport-max: min(var(--rcb-height-desktop, 20em), calc(var(--vh-safe, 1svh) * 52));
 
     position: relative;
     border-radius: 0.75em;
@@ -194,6 +219,15 @@ const copies = [0, 1, 2] as const;
       transparent 100%
     );
   }
+
+  .reddit-comment-board__tuner { display: none; margin-bottom: 1em; padding: .75em; border: 1px solid currentColor; border-radius: .5em; }
+  :global(html.is-dev-mode) .reddit-comment-board__tuner { display: block; }
+  .reddit-comment-board__tuner summary { cursor: pointer; }
+  .reddit-comment-board__tuner label { display: grid; gap: .25em; margin-top: .75em; }
+  .reddit-comment-board__tuner label span { display: flex; justify-content: space-between; }
+  .reddit-comment-board__tuner input { width: 100%; accent-color: currentColor; }
+  .reddit-comment-board__tuner input:focus-visible, .reddit-comment-board__tuner button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  .reddit-comment-board__tuner button { margin-top: .75em; padding: .4em .75em; cursor: pointer; }
 
   .reddit-comment-board__cols {
     display: flex;
@@ -278,7 +312,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 52em) {
     .reddit-comment-board__shell {
       --rcb-cols: 2;
-      --rcb-viewport-max: min(32em, calc(var(--vh-safe, 1svh) * 65));
+      --rcb-viewport-max: min(var(--rcb-height-tablet, 32em), calc(var(--vh-safe, 1svh) * 65));
     }
 
     .reddit-comment-board__cols {
@@ -303,7 +337,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 36em) {
     .reddit-comment-board__shell {
       --rcb-cols: 1;
-      --rcb-viewport-max: min(26em, calc(var(--vh-safe, 1svh) * 60));
+      --rcb-viewport-max: min(var(--rcb-height-mobile, 26em), calc(var(--vh-safe, 1svh) * 60));
     }
 
     .reddit-comment-board__col {
@@ -324,7 +358,55 @@ const copies = [0, 1, 2] as const;
 <script>
   // Viewport max-height uses shared `--vh-safe` (bound in Layout via safeVh.ts).
 
+  const initHeightTuner = (root: HTMLElement) => {
+    const tuner = root.querySelector<HTMLElement>('[data-reddit-board-tuner]');
+    if (!tuner || tuner.dataset.initialized) return;
+    tuner.dataset.initialized = 'true';
+    const inputs = [...tuner.querySelectorAll<HTMLInputElement>('[data-reddit-board-height]')];
+    const save = tuner.querySelector<HTMLButtonElement>('[data-reddit-board-save]');
+    const status = tuner.querySelector<HTMLElement>('[data-reddit-board-status]');
+    if (!save || !status || !root.dataset.redditBoardDocument || !root.dataset.redditBoardPath) return;
+    const values = JSON.parse(root.dataset.redditBoardHeights || '{}') as Record<string, number>;
+    const update = () => {
+      for (const input of inputs) {
+        const breakpoint = input.dataset.redditBoardHeight!;
+        values[breakpoint] = Number(input.value);
+        root.style.setProperty(`--rcb-height-${breakpoint}`, `${input.value}em`);
+        const output = tuner.querySelector<HTMLOutputElement>(`[data-reddit-board-output="${breakpoint}"]`);
+        if (output) output.textContent = `${input.value}em`;
+      }
+      status.textContent = 'Unsaved';
+    };
+    inputs.forEach((input) => input.addEventListener('input', update));
+    save.addEventListener('click', async () => {
+      save.disabled = true;
+      inputs.forEach((input) => { input.disabled = true; });
+      status.textContent = 'Saving…';
+      try {
+        const response = await fetch('/api/content-spacing', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ changes: [{
+            document: root.dataset.redditBoardDocument,
+            path: JSON.parse(root.dataset.redditBoardPath!),
+            target: { sectionId: root.dataset.devContentId },
+            value: values,
+          }] }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not save height.');
+        status.textContent = 'Saved';
+      } catch (error) {
+        status.textContent = error instanceof Error ? error.message : 'Could not save height.';
+      } finally {
+        save.disabled = false;
+        inputs.forEach((input) => { input.disabled = false; });
+      }
+    });
+  };
+
   const initRedditCommentBoard = (root: HTMLElement) => {
+    initHeightTuner(root);
     const viewport = root.querySelector<HTMLElement>('[data-reddit-board-viewport]');
     const track = root.querySelector<HTMLElement>('[data-reddit-board-track]');
     const prevBtn = root.querySelector<HTMLButtonElement>('[data-reddit-board-prev]');
