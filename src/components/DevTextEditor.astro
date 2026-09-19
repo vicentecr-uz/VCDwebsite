@@ -78,6 +78,19 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           { value: 'subtle', label: 'Subtle' },
         ]}
       />
+      <SelectField
+        class="dev-text-format__wrap-style"
+        hideLabel
+        label="Wrapping"
+        data-dev-wrap-style
+        value="auto"
+        options={[
+          { value: 'auto', label: 'Auto' },
+          { value: 'normal', label: 'Normal' },
+          { value: 'pretty', label: 'Pretty' },
+          { value: 'balance', label: 'Balance' },
+        ]}
+      />
       <span class="dev-hairline dev-hairline--vertical" role="presentation"></span>
       <div class="dev-text-format__inline" data-dev-format-inline>
         <button type="button" data-dev-format="bold" title="Bold (⌘B)" aria-label="Bold" aria-pressed="false">
@@ -112,7 +125,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
-  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
+  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, paragraphTextWrap, explicitParagraphTextWrap, refreshParagraphWrapping, normalizeTextWrap, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
     initMountedSectionCovers,
@@ -331,7 +344,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const unlinkButton = formatBar?.querySelector<HTMLButtonElement>('[data-dev-text-unlink]');
     const blockStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-block-style]');
     const emphasisStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-emphasis-style]');
+    const wrapStyleSelect = formatBar?.querySelector<HTMLSelectElement>('[data-dev-wrap-style]');
     const emphasisStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__emphasis-style');
+    const wrapStyleField = formatBar?.querySelector<HTMLElement>('.dev-text-format__wrap-style');
     const formatInline = formatBar?.querySelector<HTMLElement>('[data-dev-format-inline]');
     const formatButtons = formatBar
       ? [...formatBar.querySelectorAll<HTMLButtonElement>('[data-dev-format]')]
@@ -344,7 +359,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     ];
     if (!actions || !saveButton || !publishButton || !commitStylesButton || !revertButton || !status || !branchLabel || !warnLabel) return;
     if (!branchUpdateActions || !branchUpdateButton || !branchUpdateStatus) return;
-    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !emphasisStyleField || !formatInline) return;
+    if (!formatBar || !formatSel || !linkPanel || !linkInput || !unlinkButton || !blockStyleSelect || !emphasisStyleSelect || !wrapStyleSelect || !emphasisStyleField || !formatInline) return;
 
     editorAbortController?.abort();
     editorAbortController = new AbortController();
@@ -446,6 +461,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       return br;
     };
     const fillParagraph = (paragraph: HTMLElement, html: string) => {
+      paragraph.removeAttribute('data-text-wrap');
       if (html) paragraph.innerHTML = html;
       else paragraph.replaceChildren(createParagraphPlaceholderBreak());
     };
@@ -2165,6 +2181,9 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         + persistedMediaInserts.length;
 
       textStates.forEach((state) => {
+        if (state.kind === 'paragraphs') {
+          refreshParagraphWrapping(state.element, state.element.dataset.devTextLegacyBalance === 'true');
+        }
         state.element.classList.toggle(
           'is-dev-text-dirty',
           !valuesMatch(readValue(state), state.savedValue),
@@ -4106,6 +4125,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const hidden = state.kind !== 'paragraphs';
       formatInline.hidden = hidden;
       emphasisStyleField.hidden = hidden;
+      if (wrapStyleField) wrapStyleField.hidden = hidden;
     };
 
     const enableConvertedText = (element: HTMLElement, kind: EditableTextState['kind']) => {
@@ -4651,6 +4671,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         button.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
       syncEmphasisStyle();
+      syncTextWrap();
     };
 
     const positionFormatBar = (range: Range) => {
@@ -4936,6 +4957,62 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           : 'default';
     };
 
+    const paragraphsInRange = (range: Range, state: EditableTextState): HTMLElement[] => {
+      const paragraphs = [...state.element.querySelectorAll<HTMLElement>(':scope > p, :scope > div')];
+      if (range.collapsed) {
+        return paragraphs.filter((paragraph) => paragraph.contains(range.startContainer));
+      }
+      return paragraphs.filter((paragraph) => {
+        const content = document.createRange();
+        content.selectNodeContents(paragraph);
+        let first: Node = paragraph;
+        let last: Node = paragraph;
+        while (first.firstChild) first = first.firstChild;
+        while (last.lastChild) last = last.lastChild;
+        content.setStart(first, 0);
+        content.setEnd(last, last.nodeType === Node.TEXT_NODE ? last.textContent!.length : last.childNodes.length);
+        return range.compareBoundaryPoints(Range.END_TO_START, content) < 0
+          && range.compareBoundaryPoints(Range.START_TO_END, content) > 0;
+      });
+    };
+
+    let syncingTextWrap = false;
+    const syncTextWrap = () => {
+      if (!savedFormatRange) return;
+      const block = findParagraphState(savedFormatRange.commonAncestorContainer);
+      if (!block) return;
+      const paragraphs = paragraphsInRange(savedFormatRange, block);
+      const values = paragraphs.map((paragraph) => paragraphTextWrap(
+        paragraph, block.element.dataset.devTextLegacyBalance === 'true',
+      ));
+      const value = values.length && values.every((candidate) => candidate === values[0])
+        ? values[0] : '';
+      syncingTextWrap = true;
+      wrapStyleSelect.value = value;
+      wrapStyleSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      syncingTextWrap = false;
+      if (!value) {
+        const label = wrapStyleField?.querySelector('[data-dev-select-label]');
+        if (label) label.textContent = 'Mixed';
+      }
+    };
+
+    const applyTextWrap = (value: string) => {
+      const normalized = normalizeTextWrap(value);
+      if (!normalized || !savedFormatRange || !restoreFormatRange()) return;
+      const block = findParagraphState(savedFormatRange.commonAncestorContainer);
+      if (!block) return;
+      const paragraphs = paragraphsInRange(savedFormatRange, block);
+      if (!paragraphs.length) return;
+      pageHistory.breakGroup();
+      paragraphs.forEach((paragraph) => paragraph.setAttribute('data-text-wrap', normalized));
+      updateActions();
+      queueMicrotask(() => pageHistory.breakGroup());
+      syncTextWrap();
+      positionFormatBar(savedFormatRange);
+      window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+    };
+
     type EmphasisTone = 'emphasis' | 'default' | 'subtle';
     type InlineMarks = {
       emphasis: boolean;
@@ -4961,6 +5038,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         : range.endContainer.parentElement;
       const paragraph = startElement?.closest<HTMLElement>('p, div');
       if (!paragraph || paragraph !== endElement?.closest('p, div')) return null;
+      const paragraphWrap = explicitParagraphTextWrap(paragraph);
 
       const startBoundary = document.createElement('span');
       const endBoundary = document.createElement('span');
@@ -5076,6 +5154,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         if (index === lastSelectedGroup) fragment.append(restoredEnd);
       });
       paragraph.replaceChildren(fragment);
+      if (paragraphWrap) paragraph.setAttribute('data-text-wrap', paragraphWrap);
       const restored = document.createRange();
       restored.setStartAfter(restoredStart);
       restored.setEndBefore(restoredEnd);
@@ -5163,7 +5242,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       // Keep the contenteditable selection when clicking toolbar chrome.
       const target = event.target;
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-select__listbox')) {
+      if (target instanceof Element && target.closest('[data-dev-text-field], .dev-text-format__block-style, .dev-text-format__emphasis-style, .dev-text-format__wrap-style, .dev-select__listbox')) {
         return;
       }
       event.preventDefault();
@@ -5176,6 +5255,11 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     emphasisStyleSelect.addEventListener('change', () => {
       applyEmphasisStyle(emphasisStyleSelect.value);
+    }, { signal: editorSignal });
+
+    wrapStyleSelect.addEventListener('change', () => {
+      if (syncingTextWrap) return;
+      applyTextWrap(wrapStyleSelect.value);
     }, { signal: editorSignal });
 
     formatButtons.forEach((button) => {
@@ -6615,18 +6699,21 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   }
 
   .dev-text-format .dev-text-format__block-style,
-  .dev-text-format .dev-text-format__emphasis-style {
+  .dev-text-format .dev-text-format__emphasis-style,
+  .dev-text-format .dev-text-format__wrap-style {
     width: auto;
   }
 
   .dev-text-format__block-style .dev-field__value,
-  .dev-text-format__emphasis-style .dev-field__value {
+  .dev-text-format__emphasis-style .dev-field__value,
+  .dev-text-format__wrap-style .dev-field__value {
     width: auto;
     min-height: var(--dev-control-height);
   }
 
   .dev-text-format__block-style .dev-field__input--select,
-  .dev-text-format__emphasis-style .dev-field__input--select {
+  .dev-text-format__emphasis-style .dev-field__input--select,
+  .dev-text-format__wrap-style .dev-field__input--select {
     margin: 0;
     padding: 8px;
     padding-right: 28px;
@@ -6637,6 +6724,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
   .dev-text-format__emphasis-style .dev-field__input--select {
     min-width: 7.5em;
+  }
+
+  .dev-text-format__wrap-style .dev-field__input--select {
+    min-width: 7em;
   }
 
   .dev-text-format__buttons button[data-dev-format] {
