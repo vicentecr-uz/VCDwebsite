@@ -177,10 +177,9 @@ const copies = [0, 1, 2] as const;
     /* Fully faded edge sits 0.75em from the soft canvas; fade length is 1.25em. */
     --rcb-pad-y: 0.75em;
     --rcb-fade: 1.25em;
-    /* One “page” of the board; peeks of the next band fade at the edge. */
-    --rcb-viewport-max: min(var(--rcb-height-desktop, 20em), calc(var(--vh-safe, 1svh) * 52));
-
     position: relative;
+    box-sizing: border-box;
+    height: var(--rcb-height-desktop, 20em);
     border-radius: 0.75em;
     background: var(--sys-color-srf-container-low);
     padding: var(--rcb-pad-y) var(--rcb-pad-x);
@@ -188,7 +187,7 @@ const copies = [0, 1, 2] as const;
 
   .reddit-comment-board__viewport {
     position: relative;
-    max-height: var(--rcb-viewport-max);
+    height: 100%;
     /* Buttons-only paging — wheel/touch pass through to the page. */
     overflow: hidden;
     overscroll-behavior: auto;
@@ -291,7 +290,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 52em) {
     .reddit-comment-board__shell {
       --rcb-cols: 2;
-      --rcb-viewport-max: min(var(--rcb-height-tablet, 32em), calc(var(--vh-safe, 1svh) * 65));
+      height: var(--rcb-height-tablet, 32em);
     }
 
     .reddit-comment-board__cols {
@@ -316,7 +315,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 36em) {
     .reddit-comment-board__shell {
       --rcb-cols: 1;
-      --rcb-viewport-max: min(var(--rcb-height-mobile, 26em), calc(var(--vh-safe, 1svh) * 60));
+      height: var(--rcb-height-mobile, 26em);
     }
 
     .reddit-comment-board__col {
@@ -335,8 +334,6 @@ const copies = [0, 1, 2] as const;
 </style>
 
 <script>
-  // Viewport max-height uses shared `--vh-safe` (bound in Layout via safeVh.ts).
-
   const initRedditCommentBoard = (root: HTMLElement) => {
     const viewport = root.querySelector<HTMLElement>('[data-reddit-board-viewport]');
     const track = root.querySelector<HTMLElement>('[data-reddit-board-track]');
