@@ -247,10 +247,19 @@ const hideSvg = trafficLightIcon(xIcon);
       const preferLeft = trigMid < layoutMid;
       const vw = window.innerWidth;
       const vh = window.innerHeight;
+      const imageTarget = overlay.dataset.devPanelKey === 'image'
+        ? trigger.closest<HTMLElement>('[data-dev-image-target]')
+          ?? trigger.closest('.project-grid__item')?.querySelector<HTMLElement>('[data-dev-image-target]')
+        : null;
+      const clearImageRight = imageTarget
+        ? Math.max(layoutRect.right, imageTarget.getBoundingClientRect().right) + 16
+        : null;
       const roomRight = vw - VIEW_INSET - (trig.right + GAP);
       const roomLeft = trig.left - GAP - VIEW_INSET;
       let left: number;
-      if (preferLeft) {
+      if (clearImageRight !== null) {
+        left = Math.min(clearImageRight, vw - VIEW_INSET - w);
+      } else if (preferLeft) {
         if (roomLeft >= w) left = trig.left - GAP - w;
         else if (roomRight >= w) left = trig.right + GAP;
         else left = roomLeft >= roomRight ? trig.left - GAP - w : trig.right + GAP;
