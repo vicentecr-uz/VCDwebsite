@@ -85,9 +85,9 @@ test('recent blur waits while stale blur stays immediate', async () => {
   expect(staleSettled).toBe(true);
   await staleWait;
   const recentWait = waitForSignupViewportSettlement(input, performance.now());
-  await Bun.sleep(200);
   let recentSettled = false;
   recentWait.then(() => { recentSettled = true; });
+  await Bun.sleep(200);
   expect(recentSettled).toBe(false);
   await recentWait;
 });
