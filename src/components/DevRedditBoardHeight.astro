@@ -1,0 +1,140 @@
+---
+import DevOverlay from './DevOverlay.astro';
+import Field from './ui/Field.astro';
+import Button from './ui/Button.astro';
+import PanelActions from './ui/PanelActions.astro';
+
+const breakpoints = ['desktop', 'tablet', 'mobile'] as const;
+---
+
+<DevOverlay title="Board height" storageKey="reddit-board-height" panelKey="reddit-board-height" defaultHidden>
+  <div class="reddit-board-height" data-reddit-board-height-panel>
+    {breakpoints.map((breakpoint) => (
+      <Field label={breakpoint[0].toUpperCase() + breakpoint.slice(1)} labelFor={`reddit-board-height-${breakpoint}`}>
+        <output slot="labelAccessory" for={`reddit-board-height-${breakpoint}`} data-reddit-board-output={breakpoint}></output>
+        <input id={`reddit-board-height-${breakpoint}`} type="range" min="8" max="60" step="1" data-reddit-board-height={breakpoint} />
+      </Field>
+    ))}
+    <PanelActions>
+      <Button emphasis="ghost" label="Reset" data-reddit-board-reset />
+      <Button emphasis="filled" label="Save" data-reddit-board-save />
+    </PanelActions>
+    <p class="reddit-board-height__status" role="status" data-reddit-board-status></p>
+  </div>
+</DevOverlay>
+
+<style>
+  .reddit-board-height { display: grid; gap: var(--space-unit); }
+  .reddit-board-height input { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
+  .reddit-board-height input:focus-visible { outline: 2px solid var(--sys-color-on-srf); outline-offset: 2px; }
+  .reddit-board-height__status { min-height: 1.4em; margin: 0; }
+</style>
+
+<script>
+  type Breakpoint = 'desktop' | 'tablet' | 'mobile';
+  const breakpoints: Breakpoint[] = ['desktop', 'tablet', 'mobile'];
+  let cleanup: (() => void) | undefined;
+
+  const init = () => {
+    cleanup?.();
+    const panel = document.querySelector<HTMLElement>('[data-reddit-board-height-panel]');
+    const overlay = panel?.closest<HTMLElement>('[data-dev-overlay]');
+    if (!panel || !overlay) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const inputs = [...panel.querySelectorAll<HTMLInputElement>('[data-reddit-board-height]')];
+    const save = panel.querySelector<HTMLButtonElement>('[data-reddit-board-save]');
+    const reset = panel.querySelector<HTMLButtonElement>('[data-reddit-board-reset]');
+    const status = panel.querySelector<HTMLElement>('[data-reddit-board-status]');
+    if (!save || !reset || !status || inputs.length !== 3) return;
+
+    let root: HTMLElement | null = null;
+    let saved: Record<Breakpoint, number> = { desktop: 20, tablet: 32, mobile: 26 };
+    let values = { ...saved };
+    const preview = () => {
+      if (!root) return;
+      for (const breakpoint of breakpoints) {
+        root.style.setProperty(`--rcb-height-${breakpoint}`, `${values[breakpoint]}em`);
+      }
+    };
+    const sync = () => {
+      for (const input of inputs) {
+        const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
+        input.value = String(values[breakpoint]);
+        const output = panel.querySelector<HTMLOutputElement>(`[data-reddit-board-output="${breakpoint}"]`);
+        if (output) output.textContent = `${values[breakpoint]}em`;
+      }
+      preview();
+    };
+    const bind = (target: HTMLElement) => {
+      root = target;
+      saved = JSON.parse(target.dataset.redditBoardHeights || '{}');
+      values = { ...saved };
+      status.textContent = '';
+      sync();
+    };
+    window.addEventListener('vcd:dev-edit-open', ((event: CustomEvent<{ panel?: HTMLElement; trigger?: HTMLElement }>) => {
+      if (event.detail?.panel !== overlay) return;
+      const target = event.detail.trigger?.closest<HTMLElement>('[data-reddit-comment-board]')
+        ?? document.querySelector<HTMLElement>('[data-reddit-board-document]');
+      if (target) bind(target);
+    }) as EventListener, { signal });
+    window.addEventListener('vcd:dev-edit-close', ((event: CustomEvent<{ panel?: HTMLElement }>) => {
+      if (event.detail?.panel !== overlay || !root) return;
+      values = { ...saved };
+      sync();
+      status.textContent = '';
+    }) as EventListener, { signal });
+    inputs.forEach((input) => input.addEventListener('input', () => {
+      if (!root) return;
+      const breakpoint = input.dataset.redditBoardHeight as Breakpoint;
+      values[breakpoint] = input.valueAsNumber;
+      sync();
+      status.textContent = 'Unsaved';
+    }, { signal }));
+    reset.addEventListener('click', () => {
+      values = { ...saved };
+      sync();
+      status.textContent = '';
+    }, { signal });
+    save.addEventListener('click', async () => {
+      if (!root?.dataset.redditBoardDocument || !root.dataset.redditBoardPath) return;
+      const target = root;
+      save.disabled = true;
+      inputs.forEach((input) => { input.disabled = true; });
+      status.textContent = 'Saving…';
+      try {
+        const response = await fetch('/api/content-spacing', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          signal,
+          body: JSON.stringify({ changes: [{
+            document: target.dataset.redditBoardDocument,
+            path: JSON.parse(target.dataset.redditBoardPath),
+            target: { sectionId: target.dataset.devContentId },
+            value: values,
+          }] }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not save height.');
+        saved = { ...values };
+        target.dataset.redditBoardHeights = JSON.stringify(saved);
+        status.textContent = 'Saved';
+      } catch (error) {
+        if (!signal.aborted) status.textContent = error instanceof Error ? error.message : 'Could not save height.';
+      } finally {
+        save.disabled = false;
+        inputs.forEach((input) => { input.disabled = false; });
+      }
+    }, { signal });
+    if (!overlay.hidden) {
+      const target = document.querySelector<HTMLElement>('[data-reddit-board-document]');
+      if (target) bind(target);
+    }
+    cleanup = () => controller.abort();
+  };
+  document.addEventListener('astro:page-load', init);
+  document.addEventListener('astro:before-swap', () => cleanup?.());
+  if (import.meta.hot) import.meta.hot.dispose(() => cleanup?.());
+  init();
+</script>
