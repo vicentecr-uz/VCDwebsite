@@ -91,6 +91,8 @@ interface Props {
   /** Per-breakpoint reveal: hover | always. Defaults desktop=hover, tablet/mobile=always. */
   captionReveal?: ImageCaptionReveal | Partial<ImageCaptionReveals>;
   audio?: VideoAudioSetting;
+  /** Scroll-finale marker; keeps the image in the normal section stack. */
+  scrollFinaleRole?: 'fade' | 'target';
 }
 
 const {
@@ -126,6 +128,7 @@ const {
   captionPosition: captionPositionProp,
   captionReveal,
   audio,
+  scrollFinaleRole,
 } = Astro.props;
 
 const stackClass = projectStackClass(spacing, { flush });
@@ -205,6 +208,7 @@ const editAttrs = editable
     {...editAttrs}
     {...(spacingAttrs ?? {})}
     data-dev-section-deletable={editable ? 'image' : undefined}
+    data-project-scroll-finale-role={scrollFinaleRole}
     data-mobile-inset={mobileInset ? 'true' : 'false'}
       data-mobile-bleed-eligible={!maxVh && resolvedConstrained.mobile === 100 ? 'true' : 'false'}
       data-video-audio={audio !== undefined ? JSON.stringify(audio) : undefined}
@@ -329,6 +333,7 @@ const editAttrs = editable
     ]}
     {...(spacingAttrs ?? {})}
     data-dev-section-deletable={editable ? 'image' : undefined}
+    data-project-scroll-finale-role={scrollFinaleRole}
   >
     <figure
       class:list={[

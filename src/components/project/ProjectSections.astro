@@ -332,9 +332,8 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
 })}
 
 {useScrollFinale && finaleFadeSection && finaleTargetSection && (
-  <ProjectScrollFinale>
+  <Fragment>
     <ProjectImage
-      slot="fade"
       src={String(finaleFadeSection.src ?? '')}
       alt={String(finaleFadeSection.alt ?? '')}
       variants={finaleFadeSection.variants}
@@ -359,9 +358,9 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       sectionId={finaleFadeSection.sectionId as string | undefined}
       contentId={finaleFadeSection.id as string | undefined}
       mobileInset={finaleFadeSection.mobileInset === true}
+      scrollFinaleRole="fade"
     />
     <ProjectImage
-      slot="target"
       src={String(finaleTargetSection.src ?? '')}
       alt={String(finaleTargetSection.alt ?? '')}
       variants={finaleTargetSection.variants}
@@ -382,10 +381,12 @@ const mainSections = useScrollFinale ? sections.slice(0, -2) : sections;
       captionStyle={finaleTargetSection.captionStyle as never}
       captionPosition={finaleTargetSection.captionPosition as never}
       captionReveal={finaleTargetSection.captionReveal as never}
-      spacing="none"
+      spacing={sectionSpacing(finaleTargetSection, sections.length - 1)}
       sectionId={finaleTargetSection.sectionId as string | undefined}
       contentId={finaleTargetSection.id as string | undefined}
       mobileInset={finaleTargetSection.mobileInset === true}
+      scrollFinaleRole="target"
     />
-  </ProjectScrollFinale>
+    <ProjectScrollFinale />
+  </Fragment>
 )}

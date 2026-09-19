@@ -12,12 +12,6 @@ const { spacerBufferPx = 16 } = Astro.props;
   data-project-scroll-finale
   data-spacer-buffer={spacerBufferPx}
 >
-  <div class="project-scroll-finale__fade" data-project-scroll-finale-fade>
-    <slot name="fade" />
-  </div>
-  <div class="project-scroll-finale__target" data-project-scroll-finale-target>
-    <slot name="target" />
-  </div>
   <div class="project-scroll-finale__spacer" data-project-scroll-finale-spacer aria-hidden="true"></div>
 </div>
 
@@ -28,18 +22,12 @@ const { spacerBufferPx = 16 } = Astro.props;
     if (root.dataset.initialized === 'true') return;
     root.dataset.initialized = 'true';
 
-    const fadeWrap = root.querySelector('[data-project-scroll-finale-fade]');
-    const targetWrap = root.querySelector('[data-project-scroll-finale-target]');
     const spacer = root.querySelector('[data-project-scroll-finale-spacer]');
-    if (
-      !(fadeWrap instanceof HTMLElement) ||
-      !(targetWrap instanceof HTMLElement) ||
-      !(spacer instanceof HTMLElement)
-    ) {
-      return;
-    }
+    if (!(spacer instanceof HTMLElement) || !root.parentElement) return;
 
+    const dropZone = root.parentElement;
     const sidebar = document.querySelector('.section-sidebar-nav');
+    const html = document.documentElement;
     const bufferPx = Number(root.dataset.spacerBuffer) || 16;
     const fadeRangePx = 96;
     const prefersReducedMotion = () =>
@@ -47,9 +35,63 @@ const { spacerBufferPx = 16 } = Astro.props;
 
     let scrollRafId = 0;
     let layoutRafId = 0;
+    let observedFade: HTMLElement | null = null;
+    let observedTarget: HTMLElement | null = null;
+    let resizeObserver: ResizeObserver | null = null;
 
-    const measureTarget = () => {
-      const rect = targetWrap.getBoundingClientRect();
+    const getFinaleElements = () => {
+      const children = Array.from(dropZone.children);
+      const fade = children.find((child) =>
+        child instanceof HTMLElement && child.dataset.projectScrollFinaleRole === 'fade') as HTMLElement | undefined;
+      const target = children.find((child) =>
+        child instanceof HTMLElement && child.dataset.projectScrollFinaleRole === 'target') as HTMLElement | undefined;
+      const valid = fade !== undefined
+        && target !== undefined
+        && fade.nextElementSibling === target
+        && target.nextElementSibling === root;
+      return {
+        fade: valid ? fade : null,
+        target: valid ? target : null,
+      };
+    };
+
+    const mediaFor = (section: HTMLElement | null) => {
+      if (!section) return null;
+      if (section.matches('.project-media, .project-image')) return section;
+      return section.querySelector<HTMLElement>('.project-media, .project-image');
+    };
+
+    const setSidebarFade = (opacity: string) => {
+      if (!(sidebar instanceof HTMLElement)) return;
+      sidebar.style.opacity = opacity;
+      sidebar.style.pointerEvents = opacity && Number(opacity) < 0.05 ? 'none' : '';
+    };
+
+    const resetFade = () => {
+      const markedFade = Array.from(dropZone.children).find((child) =>
+        child instanceof HTMLElement && child.dataset.projectScrollFinaleRole === 'fade') as HTMLElement | undefined;
+      const media = mediaFor(markedFade ?? null);
+      if (media) media.style.opacity = '';
+      root.classList.remove('is-centered');
+      setSidebarFade('');
+    };
+
+    const syncObservedElements = (fade: HTMLElement | null, target: HTMLElement | null) => {
+      if (!resizeObserver) return;
+      if (observedFade !== fade) {
+        if (observedFade) resizeObserver.unobserve(observedFade);
+        observedFade = fade;
+        if (observedFade) resizeObserver.observe(observedFade);
+      }
+      if (observedTarget !== target) {
+        if (observedTarget) resizeObserver.unobserve(observedTarget);
+        observedTarget = target;
+        if (observedTarget) resizeObserver.observe(observedTarget);
+      }
+    };
+
+    const measureTarget = (target: HTMLElement) => {
+      const rect = target.getBoundingClientRect();
       return {
         docTop: rect.top + window.scrollY,
         height: rect.height,
@@ -59,17 +101,41 @@ const { spacerBufferPx = 16 } = Astro.props;
     /** Spacer height so max scroll places the finale image centre on the viewport centre. */
     const layoutSpacer = () => {
       spacer.style.height = '0px';
+      const { fade, target } = getFinaleElements();
+      syncObservedElements(fade, target);
+      if (!target || html.classList.contains('is-dev-mode')) return;
 
       const vh = window.innerHeight;
       const maxScrollBase = document.documentElement.scrollHeight - vh;
-      const { docTop, height } = measureTarget();
-
+      const { docTop, height } = measureTarget(target);
       if (!height) return;
 
       const idealMaxScroll = docTop + height / 2 - vh / 2;
       const spacerHeight = Math.max(0, idealMaxScroll - maxScrollBase + bufferPx);
-
       spacer.style.height = `${spacerHeight}px`;
+    };
+
+    const updateFade = () => {
+      scrollRafId = 0;
+      const { fade, target } = getFinaleElements();
+      syncObservedElements(fade, target);
+      if (!fade || !target || html.classList.contains('is-dev-mode')) {
+        resetFade();
+        return;
+      }
+
+      const media = mediaFor(fade);
+      if (!media) return;
+      const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
+      const distFromBottom = maxScroll - window.scrollY;
+      const progress = prefersReducedMotion()
+        ? distFromBottom <= 2 ? 1 : 0
+        : clamp01(1 - distFromBottom / fadeRangePx);
+      const fadeOpacity = 1 - progress;
+
+      media.style.opacity = fadeOpacity < 0.999 ? String(fadeOpacity) : '';
+      root.classList.toggle('is-centered', progress >= 0.98);
+      setSidebarFade(fadeOpacity < 0.999 ? String(fadeOpacity) : '');
     };
 
     const scheduleLayout = () => {
@@ -81,32 +147,9 @@ const { spacerBufferPx = 16 } = Astro.props;
       });
     };
 
-    const updateFade = () => {
-      scrollRafId = 0;
-
-      const maxScroll = Math.max(document.documentElement.scrollHeight - window.innerHeight, 0);
-      const distFromBottom = maxScroll - window.scrollY;
-
-      const progress = prefersReducedMotion()
-        ? distFromBottom <= 2
-          ? 1
-          : 0
-        : clamp01(1 - distFromBottom / fadeRangePx);
-
-      const fadeOpacity = 1 - progress;
-      fadeWrap.style.opacity = fadeOpacity < 0.999 ? String(fadeOpacity) : '';
-      root.classList.toggle('is-centered', progress >= 0.98);
-
-      if (sidebar instanceof HTMLElement) {
-        if (fadeOpacity < 0.999) {
-          sidebar.style.opacity = String(fadeOpacity);
-          sidebar.style.pointerEvents = fadeOpacity < 0.05 ? 'none' : '';
-        } else {
-          sidebar.style.opacity = '';
-          sidebar.style.pointerEvents = '';
-        }
-      }
-    };
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(scheduleLayout);
+    }
 
     const scheduleFade = () => {
       if (scrollRafId) return;
@@ -118,17 +161,16 @@ const { spacerBufferPx = 16 } = Astro.props;
 
     window.addEventListener('scroll', scheduleFade, { passive: true });
     window.addEventListener('resize', scheduleLayout);
+    window.addEventListener('vcd:dev-mode-change', scheduleLayout);
 
-    targetWrap.querySelectorAll('img').forEach((img) => {
-      if (!(img instanceof HTMLImageElement)) return;
+    const mutationObserver = typeof MutationObserver !== 'undefined'
+      ? new MutationObserver(scheduleLayout)
+      : null;
+    mutationObserver?.observe(dropZone, { childList: true });
+
+    dropZone.querySelectorAll<HTMLElement>('[data-project-scroll-finale-role] img').forEach((img) => {
       if (!img.complete) img.addEventListener('load', scheduleLayout, { once: true });
     });
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const ro = new ResizeObserver(scheduleLayout);
-      ro.observe(targetWrap);
-      ro.observe(fadeWrap);
-    }
   };
 
   document.querySelectorAll('[data-project-scroll-finale]').forEach((root) => {
@@ -138,24 +180,24 @@ const { spacerBufferPx = 16 } = Astro.props;
 
 <style>
   .project-scroll-finale {
+    margin-top: 0 !important;
     background: var(--sys-color-srf, #ffffff);
-  }
-
-  .project-scroll-finale__fade {
-    will-change: opacity;
-  }
-
-  .project-scroll-finale__target {
-    margin-top: var(--space-section);
   }
 
   .project-scroll-finale__spacer {
     height: 0;
+    margin: 0;
     pointer-events: none;
   }
 
+  :global([data-project-scroll-finale-role='fade'] .project-media),
+  :global([data-project-scroll-finale-role='fade'] .project-image) {
+    will-change: opacity;
+  }
+
   @media (prefers-reduced-motion: reduce) {
-    .project-scroll-finale__fade {
+    :global([data-project-scroll-finale-role='fade'] .project-media),
+    :global([data-project-scroll-finale-role='fade'] .project-image) {
       will-change: auto;
     }
   }
