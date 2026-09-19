@@ -1,0 +1,36 @@
+---
+import { toSvg } from 'drawesome';
+import { validateSiteAnnotations, type SiteAnnotation } from '../../lib/siteAnnotations';
+import '../../styles/site-annotations.css';
+
+interface Props {
+  sectionId: string;
+  annotations?: unknown;
+}
+
+const { sectionId, annotations } = Astro.props;
+const source = annotations ?? [];
+const valid = validateSiteAnnotations(source, new Set([sectionId]))
+  ? source as SiteAnnotation[]
+  : [];
+const items = valid.map((annotation) => ({
+  annotation,
+  src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(toSvg(
+    annotation.strokes,
+    annotation.board.w,
+    annotation.board.h,
+    'transparent',
+  ))}`,
+}));
+const positionData = import.meta.env.DEV ? valid : valid.map(({ strokes, ...annotation }) => annotation);
+---
+
+<div class="site-annotations" data-site-annotations={JSON.stringify(positionData)} aria-hidden="true">
+  {items.map(({ annotation, src }) => (
+    <img data-site-annotation={annotation.id} src={src} alt="" draggable="false" />
+  ))}
+</div>
+
+<script>
+  import '../../scripts/siteAnnotationPosition';
+</script>

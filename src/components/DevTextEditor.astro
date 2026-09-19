@@ -378,7 +378,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
     type PendingMediaChange = {
       id: string;
-      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership' | 'project-details-rows';
+      kind: 'crop' | 'grid' | 'carousel' | 'caption' | 'listing-order' | 'section-order' | 'placeholder-fill' | 'style-token' | 'section-nav' | 'media-remove' | 'project-settings' | 'gallery-membership' | 'project-details-rows' | 'annotation';
       payload: Record<string, unknown>;
       revert: () => void;
       prepare?: () => Record<string, unknown>;
@@ -4077,7 +4077,8 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           && detail.kind !== 'media-remove'
           && detail.kind !== 'project-settings'
           && detail.kind !== 'gallery-membership'
-          && detail.kind !== 'project-details-rows')
+          && detail.kind !== 'project-details-rows'
+          && detail.kind !== 'annotation')
       ) {
         return;
       }
@@ -5868,6 +5869,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           && change.kind !== 'media-remove'
           && change.kind !== 'project-settings'
           && change.kind !== 'project-details-rows'
+          && change.kind !== 'annotation'
         ),
       );
       if (
@@ -5919,6 +5921,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           sectionNav: sectionNavChanges.length,
           mediaRemove: mediaRemoveChanges.length,
           projectDetailsRows: detailsChanges.length,
+          annotation: pendingChanges.filter((change) => change.kind === 'annotation').length,
         },
         textPaths: dirtyText.slice(0, 8).map((state) => state.path.join('.')),
       };
@@ -6067,6 +6070,27 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
         for (const change of detailsChanges) {
           await persistDetailsRows(change);
+          acknowledge([change]);
+        }
+
+        for (const change of pendingChanges.filter((item) => item.kind === 'annotation')) {
+          const targetExists = [...document.querySelectorAll<HTMLElement>('[data-site-annotation-section-id]')]
+            .some((section) => section.dataset.siteAnnotationSectionId === change.payload.sectionId
+              && section.dataset.siteAnnotationDocument === change.payload.document);
+          if (!targetExists) {
+            acknowledge([change]);
+            continue;
+          }
+          const response = await fetch('/api/content-annotations', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(change.prepare?.() ?? change.payload),
+          });
+          const payload = await readApiJson(response);
+          if (!response.ok) throw new Error(String(payload.error || 'Could not save the drawings.'));
+          window.dispatchEvent(new CustomEvent('vcd:site-annotations-saved', {
+            detail: { document: change.payload.document, sectionId: change.payload.sectionId },
+          }));
           acknowledge([change]);
         }
 
