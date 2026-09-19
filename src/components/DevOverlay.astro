@@ -496,27 +496,29 @@ const hideSvg = trafficLightIcon(xIcon);
         }
         const natural = naturalHeightPx();
         if (natural <= 0) return;
-        const cap = Math.max(0, Math.min(Math.ceil(natural), viewportCapPx()));
+        const viewportCap = viewportCapPx();
+        const cap = Math.max(0, Math.min(Math.ceil(natural), viewportCap));
+        const needsScroll = natural > viewportCap;
         overlay.style.maxHeight = `${Math.round(cap)}px`;
 
         const inline = overlay.style.height;
         const px = Number.parseFloat(inline);
         if (!inline || !Number.isFinite(px)) {
           huggedNatural = true;
-          setBodyScrollable(false);
+          setBodyScrollable(needsScroll);
           return;
         }
         if (px > cap) {
           overlay.style.height = '';
           huggedNatural = true;
-          setBodyScrollable(false);
+          setBodyScrollable(needsScroll);
           return;
         }
         const inSticky = px >= cap - STICKY_AROUND_NATURAL;
         if (inSticky && !huggedNatural) {
           overlay.style.height = '';
           huggedNatural = true;
-          setBodyScrollable(false);
+          setBodyScrollable(needsScroll);
           return;
         }
         if (!inSticky) huggedNatural = false;
@@ -547,6 +549,7 @@ const hideSvg = trafficLightIcon(xIcon);
       // which is neither DOM text content nor an attribute, so the
       // MutationObserver above never fires for it — catch it via `input`.
       body.addEventListener('input', scheduleConstrain);
+      window.addEventListener('resize', scheduleConstrain);
     }
 
     let lastObservedHeight: number | null = null;
