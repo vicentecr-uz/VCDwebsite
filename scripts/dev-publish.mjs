@@ -39,6 +39,7 @@ const PUBLISH_BRANCH = 'main';
  */
 const RENDERING_PATHS = [
   'src/components/project/',
+  'src/lib/devTextDom.ts',
   'src/components/ProjectGrid.astro',
   'src/components/GalleryMediaInk.astro',
   'src/lib/project',

@@ -133,3 +133,33 @@ test('styles intro paragraphs save and reload without changing its outline', asy
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('paragraph wrapping overrides survive the batch Save endpoint and disk reload', async () => {
+  const previous = process.cwd();
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-content-wrapping-'));
+  const directory = path.join(root, 'src/content/pages');
+  const file = path.join(directory, 'about.json');
+  await mkdir(directory, { recursive: true });
+  const source = { sections: [{ id: 'copy', type: 'bodyText', balance: true, paragraphs: ['Original'] }] };
+  const paragraphs = [
+    '<span data-text-wrap="auto"><span class="text-emphasis">Heading</span></span>',
+    '<span data-text-wrap="pretty">Supporting <em>copy</em></span>',
+    '<span data-text-wrap="normal">Body <a href="/work">link</a></span>',
+    '<span data-text-wrap="balance">Explicit balance</span>',
+  ];
+  await writeFile(file, JSON.stringify(source));
+  process.chdir(root);
+  try {
+    const result = response();
+    await writer('content-batch-dev-writer')(request({
+      text: [{ document: 'about', path: ['sections', 0, 'paragraphs'], target: { sectionId: 'copy' }, value: paragraphs }],
+    }), result, () => {});
+    assert.equal((await result.done).status, 200);
+    const reloaded = JSON.parse(await readFile(file, 'utf8'));
+    assert.deepEqual(reloaded.sections[0].paragraphs, paragraphs);
+    assert.equal(reloaded.sections[0].balance, true);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
+});

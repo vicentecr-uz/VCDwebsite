@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
-import { clipboardParagraphHtml } from '../../src/lib/devTextDom';
+import { clipboardParagraphHtml, explicitParagraphTextWrap } from '../../src/lib/devTextDom';
 
 const source = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
 const start = source.indexOf('    const bindTextState =');
@@ -12,7 +12,7 @@ const toneScript = new Bun.Transpiler({ loader: 'ts' }).transformSync(`
   return applyEmphasisMark;
 `);
 
-function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle') {
+function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle', includeParagraph = false) {
   const window = new Window();
   const document = window.document;
   const paragraph = document.createElement('p');
@@ -22,12 +22,12 @@ function applyTone(markup: string, tone: 'emphasis' | 'default' | 'subtle') {
   const range = document.createRange();
   range.selectNodeContents(text);
   const apply = new Function('env', `with(env) { ${toneScript} }`)({
-    window, document, Element: window.Element, HTMLElement: window.HTMLElement,
+    window, document, explicitParagraphTextWrap, Element: window.Element, HTMLElement: window.HTMLElement,
     HTMLAnchorElement: window.HTMLAnchorElement, HTMLBRElement: window.HTMLBRElement,
     Node: window.Node, Text: window.Text,
   });
   apply(range, tone);
-  return paragraph.innerHTML;
+  return includeParagraph ? paragraph.outerHTML : paragraph.innerHTML;
 }
 
 function setup(markup = '<p>Before</p><p>After</p>') {
@@ -187,4 +187,28 @@ test('section merge preparation preserves mixed root text, formatting, and parag
   const { element, materializeParagraphs } = sectionCommands('First <strong>bold</strong><div>Middle</div>Last');
   expect(materializeParagraphs(element).map((paragraph: HTMLElement) => paragraph.innerHTML)).toEqual(['First <strong>bold</strong>', 'Middle', 'Last']);
   expect(element.textContent).toBe('First boldMiddleLast');
+});
+
+
+test('changing text tone preserves a paragraph wrapping override', () => {
+  expect(applyTone('<span data-text-wrap="pretty"><span class="text-emphasis">Heading</span></span>', 'default', true))
+    .toBe('<p data-text-wrap="pretty">Heading</p>');
+});
+
+test('wrapping targets only paragraphs touched by the selection, including native DIVs', () => {
+  const window = new Window();
+  const document = window.document;
+  const element = document.createElement('div');
+  element.innerHTML = '<p>First</p><div>Second</div><p>Third</p>';
+  const start = source.indexOf('    const paragraphsInRange =');
+  const end = source.indexOf('    let syncingTextWrap =', start);
+  const code = new Bun.Transpiler({ loader: 'ts' }).transformSync(source.slice(start, end) + '\nreturn paragraphsInRange;');
+  const paragraphs = new Function('document', 'Range', 'Node', code)(document, window.Range, window.Node);
+  const range = document.createRange();
+  range.setStart(element.children[0].firstChild!, 1);
+  range.setEnd(element.children[2].firstChild!, 0);
+  expect(paragraphs(range, { element }).map((node: HTMLElement) => node.textContent)).toEqual(['First', 'Second']);
+  range.setStart(element.children[1].firstChild!, 2);
+  range.collapse(true);
+  expect(paragraphs(range, { element }).map((node: HTMLElement) => node.textContent)).toEqual(['Second']);
 });
