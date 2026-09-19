@@ -2619,7 +2619,7 @@ export function contentNavDevWriter() {
  *
  * @returns {import('vite').Plugin}
  */
-function stubLapseWhenUnavailable() {
+export function stubLapseWhenUnavailable() {
   const PREFIX = '\0vcd-lapse-stub:';
   const stubbed = new Set(['@aiforui/lapse/install', '@aiforui/lapse/panel']);
   const lapseInstalled = (() => {
@@ -2633,6 +2633,7 @@ function stubLapseWhenUnavailable() {
   let command = 'serve';
   return {
     name: 'vcd-stub-lapse',
+    enforce: 'pre',
     configResolved(config) {
       command = config.command;
     },

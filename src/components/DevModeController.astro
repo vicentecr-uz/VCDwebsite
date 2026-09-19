@@ -1,4 +1,6 @@
 <script>
+  import { bindEditorChipMediaInk } from '../scripts/bindEditorChipMediaInk';
+
   const initDevModeController = () => {
     const SECTION_EDITOR_CLASS = 'show-section-nav-editor';
     const CHROME_FADE_MS = 280;
@@ -48,6 +50,21 @@
     let devMode = false;
     let enterEndTimer: ReturnType<typeof setTimeout> | null = null;
     let exitTimer: ReturnType<typeof setTimeout> | null = null;
+    let teardownEditorChips: (() => void) | undefined;
+
+    const mountEditorChips = () => {
+      teardownEditorChips?.();
+      teardownEditorChips = bindEditorChipMediaInk();
+    };
+
+    const cleanupEditorChips = () => {
+      teardownEditorChips?.();
+      teardownEditorChips = undefined;
+    };
+
+    mountEditorChips();
+    document.addEventListener('astro:page-load', mountEditorChips);
+    document.addEventListener('astro:before-swap', cleanupEditorChips);
 
     const editTriggers = () =>
       [...document.querySelectorAll<HTMLButtonElement>('[data-dev-edit-trigger]')];
@@ -501,6 +518,12 @@
     window.addEventListener('vcd:dev-edit-open', syncTunerOpenClass);
     window.addEventListener('vcd:dev-edit-close', syncTunerOpenClass);
     syncTunerOpenClass();
+
+    if (import.meta.hot) import.meta.hot.dispose(() => {
+      cleanupEditorChips();
+      document.removeEventListener('astro:page-load', mountEditorChips);
+      document.removeEventListener('astro:before-swap', cleanupEditorChips);
+    });
   };
 
   initDevModeController();
