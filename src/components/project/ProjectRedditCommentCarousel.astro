@@ -31,6 +31,7 @@ interface Props {
   spacing?: ProjectStackSpacing;
   sectionId?: string;
   contentId?: string;
+  viewportMaxEm?: { desktop?: number; tablet?: number; mobile?: number };
 }
 
 const {
@@ -40,7 +41,14 @@ const {
   spacing = 'group',
   sectionId,
   contentId,
+  viewportMaxEm,
 } = Astro.props;
+
+const heights = {
+  desktop: viewportMaxEm?.desktop ?? 20,
+  tablet: viewportMaxEm?.tablet ?? 32,
+  mobile: viewportMaxEm?.mobile ?? 26,
+};
 
 const editable = import.meta.env.DEV && documentKey && sectionPath;
 const stackClass = projectStackClass(spacing);
@@ -76,10 +84,15 @@ const copies = [0, 1, 2] as const;
 
 <section
   id={sectionId}
-  class:list={['project-block', 'reddit-comment-board', stackClass, sectionId && 'section-block']}
+  class:list={['project-block', 'reddit-comment-board', editable && 'dev-grid-edit-target', stackClass, sectionId && 'section-block']}
   data-reddit-comment-board
+  data-reddit-board-heights={JSON.stringify(heights)}
+  data-reddit-board-document={editable ? documentKey : undefined}
+  data-reddit-board-path={editable ? JSON.stringify([...sectionPath, 'viewportMaxEm']) : undefined}
+  style={`--rcb-height-desktop:${heights.desktop}em;--rcb-height-tablet:${heights.tablet}em;--rcb-height-mobile:${heights.mobile}em`}
   {...(spacingAttrs ?? {})}
 >
+  {editable && <button type="button" class="dev-grid-edit-trigger" data-dev-edit-trigger="reddit-board-height" data-dev-corner="top-left" data-dev-mode-only hidden>Edit board height</button>}
   <div class="reddit-comment-board__shell">
     <button
       type="button"
@@ -165,7 +178,7 @@ const copies = [0, 1, 2] as const;
     --rcb-pad-y: 0.75em;
     --rcb-fade: 1.25em;
     /* One “page” of the board; peeks of the next band fade at the edge. */
-    --rcb-viewport-max: min(20em, calc(var(--vh-safe, 1svh) * 52));
+    --rcb-viewport-max: min(var(--rcb-height-desktop, 20em), calc(var(--vh-safe, 1svh) * 52));
 
     position: relative;
     border-radius: 0.75em;
@@ -278,7 +291,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 52em) {
     .reddit-comment-board__shell {
       --rcb-cols: 2;
-      --rcb-viewport-max: min(32em, calc(var(--vh-safe, 1svh) * 65));
+      --rcb-viewport-max: min(var(--rcb-height-tablet, 32em), calc(var(--vh-safe, 1svh) * 65));
     }
 
     .reddit-comment-board__cols {
@@ -303,7 +316,7 @@ const copies = [0, 1, 2] as const;
   @media (max-width: 36em) {
     .reddit-comment-board__shell {
       --rcb-cols: 1;
-      --rcb-viewport-max: min(26em, calc(var(--vh-safe, 1svh) * 60));
+      --rcb-viewport-max: min(var(--rcb-height-mobile, 26em), calc(var(--vh-safe, 1svh) * 60));
     }
 
     .reddit-comment-board__col {

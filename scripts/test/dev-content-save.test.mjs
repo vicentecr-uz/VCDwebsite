@@ -81,6 +81,39 @@ test('stable save targets survive stale section and item positions across save e
   }
 });
 
+test('Reddit board heights save only on the matching section with bounded breakpoint values', async () => {
+  const previous = process.cwd();
+  const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-board-height-'));
+  const directory = path.join(root, 'src/content/projects');
+  const file = path.join(directory, 'fixture.json');
+  await mkdir(directory, { recursive: true });
+  await writeFile(file, JSON.stringify({ sections: [
+    { id: 'other', type: 'bodyText', paragraphs: ['x'] },
+    { id: 'comments', type: 'redditCommentCarousel', items: [] },
+  ] }));
+  process.chdir(root);
+  try {
+    const spacing = writer('content-spacing-dev-writer');
+    const change = (value, sectionId = 'comments') => ({ changes: [{
+      document: 'fixture', path: ['sections', 0, 'viewportMaxEm'], target: { sectionId }, value,
+    }] });
+    const heights = { desktop: 22, tablet: 30, mobile: 24 };
+    const saved = response();
+    await spacing(request(change(heights)), saved, () => {});
+    assert.equal((await saved.done).status, 200, JSON.stringify((await saved.done).body));
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).sections[1].viewportMaxEm, heights);
+    for (const invalid of [change({ ...heights, mobile: 61 }), change(heights, 'other')]) {
+      const rejected = response();
+      await spacing(request(invalid), rejected, () => {});
+      assert.equal((await rejected.done).status, 400);
+    }
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')).sections[1].viewportMaxEm, heights);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('media append and remove report and use the resolved section index', async () => {
   const previous = process.cwd();
   const root = await mkdtemp(path.join(os.tmpdir(), 'vcd-content-media-'));
