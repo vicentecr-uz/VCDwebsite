@@ -1795,6 +1795,37 @@ h3.project-section-title {
   overflow: visible;
 }
 
+@media (max-width: 40em) {
+  /* The stage host already clips its ghost and handles. The parent block's
+     edit-only clip would instead cut a full-bleed frame at the page gutters. */
+  .is-dev-mode .project-block:has(> .dev-crop-stage-host.project-media[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true'])) {
+    overflow: visible;
+  }
+
+  .is-dev-mode .dev-crop-stage-host.project-media[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) {
+    overflow: clip;
+    overflow-clip-margin: 0.5em;
+  }
+
+  .is-dev-mode :is(.project-media, .project-image, .project-image-grid__item)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .dev-crop-stage::before,
+  .is-dev-mode :is(.project-media, .project-image, .project-image-grid__item)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .dev-crop-stage::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    border-inline-start: 1px dashed rgb(255 255 255 / 0.6);
+    filter: drop-shadow(0 0 1px rgb(0 0 0 / 0.7));
+    pointer-events: none;
+  }
+
+  .is-dev-mode :is(.project-media, .project-image, .project-image-grid__item)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .dev-crop-stage::before {
+    inset-inline-start: var(--page-gutter);
+  }
+
+  .is-dev-mode :is(.project-media, .project-image, .project-image-grid__item)[data-mobile-bleed-eligible='true']:not([data-mobile-inset='true']) > .dev-crop-stage::after {
+    inset-inline-end: var(--page-gutter);
+  }
+}
+
 .project-cell--square {
   aspect-ratio: 1;
 }
