@@ -1764,6 +1764,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
           }));
         }
 
+        window.dispatchEvent(new Event('vcd:site-annotation-targets-changed'));
         entry.textState.element = entry.previousTextElement;
         entry.textState.path = entry.previousPath;
         entry.textState.kind = entry.previousKind;
@@ -1997,7 +1998,25 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Could not add the section.');
         pendingSectionInserts.splice(pendingSectionInserts.indexOf(entry), 1);
-        if (payload.section?.id) entry.root.dataset.devContentId = String(payload.section.id);
+        if (payload.section?.id) {
+          const contentId = String(payload.section.id);
+          entry.root.dataset.devContentId = contentId;
+          const previousId = entry.root.dataset.siteAnnotationSectionId;
+          if (previousId && previousId !== contentId) {
+            entry.root.dataset.siteAnnotationSectionId = contentId;
+            for (const change of [...pendingMedia.values()]) {
+              if (change.kind !== 'annotation' || change.payload.document !== entry.documentKey
+                || change.payload.sectionId !== previousId) continue;
+              pendingMedia.delete(change.id);
+              change.id = `annotation:${entry.documentKey}:${contentId}`;
+              change.payload.sectionId = contentId;
+              pendingMedia.set(change.id, change);
+            }
+            window.dispatchEvent(new CustomEvent('vcd:site-annotation-section-remap', {
+              detail: { document: entry.documentKey, previousId, sectionId: contentId },
+            }));
+          }
+        }
         const serverSectionId = String(
           payload.section?.sectionId || payload.section?.id || payload.id || clientId,
         );
@@ -2807,6 +2826,10 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
         : undefined;
       const built = buildInsertedSection(type, documentKey, insertIndex, newSpacing, options?.intro, introHeight);
       built.root.dataset.devContentId = sectionId;
+      if (type === 'bodyText' || type === 'sectionTitle') {
+        built.root.dataset.siteAnnotationSectionId = sectionId;
+        built.root.dataset.siteAnnotationDocument = documentKey;
+      }
       if (placement === 'after') host.after(built.root);
       else host.before(built.root);
 
@@ -4410,6 +4433,12 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       const toIsH1 = parsed.type === 'sectionTitle' && parsed.level === 2;
 
       if (previousRoot.dataset.devContentId) built.root.dataset.devContentId = previousRoot.dataset.devContentId;
+      if (previousRoot.dataset.siteAnnotationSectionId) {
+        built.root.dataset.siteAnnotationSectionId = previousRoot.dataset.siteAnnotationSectionId;
+        built.root.dataset.siteAnnotationDocument = block.state.document;
+        const layer = previousRoot.querySelector(':scope > [data-site-annotations]');
+        if (layer) built.root.append(layer);
+      }
       previousRoot.replaceWith(built.root);
 
       const delIdx = deletableSections.indexOf(previousRoot);
@@ -4513,6 +4542,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
 
       syncIntroRunControls();
       window.dispatchEvent(new Event('vcd:intro-layout-sync'));
+      window.dispatchEvent(new Event('vcd:site-annotation-targets-changed'));
 
       stickyStatus = '';
       updateActions();

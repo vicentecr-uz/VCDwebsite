@@ -148,6 +148,8 @@ const bind = () => {
 window.addEventListener('resize', schedule, { signal: lifecycle.signal });
 window.addEventListener('vcd:site-annotations-changed', schedule, { signal: lifecycle.signal });
 document.addEventListener('astro:page-load', bind, { signal: lifecycle.signal });
+window.addEventListener('vcd:dev-section-structure-changed', bind, { signal: lifecycle.signal });
+window.addEventListener('vcd:site-annotation-targets-changed', bind, { signal: lifecycle.signal });
 document.fonts?.ready.then(schedule);
 bind();
 

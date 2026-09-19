@@ -1,0 +1,170 @@
+import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { Window } from 'happy-dom';
+import { siteAnnotationSvg } from '../../src/lib/siteAnnotationSvg';
+import { validateSiteAnnotations, type SiteAnnotation } from '../../src/lib/siteAnnotations';
+
+const fixture: SiteAnnotation = {
+  id: 'drawing', sectionId: 'block', kind: 'highlight',
+  anchor: { paragraphIndex: 0, exact: 'word', prefix: '', suffix: '' },
+  board: { w: 100, h: 20 }, box: { x: 0, y: 0, w: 1, h: 1 },
+  strokes: [{ id: 0, pen: 'pen', size: 4, opacity: 1, color: '#000000', points: [[10, 10, 0.5], [90, 10, 0.5]] }],
+  mobile: 'show',
+};
+const editorSource = readFileSync(new URL('../../src/lib/siteAnnotationEditor.ts', import.meta.url), 'utf8');
+const script = new Bun.Transpiler({ loader: 'ts' }).transformSync(editorSource
+  .replace(/^import .*;\n/gm, '')
+  .replace(/^if \(import\.meta\.hot\).*$/gm, '')
+  + '\nreturn { state, annotationsFor, pushPending, startDrawing };');
+const textEditor = readFileSync(new URL('../../src/components/DevTextEditor.astro', import.meta.url), 'utf8');
+
+const harness = (annotations: SiteAnnotation[] = []) => {
+  const window = new Window();
+  const document = window.document;
+  document.body.innerHTML = '<section data-site-annotation-section-id="block" data-site-annotation-document="page"><div class="project-body-text"><p>word</p></div><div class="site-annotations" data-site-annotations="[]"></div></section>';
+  const section = document.querySelector('section')!;
+  section.querySelector<HTMLElement>('[data-site-annotations]')!.dataset.siteAnnotations = JSON.stringify(annotations);
+  section.getBoundingClientRect = () => new window.DOMRect(100, 40, 500, 100);
+  const pending = new Map<string, any>();
+  const clicks = new WeakMap<object, Function>();
+  const createElement = document.createElement.bind(document);
+  document.createElement = ((tag: string) => {
+    const element = createElement(tag);
+    const add = element.addEventListener.bind(element);
+    element.addEventListener = ((type: string, listener: any, options?: any) => {
+      if (type === 'click') clicks.set(element, listener);
+      add(type, listener, options);
+    }) as typeof element.addEventListener;
+    return element;
+  }) as typeof document.createElement;
+  let drawProps: any;
+  window.addEventListener('vcd:dev-pending-upsert', (event: any) => pending.set(event.detail.id, event.detail));
+  window.addEventListener('vcd:dev-pending-remove', (event: any) => pending.delete(event.detail.id));
+  const env = {
+    window, document, Element: window.Element, DOMRect: window.DOMRect,
+    AbortController: window.AbortController, CustomEvent: window.CustomEvent,
+    createElement: (_: unknown, props: unknown) => props,
+    createRef: () => ({ current: { getSize: () => ({ w: 1000, h: 800 }) } }),
+    createRoot: () => ({ render: (props: unknown) => { drawProps = props; }, unmount() {} }),
+    Draw: {}, siteAnnotationSvg, positionSiteAnnotations() {},
+    annotationRect: () => new window.DOMRect(20, 10, 200, 40),
+    findTextAnchor: () => new window.DOMRect(120, 50, 200, 40),
+  };
+  const api = new Function('env', `with (env) { ${script} }`)(env);
+  const target = { section, documentKey: 'page', sectionId: 'block' };
+  return {
+    ...api, window, document, section, pending, target, env,
+    props: () => drawProps,
+    structure: () => window.dispatchEvent(new window.Event('vcd:dev-section-structure-changed')),
+    done: () => clicks.get(document.querySelector('.site-draw-stage__controls')!.lastElementChild!)!(),
+  };
+};
+
+test('delete and undo restore the unsaved drawing and its save payload', () => {
+  const h = harness();
+  h.annotationsFor(h.target).current = [structuredClone(fixture)];
+  h.pushPending(h.target);
+  h.section.remove();
+  h.structure();
+  expect(h.pending.size).toBe(0);
+  h.document.body.append(h.section);
+  h.structure();
+  expect(h.pending.size).toBe(1);
+  expect([...h.pending.values()][0].prepare().annotations).toEqual([fixture]);
+});
+
+test('conversion rebinds pending edits and revert to the replacement root', () => {
+  const h = harness();
+  h.annotationsFor(h.target).current = [structuredClone(fixture)];
+  h.pushPending(h.target);
+  const replacement = h.document.createElement('div');
+  replacement.innerHTML = '<h2 class="project-section-title">word</h2>';
+  const start = textEditor.indexOf('      if (previousRoot.dataset.devContentId) built.root.dataset.devContentId');
+  const end = textEditor.indexOf('      const delIdx', start);
+  const convert = new Bun.Transpiler({ loader: 'ts' }).transformSync(textEditor.slice(start, end));
+  new Function('env', `with (env) { ${convert} }`)({
+    built: { root: replacement }, previousRoot: h.section, block: { state: { document: 'page' } },
+  });
+  expect(replacement.dataset.siteAnnotationSectionId).toBe('block');
+  h.structure();
+  expect(replacement.querySelectorAll('[data-site-annotation]')).toHaveLength(1);
+  [...h.pending.values()][0].revert();
+  expect(replacement.querySelectorAll('[data-site-annotation]')).toHaveLength(0);
+});
+
+test('client-inserted text and heading blocks receive drawing metadata immediately', () => {
+  const h = harness();
+  const start = textEditor.indexOf('      built.root.dataset.devContentId = sectionId;');
+  const end = textEditor.indexOf('      if (placement', start);
+  const initialize = new Bun.Transpiler({ loader: 'ts' }).transformSync(textEditor.slice(start, end));
+  for (const type of ['bodyText', 'sectionTitle']) {
+    const root = h.document.createElement('section');
+    new Function('env', `with (env) { ${initialize} }`)({
+      built: { root }, type, documentKey: 'page', sectionId: `new-${type}`,
+    });
+    h.document.body.append(root);
+    h.structure();
+    expect(root.querySelector('[data-site-draw-open]')).not.toBeNull();
+    expect(root.dataset.siteAnnotationSectionId).toBe(`new-${type}`);
+  }
+});
+
+test('insert ID remapping updates the captured Save object and annotation state', () => {
+  const h = harness();
+  h.annotationsFor(h.target).current = [structuredClone(fixture)];
+  h.pushPending(h.target);
+  const captured = [...h.pending.values()][0];
+  const start = textEditor.indexOf('        if (payload.section?.id) {');
+  const end = textEditor.indexOf('        const serverSectionId =', start);
+  const remap = new Bun.Transpiler({ loader: 'ts' }).transformSync(textEditor.slice(start, end));
+  new Function('env', `with (env) { ${remap} }`)({
+    ...h.env, pendingMedia: h.pending,
+    payload: { section: { id: 'server-block' } }, entry: { root: h.section, documentKey: 'page' },
+  });
+  expect(h.section.dataset.siteAnnotationSectionId).toBe('server-block');
+  expect(h.pending.get('annotation:page:server-block')).toBe(captured);
+  expect(captured.payload.sectionId).toBe('server-block');
+  expect(captured.prepare().sectionId).toBe('server-block');
+  expect(captured.prepare().annotations[0].sectionId).toBe('server-block');
+  expect(h.state.has('page:block')).toBe(false);
+});
+
+test('existing drawings open in viewport coordinates and save edited geometry', () => {
+  const h = harness([fixture]);
+  h.startDrawing(h.target, null, fixture);
+  expect(h.props().board).toBeUndefined();
+  expect(h.props().initialStrokes[0].points).toEqual([[140, 70, 0.5], [300, 70, 0.5]]);
+  expect(h.props().initialStrokes[0].size).toBe(8);
+  h.props().onChange([...h.props().initialStrokes, {
+    ...fixture.strokes[0], id: 1, points: [[150, 80, 0.5], [290, 80, 0.5]],
+  }]);
+  h.done();
+  const saved = [...h.pending.values()][0].prepare().annotations[0];
+  expect(saved.id).toBe('drawing');
+  expect(validateSiteAnnotations([saved], new Set(['block']))).toBe(true);
+  expect(120 + saved.box.x * 200 + saved.strokes[0].points[0][0]).toBe(140);
+  expect(50 + saved.box.y * 40 + saved.strokes[0].points[0][1]).toBe(70);
+});
+
+test('Clear then Done queues deletion of the existing drawing', () => {
+  const h = harness([fixture]);
+  h.startDrawing(h.target, null, fixture);
+  h.props().onChange([]);
+  h.done();
+  const change = [...h.pending.values()][0].prepare();
+  expect(change.annotations).toEqual([]);
+  expect(change.expected).toEqual([fixture]);
+});
+
+test('unchanged edits preserve original strokes and geometry', () => {
+  const h = harness([fixture]);
+  h.startDrawing(h.target, null, fixture);
+  h.done();
+  expect(h.pending.size).toBe(0);
+  expect(h.annotationsFor(h.target).current).toEqual([fixture]);
+});
+
+test('only highlight exports disable SVG aspect preservation', () => {
+  expect(siteAnnotationSvg(fixture)).toContain('preserveAspectRatio="none"');
+  expect(siteAnnotationSvg({ ...fixture, kind: 'doodle' })).not.toContain('preserveAspectRatio="none"');
+});
