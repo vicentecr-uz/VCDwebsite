@@ -24,8 +24,11 @@ import DevAwardBadgeSize from '../components/DevAwardBadgeSize.astro';
 import DevAwardBlockSize from '../components/DevAwardBlockSize.astro';
 import ArchivedDevPanels from '../components/archive/ArchivedDevPanels.astro';
 import GalleryMediaInk from '../components/GalleryMediaInk.astro';
+import CaptionMediaInk from '../components/CaptionMediaInk.astro';
+import ProjectVideoControls from '../components/project/ProjectVideoControls.astro';
 import ImageLightbox from '../components/ImageLightbox.astro';
 import { ADAPTIVE_PAGE_COLUMNS_ENABLED } from '../lib/pageColumn';
+import { getPageMediaFeatures } from '../lib/pageMediaFeatures';
 
 if (import.meta.env.DEV) {
   await import('../styles/dev-token-alarms.css');
@@ -65,6 +68,8 @@ const {
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const ogImageUrl = new URL(ogImage, Astro.site);
 const showDevTools = import.meta.env.DEV;
+const pageHtml = await Astro.slots.render('default') ?? '';
+const mediaFeatures = getPageMediaFeatures(pageHtml);
 // Production is light until dark mode ships (#256): pin data-theme="light" and
 // omit the OS media query from the generated production sheet. Local DEV omits
 // the attribute so the theme toggle can still set Dark.
@@ -205,10 +210,10 @@ const showDevTools = import.meta.env.DEV;
 
     {showDevTools && <script is:inline type="module" src="/src/scripts/fontRevealPrototype.ts"></script>}
 
-    <ImageLightbox />
+    {(showDevTools || mediaFeatures.lightbox) && <ImageLightbox />}
 
     <div id="site-wrapper" style={ADAPTIVE_PAGE_COLUMNS_ENABLED ? columnStyle : undefined}>
-      <slot />
+      <Fragment set:html={pageHtml} />
     </div>
 
     <script is:inline>
@@ -294,7 +299,9 @@ const showDevTools = import.meta.env.DEV;
     {showDevTools && <DevAssetManager />}
     {showDevTools && ADAPTIVE_PAGE_COLUMNS_ENABLED && <DevPageColumn />}
     {showDevTools && <ArchivedDevPanels />}
-    <GalleryMediaInk />
+    {(showDevTools || mediaFeatures.gallery) && <GalleryMediaInk />}
+    {(showDevTools || mediaFeatures.captions) && <CaptionMediaInk />}
+    {(showDevTools || mediaFeatures.video) && <ProjectVideoControls />}
 
     {showDevTools && (
       <script>

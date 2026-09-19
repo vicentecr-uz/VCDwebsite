@@ -1,0 +1,30 @@
+---
+import ProjectCaptionShadow from './project/ProjectCaptionShadow.astro';
+---
+
+<ProjectCaptionShadow />
+
+<script>
+  import { bindCaptionMediaInk } from '../scripts/bindCaptionMediaInk';
+
+  let teardown: (() => void) | undefined;
+
+  const mount = () => {
+    teardown?.();
+    teardown = bindCaptionMediaInk();
+  };
+
+  const cleanup = () => {
+    teardown?.();
+    teardown = undefined;
+  };
+
+  mount();
+  document.addEventListener('astro:page-load', mount);
+  document.addEventListener('astro:before-swap', cleanup);
+  if (import.meta.hot) import.meta.hot.dispose(() => {
+    cleanup();
+    document.removeEventListener('astro:page-load', mount);
+    document.removeEventListener('astro:before-swap', cleanup);
+  });
+</script>
