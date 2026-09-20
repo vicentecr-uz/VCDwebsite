@@ -125,7 +125,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
   import { bindProjectAwardEditors } from '../scripts/projectAwardEditor';
   import { normalizeHref } from '../lib/normalizeHref.mjs';
   import { editsRemovedMedia, sectionEditTarget, withDevEditTarget } from '../scripts/devEditTarget';
-  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, paragraphTextWrap, explicitParagraphTextWrap, refreshParagraphWrapping, normalizeTextWrap, serializeInlineHtml, readParagraphsValue, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
+  import { PARAGRAPH_PLACEHOLDER_ATTRIBUTE, paragraphTextWrap, explicitParagraphTextWrap, refreshParagraphWrapping, normalizeTextWrap, serializeInlineHtml, readParagraphsValue, readPlainDomText, clipboardParagraphHtml, escapeTextHtml } from '../lib/devTextDom';
   import { installHistoryShortcuts, pageHistory } from '../lib/devHistory';
   import {
     initMountedSectionCovers,
@@ -468,7 +468,7 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
     const readValue = (state: Pick<EditableTextState, 'element' | 'kind'>): EditableTextValue =>
       state.kind === 'paragraphs'
         ? readParagraphsValue(state.element)
-        : cleanText(state.element.textContent ?? '');
+        : readPlainDomText(state.element);
     const valuesMatch = (left: EditableTextValue, right: EditableTextValue) =>
       JSON.stringify(left) === JSON.stringify(right);
     const renderValue = (state: EditableTextState, value: EditableTextValue) => {
@@ -4066,16 +4066,6 @@ const formatHeading2Svg = sizeIcon(heading2Icon, 16);
       if (value === 'sectionTitle:3') return { type: 'sectionTitle', level: 3 };
       if (value === 'sectionTitle:2' || value === 'sectionTitle') return { type: 'sectionTitle', level: 2 };
       return { type: 'bodyText' };
-    };
-
-    const readPlainDomText = (node: HTMLElement): string => {
-      const clone = node.cloneNode(true) as HTMLElement;
-      if (clone.childNodes.length === 1 && clone.firstChild instanceof HTMLBRElement) return '';
-      clone.querySelectorAll('br').forEach((br) => {
-        if (br.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE)) br.remove();
-        else br.replaceWith('\n');
-      });
-      return cleanText(clone.textContent ?? '');
     };
 
     const readPlainBlockText = (state: EditableTextState): string => {

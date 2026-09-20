@@ -59,6 +59,16 @@ const BLOCK_TAGS = new Set([
 
 const cleanText = (value: string) => value.replaceAll('\u00a0', ' ');
 
+export const readPlainDomText = (node: HTMLElement): string => {
+  const clone = node.cloneNode(true) as HTMLElement;
+  if (clone.childNodes.length === 1 && clone.firstChild instanceof Element && clone.firstChild.tagName === 'BR') return '';
+  clone.querySelectorAll('br').forEach((br) => {
+    if (br.hasAttribute(PARAGRAPH_PLACEHOLDER_ATTRIBUTE)) br.remove();
+    else br.replaceWith('\n');
+  });
+  return cleanText(clone.textContent ?? '');
+};
+
 export const escapeTextHtml = (value: string) => cleanText(value)
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')

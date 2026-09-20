@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterAll, beforeAll, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { clipboardParagraphHtml, paragraphTextWrap, refreshParagraphWrapping, readParagraphsValue, resolveAutoTextWrap, serializeInlineHtml } from '../../src/lib/devTextDom.ts';
+import { clipboardParagraphHtml, paragraphTextWrap, readPlainDomText, refreshParagraphWrapping, readParagraphsValue, resolveAutoTextWrap, serializeInlineHtml } from '../../src/lib/devTextDom.ts';
 import { resolveTextWrapHtml } from '../../src/lib/projectTextWrap.ts';
 
 const dom = new Window();
@@ -21,6 +21,11 @@ test('serializes supported inline markup and escapes unsafe content', () => {
   assert.equal(serializeInlineHtml(el('<a href="javascript:alert(1)">unsafe</a><span class="text-emphasis">old tone</span><span class="text-subtle">quiet tone</span>')), 'unsafe<span class="text-emphasis">old tone</span><span class="text-subtle">quiet tone</span>');
   assert.equal(serializeInlineHtml(el('<strong>root <a href="/x">link</a></strong><br>')), '<strong>root <a href="/x">link</a></strong><br>');
   assert.equal(serializeInlineHtml(el('<p><br></p>').firstElementChild!), '');
+});
+
+test('reads BR elements as newlines in plain DOM text', () => {
+  assert.equal(readPlainDomText(el('writer\'s<br>dream')), "writer's\ndream");
+  assert.equal(readPlainDomText(el('<br data-dev-placeholder="true">')), '');
 });
 
 test('preserves and normalizes paragraph wrapping metadata', () => {
