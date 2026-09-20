@@ -47,7 +47,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         </div>
         <div class="lens-control"><label>Preset <output id="lens-breakpoint-value">Desktop · ≥768px</output></label></div>
         <div class="lens-control" data-control="diameter"><label for="lens-diameter">Diameter <output>180px</output></label><input id="lens-diameter" data-config="diameter" type="range" min="100" max="220" step="4" value="180" /></div>
-        <div class="lens-control" data-control="zoom"><label for="lens-zoom">Zoom <output>2.5×</output></label><input id="lens-zoom" data-config="zoom" type="range" min="1" max="10" step="0.1" value="2.5" /></div>
+        <div class="lens-control" data-control="zoom"><label for="lens-zoom">Zoom <output>3.5×</output></label><input id="lens-zoom" data-config="zoom" type="range" min="1" max="10" step="0.1" value="3.5" /></div>
         <div class="lens-control" data-control="zRadius"><label for="lens-depth">Depth <output>36px</output></label><input id="lens-depth" data-config="zRadius" type="range" min="1" max="50" step="1" value="36" /></div>
         <div class="lens-control" data-control="bevelWidth"><label for="lens-edge-width">Edge width <output>32px</output></label><input id="lens-edge-width" data-config="bevelWidth" type="range" min="12" max="48" step="1" value="32" /></div>
         <div class="lens-control" data-control="rimWidth"><label for="lens-rim-width">Rim width <output>1.2px</output></label><input id="lens-rim-width" data-config="rimWidth" type="range" min="0.5" max="3" step="0.1" value="1.2" /></div>
@@ -192,15 +192,16 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     type Breakpoint = 'mobile' | 'tablet' | 'desktop';
     type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number };
     const presetDefaults: Record<Breakpoint, LensConfig> = {
-      mobile: { diameter: 124, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 2.5, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 12 },
-      tablet: { diameter: 152, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 2.5, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 14 },
-      desktop: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17 },
+      mobile: { diameter: 124, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 5.0, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 12 },
+      tablet: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 14 },
+      desktop: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17 },
     };
+    const presetsStorageKey = 'vcd-progressive-lens-presets-v2';
     let presets = Object.fromEntries(Object.entries(presetDefaults).map(([key, value]) => [key, { ...value }])) as Record<Breakpoint, LensConfig>;
     let config: LensConfig = { ...presets.desktop };
     let activeBreakpoint: Breakpoint = 'desktop';
     try {
-      const saved = JSON.parse(sessionStorage.getItem('vcd-progressive-lens-presets') || 'null');
+      const saved = JSON.parse(sessionStorage.getItem(presetsStorageKey) || 'null');
       for (const key of ['mobile', 'tablet', 'desktop'] as Breakpoint[]) {
         const candidate = saved?.[key];
         if (!candidate) continue;
@@ -797,7 +798,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         const output = control.closest('.lens-control')?.querySelector('output');
         if (output) output.textContent = formatValue(key, Number(control.value));
         config = { ...presets[activeBreakpoint] };
-        try { sessionStorage.setItem('vcd-progressive-lens-presets', JSON.stringify(presets)); } catch {}
+        try { sessionStorage.setItem(presetsStorageKey, JSON.stringify(presets)); } catch {}
         configure();
         drawSource();
       }, { signal });
