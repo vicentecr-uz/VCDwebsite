@@ -84,6 +84,13 @@ jobs:
       - name: Test shipped assets and image-loader lifetime
         run: bun run test:assets
 
+      # The boundary step above is the fast gate; this is everything else.
+      # ~22s locally against a suite that had 98 files and four of them wired
+      # into CI. The git-touching tests build their own temp repos and bare
+      # remotes, so nothing here reaches the network or this checkout's state.
+      - name: Run the test suite
+        run: bun run test
+
       - name: Build with Vite config fallback
         env:
           NODE_OPTIONS: --no-experimental-strip-types
