@@ -119,7 +119,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .actions :global([data-load]::before) { right: -6px; }
   .actions :global([data-reset]::before) { left: -6px; }
   .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
-  .lens-controls summary { padding: 10px 12px; cursor: pointer; user-select: none; }
+  .lens-controls summary { padding: 10px 12px; cursor: grab; touch-action: none; user-select: none; }
+  .lens-controls summary:active { cursor: grabbing; }
   .lens-controls__body { display: grid; gap: 12px; padding: 0 12px 12px; }
   .lens-control { display: grid; gap: 6px; }
   .lens-control label { display: flex; justify-content: space-between; gap: 8px; color: rgb(255 255 255 / 0.78); }
@@ -187,7 +188,6 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let presets = Object.fromEntries(Object.entries(presetDefaults).map(([key, value]) => [key, { ...value }])) as Record<Breakpoint, LensConfig>;
     let config: LensConfig = { ...presets.desktop };
     let activeBreakpoint: Breakpoint = 'desktop';
-    let lastViewportBreakpoint: Breakpoint | undefined;
     try {
       const saved = JSON.parse(sessionStorage.getItem('vcd-progressive-lens-presets') || 'null');
       for (const key of ['mobile', 'tablet', 'desktop'] as Breakpoint[]) {
@@ -528,7 +528,6 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       if (signal.aborted) return;
       const width = host.clientWidth;
       const viewportBreakpoint = breakpointForWidth(width);
-      lastViewportBreakpoint = viewportBreakpoint;
       activeBreakpoint = viewportBreakpoint;
       updateControls();
       const wasSpringing = Boolean(springFrame);
@@ -658,7 +657,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     const setFrameWidth = () => {
       host.style.setProperty('--progressive-demo-host-width', widthControl.value === 'auto' ? '100%' : `${widthControl.value}px`);
-      widthValue.textContent = widthControl.value === 'auto' ? 'Auto' : `${widthControl.value}px`;
+      widthValue.textContent = `${Math.round(host.clientWidth)}px`;
       configure();
     };
     widthControl.addEventListener('change', setFrameWidth, { signal });
@@ -671,7 +670,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const text = (['mobile', 'tablet', 'desktop'] as Breakpoint[]).map(formatPreset).join('\n');
       try {
         if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
-        else { const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.append(area); area.select(); document.execCommand('copy'); area.remove(); }
+        else { const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.append(area); area.select(); const copied = document.execCommand('copy'); area.remove(); if (!copied) throw new Error('Copy failed'); }
         copyStatus.textContent = 'Copied';
       } catch { copyStatus.textContent = 'Copy failed'; }
       window.setTimeout(() => { copyStatus.textContent = ''; }, 1200);
@@ -698,6 +697,15 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       left: Math.max(8, Math.min(left, window.innerWidth - controlsPanel.offsetWidth - 8)),
       top: Math.max(8, Math.min(top, window.innerHeight - controlsPanel.offsetHeight - 8)),
     });
+    const reclampPanel = () => {
+      if (!controlsPanel.style.left) return;
+      const rect = controlsPanel.getBoundingClientRect();
+      const next = clampPanel(rect.left, rect.top);
+      controlsPanel.style.left = `${next.left}px`;
+      controlsPanel.style.top = `${next.top}px`;
+    };
+    controlsPanel.addEventListener('toggle', reclampPanel, { signal });
+    window.addEventListener('resize', reclampPanel, { signal });
     try {
       const saved = JSON.parse(sessionStorage.getItem('vcd-progressive-lens-panel') || 'null');
       if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
@@ -705,8 +713,15 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         controlsPanel.style.left = `${position.left}px`;
         controlsPanel.style.top = `${position.top}px`;
         controlsPanel.style.right = 'auto';
+        controlsPanel.style.bottom = 'auto';
       }
     } catch {}
+    let suppressDragClick = false;
+    panelSummary.addEventListener('click', (event) => {
+      if (!suppressDragClick) return;
+      suppressDragClick = false;
+      event.preventDefault();
+    }, { signal });
     panelSummary.addEventListener('pointerdown', (event) => {
       if (!event.isPrimary || event.button !== 0) return;
       const rect = controlsPanel.getBoundingClientRect();
@@ -723,6 +738,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       controlsPanel.style.left = `${position.left}px`;
       controlsPanel.style.top = `${position.top}px`;
       controlsPanel.style.right = 'auto';
+      controlsPanel.style.bottom = 'auto';
       event.preventDefault();
     }, { signal });
     const releasePanel = (event: PointerEvent) => {
@@ -733,7 +749,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       if (moved) {
         const rect = controlsPanel.getBoundingClientRect();
         try { sessionStorage.setItem('vcd-progressive-lens-panel', JSON.stringify({ left: rect.left, top: rect.top })); } catch {}
-        panelSummary.addEventListener('click', (click) => { click.preventDefault(); click.stopPropagation(); }, { once: true, capture: true, signal });
+        suppressDragClick = true;
+        window.setTimeout(() => { suppressDragClick = false; }, 0);
       }
     };
     panelSummary.addEventListener('pointerup', releasePanel, { signal });
