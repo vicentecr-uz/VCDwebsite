@@ -36,7 +36,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
     </div>
   </div>
-    <details class="lens-controls" id="lens-controls">
+    {import.meta.env.DEV && <details class="lens-controls" id="lens-controls">
       <summary>Controls</summary>
       <div class="lens-controls__body">
         <div class="lens-control">
@@ -68,7 +68,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         <button class="lens-copy" type="button" data-replay-hint>Replay drag</button>
         <button class="lens-copy" type="button" data-copy-presets>Copy presets</button><span class="lens-copy-status" role="status" aria-live="polite"></span>
       </div>
-    </details>
+    </details>}
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
@@ -164,6 +164,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   }
 
   function initializeDemo(host: HTMLElement) {
+    const isDev = import.meta.env.DEV;
     const root = host.querySelector<HTMLElement>('.glass-root')!;
     const source = host.querySelector<HTMLCanvasElement>('.glass-source')!;
     const stack = host.querySelector<HTMLElement>('[data-image-root]')!;
@@ -174,14 +175,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
-    const widthControl = host.querySelector<HTMLSelectElement>('#lens-frame-width')!;
-    const widthValue = host.querySelector<HTMLOutputElement>('#lens-frame-width-value')!;
-    const breakpointValue = host.querySelector<HTMLOutputElement>('#lens-breakpoint-value')!;
-    const copyButton = host.querySelector<HTMLButtonElement>('[data-copy-presets]')!;
-    const copyStatus = host.querySelector<HTMLElement>('.lens-copy-status')!;
-    const coordinates = host.querySelector<HTMLOutputElement>('#lens-coordinates')!;
-    const useLensPosition = host.querySelector<HTMLButtonElement>('[data-use-lens-position]')!;
-    const replayHint = host.querySelector<HTMLButtonElement>('[data-replay-hint]')!;
+    const widthControl = host.querySelector<HTMLSelectElement>('#lens-frame-width');
+    const widthValue = host.querySelector<HTMLOutputElement>('#lens-frame-width-value');
+    const breakpointValue = host.querySelector<HTMLOutputElement>('#lens-breakpoint-value');
+    const copyButton = host.querySelector<HTMLButtonElement>('[data-copy-presets]');
+    const copyStatus = host.querySelector<HTMLElement>('.lens-copy-status');
+    const coordinates = host.querySelector<HTMLOutputElement>('#lens-coordinates');
+    const useLensPosition = host.querySelector<HTMLButtonElement>('[data-use-lens-position]');
+    const replayHint = host.querySelector<HTMLButtonElement>('[data-replay-hint]');
     const configControls = [...host.querySelectorAll<HTMLInputElement>('[data-config]')];
     const template = host.querySelector<HTMLTemplateElement>('template')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
@@ -208,18 +209,20 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let presets = Object.fromEntries(Object.entries(presetDefaults).map(([key, value]) => [key, { ...value }])) as Record<Breakpoint, LensConfig>;
     let config: LensConfig = { ...presets.desktop };
     let activeBreakpoint: Breakpoint = 'desktop';
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(presetsStorageKey) || 'null');
-      for (const key of ['mobile', 'tablet', 'desktop'] as Breakpoint[]) {
-        const candidate = saved?.[key];
-        if (!candidate) continue;
-        for (const control of configControls) {
-          const field = control.dataset.config as keyof LensConfig;
-          const value = Number(candidate[field]);
-          if (Number.isFinite(value) && value >= Number(control.min) && value <= Number(control.max)) presets[key][field] = value;
+    if (isDev) {
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(presetsStorageKey) || 'null');
+        for (const key of ['mobile', 'tablet', 'desktop'] as Breakpoint[]) {
+          const candidate = saved?.[key];
+          if (!candidate) continue;
+          for (const control of configControls) {
+            const field = control.dataset.config as keyof LensConfig;
+            const value = Number(candidate[field]);
+            if (Number.isFinite(value) && value >= Number(control.min) && value <= Number(control.max)) presets[key][field] = value;
+          }
         }
-      }
-    } catch {}
+      } catch {}
+    }
     let position = { x: 0, y: 0 };
     let pointer;
     let hintFrame = 0;
@@ -255,6 +258,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const updateControls = () => {
       const preset = presets[activeBreakpoint];
       config = { ...preset };
+      if (!isDev || !breakpointValue) return;
       breakpointValue.textContent = breakpointLabel(activeBreakpoint);
       for (const control of configControls) {
         const key = control.dataset.config as keyof LensConfig;
@@ -495,7 +499,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     function place() {
       lens.style.transform = `translate(${position.x}px, ${position.y}px)`;
-      if (geometry.width && geometry.height) coordinates.textContent = `${((position.x + geometry.diameter / 2) / geometry.width * 100).toFixed(1)}%, ${((position.y + geometry.diameter / 2) / geometry.height * 100).toFixed(1)}%`;
+      if (geometry.width && geometry.height && coordinates) coordinates.textContent = `${((position.x + geometry.diameter / 2) / geometry.width * 100).toFixed(1)}%, ${((position.y + geometry.diameter / 2) / geometry.height * 100).toFixed(1)}%`;
       drawSource();
       glass?.markChanged();
     }
@@ -781,13 +785,15 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }, { signal });
 
     const setFrameWidth = () => {
-      host.style.setProperty('--progressive-demo-host-width', widthControl.value === 'auto' ? '100%' : `${widthControl.value}px`);
-      widthValue.textContent = `${Math.round(host.clientWidth)}px`;
+      if (widthControl && widthValue) {
+        host.style.setProperty('--progressive-demo-host-width', widthControl.value === 'auto' ? '100%' : `${widthControl.value}px`);
+        widthValue.textContent = `${Math.round(host.clientWidth)}px`;
+      }
       configure();
     };
-    widthControl.addEventListener('change', setFrameWidth, { signal });
+    if (isDev && widthControl) widthControl.addEventListener('change', setFrameWidth, { signal });
 
-    copyButton.addEventListener('click', async () => {
+    if (isDev && copyButton && copyStatus) copyButton.addEventListener('click', async () => {
       const formatPreset = (key: Breakpoint) => {
         const preset = presets[key];
         return `${breakpointLabel(key)} · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · sheen inset: ${preset.sheenInset.toFixed(1)}px · sheen width: ${preset.sheenWidth.toFixed(1)}px · colour pickup: ${preset.colourPickup.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px · lens X: ${preset.hintX.toFixed(1)}% · lens Y: ${preset.hintY.toFixed(1)}%`;
@@ -813,7 +819,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         drawSource();
       }, { signal });
     }
-    useLensPosition.addEventListener('click', () => {
+    if (isDev && useLensPosition) useLensPosition.addEventListener('click', () => {
       if (!geometry.width || !geometry.height) return;
       stopHint();
       const preset = presets[activeBreakpoint];
@@ -822,8 +828,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       updateControls();
       try { sessionStorage.setItem(presetsStorageKey, JSON.stringify(presets)); } catch {}
     }, { signal });
-    replayHint.addEventListener('click', () => { if (!lens.hidden) playHint(); }, { signal });
+    if (isDev && replayHint) replayHint.addEventListener('click', () => { if (!lens.hidden) playHint(); }, { signal });
 
+    if (isDev) {
     const controlsPanel = host.querySelector<HTMLDetailsElement>('#lens-controls')!;
     controlsPanel.open = matchMedia('(min-width: 40.01em)').matches;
     const panelSummary = controlsPanel.querySelector('summary')!;
@@ -890,6 +897,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     };
     panelSummary.addEventListener('pointerup', releasePanel, { signal });
     panelSummary.addEventListener('pointercancel', releasePanel, { signal });
+    }
     setFrameWidth();
 
     load.addEventListener('click', () => {
