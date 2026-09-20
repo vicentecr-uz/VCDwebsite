@@ -1,5 +1,7 @@
 ---
 import Button from '../../ui/Button.astro';
+import DevPanel from '../../ui/DevPanel.astro';
+import Field from '../../ui/Field.astro';
 import Hairline from '../../ui/Hairline.astro';
 import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import '../../../styles/project.css';
@@ -33,6 +35,22 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
     </div>
   </div>
+    <DevPanel title="Lens zoom" titleTag="h1" showLights={false} draggable class="lens-zoom-panel">
+      <div class="lens-zoom-panel__controls">
+        <Field label="Mobile (<480px)" labelFor="progressive-zoom-mobile">
+          <input id="progressive-zoom-mobile" type="range" min="1" max="5" step="0.1" value="2.5" aria-label="Mobile lens zoom" data-zoom-breakpoint="mobile" />
+          <span slot="labelAccessory" data-zoom-value="mobile">2.5x</span>
+        </Field>
+        <Field label="Tablet (480–767px)" labelFor="progressive-zoom-tablet">
+          <input id="progressive-zoom-tablet" type="range" min="1" max="5" step="0.1" value="2.5" aria-label="Tablet lens zoom" data-zoom-breakpoint="tablet" />
+          <span slot="labelAccessory" data-zoom-value="tablet">2.5x</span>
+        </Field>
+        <Field label="Desktop (>=768px)" labelFor="progressive-zoom-desktop">
+          <input id="progressive-zoom-desktop" type="range" min="1" max="5" step="0.1" value="2.5" aria-label="Desktop lens zoom" data-zoom-breakpoint="desktop" />
+          <span slot="labelAccessory" data-zoom-value="desktop">2.5x</span>
+        </Field>
+      </div>
+    </DevPanel>
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
@@ -90,6 +108,11 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .actions :global(.dev-btn__icon svg) { width: 16px; height: 16px; }
   .actions :global([data-load]::before) { right: -6px; }
   .actions :global([data-reset]::before) { left: -6px; }
+  .lens-zoom-panel { position: absolute; top: var(--space-unit); right: var(--space-unit); z-index: 4; width: min(15rem, calc(100vw - 2 * var(--space-unit))); }
+  .lens-zoom-panel__controls { display: grid; gap: var(--space-unit); }
+  .lens-zoom-panel input[type='range'] { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
+  .lens-zoom-panel [data-zoom-value] { font-variant-numeric: tabular-nums; }
+  @media (pointer: coarse) { .lens-zoom-panel input[type='range'] { min-height: 44px; } }
   @media (pointer: coarse) {
     .actions :global(.dev-btn) { min-height: 44px; }
   }
@@ -117,6 +140,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
+    const zoomControls = [...host.querySelectorAll<HTMLInputElement>('[data-zoom-breakpoint]')];
+    const zoomValues = new Map([...host.querySelectorAll<HTMLElement>('[data-zoom-value]')].map((value) => [value.dataset.zoomValue, value]));
     const template = host.querySelector<HTMLTemplateElement>('template')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
     const hintPointer = host.querySelector<HTMLElement>('[data-hint-pointer]');
@@ -130,6 +155,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let generation = 0;
     let frame = 0;
     let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
+    const zoomByBreakpoint: Record<'mobile' | 'tablet' | 'desktop', number> = { mobile: 2.5, tablet: 2.5, desktop: 2.5 };
     let position = { x: 0, y: 0 };
     let pointer;
     let hintFrame = 0;
@@ -152,6 +178,19 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const edge = clamp(value, max);
       const distance = value - edge;
       return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / elasticReach);
+    };
+    const breakpointForWidth = (width): keyof typeof zoomByBreakpoint => width < 480 ? 'mobile' : width < 768 ? 'tablet' : 'desktop';
+    const updateZoomControls = (breakpoint) => {
+      for (const control of zoomControls) {
+        const key = control.dataset.zoomBreakpoint as keyof typeof zoomByBreakpoint | undefined;
+        if (!key) continue;
+        const value = zoomByBreakpoint[key];
+        control.value = value.toFixed(1);
+        control.setAttribute('aria-valuetext', `${value.toFixed(1)}x`);
+        const output = zoomValues.get(key);
+        if (output) output.textContent = `${value.toFixed(1)}x`;
+      }
+      config.zoom = zoomByBreakpoint[breakpoint];
     };
     function stopSpring() {
       cancelAnimationFrame(springFrame);
@@ -436,12 +475,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     function configure() {
       if (signal.aborted) return;
       const width = host.clientWidth;
+      const breakpoint = breakpointForWidth(width);
       const physical = width < 480
         ? { diameter: 124, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, glowSpread: 12 }
         : width < 768
           ? { diameter: 152, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, glowSpread: 14 }
           : { diameter: 180, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, glowSpread: 17 };
       Object.assign(config, physical);
+      updateZoomControls(breakpoint);
       const wasSpringing = Boolean(springFrame);
       const imageRect = root.getBoundingClientRect();
       if (imageRect.width <= 16 || imageRect.height <= 16) return;
@@ -566,6 +607,20 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       position.y = clamp(position.y + direction[1] * step, limit.y);
       place();
     }, { signal });
+
+    for (const control of zoomControls) {
+      control.addEventListener('input', () => {
+        const breakpoint = control.dataset.zoomBreakpoint as keyof typeof zoomByBreakpoint | undefined;
+        if (!breakpoint) return;
+        zoomByBreakpoint[breakpoint] = Number(control.value);
+        const output = zoomValues.get(breakpoint);
+        if (output) output.textContent = `${zoomByBreakpoint[breakpoint].toFixed(1)}x`;
+        if (breakpoint === breakpointForWidth(host.clientWidth)) {
+          configure();
+          drawSource();
+        }
+      }, { signal });
+    }
 
     load.addEventListener('click', () => {
       if (load.disabled) return;
