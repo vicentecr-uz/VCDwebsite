@@ -1,5 +1,6 @@
 ---
 import Button from '../../ui/Button.astro';
+import Badge from '../../ui/Badge.astro';
 import Hairline from '../../ui/Hairline.astro';
 import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import '../../../styles/project.css';
@@ -14,6 +15,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         <div class="image-stack" data-image-root>
           <img data-progressive-image src={thumb} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" />
           <template data-image-template><img data-progressive-image src={thumb} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" /></template>
+          <Badge label="Low-res" class="image-quality-badge image-quality-badge--low" aria-hidden="true" />
+          <Badge label="High-res" class="image-quality-badge image-quality-badge--high" aria-hidden="true" />
         </div>
         <div class="glass-root">
           <canvas class="glass-source" aria-hidden="true"></canvas>
@@ -33,16 +36,53 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
     </div>
   </div>
+    <details class="lens-controls" id="lens-controls">
+      <summary>Controls</summary>
+      <div class="lens-controls__body">
+        <div class="lens-control">
+          <label for="lens-frame-width">Frame width <output id="lens-frame-width-value">Auto</output></label>
+          <select id="lens-frame-width" aria-label="Preview frame width">
+            <option value="auto">Auto</option><option value="280">280px</option><option value="320">320px</option><option value="390">390px</option><option value="480">480px</option><option value="640">640px</option><option value="768">768px</option>
+          </select>
+        </div>
+        <div class="lens-control"><label>Preset <output id="lens-breakpoint-value">Desktop · ≥768px</output></label></div>
+        <div class="lens-control" data-control="diameter"><label for="lens-diameter">Diameter <output>180px</output></label><input id="lens-diameter" data-config="diameter" type="range" min="100" max="220" step="4" value="180" /></div>
+        <div class="lens-control" data-control="zoom"><label for="lens-zoom">Zoom <output>3.5×</output></label><input id="lens-zoom" data-config="zoom" type="range" min="1" max="10" step="0.1" value="3.5" /></div>
+        <div class="lens-control" data-control="zRadius"><label for="lens-depth">Depth <output>36px</output></label><input id="lens-depth" data-config="zRadius" type="range" min="1" max="50" step="1" value="36" /></div>
+        <div class="lens-control" data-control="bevelWidth"><label for="lens-edge-width">Edge width <output>32px</output></label><input id="lens-edge-width" data-config="bevelWidth" type="range" min="12" max="48" step="1" value="32" /></div>
+        <div class="lens-control" data-control="rimWidth"><label for="lens-rim-width">Rim width <output>1.2px</output></label><input id="lens-rim-width" data-config="rimWidth" type="range" min="0.5" max="3" step="0.1" value="1.2" /></div>
+        <div class="lens-control" data-control="sheen"><label for="lens-sheen">Sheen <output>0.50</output></label><input id="lens-sheen" data-config="sheen" type="range" min="0" max="1" step="0.05" value="0.5" /></div>
+        <div class="lens-control" data-control="sheenInset"><label for="lens-sheen-inset">Sheen inset <output>0.8px</output></label><input id="lens-sheen-inset" data-config="sheenInset" type="range" min="0" max="8" step="0.1" value="0.8" /></div>
+        <div class="lens-control" data-control="sheenWidth"><label for="lens-sheen-width">Sheen width <output>1.5px</output></label><input id="lens-sheen-width" data-config="sheenWidth" type="range" min="0.1" max="8" step="0.1" value="1.5" /></div>
+        <div class="lens-control" data-control="colourPickup"><label for="lens-colour-pickup">Colour pickup <output>0.77</output></label><input id="lens-colour-pickup" data-config="colourPickup" type="range" min="0" max="1" step="0.01" value="0.77" /></div>
+        <div class="lens-control" data-control="glowStrength"><label for="lens-glow-strength">Glow strength <output>0.24</output></label><input id="lens-glow-strength" data-config="glowStrength" type="range" min="0" max="0.5" step="0.01" value="0.24" /></div>
+        <div class="lens-control" data-control="glowSpread"><label for="lens-glow-spread">Glow spread <output>17px</output></label><input id="lens-glow-spread" data-config="glowSpread" type="range" min="4" max="40" step="1" value="17" /></div>
+        <div class="lens-control" data-control="refraction"><label for="lens-refraction">Refraction <output>0.50</output></label><input id="lens-refraction" data-config="refraction" type="range" min="0" max="2" step="0.05" value="0.5" /></div>
+        <div class="lens-control" data-control="edgeHighlight"><label for="lens-edge-highlight">Rim / edge highlight <output>0.05</output></label><input id="lens-edge-highlight" data-config="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.05" /></div>
+        <div class="lens-control" data-control="specular"><label for="lens-specular">Highlights / specular <output>0.25</output></label><input id="lens-specular" data-config="specular" type="range" min="0" max="1" step="0.05" value="0.25" /></div>
+        <div class="lens-control" data-control="shadowOpacity"><label for="lens-shadow">Shadow <output>0.17</output></label><input id="lens-shadow" data-config="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.17" /></div>
+        <div class="lens-control" data-control="hintX"><label for="lens-hint-x">Lens destination X <output>5.2%</output></label><input id="lens-hint-x" data-config="hintX" type="range" min="0" max="100" step="0.1" value="5.2" /></div>
+        <div class="lens-control" data-control="hintY"><label for="lens-hint-y">Lens destination Y <output>11.0%</output></label><input id="lens-hint-y" data-config="hintY" type="range" min="0" max="100" step="0.1" value="11" /></div>
+        <div class="lens-control"><label>Lens coordinates <output id="lens-coordinates">—</output></label></div>
+        <button class="lens-copy" type="button" data-use-lens-position>Use lens position</button>
+        <button class="lens-copy" type="button" data-replay-hint>Replay drag</button>
+        <button class="lens-copy" type="button" data-copy-presets>Copy presets</button><span class="lens-copy-status" role="status" aria-live="polite"></span>
+      </div>
+    </details>
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
   :global(.demo-page:has(vcd-progressive-image-demo[data-image-preview-url])) { height: 100%; padding: 0; }
-  vcd-progressive-image-demo { position: relative; z-index: 1; width: 100%; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; --progressive-demo-gap: 2.4rem; }
+  vcd-progressive-image-demo { position: relative; z-index: 1; width: min(100%, var(--progressive-demo-host-width, 100%)); margin-inline: auto; display: grid; place-items: center; padding-inline: var(--space-unit); box-sizing: border-box; --progressive-demo-gap: 2.4rem; }
   .composition { position: relative; width: min(100%, 28em); container-type: inline-size; }
   .composition-grid { display: grid; grid-template-rows: 75cqw auto; gap: var(--progressive-demo-gap); padding-block: var(--progressive-demo-gap); justify-items: center; }
   .image-area { position: relative; width: 100%; height: 100%; }
   .image-stack { position: absolute; inset: 0; border-radius: var(--radius-control-smooth); overflow: hidden; }
   .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .image-quality-badge { --image-quality-inset: 12px; position: absolute; top: var(--image-quality-inset); left: var(--image-quality-inset); z-index: 1; pointer-events: none; padding: 6px 8px; font-size: 11px; font-weight: 700; background: color-mix(in srgb, var(--sys-color-srf) 92%, var(--ref-palette-red-500) 8%); color: var(--ref-palette-red-100); }
+  .image-quality-badge--high { opacity: 0; background: color-mix(in srgb, var(--sys-color-srf) 92%, var(--ref-palette-green-500) 8%); color: var(--ref-palette-green-100); }
+  :global(:root[data-theme='dark']) .image-quality-badge { color: var(--ref-palette-red-800); }
+  :global(:root[data-theme='dark']) .image-quality-badge--high { color: var(--ref-palette-green-800); }
   .glass-root { position: absolute; inset: 0; }
   .glass-source { display: block; width: 100%; height: 100%; border-radius: var(--radius-control-smooth); pointer-events: none; opacity: 0; }
   .lens { position: absolute; left: 0; top: 0; width: 180px; height: 180px; border-radius: 50%; z-index: 1; cursor: grab; touch-action: none; outline-offset: 4px; }
@@ -90,6 +130,21 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .actions :global(.dev-btn__icon svg) { width: 16px; height: 16px; }
   .actions :global([data-load]::before) { right: -6px; }
   .actions :global([data-reset]::before) { left: -6px; }
+  .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  .lens-controls summary { padding: 10px 12px; cursor: grab; touch-action: none; user-select: none; }
+  .lens-controls summary:active { cursor: grabbing; }
+  .lens-controls__body { display: grid; gap: 12px; padding: 0 12px 12px; }
+  .lens-control { display: grid; gap: 6px; }
+  .lens-control label { display: flex; justify-content: space-between; gap: 8px; color: rgb(255 255 255 / 0.78); }
+  .lens-control output { color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lens-control input, .lens-control select { width: 100%; accent-color: #fff; }
+  .lens-control select { color: inherit; background: #222; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 6px; padding: 5px; font: inherit; }
+  .lens-copy { padding: 7px 9px; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 7px; background: transparent; color: #fff; cursor: pointer; font: inherit; }
+  .lens-copy:hover { background: rgb(255 255 255 / 0.1); }
+  .lens-copy-status { min-height: 1em; color: rgb(255 255 255 / 0.65); }
+  .lens-controls input:focus-visible, .lens-controls select:focus-visible, .lens-controls summary:focus-visible { outline: 2px solid rgb(255 255 255 / 0.55); outline-offset: 2px; }
+  @media (pointer: coarse) { .lens-control input[type='range'] { min-height: 44px; } }
+  @media (max-width: 40em) { .lens-controls { top: auto; bottom: 12px; right: 12px; width: 200px; } .lens-controls:not([open]) { width: auto; } }
   @media (pointer: coarse) {
     .actions :global(.dev-btn) { min-height: 44px; }
   }
@@ -112,24 +167,59 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const root = host.querySelector<HTMLElement>('.glass-root')!;
     const source = host.querySelector<HTMLCanvasElement>('.glass-source')!;
     const stack = host.querySelector<HTMLElement>('[data-image-root]')!;
+    const lowBadge = stack.querySelector<HTMLElement>('.image-quality-badge--low')!;
+    const highBadge = stack.querySelector<HTMLElement>('.image-quality-badge--high')!;
     const lens = host.querySelector<HTMLElement>('.lens')!;
     const load = host.querySelector<HTMLButtonElement>('[data-load]')!;
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
+    const widthControl = host.querySelector<HTMLSelectElement>('#lens-frame-width')!;
+    const widthValue = host.querySelector<HTMLOutputElement>('#lens-frame-width-value')!;
+    const breakpointValue = host.querySelector<HTMLOutputElement>('#lens-breakpoint-value')!;
+    const copyButton = host.querySelector<HTMLButtonElement>('[data-copy-presets]')!;
+    const copyStatus = host.querySelector<HTMLElement>('.lens-copy-status')!;
+    const coordinates = host.querySelector<HTMLOutputElement>('#lens-coordinates')!;
+    const useLensPosition = host.querySelector<HTMLButtonElement>('[data-use-lens-position]')!;
+    const replayHint = host.querySelector<HTMLButtonElement>('[data-replay-hint]')!;
+    const configControls = [...host.querySelectorAll<HTMLInputElement>('[data-config]')];
     const template = host.querySelector<HTMLTemplateElement>('template')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
     const hintPointer = host.querySelector<HTMLElement>('[data-hint-pointer]');
     const context = source.getContext('2d');
     const mask = document.createElement('canvas');
     const maskContext = mask.getContext('2d');
+    const badgeCanvas = document.createElement('canvas');
+    const badgeContext = badgeCanvas.getContext('2d');
     const lifecycle = new AbortController();
     const { signal } = lifecycle;
     let glass;
     let upgrade;
     let generation = 0;
     let frame = 0;
-    let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
+    type Breakpoint = 'mobile' | 'tablet' | 'desktop';
+    type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number; hintX: number; hintY: number };
+    const presetDefaults: Record<Breakpoint, LensConfig> = {
+      mobile: { diameter: 124, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 5.0, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 12, hintX: 9.7, hintY: 56.4 },
+      tablet: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 14, hintX: 5.8, hintY: 10.5 },
+      desktop: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, hintX: 5.2, hintY: 11.0 },
+    };
+    const presetsStorageKey = 'vcd-progressive-lens-presets-v3';
+    let presets = Object.fromEntries(Object.entries(presetDefaults).map(([key, value]) => [key, { ...value }])) as Record<Breakpoint, LensConfig>;
+    let config: LensConfig = { ...presets.desktop };
+    let activeBreakpoint: Breakpoint = 'desktop';
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(presetsStorageKey) || 'null');
+      for (const key of ['mobile', 'tablet', 'desktop'] as Breakpoint[]) {
+        const candidate = saved?.[key];
+        if (!candidate) continue;
+        for (const control of configControls) {
+          const field = control.dataset.config as keyof LensConfig;
+          const value = Number(candidate[field]);
+          if (Number.isFinite(value) && value >= Number(control.min) && value <= Number(control.max)) presets[key][field] = value;
+        }
+      }
+    } catch {}
     let position = { x: 0, y: 0 };
     let pointer;
     let hintFrame = 0;
@@ -152,6 +242,28 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const edge = clamp(value, max);
       const distance = value - edge;
       return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / elasticReach);
+    };
+    const breakpointForWidth = (width): Breakpoint => width < 480 ? 'mobile' : width < 768 ? 'tablet' : 'desktop';
+    const breakpointLabel = (breakpoint: Breakpoint) => breakpoint === 'mobile' ? 'Phone · <480px' : breakpoint === 'tablet' ? 'Tablet · 480–767px' : 'Desktop · ≥768px';
+    const formatValue = (key: keyof LensConfig, value: number) => {
+      if (key === 'hintX' || key === 'hintY') return `${value.toFixed(1)}%`;
+      if (['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key)) return `${value}px`;
+      if (key === 'rimWidth' || key === 'sheenInset' || key === 'sheenWidth') return `${value.toFixed(1)}px`;
+      if (key === 'zoom') return `${value.toFixed(1)}×`;
+      return value.toFixed(2);
+    };
+    const updateControls = () => {
+      const preset = presets[activeBreakpoint];
+      config = { ...preset };
+      breakpointValue.textContent = breakpointLabel(activeBreakpoint);
+      for (const control of configControls) {
+        const key = control.dataset.config as keyof LensConfig;
+        const value = preset[key];
+        control.value = String(value);
+        control.setAttribute('aria-valuetext', formatValue(key, value));
+        const output = control.closest('.lens-control')?.querySelector('output');
+        if (output) output.textContent = formatValue(key, value);
+      }
     };
     function stopSpring() {
       cancelAnimationFrame(springFrame);
@@ -220,6 +332,71 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     function currentImage() { return stack.querySelector<HTMLImageElement>('[data-progressive-image]')!; }
 
+    function syncBadges(reveal: Element | null = stack.querySelector('[data-preview-reveal]')) {
+      const high = Boolean(reveal || currentImage()?.dataset.imageUpgraded);
+      const setMask = (badge: HTMLElement, value: string) => {
+        badge.style.maskImage = value;
+        badge.style.setProperty('-webkit-mask-image', value);
+      };
+      if (!reveal) {
+        lowBadge.style.opacity = high ? '0' : '1';
+        highBadge.style.opacity = high ? '1' : '0';
+        setMask(lowBadge, '');
+        setMask(highBadge, '');
+        return;
+      }
+      const stackRect = stack.getBoundingClientRect();
+      const progress = Number.parseFloat(getComputedStyle(reveal).getPropertyValue('--preview-reveal-y')) / 100;
+      const feather = 0.22;
+      const mask = `linear-gradient(to bottom, #000 ${(progress - feather) * 100}%, transparent ${(progress + feather) * 100}%)`;
+      const inverse = `linear-gradient(to bottom, transparent ${(progress - feather) * 100}%, #000 ${(progress + feather) * 100}%)`;
+      const position = (badge: HTMLElement) => {
+        const rect = badge.getBoundingClientRect();
+        badge.style.maskSize = `${rect.width}px ${stackRect.height}px`;
+        badge.style.maskPosition = `0px -${rect.top - stackRect.top}px`;
+        badge.style.setProperty('-webkit-mask-size', badge.style.maskSize);
+        badge.style.setProperty('-webkit-mask-position', badge.style.maskPosition);
+      };
+      if (reducedMotion.matches) {
+        lowBadge.style.opacity = String(1 - Number.parseFloat(getComputedStyle(reveal).opacity));
+        highBadge.style.opacity = getComputedStyle(reveal).opacity;
+        setMask(lowBadge, '');
+        setMask(highBadge, '');
+      } else {
+        lowBadge.style.opacity = highBadge.style.opacity = '1';
+        setMask(lowBadge, inverse);
+        setMask(highBadge, mask);
+        position(lowBadge);
+        position(highBadge);
+      }
+    }
+
+    function drawBadge(target: CanvasRenderingContext2D, badge: HTMLElement, imageWidth: number, imageHeight: number, alpha = 1) {
+      const rect = badge.getBoundingClientRect();
+      const stackRect = stack.getBoundingClientRect();
+      const scaleX = imageWidth / stackRect.width;
+      const scaleY = imageHeight / stackRect.height;
+      const x = (rect.left - stackRect.left) * scaleX;
+      const y = (rect.top - stackRect.top) * scaleY;
+      const width = rect.width * scaleX;
+      const height = rect.height * scaleY;
+      const style = getComputedStyle(badge);
+      if (!alpha || !width || !height) return;
+      target.globalAlpha = alpha;
+      target.fillStyle = style.backgroundColor;
+      target.beginPath();
+      target.roundRect(x, y, width, height, parseFloat(style.borderTopLeftRadius) * scaleX);
+      target.fill();
+      target.fillStyle = style.color;
+      target.font = style.font;
+      target.textAlign = 'center';
+      target.textBaseline = 'middle';
+      target.fillText(badge.textContent?.trim() || '', x + width / 2, y + height / 2);
+      target.globalAlpha = 1;
+      target.textAlign = 'start';
+      target.textBaseline = 'alphabetic';
+    }
+
     function drawSource() {
       if (signal.aborted || !context || !maskContext) return;
       const image = currentImage();
@@ -265,6 +442,41 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         context.resetTransform();
         context.drawImage(mask, 0, 0);
       }
+      if (badgeContext) {
+        const renderBadge = (badge: HTMLElement, gradient: CanvasGradient | null, alpha = 1) => {
+          badgeContext.resetTransform();
+          badgeContext.clearRect(0, 0, badgeCanvas.width, badgeCanvas.height);
+          badgeContext.setTransform(zoomScale, 0, 0, zoomScale, offsetX, offsetY);
+          drawBadge(badgeContext, badge, imageWidth, imageHeight, alpha);
+          if (gradient) {
+            badgeContext.globalCompositeOperation = 'destination-in';
+            badgeContext.fillStyle = gradient;
+            badgeContext.fillRect(0, 0, imageWidth, imageHeight);
+            badgeContext.globalCompositeOperation = 'source-over';
+          }
+          context.resetTransform();
+          context.drawImage(badgeCanvas, 0, 0);
+        };
+        const badgeReveal = reveal && reveal.getAttribute('data-preview-reveal') !== null ? getComputedStyle(reveal) : null;
+        if (badgeReveal && !reducedMotion.matches) {
+          const progress = Number.parseFloat(badgeReveal.getPropertyValue('--preview-reveal-y')) / 100;
+          const feather = 0.22;
+          badgeContext.setTransform(zoomScale, 0, 0, zoomScale, offsetX, offsetY);
+          const highGradient = badgeContext.createLinearGradient(0, (progress - feather) * imageHeight, 0, (progress + feather) * imageHeight);
+          highGradient.addColorStop(0, '#000'); highGradient.addColorStop(1, 'transparent');
+          const lowGradient = badgeContext.createLinearGradient(0, (progress - feather) * imageHeight, 0, (progress + feather) * imageHeight);
+          lowGradient.addColorStop(0, 'transparent'); lowGradient.addColorStop(1, '#000');
+          renderBadge(lowBadge, lowGradient);
+          renderBadge(highBadge, highGradient);
+        } else if (badgeReveal) {
+          const alpha = Number.parseFloat(badgeReveal.opacity);
+          renderBadge(lowBadge, null, 1 - alpha);
+          renderBadge(highBadge, null, alpha);
+        } else {
+          renderBadge(lowBadge, null, currentImage()?.dataset.imageUpgraded ? 0 : 1);
+          renderBadge(highBadge, null, currentImage()?.dataset.imageUpgraded ? 1 : 0);
+        }
+      }
       context.restore();
       glass?.markChanged(source);
     }
@@ -273,14 +485,17 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       cancelAnimationFrame(frame);
       const tick = () => {
         if (signal.aborted) return;
+        syncBadges();
+        if (currentImage()?.dataset.imageUpgraded && status.textContent !== 'High-resolution image loaded') status.textContent = 'High-resolution image loaded';
         drawSource();
-        if (stack.querySelector('[data-preview-reveal]')) frame = requestAnimationFrame(tick);
+        if (stack.querySelector('[data-preview-reveal]') || lowBadge.getAnimations().length || highBadge.getAnimations().length) frame = requestAnimationFrame(tick);
       };
       tick();
     }
 
     function place() {
       lens.style.transform = `translate(${position.x}px, ${position.y}px)`;
+      if (geometry.width && geometry.height) coordinates.textContent = `${((position.x + geometry.diameter / 2) / geometry.width * 100).toFixed(1)}%, ${((position.y + geometry.diameter / 2) / geometry.height * 100).toFixed(1)}%`;
       drawSource();
       glass?.markChanged();
     }
@@ -311,8 +526,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const start = { ...position };
       const diameter = geometry.diameter;
       const end = {
-        x: geometry.width * 0.097 - diameter / 2,
-        y: geometry.height * 0.564 - diameter / 2,
+        x: geometry.width * config.hintX / 100 - diameter / 2,
+        y: geometry.height * config.hintY / 100 - diameter / 2,
       };
       const grip = {
         x: (0.3 + Math.random() * 0.4) * diameter,
@@ -436,12 +651,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     function configure() {
       if (signal.aborted) return;
       const width = host.clientWidth;
-      const physical = width < 480
-        ? { diameter: 124, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, glowSpread: 12 }
-        : width < 768
-          ? { diameter: 152, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, glowSpread: 14 }
-          : { diameter: 180, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, glowSpread: 17 };
-      Object.assign(config, physical);
+      const viewportBreakpoint = breakpointForWidth(width);
+      activeBreakpoint = viewportBreakpoint;
+      updateControls();
       const wasSpringing = Boolean(springFrame);
       const imageRect = root.getBoundingClientRect();
       if (imageRect.width <= 16 || imageRect.height <= 16) return;
@@ -471,6 +683,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       source.style.width = source.style.height = `${size}px`;
       if (source.width !== pixels || source.height !== pixels) source.width = source.height = pixels;
       if (mask.width !== pixels || mask.height !== pixels) mask.width = mask.height = pixels;
+      if (badgeCanvas.width !== pixels || badgeCanvas.height !== pixels) badgeCanvas.width = badgeCanvas.height = pixels;
       host.dataset.boundaryCircle = (boundaryRadius / radius * 100).toFixed(1);
       host.dataset.elasticReach = elasticReach.toFixed(1);
       lens.style.width = lens.style.height = `${diameter}px`;
@@ -567,6 +780,118 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       place();
     }, { signal });
 
+    const setFrameWidth = () => {
+      host.style.setProperty('--progressive-demo-host-width', widthControl.value === 'auto' ? '100%' : `${widthControl.value}px`);
+      widthValue.textContent = `${Math.round(host.clientWidth)}px`;
+      configure();
+    };
+    widthControl.addEventListener('change', setFrameWidth, { signal });
+
+    copyButton.addEventListener('click', async () => {
+      const formatPreset = (key: Breakpoint) => {
+        const preset = presets[key];
+        return `${breakpointLabel(key)} · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · sheen inset: ${preset.sheenInset.toFixed(1)}px · sheen width: ${preset.sheenWidth.toFixed(1)}px · colour pickup: ${preset.colourPickup.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px · lens X: ${preset.hintX.toFixed(1)}% · lens Y: ${preset.hintY.toFixed(1)}%`;
+      };
+      const text = (['mobile', 'tablet', 'desktop'] as Breakpoint[]).map(formatPreset).join('\n');
+      try {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+        else { const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.append(area); area.select(); const copied = document.execCommand('copy'); area.remove(); if (!copied) throw new Error('Copy failed'); }
+        copyStatus.textContent = 'Copied';
+      } catch { copyStatus.textContent = 'Copy failed'; }
+      window.setTimeout(() => { copyStatus.textContent = ''; }, 1200);
+    }, { signal });
+
+    for (const control of configControls) {
+      control.addEventListener('input', () => {
+        const key = control.dataset.config as keyof LensConfig;
+        presets[activeBreakpoint][key] = Number(control.value);
+        const output = control.closest('.lens-control')?.querySelector('output');
+        if (output) output.textContent = formatValue(key, Number(control.value));
+        config = { ...presets[activeBreakpoint] };
+        try { sessionStorage.setItem(presetsStorageKey, JSON.stringify(presets)); } catch {}
+        configure();
+        drawSource();
+      }, { signal });
+    }
+    useLensPosition.addEventListener('click', () => {
+      if (!geometry.width || !geometry.height) return;
+      stopHint();
+      const preset = presets[activeBreakpoint];
+      preset.hintX = Math.max(0, Math.min(100, Math.round((position.x + geometry.diameter / 2) / geometry.width * 1000) / 10));
+      preset.hintY = Math.max(0, Math.min(100, Math.round((position.y + geometry.diameter / 2) / geometry.height * 1000) / 10));
+      updateControls();
+      try { sessionStorage.setItem(presetsStorageKey, JSON.stringify(presets)); } catch {}
+    }, { signal });
+    replayHint.addEventListener('click', () => { if (!lens.hidden) playHint(); }, { signal });
+
+    const controlsPanel = host.querySelector<HTMLDetailsElement>('#lens-controls')!;
+    controlsPanel.open = matchMedia('(min-width: 40.01em)').matches;
+    const panelSummary = controlsPanel.querySelector('summary')!;
+    let drag: { id: number; startX: number; startY: number; left: number; top: number; moved: boolean } | undefined;
+    const clampPanel = (left: number, top: number) => ({
+      left: Math.max(8, Math.min(left, window.innerWidth - controlsPanel.offsetWidth - 8)),
+      top: Math.max(8, Math.min(top, window.innerHeight - controlsPanel.offsetHeight - 8)),
+    });
+    const reclampPanel = () => {
+      if (!controlsPanel.style.left) return;
+      const rect = controlsPanel.getBoundingClientRect();
+      const next = clampPanel(rect.left, rect.top);
+      controlsPanel.style.left = `${next.left}px`;
+      controlsPanel.style.top = `${next.top}px`;
+    };
+    controlsPanel.addEventListener('toggle', reclampPanel, { signal });
+    window.addEventListener('resize', reclampPanel, { signal });
+    try {
+      const saved = JSON.parse(sessionStorage.getItem('vcd-progressive-lens-panel') || 'null');
+      if (saved && Number.isFinite(saved.left) && Number.isFinite(saved.top)) {
+        const position = clampPanel(saved.left, saved.top);
+        controlsPanel.style.left = `${position.left}px`;
+        controlsPanel.style.top = `${position.top}px`;
+        controlsPanel.style.right = 'auto';
+        controlsPanel.style.bottom = 'auto';
+      }
+    } catch {}
+    let suppressDragClick = false;
+    panelSummary.addEventListener('click', (event) => {
+      if (!suppressDragClick) return;
+      suppressDragClick = false;
+      event.preventDefault();
+    }, { signal });
+    panelSummary.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary || event.button !== 0) return;
+      const rect = controlsPanel.getBoundingClientRect();
+      drag = { id: event.pointerId, startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, moved: false };
+      panelSummary.setPointerCapture(event.pointerId);
+    }, { signal });
+    panelSummary.addEventListener('pointermove', (event) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const dx = event.clientX - drag.startX;
+      const dy = event.clientY - drag.startY;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      drag.moved = true;
+      const position = clampPanel(drag.left + dx, drag.top + dy);
+      controlsPanel.style.left = `${position.left}px`;
+      controlsPanel.style.top = `${position.top}px`;
+      controlsPanel.style.right = 'auto';
+      controlsPanel.style.bottom = 'auto';
+      event.preventDefault();
+    }, { signal });
+    const releasePanel = (event: PointerEvent) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      const moved = drag.moved;
+      if (panelSummary.hasPointerCapture(event.pointerId)) panelSummary.releasePointerCapture(event.pointerId);
+      drag = undefined;
+      if (moved) {
+        const rect = controlsPanel.getBoundingClientRect();
+        try { sessionStorage.setItem('vcd-progressive-lens-panel', JSON.stringify({ left: rect.left, top: rect.top })); } catch {}
+        suppressDragClick = true;
+        window.setTimeout(() => { suppressDragClick = false; }, 0);
+      }
+    };
+    panelSummary.addEventListener('pointerup', releasePanel, { signal });
+    panelSummary.addEventListener('pointercancel', releasePanel, { signal });
+    setFrameWidth();
+
     load.addEventListener('click', () => {
       if (load.disabled) return;
       const run = ++generation;
@@ -601,6 +926,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         // one empty frame while the lens canvas still holds the last zoomed bitmap.
         currentImage()?.remove();
         stack.prepend(incoming);
+        status.textContent = 'Low-resolution image shown';
         drawSource();
       };
       if (image?.complete && image.naturalWidth) apply();
