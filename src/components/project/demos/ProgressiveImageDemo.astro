@@ -324,30 +324,38 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     function syncBadges(reveal: Element | null = stack.querySelector('[data-preview-reveal]')) {
       const high = Boolean(reveal || currentImage()?.dataset.imageUpgraded);
+      const setMask = (badge: HTMLElement, value: string) => {
+        badge.style.maskImage = value;
+        badge.style.setProperty('-webkit-mask-image', value);
+      };
       if (!reveal) {
         lowBadge.style.opacity = high ? '0' : '1';
         highBadge.style.opacity = high ? '1' : '0';
-        lowBadge.style.maskImage = highBadge.style.maskImage = '';
+        setMask(lowBadge, '');
+        setMask(highBadge, '');
         return;
       }
       const stackRect = stack.getBoundingClientRect();
       const progress = Number.parseFloat(getComputedStyle(reveal).getPropertyValue('--preview-reveal-y')) / 100;
       const feather = 0.22;
-      const mask = `linear-gradient(to bottom, #000 ${Math.max(0, (progress - feather) * 100)}%, transparent ${Math.min(100, (progress + feather) * 100)}%)`;
-      const inverse = `linear-gradient(to bottom, transparent ${Math.max(0, (progress - feather) * 100)}%, #000 ${Math.min(100, (progress + feather) * 100)}%)`;
+      const mask = `linear-gradient(to bottom, #000 ${(progress - feather) * 100}%, transparent ${(progress + feather) * 100}%)`;
+      const inverse = `linear-gradient(to bottom, transparent ${(progress - feather) * 100}%, #000 ${(progress + feather) * 100}%)`;
       const position = (badge: HTMLElement) => {
         const rect = badge.getBoundingClientRect();
         badge.style.maskSize = `${rect.width}px ${stackRect.height}px`;
         badge.style.maskPosition = `0px -${rect.top - stackRect.top}px`;
+        badge.style.setProperty('-webkit-mask-size', badge.style.maskSize);
+        badge.style.setProperty('-webkit-mask-position', badge.style.maskPosition);
       };
       if (reducedMotion.matches) {
         lowBadge.style.opacity = String(1 - Number.parseFloat(getComputedStyle(reveal).opacity));
         highBadge.style.opacity = getComputedStyle(reveal).opacity;
-        lowBadge.style.maskImage = highBadge.style.maskImage = '';
+        setMask(lowBadge, '');
+        setMask(highBadge, '');
       } else {
         lowBadge.style.opacity = highBadge.style.opacity = '1';
-        lowBadge.style.maskImage = inverse;
-        highBadge.style.maskImage = mask;
+        setMask(lowBadge, inverse);
+        setMask(highBadge, mask);
         position(lowBadge);
         position(highBadge);
       }
@@ -363,9 +371,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const width = rect.width * scaleX;
       const height = rect.height * scaleY;
       const style = getComputedStyle(badge);
-      const styleAlpha = Number.parseFloat(style.opacity);
-      if (!styleAlpha || !width || !height) return;
-      target.globalAlpha = styleAlpha * alpha;
+      if (!alpha || !width || !height) return;
+      target.globalAlpha = alpha;
       target.fillStyle = style.backgroundColor;
       target.beginPath();
       target.roundRect(x, y, width, height, parseFloat(style.borderTopLeftRadius) * scaleX);
@@ -437,15 +444,17 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
             badgeContext.fillRect(0, 0, imageWidth, imageHeight);
             badgeContext.globalCompositeOperation = 'source-over';
           }
+          context.resetTransform();
           context.drawImage(badgeCanvas, 0, 0);
         };
         const badgeReveal = reveal && reveal.getAttribute('data-preview-reveal') !== null ? getComputedStyle(reveal) : null;
         if (badgeReveal && !reducedMotion.matches) {
           const progress = Number.parseFloat(badgeReveal.getPropertyValue('--preview-reveal-y')) / 100;
           const feather = 0.22;
-          const highGradient = badgeContext.createLinearGradient(0, offsetY + zoomScale * (progress - feather) * imageHeight, 0, offsetY + zoomScale * (progress + feather) * imageHeight);
+          badgeContext.setTransform(zoomScale, 0, 0, zoomScale, offsetX, offsetY);
+          const highGradient = badgeContext.createLinearGradient(0, (progress - feather) * imageHeight, 0, (progress + feather) * imageHeight);
           highGradient.addColorStop(0, '#000'); highGradient.addColorStop(1, 'transparent');
-          const lowGradient = badgeContext.createLinearGradient(0, offsetY + zoomScale * (progress - feather) * imageHeight, 0, offsetY + zoomScale * (progress + feather) * imageHeight);
+          const lowGradient = badgeContext.createLinearGradient(0, (progress - feather) * imageHeight, 0, (progress + feather) * imageHeight);
           lowGradient.addColorStop(0, 'transparent'); lowGradient.addColorStop(1, '#000');
           renderBadge(lowBadge, lowGradient);
           renderBadge(highBadge, highGradient);
