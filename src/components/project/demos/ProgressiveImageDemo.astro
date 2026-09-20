@@ -1,7 +1,5 @@
 ---
 import Button from '../../ui/Button.astro';
-import DevPanel from '../../ui/DevPanel.astro';
-import Field from '../../ui/Field.astro';
 import Hairline from '../../ui/Hairline.astro';
 import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import '../../../styles/project.css';
@@ -35,22 +33,34 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
     </div>
   </div>
-    <DevPanel title="Lens zoom" showLights={false} draggable class="lens-zoom-panel">
-      <div class="lens-zoom-panel__controls">
-        <Field label="Mobile (<480px)" labelFor="progressive-zoom-mobile">
-          <input id="progressive-zoom-mobile" type="range" min="1" max="5" step="0.1" value="2.5" aria-label="Mobile lens zoom" data-zoom-breakpoint="mobile" />
-          <span slot="labelAccessory" data-zoom-value="mobile">2.5x</span>
-        </Field>
-        <Field label="Tablet (480–767px)" labelFor="progressive-zoom-tablet">
-          <input id="progressive-zoom-tablet" type="range" min="1" max="5" step="0.1" value="2.5" aria-label="Tablet lens zoom" data-zoom-breakpoint="tablet" />
-          <span slot="labelAccessory" data-zoom-value="tablet">2.5x</span>
-        </Field>
-        <Field label="Desktop (>=768px)" labelFor="progressive-zoom-desktop">
-          <input id="progressive-zoom-desktop" type="range" min="1" max="5" step="0.1" value="2.5" aria-label="Desktop lens zoom" data-zoom-breakpoint="desktop" />
-          <span slot="labelAccessory" data-zoom-value="desktop">2.5x</span>
-        </Field>
+    <details class="lens-controls" id="lens-controls">
+      <summary>Controls</summary>
+      <div class="lens-controls__body">
+        <div class="lens-control">
+          <label for="lens-breakpoint">Preset <output id="lens-breakpoint-value">Desktop · ≥768px</output></label>
+          <select id="lens-breakpoint" aria-label="Lens breakpoint preset">
+            <option value="mobile">Phone · &lt;480px</option>
+            <option value="tablet">Tablet · 480–767px</option>
+            <option value="desktop" selected>Desktop · ≥768px</option>
+          </select>
+        </div>
+        <div class="lens-control" data-control="diameter"><label for="lens-diameter">Diameter <output>180px</output></label><input id="lens-diameter" data-config="diameter" type="range" min="100" max="220" step="4" value="180" /></div>
+        <div class="lens-control" data-control="zoom"><label for="lens-zoom">Zoom <output>2.5×</output></label><input id="lens-zoom" data-config="zoom" type="range" min="1" max="5" step="0.1" value="2.5" /></div>
+        <div class="lens-control" data-control="zRadius"><label for="lens-depth">Depth <output>36px</output></label><input id="lens-depth" data-config="zRadius" type="range" min="1" max="50" step="1" value="36" /></div>
+        <div class="lens-control" data-control="bevelWidth"><label for="lens-edge-width">Edge width <output>32px</output></label><input id="lens-edge-width" data-config="bevelWidth" type="range" min="12" max="48" step="1" value="32" /></div>
+        <div class="lens-control" data-control="rimWidth"><label for="lens-rim-width">Rim width <output>1.2px</output></label><input id="lens-rim-width" data-config="rimWidth" type="range" min="0.5" max="3" step="0.1" value="1.2" /></div>
+        <div class="lens-control" data-control="sheen"><label for="lens-sheen">Sheen <output>0.25</output></label><input id="lens-sheen" data-config="sheen" type="range" min="0" max="1" step="0.05" value="0.25" /></div>
+        <div class="lens-control" data-control="sheenInset"><label for="lens-sheen-inset">Sheen inset <output>0.80</output></label><input id="lens-sheen-inset" data-config="sheenInset" type="range" min="0" max="1" step="0.05" value="0.8" /></div>
+        <div class="lens-control" data-control="sheenWidth"><label for="lens-sheen-width">Sheen width <output>1.5</output></label><input id="lens-sheen-width" data-config="sheenWidth" type="range" min="0.5" max="3" step="0.1" value="1.5" /></div>
+        <div class="lens-control" data-control="colourPickup"><label for="lens-colour-pickup">Colour pickup <output>0.77</output></label><input id="lens-colour-pickup" data-config="colourPickup" type="range" min="0" max="1" step="0.01" value="0.77" /></div>
+        <div class="lens-control" data-control="glowStrength"><label for="lens-glow-strength">Glow strength <output>0.15</output></label><input id="lens-glow-strength" data-config="glowStrength" type="range" min="0" max="0.5" step="0.01" value="0.15" /></div>
+        <div class="lens-control" data-control="glowSpread"><label for="lens-glow-spread">Glow spread <output>17px</output></label><input id="lens-glow-spread" data-config="glowSpread" type="range" min="4" max="40" step="1" value="17" /></div>
+        <div class="lens-control" data-control="refraction"><label for="lens-refraction">Refraction <output>0.50</output></label><input id="lens-refraction" data-config="refraction" type="range" min="0" max="2" step="0.05" value="0.5" /></div>
+        <div class="lens-control" data-control="edgeHighlight"><label for="lens-edge-highlight">Rim / edge highlight <output>0.05</output></label><input id="lens-edge-highlight" data-config="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.05" /></div>
+        <div class="lens-control" data-control="specular"><label for="lens-specular">Highlights / specular <output>0.25</output></label><input id="lens-specular" data-config="specular" type="range" min="0" max="1" step="0.05" value="0.25" /></div>
+        <div class="lens-control" data-control="shadowOpacity"><label for="lens-shadow">Shadow <output>0.17</output></label><input id="lens-shadow" data-config="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.17" /></div>
       </div>
-    </DevPanel>
+    </details>
 </vcd-progressive-image-demo>
 <style>
   :global(html:has(vcd-progressive-image-demo)) { overflow-x: clip; }
@@ -108,11 +118,17 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .actions :global(.dev-btn__icon svg) { width: 16px; height: 16px; }
   .actions :global([data-load]::before) { right: -6px; }
   .actions :global([data-reset]::before) { left: -6px; }
-  :global(.lens-zoom-panel) { position: absolute; top: var(--space-unit); right: var(--space-unit); z-index: 4; width: min(15rem, calc(100vw - 2 * var(--space-unit))); }
-  .lens-zoom-panel__controls { display: grid; gap: var(--space-unit); }
-  .lens-zoom-panel__controls input[type='range'] { display: block; width: 100%; accent-color: var(--sys-color-on-srf); }
-  .lens-zoom-panel__controls [data-zoom-value] { font-variant-numeric: tabular-nums; }
-  @media (pointer: coarse) { .lens-zoom-panel__controls input[type='range'] { min-height: 44px; } }
+  .lens-controls { position: absolute; top: var(--space-unit); right: var(--space-unit); z-index: 4; width: min(220px, calc(100vw - 2 * var(--space-unit))); max-height: calc(100dvh - 2 * var(--space-unit)); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  .lens-controls summary { padding: 10px 12px; cursor: pointer; user-select: none; }
+  .lens-controls__body { display: grid; gap: 12px; padding: 0 12px 12px; }
+  .lens-control { display: grid; gap: 6px; }
+  .lens-control label { display: flex; justify-content: space-between; gap: 8px; color: rgb(255 255 255 / 0.78); }
+  .lens-control output { color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .lens-control input, .lens-control select { width: 100%; accent-color: #fff; }
+  .lens-control select { color: inherit; background: #222; border: 1px solid rgb(255 255 255 / 0.18); border-radius: 6px; padding: 5px; font: inherit; }
+  .lens-controls input:focus-visible, .lens-controls select:focus-visible, .lens-controls summary:focus-visible { outline: 2px solid rgb(255 255 255 / 0.55); outline-offset: 2px; }
+  @media (pointer: coarse) { .lens-control input[type='range'] { min-height: 44px; } }
+  @media (max-width: 40em) { .lens-controls { top: auto; bottom: var(--space-unit); right: var(--space-unit); width: min(200px, calc(100vw - 2 * var(--space-unit))); } .lens-controls:not([open]) { width: auto; } }
   @media (pointer: coarse) {
     .actions :global(.dev-btn) { min-height: 44px; }
   }
@@ -140,8 +156,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
-    const zoomControls = [...host.querySelectorAll<HTMLInputElement>('[data-zoom-breakpoint]')];
-    const zoomValues = new Map([...host.querySelectorAll<HTMLElement>('[data-zoom-value]')].map((value) => [value.dataset.zoomValue, value]));
+    const breakpointSelect = host.querySelector<HTMLSelectElement>('#lens-breakpoint')!;
+    const breakpointValue = host.querySelector<HTMLOutputElement>('#lens-breakpoint-value')!;
+    const configControls = [...host.querySelectorAll<HTMLInputElement>('[data-config]')];
     const template = host.querySelector<HTMLTemplateElement>('template')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
     const hintPointer = host.querySelector<HTMLElement>('[data-hint-pointer]');
@@ -154,8 +171,18 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let upgrade;
     let generation = 0;
     let frame = 0;
-    let config = { diameter: 180, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.50, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17 };
-    const zoomByBreakpoint: Record<'mobile' | 'tablet' | 'desktop', number> = { mobile: 2.5, tablet: 2.5, desktop: 2.5 };
+    type Breakpoint = 'mobile' | 'tablet' | 'desktop';
+    type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number };
+    const presetDefaults: Record<Breakpoint, LensConfig> = {
+      mobile: { diameter: 124, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 2.5, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.25, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.15, glowSpread: 12 },
+      tablet: { diameter: 152, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 2.5, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.25, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.15, glowSpread: 14 },
+      desktop: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 2.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.25, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.15, glowSpread: 17 },
+    };
+    let presets = Object.fromEntries(Object.entries(presetDefaults).map(([key, value]) => [key, { ...value }])) as Record<Breakpoint, LensConfig>;
+    let config: LensConfig = { ...presets.desktop };
+    let activeBreakpoint: Breakpoint = 'desktop';
+    let manualBreakpoint: Breakpoint | undefined;
+    let lastViewportBreakpoint: Breakpoint | undefined;
     let position = { x: 0, y: 0 };
     let pointer;
     let hintFrame = 0;
@@ -179,18 +206,27 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const distance = value - edge;
       return edge + distance / Math.max(0.01, 1 - Math.abs(distance) / elasticReach);
     };
-    const breakpointForWidth = (width): keyof typeof zoomByBreakpoint => width < 480 ? 'mobile' : width < 768 ? 'tablet' : 'desktop';
-    const updateZoomControls = (breakpoint) => {
-      for (const control of zoomControls) {
-        const key = control.dataset.zoomBreakpoint as keyof typeof zoomByBreakpoint | undefined;
-        if (!key) continue;
-        const value = zoomByBreakpoint[key];
-        control.value = value.toFixed(1);
-        control.setAttribute('aria-valuetext', `${value.toFixed(1)}x`);
-        const output = zoomValues.get(key);
-        if (output) output.textContent = `${value.toFixed(1)}x`;
+    const breakpointForWidth = (width): Breakpoint => width < 480 ? 'mobile' : width < 768 ? 'tablet' : 'desktop';
+    const breakpointLabel = (breakpoint: Breakpoint) => breakpoint === 'mobile' ? 'Phone · <480px' : breakpoint === 'tablet' ? 'Tablet · 480–767px' : 'Desktop · ≥768px';
+    const formatValue = (key: keyof LensConfig, value: number) => {
+      if (['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key)) return `${value}px`;
+      if (key === 'rimWidth' || key === 'sheenWidth') return `${value.toFixed(1)}px`;
+      if (key === 'zoom') return `${value.toFixed(1)}×`;
+      return value.toFixed(2);
+    };
+    const updateControls = () => {
+      const preset = presets[activeBreakpoint];
+      config = { ...preset };
+      breakpointSelect.value = activeBreakpoint;
+      breakpointValue.textContent = breakpointLabel(activeBreakpoint);
+      for (const control of configControls) {
+        const key = control.dataset.config as keyof LensConfig;
+        const value = preset[key];
+        control.value = String(value);
+        control.setAttribute('aria-valuetext', formatValue(key, value));
+        const output = control.closest('.lens-control')?.querySelector('output');
+        if (output) output.textContent = formatValue(key, value);
       }
-      config.zoom = zoomByBreakpoint[breakpoint];
     };
     function stopSpring() {
       cancelAnimationFrame(springFrame);
@@ -475,14 +511,11 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     function configure() {
       if (signal.aborted) return;
       const width = host.clientWidth;
-      const breakpoint = breakpointForWidth(width);
-      const physical = width < 480
-        ? { diameter: 124, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, glowSpread: 12 }
-        : width < 768
-          ? { diameter: 152, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, glowSpread: 14 }
-          : { diameter: 180, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, glowSpread: 17 };
-      Object.assign(config, physical);
-      updateZoomControls(breakpoint);
+      const viewportBreakpoint = breakpointForWidth(width);
+      if (lastViewportBreakpoint && viewportBreakpoint !== lastViewportBreakpoint) manualBreakpoint = undefined;
+      lastViewportBreakpoint = viewportBreakpoint;
+      activeBreakpoint = manualBreakpoint ?? viewportBreakpoint;
+      updateControls();
       const wasSpringing = Boolean(springFrame);
       const imageRect = root.getBoundingClientRect();
       if (imageRect.width <= 16 || imageRect.height <= 16) return;
@@ -608,17 +641,23 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       place();
     }, { signal });
 
-    for (const control of zoomControls) {
+    breakpointSelect.addEventListener('change', () => {
+      manualBreakpoint = breakpointSelect.value as Breakpoint;
+      activeBreakpoint = manualBreakpoint;
+      updateControls();
+      configure();
+      drawSource();
+    }, { signal });
+
+    for (const control of configControls) {
       control.addEventListener('input', () => {
-        const breakpoint = control.dataset.zoomBreakpoint as keyof typeof zoomByBreakpoint | undefined;
-        if (!breakpoint) return;
-        zoomByBreakpoint[breakpoint] = Number(control.value);
-        const output = zoomValues.get(breakpoint);
-        if (output) output.textContent = `${zoomByBreakpoint[breakpoint].toFixed(1)}x`;
-        if (breakpoint === breakpointForWidth(host.clientWidth)) {
-          configure();
-          drawSource();
-        }
+        const key = control.dataset.config as keyof LensConfig;
+        presets[activeBreakpoint][key] = Number(control.value);
+        const output = control.closest('.lens-control')?.querySelector('output');
+        if (output) output.textContent = formatValue(key, Number(control.value));
+        config = { ...presets[activeBreakpoint] };
+        configure();
+        drawSource();
       }, { signal });
     }
 
