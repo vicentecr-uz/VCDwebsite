@@ -1,5 +1,6 @@
 ---
 import Button from '../../ui/Button.astro';
+import Badge from '../../ui/Badge.astro';
 import Hairline from '../../ui/Hairline.astro';
 import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import '../../../styles/project.css';
@@ -14,6 +15,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         <div class="image-stack" data-image-root>
           <img data-progressive-image src={thumb} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" />
           <template data-image-template><img data-progressive-image src={thumb} width="4032" height="3024" alt="Disassembled utility knife arranged on a gridded cutting mat" /></template>
+          <Badge label="Low-res" class="image-quality-badge image-quality-badge--low" aria-hidden="true" />
+          <Badge label="High-res" class="image-quality-badge image-quality-badge--high" aria-hidden="true" />
         </div>
         <div class="glass-root">
           <canvas class="glass-source" aria-hidden="true"></canvas>
@@ -71,6 +74,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .image-area { position: relative; width: 100%; height: 100%; }
   .image-stack { position: absolute; inset: 0; border-radius: var(--radius-control-smooth); overflow: hidden; }
   .image-stack img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .image-quality-badge { position: absolute; top: 12px; left: 12px; z-index: 1; pointer-events: none; background: color-mix(in srgb, var(--sys-color-srf) 92%, var(--ref-palette-red-500) 8%); color: var(--sys-color-on-srf); transition: opacity 280ms cubic-bezier(0.32, 0.72, 0, 1); }
+  .image-quality-badge--high { opacity: 0; background: color-mix(in srgb, var(--sys-color-srf) 92%, var(--ref-palette-green-500) 8%); }
   .glass-root { position: absolute; inset: 0; }
   .glass-source { display: block; width: 100%; height: 100%; border-radius: var(--radius-control-smooth); pointer-events: none; opacity: 0; }
   .lens { position: absolute; left: 0; top: 0; width: 180px; height: 180px; border-radius: 50%; z-index: 1; cursor: grab; touch-action: none; outline-offset: 4px; }
@@ -155,6 +160,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const root = host.querySelector<HTMLElement>('.glass-root')!;
     const source = host.querySelector<HTMLCanvasElement>('.glass-source')!;
     const stack = host.querySelector<HTMLElement>('[data-image-root]')!;
+    const lowBadge = stack.querySelector<HTMLElement>('.image-quality-badge--low')!;
+    const highBadge = stack.querySelector<HTMLElement>('.image-quality-badge--high')!;
     const lens = host.querySelector<HTMLElement>('.lens')!;
     const load = host.querySelector<HTMLButtonElement>('[data-load]')!;
     const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
@@ -311,6 +318,39 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     function currentImage() { return stack.querySelector<HTMLImageElement>('[data-progressive-image]')!; }
 
+    function syncBadges() {
+      const high = Boolean(stack.querySelector('[data-preview-reveal]') || currentImage()?.dataset.imageUpgraded);
+      lowBadge.style.opacity = high ? '0' : '1';
+      highBadge.style.opacity = high ? '1' : '0';
+    }
+
+    function drawBadge(badge: HTMLElement, imageWidth: number, imageHeight: number) {
+      const rect = badge.getBoundingClientRect();
+      const stackRect = stack.getBoundingClientRect();
+      const scaleX = imageWidth / stackRect.width;
+      const scaleY = imageHeight / stackRect.height;
+      const x = (rect.left - stackRect.left) * scaleX;
+      const y = (rect.top - stackRect.top) * scaleY;
+      const width = rect.width * scaleX;
+      const height = rect.height * scaleY;
+      const style = getComputedStyle(badge);
+      const alpha = Number.parseFloat(style.opacity);
+      if (!alpha || !width || !height) return;
+      context!.globalAlpha = alpha;
+      context!.fillStyle = style.backgroundColor;
+      context!.beginPath();
+      context!.roundRect(x, y, width, height, parseFloat(style.borderTopLeftRadius) * scaleX);
+      context!.fill();
+      context!.fillStyle = style.color;
+      context!.font = style.font;
+      context!.textAlign = 'center';
+      context!.textBaseline = 'middle';
+      context!.fillText(badge.textContent?.trim() || '', x + width / 2, y + height / 2);
+      context!.globalAlpha = 1;
+      context!.textAlign = 'start';
+      context!.textBaseline = 'alphabetic';
+    }
+
     function drawSource() {
       if (signal.aborted || !context || !maskContext) return;
       const image = currentImage();
@@ -356,6 +396,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         context.resetTransform();
         context.drawImage(mask, 0, 0);
       }
+      drawBadge(lowBadge, imageWidth, imageHeight);
+      drawBadge(highBadge, imageWidth, imageHeight);
       context.restore();
       glass?.markChanged(source);
     }
@@ -364,8 +406,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       cancelAnimationFrame(frame);
       const tick = () => {
         if (signal.aborted) return;
+        syncBadges();
         drawSource();
-        if (stack.querySelector('[data-preview-reveal]')) frame = requestAnimationFrame(tick);
+        if (stack.querySelector('[data-preview-reveal]') || lowBadge.getAnimations().length || highBadge.getAnimations().length) frame = requestAnimationFrame(tick);
       };
       tick();
     }
