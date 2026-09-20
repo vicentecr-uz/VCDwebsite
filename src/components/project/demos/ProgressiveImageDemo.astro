@@ -61,7 +61,12 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         <div class="lens-control" data-control="edgeHighlight"><label for="lens-edge-highlight">Rim / edge highlight <output>0.05</output></label><input id="lens-edge-highlight" data-config="edgeHighlight" type="range" min="0" max="0.3" step="0.01" value="0.05" /></div>
         <div class="lens-control" data-control="specular"><label for="lens-specular">Highlights / specular <output>0.25</output></label><input id="lens-specular" data-config="specular" type="range" min="0" max="1" step="0.05" value="0.25" /></div>
         <div class="lens-control" data-control="shadowOpacity"><label for="lens-shadow">Shadow <output>0.17</output></label><input id="lens-shadow" data-config="shadowOpacity" type="range" min="0" max="0.5" step="0.01" value="0.17" /></div>
-        <button class="lens-copy" type="button">Copy presets</button><span class="lens-copy-status" role="status" aria-live="polite"></span>
+        <div class="lens-control" data-control="hintX"><label for="lens-hint-x">Lens destination X <output>9.7%</output></label><input id="lens-hint-x" data-config="hintX" type="range" min="0" max="100" step="0.1" value="9.7" /></div>
+        <div class="lens-control" data-control="hintY"><label for="lens-hint-y">Lens destination Y <output>56.4%</output></label><input id="lens-hint-y" data-config="hintY" type="range" min="0" max="100" step="0.1" value="56.4" /></div>
+        <div class="lens-control"><label>Lens coordinates <output id="lens-coordinates">—</output></label></div>
+        <button class="lens-copy" type="button" data-use-lens-position>Use lens position</button>
+        <button class="lens-copy" type="button" data-replay-hint>Replay drag</button>
+        <button class="lens-copy" type="button" data-copy-presets>Copy presets</button><span class="lens-copy-status" role="status" aria-live="polite"></span>
       </div>
     </details>
 </vcd-progressive-image-demo>
@@ -172,8 +177,11 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const widthControl = host.querySelector<HTMLSelectElement>('#lens-frame-width')!;
     const widthValue = host.querySelector<HTMLOutputElement>('#lens-frame-width-value')!;
     const breakpointValue = host.querySelector<HTMLOutputElement>('#lens-breakpoint-value')!;
-    const copyButton = host.querySelector<HTMLButtonElement>('.lens-copy')!;
+    const copyButton = host.querySelector<HTMLButtonElement>('[data-copy-presets]')!;
     const copyStatus = host.querySelector<HTMLElement>('.lens-copy-status')!;
+    const coordinates = host.querySelector<HTMLOutputElement>('#lens-coordinates')!;
+    const useLensPosition = host.querySelector<HTMLButtonElement>('[data-use-lens-position]')!;
+    const replayHint = host.querySelector<HTMLButtonElement>('[data-replay-hint]')!;
     const configControls = [...host.querySelectorAll<HTMLInputElement>('[data-config]')];
     const template = host.querySelector<HTMLTemplateElement>('template')!;
     const hint = host.querySelector<HTMLElement>('[data-hint]');
@@ -190,11 +198,11 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let generation = 0;
     let frame = 0;
     type Breakpoint = 'mobile' | 'tablet' | 'desktop';
-    type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number };
+    type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number; hintX: number; hintY: number };
     const presetDefaults: Record<Breakpoint, LensConfig> = {
-      mobile: { diameter: 124, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 5.0, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 12 },
-      tablet: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 14 },
-      desktop: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17 },
+      mobile: { diameter: 124, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 5.0, zRadius: 25, bevelWidth: 22, rimWidth: 0.8, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 12, hintX: 9.7, hintY: 56.4 },
+      tablet: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 30, bevelWidth: 27, rimWidth: 1.0, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 14, hintX: 9.7, hintY: 56.4 },
+      desktop: { diameter: 180, refraction: 0.5, edgeHighlight: 0.05, specular: 0.25, shadowOpacity: 0.17, zoom: 3.5, zRadius: 36, bevelWidth: 32, rimWidth: 1.2, sheen: 0.5, sheenInset: 0.8, sheenWidth: 1.5, colourPickup: 0.77, glowStrength: 0.24, glowSpread: 17, hintX: 9.7, hintY: 56.4 },
     };
     const presetsStorageKey = 'vcd-progressive-lens-presets-v2';
     let presets = Object.fromEntries(Object.entries(presetDefaults).map(([key, value]) => [key, { ...value }])) as Record<Breakpoint, LensConfig>;
@@ -238,6 +246,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const breakpointForWidth = (width): Breakpoint => width < 480 ? 'mobile' : width < 768 ? 'tablet' : 'desktop';
     const breakpointLabel = (breakpoint: Breakpoint) => breakpoint === 'mobile' ? 'Phone · <480px' : breakpoint === 'tablet' ? 'Tablet · 480–767px' : 'Desktop · ≥768px';
     const formatValue = (key: keyof LensConfig, value: number) => {
+      if (key === 'hintX' || key === 'hintY') return `${value.toFixed(1)}%`;
       if (['diameter', 'zRadius', 'bevelWidth', 'glowSpread'].includes(key)) return `${value}px`;
       if (key === 'rimWidth' || key === 'sheenInset' || key === 'sheenWidth') return `${value.toFixed(1)}px`;
       if (key === 'zoom') return `${value.toFixed(1)}×`;
@@ -486,6 +495,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     function place() {
       lens.style.transform = `translate(${position.x}px, ${position.y}px)`;
+      if (geometry.width && geometry.height) coordinates.textContent = `${((position.x + geometry.diameter / 2) / geometry.width * 100).toFixed(1)}%, ${((position.y + geometry.diameter / 2) / geometry.height * 100).toFixed(1)}%`;
       drawSource();
       glass?.markChanged();
     }
@@ -516,8 +526,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const start = { ...position };
       const diameter = geometry.diameter;
       const end = {
-        x: geometry.width * 0.097 - diameter / 2,
-        y: geometry.height * 0.564 - diameter / 2,
+        x: geometry.width * config.hintX / 100 - diameter / 2,
+        y: geometry.height * config.hintY / 100 - diameter / 2,
       };
       const grip = {
         x: (0.3 + Math.random() * 0.4) * diameter,
@@ -780,7 +790,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     copyButton.addEventListener('click', async () => {
       const formatPreset = (key: Breakpoint) => {
         const preset = presets[key];
-        return `${breakpointLabel(key)} · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · sheen inset: ${preset.sheenInset.toFixed(1)}px · sheen width: ${preset.sheenWidth.toFixed(1)}px · colour pickup: ${preset.colourPickup.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px`;
+        return `${breakpointLabel(key)} · diameter: ${preset.diameter}px · refraction: ${preset.refraction.toFixed(2)} · rim: ${preset.edgeHighlight.toFixed(2)} · highlights: ${preset.specular.toFixed(2)} · shadow: ${preset.shadowOpacity.toFixed(2)} · zoom: ${preset.zoom.toFixed(1)}× · depth: ${preset.zRadius}px · edge width: ${preset.bevelWidth}px · rim width: ${preset.rimWidth.toFixed(1)}px · sheen: ${preset.sheen.toFixed(2)} · sheen inset: ${preset.sheenInset.toFixed(1)}px · sheen width: ${preset.sheenWidth.toFixed(1)}px · colour pickup: ${preset.colourPickup.toFixed(2)} · glow: ${preset.glowStrength.toFixed(2)} · glow spread: ${preset.glowSpread}px · lens X: ${preset.hintX.toFixed(1)}% · lens Y: ${preset.hintY.toFixed(1)}%`;
       };
       const text = (['mobile', 'tablet', 'desktop'] as Breakpoint[]).map(formatPreset).join('\n');
       try {
@@ -803,6 +813,16 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         drawSource();
       }, { signal });
     }
+    useLensPosition.addEventListener('click', () => {
+      if (!geometry.width || !geometry.height) return;
+      stopHint();
+      const preset = presets[activeBreakpoint];
+      preset.hintX = Math.max(0, Math.min(100, Math.round((position.x + geometry.diameter / 2) / geometry.width * 1000) / 10));
+      preset.hintY = Math.max(0, Math.min(100, Math.round((position.y + geometry.diameter / 2) / geometry.height * 1000) / 10));
+      updateControls();
+      try { sessionStorage.setItem(presetsStorageKey, JSON.stringify(presets)); } catch {}
+    }, { signal });
+    replayHint.addEventListener('click', () => { if (!lens.hidden) playHint(); }, { signal });
 
     const controlsPanel = host.querySelector<HTMLDetailsElement>('#lens-controls')!;
     controlsPanel.open = matchMedia('(min-width: 40.01em)').matches;
