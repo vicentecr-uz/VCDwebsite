@@ -29,7 +29,10 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
       <p class="status sr-only" role="status"></p>
     </div>
-    <div class="demo-tooltip" id="progressive-image-lens-tooltip" role="tooltip" hidden>Double-click to change loading state</div>
+    <div class="demo-tooltip" id="progressive-image-lens-tooltip" role="tooltip" hidden>
+      <svg aria-hidden="true" focusable="false"><path data-tooltip-shape /></svg>
+      <span>Double-click to change loading state</span>
+    </div>
     <div class="hint" data-hint hidden aria-hidden="true">
       <div class="hint-pointer" data-hint-pointer>
         <span class="hint-finger" data-hint-finger></span>
@@ -133,8 +136,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .load-label[data-load-label='unload'] { opacity: 0; filter: blur(4px); transform: scale(0.92); }
   .actions[data-loading] .load-label[data-load-label='load'] { opacity: 0; filter: blur(4px); transform: scale(0.92); }
   .actions[data-loading] .load-label[data-load-label='unload'] { opacity: 1; filter: blur(0); transform: scale(1); }
-  .demo-tooltip { position: fixed; z-index: 2147483647; inline-size: min(180px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: var(--sys-color-inverse-srf); color: var(--sys-color-inverse-on-srf); box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); font: var(--dev-text-label); line-height: 1.2; text-align: center; text-wrap: balance; cursor: default; }
-  .demo-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; translate: -50% 0; border-inline: 6px solid transparent; border-top: 6px solid var(--sys-color-inverse-srf); }
+  .demo-tooltip { --tooltip-tail-height: 7px; --tooltip-tail-half-width: 8px; --tooltip-rect-radius: 8px; --tooltip-shoulder-radius: 3px; --tooltip-tip-radius: 2px; isolation: isolate; position: fixed; z-index: 2147483647; width: max-content; padding: 8px 8px calc(8px + var(--tooltip-tail-height)); color: var(--sys-color-inverse-on-srf); font: var(--dev-text-label); line-height: 1.2; text-align: center; cursor: default; opacity: 0; transform: scale(.97); transform-origin: 50% 100%; transition: none; }
+  .demo-tooltip[open] { opacity: 1; transform: scale(1); transition: opacity 200ms cubic-bezier(.32,.72,0,1), transform 200ms cubic-bezier(.32,.72,0,1); }
+  .demo-tooltip[data-instant] { transition: none; }
+  .demo-tooltip > span { display: block; width: max-content; max-width: min(18ch, calc(100vw - 40px)); text-wrap: balance; }
+  .demo-tooltip > span { position: relative; z-index: 1; }
+  .demo-tooltip > svg { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; overflow: visible; pointer-events: none; filter: drop-shadow(0 6px 20px rgb(0 0 0 / 0.2)); }
+  .demo-tooltip > svg path { fill: var(--sys-color-inverse-srf); }
+  @media (prefers-reduced-motion: reduce) { .demo-tooltip { transition: none !important; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .load-label { transition-property: opacity; filter: none !important; transform: none !important; } }
   .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
   .lens-controls summary { padding: 10px 12px; cursor: grab; touch-action: none; user-select: none; }
@@ -179,6 +188,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const lens = host.querySelector<HTMLElement>('.lens')!;
     const load = host.querySelector<HTMLButtonElement>('[data-load]')!;
     const lensTooltip = host.querySelector<HTMLElement>('#progressive-image-lens-tooltip')!;
+    const tooltipSvg = lensTooltip.querySelector<SVGSVGElement>('svg')!;
+    const tooltipShape = lensTooltip.querySelector<SVGPathElement>('[data-tooltip-shape]')!;
     document.body.append(lensTooltip);
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
@@ -516,35 +527,77 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     let tooltipTimer = 0;
     let tooltipHideTimer = 0;
+    const tooltipVertices = (width: number, height: number, tailHeight: number, tailHalfWidth: number) => {
+      const bodyHeight = height - tailHeight;
+      const center = width / 2;
+      return [[0, 0], [width, 0], [width, bodyHeight], [center + tailHalfWidth, bodyHeight], [center, height], [center - tailHalfWidth, bodyHeight], [0, bodyHeight]];
+    };
+    const tooltipPath = (vertices: number[][], radii: number[]) => {
+      const points = vertices.map((vertex, index) => {
+        const previous = vertices[(index + vertices.length - 1) % vertices.length];
+        const next = vertices[(index + 1) % vertices.length];
+        const incomingLength = Math.hypot(vertex[0] - previous[0], vertex[1] - previous[1]);
+        const outgoingLength = Math.hypot(next[0] - vertex[0], next[1] - vertex[1]);
+        const trim = Math.min(radii[index], incomingLength / 2, outgoingLength / 2);
+        return {
+          incoming: [vertex[0] + (previous[0] - vertex[0]) * trim / incomingLength, vertex[1] + (previous[1] - vertex[1]) * trim / incomingLength],
+          outgoing: [vertex[0] + (next[0] - vertex[0]) * trim / outgoingLength, vertex[1] + (next[1] - vertex[1]) * trim / outgoingLength],
+        };
+      });
+      let path = `M ${points[0].outgoing.join(' ')}`;
+      for (let index = 1; index < points.length; index++) path += ` L ${points[index].incoming.join(' ')} Q ${vertices[index].join(' ')} ${points[index].outgoing.join(' ')}`;
+      path += ` L ${points[0].incoming.join(' ')} Q ${vertices[0].join(' ')} ${points[0].outgoing.join(' ')} Z`;
+      return path;
+    };
     const hideTooltip = () => {
       window.clearTimeout(tooltipTimer);
       window.clearTimeout(tooltipHideTimer);
       tooltipTimer = 0;
       tooltipHideTimer = 0;
       lensTooltip.hidden = true;
+      lensTooltip.removeAttribute('open');
+      lensTooltip.removeAttribute('data-instant');
     };
     const scheduleHideTooltip = () => {
       window.clearTimeout(tooltipHideTimer);
       tooltipHideTimer = window.setTimeout(hideTooltip, 120);
     };
-    const positionTooltip = (target: HTMLElement) => {
+    const positionTooltip = (target: HTMLElement, instant = false) => {
       lensTooltip.hidden = false;
+      if (instant) lensTooltip.setAttribute('data-instant', '');
       const targetRect = target.getBoundingClientRect();
-      const tooltipRect = lensTooltip.getBoundingClientRect();
-      const left = Math.max(8, Math.min(window.innerWidth - tooltipRect.width - 8, targetRect.left + targetRect.width / 2 - tooltipRect.width / 2));
-      const top = Math.max(8, targetRect.top - tooltipRect.height - 12);
+      const width = lensTooltip.offsetWidth;
+      const height = lensTooltip.offsetHeight;
+      const style = getComputedStyle(lensTooltip);
+      const tailHeight = parseFloat(style.getPropertyValue('--tooltip-tail-height'));
+      const tailHalfWidth = parseFloat(style.getPropertyValue('--tooltip-tail-half-width'));
+      const radii = [
+        parseFloat(style.getPropertyValue('--tooltip-rect-radius')),
+        parseFloat(style.getPropertyValue('--tooltip-rect-radius')),
+        parseFloat(style.getPropertyValue('--tooltip-rect-radius')),
+        parseFloat(style.getPropertyValue('--tooltip-shoulder-radius')),
+        parseFloat(style.getPropertyValue('--tooltip-tip-radius')),
+        parseFloat(style.getPropertyValue('--tooltip-shoulder-radius')),
+        parseFloat(style.getPropertyValue('--tooltip-rect-radius')),
+      ];
+      tooltipSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      tooltipShape.setAttribute('d', tooltipPath(tooltipVertices(width, height, tailHeight, tailHalfWidth), radii));
+      const left = Math.max(8, Math.min(window.innerWidth - width - 8, targetRect.left + targetRect.width / 2 - width / 2));
+      const top = Math.max(8, targetRect.top - height - 6);
       lensTooltip.style.left = `${left}px`;
       lensTooltip.style.top = `${top}px`;
+      void lensTooltip.offsetWidth;
+      lensTooltip.setAttribute('open', '');
     };
-    const showTooltip = (target: HTMLElement) => {
+    const showTooltip = (target: HTMLElement, instant = false) => {
       hideTooltip();
       tooltipTimer = window.setTimeout(() => {
         if (signal.aborted) return;
-        positionTooltip(target);
+        positionTooltip(target, instant);
       }, 1000);
     };
     lens.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') showTooltip(lens); }, { signal });
-    lens.addEventListener('focus', () => showTooltip(lens), { signal });
+    lens.addEventListener('focus', () => showTooltip(lens, true), { signal });
     lens.addEventListener('pointerleave', scheduleHideTooltip, { signal });
     lens.addEventListener('blur', hideTooltip, { signal });
     lensTooltip.addEventListener('pointerenter', () => { window.clearTimeout(tooltipHideTimer); }, { signal });
