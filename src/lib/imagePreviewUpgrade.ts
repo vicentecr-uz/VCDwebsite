@@ -421,14 +421,25 @@ export function createImagePreviewUpgrade(options: { onError?: (image: HTMLImage
       done();
     };
 
-    clone.addEventListener('transitionend', onEnd, { signal });
-    later(() => {
-      if (clone.isConnected) done();
-    }, REVEAL_DURATION_MS + 100);
-
-    nextFrame(() => {
+    // The preload and the visible clone have separate decode lifetimes.
+    // Keep the thumbnail until the actual reveal layer has pixels.
+    const failedDecode = later(() => {
+      if (!current(img, preview) || revealClones.get(img) !== clone) return;
+      cancel(img);
+      delete img.dataset.imagePreviewRevealing;
+      options.onError?.(img);
+    }, PREVIEW_TIMEOUT_MS);
+    void decodeImage(clone, preview).then(() => {
+      if (!current(img, preview) || revealClones.get(img) !== clone) return;
+      if (!clone.complete || !clone.naturalWidth) return;
+      cancelTimer(failedDecode);
+      clone.addEventListener('transitionend', onEnd, { signal });
       nextFrame(() => {
-        clone.classList.add('is-revealing');
+        nextFrame(() => {
+          if (!current(img, preview) || revealClones.get(img) !== clone) return;
+          clone.classList.add('is-revealing');
+          later(() => { if (clone.isConnected) done(); }, REVEAL_DURATION_MS + 100);
+        });
       });
     });
   }
