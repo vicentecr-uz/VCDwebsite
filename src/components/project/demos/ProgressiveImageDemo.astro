@@ -1,8 +1,6 @@
 ---
 import Button from '../../ui/Button.astro';
 import Badge from '../../ui/Badge.astro';
-import Hairline from '../../ui/Hairline.astro';
-import rotateIcon from 'lucide-static/icons/rotate-ccw.svg?raw';
 import '../../../styles/project.css';
 import { projectImageTier } from '../../../lib/images';
 const thumb = projectImageTier('IMG_2480.jpeg', 'thumb');
@@ -20,16 +18,19 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         </div>
         <div class="glass-root">
           <canvas class="glass-source" aria-hidden="true"></canvas>
-          <div class="lens" tabindex="0" role="group" aria-label="Magnifying glass. Drag or use arrow keys to move." hidden></div>
+          <div class="lens" tabindex="0" role="group" aria-label="Magnifying glass. Drag or use arrow keys to move. Press Enter or Space to change loading state." aria-describedby="progressive-image-lens-tooltip" hidden></div>
         </div>
       </div>
       <div class="actions dev-surface" role="group" aria-label="Image loading">
-        <Button label="Load" emphasis="ghost" data-load />
-        <Hairline orientation="vertical" />
-        <Button label="" emphasis="ghost" aria-label="Reset" data-reset><span slot="icon" aria-hidden="true" set:html={rotateIcon} /></Button>
+        <Button label="" emphasis="ghost" width="fill" data-load aria-label="Load" aria-describedby="progressive-image-button-tooltip">
+          <span class="load-label" data-load-label="load" aria-hidden="false">Load</span>
+          <span class="load-label" data-load-label="unload" aria-hidden="true">Unload</span>
+        </Button>
       </div>
       <p class="status sr-only" role="status"></p>
     </div>
+    <div class="demo-tooltip" id="progressive-image-button-tooltip" role="tooltip" hidden>Double-click the lens to change loading state</div>
+    <div class="demo-tooltip" id="progressive-image-lens-tooltip" role="tooltip" hidden>Double-click/tap to change loading state</div>
     <div class="hint" data-hint hidden aria-hidden="true">
       <div class="hint-pointer" data-hint-pointer>
         <span class="hint-finger" data-hint-finger></span>
@@ -125,11 +126,17 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   }
   .lens[hidden] { display: none; }
   .lens:focus-visible { outline: 2px solid var(--sys-color-on-srf); }
-  .actions { display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 12px; }
-  .actions :global(.dev-hairline) { margin-inline: 2px; }
-  .actions :global(.dev-btn__icon svg) { width: 16px; height: 16px; }
-  .actions :global([data-load]::before) { right: -6px; }
-  .actions :global([data-reset]::before) { left: -6px; }
+  .actions { display: grid; grid-template-columns: 1fr; align-items: center; padding: 6px; border-radius: 12px; }
+  /* The hidden Load cell preserves the original button width: 12px outer padding + 61px label cell. */
+  .actions::before { content: 'Load'; visibility: hidden; grid-area: 1 / 1; font: var(--dev-text-label); padding-inline: 30.5px; }
+  .actions :global([data-load]) { display: grid; grid-area: 1 / 1; width: 100%; }
+  .load-label { grid-area: 1 / 1; display: block; transition: opacity 250ms ease-out, filter 250ms ease-out, transform 250ms ease-out; }
+  .load-label[data-load-label='unload'] { opacity: 0; filter: blur(4px); transform: scale(0.92); }
+  .actions[data-loading] .load-label[data-load-label='load'] { opacity: 0; filter: blur(4px); transform: scale(0.92); }
+  .actions[data-loading] .load-label[data-load-label='unload'] { opacity: 1; filter: blur(0); transform: scale(1); }
+  .demo-tooltip { position: fixed; z-index: 2147483647; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: var(--sys-color-inverse-srf); color: var(--sys-color-inverse-on-srf); box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); font: var(--dev-text-label); line-height: 1.2; cursor: default; opacity: 0; filter: blur(2px); transform: translateY(3px) scale(0.98); transition: opacity 150ms ease-out, filter 150ms ease-out, transform 150ms ease-out; }
+  .demo-tooltip:not([hidden]) { opacity: 1; filter: blur(0); transform: translateY(0) scale(1); }
+  @media (prefers-reduced-motion: reduce) { .load-label, .demo-tooltip { transition-property: opacity; filter: none !important; transform: none !important; } }
   .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
   .lens-controls summary { padding: 10px 12px; cursor: grab; touch-action: none; user-select: none; }
   .lens-controls summary:active { cursor: grabbing; }
@@ -172,7 +179,9 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const highBadge = stack.querySelector<HTMLElement>('.image-quality-badge--high')!;
     const lens = host.querySelector<HTMLElement>('.lens')!;
     const load = host.querySelector<HTMLButtonElement>('[data-load]')!;
-    const reset = host.querySelector<HTMLButtonElement>('[data-reset]')!;
+    const buttonTooltip = host.querySelector<HTMLElement>('#progressive-image-button-tooltip')!;
+    const lensTooltip = host.querySelector<HTMLElement>('#progressive-image-lens-tooltip')!;
+    document.body.append(buttonTooltip, lensTooltip);
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
     const widthControl = host.querySelector<HTMLSelectElement>('#lens-frame-width');
@@ -197,6 +206,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     let glass;
     let upgrade;
     let generation = 0;
+    let loading = false;
+    let restoreBusy = false;
     let frame = 0;
     type Breakpoint = 'mobile' | 'tablet' | 'desktop';
     type LensConfig = { diameter: number; zoom: number; zRadius: number; bevelWidth: number; rimWidth: number; sheen: number; sheenInset: number; sheenWidth: number; colourPickup: number; glowStrength: number; glowSpread: number; refraction: number; edgeHighlight: number; specular: number; shadowOpacity: number; hintX: number; hintY: number };
@@ -225,6 +236,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }
     let position = { x: 0, y: 0 };
     let pointer;
+    let lastTap: { time: number; x: number; y: number } | undefined;
     let hintFrame = 0;
     let hintTimer = 0;
     let hinting = false;
@@ -504,6 +516,63 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       glass?.markChanged();
     }
 
+    let tooltipTimer = 0;
+    let tooltipHideTimer = 0;
+    let tooltipTarget: HTMLElement | undefined;
+    let tooltipElement: HTMLElement | undefined;
+    const hideTooltip = () => {
+      window.clearTimeout(tooltipTimer);
+      window.clearTimeout(tooltipHideTimer);
+      tooltipTimer = 0;
+      tooltipHideTimer = 0;
+      tooltipTarget = undefined;
+      tooltipElement = undefined;
+      buttonTooltip.hidden = true;
+      lensTooltip.hidden = true;
+    };
+    const scheduleHideTooltip = () => {
+      window.clearTimeout(tooltipHideTimer);
+      tooltipHideTimer = window.setTimeout(hideTooltip, 120);
+    };
+    const positionTooltip = (target: HTMLElement) => {
+      const tooltip = tooltipElement!;
+      tooltip.hidden = false;
+      const targetRect = target.getBoundingClientRect();
+      const tooltipRect = tooltip.getBoundingClientRect();
+      const gap = 8;
+      const left = Math.max(8, Math.min(window.innerWidth - tooltipRect.width - 8, targetRect.left + targetRect.width / 2 - tooltipRect.width / 2));
+      const top = target === lens
+        ? Math.max(8, targetRect.top - tooltipRect.height - gap)
+        : Math.min(window.innerHeight - tooltipRect.height - 8, targetRect.bottom + gap);
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${Math.max(8, top)}px`;
+    };
+    const showTooltip = (target: HTMLElement, text: string) => {
+      hideTooltip();
+      tooltipTarget = target;
+      tooltipElement = target === lens ? lensTooltip : buttonTooltip;
+      tooltipElement.textContent = text;
+      tooltipTimer = window.setTimeout(() => {
+        if (tooltipTarget !== target || signal.aborted) return;
+        positionTooltip(target);
+      }, 1000);
+    };
+    const tooltipEnter = (target: HTMLElement, text: string) => showTooltip(target, text);
+    load.addEventListener('pointerenter', () => tooltipEnter(load, 'Double-click the lens to change loading state'), { signal });
+    load.addEventListener('focus', () => tooltipEnter(load, 'Double-click the lens to change loading state'), { signal });
+    lens.addEventListener('pointerenter', () => tooltipEnter(lens, 'Double-click/tap to change loading state'), { signal });
+    lens.addEventListener('focus', () => tooltipEnter(lens, 'Double-click/tap to change loading state'), { signal });
+    load.addEventListener('pointerleave', scheduleHideTooltip, { signal });
+    load.addEventListener('blur', hideTooltip, { signal });
+    lens.addEventListener('pointerleave', scheduleHideTooltip, { signal });
+    lens.addEventListener('blur', hideTooltip, { signal });
+    buttonTooltip.addEventListener('pointerenter', () => { window.clearTimeout(tooltipHideTimer); }, { signal });
+    lensTooltip.addEventListener('pointerenter', () => { window.clearTimeout(tooltipHideTimer); }, { signal });
+    buttonTooltip.addEventListener('pointerleave', scheduleHideTooltip, { signal });
+    lensTooltip.addEventListener('pointerleave', scheduleHideTooltip, { signal });
+    window.addEventListener('resize', hideTooltip, { signal });
+    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideTooltip(); }, { signal });
+
     function stopHint() {
       const running = hinting || hintFrame || hintTimer;
       cancelAnimationFrame(hintFrame);
@@ -716,12 +785,13 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       if (!event.isPrimary || event.button !== 0) return;
       if (pointer) return;
       stopHint();
+      hideTooltip();
       stopSpring();
       const limit = bounds();
       const now = performance.now();
       pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, lastX: event.clientX, lastY: event.clientY,
         origin: { x: unresist(position.x, limit.x), y: unresist(position.y, limit.y) },
-        time: now, velocity: { x: 0, y: 0 }, samples: [{ t: now, x: position.x, y: position.y }] };
+        time: now, startTime: now, maxDistance: 0, velocity: { x: 0, y: 0 }, samples: [{ t: now, x: position.x, y: position.y }] };
       lens.setPointerCapture(event.pointerId);
       lens.style.cursor = 'grabbing';
       event.preventDefault();
@@ -730,6 +800,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       if (!pointer || pointer.id !== event.pointerId) return;
       pointer.lastX = event.clientX;
       pointer.lastY = event.clientY;
+      pointer.maxDistance = Math.max(pointer.maxDistance, Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y));
       const limit = bounds();
       const next = { x: resistance(pointer.origin.x + event.clientX - pointer.x, limit.x), y: resistance(pointer.origin.y + event.clientY - pointer.y, limit.y) };
       const now = performance.now();
@@ -744,6 +815,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const release = (event) => {
       if (!pointer || pointer.id !== event.pointerId) return;
       const now = performance.now();
+      pointer.maxDistance = Math.max(pointer.maxDistance, Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y));
       let velocity = { x: 0, y: 0 };
       if (event.type === 'pointerup') {
         const samples = pointer.samples.filter((sample) => now - sample.t <= 80);
@@ -755,9 +827,15 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         }
       }
       const id = pointer.id;
+      const tapDuration = now - pointer.startTime;
+      const isTap = event.type === 'pointerup' && tapDuration <= 300 && pointer.maxDistance <= 6;
+      const wasDoubleTap = isTap && lastTap && now - lastTap.time <= 350 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) <= 24;
+      if (isTap) lastTap = wasDoubleTap ? undefined : { time: now, x: event.clientX, y: event.clientY };
+      else lastTap = undefined;
       pointer = undefined;
       if (lens.hasPointerCapture(id)) lens.releasePointerCapture(id);
       lens.style.cursor = 'grab';
+      if (wasDoubleTap) toggleLoading();
       const speed = Math.hypot(velocity.x, velocity.y);
       if (reducedMotion.matches || event.type !== 'pointerup' || speed < LENS_INERTIA.threshold) {
         settle(speed < LENS_INERTIA.threshold ? { x: 0, y: 0 } : velocity);
@@ -768,8 +846,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       startCoast(velocity);
     };
     for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) lens.addEventListener(event, release, { signal });
-    host.addEventListener('pointerdown', () => { if (hinting) stopHint(); }, { signal });
+    host.addEventListener('pointerdown', () => { hideTooltip(); if (hinting) stopHint(); }, { signal });
     lens.addEventListener('keydown', (event) => {
+      if ((event.key === 'Enter' || event.key === ' ') && !event.repeat) {
+        event.preventDefault();
+        hideTooltip();
+        toggleLoading();
+        return;
+      }
       const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
       const direction = directions[event.key];
       if (!direction) return;
@@ -900,29 +984,38 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     }
     setFrameWidth();
 
-    load.addEventListener('click', () => {
-      if (load.disabled) return;
+    function setLoadingState(value: boolean) {
+      loading = value;
+      toolbar.toggleAttribute('data-loading', value);
+      load.setAttribute('aria-label', value ? 'Unload' : 'Load');
+      load.querySelector<HTMLElement>('[data-load-label="load"]')?.setAttribute('aria-hidden', value ? 'true' : 'false');
+      load.querySelector<HTMLElement>('[data-load-label="unload"]')?.setAttribute('aria-hidden', value ? 'false' : 'true');
+    }
+
+    function startLoad() {
+      if (restoreBusy) return;
       const run = ++generation;
       upgrade?.destroy();
-      load.disabled = true;
+      setLoadingState(true);
       status.textContent = '';
       currentImage().dataset.imagePreview = host.dataset.imagePreviewUrl;
       upgrade = createImagePreviewUpgrade({ onError: () => {
         if (run !== generation || signal.aborted) return;
         upgrade?.destroy();
-        load.disabled = false;
+        setLoadingState(false);
         status.textContent = 'Image unavailable. Try Load again.';
         drawSource();
       } });
       upgrade.bind(stack);
       upgrade.open();
-    }, { signal });
+    }
 
-    reset.addEventListener('click', () => {
+    function restoreLow() {
       const run = ++generation;
       upgrade?.destroy();
       cancelAnimationFrame(frame);
-      load.disabled = false;
+      setLoadingState(false);
+      restoreBusy = true;
       status.textContent = '';
       const incoming = template.content.cloneNode(true);
       const image = incoming.querySelector('[data-progressive-image]');
@@ -930,6 +1023,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       const apply = () => {
         if (applied || run !== generation || signal.aborted) return;
         applied = true;
+        restoreBusy = false;
         // Keep the live photo until this thumb has pixels. Removing first leaves
         // one empty frame while the lens canvas still holds the last zoomed bitmap.
         currentImage()?.remove();
@@ -943,7 +1037,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         image?.addEventListener('error', apply, { once: true, signal });
         void image?.decode?.().then(apply, apply);
       }
-    }, { signal });
+    }
+
+    function toggleLoading() {
+      hideTooltip();
+      if (loading) restoreLow();
+      else startLoad();
+    }
+    load.addEventListener('click', toggleLoading, { signal });
 
     reducedMotion.addEventListener('change', () => { if (reducedMotion.matches && springFrame) settle(); }, { signal });
     document.addEventListener('visibilitychange', () => {
@@ -980,7 +1081,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       } catch (error) {
         if (signal.aborted) return;
         lens.hidden = true;
-        status.textContent = 'Glass unavailable in this browser. Load and Reset still work.';
+        status.textContent = 'Glass unavailable in this browser. Load and Unload still work.';
         console.error('Image magnifier:', error);
       }
     }
@@ -997,6 +1098,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       observer.disconnect();
       resize.disconnect();
       theme.disconnect();
+      hideTooltip();
+      host.append(buttonTooltip, lensTooltip);
       cancelAnimationFrame(frame);
       upgrade?.destroy();
       glass?.destroy();
