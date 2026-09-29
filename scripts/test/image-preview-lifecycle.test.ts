@@ -33,6 +33,7 @@ class TestImage extends EventTarget {
   onerror: (() => void) | null = null;
   decode: () => Promise<void> = () => Promise.resolve();
   clone?: TestImage;
+  cloneDecode?: () => Promise<void>;
   top = 20;
   constructor() { super(); images.push(this); }
   getAttribute(name: string) { return this.attributes.get(name) ?? null; }
@@ -40,7 +41,7 @@ class TestImage extends EventTarget {
   removeAttribute(name: string) { this.attributes.delete(name); }
   hasAttribute(name: string) { return this.attributes.has(name); }
   getBoundingClientRect() { return { top: this.top, left: 20, bottom: this.top + 200, right: 320 }; }
-  cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); return clone; }
+  cloneNode() { const clone = new TestImage(); clone.attributes = new Map(this.attributes); if (this.cloneDecode) clone.decode = this.cloneDecode; return clone; }
   insertAdjacentElement(_where: string, clone: TestImage) { this.clone = clone; }
   remove() { this.isConnected = false; }
 }
@@ -134,7 +135,6 @@ try {
     assert.equal(b.image.hasAttribute(attr), true, 'the real image stays interactive');
   }
   assert.ok(frames.size > 0);
-  assert.ok(timers.size > 0);
   second.destroy();
   assert.equal(b.image.clone!.isConnected, false);
   assert.equal(frames.size, 0, 'destroy cancels reveal frames');
@@ -209,6 +209,55 @@ try {
   await flush();
   assert.equal(revealing.image.src, '/new.webp', 'old reveal completion cannot overwrite replacement');
   revealReplacement.destroy();
+
+  const cold = fixture('/cold-clone.webp');
+  let decodeClone!: () => void;
+  cold.image.cloneDecode = () => new Promise((resolve) => { decodeClone = resolve; });
+  const coldUpgrade = createImagePreviewUpgrade();
+  coldUpgrade.bind(cold.root);
+  images.at(-1)!.onload!();
+  await flush();
+  coldUpgrade.open();
+  previewImages('/cold-clone.webp').at(-1)!.onload!();
+  await flush();
+  for (let frame = 0; frame < 2; frame++) {
+    const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0));
+  }
+  for (const [id, callback] of [...timers]) if (timerDelays.get(id) === 600) callback();
+  assert.equal(cold.image.src, '/thumb.webp', 'a decoded preload must not replace the thumbnail before the displayed clone decodes');
+  assert.equal(cold.image.clone!.classes.has('is-revealing'), false, 'the wipe waits for its own image pixels');
+  decodeClone();
+  await flush();
+  for (let frame = 0; frame < 2; frame++) {
+    const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0));
+  }
+  assert.equal(cold.image.clone!.classes.has('is-revealing'), true);
+  runTimer(600);
+  assert.equal(cold.image.src, '/cold-clone.webp', 'source changes only behind the decoded reveal');
+  coldUpgrade.destroy();
+
+  for (const cancelEarly of [false, true]) {
+    const stalledClone = fixture(`/stalled-clone-${cancelEarly}.webp`);
+    let finishClone!: () => void;
+    let cloneFailures = 0;
+    stalledClone.image.cloneDecode = () => new Promise((resolve) => { finishClone = resolve; });
+    const stalledUpgrade = createImagePreviewUpgrade({ onError: () => cloneFailures++ });
+    stalledUpgrade.bind(stalledClone.root);
+    images.at(-1)!.onload!();
+    await flush();
+    stalledUpgrade.open();
+    previewImages(`/stalled-clone-${cancelEarly}.webp`).at(-1)!.onload!();
+    await flush();
+    if (cancelEarly) stalledUpgrade.cancel(stalledClone.image as unknown as HTMLImageElement);
+    runTimer(15000);
+    assert.equal(cloneFailures, cancelEarly ? 0 : 1, 'only an active failed decode reports an error');
+    assert.equal(stalledClone.image.src, '/thumb.webp', 'stalled reveal preserves the thumbnail');
+    assert.equal(stalledClone.image.clone!.isConnected, false);
+    finishClone();
+    await flush();
+    assert.equal(stalledClone.image.clone!.classes.has('is-revealing'), false, 'late clone decode cannot revive a cancelled reveal');
+    stalledUpgrade.destroy();
+  }
 
   let recoveryFailures = 0;
   const thumbError = fixture('/thumb-error.webp');
@@ -326,7 +375,7 @@ try {
 
   await flush();
   assert.equal(timers.size, 0);
-  console.log('image-preview-lifecycle: passed (isolation, recovery, bounded retries, stale decode, cancellation, disposal)');
+  console.log('image-preview-lifecycle: passed (isolation, cold clone decode, stalled clone recovery, bounded retries, stale decode, cancellation, disposal)');
 } finally {
   for (const [key, descriptor] of Object.entries(originals)) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
