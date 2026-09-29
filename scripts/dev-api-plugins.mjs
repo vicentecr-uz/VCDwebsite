@@ -330,20 +330,35 @@ export function sanitizeUploadFilename(filename) {
   return base;
 }
 
-export async function uniqueUploadFilename(directory, filename) {
+/**
+ * Pick the name an upload should be written under.
+ *
+ * Pass `contents` and a name collision whose bytes match is reused instead of
+ * allocating `-2`. Dropping a file, undoing, and dropping it again is ordinary
+ * authoring, and without the byte check each repeat committed another full copy
+ * of the same asset — `media/` had accumulated 121 MB of exact duplicates that
+ * way, all of them carrying `-2` / `-3` / `-4` / `-5` suffixes.
+ *
+ * @param {string} directory
+ * @param {string} filename
+ * @param {Buffer} [contents] Bytes about to be written, when the caller has them.
+ */
+export async function uniqueUploadFilename(directory, filename, contents) {
   const safe = sanitizeUploadFilename(filename);
   const ext = path.extname(safe);
   const stem = path.basename(safe, ext);
   let candidate = safe;
   let index = 2;
   while (true) {
+    let existing;
     try {
-      await readFile(path.join(directory, candidate));
-      candidate = `${stem}-${index}${ext}`;
-      index += 1;
+      existing = await readFile(path.join(directory, candidate));
     } catch {
       return candidate;
     }
+    if (contents && existing.equals(contents)) return candidate;
+    candidate = `${stem}-${index}${ext}`;
+    index += 1;
   }
 }
 
@@ -848,7 +863,7 @@ export function uploadDevWriter() {
             const converted = imageUpload && isHeicUpload(filename, mimeType)
               ? await convertHeicUpload(data)
               : data;
-            const outputFilename = await uniqueUploadFilename(directory, uploadFilename(filename, mimeType));
+            const outputFilename = await uniqueUploadFilename(directory, uploadFilename(filename, mimeType), converted);
             await writeFile(path.join(directory, outputFilename), converted);
             filenames.push(outputFilename);
           }
