@@ -138,6 +138,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .actions[data-loading] .load-label[data-load-label='unload'] { opacity: 1; filter: blur(0); transform: scale(1); }
   .demo-tooltip { --tooltip-tail-height: 7px; --tooltip-tail-half-width: 8px; --tooltip-rect-radius: 8px; --tooltip-shoulder-radius: 3px; --tooltip-tip-radius: 3px; isolation: isolate; position: fixed; z-index: 2147483647; width: max-content; padding: 8px 8px calc(8px + var(--tooltip-tail-height)); color: var(--sys-color-on-srf); font: var(--dev-text-label); line-height: 1.2; text-align: center; cursor: default; opacity: 0; transform: scale(.97); transform-origin: 50% 100%; transition: none; }
   .demo-tooltip[open] { opacity: 1; transform: scale(1); transition: opacity 200ms cubic-bezier(.32,.72,0,1), transform 200ms cubic-bezier(.32,.72,0,1); }
+  .demo-tooltip[data-placement='bottom'] { padding: calc(8px + var(--tooltip-tail-height)) 8px 8px; transform-origin: 50% 0; }
   .demo-tooltip[data-instant] { transition: none; }
   .demo-tooltip > span { display: block; width: max-content; max-width: min(18ch, calc(100vw - 40px)); text-wrap: balance; }
   .demo-tooltip > span { position: relative; z-index: 1; }
@@ -566,8 +567,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       lensTooltip.hidden = false;
       if (instant) lensTooltip.setAttribute('data-instant', '');
       const targetRect = target.getBoundingClientRect();
+      lensTooltip.removeAttribute('data-placement');
       const width = lensTooltip.offsetWidth;
       const height = lensTooltip.offsetHeight;
+      const frame = (host.closest('.project-interactive-demo') ?? host.closest('.demo-page') ?? host).getBoundingClientRect();
+      const availableTop = Math.max(frame.top, 0) + 8;
+      const gap = 6;
+      const below = targetRect.top - height - gap < availableTop;
+      if (below) lensTooltip.setAttribute('data-placement', 'bottom');
       const style = getComputedStyle(lensTooltip);
       const tailHeight = parseFloat(style.getPropertyValue('--tooltip-tail-height'));
       const tailHalfWidth = parseFloat(style.getPropertyValue('--tooltip-tail-half-width'));
@@ -581,9 +588,12 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         parseFloat(style.getPropertyValue('--tooltip-rect-radius')),
       ];
       tooltipSvg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-      tooltipShape.setAttribute('d', tooltipPath(tooltipVertices(width, height, tailHeight, tailHalfWidth), radii));
-      const left = Math.max(8, Math.min(window.innerWidth - width - 8, targetRect.left + targetRect.width / 2 - width / 2));
-      const top = Math.max(8, targetRect.top - height - 6);
+      const vertices = tooltipVertices(width, height, tailHeight, tailHalfWidth);
+      tooltipShape.setAttribute('d', tooltipPath(below ? vertices.map(([x, y]) => [x, height - y]) : vertices, radii));
+      const leftBound = Math.max(8, frame.left + 8);
+      const rightBound = Math.min(window.innerWidth - 8, frame.right - 8);
+      const left = Math.max(leftBound, Math.min(rightBound - width, targetRect.left + targetRect.width / 2 - width / 2));
+      const top = below ? targetRect.bottom + gap : targetRect.top - height - gap;
       lensTooltip.style.left = `${left}px`;
       lensTooltip.style.top = `${top}px`;
       void lensTooltip.offsetWidth;
