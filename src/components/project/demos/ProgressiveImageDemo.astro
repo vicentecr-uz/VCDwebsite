@@ -5,6 +5,7 @@ import '../../../styles/project.css';
 import { projectImageTier } from '../../../lib/images';
 const thumb = projectImageTier('IMG_2480.jpeg', 'thumb');
 const preview = projectImageTier('IMG_2480.jpeg', 'preview');
+const showPrototypeControls = false;
 
 ---
 <vcd-progressive-image-demo data-image-preview-url={preview}>
@@ -39,7 +40,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       </div>
     </div>
   </div>
-    {import.meta.env.DEV && <details class="lens-controls" id="lens-controls">
+    {import.meta.env.DEV && showPrototypeControls && <details class="lens-controls" id="lens-controls">
       <summary>Controls</summary>
       <div class="lens-controls__body">
         <div class="lens-control">
@@ -180,7 +181,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   }
 
   function initializeDemo(host: HTMLElement) {
-    const isDev = import.meta.env.DEV;
+    const isDev = import.meta.env.DEV && !!host.querySelector('#lens-controls');
     const root = host.querySelector<HTMLElement>('.glass-root')!;
     const source = host.querySelector<HTMLCanvasElement>('.glass-source')!;
     const stack = host.querySelector<HTMLElement>('[data-image-root]')!;
