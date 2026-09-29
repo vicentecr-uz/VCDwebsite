@@ -22,15 +22,14 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
         </div>
       </div>
       <div class="actions dev-surface" role="group" aria-label="Image loading">
-        <Button label="" emphasis="ghost" width="fill" data-load aria-label="Load" aria-describedby="progressive-image-button-tooltip">
+        <Button label="" emphasis="ghost" width="fill" data-load aria-label="Load">
           <span class="load-label" data-load-label="load" aria-hidden="false">Load</span>
           <span class="load-label" data-load-label="unload" aria-hidden="true">Unload</span>
         </Button>
       </div>
       <p class="status sr-only" role="status"></p>
     </div>
-    <div class="demo-tooltip" id="progressive-image-button-tooltip" role="tooltip" hidden>Double-click the lens to change loading state</div>
-    <div class="demo-tooltip" id="progressive-image-lens-tooltip" role="tooltip" hidden>Double-click/tap to change loading state</div>
+    <div class="demo-tooltip" id="progressive-image-lens-tooltip" role="tooltip" hidden>Double-click to change loading state</div>
     <div class="hint" data-hint hidden aria-hidden="true">
       <div class="hint-pointer" data-hint-pointer>
         <span class="hint-finger" data-hint-finger></span>
@@ -134,7 +133,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
   .load-label[data-load-label='unload'] { opacity: 0; filter: blur(4px); transform: scale(0.92); }
   .actions[data-loading] .load-label[data-load-label='load'] { opacity: 0; filter: blur(4px); transform: scale(0.92); }
   .actions[data-loading] .load-label[data-load-label='unload'] { opacity: 1; filter: blur(0); transform: scale(1); }
-  .demo-tooltip { position: fixed; z-index: 2147483647; max-width: min(280px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: var(--sys-color-inverse-srf); color: var(--sys-color-inverse-on-srf); box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); font: var(--dev-text-label); line-height: 1.2; cursor: default; }
+  .demo-tooltip { position: fixed; z-index: 2147483647; inline-size: min(180px, calc(100vw - 24px)); padding: 8px 10px; border-radius: 8px; background: var(--sys-color-inverse-srf); color: var(--sys-color-inverse-on-srf); box-shadow: 0 6px 20px rgb(0 0 0 / 0.2); font: var(--dev-text-label); line-height: 1.2; text-align: center; text-wrap: balance; cursor: default; }
+  .demo-tooltip::after { content: ''; position: absolute; top: 100%; left: 50%; translate: -50% 0; border-inline: 6px solid transparent; border-top: 6px solid var(--sys-color-inverse-srf); }
   @media (prefers-reduced-motion: reduce) { .load-label { transition-property: opacity; filter: none !important; transform: none !important; } }
   .lens-controls { position: fixed; top: 24px; right: 24px; z-index: 2147483646; width: min(220px, calc(100vw - 48px)); max-height: calc(100dvh - 96px); overflow-y: auto; color: #fff; border-radius: 12px; background: rgb(10 10 10 / 0.82); -webkit-backdrop-filter: blur(12px) saturate(1.4); backdrop-filter: blur(12px) saturate(1.4); box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08) inset, 0 8px 24px rgb(0 0 0 / 0.24); font: 13px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
   .lens-controls summary { padding: 10px 12px; cursor: grab; touch-action: none; user-select: none; }
@@ -178,9 +178,8 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
     const highBadge = stack.querySelector<HTMLElement>('.image-quality-badge--high')!;
     const lens = host.querySelector<HTMLElement>('.lens')!;
     const load = host.querySelector<HTMLButtonElement>('[data-load]')!;
-    const buttonTooltip = host.querySelector<HTMLElement>('#progressive-image-button-tooltip')!;
     const lensTooltip = host.querySelector<HTMLElement>('#progressive-image-lens-tooltip')!;
-    document.body.append(buttonTooltip, lensTooltip);
+    document.body.append(lensTooltip);
     const status = host.querySelector<HTMLElement>('.status')!;
     const toolbar = host.querySelector<HTMLElement>('.actions')!;
     const widthControl = host.querySelector<HTMLSelectElement>('#lens-frame-width');
@@ -517,16 +516,11 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
 
     let tooltipTimer = 0;
     let tooltipHideTimer = 0;
-    let tooltipTarget: HTMLElement | undefined;
-    let tooltipElement: HTMLElement | undefined;
     const hideTooltip = () => {
       window.clearTimeout(tooltipTimer);
       window.clearTimeout(tooltipHideTimer);
       tooltipTimer = 0;
       tooltipHideTimer = 0;
-      tooltipTarget = undefined;
-      tooltipElement = undefined;
-      buttonTooltip.hidden = true;
       lensTooltip.hidden = true;
     };
     const scheduleHideTooltip = () => {
@@ -534,38 +528,26 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       tooltipHideTimer = window.setTimeout(hideTooltip, 120);
     };
     const positionTooltip = (target: HTMLElement) => {
-      const tooltip = tooltipElement!;
-      tooltip.hidden = false;
+      lensTooltip.hidden = false;
       const targetRect = target.getBoundingClientRect();
-      const tooltipRect = tooltip.getBoundingClientRect();
-      const gap = 8;
+      const tooltipRect = lensTooltip.getBoundingClientRect();
       const left = Math.max(8, Math.min(window.innerWidth - tooltipRect.width - 8, targetRect.left + targetRect.width / 2 - tooltipRect.width / 2));
-      const top = target === lens
-        ? Math.max(8, targetRect.top - tooltipRect.height - gap)
-        : Math.min(window.innerHeight - tooltipRect.height - 8, targetRect.bottom + gap);
-      tooltip.style.left = `${left}px`;
-      tooltip.style.top = `${Math.max(8, top)}px`;
+      const top = Math.max(8, targetRect.top - tooltipRect.height - 12);
+      lensTooltip.style.left = `${left}px`;
+      lensTooltip.style.top = `${top}px`;
     };
     const showTooltip = (target: HTMLElement) => {
       hideTooltip();
-      tooltipTarget = target;
-      tooltipElement = target === lens ? lensTooltip : buttonTooltip;
       tooltipTimer = window.setTimeout(() => {
-        if (tooltipTarget !== target || signal.aborted) return;
+        if (signal.aborted) return;
         positionTooltip(target);
       }, 1000);
     };
-    for (const target of [load, lens]) {
-      target.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') showTooltip(target); }, { signal });
-      target.addEventListener('focus', () => showTooltip(target), { signal });
-    }
-    load.addEventListener('pointerleave', scheduleHideTooltip, { signal });
-    load.addEventListener('blur', hideTooltip, { signal });
+    lens.addEventListener('pointerenter', (event) => { if (event.pointerType !== 'touch') showTooltip(lens); }, { signal });
+    lens.addEventListener('focus', () => showTooltip(lens), { signal });
     lens.addEventListener('pointerleave', scheduleHideTooltip, { signal });
     lens.addEventListener('blur', hideTooltip, { signal });
-    buttonTooltip.addEventListener('pointerenter', () => { window.clearTimeout(tooltipHideTimer); }, { signal });
     lensTooltip.addEventListener('pointerenter', () => { window.clearTimeout(tooltipHideTimer); }, { signal });
-    buttonTooltip.addEventListener('pointerleave', scheduleHideTooltip, { signal });
     lensTooltip.addEventListener('pointerleave', scheduleHideTooltip, { signal });
     window.addEventListener('resize', hideTooltip, { signal });
     document.addEventListener('scroll', hideTooltip, { signal, capture: true });
@@ -1099,7 +1081,7 @@ const preview = projectImageTier('IMG_2480.jpeg', 'preview');
       resize.disconnect();
       theme.disconnect();
       hideTooltip();
-      host.append(buttonTooltip, lensTooltip);
+      host.append(lensTooltip);
       cancelAnimationFrame(frame);
       upgrade?.destroy();
       glass?.destroy();
