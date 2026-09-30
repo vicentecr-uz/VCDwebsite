@@ -1303,6 +1303,35 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   } catch {
     completionStored = false;
   }
+  const storySequence = completionStored ? 'returning' : 'main';
+  const trackingWindow = window as Window & {
+    __vcdHeaderStoryStages?: Set<string>;
+    umami?: { track?: (name: string, data: { sequence: string; stage: string }) => void | Promise<unknown> };
+  };
+  // This Set deduplicates within one document; Umami Visits provide cross-reload aggregation.
+  const trackedStoryStages = trackingWindow.__vcdHeaderStoryStages ??= new Set<string>();
+  const trackStoryStage = (stage: string) => {
+    const script = document.querySelector<HTMLScriptElement>('script[data-website-id]');
+    const domains = script?.dataset.domains?.split(/[\s,]+/).filter(Boolean) ?? [];
+    const pathname = location.pathname.replace(/\/+$/, '') || '/';
+    const track = trackingWindow.umami?.track;
+    if (!script || typeof track !== 'function' || !domains.includes(location.hostname) || pathname === '/analytics' ||
+      pathname === '/dev' || pathname.startsWith('/dev/')) return;
+    try {
+      if (window.localStorage.getItem('umami.disabled')) return;
+    } catch {
+      return;
+    }
+    const eventName = `header-story-${storySequence}-${stage}`;
+    if (trackedStoryStages.has(eventName)) return;
+    trackedStoryStages.add(eventName);
+    try {
+      const result = track.call(trackingWindow.umami, eventName, { sequence: storySequence, stage });
+      if (result && typeof result.then === 'function') result.catch(() => {});
+    } catch {
+      // Analytics failures must not affect the header interaction.
+    }
+  };
 
   const messageForClick = (count: number) => {
     if (completionStored) return count <= 4 && count >= 3 ? 'You are on this page' :
@@ -1345,17 +1374,27 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     idleTimer = null;
   };
   const menuIsOpen = () => currentPageNotes.some((note) => note.closest<HTMLElement>('.header-trigger')?.dataset.menuOpen === 'true');
-  const showMessage = (text: string, weight = 400, animate = true) => currentPageNotes.forEach((note) => {
+  const showMessage = (text: string, weight = 400, animate = true, stage?: string) => currentPageNotes.forEach((note) => {
     note.setAttribute('aria-live', note.closest<HTMLElement>('.header-trigger')?.dataset.menuOpen === 'true' ? 'polite' : 'off');
-    setNote(note, text, weight, animate);
+    setNote(note, text, weight, animate, stage);
   });
+  const stageForClick = (count: number) => {
+    if (completionStored) return count <= 4 ? 'notice' : count === 5 ? 'again' : count === 6 ? 'welcome' : undefined;
+    if (count >= 3 && count <= 4) return 'notice';
+    if (count >= 5 && count <= 6) return 'notice-emphasis';
+    if (count >= 7 && count <= 9) return 'notice-strong';
+    return ({
+      10: 'chill', 11: 'read', 22: 'curious', 23: 'how-long', 24: 'stop',
+      25: 'not-playing', 26: 'seriously', 27: 'warning', 28: 'last-chance',
+    } as Record<number, string>)[count] ?? (count >= 12 && count <= 21 ? 'hold' : undefined);
+  };
   const scheduleIdle = () => {
     cancelIdle();
     idleTimer = window.setTimeout(() => {
       idleTimer = null;
       if (!menuIsOpen() || currentPageRemoved) return;
       idlePhase = 'good-boy';
-      showMessage("who's a good boy?", 400, true);
+      showMessage("who's a good boy?", 400, true, 'idle-good-boy');
       idleTimer = window.setTimeout(() => {
         idleTimer = null;
         if (!menuIsOpen() || currentPageRemoved || idlePhase !== 'good-boy') return;
@@ -1364,7 +1403,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }, 3100);
     }, 3100);
   };
-  const setNote = (note: HTMLElement, text: string, weight: number, animate: boolean) => {
+  const setNote = (note: HTMLElement, text: string, weight: number, animate: boolean, stage?: string) => {
     const animateText = animate && !(note.classList.contains('is-visible') && note.textContent === text);
     cancelNote(note);
     const trigger = note.closest<HTMLElement>('.header-trigger');
@@ -1381,6 +1420,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         note.setAttribute('aria-hidden', String(!open));
         syncMenuSurfaceInlineSize(trigger);
       }, animate);
+      if (stage && trigger.dataset.menuOpen === 'true' && !document.hidden) trackStoryStage(stage);
       if (animateText && open) note.animate([
         { opacity: 0, filter: reduceMotionMq.matches ? 'none' : 'blur(4px)' },
         { opacity: 0.48, filter: 'blur(0px)' },
@@ -1415,7 +1455,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
   const removeCurrentPage = (focusFallback = false) => {
     cancelIdle();
     if (currentPageRemoved) return;
+    const visible = menuIsOpen() && !document.hidden;
     currentPageRemoved = true;
+    if (visible) trackStoryStage('completed');
     const active = document.activeElement;
     const focused = active instanceof HTMLElement && currentPageLinks.includes(active as HTMLAnchorElement);
     const activeTrigger = active instanceof HTMLElement ? active.closest<HTMLElement>('.header-trigger') : null;
@@ -1459,6 +1501,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     }
     needsResume = currentPageClickCount >= 3;
   };
+  const trackExposure = (trigger: HTMLElement | null) => {
+    if (trigger?.dataset.menuOpen === 'true' && !currentPageRemoved && !document.hidden &&
+      currentPageItems.some((item) => !item.classList.contains('is-removed'))) trackStoryStage('exposed');
+  };
   currentPageNotes.forEach((note) => {
     const trigger = note.closest<HTMLElement>('.header-trigger');
     trigger?.addEventListener('header:trigger-close', () => {
@@ -1467,6 +1513,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     });
     trigger?.addEventListener('header:trigger-open', () => {
       cancelNote(note);
+      trackExposure(trigger);
       if (needsResume && !currentPageRemoved) showMessage('You are on this page', 400, false);
       else {
         note.classList.remove('is-visible');
@@ -1500,27 +1547,32 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         cancelIdle();
         if (needsResume) {
           needsResume = false;
-          showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', messageWeight(), event.detail > 0);
+          showMessage(messageForClick(currentPageClickCount) ?? 'You are on this page', messageWeight(), event.detail > 0,
+            stageForClick(currentPageClickCount));
           if (!completionStored && currentPageClickCount === 24) scheduleIdle();
           return;
         }
         if (idlePhase === 'good-boy') {
           idlePhase = 'hey';
           currentPageClickCount = 25;
-          showMessage('HEY', 400, event.detail > 0);
+          showMessage('HEY', 400, event.detail > 0, 'idle-hey');
           idleTimer = window.setTimeout(() => {
             idleTimer = null;
             idlePhase = 'none';
-            showMessage("i'm not playing", 400, true);
+            showMessage("i'm not playing", 400, true, 'not-playing');
           }, 800);
           return;
         }
         if (idlePhase === 'hey') {
           idlePhase = 'none';
-          showMessage("i'm not playing", 400, event.detail > 0);
+          showMessage("i'm not playing", 400, event.detail > 0, 'not-playing');
           return;
         }
         currentPageClickCount += 1;
+        if (currentPageClickCount === 1) {
+          trackExposure(link.closest<HTMLElement>('.header-trigger'));
+          if (menuIsOpen() && !document.hidden) trackStoryStage('started');
+        }
 
         const label = link.querySelector<HTMLElement>('.header-menu__link-label');
         const shakeCutoff = completionStored ? 5 : 22;
@@ -1543,9 +1595,10 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         const message = messageForClick(currentPageClickCount);
         if (!message) return;
         const weight = messageWeight();
+        const stage = stageForClick(currentPageClickCount);
         currentPageNotes.forEach((note) => {
           note.setAttribute('aria-live', note.closest('.header-trigger') === link.closest('.header-trigger') ? 'polite' : 'off');
-          setNote(note, message, weight, event.detail > 0);
+          setNote(note, message, weight, event.detail > 0, stage);
         });
         if (!completionStored && currentPageClickCount === 24) scheduleIdle();
       },
