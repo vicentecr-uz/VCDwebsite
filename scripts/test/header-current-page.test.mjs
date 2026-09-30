@@ -51,7 +51,19 @@ class FakeElement {
 }
 globalThis.HTMLElement = FakeElement;
 
-function createHarness({ stored = false, storageThrows = false } = {}) {
+function createHarness({
+  stored = false,
+  storageThrows = false,
+  analytics = true,
+  analyticsDomains = 'example.test',
+  pathname = '/work',
+  hostname = 'example.test',
+  analyticsThrows = false,
+  analyticsRejects = false,
+  analyticsTracker = true,
+  analyticsDisabled = false,
+  analyticsPending = false,
+} = {}) {
   const timers = new Map();
   let nextTimer = 0;
   let now = 0;
@@ -74,12 +86,15 @@ function createHarness({ stored = false, storageThrows = false } = {}) {
   const notes = triggers.map((trigger) => trigger.note);
   const items = triggers.map((trigger) => trigger.item);
   const values = stored ? { 'vcd:header-current-page-message-complete': 'true' } : {};
+  if (analyticsDisabled) values['umami.disabled'] = '1';
+  const analyticsEvents = [];
+  const analyticsScript = analytics ? { dataset: { websiteId: 'test', domains: analyticsDomains } } : null;
   const documentListeners = {};
   globalThis.document = {
     hidden: false,
     activeElement: null,
     querySelectorAll: (selector) => selector.includes('[data-current-page]') ? links : notes,
-    querySelector: () => triggers[0].fallback,
+    querySelector: (selector) => selector === 'script[data-website-id]' ? analyticsScript : triggers[0].fallback,
     documentElement: { clientWidth: 1200 },
     fonts: { ready: Promise.resolve() },
     addEventListener: (type, callback) => { (documentListeners[type] ??= []).push(callback); },
@@ -87,20 +102,34 @@ function createHarness({ stored = false, storageThrows = false } = {}) {
   globalThis.window = {
     matchMedia: () => ({ matches: false }),
     localStorage: {
-      getItem: () => storageThrows ? (() => { throw new Error('denied'); })() : values['vcd:header-current-page-message-complete'],
+      getItem: (key) => storageThrows ? (() => { throw new Error('denied'); })() : values[key] ?? null,
       setItem: (key, value) => { if (storageThrows) throw new Error('denied'); values[key] = value; },
     },
     setTimeout: (callback, delay = 0) => { const id = ++nextTimer; timers.set(id, { callback, active: true, due: now + delay }); return id; },
     clearTimeout: (id) => { if (timers.get(id)) timers.get(id).active = false; },
   };
+  globalThis.location = { hostname, pathname };
+  globalThis.window.umami = analyticsTracker ? {
+    track: (...args) => {
+      if (analyticsThrows) throw new Error('analytics unavailable');
+      analyticsEvents.push(args);
+      if (analyticsRejects) return Promise.reject(new Error('analytics rejected'));
+      if (analyticsPending) return new Promise(() => {});
+      return undefined;
+    },
+  } : undefined;
   globalThis.CSSTransition = class {};
   globalThis.clearTimeout = window.clearTimeout;
   globalThis.syncMenuSurfaceInlineSize = () => {};
   const transformed = new Bun.Transpiler({ loader: 'ts' }).transformSync(
     `const syncMenuSurfaceInlineSize = globalThis.syncMenuSurfaceInlineSize;\n${controllerSource}\nglobalThis.controller = { messageForClick, removeCurrentPage };`,
   );
+  const executeController = () => {
+    // eslint-disable-next-line no-new-func
+    new Function(transformed)(/* no args */);
+  };
   // eslint-disable-next-line no-new-func
-  new Function(transformed)(/* no args */);
+  executeController();
   const advance = (milliseconds) => {
     const target = now + milliseconds;
     while (true) {
@@ -114,12 +143,160 @@ function createHarness({ stored = false, storageThrows = false } = {}) {
     }
     now = target;
   };
-  return { links, notes, items, triggers, timers, values, advance, documentListeners };
+  return { links, notes, items, triggers, timers, values, advance, documentListeners, analyticsEvents, executeController };
 }
 
 function click(link, detail = 1) { link.dispatch('click', { detail }); }
 function flush(harness) {
   harness.advance(100);
+}
+
+{
+  const h = createHarness();
+  h.triggers[0].dispatch('header:trigger-open');
+  click(h.links[0]);
+  click(h.links[0]);
+  click(h.links[0]);
+  flush(h);
+  assert.deepEqual(h.analyticsEvents, [
+    ['header-story-main-exposed', { sequence: 'main', stage: 'exposed' }],
+    ['header-story-main-started', { sequence: 'main', stage: 'started' }],
+    ['header-story-main-notice', { sequence: 'main', stage: 'notice' }],
+  ]);
+  click(h.links[0]);
+  flush(h);
+  assert.equal(h.analyticsEvents.length, 3);
+}
+
+{
+  const h = createHarness();
+  for (let index = 0; index < 21; index += 1) click(h.links[0]);
+  flush(h);
+  const holdEvents = h.analyticsEvents.filter(([name]) => name === 'header-story-main-hold');
+  assert.equal(holdEvents.length, 1);
+  click(h.links[0]); flush(h);
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-main-curious');
+}
+
+{
+  const h = createHarness();
+  for (let index = 0; index < 28; index += 1) click(h.links[0]);
+  h.links[0].dispatch('pointerdown', { pointerType: 'mouse', button: 0 });
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-main-completed');
+}
+
+{
+  const h = createHarness({ stored: true });
+  for (let index = 0; index < 6; index += 1) { click(h.links[0]); flush(h); }
+  assert.deepEqual(h.analyticsEvents.map(([name]) => name), [
+    'header-story-returning-exposed',
+    'header-story-returning-started',
+    'header-story-returning-notice',
+    'header-story-returning-again',
+    'header-story-returning-welcome',
+  ]);
+  click(h.links[0]); flush(h);
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-returning-completed');
+}
+
+for (const options of [
+  { analytics: false },
+  { analyticsDomains: 'other.test' },
+  { pathname: '/analytics' },
+  { pathname: '/analytics/' },
+  { pathname: '/dev/editor' },
+  { analyticsDisabled: true },
+  { analyticsTracker: false },
+]) {
+  const h = createHarness(options);
+  click(h.links[0]); click(h.links[0]); click(h.links[0]); flush(h);
+  assert.equal(h.analyticsEvents.length, 0);
+}
+
+for (const options of [{ analyticsThrows: true }, { analyticsRejects: true }]) {
+  const h = createHarness(options);
+  click(h.links[0]); click(h.links[0]); click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, 'You are on this page');
+}
+
+{
+  const h = createHarness({ analyticsPending: true });
+  click(h.links[0]); click(h.links[0]); click(h.links[0]); flush(h);
+  assert.equal(h.notes[0].textContent, 'You are on this page');
+  assert.equal(h.analyticsEvents.length, 3);
+}
+
+{
+  const h = createHarness();
+  click(h.links[0]); click(h.links[0]); click(h.links[0]);
+  h.triggers[0].dispatch('header:trigger-close');
+  h.triggers[0].dispatch('header:trigger-open');
+  flush(h);
+  assert.equal(h.analyticsEvents.filter(([name]) => name.endsWith('-notice')).length, 1);
+}
+
+{
+  const h = createHarness();
+  for (let index = 0; index < 24; index += 1) click(h.links[0]);
+  flush(h);
+  h.advance(3200);
+  flush(h);
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-main-idle-good-boy');
+  click(h.links[0]);
+  flush(h);
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-main-idle-hey');
+  h.advance(800);
+  flush(h);
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-main-not-playing');
+}
+
+{
+  const h = createHarness();
+  for (let index = 0; index < 9; index += 1) { click(h.links[0]); flush(h); }
+  click(h.links[0]);
+  h.triggers[0].dispatch('header:trigger-close');
+  h.advance(100);
+  assert.equal(h.analyticsEvents.some(([name]) => name === 'header-story-main-chill'), false);
+  h.triggers[0].dispatch('header:trigger-open');
+  click(h.links[0]);
+  flush(h);
+  assert.equal(h.analyticsEvents.filter(([name]) => name === 'header-story-main-chill').length, 1);
+}
+
+{
+  const h = createHarness();
+  for (let index = 0; index < 28; index += 1) { click(h.links[0]); flush(h); }
+  const stages = h.analyticsEvents.map(([name]) => name);
+  for (const stage of [
+    'exposed', 'started', 'notice', 'notice-emphasis', 'notice-strong', 'chill', 'read', 'hold',
+    'curious', 'how-long', 'stop', 'not-playing', 'seriously', 'warning', 'last-chance',
+  ]) assert.equal(stages.includes(`header-story-main-${stage}`), true, stage);
+}
+
+{
+  const h = createHarness();
+  h.triggers[0].dispatch('header:trigger-open');
+  h.executeController();
+  h.triggers[0].dispatch('header:trigger-open');
+  assert.equal(h.analyticsEvents.filter(([name]) => name === 'header-story-main-exposed').length, 1);
+}
+
+{
+  const h = createHarness();
+  click(h.links[0]); click(h.links[0]);
+  document.hidden = true;
+  h.documentListeners.visibilitychange.forEach((callback) => callback());
+  click(h.links[0]);
+  flush(h);
+  assert.equal(h.analyticsEvents.length, 2);
+  document.hidden = false;
+}
+
+{
+  const h = createHarness({ stored: true });
+  for (let index = 0; index < 6; index += 1) click(h.links[0]);
+  click(h.links[0], 0);
+  assert.equal(h.analyticsEvents.at(-1)[0], 'header-story-returning-completed');
 }
 
 {
