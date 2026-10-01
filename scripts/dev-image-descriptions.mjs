@@ -338,7 +338,7 @@ export function createImageDescriptionsService(options = {}) {
     const publicBytes = await fetchPublicImage(row.publicSrc);
     if (!original.equals(publicBytes)) throw new Error('Public image does not match the local source.');
     const resized = await sharp(publicBytes).flatten({ background: '#ffffff' }).resize({ width: 768, height: 768, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
-    const response = await modelFetch('http://127.0.0.1:11434/api/chat', { method: 'POST', signal: AbortSignal.timeout(90_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma3:4b', stream: false, options: { temperature: 0, num_predict: 90 }, messages: [{ role: 'user', content: 'Identify primary visible objects or action. Omit incidental backgrounds, colours, materials, inferred relationships, and purpose. Use 25 words or fewer; do not begin with “image of” or “showcasing”.', images: [resized.toString('base64')] }] }) });
+    const response = await modelFetch('http://127.0.0.1:11434/api/chat', { method: 'POST', signal: AbortSignal.timeout(90_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'gemma3:4b', stream: false, options: { temperature: 0, num_predict: 90 }, messages: [{ role: 'user', content: 'Write one concise factual image description for a screen reader, in 25 words or fewer. Name only the main objects or action clearly visible. Never speculate about purpose, use, relationships, identity, or project facts. Do not use likely, probably, perhaps, or showcasing. Return only the description, without an introduction or quotes.', images: [resized.toString('base64')] }] }) });
     if (!response.ok) throw new Error('The local vision model failed.');
     let body;
     try { body = JSON.parse(await readBoundedBody(response, 64 * 1024) || ''); } catch { throw new Error('The model returned invalid JSON.'); }
@@ -413,7 +413,8 @@ export function createImageDescriptionsService(options = {}) {
     const currentToken = await baseToken({ ...row, ids: latestIds, alt: String(target.alt || ''), intent: VALID_INTENTS.has(target.altIntent) ? target.altIntent : 'manual', node: target }).catch(() => '');
     if (currentToken !== body.baseToken) return { status: 409, payload: { error: 'This image changed. Refresh and try again.' } };
     target.alt = intent === 'decorative' ? '' : alt;
-    target.altIntent = intent;
+    if (intent === 'manual') delete target.altIntent;
+    else target.altIntent = intent;
     await writeDocument(row.document, data);
     await refresh();
     const saved = rows.find((item) => item.key === row.key);
