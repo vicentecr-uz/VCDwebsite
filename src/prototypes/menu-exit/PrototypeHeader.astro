@@ -858,6 +858,34 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       trigger.dispatchEvent(new CustomEvent('header:trigger-close'));
     };
 
+    let prototypeReplayTimer: number | undefined;
+    let prototypeReplayFrame: number | undefined;
+    const cancelPrototypeReplay = () => {
+      if (prototypeReplayTimer !== undefined) window.clearTimeout(prototypeReplayTimer);
+      if (prototypeReplayFrame !== undefined) cancelAnimationFrame(prototypeReplayFrame);
+      prototypeReplayTimer = undefined;
+      prototypeReplayFrame = undefined;
+    };
+    const replayMenu = () => {
+      cancelPrototypeReplay();
+      forceCloseMenus();
+      prototypeReplayFrame = requestAnimationFrame(() => {
+        prototypeReplayFrame = undefined;
+        openMenu();
+        prototypeReplayTimer = window.setTimeout(() => {
+          prototypeReplayTimer = undefined;
+          closeMenu(true);
+        }, 0.25 * 1000 + 100);
+      });
+    };
+    document.addEventListener('header:force-close', cancelPrototypeReplay);
+    document.addEventListener('menu-exit:remount', ((event: CustomEvent<{ replay?: boolean }>) => {
+      if (!event.detail?.replay || !trigger.classList.contains('header-trigger--start')) return;
+      // The title reset listener runs in the same dispatch; queue the replay
+      // after it so forceCloseMenus cannot cancel the newly scheduled frame.
+      queueMicrotask(replayMenu);
+    }) as EventListener);
+
     if (import.meta.env.DEV) {
       document.addEventListener('vcd:header-surface-preview', ((event: CustomEvent<{ side?: 'start' | 'end' | null }>) => {
         const side = event.detail?.side ?? null;
@@ -1114,8 +1142,22 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     const TITLE_EXIT_EASING = 'cubic-bezier(0.75, 0, 0.75, 0.9)';
     const BLUR_PX = 4;
 
+    if (selectedTitleModel === 'faster') {
+      homeChars.forEach((char) => char.style.setProperty('--char-blur', `${BLUR_PX}px`));
+    }
+
     let wordmarkIsOpen = false;
     let wordmarkAnimating = false;
+    let wordmarkRunToken = 0;
+    let baselineFadeInFrame: number | undefined;
+
+    const invalidateWordmarkRun = () => {
+      wordmarkRunToken += 1;
+      if (baselineFadeInFrame !== undefined) {
+        cancelAnimationFrame(baselineFadeInFrame);
+        baselineFadeInFrame = undefined;
+      }
+    };
 
     const setCharFadeOut = (chars: HTMLElement[], stagger: number, duration: number, baseDelay = 0) => {
       chars.forEach((char, i) => {
@@ -1145,6 +1187,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     const applyWordmarkFadeIn = (chars: HTMLElement[], baseDelay = 0) => {
       // Snap to blurred/invisible, then fade + deblur into place (staggered)
+      if (baselineFadeInFrame !== undefined) cancelAnimationFrame(baselineFadeInFrame);
+      const runToken = wordmarkRunToken;
       chars.forEach((char) => {
         char.style.setProperty('--char-duration', '0s');
         char.style.setProperty('--char-delay', '0s');
@@ -1152,7 +1196,9 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
         char.style.opacity = '0';
       });
 
-      requestAnimationFrame(() => {
+      baselineFadeInFrame = requestAnimationFrame(() => {
+        baselineFadeInFrame = undefined;
+        if (runToken !== wordmarkRunToken) return;
         chars.forEach((char, i) => {
           const delay =
             baseDelay + progressiveStaggerDelay(i, chars.length, FADE_IN_STAGGER_START, FADE_IN_STAGGER_END);
@@ -1308,9 +1354,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
     };
 
-    let wordmarkRunToken = 0;
     const runFastWordmarkOpen = () => {
-      wordmarkRunToken += 1;
+      invalidateWordmarkRun();
       const token = wordmarkRunToken;
       wordmarkIsOpen = true;
       applyFastWordmarkOpen();
@@ -1321,7 +1366,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
     };
 
     const runFastWordmarkClose = () => {
-      wordmarkRunToken += 1;
+      invalidateWordmarkRun();
       const token = wordmarkRunToken;
       wordmarkIsOpen = false;
       wordmarkAnimating = true;
@@ -1340,6 +1385,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       if (wordmarkAnimating) return;
 
+      invalidateWordmarkRun();
+      const runToken = wordmarkRunToken;
       wordmarkAnimating = true;
       startTrigger.classList.add('is-wordmark-swapped');
       applyWordmarkOpen();
@@ -1350,6 +1397,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       );
 
       await waitForWordmarkTransition(duration);
+
+      if (runToken !== wordmarkRunToken || selectedTitleModel !== 'current') return;
 
       wordmarkIsOpen = true;
       wordmarkAnimating = false;
@@ -1363,6 +1412,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       }
       if (wordmarkAnimating) return;
 
+      invalidateWordmarkRun();
+      const runToken = wordmarkRunToken;
       wordmarkAnimating = true;
       applyWordmarkClose();
 
@@ -1372,6 +1423,8 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       );
 
       await waitForWordmarkTransition(duration);
+
+      if (runToken !== wordmarkRunToken || selectedTitleModel !== 'current') return;
 
       wordmarkIsOpen = false;
       wordmarkAnimating = false;
@@ -1431,7 +1484,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
 
     // Instant wordmark reset when menu force-closes (pagehide / bfcache).
     document.addEventListener('header:force-close', () => {
-      wordmarkRunToken += 1;
+      invalidateWordmarkRun();
       wordmarkAnimating = false;
       wordmarkIsOpen = false;
       startTrigger.classList.remove('is-wordmark-swapped');
@@ -1444,7 +1497,7 @@ const menuLinks = headerSettings.menuLinks.map((link) => ({
       homeChars.forEach((char) => {
         char.style.setProperty('--char-duration', '0s');
         char.style.setProperty('--char-delay', '0s');
-        char.style.setProperty('--char-blur', '0px');
+        char.style.setProperty('--char-blur', selectedTitleModel === 'faster' ? `${BLUR_PX}px` : '0px');
         char.style.opacity = '0';
       });
       pageWordmark?.setAttribute('aria-hidden', 'false');

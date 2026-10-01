@@ -23,8 +23,8 @@ const modelPayload = JSON.stringify({ current: currentTitleModel, faster: faster
   columnStyle={pageColumnStyle(project.sections)}
 >
   <div class="project-page flex flex-col min-h-dvh">
-    <script is:inline>
-      window.__menuExitTitleModel = '{initialModel}';
+    <script is:inline define:vars={{ initialModel }}>
+      window.__menuExitTitleModel = initialModel;
     </script>
     <PrototypeHeader title={project.title} navMenu wordmarkAsH1 />
     <main id="main-content" class="project-page__main flex-1">
@@ -35,8 +35,8 @@ const modelPayload = JSON.stringify({ current: currentTitleModel, faster: faster
 
   <nav class="proto-picker" aria-label="Prototype variants">
     <span class="proto-picker-highlight" aria-hidden="true"></span>
-    <button class="proto-picker-item" data-active aria-current="true">Current title</button>
-    <button class="proto-picker-item">Faster title</button>
+    <button class:list={['proto-picker-item', initialModel === 'current' && 'is-initial-active']} data-active={initialModel === 'current' ? true : undefined} aria-current={initialModel === 'current' ? 'true' : undefined}>Current title</button>
+    <button class:list={['proto-picker-item', initialModel === 'faster' && 'is-initial-active']} data-active={initialModel === 'faster' ? true : undefined} aria-current={initialModel === 'faster' ? 'true' : undefined}>Faster title</button>
     <span class="proto-picker-divider" aria-hidden="true"></span>
     <button class="proto-picker-item proto-picker-replay" aria-label="Replay animation (R)">↻</button>
   </nav>
