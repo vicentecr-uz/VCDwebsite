@@ -247,7 +247,7 @@ export function createImageDescriptionsService(options = {}) {
     const publicByDocument = new Map();
     for (const [pathname, page] of publicPages) {
       const document = pathname === '/' ? 'home' : pathname.replace(/^\//, '').replace(/\/$/, '');
-    publicByDocument.set(document, publicImages(page.document, new URL(pathname, site), site));
+      publicByDocument.set(document, publicImages(page.document, new URL(pathname, site), site));
     }
     for (const document of documentKeys) {
       let data;
@@ -358,6 +358,7 @@ export function createImageDescriptionsService(options = {}) {
         const current = rows.find((row) => row.key === key);
         if (!current || !current.public || current.baseToken !== saved.baseToken) delete cache[key];
       }
+      await writeCache(cacheFile, cache);
       const candidates = rows.filter((row) => row.public && row.intent === 'auto' && !row.alt.trim() && !row.description && row.state !== 'failed');
       for (const queued of candidates) {
         await refresh(publicPages);
@@ -429,7 +430,7 @@ export function createImageDescriptionsService(options = {}) {
     check().catch(() => {});
     return { status: 202, payload: { rows: publicRows(), checking: true } };
   }
-  function hasAutoCandidates() { return rows.some((row) => row.intent === 'auto' && !row.alt.trim() && !row.description && row.state !== 'failed'); }
+  function hasAutoCandidates() { return rows.some((row) => row.intent === 'auto' && !row.alt.trim()); }
   return { refresh, check, retry, save, rows: publicRows, isChecking: () => checking, hasAutoCandidates };
 }
 
