@@ -303,7 +303,11 @@ for (const options of [{ analyticsThrows: true }, { analyticsRejects: true }]) {
   const h = createHarness();
   for (let index = 0; index < 3; index += 1) readClick(h, h.links[0]);
   click(h.links[0]);
+  h.triggers[0].dataset.menuOpen = 'false';
   h.triggers[0].dispatch('header:trigger-close');
+  h.advance(100);
+  assert.equal(h.analyticsEvents.some(([name]) => name === 'header-story-main-chill'), false);
+  h.triggers[0].dataset.menuOpen = 'true';
   h.triggers[0].dispatch('header:trigger-open');
   click(h.links[0]);
   h.advance(1300);
@@ -447,6 +451,17 @@ for (const options of [{ analyticsThrows: true }, { analyticsRejects: true }]) {
   h.advance(10000);
   assert.equal(h.notes[0].classList.contains('is-visible'), false);
   assert.notEqual(h.notes[0].textContent, "who's a good boy?");
+}
+
+{
+  const h = createHarness();
+  for (let index = 0; index < 8; index += 1) readClick(h, h.links[0]);
+  click(h.links[0]);
+  h.advance(300);
+  for (let index = 0; index < 10; index += 1) click(h.links[0]);
+  h.advance(2900);
+  assert.equal(h.notes[0].textContent, "who's a good boy?");
+  assert.equal(h.analyticsEvents.some(([name]) => name === 'header-story-main-not-playing'), false);
 }
 
 console.log('header-current-page: ok');
